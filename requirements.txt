@@ -1,0 +1,10 @@
+# Core dependencies
+hyperopt>=0.2.7
+numpy>=1.24.0
+
+# LLM backends (install what you need)
+anthropic>=0.18.0  # For Claude
+openai>=1.0.0      # For OpenAI or Ollama (local, free)
+
+# Optional
+matplotlib>=3.5.0  # For visualization
