@@ -1,0 +1,657 @@
+2025-11-01 22:40:20,451 [INFO] build_posterior_wrapper took 0.000756 seconds
+2025-11-01 22:40:20,452 [INFO] TPE using 0 trials
+2025-11-01 22:40:20,453 [INFO] Evaluating agent_0000 (λ=0.000, subset=True)
+2025-11-01 22:40:34,841 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:40:34,910 [INFO] Evaluation complete for agent_0000: F(λ)=0.0000, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:40:34,912 [INFO] build_posterior_wrapper took 0.000849 seconds
+2025-11-01 22:40:34,913 [INFO] TPE using 1/1 trials with best loss 0.000000
+2025-11-01 22:40:34,913 [INFO] Starting modification for agent_0001
+2025-11-01 22:40:34,913 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:40:34,913 [INFO] Target complexity: 150.0
+2025-11-01 22:40:40,611 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:40:40,616 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:40:40,618 [INFO] Code validation successful for agent_0001 (attempt 1)
+2025-11-01 22:40:40,618 [INFO] Evaluating agent_0001 (λ=0.000, subset=True)
+2025-11-01 22:40:53,590 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:40:53,602 [INFO] Evaluation complete for agent_0001: F(λ)=0.0000, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:40:53,605 [INFO] build_posterior_wrapper took 0.001629 seconds
+2025-11-01 22:40:53,605 [INFO] TPE using 2/2 trials with best loss 0.000000
+2025-11-01 22:40:53,606 [INFO] Starting modification for agent_0002
+2025-11-01 22:40:53,606 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:40:53,606 [INFO] Target complexity: 140.0
+2025-11-01 22:41:00,442 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:00,446 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:41:00,447 [INFO] Code validation successful for agent_0002 (attempt 1)
+2025-11-01 22:41:00,447 [INFO] Evaluating agent_0002 (λ=0.000, subset=True)
+2025-11-01 22:41:13,727 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:13,746 [INFO] Evaluation complete for agent_0002: F(λ)=0.0556, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:41:13,750 [INFO] build_posterior_wrapper took 0.001739 seconds
+2025-11-01 22:41:13,751 [INFO] TPE using 3/3 trials with best loss 0.000000
+2025-11-01 22:41:13,752 [INFO] Starting modification for agent_0003
+2025-11-01 22:41:13,752 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:41:13,752 [INFO] Target complexity: 80.0
+2025-11-01 22:41:20,605 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:20,609 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:41:20,611 [INFO] Code validation successful for agent_0003 (attempt 1)
+2025-11-01 22:41:20,611 [INFO] Evaluating agent_0003 (λ=0.000, subset=True)
+2025-11-01 22:41:32,823 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:32,834 [INFO] Evaluation complete for agent_0003: F(λ)=0.0278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:41:32,837 [INFO] build_posterior_wrapper took 0.001764 seconds
+2025-11-01 22:41:32,837 [INFO] TPE using 4/4 trials with best loss 0.000000
+2025-11-01 22:41:32,838 [INFO] Starting modification for agent_0004
+2025-11-01 22:41:32,838 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:41:32,838 [INFO] Target complexity: 110.0
+2025-11-01 22:41:40,180 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:40,182 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:41:40,183 [INFO] Code validation successful for agent_0004 (attempt 1)
+2025-11-01 22:41:40,184 [INFO] Evaluating agent_0004 (λ=0.000, subset=True)
+2025-11-01 22:41:54,076 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:41:54,091 [INFO] Evaluation complete for agent_0004: F(λ)=0.0278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:41:54,094 [INFO] build_posterior_wrapper took 0.001363 seconds
+2025-11-01 22:41:54,094 [INFO] TPE using 5/5 trials with best loss 0.000000
+2025-11-01 22:41:54,095 [INFO] Starting modification for agent_0005
+2025-11-01 22:41:54,095 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:41:54,095 [INFO] Target complexity: 60.0
+2025-11-01 22:42:01,383 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:42:01,391 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:42:01,393 [INFO] Code validation successful for agent_0005 (attempt 1)
+2025-11-01 22:42:01,393 [INFO] Evaluating agent_0005 (λ=0.000, subset=True)
+2025-11-01 22:42:17,198 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:42:17,222 [INFO] Evaluation complete for agent_0005: F(λ)=0.0000, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:42:17,238 [INFO] build_posterior_wrapper took 0.000885 seconds
+2025-11-01 22:42:17,238 [INFO] TPE using 0 trials
+2025-11-01 22:42:17,239 [INFO] Starting modification for agent_0006
+2025-11-01 22:42:17,239 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:42:17,239 [INFO] Target complexity: 140.0
+2025-11-01 22:42:23,874 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:42:23,880 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:42:23,882 [INFO] Code validation successful for agent_0006 (attempt 1)
+2025-11-01 22:42:23,883 [INFO] Evaluating agent_0006 (λ=0.056, subset=True)
+2025-11-01 22:42:39,385 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:42:39,409 [INFO] Evaluation complete for agent_0006: F(λ)=9.6667, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:42:39,415 [INFO] build_posterior_wrapper took 0.002936 seconds
+2025-11-01 22:42:39,416 [INFO] TPE using 1/1 trials with best loss 9.666667
+2025-11-01 22:42:39,418 [INFO] Starting modification for agent_0007
+2025-11-01 22:42:39,418 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:42:39,418 [INFO] Target complexity: 70.0
+2025-11-01 22:42:46,948 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:42:46,956 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:42:46,959 [INFO] Code validation successful for agent_0007 (attempt 1)
+2025-11-01 22:42:46,959 [INFO] Evaluating agent_0007 (λ=0.056, subset=True)
+2025-11-01 22:43:01,576 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:01,600 [INFO] Evaluation complete for agent_0007: F(λ)=9.6111, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:43:01,604 [INFO] build_posterior_wrapper took 0.001683 seconds
+2025-11-01 22:43:01,605 [INFO] TPE using 2/2 trials with best loss 9.611111
+2025-11-01 22:43:01,606 [INFO] Starting modification for agent_0008
+2025-11-01 22:43:01,606 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:43:01,606 [INFO] Target complexity: 110.0
+2025-11-01 22:43:08,212 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:08,217 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:43:08,219 [INFO] Code validation successful for agent_0008 (attempt 1)
+2025-11-01 22:43:08,220 [INFO] Evaluating agent_0008 (λ=0.056, subset=True)
+2025-11-01 22:43:22,693 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:22,712 [INFO] Evaluation complete for agent_0008: F(λ)=9.6389, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:43:22,717 [INFO] build_posterior_wrapper took 0.002435 seconds
+2025-11-01 22:43:22,718 [INFO] TPE using 3/3 trials with best loss 9.611111
+2025-11-01 22:43:22,719 [INFO] Starting modification for agent_0009
+2025-11-01 22:43:22,719 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:43:22,719 [INFO] Target complexity: 30.0
+2025-11-01 22:43:30,566 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:30,575 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:43:30,578 [INFO] Code validation successful for agent_0009 (attempt 1)
+2025-11-01 22:43:30,579 [INFO] Evaluating agent_0009 (λ=0.056, subset=True)
+2025-11-01 22:43:44,101 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:44,122 [INFO] Evaluation complete for agent_0009: F(λ)=9.6111, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:43:44,126 [INFO] build_posterior_wrapper took 0.001543 seconds
+2025-11-01 22:43:44,126 [INFO] TPE using 4/4 trials with best loss 9.611111
+2025-11-01 22:43:44,127 [INFO] Starting modification for agent_0010
+2025-11-01 22:43:44,127 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:43:44,127 [INFO] Target complexity: 90.0
+2025-11-01 22:43:50,353 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:43:50,358 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:43:50,360 [INFO] Code validation successful for agent_0010 (attempt 1)
+2025-11-01 22:43:50,360 [INFO] Evaluating agent_0010 (λ=0.056, subset=True)
+2025-11-01 22:44:03,103 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:03,117 [INFO] Evaluation complete for agent_0010: F(λ)=9.4444, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:44:03,122 [INFO] build_posterior_wrapper took 0.002562 seconds
+2025-11-01 22:44:03,123 [INFO] TPE using 5/5 trials with best loss 9.444444
+2025-11-01 22:44:03,124 [INFO] Starting modification for agent_0011
+2025-11-01 22:44:03,124 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:44:03,124 [INFO] Target complexity: 120.0
+2025-11-01 22:44:09,574 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:09,588 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:44:09,590 [INFO] Code validation successful for agent_0011 (attempt 1)
+2025-11-01 22:44:09,590 [INFO] Evaluating agent_0011 (λ=0.056, subset=True)
+2025-11-01 22:44:21,920 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:21,937 [INFO] Evaluation complete for agent_0011: F(λ)=9.6111, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:44:21,957 [INFO] build_posterior_wrapper took 0.001014 seconds
+2025-11-01 22:44:21,957 [INFO] TPE using 0 trials
+2025-11-01 22:44:21,958 [INFO] Starting modification for agent_0012
+2025-11-01 22:44:21,958 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:44:21,958 [INFO] Target complexity: 130.0
+2025-11-01 22:44:30,058 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:30,064 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:44:30,068 [INFO] Code validation successful for agent_0012 (attempt 1)
+2025-11-01 22:44:30,068 [INFO] Evaluating agent_0012 (λ=0.111, subset=True)
+2025-11-01 22:44:44,115 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:44,130 [INFO] Evaluation complete for agent_0012: F(λ)=19.3611, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:44:44,136 [INFO] build_posterior_wrapper took 0.002773 seconds
+2025-11-01 22:44:44,137 [INFO] TPE using 1/1 trials with best loss 19.361111
+2025-11-01 22:44:44,138 [INFO] Starting modification for agent_0013
+2025-11-01 22:44:44,138 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:44:44,138 [INFO] Target complexity: 50.0
+2025-11-01 22:44:50,782 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:44:50,786 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:44:50,788 [INFO] Code validation successful for agent_0013 (attempt 1)
+2025-11-01 22:44:50,789 [INFO] Evaluating agent_0013 (λ=0.111, subset=True)
+2025-11-01 22:45:07,102 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:07,119 [INFO] Evaluation complete for agent_0013: F(λ)=19.4722, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:45:07,124 [INFO] build_posterior_wrapper took 0.001912 seconds
+2025-11-01 22:45:07,125 [INFO] TPE using 2/2 trials with best loss 19.361111
+2025-11-01 22:45:07,126 [INFO] Starting modification for agent_0014
+2025-11-01 22:45:07,126 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:45:07,126 [INFO] Target complexity: 150.0
+2025-11-01 22:45:14,222 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:14,226 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:45:14,229 [INFO] Code validation successful for agent_0014 (attempt 1)
+2025-11-01 22:45:14,229 [INFO] Evaluating agent_0014 (λ=0.111, subset=True)
+2025-11-01 22:45:27,070 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:27,083 [INFO] Evaluation complete for agent_0014: F(λ)=19.1389, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:45:27,087 [INFO] build_posterior_wrapper took 0.002415 seconds
+2025-11-01 22:45:27,087 [INFO] TPE using 3/3 trials with best loss 19.138889
+2025-11-01 22:45:27,088 [INFO] Starting modification for agent_0015
+2025-11-01 22:45:27,088 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:45:27,089 [INFO] Target complexity: 40.0
+2025-11-01 22:45:33,166 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:33,172 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:45:33,175 [INFO] Code validation successful for agent_0015 (attempt 1)
+2025-11-01 22:45:33,175 [INFO] Evaluating agent_0015 (λ=0.111, subset=True)
+2025-11-01 22:45:49,268 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:49,291 [INFO] Evaluation complete for agent_0015: F(λ)=19.2500, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:45:49,296 [INFO] build_posterior_wrapper took 0.002553 seconds
+2025-11-01 22:45:49,297 [INFO] TPE using 4/4 trials with best loss 19.138889
+2025-11-01 22:45:49,299 [INFO] Starting modification for agent_0016
+2025-11-01 22:45:49,299 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:45:49,299 [INFO] Target complexity: 50.0
+2025-11-01 22:45:56,146 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:45:56,150 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:45:56,152 [INFO] Code validation successful for agent_0016 (attempt 1)
+2025-11-01 22:45:56,153 [INFO] Evaluating agent_0016 (λ=0.111, subset=True)
+2025-11-01 22:46:11,385 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:46:11,399 [INFO] Evaluation complete for agent_0016: F(λ)=18.1111, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:46:11,404 [INFO] build_posterior_wrapper took 0.002513 seconds
+2025-11-01 22:46:11,405 [INFO] TPE using 5/5 trials with best loss 18.111111
+2025-11-01 22:46:11,406 [INFO] Starting modification for agent_0017
+2025-11-01 22:46:11,406 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:46:11,406 [INFO] Target complexity: 60.0
+2025-11-01 22:46:18,250 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:46:18,253 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:46:18,256 [INFO] Code validation successful for agent_0017 (attempt 1)
+2025-11-01 22:46:18,256 [INFO] Evaluating agent_0017 (λ=0.111, subset=True)
+2025-11-01 22:46:35,012 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:46:35,037 [INFO] Evaluation complete for agent_0017: F(λ)=19.2500, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:46:35,045 [INFO] build_posterior_wrapper took 0.001277 seconds
+2025-11-01 22:46:35,045 [INFO] TPE using 0 trials
+2025-11-01 22:46:35,046 [INFO] Starting modification for agent_0018
+2025-11-01 22:46:35,046 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:46:35,046 [INFO] Target complexity: 140.0
+2025-11-01 22:46:42,181 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:46:42,186 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:46:42,189 [INFO] Code validation successful for agent_0018 (attempt 1)
+2025-11-01 22:46:42,189 [INFO] Evaluating agent_0018 (λ=0.167, subset=True)
+2025-11-01 22:46:55,579 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:46:55,608 [INFO] Evaluation complete for agent_0018: F(λ)=29.1944, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:46:55,613 [INFO] build_posterior_wrapper took 0.002857 seconds
+2025-11-01 22:46:55,615 [INFO] TPE using 1/1 trials with best loss 29.194444
+2025-11-01 22:46:55,616 [INFO] Starting modification for agent_0019
+2025-11-01 22:46:55,616 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:46:55,616 [INFO] Target complexity: 40.0
+2025-11-01 22:47:01,791 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:01,794 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:47:01,798 [INFO] Code validation successful for agent_0019 (attempt 1)
+2025-11-01 22:47:01,798 [INFO] Evaluating agent_0019 (λ=0.167, subset=True)
+2025-11-01 22:47:15,734 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:15,753 [INFO] Evaluation complete for agent_0019: F(λ)=28.8889, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:47:15,764 [INFO] build_posterior_wrapper took 0.002507 seconds
+2025-11-01 22:47:15,764 [INFO] TPE using 2/2 trials with best loss 28.888889
+2025-11-01 22:47:15,766 [INFO] Starting modification for agent_0020
+2025-11-01 22:47:15,766 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:47:15,766 [INFO] Target complexity: 100.0
+2025-11-01 22:47:21,922 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:21,926 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:47:21,928 [INFO] Code validation successful for agent_0020 (attempt 1)
+2025-11-01 22:47:21,929 [INFO] Evaluating agent_0020 (λ=0.167, subset=True)
+2025-11-01 22:47:36,308 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:36,328 [INFO] Evaluation complete for agent_0020: F(λ)=28.5556, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:47:36,331 [INFO] build_posterior_wrapper took 0.001836 seconds
+2025-11-01 22:47:36,332 [INFO] TPE using 3/3 trials with best loss 28.555556
+2025-11-01 22:47:36,334 [INFO] Starting modification for agent_0021
+2025-11-01 22:47:36,334 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:47:36,334 [INFO] Target complexity: 110.0
+2025-11-01 22:47:42,340 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:42,342 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:47:42,344 [INFO] Code validation successful for agent_0021 (attempt 1)
+2025-11-01 22:47:42,344 [INFO] Evaluating agent_0021 (λ=0.167, subset=True)
+2025-11-01 22:47:55,849 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:47:55,865 [INFO] Evaluation complete for agent_0021: F(λ)=28.1944, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:47:55,868 [INFO] build_posterior_wrapper took 0.001929 seconds
+2025-11-01 22:47:55,869 [INFO] TPE using 4/4 trials with best loss 28.194444
+2025-11-01 22:47:55,870 [INFO] Starting modification for agent_0022
+2025-11-01 22:47:55,870 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:47:55,870 [INFO] Target complexity: 30.0
+2025-11-01 22:48:02,570 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:02,575 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:48:02,577 [INFO] Code validation successful for agent_0022 (attempt 1)
+2025-11-01 22:48:02,577 [INFO] Evaluating agent_0022 (λ=0.167, subset=True)
+2025-11-01 22:48:14,894 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:14,914 [INFO] Evaluation complete for agent_0022: F(λ)=28.8333, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:48:14,917 [INFO] build_posterior_wrapper took 0.001900 seconds
+2025-11-01 22:48:14,918 [INFO] TPE using 5/5 trials with best loss 28.194444
+2025-11-01 22:48:14,920 [INFO] Starting modification for agent_0023
+2025-11-01 22:48:14,920 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:48:14,920 [INFO] Target complexity: 80.0
+2025-11-01 22:48:22,285 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:22,289 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:48:22,290 [INFO] Code validation successful for agent_0023 (attempt 1)
+2025-11-01 22:48:22,290 [INFO] Evaluating agent_0023 (λ=0.167, subset=True)
+2025-11-01 22:48:36,148 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:36,172 [INFO] Evaluation complete for agent_0023: F(λ)=27.3611, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:48:36,196 [INFO] build_posterior_wrapper took 0.007410 seconds
+2025-11-01 22:48:36,196 [INFO] TPE using 0 trials
+2025-11-01 22:48:36,198 [INFO] Starting modification for agent_0024
+2025-11-01 22:48:36,198 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:48:36,198 [INFO] Target complexity: 40.0
+2025-11-01 22:48:42,678 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:42,681 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:48:42,683 [INFO] Code validation successful for agent_0024 (attempt 1)
+2025-11-01 22:48:42,683 [INFO] Evaluating agent_0024 (λ=0.222, subset=True)
+2025-11-01 22:48:54,200 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:48:54,221 [INFO] Evaluation complete for agent_0024: F(λ)=36.6944, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:48:54,225 [INFO] build_posterior_wrapper took 0.001788 seconds
+2025-11-01 22:48:54,232 [INFO] TPE using 1/1 trials with best loss 36.694444
+2025-11-01 22:48:54,233 [INFO] Starting modification for agent_0025
+2025-11-01 22:48:54,233 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:48:54,233 [INFO] Target complexity: 140.0
+2025-11-01 22:49:00,741 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:00,745 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:49:00,749 [INFO] Code validation successful for agent_0025 (attempt 1)
+2025-11-01 22:49:00,749 [INFO] Evaluating agent_0025 (λ=0.222, subset=True)
+2025-11-01 22:49:13,181 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:13,206 [INFO] Evaluation complete for agent_0025: F(λ)=38.4444, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:49:13,212 [INFO] build_posterior_wrapper took 0.002184 seconds
+2025-11-01 22:49:13,213 [INFO] TPE using 2/2 trials with best loss 36.694444
+2025-11-01 22:49:13,214 [INFO] Starting modification for agent_0026
+2025-11-01 22:49:13,214 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:49:13,214 [INFO] Target complexity: 130.0
+2025-11-01 22:49:20,322 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:20,325 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:49:20,327 [INFO] Code validation successful for agent_0026 (attempt 1)
+2025-11-01 22:49:20,327 [INFO] Evaluating agent_0026 (λ=0.222, subset=True)
+2025-11-01 22:49:32,499 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:32,514 [INFO] Evaluation complete for agent_0026: F(λ)=37.8333, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:49:32,519 [INFO] build_posterior_wrapper took 0.002382 seconds
+2025-11-01 22:49:32,520 [INFO] TPE using 3/3 trials with best loss 36.694444
+2025-11-01 22:49:32,521 [INFO] Starting modification for agent_0027
+2025-11-01 22:49:32,521 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:49:32,521 [INFO] Target complexity: 120.0
+2025-11-01 22:49:38,271 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:38,282 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:49:38,284 [INFO] Code validation successful for agent_0027 (attempt 1)
+2025-11-01 22:49:38,285 [INFO] Evaluating agent_0027 (λ=0.222, subset=True)
+2025-11-01 22:49:54,264 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:49:54,277 [INFO] Evaluation complete for agent_0027: F(λ)=38.8889, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:49:54,281 [INFO] build_posterior_wrapper took 0.002207 seconds
+2025-11-01 22:49:54,281 [INFO] TPE using 4/4 trials with best loss 36.694444
+2025-11-01 22:49:54,283 [INFO] Starting modification for agent_0028
+2025-11-01 22:49:54,283 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:49:54,283 [INFO] Target complexity: 140.0
+2025-11-01 22:50:00,546 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:00,557 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:50:00,559 [INFO] Code validation successful for agent_0028 (attempt 1)
+2025-11-01 22:50:00,560 [INFO] Evaluating agent_0028 (λ=0.222, subset=True)
+2025-11-01 22:50:14,446 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:14,460 [INFO] Evaluation complete for agent_0028: F(λ)=37.8056, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:50:14,467 [INFO] build_posterior_wrapper took 0.005008 seconds
+2025-11-01 22:50:14,467 [INFO] TPE using 5/5 trials with best loss 36.694444
+2025-11-01 22:50:14,469 [INFO] Starting modification for agent_0029
+2025-11-01 22:50:14,469 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:50:14,469 [INFO] Target complexity: 80.0
+2025-11-01 22:50:20,257 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:20,267 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:50:20,279 [INFO] Code validation successful for agent_0029 (attempt 1)
+2025-11-01 22:50:20,280 [INFO] Evaluating agent_0029 (λ=0.222, subset=True)
+2025-11-01 22:50:34,953 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:34,977 [INFO] Evaluation complete for agent_0029: F(λ)=37.1389, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:50:34,992 [INFO] build_posterior_wrapper took 0.001068 seconds
+2025-11-01 22:50:34,992 [INFO] TPE using 0 trials
+2025-11-01 22:50:34,994 [INFO] Starting modification for agent_0030
+2025-11-01 22:50:34,994 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:50:34,994 [INFO] Target complexity: 140.0
+2025-11-01 22:50:41,719 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:41,738 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:50:41,740 [INFO] Code validation successful for agent_0030 (attempt 1)
+2025-11-01 22:50:41,740 [INFO] Evaluating agent_0030 (λ=0.278, subset=True)
+2025-11-01 22:50:56,010 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:50:56,027 [INFO] Evaluation complete for agent_0030: F(λ)=48.0556, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:50:56,032 [INFO] build_posterior_wrapper took 0.002267 seconds
+2025-11-01 22:50:56,033 [INFO] TPE using 1/1 trials with best loss 48.055556
+2025-11-01 22:50:56,034 [INFO] Starting modification for agent_0031
+2025-11-01 22:50:56,034 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:50:56,034 [INFO] Target complexity: 130.0
+2025-11-01 22:51:03,034 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:51:03,037 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:51:03,039 [INFO] Code validation successful for agent_0031 (attempt 1)
+2025-11-01 22:51:03,039 [INFO] Evaluating agent_0031 (λ=0.278, subset=True)
+2025-11-01 22:51:17,993 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:51:18,015 [INFO] Evaluation complete for agent_0031: F(λ)=46.1389, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:51:18,020 [INFO] build_posterior_wrapper took 0.002543 seconds
+2025-11-01 22:51:18,020 [INFO] TPE using 2/2 trials with best loss 46.138889
+2025-11-01 22:51:18,022 [INFO] Starting modification for agent_0032
+2025-11-01 22:51:18,022 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:51:18,022 [INFO] Target complexity: 150.0
+2025-11-01 22:51:25,821 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:51:25,837 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:51:25,840 [INFO] Code validation successful for agent_0032 (attempt 1)
+2025-11-01 22:51:25,841 [INFO] Evaluating agent_0032 (λ=0.278, subset=True)
+2025-11-01 22:51:39,971 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:51:39,990 [INFO] Evaluation complete for agent_0032: F(λ)=48.0833, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:51:39,994 [INFO] build_posterior_wrapper took 0.002448 seconds
+2025-11-01 22:51:39,995 [INFO] TPE using 3/3 trials with best loss 46.138889
+2025-11-01 22:51:39,996 [INFO] Starting modification for agent_0033
+2025-11-01 22:51:39,996 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:51:39,997 [INFO] Target complexity: 80.0
+2025-11-01 22:51:46,452 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:51:46,458 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:51:46,460 [INFO] Code validation successful for agent_0033 (attempt 1)
+2025-11-01 22:51:46,461 [INFO] Evaluating agent_0033 (λ=0.278, subset=True)
+2025-11-01 22:52:01,675 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:01,696 [INFO] Evaluation complete for agent_0033: F(λ)=48.0833, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:52:01,701 [INFO] build_posterior_wrapper took 0.002900 seconds
+2025-11-01 22:52:01,702 [INFO] TPE using 4/4 trials with best loss 46.138889
+2025-11-01 22:52:01,703 [INFO] Starting modification for agent_0034
+2025-11-01 22:52:01,703 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:52:01,703 [INFO] Target complexity: 80.0
+2025-11-01 22:52:09,607 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:09,617 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:52:09,620 [INFO] Code validation successful for agent_0034 (attempt 1)
+2025-11-01 22:52:09,620 [INFO] Evaluating agent_0034 (λ=0.278, subset=True)
+2025-11-01 22:52:24,000 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:24,015 [INFO] Evaluation complete for agent_0034: F(λ)=46.6944, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:52:24,019 [INFO] build_posterior_wrapper took 0.002100 seconds
+2025-11-01 22:52:24,020 [INFO] TPE using 5/5 trials with best loss 46.138889
+2025-11-01 22:52:24,021 [INFO] Starting modification for agent_0035
+2025-11-01 22:52:24,021 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:52:24,021 [INFO] Target complexity: 60.0
+2025-11-01 22:52:30,731 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:30,737 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:52:30,739 [INFO] Code validation successful for agent_0035 (attempt 1)
+2025-11-01 22:52:30,740 [INFO] Evaluating agent_0035 (λ=0.278, subset=True)
+2025-11-01 22:52:44,579 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:44,600 [INFO] Evaluation complete for agent_0035: F(λ)=46.4167, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:52:44,608 [INFO] build_posterior_wrapper took 0.000747 seconds
+2025-11-01 22:52:44,609 [INFO] TPE using 0 trials
+2025-11-01 22:52:44,609 [INFO] Starting modification for agent_0036
+2025-11-01 22:52:44,609 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:52:44,609 [INFO] Target complexity: 100.0
+2025-11-01 22:52:50,456 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:52:50,462 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:52:50,464 [INFO] Code validation successful for agent_0036 (attempt 1)
+2025-11-01 22:52:50,464 [INFO] Evaluating agent_0036 (λ=0.333, subset=True)
+2025-11-01 22:53:06,508 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:06,527 [INFO] Evaluation complete for agent_0036: F(λ)=57.6667, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:53:06,535 [INFO] build_posterior_wrapper took 0.005355 seconds
+2025-11-01 22:53:06,537 [INFO] TPE using 1/1 trials with best loss 57.666667
+2025-11-01 22:53:06,538 [INFO] Starting modification for agent_0037
+2025-11-01 22:53:06,539 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:53:06,539 [INFO] Target complexity: 150.0
+2025-11-01 22:53:13,038 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:13,044 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:53:13,050 [INFO] Code validation successful for agent_0037 (attempt 1)
+2025-11-01 22:53:13,050 [INFO] Evaluating agent_0037 (λ=0.333, subset=True)
+2025-11-01 22:53:28,378 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:28,392 [INFO] Evaluation complete for agent_0037: F(λ)=57.6667, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:53:28,399 [INFO] build_posterior_wrapper took 0.005944 seconds
+2025-11-01 22:53:28,400 [INFO] TPE using 2/2 trials with best loss 57.666667
+2025-11-01 22:53:28,401 [INFO] Starting modification for agent_0038
+2025-11-01 22:53:28,401 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:53:28,401 [INFO] Target complexity: 130.0
+2025-11-01 22:53:33,982 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:33,987 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:53:33,988 [INFO] Code validation successful for agent_0038 (attempt 1)
+2025-11-01 22:53:33,989 [INFO] Evaluating agent_0038 (λ=0.333, subset=True)
+2025-11-01 22:53:46,170 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:46,189 [INFO] Evaluation complete for agent_0038: F(λ)=57.7222, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:53:46,193 [INFO] build_posterior_wrapper took 0.001797 seconds
+2025-11-01 22:53:46,193 [INFO] TPE using 3/3 trials with best loss 57.666667
+2025-11-01 22:53:46,195 [INFO] Starting modification for agent_0039
+2025-11-01 22:53:46,195 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:53:46,195 [INFO] Target complexity: 60.0
+2025-11-01 22:53:52,697 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:53:52,716 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:53:52,722 [INFO] Code validation successful for agent_0039 (attempt 1)
+2025-11-01 22:53:52,723 [INFO] Evaluating agent_0039 (λ=0.333, subset=True)
+2025-11-01 22:54:04,322 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:04,344 [INFO] Evaluation complete for agent_0039: F(λ)=56.0278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:54:04,349 [INFO] build_posterior_wrapper took 0.002514 seconds
+2025-11-01 22:54:04,350 [INFO] TPE using 4/4 trials with best loss 56.027778
+2025-11-01 22:54:04,351 [INFO] Starting modification for agent_0040
+2025-11-01 22:54:04,351 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:54:04,351 [INFO] Target complexity: 40.0
+2025-11-01 22:54:10,572 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:10,588 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:54:10,591 [INFO] Code validation successful for agent_0040 (attempt 1)
+2025-11-01 22:54:10,591 [INFO] Evaluating agent_0040 (λ=0.333, subset=True)
+2025-11-01 22:54:23,000 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:23,026 [INFO] Evaluation complete for agent_0040: F(λ)=56.3611, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:54:23,029 [INFO] build_posterior_wrapper took 0.001644 seconds
+2025-11-01 22:54:23,030 [INFO] TPE using 5/5 trials with best loss 56.027778
+2025-11-01 22:54:23,031 [INFO] Starting modification for agent_0041
+2025-11-01 22:54:23,032 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:54:23,032 [INFO] Target complexity: 40.0
+2025-11-01 22:54:29,989 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:29,994 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:54:29,997 [INFO] Code validation successful for agent_0041 (attempt 1)
+2025-11-01 22:54:29,997 [INFO] Evaluating agent_0041 (λ=0.333, subset=True)
+2025-11-01 22:54:41,935 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:41,953 [INFO] Evaluation complete for agent_0041: F(λ)=56.7222, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:54:41,964 [INFO] build_posterior_wrapper took 0.001308 seconds
+2025-11-01 22:54:41,964 [INFO] TPE using 0 trials
+2025-11-01 22:54:41,965 [INFO] Starting modification for agent_0042
+2025-11-01 22:54:41,965 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:54:41,965 [INFO] Target complexity: 40.0
+2025-11-01 22:54:48,788 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:54:48,791 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:54:48,793 [INFO] Code validation successful for agent_0042 (attempt 1)
+2025-11-01 22:54:48,793 [INFO] Evaluating agent_0042 (λ=0.389, subset=True)
+2025-11-01 22:55:03,195 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:03,222 [INFO] Evaluation complete for agent_0042: F(λ)=67.7222, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:55:03,226 [INFO] build_posterior_wrapper took 0.001652 seconds
+2025-11-01 22:55:03,226 [INFO] TPE using 1/1 trials with best loss 67.722222
+2025-11-01 22:55:03,228 [INFO] Starting modification for agent_0043
+2025-11-01 22:55:03,228 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:55:03,228 [INFO] Target complexity: 140.0
+2025-11-01 22:55:09,063 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:09,066 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:55:09,069 [INFO] Code validation successful for agent_0043 (attempt 1)
+2025-11-01 22:55:09,070 [INFO] Evaluating agent_0043 (λ=0.389, subset=True)
+2025-11-01 22:55:19,704 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:19,721 [INFO] Evaluation complete for agent_0043: F(λ)=67.3056, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:55:19,735 [INFO] build_posterior_wrapper took 0.001769 seconds
+2025-11-01 22:55:19,736 [INFO] TPE using 2/2 trials with best loss 67.305556
+2025-11-01 22:55:19,737 [INFO] Starting modification for agent_0044
+2025-11-01 22:55:19,737 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:55:19,737 [INFO] Target complexity: 80.0
+2025-11-01 22:55:25,740 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:25,743 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:55:25,746 [INFO] Code validation successful for agent_0044 (attempt 1)
+2025-11-01 22:55:25,747 [INFO] Evaluating agent_0044 (λ=0.389, subset=True)
+2025-11-01 22:55:39,145 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:39,166 [INFO] Evaluation complete for agent_0044: F(λ)=67.2778, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:55:39,170 [INFO] build_posterior_wrapper took 0.001774 seconds
+2025-11-01 22:55:39,170 [INFO] TPE using 3/3 trials with best loss 67.277778
+2025-11-01 22:55:39,172 [INFO] Starting modification for agent_0045
+2025-11-01 22:55:39,172 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:55:39,172 [INFO] Target complexity: 100.0
+2025-11-01 22:55:45,258 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:45,261 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:55:45,264 [INFO] Code validation successful for agent_0045 (attempt 1)
+2025-11-01 22:55:45,264 [INFO] Evaluating agent_0045 (λ=0.389, subset=True)
+2025-11-01 22:55:59,593 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:55:59,607 [INFO] Evaluation complete for agent_0045: F(λ)=67.3056, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:55:59,612 [INFO] build_posterior_wrapper took 0.002621 seconds
+2025-11-01 22:55:59,613 [INFO] TPE using 4/4 trials with best loss 67.277778
+2025-11-01 22:55:59,614 [INFO] Starting modification for agent_0046
+2025-11-01 22:55:59,614 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:55:59,614 [INFO] Target complexity: 140.0
+2025-11-01 22:56:06,198 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:06,205 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:56:06,212 [INFO] Code validation successful for agent_0046 (attempt 1)
+2025-11-01 22:56:06,213 [INFO] Evaluating agent_0046 (λ=0.389, subset=True)
+2025-11-01 22:56:19,988 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:20,001 [INFO] Evaluation complete for agent_0046: F(λ)=68.4722, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:56:20,006 [INFO] build_posterior_wrapper took 0.002258 seconds
+2025-11-01 22:56:20,007 [INFO] TPE using 5/5 trials with best loss 67.277778
+2025-11-01 22:56:20,009 [INFO] Starting modification for agent_0047
+2025-11-01 22:56:20,009 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:56:20,009 [INFO] Target complexity: 70.0
+2025-11-01 22:56:26,231 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:26,239 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:56:26,241 [INFO] Code validation successful for agent_0047 (attempt 1)
+2025-11-01 22:56:26,242 [INFO] Evaluating agent_0047 (λ=0.389, subset=True)
+2025-11-01 22:56:39,289 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:39,307 [INFO] Evaluation complete for agent_0047: F(λ)=66.1389, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:56:39,315 [INFO] build_posterior_wrapper took 0.000707 seconds
+2025-11-01 22:56:39,315 [INFO] TPE using 0 trials
+2025-11-01 22:56:39,316 [INFO] Starting modification for agent_0048
+2025-11-01 22:56:39,316 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:56:39,316 [INFO] Target complexity: 120.0
+2025-11-01 22:56:45,141 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:45,145 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:56:45,147 [INFO] Code validation successful for agent_0048 (attempt 1)
+2025-11-01 22:56:45,148 [INFO] Evaluating agent_0048 (λ=0.444, subset=True)
+2025-11-01 22:56:58,923 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:56:58,942 [INFO] Evaluation complete for agent_0048: F(λ)=75.5833, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:56:58,947 [INFO] build_posterior_wrapper took 0.001863 seconds
+2025-11-01 22:56:58,948 [INFO] TPE using 1/1 trials with best loss 75.583333
+2025-11-01 22:56:58,949 [INFO] Starting modification for agent_0049
+2025-11-01 22:56:58,949 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:56:58,949 [INFO] Target complexity: 30.0
+2025-11-01 22:57:05,655 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:57:05,662 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:57:05,665 [INFO] Code validation successful for agent_0049 (attempt 1)
+2025-11-01 22:57:05,665 [INFO] Evaluating agent_0049 (λ=0.444, subset=True)
+2025-11-01 22:57:21,133 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:57:21,147 [INFO] Evaluation complete for agent_0049: F(λ)=77.8056, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:57:21,152 [INFO] build_posterior_wrapper took 0.002908 seconds
+2025-11-01 22:57:21,153 [INFO] TPE using 2/2 trials with best loss 75.583333
+2025-11-01 22:57:21,154 [INFO] Starting modification for agent_0050
+2025-11-01 22:57:21,154 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:57:21,154 [INFO] Target complexity: 90.0
+2025-11-01 22:57:27,553 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:57:27,556 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:57:27,558 [INFO] Code validation successful for agent_0050 (attempt 1)
+2025-11-01 22:57:27,558 [INFO] Evaluating agent_0050 (λ=0.444, subset=True)
+2025-11-01 22:57:41,992 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:57:42,006 [INFO] Evaluation complete for agent_0050: F(λ)=73.8333, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:57:42,010 [INFO] build_posterior_wrapper took 0.001647 seconds
+2025-11-01 22:57:42,011 [INFO] TPE using 3/3 trials with best loss 73.833333
+2025-11-01 22:57:42,011 [INFO] Starting modification for agent_0051
+2025-11-01 22:57:42,011 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:57:42,011 [INFO] Target complexity: 30.0
+2025-11-01 22:57:48,858 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:57:48,860 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:57:48,862 [INFO] Code validation successful for agent_0051 (attempt 1)
+2025-11-01 22:57:48,862 [INFO] Evaluating agent_0051 (λ=0.444, subset=True)
+2025-11-01 22:58:00,407 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:00,422 [INFO] Evaluation complete for agent_0051: F(λ)=77.3889, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:58:00,426 [INFO] build_posterior_wrapper took 0.002582 seconds
+2025-11-01 22:58:00,427 [INFO] TPE using 4/4 trials with best loss 73.833333
+2025-11-01 22:58:00,429 [INFO] Starting modification for agent_0052
+2025-11-01 22:58:00,429 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 22:58:00,429 [INFO] Target complexity: 150.0
+2025-11-01 22:58:06,879 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:06,886 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:58:06,889 [INFO] Code validation successful for agent_0052 (attempt 1)
+2025-11-01 22:58:06,890 [INFO] Evaluating agent_0052 (λ=0.444, subset=True)
+2025-11-01 22:58:21,989 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:22,014 [INFO] Evaluation complete for agent_0052: F(λ)=78.2500, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:58:22,018 [INFO] build_posterior_wrapper took 0.001869 seconds
+2025-11-01 22:58:22,019 [INFO] TPE using 5/5 trials with best loss 73.833333
+2025-11-01 22:58:22,020 [INFO] Starting modification for agent_0053
+2025-11-01 22:58:22,020 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 22:58:22,020 [INFO] Target complexity: 40.0
+2025-11-01 22:58:27,615 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:27,620 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:58:27,623 [INFO] Code validation successful for agent_0053 (attempt 1)
+2025-11-01 22:58:27,623 [INFO] Evaluating agent_0053 (λ=0.444, subset=True)
+2025-11-01 22:58:40,928 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:40,943 [INFO] Evaluation complete for agent_0053: F(λ)=74.2778, train=0.1111, val=0.0000, test=-1.0000
+2025-11-01 22:58:40,955 [INFO] build_posterior_wrapper took 0.003000 seconds
+2025-11-01 22:58:40,955 [INFO] TPE using 0 trials
+2025-11-01 22:58:40,956 [INFO] Starting modification for agent_0054
+2025-11-01 22:58:40,956 [INFO] Goal: Improve error handling and fallbacks
+2025-11-01 22:58:40,956 [INFO] Target complexity: 140.0
+2025-11-01 22:58:48,471 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:58:48,476 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:58:48,479 [INFO] Code validation successful for agent_0054 (attempt 1)
+2025-11-01 22:58:48,479 [INFO] Evaluating agent_0054 (λ=0.500, subset=True)
+2025-11-01 22:59:02,137 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:02,158 [INFO] Evaluation complete for agent_0054: F(λ)=86.5278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:59:02,162 [INFO] build_posterior_wrapper took 0.001878 seconds
+2025-11-01 22:59:02,162 [INFO] TPE using 1/1 trials with best loss 86.527778
+2025-11-01 22:59:02,164 [INFO] Starting modification for agent_0055
+2025-11-01 22:59:02,164 [INFO] Goal: Add self-correction or verification
+2025-11-01 22:59:02,164 [INFO] Target complexity: 80.0
+2025-11-01 22:59:09,457 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:09,464 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:59:09,466 [INFO] Code validation successful for agent_0055 (attempt 1)
+2025-11-01 22:59:09,466 [INFO] Evaluating agent_0055 (λ=0.500, subset=True)
+2025-11-01 22:59:25,110 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:25,125 [INFO] Evaluation complete for agent_0055: F(λ)=87.0000, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 22:59:25,129 [INFO] build_posterior_wrapper took 0.002198 seconds
+2025-11-01 22:59:25,136 [INFO] TPE using 2/2 trials with best loss 86.527778
+2025-11-01 22:59:25,137 [INFO] Starting modification for agent_0056
+2025-11-01 22:59:25,137 [INFO] Goal: Add chain-of-thought reasoning
+2025-11-01 22:59:25,137 [INFO] Target complexity: 100.0
+2025-11-01 22:59:31,294 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:31,298 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:59:31,300 [INFO] Code validation successful for agent_0056 (attempt 1)
+2025-11-01 22:59:31,300 [INFO] Evaluating agent_0056 (λ=0.500, subset=True)
+2025-11-01 22:59:45,917 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:45,934 [INFO] Evaluation complete for agent_0056: F(λ)=86.5278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 22:59:45,939 [INFO] build_posterior_wrapper took 0.002509 seconds
+2025-11-01 22:59:45,939 [INFO] TPE using 3/3 trials with best loss 86.527778
+2025-11-01 22:59:45,941 [INFO] Starting modification for agent_0057
+2025-11-01 22:59:45,941 [INFO] Goal: Add few-shot examples to prompts
+2025-11-01 22:59:45,941 [INFO] Target complexity: 100.0
+2025-11-01 22:59:52,578 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 22:59:52,585 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 22:59:52,587 [INFO] Code validation successful for agent_0057 (attempt 1)
+2025-11-01 22:59:52,588 [INFO] Evaluating agent_0057 (λ=0.500, subset=True)
+2025-11-01 23:00:04,266 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:00:04,275 [INFO] Evaluation complete for agent_0057: F(λ)=84.5000, train=0.0000, val=0.0000, test=-1.0000
+2025-11-01 23:00:04,279 [INFO] build_posterior_wrapper took 0.002225 seconds
+2025-11-01 23:00:04,280 [INFO] TPE using 4/4 trials with best loss 84.500000
+2025-11-01 23:00:04,281 [INFO] Starting modification for agent_0058
+2025-11-01 23:00:04,281 [INFO] Goal: Optimize the problem-solving strategy
+2025-11-01 23:00:04,281 [INFO] Target complexity: 130.0
+2025-11-01 23:00:11,929 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:00:11,939 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 23:00:11,942 [INFO] Code validation successful for agent_0058 (attempt 1)
+2025-11-01 23:00:11,942 [INFO] Evaluating agent_0058 (λ=0.500, subset=True)
+2025-11-01 23:00:28,104 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:00:28,119 [INFO] Evaluation complete for agent_0058: F(λ)=86.5278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 23:00:28,124 [INFO] build_posterior_wrapper took 0.002520 seconds
+2025-11-01 23:00:28,125 [INFO] TPE using 5/5 trials with best loss 84.500000
+2025-11-01 23:00:28,127 [INFO] Starting modification for agent_0059
+2025-11-01 23:00:28,127 [INFO] Goal: Improve the LLM prompts to generate better code
+2025-11-01 23:00:28,127 [INFO] Target complexity: 80.0
+2025-11-01 23:00:36,115 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:00:36,123 [INFO] LLM generated code (attempt 1/3)
+2025-11-01 23:00:36,126 [INFO] Code validation successful for agent_0059 (attempt 1)
+2025-11-01 23:00:36,126 [INFO] Evaluating agent_0059 (λ=0.500, subset=True)
+2025-11-01 23:00:50,827 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:00:50,847 [INFO] Evaluation complete for agent_0059: F(λ)=84.0278, train=0.0556, val=0.0000, test=-1.0000
+2025-11-01 23:00:50,849 [INFO] Evaluating agent_0000 (λ=0.000, subset=False)
+2025-11-01 23:01:06,325 [INFO] HTTP Request: POST https://api.anthropic.com/v1/messages "HTTP/1.1 200 OK"
+2025-11-01 23:01:06,355 [INFO] Evaluation complete for agent_0000: F(λ)=0.0263, train=0.0526, val=0.0000, test=0.0000

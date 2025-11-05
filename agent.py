@@ -12,11 +12,23 @@ import json
 import os
 import time
 import re
+import logging
 import numpy as np
 from typing import Dict, List, Any, Optional
 from dataclasses import dataclass, asdict
 
 from hyperopt import fmin, tpe, hp, Trials, STATUS_OK, STATUS_FAIL
+
+# Setup logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[
+        logging.FileHandler('agent_evolution.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -28,6 +40,7 @@ class AgentVersion:
     agent_code: str
 
     train_loss: float = 999.0
+    val_loss: float = 999.0
     test_loss: float = 999.0
     agent_complexity: float = 100.0
     lambda_val: float = 0.5
@@ -45,10 +58,28 @@ class LLMClient:
 
         if backend == "ollama":
             from openai import OpenAI
-            self.client = OpenAI(
-                base_url="http://localhost:11434/v1",
-                api_key="ollama"
-            )
+            import os
+
+            # Check if using cloud model (ends with -cloud)
+            if model.endswith("-cloud"):
+                # Use ollama.com API for cloud models
+                ollama_api_key = api_key or os.getenv("OLLAMA_API_KEY")
+                if not ollama_api_key:
+                    raise ValueError(
+                        "Cloud model requires OLLAMA_API_KEY environment variable.\n"
+                        "Get your key from: https://ollama.com/settings/keys"
+                    )
+                # Ollama cloud uses OpenAI-compatible endpoint at /v1
+                self.client = OpenAI(
+                    base_url="https://ollama.com/v1",
+                    api_key=ollama_api_key
+                )
+            else:
+                # Use local Ollama server
+                self.client = OpenAI(
+                    base_url="http://localhost:11434/v1",
+                    api_key="ollama"
+                )
         elif backend == "anthropic":
             import anthropic
             self.client = anthropic.Anthropic(api_key=api_key)
@@ -75,126 +106,300 @@ class LLMClient:
 
 
 class Benchmark:
-    """Very hard algorithmic problems - require deep reasoning"""
+    """LeetCode Easy/Medium problems with train/val/test split"""
 
     @staticmethod
     def get_problems():
-        return [
-            # Train set - hard algorithmic problems
-            {
-                'id': 'edit_distance',
-                'description': 'Compute minimum edit distance (Levenshtein) between two strings using insertions, deletions, substitutions',
-                'signature': 'def edit_distance(s1: str, s2: str) -> int:',
-                'test_cases': [
-                    {'input': ['horse', 'ros'], 'expected': 3},
-                    {'input': ['intention', 'execution'], 'expected': 5},
-                    {'input': ['', 'abc'], 'expected': 3},
-                    {'input': ['abc', 'abc'], 'expected': 0},
-                ]
-            },
-            {
-                'id': 'longest_increasing_subsequence',
-                'description': 'Find length of longest strictly increasing subsequence',
-                'signature': 'def longest_increasing_subsequence(nums: list) -> int:',
-                'test_cases': [
-                    {'input': [10,9,2,5,3,7,101,18], 'expected': 4},  # [2,3,7,101]
-                    {'input': [0,1,0,3,2,3], 'expected': 4},
-                    {'input': [7,7,7,7,7,7,7], 'expected': 1},
-                    {'input': [1,3,6,7,9,4,10,5,6], 'expected': 6},
-                ]
-            },
-            {
-                'id': 'trapping_rain_water',
-                'description': 'Compute total trapped rainwater given elevation map array',
-                'signature': 'def trapping_rain_water(heights: list) -> int:',
-                'test_cases': [
-                    {'input': [0,1,0,2,1,0,1,3,2,1,2,1], 'expected': 6},
-                    {'input': [4,2,0,3,2,5], 'expected': 9},
-                    {'input': [1,2,3,4], 'expected': 0},
-                    {'input': [4,3,2,1], 'expected': 0},
-                ]
-            },
-            # Test set - extremely hard problems
-            {
-                'id': 'regular_expression_matching',
-                'description': 'Implement regex matching with . (any char) and * (zero or more of prev char)',
-                'signature': 'def regular_expression_matching(s: str, p: str) -> bool:',
-                'test_cases': [
-                    {'input': ['aa', 'a'], 'expected': False},
-                    {'input': ['aa', 'a*'], 'expected': True},
-                    {'input': ['ab', '.*'], 'expected': True},
-                    {'input': ['mississippi', 'mis*is*p*.'], 'expected': False},
-                ]
-            },
-            {
-                'id': 'word_ladder_length',
-                'description': 'Min transformations from begin to end word, changing one letter at a time (all intermediate must be in wordList)',
-                'signature': 'def word_ladder_length(beginWord: str, endWord: str, wordList: list) -> int:',
-                'test_cases': [
-                    {'input': ['hit', 'cog', ['hot','dot','dog','lot','log','cog']], 'expected': 5},
-                    {'input': ['hit', 'cog', ['hot','dot','dog','lot','log']], 'expected': 0},
-                    {'input': ['a', 'c', ['a','b','c']], 'expected': 2},
-                ]
-            },
-            {
-                'id': 'max_sliding_window',
-                'description': 'Return max value in each sliding window of size k',
-                'signature': 'def max_sliding_window(nums: list, k: int) -> list:',
-                'test_cases': [
-                    {'input': [[1,3,-1,-3,5,3,6,7], 3], 'expected': [3,3,5,5,6,7]},
-                    {'input': [[1], 1], 'expected': [1]},
-                    {'input': [[1,-1], 1], 'expected': [1,-1]},
-                    {'input': [[9,11], 2], 'expected': [11]},
-                ]
-            },
-        ]
+        return {
+            # TRAIN SET (9 problems) - used for optimization
+            'train': [
+                {
+                    'id': 'is_palindrome_string',
+                    'description': 'Check if string is a palindrome (ignoring spaces, case)',
+                    'signature': 'def is_palindrome_string(s: str) -> bool:',
+                    'test_cases': [
+                        {'input': 'racecar', 'expected': True},
+                        {'input': 'hello', 'expected': False},
+                        {'input': 'A man a plan a canal Panama', 'expected': True},
+                        {'input': '', 'expected': True},
+                    ]
+                },
+                {
+                    'id': 'sum_of_list',
+                    'description': 'Return sum of all integers in list',
+                    'signature': 'def sum_of_list(nums: list) -> int:',
+                    'test_cases': [
+                        {'input': [1, 2, 3, 4], 'expected': 10},
+                        {'input': [], 'expected': 0},
+                        {'input': [-1, -2, 3], 'expected': 0},
+                        {'input': [100], 'expected': 100},
+                    ]
+                },
+                {
+                    'id': 'find_max',
+                    'description': 'Find maximum element in non-empty list',
+                    'signature': 'def find_max(nums: list) -> int:',
+                    'test_cases': [
+                        {'input': [1, 5, 3, 9, 2], 'expected': 9},
+                        {'input': [1], 'expected': 1},
+                        {'input': [-5, -1, -10], 'expected': -1},
+                        {'input': [0, 0, 0], 'expected': 0},
+                    ]
+                },
+                {
+                    'id': 'two_sum',
+                    'description': 'Find two indices in array that sum to target. Return indices [i, j] where i < j.',
+                    'signature': 'def two_sum(nums: list, target: int) -> list:',
+                    'test_cases': [
+                        {'input': [[2, 7, 11, 15], 9], 'expected': [0, 1]},
+                        {'input': [[3, 2, 4], 6], 'expected': [1, 2]},
+                        {'input': [[3, 3], 6], 'expected': [0, 1]},
+                        {'input': [[1, 5, 3, 7], 10], 'expected': [1, 3]},
+                    ]
+                },
+                {
+                    'id': 'valid_parentheses',
+                    'description': 'Check if string with brackets ()[]{}  is valid (properly nested and closed)',
+                    'signature': 'def valid_parentheses(s: str) -> bool:',
+                    'test_cases': [
+                        {'input': '()', 'expected': True},
+                        {'input': '()[]{}', 'expected': True},
+                        {'input': '(]', 'expected': False},
+                        {'input': '([)]', 'expected': False},
+                        {'input': '{[]}', 'expected': True},
+                        {'input': '', 'expected': True},
+                    ]
+                },
+                {
+                    'id': 'merge_sorted_arrays',
+                    'description': 'Merge two sorted arrays into one sorted array',
+                    'signature': 'def merge_sorted_arrays(arr1: list, arr2: list) -> list:',
+                    'test_cases': [
+                        {'input': [[1, 3, 5], [2, 4, 6]], 'expected': [1, 2, 3, 4, 5, 6]},
+                        {'input': [[1, 2, 3], []], 'expected': [1, 2, 3]},
+                        {'input': [[], [1, 2]], 'expected': [1, 2]},
+                        {'input': [[1, 5, 9], [2, 3, 10]], 'expected': [1, 2, 3, 5, 9, 10]},
+                    ]
+                },
+                {
+                    'id': 'remove_duplicates',
+                    'description': 'Remove duplicates from sorted array in-place, return new length',
+                    'signature': 'def remove_duplicates(nums: list) -> int:',
+                    'test_cases': [
+                        {'input': [1, 1, 2], 'expected': 2},
+                        {'input': [0, 0, 1, 1, 1, 2, 2, 3, 3, 4], 'expected': 5},
+                        {'input': [], 'expected': 0},
+                        {'input': [1], 'expected': 1},
+                    ]
+                },
+                {
+                    'id': 'best_time_to_buy_sell_stock',
+                    'description': 'Find max profit from buying and selling stock once (buy before sell)',
+                    'signature': 'def best_time_to_buy_sell_stock(prices: list) -> int:',
+                    'test_cases': [
+                        {'input': [7, 1, 5, 3, 6, 4], 'expected': 5},  # buy at 1, sell at 6
+                        {'input': [7, 6, 4, 3, 1], 'expected': 0},  # no profit
+                        {'input': [2, 4, 1], 'expected': 2},
+                        {'input': [1, 2], 'expected': 1},
+                    ]
+                },
+                {
+                    'id': 'contains_duplicate',
+                    'description': 'Return True if any value appears at least twice in array',
+                    'signature': 'def contains_duplicate(nums: list) -> bool:',
+                    'test_cases': [
+                        {'input': [1, 2, 3, 1], 'expected': True},
+                        {'input': [1, 2, 3, 4], 'expected': False},
+                        {'input': [1, 1, 1, 3, 3, 4, 3, 2, 4, 2], 'expected': True},
+                        {'input': [], 'expected': False},
+                    ]
+                },
+            ],
+            # VALIDATION SET (5 problems) - used during search for cross-validation
+            'val': [
+                {
+                    'id': 'count_vowels',
+                    'description': 'Count number of vowels (a,e,i,o,u) in string (case insensitive)',
+                    'signature': 'def count_vowels(s: str) -> int:',
+                    'test_cases': [
+                        {'input': 'hello', 'expected': 2},
+                        {'input': 'AEIOU', 'expected': 5},
+                        {'input': 'xyz', 'expected': 0},
+                        {'input': '', 'expected': 0},
+                    ]
+                },
+                {
+                    'id': 'fibonacci',
+                    'description': 'Return nth Fibonacci number (0-indexed, fib(0)=0, fib(1)=1)',
+                    'signature': 'def fibonacci(n: int) -> int:',
+                    'test_cases': [
+                        {'input': 0, 'expected': 0},
+                        {'input': 1, 'expected': 1},
+                        {'input': 5, 'expected': 5},
+                        {'input': 10, 'expected': 55},
+                    ]
+                },
+                {
+                    'id': 'longest_common_prefix',
+                    'description': 'Find longest common prefix string among array of strings',
+                    'signature': 'def longest_common_prefix(strs: list) -> str:',
+                    'test_cases': [
+                        {'input': [['flower', 'flow', 'flight']], 'expected': 'fl'},
+                        {'input': [['dog', 'racecar', 'car']], 'expected': ''},
+                        {'input': [['interspecies', 'interstellar', 'interstate']], 'expected': 'inters'},
+                        {'input': [['alone']], 'expected': 'alone'},
+                    ]
+                },
+                {
+                    'id': 'reverse_linked_list',
+                    'description': 'Reverse a singly linked list represented as array [1,2,3] -> [3,2,1]',
+                    'signature': 'def reverse_linked_list(nums: list) -> list:',
+                    'test_cases': [
+                        {'input': [1, 2, 3, 4, 5], 'expected': [5, 4, 3, 2, 1]},
+                        {'input': [1, 2], 'expected': [2, 1]},
+                        {'input': [], 'expected': []},
+                        {'input': [1], 'expected': [1]},
+                    ]
+                },
+                {
+                    'id': 'palindrome_number',
+                    'description': 'Return True if integer is palindrome (reads same backward)',
+                    'signature': 'def palindrome_number(x: int) -> bool:',
+                    'test_cases': [
+                        {'input': 121, 'expected': True},
+                        {'input': -121, 'expected': False},
+                        {'input': 10, 'expected': False},
+                        {'input': 0, 'expected': True},
+                    ]
+                },
+            ],
+            # TEST SET (8 problems) - held out for final evaluation (includes harder problems)
+            'test': [
+                {
+                    'id': 'is_anagram',
+                    'description': 'Check if two strings are anagrams (same letters, different order)',
+                    'signature': 'def is_anagram(s1: str, s2: str) -> bool:',
+                    'test_cases': [
+                        {'input': ['listen', 'silent'], 'expected': True},
+                        {'input': ['hello', 'world'], 'expected': False},
+                        {'input': ['', ''], 'expected': True},
+                        {'input': ['a', 'a'], 'expected': True},
+                    ]
+                },
+                {
+                    'id': 'factorial',
+                    'description': 'Calculate factorial of non-negative integer n (n!)',
+                    'signature': 'def factorial(n: int) -> int:',
+                    'test_cases': [
+                        {'input': 0, 'expected': 1},
+                        {'input': 1, 'expected': 1},
+                        {'input': 5, 'expected': 120},
+                        {'input': 7, 'expected': 5040},
+                    ]
+                },
+                {
+                    'id': 'max_subarray_sum',
+                    'description': 'Find maximum sum of contiguous subarray (Kadane\'s algorithm)',
+                    'signature': 'def max_subarray_sum(nums: list) -> int:',
+                    'test_cases': [
+                        {'input': [-2, 1, -3, 4, -1, 2, 1, -5, 4], 'expected': 6},  # [4,-1,2,1]
+                        {'input': [1], 'expected': 1},
+                        {'input': [5, 4, -1, 7, 8], 'expected': 23},
+                        {'input': [-1, -2, -3], 'expected': -1},
+                    ]
+                },
+                {
+                    'id': 'search_insert_position',
+                    'description': 'Find index where target would be inserted in sorted array',
+                    'signature': 'def search_insert_position(nums: list, target: int) -> int:',
+                    'test_cases': [
+                        {'input': [[1, 3, 5, 6], 5], 'expected': 2},
+                        {'input': [[1, 3, 5, 6], 2], 'expected': 1},
+                        {'input': [[1, 3, 5, 6], 7], 'expected': 4},
+                        {'input': [[1, 3, 5, 6], 0], 'expected': 0},
+                    ]
+                },
+                {
+                    'id': 'climbing_stairs',
+                    'description': 'Number of distinct ways to climb n stairs (taking 1 or 2 steps at a time)',
+                    'signature': 'def climbing_stairs(n: int) -> int:',
+                    'test_cases': [
+                        {'input': 2, 'expected': 2},  # 1+1, 2
+                        {'input': 3, 'expected': 3},  # 1+1+1, 1+2, 2+1
+                        {'input': 4, 'expected': 5},
+                        {'input': 5, 'expected': 8},
+                    ]
+                },
+                # HARDER PROBLEMS BELOW
+                {
+                    'id': 'longest_increasing_subsequence',
+                    'description': 'Find length of longest strictly increasing subsequence (LIS) - requires DP',
+                    'signature': 'def longest_increasing_subsequence(nums: list) -> int:',
+                    'test_cases': [
+                        {'input': [10, 9, 2, 5, 3, 7, 101, 18], 'expected': 4},  # [2,3,7,101] or [2,3,7,18]
+                        {'input': [0, 1, 0, 3, 2, 3], 'expected': 4},  # [0,1,2,3]
+                        {'input': [7, 7, 7, 7, 7, 7, 7], 'expected': 1},
+                        {'input': [1, 3, 6, 7, 9, 4, 10, 5, 6], 'expected': 6},  # [1,3,4,5,6 and more]
+                    ]
+                },
+                {
+                    'id': 'coin_change',
+                    'description': 'Minimum number of coins to make amount (coins can be reused). Return -1 if impossible.',
+                    'signature': 'def coin_change(coins: list, amount: int) -> int:',
+                    'test_cases': [
+                        {'input': [[1, 2, 5], 11], 'expected': 3},  # 5+5+1
+                        {'input': [[2], 3], 'expected': -1},  # impossible
+                        {'input': [[1], 0], 'expected': 0},
+                        {'input': [[1, 2, 5], 100], 'expected': 20},  # 20 coins of 5
+                    ]
+                },
+                {
+                    'id': 'group_anagrams',
+                    'description': 'Group strings that are anagrams of each other. Return list of groups (any order).',
+                    'signature': 'def group_anagrams(strs: list) -> list:',
+                    'test_cases': [
+                        {'input': [['eat', 'tea', 'tan', 'ate', 'nat', 'bat']],
+                         'expected': [['bat'], ['nat', 'tan'], ['ate', 'eat', 'tea']]},
+                        {'input': [['']], 'expected': [['']]},
+                        {'input': [['a']], 'expected': [['a']]},
+                    ]
+                },
+            ]
+        }
 
 
 # ==============================================================================
-# REALISTIC SEED AGENT - Has structure but needs improvement
+# SEED AGENT - Scaffold + Seed Prompting Strategy
 # ==============================================================================
 
-SEED_AGENT_CODE = '''
-class SolvingAgent:
-    """
-    Weak baseline agent with naive prompting.
+# Import the fixed scaffold
+from scaffold import AGENT_SCAFFOLD
 
-    This needs significant improvement:
-    - Prompt is too terse
-    - No examples
-    - No guidance on edge cases
-    - No error handling hints
-    """
+# SEED PROMPTING STRATEGY - This is what the meta-LLM modifies
+SEED_PROMPT_STRATEGY = '''
+    def build_prompt(self, problem: dict) -> str:
+        """
+        Build the prompt for the LLM (MODIFIABLE).
+        """
+        prompt = f"""Write a Python function to solve this problem:
 
-    def __init__(self, llm_client):
-        self.llm = llm_client
+{problem['description']}
 
-    def solve_problem(self, problem: dict) -> str:
-        """Naive prompt - just asks for code directly"""
-        # Very basic prompt - needs improvement!
-        prompt = f"Write: {problem['signature']}\\nTask: {problem['description']}"
+Function signature: {problem['signature']}
 
-        code = self.llm.generate(prompt, max_tokens=300)
+Put your solution between these delimiters:
+[FUNCTION_START]
+[FUNCTION_END]
 
-        # Minimal cleanup
-        if "```" in code:
-            code = code.split("```")[1].split("```")[0].strip()
-            if code.startswith("python"):
-                code = code[6:].strip()
-
-        return code
-
-    def solve_problems(self, problems: list) -> str:
-        """Solve all problems"""
-        solutions = []
-        for problem in problems:
-            try:
-                solution = self.solve_problem(problem)
-                solutions.append(solution)
-            except:
-                solutions.append(f"# Error on {problem['id']}")
-        return "\\n\\n".join(solutions)
+Example:
+[FUNCTION_START]
+def add(x: int, y: int) -> int:
+    return x + y
+[FUNCTION_END]"""
+        return prompt
 '''
+
+SEED_AGENT_CODE = AGENT_SCAFFOLD + SEED_PROMPT_STRATEGY
 
 # ==============================================================================
 
@@ -234,14 +439,15 @@ class SelfImprovingAgent:
         self.agent_history: List[AgentVersion] = []
         self.current_lambda = 0.0  # Will be set during lambda sweep
 
-        # Load benchmark
-        all_problems = Benchmark.get_problems()
-        split_idx = max(1, int(len(all_problems) * train_test_split))
-        self.train_problems = all_problems[:split_idx]
-        self.test_problems = all_problems[split_idx:]
+        # Load benchmark with train/val/test split
+        problems = Benchmark.get_problems()
+        self.train_problems = problems['train']
+        self.val_problems = problems['val']
+        self.test_problems = problems['test']
 
-        print(f"Loaded {len(all_problems)} problems:")
+        print(f"Loaded {len(self.train_problems) + len(self.val_problems) + len(self.test_problems)} problems:")
         print(f"  Train ({len(self.train_problems)}): {[p['id'] for p in self.train_problems]}")
+        print(f"  Val ({len(self.val_problems)}): {[p['id'] for p in self.val_problems]}")
         print(f"  Test ({len(self.test_problems)}): {[p['id'] for p in self.test_problems]}")
 
         if self.eval_subset_size is not None:
@@ -263,6 +469,10 @@ class SelfImprovingAgent:
             timestamp=time.time()
         )
 
+        # Record seed complexity for normalization
+        self.seed_complexity = self._compute_agent_complexity(SEED_AGENT_CODE)
+        logger.info(f"Seed agent complexity: {self.seed_complexity}")
+
     def modify_agent_code(
         self,
         parent_agent: AgentVersion,
@@ -272,6 +482,35 @@ class SelfImprovingAgent:
         """Use LLM to modify agent's source code"""
 
         agent_id = f"agent_{len(self.agent_history):04d}"
+        logger.info(f"Starting modification for {agent_id}")
+        logger.info(f"Goal: {modification_goal}")
+        logger.info(f"Target complexity: {target_complexity}")
+
+        # Build evaluation context from parent agent's performance
+        eval_context = ""
+        if parent_agent.train_loss < 999.0:
+            eval_context = f"""
+PARENT AGENT PERFORMANCE:
+- Training loss: {parent_agent.train_loss:.2%} of problems failed
+- Validation loss: {parent_agent.val_loss:.2%} of problems failed
+- Complexity: {parent_agent.agent_complexity:.1f} degrees of freedom
+- Free energy F(λ): {parent_agent.free_energy:.2f}
+
+ANALYSIS:
+"""
+            if parent_agent.train_loss > 0.5:
+                eval_context += "- The agent is failing on more than half of the training problems.\n"
+                eval_context += "- Focus on improving the PROMPT to help the LLM generate correct code.\n"
+            elif parent_agent.train_loss > 0.3:
+                eval_context += "- The agent is moderately successful but can improve.\n"
+                eval_context += "- Consider adding more guidance or examples to the PROMPT.\n"
+            else:
+                eval_context += "- The agent is performing well on training problems.\n"
+                eval_context += "- Focus on making it more general or more efficient.\n"
+
+            if parent_agent.val_loss > parent_agent.train_loss + 0.2:
+                eval_context += "- OVERFITTING WARNING: Validation loss is much higher than training loss.\n"
+                eval_context += "- Make the prompts more general, avoid hardcoding specific examples.\n"
 
         # Complexity hint
         complexity_hint = ""
@@ -282,98 +521,104 @@ class SelfImprovingAgent:
             elif target_complexity > current_complexity * 1.3:
                 complexity_hint = "\nIMPORTANT: Add more sophistication - make it MORE CAPABLE."
 
+        # CRITICAL CONSTRAINTS that apply to ALL modifications
+        critical_constraints = f"""
+CRITICAL: You are ONLY modifying the build_prompt() method.
+
+THE FIXED SCAFFOLD (DO NOT MODIFY):
+{AGENT_SCAFFOLD}
+
+YOUR TASK: Make SMALL, INCREMENTAL improvements to build_prompt().
+
+RULES:
+1. Return ONLY the build_prompt(self, problem: dict) -> str method
+2. The method must return a string (the prompt)
+3. Make SMALL changes - don't completely rewrite the prompt
+4. Keep the prompt CONCISE - verbose prompts confuse the LLM
+5. The LLM API has only: self.llm.generate(prompt, max_tokens=N)
+6. DO NOT implement problem solutions as methods
+7. Test your changes mentally - will they actually help the LLM generate correct code?
+
+IMPORTANT: Simpler is often better. Don't over-engineer the prompt.
+
+CORRECT OUTPUT FORMAT:
+    def build_prompt(self, problem: dict) -> str:
+        # Small improvement to prompting strategy
+        prompt = f"..."
+        return prompt
+"""
+
         # Use simple, concrete prompt templates for weak models
+        # IMPORTANT: Use custom delimiters to avoid conflicts with code content
         if "few-shot" in modification_goal.lower() or "examples" in modification_goal.lower():
-            prompt = f"""Generate a SolvingAgent class that uses few-shot examples in prompts.
+            prompt = f"""Make a SMALL improvement to build_prompt() by adding ONE concrete example.
 
-Example template:
+CURRENT build_prompt() METHOD:
 ```python
-class SolvingAgent:
-    def __init__(self, llm_client):
-        self.llm = llm_client
-
-    def solve_problem(self, problem: dict) -> str:
-        # Add examples to the prompt
-        prompt = f"Solve this problem step by step with examples.\\n\\n"
-        prompt += f"Problem: {{problem['description']}}\\n"
-        prompt += f"Signature: {{problem['signature']}}\\n\\n"
-        prompt += "Example: For input [1,2,3], output should be...\\n\\n"
-        prompt += "Now write the Python function:"
-
-        code = self.llm.generate(prompt, max_tokens=500)
-        # Clean code...
-        return code
-
-    def solve_problems(self, problems: list) -> str:
-        return "\\n\\n".join([self.solve_problem(p) for p in problems])
+{parent_agent.agent_code.split('def build_prompt')[1] if 'def build_prompt' in parent_agent.agent_code else SEED_PROMPT_STRATEGY}
 ```
+{eval_context}
 
-Generate similar code that adds helpful examples to prompts."""
+GOAL: Add just ONE simple, clear example showing how to format the output.
+{complexity_hint}
+
+Keep it SHORT and CLEAR. Don't add verbose explanations.
+
+{critical_constraints}
+
+IMPORTANT: Wrap ONLY the build_prompt() method with these delimiters:
+<|BEGIN_CODE|>
+    def build_prompt(self, problem: dict) -> str:
+        # Small improvement here
+        return prompt
+<|END_CODE|>"""
 
         elif "chain-of-thought" in modification_goal.lower():
-            prompt = f"""Generate a SolvingAgent that uses chain-of-thought prompting.
+            prompt = f"""Make a SMALL improvement to build_prompt() by adding brief reasoning guidance.
 
-Template:
+CURRENT build_prompt() METHOD:
 ```python
-class SolvingAgent:
-    def __init__(self, llm_client):
-        self.llm = llm_client
-
-    def solve_problem(self, problem: dict) -> str:
-        prompt = f"Let's solve this step by step:\\n\\n"
-        prompt += f"Problem: {{problem['description']}}\\n"
-        prompt += f"Signature: {{problem['signature']}}\\n\\n"
-        prompt += "Step 1: Understand the problem\\n"
-        prompt += "Step 2: Plan the approach\\n"
-        prompt += "Step 3: Write the code:\\n"
-
-        code = self.llm.generate(prompt, max_tokens=500)
-        return code
-
-    def solve_problems(self, problems: list) -> str:
-        return "\\n\\n".join([self.solve_problem(p) for p in problems])
+{parent_agent.agent_code.split('def build_prompt')[1] if 'def build_prompt' in parent_agent.agent_code else SEED_PROMPT_STRATEGY}
 ```
+{eval_context}
 
-Generate similar code with step-by-step reasoning."""
+GOAL: Add 1-2 sentences asking the LLM to think before coding.
+{complexity_hint}
+
+Keep it BRIEF. Long explanations confuse the LLM.
+
+{critical_constraints}
+
+IMPORTANT: Wrap ONLY the build_prompt() method with these delimiters:
+<|BEGIN_CODE|>
+    def build_prompt(self, problem: dict) -> str:
+        # Small improvement here
+        return prompt
+<|END_CODE|>"""
 
         else:
-            # Default: simple improvement
-            prompt = f"""Generate a better SolvingAgent class that improves the prompt quality.
+            # Default: improve based on parent
+            prompt = f"""Make a SMALL, focused improvement to build_prompt().
 
-Current approach is too simple. Make the prompt MORE DETAILED and CLEARER.
-
-Template:
+CURRENT build_prompt() METHOD:
 ```python
-class SolvingAgent:
-    def __init__(self, llm_client):
-        self.llm = llm_client
-
-    def solve_problem(self, problem: dict) -> str:
-        # Better, more detailed prompt
-        prompt = f"Write a Python function:\\n"
-        prompt += f"Function: {{problem['signature']}}\\n"
-        prompt += f"Task: {{problem['description']}}\\n\\n"
-        prompt += "Return only the function code, no explanations.\\n"
-
-        code = self.llm.generate(prompt, max_tokens=400)
-
-        # Clean up code
-        if "```" in code:
-            code = code.split("```")[1].split("```")[0].strip()
-
-        return code
-
-    def solve_problems(self, problems: list) -> str:
-        solutions = []
-        for p in problems:
-            try:
-                solutions.append(self.solve_problem(p))
-            except:
-                solutions.append("# Error")
-        return "\\n\\n".join(solutions)
+{parent_agent.agent_code.split('def build_prompt')[1] if 'def build_prompt' in parent_agent.agent_code else SEED_PROMPT_STRATEGY}
 ```
+{eval_context}
 
-Generate improved code with better prompts."""
+GOAL: {modification_goal}
+{complexity_hint}
+
+Make ONE small change. Keep the prompt CONCISE and CLEAR.
+
+{critical_constraints}
+
+IMPORTANT: Wrap ONLY the build_prompt() method with these delimiters:
+<|BEGIN_CODE|>
+    def build_prompt(self, problem: dict) -> str:
+        # Small improvement here
+        return prompt
+<|END_CODE|>"""
 
         # Generate code, then fix errors iteratively
         improved_code = None
@@ -406,6 +651,9 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
 
                 generated = self.llm.generate(generation_prompt, max_tokens=2000)
 
+                logger.info(f"LLM generated code (attempt {attempt+1}/{max_retries})")
+                logger.debug(f"LLM output: {generated[:500]}...")
+
                 if self.debug:
                     print(f"\n{'='*70}")
                     print(f"DEBUG: LLM Output (attempt {attempt+1}):")
@@ -413,32 +661,54 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
                     print(generated[:2000] + ("..." if len(generated) > 2000 else ""))
                     print(f"{'='*70}\n")
 
-                # Extract code (be careful with ``` inside strings!)
-                # Use GREEDY match to get everything until LAST ```
+                # Extract ONLY the build_prompt() method
                 import re
 
-                # Match from opening ``` to the LAST closing ``` (greedy)
-                # This handles both ```python and ``` openings
-                match = re.search(r'```(?:python)?\s*\n(.*)```', generated, re.DOTALL)
+                # Strategy 1: Look for custom delimiters first
+                if "<|BEGIN_CODE|>" in generated and "<|END_CODE|>" in generated:
+                    start = generated.find("<|BEGIN_CODE|>") + len("<|BEGIN_CODE|>")
+                    end = generated.find("<|END_CODE|>")
+                    build_prompt_method = generated[start:end].strip()
 
-                if match:
-                    code = match.group(1).strip()
+                # Strategy 2: Fall back to markdown code blocks
+                elif "```" in generated:
+                    match = re.search(r'```(?:python)?\s*\n(.*)```', generated, re.DOTALL)
+                    if match:
+                        build_prompt_method = match.group(1).strip()
+                    else:
+                        build_prompt_method = generated.strip()
+
+                # Strategy 3: Find def build_prompt directly
+                elif "def build_prompt" in generated:
+                    build_prompt_method = generated[generated.find("def build_prompt"):].strip()
+
                 else:
-                    code = generated.strip()
+                    build_prompt_method = generated.strip()
 
-                if not code.strip().startswith("class SolvingAgent"):
-                    code = "class SolvingAgent:\n" + code
+                # Ensure it starts with "def build_prompt"
+                if not build_prompt_method.strip().startswith("def build_prompt"):
+                    # Try to extract just the method
+                    if "def build_prompt" in build_prompt_method:
+                        idx = build_prompt_method.find("def build_prompt")
+                        build_prompt_method = build_prompt_method[idx:]
+                    else:
+                        raise ValueError("Generated code does not contain build_prompt() method")
+
+                # Reconstruct full agent: SCAFFOLD + build_prompt() method
+                code = AGENT_SCAFFOLD + build_prompt_method
 
                 # VALIDATE: Check if code compiles
                 compile(code, '<string>', 'exec')
 
                 # Success! Use this code
                 improved_code = code
+                logger.info(f"Code validation successful for {agent_id} (attempt {attempt+1})")
                 print(f"  ✓ Code validated successfully" + (f" after {attempt+1} attempts" if attempt > 0 else ""))
                 break
 
             except SyntaxError as e:
                 error_msg = f"SyntaxError at line {e.lineno}: {e.msg}"
+                logger.warning(f"Compilation failed for {agent_id} (attempt {attempt+1}): {error_msg}")
                 print(f"  [!] Attempt {attempt+1}/{max_retries}: {error_msg}")
 
                 if self.debug and 'code' in locals():
@@ -452,16 +722,19 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
                 error_feedback = error_msg
 
                 if attempt == max_retries - 1:
+                    logger.error(f"Failed to generate valid code for {agent_id} after {max_retries} attempts, falling back to SEED")
                     print(f"  [!] Could not fix errors, using SEED agent as fallback")
                     improved_code = SEED_AGENT_CODE
 
             except Exception as e:
                 error_msg = f"{type(e).__name__}: {str(e)}"
+                logger.warning(f"Error in {agent_id} (attempt {attempt+1}): {error_msg}")
                 print(f"  [!] Attempt {attempt+1}/{max_retries}: {error_msg}")
                 current_code = code if 'code' in locals() else parent_agent.agent_code
                 error_feedback = error_msg
 
                 if attempt == max_retries - 1:
+                    logger.error(f"Failed to generate valid code for {agent_id} after {max_retries} attempts, falling back to SEED")
                     print(f"  [!] Could not fix errors, using SEED agent as fallback")
                     improved_code = SEED_AGENT_CODE
 
@@ -481,6 +754,7 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
         use_subset: bool = True
     ) -> AgentVersion:
         """Evaluate agent on benchmark"""
+        logger.info(f"Evaluating {agent.agent_id} (λ={lambda_val:.3f}, subset={use_subset})")
         try:
             # Execute agent code
             namespace = {'llm_client': self.llm}
@@ -492,32 +766,104 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
             # Create agent instance
             agent_instance = namespace['SolvingAgent'](self.llm)
 
-            # Generate solutions for all problems
-            all_problems = self.train_problems + self.test_problems
-            solution_code = agent_instance.solve_problems(all_problems)
-
             # Measure AGENT complexity
             agent_complexity = self._compute_agent_complexity(agent.agent_code)
 
-            # Compute losses (use subset during search, full set for final eval)
-            train_loss = self._compute_loss(solution_code, self.train_problems, use_subset=use_subset)
-            test_loss = self._compute_loss(solution_code, self.test_problems, use_subset=use_subset)
+            # During search: only evaluate train+val (faster!)
+            # Final eval: evaluate all including test
+            if use_subset:
+                # FAST PATH: Only generate solutions for train+val during search
+                search_problems = self.train_problems + self.val_problems
+                print(f"\n  Evaluating agent on {len(search_problems)} problems (train+val)...")
+                solution_code = agent_instance.solve_problems(search_problems)
 
-            # FREE ENERGY (use train loss, like in structure-functions paper!)
-            # F(λ) = λ·C + L_train
-            # Test loss is just for measuring generalization
-            free_energy = lambda_val * agent_complexity + train_loss
+                # Compile solutions ONCE
+                # Fix any literal \n in the response (LLM returns \n as text)
+                solution_code = solution_code.replace(r'\n', '\n')
+
+                namespace = {}
+                try:
+                    exec(solution_code, namespace)
+                except Exception as e:
+                    print(f"  [!] Code compilation failed: {e}")
+                    print(f"  [DEBUG] Code preview:")
+                    print(solution_code[:500])
+                    raise
+
+                # DEBUG: Show what functions were found
+                found_funcs = [k for k in namespace.keys() if not k.startswith('_')]
+                if len(found_funcs) == 0:
+                    print(f"  [!] No functions found!")
+                    print(f"  [DEBUG] Code: {repr(solution_code[:300])}")
+
+                print(f"\n  Training set evaluation:")
+                train_loss = self._compute_loss(namespace, self.train_problems, use_subset=True, verbose=True)
+
+                print(f"\n  Validation set evaluation:")
+                val_loss = self._compute_loss(namespace, self.val_problems, use_subset=True, verbose=True)
+
+                test_loss = -1.0  # Not computed during search (held out)
+            else:
+                # FULL EVAL: Generate solutions for all problems
+                all_problems = self.train_problems + self.val_problems + self.test_problems
+                print(f"\n  Final evaluation on {len(all_problems)} problems (train+val+test)...")
+                solution_code = agent_instance.solve_problems(all_problems)
+
+                # Compile solutions ONCE
+                # Fix any literal \n in the response (LLM returns \n as text)
+                solution_code = solution_code.replace(r'\n', '\n')
+
+                namespace = {}
+                try:
+                    exec(solution_code, namespace)
+                except Exception as e:
+                    print(f"  [!] Code compilation failed: {e}")
+                    print(f"  [DEBUG] Code preview:")
+                    print(solution_code[:500])
+                    raise
+
+                # DEBUG: Show what functions were found
+                found_funcs = [k for k in namespace.keys() if not k.startswith('_')]
+                if len(found_funcs) == 0:
+                    print(f"  [!] No functions found!")
+                    print(f"  [DEBUG] Code: {repr(solution_code[:300])}")
+
+                print(f"\n  Training set evaluation:")
+                train_loss = self._compute_loss(namespace, self.train_problems, use_subset=False, verbose=True)
+
+                print(f"\n  Validation set evaluation:")
+                val_loss = self._compute_loss(namespace, self.val_problems, use_subset=False, verbose=True)
+
+                print(f"\n  Test set evaluation:")
+                test_loss = self._compute_loss(namespace, self.test_problems, use_subset=False, verbose=True)
+
+            # FREE ENERGY: Use train+val loss for optimization (cross-validation)
+            # F(λ) = λ·sigmoid(C/C_seed - 1) + (L_train + L_val) / 2
+            # Sigmoid squashes complexity change to [0, 1] range to match loss scale
+            # - C < C_seed → negative input → sigmoid < 0.5 (simpler agent)
+            # - C = C_seed → sigmoid(0) = 0.5 (same complexity)
+            # - C > C_seed → positive input → sigmoid > 0.5 (more complex agent)
+            # Test loss is held out for final evaluation only
+            complexity_ratio = agent_complexity / self.seed_complexity
+            complexity_penalty = 1 / (1 + np.exp(-(complexity_ratio - 1)))  # sigmoid(C/C_seed - 1)
+            free_energy = lambda_val * complexity_penalty + (train_loss + val_loss) / 2
 
             # Update
             agent.train_loss = train_loss
+            agent.val_loss = val_loss
             agent.test_loss = test_loss
             agent.agent_complexity = agent_complexity
             agent.lambda_val = lambda_val
             agent.free_energy = free_energy
 
+            logger.info(f"Evaluation complete for {agent.agent_id}: F(λ)={free_energy:.4f}, "
+                       f"train={train_loss:.4f}, val={val_loss:.4f}, test={test_loss:.4f}")
+
         except Exception as e:
+            logger.error(f"Evaluation failed for {agent.agent_id}: {e}")
             print(f"  [!] Evaluation failed: {e}")
             agent.train_loss = 999.0
+            agent.val_loss = 999.0
             agent.test_loss = 999.0
             agent.agent_complexity = self._compute_agent_complexity(agent.agent_code)
             agent.lambda_val = lambda_val
@@ -564,42 +910,88 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
 
         return subsampled
 
-    def _compute_loss(self, solution_code: str, problems: List[Dict], use_subset: bool = True) -> float:
+    def _compute_loss(self, namespace: dict, problems: List[Dict], use_subset: bool = True, verbose: bool = True) -> float:
         """Error rate on problems"""
+        from tqdm import tqdm
+
         # Use subset during search, full set for final evaluation
         if use_subset:
             problems = self._get_eval_subset(problems)
 
         total_tests = 0
         failed_tests = 0
+        problem_results = []
 
-        namespace = {}
-        try:
-            exec(solution_code, namespace)
-        except:
-            return 1.0
+        # Progress bar for problems
+        pbar = tqdm(problems, desc="    Evaluating", disable=not verbose,
+                   bar_format='{desc}: {percentage:3.0f}%|{bar}| {n_fmt}/{total_fmt}')
 
-        for problem in problems:
+        for problem in pbar:
+            problem_failed = 0
+            problem_total = 0
+
             if problem['id'] not in namespace:
-                failed_tests += len(problem['test_cases'])
-                total_tests += len(problem['test_cases'])
+                problem_failed = len(problem['test_cases'])
+                problem_total = len(problem['test_cases'])
+                failed_tests += problem_failed
+                total_tests += problem_total
+                problem_results.append((problem['id'], False, "MISSING"))
+                if verbose:
+                    pbar.write(f"    ✗ {problem['id']}: FAIL (function not found)")
                 continue
 
             func = namespace[problem['id']]
+            test_passed = True
+            error_msg = None
 
             for test_case in problem['test_cases']:
+                problem_total += 1
                 total_tests += 1
                 try:
                     inp = test_case['input']
-                    if isinstance(inp, list) and len(inp) > 1:
-                        result = func(*inp)
+                    # Smart dispatch: handle different input formats
+                    if isinstance(inp, list):
+                        if any(isinstance(x, list) for x in inp):
+                            # Contains nested lists -> multiple args
+                            result = func(*inp)
+                        elif len(inp) > 1 and all(isinstance(x, (str, int, float, bool)) for x in inp):
+                            # Multiple primitives -> try unpacking as multiple args first
+                            try:
+                                result = func(*inp)
+                            except TypeError:
+                                # If that fails, pass as single list
+                                result = func(inp)
+                        else:
+                            # Single list arg
+                            result = func(inp)
                     else:
                         result = func(inp)
 
                     if result != test_case['expected']:
+                        problem_failed += 1
                         failed_tests += 1
+                        test_passed = False
+                        if error_msg is None:
+                            error_msg = f"wrong output: got {result}, expected {test_case['expected']}"
                 except Exception as e:
+                    problem_failed += 1
                     failed_tests += 1
+                    test_passed = False
+                    if error_msg is None:
+                        error_msg = str(e)
+
+            problem_results.append((problem['id'], test_passed, error_msg))
+            if verbose:
+                if test_passed:
+                    pbar.write(f"    ✓ {problem['id']}: OK ({problem_total}/{problem_total} tests passed)")
+                else:
+                    pbar.write(f"    ✗ {problem['id']}: FAIL ({problem_total - problem_failed}/{problem_total} tests passed) - {error_msg}")
+
+        pbar.close()
+
+        if verbose:
+            passed_count = sum(1 for _, passed, _ in problem_results if passed)
+            print(f"    Summary: {passed_count}/{len(problems)} problems passed")
 
         return failed_tests / max(1, total_tests)
 
@@ -641,13 +1033,33 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
         if self.best_agent is None or evaluated_agent.free_energy < self.best_agent.free_energy:
             self.best_agent = evaluated_agent
             self._save_best_agent(evaluated_agent)
-            print(f"✓ New best! F(λ)={evaluated_agent.free_energy:.4f} "
-                  f"[λ={evaluated_agent.lambda_val:.3f}, C_agent={evaluated_agent.agent_complexity:.1f}, "
-                  f"L_test={evaluated_agent.test_loss:.4f}]")
+            c_ratio = evaluated_agent.agent_complexity / self.seed_complexity
+            c_penalty = 1 / (1 + np.exp(-(c_ratio - 1)))
+            if evaluated_agent.test_loss >= 0:
+                # Full eval - show test loss
+                print(f"✓ New best! F(λ)={evaluated_agent.free_energy:.4f} "
+                      f"[λ={evaluated_agent.lambda_val:.3f}, σ(C)={c_penalty:.3f}, "
+                      f"L_val={evaluated_agent.val_loss:.4f}, L_test={evaluated_agent.test_loss:.4f}]")
+            else:
+                # During search - don't show test loss
+                print(f"✓ New best! F(λ)={evaluated_agent.free_energy:.4f} "
+                      f"[λ={evaluated_agent.lambda_val:.3f}, σ(C)={c_penalty:.3f}, "
+                      f"L_val={evaluated_agent.val_loss:.4f}]")
 
-        print(f"[{iteration:3d}] λ={lambda_val:.3f} C_agent={evaluated_agent.agent_complexity:5.1f} "
-              f"L_train={evaluated_agent.train_loss:.4f} L_test={evaluated_agent.test_loss:.4f} "
-              f"F(λ)={evaluated_agent.free_energy:.4f}")
+        # During search: don't show test loss (held out). After search: show it.
+        c_ratio = evaluated_agent.agent_complexity / self.seed_complexity
+        c_penalty = 1 / (1 + np.exp(-(c_ratio - 1)))
+        if evaluated_agent.test_loss >= 0:
+            # Full evaluation - show all losses
+            print(f"[{iteration:3d}] λ={lambda_val:.3f} σ(C)={c_penalty:.3f} "
+                  f"L_train={evaluated_agent.train_loss:.4f} L_val={evaluated_agent.val_loss:.4f} "
+                  f"L_test={evaluated_agent.test_loss:.4f} F(λ)={evaluated_agent.free_energy:.4f}")
+        else:
+            # During search - only show train+val (test held out)
+            print(f"[{iteration:3d}] λ={lambda_val:.3f} σ(C)={c_penalty:.3f} "
+                  f"L_train={evaluated_agent.train_loss:.4f} L_val={evaluated_agent.val_loss:.4f} "
+                  f"F(λ)={evaluated_agent.free_energy:.4f}")
+        print(f"         Goal: {evaluated_agent.modification_description}")
 
         return {
             'loss': evaluated_agent.free_energy,
@@ -659,7 +1071,7 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
         print("="*70)
         print("SELF-MODIFYING AGENT (TPE + Free Energy)")
         print("="*70)
-        print(f"Objective: minimize F(λ) = λ·C_agent + L_train")
+        print(f"Objective: minimize F(λ) = λ·C_agent + (L_train + L_val) / 2")
         print(f"LLM: {self.llm.backend} / {self.llm.model}")
         print(f"Strategy: Sweep λ, use TPE for agent modifications")
         print(f"Max iterations per λ: {self.max_iterations}")
@@ -687,6 +1099,12 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
             print(f"{'='*70}")
             print(f"LAMBDA {lambda_idx+1}/{len(lambda_values)}: λ = {lambda_val:.4f}")
             print(f"{'='*70}\n")
+
+            # Seed RNG for this λ sweep so all agents see the same test cases
+            # (makes comparisons fair within each λ sweep)
+            if self.stochastic_eval:
+                import random
+                random.seed(lambda_idx * 42)  # Different seed per λ, but consistent within λ
 
             # Store current lambda for objective function
             self.current_lambda = lambda_val
@@ -730,9 +1148,13 @@ Return ONLY the complete corrected Python code for the SolvingAgent class."""
                     use_subset=False  # Full evaluation
                 )
 
+            c_ratio = self.best_agent.agent_complexity / self.seed_complexity
+            c_penalty = 1 / (1 + np.exp(-(c_ratio - 1)))
             print(f"Best: {self.best_agent.agent_id} (gen {self.best_agent.generation})")
             print(f"  λ*: {self.best_agent.lambda_val:.4f}")
             print(f"  C_agent: {self.best_agent.agent_complexity:.1f}")
+            print(f"  C/C_seed: {c_ratio:.2f}")
+            print(f"  σ(C): {c_penalty:.3f}")
             print(f"  Train loss: {self.best_agent.train_loss:.4f}")
             print(f"  Test loss: {self.best_agent.test_loss:.4f}")
             print(f"  F(λ*): {self.best_agent.free_energy:.4f}")
@@ -760,25 +1182,42 @@ def main():
     import sys
     debug = "--debug" in sys.argv
 
-    # Default: 6 lambda points × 3 iters each = 18 total evaluations
-    # For faster testing, reduce lambda_points (e.g., 4) or iters_per_lambda (e.g., 2)
+    # Configuration: 10 lambda points × 6 iters each = 60 total evaluations
+    # Lambda sweep: [0.0, 0.056, 0.111, 0.167, 0.222, 0.278, 0.333, 0.389, 0.444, 0.5]
+    # Fine-grained sweep to capture the phase transition / elbow point
     #
-    # Models to try (requires ollama pull <model>):
-    # - gemma3:1b: Fast but very weak (1B params) - struggles with hard problems
-    # - gemma3:4b: Good middle ground (4B params) - can solve some problems
-    # - llama3 or llama3.1: Better balance (8B params) - recommended
-    # - codellama: Code-specialized (7B+ params)
-    # - qwen2.5-coder: Best for code (7B+ params)
+    # Why finer sweep?
+    # - The elbow in the loss-complexity curve reveals the optimal regularization
+    # - Too coarse (3 points) → miss the phase transition entirely
+    # - Too fine (20 points) → not enough iterations per λ to find good agents
+    # - 10 points × 6 iters = good balance for finding the elbow
+    #
+    # Philosophy: Use relatively weak LLM but evolve good agent behavior
+    # - Weak LLM alone: poor coding performance
+    # - Weak LLM + evolved prompting: can solve non-trivial problems!
+    #
+    # Models to try:
+    #
+    # ANTHROPIC (requires ANTHROPIC_API_KEY) - FASTEST, RECOMMENDED:
+    # - claude-3-5-sonnet-20241022: Latest Sonnet (best for coding)
+    # - claude-3-5-haiku-20241022: Haiku (faster, cheaper)
+    #
+    # OLLAMA CLOUD (requires OLLAMA_API_KEY from ollama.com/settings/keys) - SLOWER:
+    # - minimax-m2-cloud: MiniMax M2 model
+    # - gpt-oss:120b-cloud: 120B general purpose
+    # - qwen3-coder:480b-cloud: Alibaba's 480B coding specialist
+    # - deepseek-v3.1:671b-cloud: 671B reasoning/coding
+    # Note: Cloud models must include the exact tag with -cloud suffix
     agent = SelfImprovingAgent(
-        llm_backend="ollama",
-        model="gemma3:4b",  # Middle ground - 4x more capable than 1b!
-        max_iterations=18,  # Total budget (will be split across lambda values)
+        llm_backend="anthropic",  # Use Anthropic API directly (MUCH faster than Ollama)
+        model="claude-3-5-haiku-20241022",  # Fast and cheap - good for testing evolution!
+        max_iterations=60,  # Total budget (will be split across lambda values)
         output_dir="./output",
         debug=debug,
-        lambda_points=6,  # Number of λ values to sweep [0.0, 0.1, 0.2, 0.3, 0.4, 0.5]
-        iters_per_lambda=3,  # TPE iterations per λ (higher = better but slower)
-        eval_subset_size=2,  # Use only 2 test cases per problem during search (faster!)
-        stochastic_eval=True,  # True = random subset each iter (prevents overfitting)
+        lambda_points=10,  # Fine-grained sweep to capture phase transitions
+        iters_per_lambda=6,  # Enough iterations to find good agents per λ
+        eval_subset_size=2,  # Use 2 test cases per problem during search (stochastic!)
+        stochastic_eval=True,  # Random subset each iter → prevents overfitting
     )
 
     best = agent.run()

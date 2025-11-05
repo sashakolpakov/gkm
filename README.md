@@ -4,44 +4,31 @@ A self-improving AI agent that modifies its own source code to optimize a free e
 
 - **Gödel Machine**: Self-modifying agent that rewrites its own code
 - **Kolmogorov Complexity**: Regularization via code complexity
-- **Free Energy Principle**: F(λ) = λ·C_agent + L_train from [structure-functions paper](https://arxiv.org/abs/2507.13543)
-- **TPE Search**: Tree-structured Parzen Estimator guides the search over λ values
+- **Free Energy Principle**: F(λ) = λ·C_agent + (L_train + L_val)/2
+- **TPE Search**: Tree-structured Parzen Estimator guides code modifications
 
-Unlike the original [Darwin-Gödel Machine](https://github.com/jennyzzt/dgm), GKM uses principled Bayesian optimization (TPE) to sweep over regularization strengths λ, balancing agent complexity against training performance.
+Unlike the original [Darwin-Gödel Machine](https://github.com/jennyzzt/dgm), GKM uses principled free energy optimization with lambda sweeps to balance agent complexity against performance.
 
 ## Quick Start
 
 ### Prerequisites
 
-Install Ollama (local LLM runtime):
-
-**macOS:**
+**Anthropic API** (recommended - fastest):
 ```bash
-brew install ollama
-ollama serve &
+export ANTHROPIC_API_KEY="your-key-here"
 ```
 
-**Linux:**
+Or use **Ollama** (local):
 ```bash
-curl -fsSL https://ollama.ai/install.sh | sh
+brew install ollama  # macOS
+ollama serve &
+ollama pull qwen2.5-coder
 ```
 
 ### Install Dependencies
 
 ```bash
-pip install hyperopt numpy openai
-```
-
-### Pull a Model
-
-```bash
-# Start with 4B model (good balance)
-ollama pull gemma3:4b
-
-# Or try more powerful models:
-ollama pull llama3        # 8B, better at reasoning
-ollama pull codellama     # 7B+, code-specialized
-ollama pull qwen2.5-coder # Best for code
+pip install -r requirements.txt
 ```
 
 ### Run
@@ -59,32 +46,98 @@ python agent.py --debug
 
 ### Free Energy Optimization
 
-The agent minimizes **F(λ) = λ·C_agent + L_train** where:
+The agent minimizes **F(λ) = λ·C_agent + (L_train + L_val)/2** where:
 - **λ**: Regularization strength (swept from 0.0 to 0.5)
-- **C_agent**: Complexity of the agent's code (lines, functions, control flow)
-- **L_train**: Training loss (error rate on training problems)
-- **L_test**: Test loss (reported separately to measure generalization)
+- **C_agent**: Complexity of agent code (lines, control flow, functions)
+- **L_train**: Training loss (error rate on 9 training problems)
+- **L_val**: Validation loss (error rate on 5 validation problems)
+- **L_test**: Test loss (held out, reported at end)
 
 ### Lambda Sweep Strategy
 
-Unlike traditional hyperparameter optimization, we **sweep λ** like in the structure-functions paper:
+1. **For each λ value** (e.g., 0.0, 0.056, 0.111, ..., 0.5):
+   - Use TPE to find best agent modifications
+   - Evaluate: F(λ) = λ·C_agent + (L_train + L_val)/2
+2. **Return**: The (λ, agent) pair with minimum F(λ)
 
-1. **For each λ value** (e.g., 0.0, 0.1, 0.2, ..., 0.5):
-   - Use TPE to find the best agent modification for this λ
-   - Evaluate: F(λ) = λ·C_agent + L_train
-2. **Return**: The (λ, agent) pair with minimum F(λ) across all sweeps
-
-This explores the **loss-complexity landscape** and finds the optimal regularization strength.
+This explores the **loss-complexity landscape** to find optimal regularization.
 
 ### Self-Modification Process
 
 Each iteration:
-1. **TPE suggests** a modification goal (e.g., "add few-shot examples", "use chain-of-thought")
-2. **LLM generates** improved agent code based on template prompts
-3. **Agent is evaluated** on algorithmic problems (edit distance, regex matching, etc.)
-4. **TPE learns** which modifications reduce F(λ)
+1. **TPE suggests** modification goal (e.g., "add few-shot examples")
+2. **Meta-LLM generates** improved prompting strategy
+3. **Agent generates** solutions for all problems in one batched call
+4. **Evaluation** measures success rate with detailed OK/FAIL output
+5. **TPE learns** which modifications reduce F(λ)
 
-The agent evolves better prompting strategies, error handling, and code generation logic.
+The agent evolves only its `build_prompt()` method - the scaffold is fixed.
+
+## Features
+
+### Batched Solution Generation
+- **1 LLM call** generates solutions for all problems (not N sequential calls)
+- Dramatically faster than naive approach
+
+### Progress Tracking
+- **tqdm progress bars** show solution generation and evaluation progress
+- **OK/FAIL output** for each problem with detailed error messages
+- **Real-time feedback** on which problems pass/fail
+
+### Smart Test Dispatch
+- Automatically handles different input formats:
+  - Single arguments: `max_subarray_sum([1, 2, 3])`
+  - Multiple arguments: `two_sum([1, 2, 3], 5)`
+  - Multiple primitives: `is_anagram('listen', 'silent')`
+
+### Comprehensive Logging
+- **agent_evolution.log** tracks all modifications and evaluations
+- Debug compilation failures and LLM generation issues
+- Trace which modifications succeed vs fail
+
+## Configuration
+
+Edit `agent.py` `main()`:
+
+```python
+agent = SelfImprovingAgent(
+    llm_backend="anthropic",              # "anthropic", "ollama", "openai"
+    model="claude-3-5-haiku-20241022",    # Fast and cheap for testing
+    max_iterations=60,                     # Total budget (split across λ values)
+    lambda_points=10,                      # Fine-grained λ sweep
+    iters_per_lambda=6,                    # TPE iterations per λ
+    eval_subset_size=2,                    # Use 2 test cases per problem (faster)
+    stochastic_eval=True,                  # Random subset prevents overfitting
+    debug=False                            # Set True for verbose output
+)
+```
+
+**LLM Backends:**
+- **anthropic**: Requires `ANTHROPIC_API_KEY` (fastest, recommended)
+- **ollama**: Requires local `ollama serve` or cloud API key
+- **openai**: Requires `OPENAI_API_KEY`
+
+**Performance Tuning:**
+- **Faster**: `lambda_points=4, iters_per_lambda=2` (8 total evals)
+- **More thorough**: `lambda_points=15, iters_per_lambda=10` (150 total evals)
+- **Full evaluation**: `eval_subset_size=None` (use all test cases)
+
+## Benchmark
+
+The agent is evaluated on **19 LeetCode Easy/Medium problems**:
+
+**Training Set (9 problems):**
+- is_palindrome_string, sum_of_list, find_max, two_sum
+- valid_parentheses, merge_sorted_arrays, remove_duplicates
+- best_time_to_buy_sell_stock, contains_duplicate
+
+**Validation Set (5 problems):**
+- count_vowels, fibonacci, longest_common_prefix
+- reverse_linked_list, palindrome_number
+
+**Test Set (5 problems):**
+- is_anagram, factorial, max_subarray_sum
+- search_insert_position, climbing_stairs
 
 ## Example Output
 
@@ -92,128 +145,98 @@ The agent evolves better prompting strategies, error handling, and code generati
 ======================================================================
 SELF-MODIFYING AGENT (TPE + Free Energy)
 ======================================================================
-Objective: minimize F(λ) = λ·C_agent + L_train
-LLM: ollama / gemma3:4b
-Strategy: Sweep λ, use TPE for agent modifications
+Objective: minimize F(λ) = λ·C_agent + (L_train + L_val) / 2
+LLM: anthropic / claude-3-5-haiku-20241022
 
-Lambda sweep: 6 values from 0.00 to 0.50
-Iterations per λ: 3 (total: 18)
+Lambda sweep: 10 values from 0.00 to 0.50
+Iterations per λ: 6 (total: 60)
 
 ======================================================================
-LAMBDA 1/6: λ = 0.0000
+LAMBDA 1/10: λ = 0.0000
 ======================================================================
 
-  [*] First iteration: using SEED agent
-✓ New best! F(λ)=1.0000 [λ=0.000, C_agent=64.0, L_test=1.0000]
-[  0] λ=0.000 C_agent= 64.0 L_train=1.0000 L_test=1.0000 F(λ)=1.0000
+  Evaluating agent on 14 problems (train+val)...
 
-  ✓ Code validated successfully
-[  1] λ=0.000 C_agent= 85.0 L_train=0.8333 L_test=0.6667 F(λ)=0.8333
-✓ New best! F(λ)=0.8333 [λ=0.000, C_agent=85.0, L_test=0.6667]
+  Training set evaluation:
+    Evaluating: 100%|████████████| 9/9
+    ✓ is_palindrome_string: OK (4/4 tests passed)
+    ✓ sum_of_list: OK (4/4 tests passed)
+    ✗ two_sum: FAIL (3/4 tests passed) - test 4: expected [1, 3], got [2, 3]
+    Summary: 8/9 problems passed
+
+  Validation set evaluation:
+    Evaluating: 100%|████████████| 5/5
+    ✓ count_vowels: OK (4/4 tests passed)
+    ✓ fibonacci: OK (4/4 tests passed)
+    Summary: 5/5 problems passed
+
+✓ New best! F(λ)=0.3167 [λ=0.000, C_agent=169.0, L_val=0.0000]
+[  0] λ=0.000 C_agent=169.0 L_train=0.1111 L_val=0.0000 F(λ)=0.0556
+         Goal: SEED agent (unmodified)
 
 ...
-
-======================================================================
-OPTIMIZATION COMPLETE
-======================================================================
-Best: agent_0012 (gen 8)
-  λ*: 0.1000
-  C_agent: 72.0
-  Train loss: 0.6667
-  Test loss: 0.5000
-  F(λ*): 7.8667
-======================================================================
 ```
-
-## Configuration
-
-Edit `agent.py` `main()` to customize:
-
-```python
-agent = SelfImprovingAgent(
-    model="gemma3:4b",          # Model to use
-    lambda_points=6,             # Number of λ values to sweep
-    iters_per_lambda=3,          # TPE iterations per λ
-    eval_subset_size=2,          # Test cases per problem (for speed)
-    stochastic_eval=True,        # Random sampling prevents overfitting
-)
-```
-
-**Performance Tuning:**
-- **Faster**: `lambda_points=4, iters_per_lambda=2` (8 total evals)
-- **More thorough**: `lambda_points=11, iters_per_lambda=5` (55 total evals)
-- **Disable subsampling**: `eval_subset_size=None` (use all test cases)
-
-## Benchmark
-
-The agent is evaluated on **LeetCode Hard** algorithmic problems:
-
-**Training Set:**
-- Edit distance (dynamic programming)
-- Longest increasing subsequence (DP)
-- Trapping rain water (two pointers)
-
-**Test Set:**
-- Regular expression matching (DP)
-- Word ladder (BFS/graph search)
-- Max sliding window (deque)
-
-These problems require sophisticated reasoning and algorithm knowledge, making them a strong test of the agent's self-improvement capabilities.
 
 ## Files
 
 ```
 .
 ├── agent.py                    # Main implementation
+├── scaffold.py                 # Fixed agent infrastructure
 ├── requirements.txt            # Python dependencies
 ├── README.md                   # This file
-├── old/                        # Previous iterations (archived)
+├── FREE_ENERGY_EXPLANATION.md  # Theory deep-dive
+├── agent_evolution.log         # Detailed logs (created on run)
 └── output/                     # Results (created on run)
     ├── agent_history.jsonl     # All evaluations
-    └── best_agent.py           # Best agent found
+    └── best_agent_code.py      # Best agent found
 ```
+
+## Debugging
+
+**Check logs:**
+```bash
+tail -f agent_evolution.log          # Watch in real-time
+grep "ERROR" agent_evolution.log      # Find errors
+grep "Compilation failed" agent_evolution.log  # Syntax issues
+```
+
+**Common issues:**
+- **No functions found**: LLM not following delimiter format
+- **Compilation failed**: Syntax errors in generated code
+- **TypeError in tests**: Input dispatch logic issue (check test case format)
+
+## Architecture
+
+**Fixed Scaffold** (`scaffold.py`):
+- Solution generation (batched LLM calls)
+- Function extraction (multiple fallback strategies)
+- Code parsing and validation
+
+**Modifiable Strategy** (evolved by meta-LLM):
+- `build_prompt()` method only
+- Prompting techniques, examples, instructions
+- Chain-of-thought, few-shot learning, etc.
+
+**Meta-Optimizer** (`agent.py`):
+- TPE-guided search over modifications
+- Lambda sweep for free energy landscape
+- Evaluation and logging infrastructure
 
 ## Theory
 
-### Free Energy F(λ) = λ·C + L_train
-
-From Kolpakov's [structure-functions paper](https://arxiv.org/abs/2507.13543):
-
-The free energy balances:
-- **Training performance** (L_train): How well the agent solves problems
-- **Complexity cost** (C_agent): How much code/logic the agent uses
-- **Regularization** (λ): Controls the trade-off
-
-**Key insight**: λ is not optimized by TPE—it's **swept** to explore the loss-complexity landscape, like phase transitions in statistical physics.
-
-### Why Sweep λ Instead of Optimizing It?
-
-1. **Explore the landscape**: Different λ values reveal different optimal complexities
-2. **Phase transitions**: The optimal model structure changes discontinuously with λ
-3. **Legendre-Fenchel duality**: The sweep traces out the structure function C*(L)
-4. **Avoid local minima**: Sweeping is more robust than gradient-based λ optimization
-
-This follows the original paper's methodology rather than treating λ as just another hyperparameter.
-
-## Comparison to Darwin-Gödel Machine
-
-| Feature | Darwin-Gödel Machine | GKM (this project) |
-|---------|---------------------|-------------------|
-| **Self-modification** | ✓ Agent modifies own code | ✓ Agent modifies own code |
-| **Search algorithm** | Evolutionary | TPE (Bayesian) |
-| **Objective** | Accuracy only | F(λ) = λ·C + L_train |
-| **Regularization** | None | Kolmogorov complexity |
-| **Lambda** | N/A | Swept (not optimized) |
-| **Theory** | Empirical | Statistical physics |
-| **Infrastructure** | Docker, SWE-bench | Pure Python, algorithmic problems |
-| **Complexity** | ~1000+ lines | ~700 lines |
+See [FREE_ENERGY_EXPLANATION.md](FREE_ENERGY_EXPLANATION.md) for details on:
+- Why F(λ) = λ·C + L balances complexity vs performance
+- Why we sweep λ instead of optimizing it
+- Connection to statistical physics and phase transitions
+- Legendre-Fenchel duality and structure functions
 
 ## References
 
-1. **Paper**: Kolpakov, "Loss-Complexity Landscape and Model Structure Functions", [arXiv:2507.13543](https://arxiv.org/abs/2507.13543)
-2. **Code**: [structure-functions repo](https://github.com/sashakolpakov/structure-functions)
-3. **Darwin-Gödel Machine**: [dgm repo](https://github.com/jennyzzt/dgm)
-4. **Hyperopt/TPE**: Bergstra et al., "Algorithms for Hyper-Parameter Optimization" (2011)
+1. Kolpakov, "Loss-Complexity Landscape and Model Structure Functions", [arXiv:2507.13543](https://arxiv.org/abs/2507.13543)
+2. [structure-functions repo](https://github.com/sashakolpakov/structure-functions)
+3. [Darwin-Gödel Machine](https://github.com/jennyzzt/dgm)
+4. Bergstra et al., "Algorithms for Hyper-Parameter Optimization" (2011)
 
 ## License
 
