@@ -30,9 +30,9 @@ where:
 Complexity modes:
 
 - `active`: sum of complexities for rules actually used in observed episodes.
-- `table`: sum of complexities for the whole encoded sparse rule set. This is the default.
+- `table`: sum of complexities for the whole encoded sparse rule set. This is the default. The name is historical; it now means encoded rule-set size, not a dense transition table.
 - `pruned`: all transition rules reachable from state 0 under any possible observation.
-- `mixed`: active complexity plus a dead-code tax from the unused table.
+- `mixed`: active complexity plus a dead-code tax from unused encoded rules.
 
 The FSA input is:
 
@@ -43,7 +43,7 @@ The FSA input is:
 If no encoded rule matches an input, the automaton halts the episode. There is
 no random fallback behavior and no free default movement rule.
 
-The runner sweeps `lambda` to trace a loss-complexity landscape, following the structure-function/free-energy viewpoint in [arXiv:2507.13543](https://arxiv.org/abs/2507.13543).
+The runner sweeps `lambda` to trace a loss-complexity landscape, following the structure-function/free-energy viewpoint in [arXiv:2507.13543](https://arxiv.org/abs/2507.13543). The paper supplies the loss-complexity/free-energy lens; this repository applies that lens to a toy evolutionary substrate.
 
 This is not intended as a final open-ended system. It is a controllable instrument for studying the first necessary pieces: heritable structure, visible behavior, complexity pressure, replayable lineages, and eventually frontier-generating environments.
 
@@ -69,7 +69,7 @@ python agent.py --optimizer hyperopt --hyperopt-evals 300 --lambda-points 5
 Run a larger ecology with a less cramped episode horizon:
 
 ```bash
-python agent.py --width 10 --height 10 --food-count 6 --max-steps 80 --max-rule-length 3 --initial-rules 40 --max-rules 240 --generations 120 --population 220
+python agent.py --width 10 --height 10 --food-count 6 --max-steps 80 --max-rule-length 3 --initial-rules 100 --max-rules 180 --generations 150 --population 260 --lambda-max 0.0012
 ```
 
 Compare complexity assumptions:

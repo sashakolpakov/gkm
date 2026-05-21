@@ -76,12 +76,13 @@ C_mixed(a): active rule complexity plus an explicit dead-code tax
 
 `C_active` asks how simple the expressed behavior is. `C_table` asks how much
 machine was genetically carried, including unused rules and unused macro-rules.
-In the sparse FSA substrate, a rule matches `(state, previous_move,
-relative_food_azimuth)` and emits `(move_sequence, next_state)`. `C_pruned` asks
-how large the reachable machine is after obvious dead code is removed. These
-are raw code-length proxies, not normalized fractions. They should be swept
-separately; a result that only appears under `C_active` may be an artifact of
-hiding unused capacity.
+The name `C_table` is historical in the current sparse implementation: it means
+the whole encoded rule set, not a dense table. In the sparse FSA substrate, a
+rule matches `(state, previous_move, relative_food_azimuth)` and emits
+`(move_sequence, next_state)`. `C_pruned` asks how large the reachable machine is
+after obvious dead code is removed. These are raw code-length proxies, not
+normalized fractions. They should be swept separately; a result that only
+appears under `C_active` may be an artifact of hiding unused capacity.
 
 Then local selection minimizes:
 
@@ -167,9 +168,12 @@ It says that complexity growth is not inherently good. It is admitted only when 
 
 Following the loss-complexity structure-function viewpoint of
 [arXiv:2507.13543](https://arxiv.org/abs/2507.13543), `lambda` is swept rather
-than treated as a single tuned hyperparameter.
+than treated as a single tuned hyperparameter. The paper establishes the
+Legendre-Fenchel duality between free energy and the model structure function,
+and motivates susceptibility-style variance diagnostics; the open-ended ecology
+proposed here is an extension of that viewpoint, not a claim made by the paper.
 
-For each ecological time `t`, define:
+For each ecological time `t`, define the ideal frontier:
 
 ```text
 F_t(lambda) = inf_a [R_t(a) + lambda C(a)]
@@ -182,6 +186,8 @@ C_t^*(R) = minimum complexity needed to achieve risk <= R
 ```
 
 Open-endedness should appear as movement of this frontier over evolutionary time.
+In the implementation this frontier is sampled by genetic search or Hyperopt,
+so observed curves are empirical approximations.
 
 The empirical signature is not simply “best score goes up.” The stronger signature is:
 
@@ -206,10 +212,12 @@ Agents are finite-state machines or tiny programs. They perceive local observati
 Agent genome:
 
 ```text
-state x observation -> action, next_state, optional_write
+(state, previous_move, relative_food_azimuth) -> (move_sequence, next_state)
 ```
 
 This is simple enough to mutate directly and complex enough to show real behavioral improvement.
+Rules are sparse. If no encoded rule matches the current input, the episode
+halts; there is no random fallback policy.
 
 Minimum environment stages:
 
@@ -339,7 +347,7 @@ Prediction:
 
 ### Experiment 5: Exported Automata
 
-Export evolved automata as readable transition tables and minimal executable policies.
+Export evolved automata as readable sparse rule sets and minimal executable policies.
 
 Prediction:
 

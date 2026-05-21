@@ -6,6 +6,13 @@ This follows the loss-complexity landscape viewpoint of Kolpakov,
 regularization parameter, estimate the loss-complexity frontier, and look for
 phase-transition-like regions where complexity varies strongly.
 
+The paper establishes a Legendre-Fenchel duality between model structure
+functions and a free-energy functional, using computable complexity proxies and
+a susceptibility-like variance of model complexity to locate sharp
+loss-complexity tradeoffs. This repository does not reproduce the paper's
+regression experiments; it uses the same mathematical lens for sparse
+automata-evolution experiments.
+
 ## Core Functional
 
 The active experiment uses free energy as a local selection principle:
@@ -42,11 +49,11 @@ These are raw code-length proxies, not normalized fractions. A rule may contain
 a sequence of moves, so a long macro-rule costs more than a one-move rule.
 Each rule matches `(state, previous_move, relative_food_azimuth)` and emits
 `(move_sequence, next_state)`. `C_active` measures expressed behavior. `C_table`
-charges for the whole encoded sparse automaton, including unused rules and
-unused macro length. `C_pruned` removes states unreachable from state 0 but
-still charges for all rules in reachable states. `C_mixed` is a behavioral
-metric with an explicit dead-code tax. Undefined inputs halt the episode rather
-than invoking a free fallback policy.
+is a historical name for the whole encoded sparse rule set; it charges for
+unused rules and unused macro length. `C_pruned` removes states unreachable from
+state 0 but still charges for all encoded rules whose source state is reachable.
+`C_mixed` is a behavioral metric with an explicit dead-code tax. Undefined
+inputs halt the episode rather than invoking a free fallback policy.
 
 The code minimizes free energy directly, and reports fitness as `-F_lambda`.
 
@@ -107,7 +114,8 @@ For each ecological epoch, sweep `lambda`:
 F_t(lambda) = inf_a [R(a, E_t) + lambda C(a)]
 ```
 
-This traces a loss-complexity frontier:
+For the finite optimizer, this is estimated by the best sampled/evolved agents
+rather than computed exactly. The sweep approximates a loss-complexity frontier:
 
 ```text
 C_t^*(R) = minimum complexity needed to achieve risk <= R
@@ -123,6 +131,7 @@ chi_C(lambda) = Var[C(a)]
 
 computed over sampled incumbent automata for that lambda. Peaks in `chi_C`
 are candidates for phase-transition regions in the loss-complexity landscape.
+They are diagnostics, not proof of a thermodynamic phase transition.
 
 ## Empirical Signatures
 
