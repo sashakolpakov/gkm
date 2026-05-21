@@ -1,0 +1,3 @@
+# Optional optimizer used by `python agent.py --optimizer hyperopt`.
+setuptools<81
+hyperopt>=0.2.7
