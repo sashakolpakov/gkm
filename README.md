@@ -1,6 +1,7 @@
 # GKM: Open-Ended Evolution Under Free Energy
 
-This repository is focused on a research thesis and a small automata-evolution substrate.
+This repository is focused on a research thesis and small sparse-FSA evolution
+substrates.
 
 The thesis:
 
@@ -8,9 +9,11 @@ The thesis:
 
 See [OPEN_ENDED_EVOLUTION_THESIS.md](OPEN_ENDED_EVOLUTION_THESIS.md) for the full argument.
 
-## Current Research Substrate
+## Current Research Substrates
 
-The active experiment is a sparse finite-state automaton ecology:
+### Grid Foraging
+
+The first experiment is a sparse finite-state automaton ecology:
 
 - Agents are deterministic FSAs with a sparse encoded transition relation.
 - Genomes mutate by explicit rule edits, additions, and deletions. A rule may contain a short sequence of moves, not only a single move.
@@ -47,6 +50,54 @@ The runner sweeps `lambda` to trace a loss-complexity landscape, following the s
 
 This is not intended as a final open-ended system. It is a controllable instrument for studying the first necessary pieces: heritable structure, visible behavior, complexity pressure, replayable lineages, and eventually frontier-generating environments.
 
+### Pattern Transduction
+
+The second experiment asks a different question:
+
+```text
+Can a meta-evolutionary process synthesize compact deterministic solvers from
+observed pattern transitions?
+```
+
+The task format is foreign-object transduction:
+
+```text
+train:      [A B] -> [B A], [C D] -> [D C]
+validation: [X Y] -> [Y X]
+hidden test: [p q] -> [q p]
+```
+
+The evolved object is a sparse deterministic register transducer. Token
+identities are opaque: the rule key does not see `A`, `B`, or `X`. It sees only
+finite control and relational observations:
+
+```text
+(state, TOKEN | EOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
+```
+
+Primitive sets are intentionally tiered:
+
+- `stream`: move right, write current token, halt;
+- `register`: stream primitives plus store/write register actions;
+- `compare`: register primitives plus equality observations between the current token and stored registers.
+
+This lets us ask which primitive set is sufficient for a task family, while
+selection still minimizes:
+
+```text
+F_lambda(solver) = training_loss(solver) + lambda C(solver)
+```
+
+Evolution uses this training free energy as the local selection rule. The
+runner then sweeps `lambda` and selects a solver from the validation
+loss-complexity Pareto frontier: it finds the best validation loss, then keeps
+the simplest Pareto solver within a small validation-loss tolerance. The hidden
+test transition is evaluated only after this validation selection.
+
+The goal is not to build a general ARC solver. The goal is to study a
+meta-model that produces compact deterministic solvers when the pattern family
+is deterministic enough.
+
 ## Run
 
 ```bash
@@ -57,6 +108,12 @@ Equivalent:
 
 ```bash
 python evo_game.py --generations 80 --population 160 --render
+```
+
+Run the pattern-transduction substrate:
+
+```bash
+python pattern_fsa.py --task swap --primitive-set register --generations 120 --population 220 --lambda-points 4
 ```
 
 Use Hyperopt/TPE instead of the genetic population loop:
@@ -91,6 +148,15 @@ summary.json             train/validation summary
 best_replay.txt          ASCII replay of the final best policy
 ```
 
+Pattern-transduction outputs are written to `output/pattern_fsa/` by default:
+
+```text
+solver.json              selected sparse FSA solver
+history.json             per-generation training and validation metrics
+lambda_sweep.json        per-lambda validation frontier records
+summary.json             selected train/validation/hidden-test evaluation
+```
+
 ## Research Direction
 
 The intended direction is:
@@ -123,9 +189,11 @@ The goal is not to make a clever game bot. The goal is to test whether free-ener
 ```text
 agent.py                         compatibility entry point for evo_game.py
 evo_game.py                      finite-state automata evolution experiment
+pattern_fsa.py                   sparse FSA pattern-transduction experiment
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
 FREE_ENERGY_EXPLANATION.md       mathematical background
 tests/test_evo_game.py           standard-library tests
+tests/test_pattern_fsa.py        pattern-transduction tests
 requirements.txt                 optional Hyperopt/TPE dependency
 ```
 
@@ -133,5 +201,5 @@ requirements.txt                 optional Hyperopt/TPE dependency
 
 ```bash
 python -m unittest
-python -m py_compile agent.py evo_game.py tests/test_evo_game.py
+python -m py_compile agent.py evo_game.py pattern_fsa.py tests/test_evo_game.py tests/test_pattern_fsa.py
 ```

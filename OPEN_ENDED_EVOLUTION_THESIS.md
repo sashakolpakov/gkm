@@ -188,6 +188,11 @@ C_t^*(R) = minimum complexity needed to achieve risk <= R
 Open-endedness should appear as movement of this frontier over evolutionary time.
 In the implementation this frontier is sampled by genetic search or Hyperopt,
 so observed curves are empirical approximations.
+When a substrate admits a held-out split, local selection uses the training
+free energy, while the chosen reported model is selected by an elbow on the
+validation loss-complexity frontier: choose the simplest Pareto solver within a
+small tolerance of the best validation loss. Hidden test environments are used
+only after this selection step.
 
 The empirical signature is not simply “best score goes up.” The stronger signature is:
 
@@ -199,9 +204,10 @@ The empirical signature is not simply “best score goes up.” The stronger sig
 
 ## 7. Proposed Research Substrate
 
-The first serious substrate should be a small world where agency is visible.
+The first serious substrate should include two controlled regimes: visible
+embodied behavior and deterministic pattern transduction.
 
-Recommended starting point:
+Embodied starting point:
 
 ```text
 2D grid ecology
@@ -218,6 +224,31 @@ Agent genome:
 This is simple enough to mutate directly and complex enough to show real behavioral improvement.
 Rules are sparse. If no encoded rule matches the current input, the episode
 halts; there is no random fallback policy.
+
+Pattern-transduction starting point:
+
+```text
+train:      [A B] -> [B A], [C D] -> [D C]
+validation: [X Y] -> [Y X]
+hidden test: [p q] -> [q p]
+```
+
+Here the meta-model evolves a compact deterministic solver rather than directly
+predicting the output sequence. The solver is a sparse register transducer over
+opaque objects. Its rule key does not expose literal token identity:
+
+```text
+(state, TOKEN | EOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
+```
+
+Primitive sets should be varied experimentally:
+
+```text
+stream primitives -> register primitives -> comparison primitives -> richer object primitives
+```
+
+This directly tests which substrate primitives are sufficient for compact
+deterministic solver synthesis under the same free-energy objective.
 
 Minimum environment stages:
 
