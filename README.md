@@ -10,10 +10,10 @@ See [OPEN_ENDED_EVOLUTION_THESIS.md](OPEN_ENDED_EVOLUTION_THESIS.md) for the ful
 
 ## Current Research Substrate
 
-The active experiment is a small finite-state automaton ecology:
+The active experiment is a sparse finite-state automaton ecology:
 
-- Agents are table-driven automata.
-- Genomes mutate by explicit rule edits.
+- Agents are deterministic FSAs with a sparse encoded transition relation.
+- Genomes mutate by explicit rule edits, additions, and deletions. A rule may contain a short sequence of moves, not only a single move.
 - Agents play a visible grid foraging game.
 - Selection uses an explicit free-energy objective:
 
@@ -24,15 +24,24 @@ F_lambda(a) = R(a) + lambda C(a)
 where:
 
 - `R(a)` is the loss function: missed resources plus small step and collision costs.
-- `C(a)` is the selected complexity function. The runner can optimize active, table, pruned, or mixed complexity.
+- `C(a)` is the selected raw description-length function. By default this is encoded rule-set size: the sum of the complexities of every rule the genome carries, so extra rules and long macro-rules are paid for. The runner can also optimize active, pruned, or mixed complexity for comparison.
 - `lambda` controls pressure toward compact policies.
 
 Complexity modes:
 
-- `active`: states and rules actually used in observed episodes.
-- `table`: the whole encoded transition table, so unused capacity is still paid for.
+- `active`: sum of complexities for rules actually used in observed episodes.
+- `table`: sum of complexities for the whole encoded sparse rule set. This is the default.
 - `pruned`: all transition rules reachable from state 0 under any possible observation.
 - `mixed`: active complexity plus a dead-code tax from the unused table.
+
+The FSA input is:
+
+```text
+(current_state, previous_move, relative_food_azimuth) -> (move_sequence, next_state)
+```
+
+If no encoded rule matches an input, the automaton halts the episode. There is
+no random fallback behavior and no free default movement rule.
 
 The runner sweeps `lambda` to trace a loss-complexity landscape, following the structure-function/free-energy viewpoint in [arXiv:2507.13543](https://arxiv.org/abs/2507.13543).
 
@@ -55,6 +64,12 @@ Use Hyperopt/TPE instead of the genetic population loop:
 ```bash
 pip install -r requirements.txt
 python agent.py --optimizer hyperopt --hyperopt-evals 300 --lambda-points 5
+```
+
+Run a larger ecology with a less cramped episode horizon:
+
+```bash
+python agent.py --width 10 --height 10 --food-count 6 --max-steps 80 --max-rule-length 3 --initial-rules 40 --max-rules 240 --generations 120 --population 220
 ```
 
 Compare complexity assumptions:

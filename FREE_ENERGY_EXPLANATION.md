@@ -31,16 +31,22 @@ R(a, E_t) = missed_food + 0.05 * step_fraction + 0.10 * bump_fraction
 The implementation reports four complexity proxies:
 
 ```text
-C_active(a) = 1.5 * observed_states + observed_rules + 0.5 * observed_distinct_actions
-C_table(a)  = 1.5 * table_states + table_rules + 0.5 * table_distinct_actions
-C_pruned(a) = 1.5 * reachable_states + reachable_rules + 0.5 * reachable_distinct_actions
+rule_complexity(r) = number_of_moves_in_r + next_state_pointer_cost
+C_active(a) = sum rule_complexity(r) over observed rules
+C_table(a)  = sum rule_complexity(r) over every encoded sparse rule
+C_pruned(a) = sum rule_complexity(r) over rules reachable from state 0
 C_mixed(a)  = C_active(a) + 0.25 * [C_table(a) - C_active(a)]_+
 ```
 
-`C_active` measures expressed behavior. `C_table` charges for the whole encoded
-automaton, including unused capacity. `C_pruned` removes states unreachable from
-state 0 but still charges for all rules in reachable states. `C_mixed` is a
-behavioral metric with an explicit dead-code tax.
+These are raw code-length proxies, not normalized fractions. A rule may contain
+a sequence of moves, so a long macro-rule costs more than a one-move rule.
+Each rule matches `(state, previous_move, relative_food_azimuth)` and emits
+`(move_sequence, next_state)`. `C_active` measures expressed behavior. `C_table`
+charges for the whole encoded sparse automaton, including unused rules and
+unused macro length. `C_pruned` removes states unreachable from state 0 but
+still charges for all rules in reachable states. `C_mixed` is a behavioral
+metric with an explicit dead-code tax. Undefined inputs halt the episode rather
+than invoking a free fallback policy.
 
 The code minimizes free energy directly, and reports fitness as `-F_lambda`.
 

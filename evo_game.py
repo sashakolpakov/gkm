@@ -1,8 +1,8 @@
 """
 Evolve a finite-state automaton in a small visible foraging game.
 
-The agent is a table-driven automaton, mutations are explicit genome edits,
-and progress can be watched in an ASCII game replay.
+The agent is a sparse finite-state automaton, mutations are explicit rule-set
+edits, and progress can be watched in an ASCII game replay.
 """
 
 import argparse
@@ -24,9 +24,11 @@ except ModuleNotFoundError:
 Action = int
 Observation = int
 Position = Tuple[int, int]
+RuleKey = Tuple[int, Action, Observation]
 
 ACTION_NAMES = ["UP", "RIGHT", "DOWN", "LEFT", "STAY"]
 ACTION_DELTAS: List[Position] = [(0, -1), (1, 0), (0, 1), (-1, 0), (0, 0)]
+STAY_ACTION = ACTION_NAMES.index("STAY")
 
 OBS_LABELS = [
     "NW", "N", "NE",
@@ -36,10 +38,60 @@ OBS_LABELS = [
 COMPLEXITY_MODES = ("active", "table", "pruned", "mixed")
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class Rule:
-    action: Action
+    state: int
+    previous_action: Action
+    observation: Observation
+    actions: Tuple[Action, ...]
     next_state: int
+
+    def __init__(
+        self,
+        state: int = 0,
+        previous_action: Action = STAY_ACTION,
+        observation: Observation = 0,
+        action: Optional[Action] = None,
+        next_state: int = 0,
+        actions: Optional[Sequence[Action]] = None,
+    ) -> None:
+        if actions is None:
+            if action is None:
+                raise ValueError("Rule requires either action or actions")
+            actions = (action,)
+
+        action_tuple = tuple(int(item) for item in actions)
+        if not action_tuple:
+            raise ValueError("Rule actions cannot be empty")
+        if any(action < 0 or action >= len(ACTION_NAMES) for action in action_tuple):
+            raise ValueError("Rule contains an invalid action")
+        if previous_action < 0 or previous_action >= len(ACTION_NAMES):
+            raise ValueError("Rule has an invalid previous_action")
+        if observation < 0 or observation >= len(OBS_LABELS):
+            raise ValueError("Rule has an invalid observation")
+
+        object.__setattr__(self, "state", int(state))
+        object.__setattr__(self, "previous_action", int(previous_action))
+        object.__setattr__(self, "observation", int(observation))
+        object.__setattr__(self, "actions", action_tuple)
+        object.__setattr__(self, "next_state", int(next_state))
+
+    @property
+    def action(self) -> Action:
+        return self.actions[0]
+
+    @property
+    def key(self) -> RuleKey:
+        return (self.state, self.previous_action, self.observation)
+
+    def with_key(self, state: int, previous_action: Action, observation: Observation) -> "Rule":
+        return Rule(
+            state=state,
+            previous_action=previous_action,
+            observation=observation,
+            actions=self.actions,
+            next_state=self.next_state,
+        )
 
 
 @dataclass
@@ -51,47 +103,186 @@ class Genome:
     def observation_count(self) -> int:
         return len(OBS_LABELS)
 
-    def index(self, state: int, observation: Observation) -> int:
-        return state * self.observation_count + observation
+    @property
+    def input_count(self) -> int:
+        return len(ACTION_NAMES) * len(OBS_LABELS)
 
-    def rule_for(self, state: int, observation: Observation) -> Rule:
-        return self.rules[self.index(state, observation)]
+    @property
+    def max_exact_rules(self) -> int:
+        return self.state_count * self.input_count
+
+    def rule_map(self) -> Dict[RuleKey, Rule]:
+        return {rule.key: rule for rule in self.rules if self.valid_rule(rule)}
+
+    def valid_rule(self, rule: Rule) -> bool:
+        return (
+            0 <= rule.state < self.state_count
+            and 0 <= rule.next_state < self.state_count
+            and 0 <= rule.previous_action < len(ACTION_NAMES)
+            and 0 <= rule.observation < self.observation_count
+        )
+
+    def rule_for(
+        self,
+        state: int,
+        previous_action: Action,
+        observation: Observation,
+        rule_map: Optional[Dict[RuleKey, Rule]] = None,
+    ) -> Optional[Rule]:
+        rules = rule_map if rule_map is not None else self.rule_map()
+        return rules.get((state, previous_action, observation))
 
     @classmethod
-    def random(cls, rng: random.Random, state_count: int = 4) -> "Genome":
-        rules = [
-            Rule(
-                action=rng.randrange(len(ACTION_NAMES)),
-                next_state=rng.randrange(state_count),
-            )
-            for _ in range(state_count * len(OBS_LABELS))
-        ]
-        return cls(state_count=state_count, rules=rules)
+    def random(
+        cls,
+        rng: random.Random,
+        state_count: int = 4,
+        max_rule_length: int = 1,
+        initial_rule_count: Optional[int] = None,
+    ) -> "Genome":
+        input_count = len(ACTION_NAMES) * len(OBS_LABELS)
+        max_rules = state_count * input_count
+        if initial_rule_count is None:
+            initial_rule_count = min(max_rules, state_count * len(OBS_LABELS))
+
+        keys = rng.sample(all_rule_keys(state_count), k=min(initial_rule_count, max_rules))
+        rules = [random_rule(rng, key, state_count, max_rule_length) for key in keys]
+        return cls(state_count=state_count, rules=deduplicate_rules(rules))
 
     def crossover(self, other: "Genome", rng: random.Random) -> "Genome":
-        rules = [
-            self_rule if rng.random() < 0.5 else other_rule
-            for self_rule, other_rule in zip(self.rules, other.rules)
-        ]
-        return Genome(state_count=self.state_count, rules=rules)
+        state_count = max(self.state_count, other.state_count)
+        self_rules = self.rule_map()
+        other_rules = other.rule_map()
+        rules = []
+        for key in sorted(set(self_rules) | set(other_rules)):
+            if key in self_rules and key in other_rules:
+                rules.append(self_rules[key] if rng.random() < 0.5 else other_rules[key])
+            elif key in self_rules:
+                if rng.random() < 0.5:
+                    rules.append(self_rules[key])
+            elif rng.random() < 0.5:
+                rules.append(other_rules[key])
+        return Genome(state_count=state_count, rules=deduplicate_rules(rules))
 
-    def mutate(self, rng: random.Random, rate: float = 0.04) -> "Genome":
-        rules = list(self.rules)
+    def mutate(
+        self,
+        rng: random.Random,
+        rate: float = 0.04,
+        max_rule_length: int = 1,
+        max_rules: Optional[int] = None,
+        max_states: Optional[int] = None,
+    ) -> "Genome":
+        state_count = self.state_count
+        max_states = max_states or state_count
+        if state_count < max_states and rng.random() < rate * 0.25:
+            state_count += 1
+
+        rules = [rule for rule in self.rules if rule.state < state_count and rule.next_state < state_count]
         for idx, rule in enumerate(rules):
             if rng.random() >= rate:
                 continue
 
-            if rng.random() < 0.65:
+            edit = rng.random()
+            actions = list(rule.actions)
+            if edit < 0.55:
+                actions[rng.randrange(len(actions))] = rng.randrange(len(ACTION_NAMES))
+            elif edit < 0.70:
                 rules[idx] = Rule(
-                    action=rng.randrange(len(ACTION_NAMES)),
+                    state=rule.state,
+                    previous_action=rule.previous_action,
+                    observation=rule.observation,
+                    actions=actions,
+                    next_state=rng.randrange(state_count),
+                )
+                continue
+            elif edit < 0.82 and len(actions) < max_rule_length:
+                insert_at = rng.randrange(len(actions) + 1)
+                actions.insert(insert_at, rng.randrange(len(ACTION_NAMES)))
+            elif edit < 0.90 and len(actions) > 1:
+                del actions[rng.randrange(len(actions))]
+            elif edit < 0.96:
+                rules[idx] = random_rule(rng, random_rule_key(rng, state_count), state_count, max_rule_length)
+                continue
+            else:
+                # Delete a rule by replacing it with a sentinel filtered below.
+                rules[idx] = Rule(
+                    state=rule.state,
+                    previous_action=rule.previous_action,
+                    observation=rule.observation,
+                    action=STAY_ACTION,
                     next_state=rule.next_state,
                 )
-            else:
-                rules[idx] = Rule(
-                    action=rule.action,
-                    next_state=rng.randrange(self.state_count),
-                )
-        return Genome(state_count=self.state_count, rules=rules)
+                rules[idx] = None  # type: ignore[assignment]
+                continue
+
+            rules[idx] = Rule(
+                state=rule.state,
+                previous_action=rule.previous_action,
+                observation=rule.observation,
+                actions=actions,
+                next_state=rule.next_state,
+            )
+
+        rules = [rule for rule in rules if rule is not None]
+        rules = deduplicate_rules(rules)
+        max_possible = state_count * len(ACTION_NAMES) * len(OBS_LABELS)
+        max_rules = min(max_rules or max_possible, max_possible)
+        add_attempts = 1 + int(rate * max(1, len(rules)))
+        for _ in range(add_attempts):
+            if len(rules) >= max_rules or rng.random() >= rate * 2.0:
+                continue
+            existing = {rule.key for rule in rules}
+            available = [key for key in all_rule_keys(state_count) if key not in existing]
+            if not available:
+                break
+            rules.append(random_rule(rng, rng.choice(available), state_count, max_rule_length))
+
+        return Genome(state_count=state_count, rules=deduplicate_rules(rules)[:max_rules])
+
+
+def random_actions(rng: random.Random, max_rule_length: int) -> Tuple[Action, ...]:
+    length = rng.randrange(1, max(1, max_rule_length) + 1)
+    return tuple(rng.randrange(len(ACTION_NAMES)) for _ in range(length))
+
+
+def all_rule_keys(state_count: int) -> List[RuleKey]:
+    return [
+        (state, previous_action, observation_id)
+        for state in range(state_count)
+        for previous_action in range(len(ACTION_NAMES))
+        for observation_id in range(len(OBS_LABELS))
+    ]
+
+
+def random_rule_key(rng: random.Random, state_count: int) -> RuleKey:
+    return (
+        rng.randrange(state_count),
+        rng.randrange(len(ACTION_NAMES)),
+        rng.randrange(len(OBS_LABELS)),
+    )
+
+
+def random_rule(
+    rng: random.Random,
+    key: RuleKey,
+    state_count: int,
+    max_rule_length: int,
+) -> Rule:
+    state, previous_action, observation_id = key
+    return Rule(
+        state=state,
+        previous_action=previous_action,
+        observation=observation_id,
+        actions=random_actions(rng, max_rule_length),
+        next_state=rng.randrange(state_count),
+    )
+
+
+def deduplicate_rules(rules: Sequence[Rule]) -> List[Rule]:
+    by_key: Dict[RuleKey, Rule] = {}
+    for rule in rules:
+        by_key[rule.key] = rule
+    return [by_key[key] for key in sorted(by_key)]
 
 
 @dataclass(frozen=True)
@@ -112,6 +303,8 @@ class Episode:
     path: List[Position]
     states: List[int]
     observations: List[Observation]
+    previous_actions: List[Action]
+    rule_keys: List[Optional[RuleKey]]
     actions: List[Action]
     collected_at: List[Position]
 
@@ -123,6 +316,7 @@ class Evaluation:
     free_energy: float
     lambda_value: float
     complexity_mode: str
+    max_steps: int
     mean_collected: float
     mean_steps: float
     complexity: float
@@ -268,46 +462,63 @@ def clamp_move(position: Position, action: Action, level: Level) -> Tuple[Positi
 def run_episode(genome: Genome, level: Level, max_steps: int = 48) -> Episode:
     position = level.start
     state = 0
+    previous_action = STAY_ACTION
+    rule_map = genome.rule_map()
     remaining = set(level.food)
     collected_at: List[Position] = []
     path = [position]
     states = [state]
     observations: List[Observation] = []
+    previous_actions: List[Action] = []
+    rule_keys: List[Optional[RuleKey]] = []
     actions: List[Action] = []
     bumps = 0
     shaping = 0.0
 
-    for step in range(max_steps):
+    while len(actions) < max_steps:
         if not remaining:
             break
 
-        before_distance = nearest_food_distance(position, remaining)
         obs = observation(position, tuple(remaining))
-        rule = genome.rule_for(state, obs)
-        next_position, bumped = clamp_move(position, rule.action, level)
+        rule_key = (state, previous_action, obs)
+        rule = genome.rule_for(state, previous_action, obs, rule_map=rule_map)
+        if rule is None:
+            break
+        decision_state = state
 
-        if bumped:
-            bumps += 1
-            shaping -= 0.75
+        for action_index, action in enumerate(rule.actions):
+            if not remaining or len(actions) >= max_steps:
+                break
 
-        if next_position in remaining:
-            remaining.remove(next_position)
-            collected_at.append(next_position)
-            shaping += 8.0
+            before_distance = nearest_food_distance(position, remaining)
+            next_position, bumped = clamp_move(position, action, level)
 
-        after_distance = nearest_food_distance(next_position, remaining)
-        if remaining:
-            if after_distance < before_distance:
-                shaping += 0.35
-            elif after_distance > before_distance:
-                shaping -= 0.20
+            if bumped:
+                bumps += 1
+                shaping -= 0.75
 
-        position = next_position
-        state = rule.next_state
-        observations.append(obs)
-        actions.append(rule.action)
-        states.append(state)
-        path.append(position)
+            if next_position in remaining:
+                remaining.remove(next_position)
+                collected_at.append(next_position)
+                shaping += 8.0
+
+            after_distance = nearest_food_distance(next_position, remaining)
+            if remaining:
+                if after_distance < before_distance:
+                    shaping += 0.35
+                elif after_distance > before_distance:
+                    shaping -= 0.20
+
+            position = next_position
+            actions.append(action)
+            observations.append(obs)
+            previous_actions.append(previous_action)
+            rule_keys.append(rule_key)
+            previous_action = action
+            if action_index == len(rule.actions) - 1:
+                state = rule.next_state
+            states.append(state if action_index == len(rule.actions) - 1 else decision_state)
+            path.append(position)
 
     collected = len(level.food) - len(remaining)
     steps = len(actions)
@@ -321,6 +532,8 @@ def run_episode(genome: Genome, level: Level, max_steps: int = 48) -> Episode:
         path=path,
         states=states,
         observations=observations,
+        previous_actions=previous_actions,
+        rule_keys=rule_keys,
         actions=actions,
         collected_at=collected_at,
     )
@@ -347,11 +560,11 @@ def loss_function(genome: Genome, levels: Sequence[Level], max_steps: int = 48) 
 
 
 def max_complexity(genome: Genome) -> float:
-    return 1.5 * genome.state_count + genome.state_count * len(OBS_LABELS) + 0.5 * len(ACTION_NAMES)
+    return table_complexity_raw(genome)
 
 
-def normalize_complexity(genome: Genome, raw_complexity: float) -> float:
-    return raw_complexity / max_complexity(genome)
+def rule_complexity(rule: Rule) -> float:
+    return len(rule.actions) + 1.0
 
 
 def validate_complexity_mode(mode: str) -> None:
@@ -363,7 +576,7 @@ def validate_complexity_mode(mode: str) -> None:
 def complexity_function(
     genome: Genome,
     episodes: Optional[Sequence[Episode]] = None,
-    mode: str = "active",
+    mode: str = "table",
 ) -> Tuple[float, float, int, int]:
     breakdown = complexity_breakdown(genome, episodes, mode=mode)
     if mode == "table":
@@ -376,7 +589,7 @@ def complexity_function(
 def complexity_breakdown(
     genome: Genome,
     episodes: Optional[Sequence[Episode]] = None,
-    mode: str = "active",
+    mode: str = "table",
 ) -> ComplexityBreakdown:
     validate_complexity_mode(mode)
 
@@ -385,29 +598,24 @@ def complexity_breakdown(
     pruned_raw, reachable_states, reachable_rules = pruned_complexity_raw(genome)
     mixed_raw = active_raw + 0.25 * max(0.0, table_raw - active_raw)
 
-    active_complexity = normalize_complexity(genome, active_raw)
-    table_complexity = normalize_complexity(genome, table_raw)
-    pruned_complexity = normalize_complexity(genome, pruned_raw)
-    mixed_complexity = normalize_complexity(genome, mixed_raw)
-
     selected = {
-        "active": (active_complexity, active_raw),
-        "table": (table_complexity, table_raw),
-        "pruned": (pruned_complexity, pruned_raw),
-        "mixed": (mixed_complexity, mixed_raw),
+        "active": active_raw,
+        "table": table_raw,
+        "pruned": pruned_raw,
+        "mixed": mixed_raw,
     }[mode]
 
     return ComplexityBreakdown(
         mode=mode,
-        complexity=selected[0],
-        raw_complexity=selected[1],
-        active_complexity=active_complexity,
+        complexity=selected,
+        raw_complexity=selected,
+        active_complexity=active_raw,
         active_raw_complexity=active_raw,
-        table_complexity=table_complexity,
+        table_complexity=table_raw,
         table_raw_complexity=table_raw,
-        pruned_complexity=pruned_complexity,
+        pruned_complexity=pruned_raw,
         pruned_raw_complexity=pruned_raw,
-        mixed_complexity=mixed_complexity,
+        mixed_complexity=mixed_raw,
         mixed_raw_complexity=mixed_raw,
         active_states=active_states,
         active_rules=active_rules,
@@ -423,46 +631,40 @@ def active_complexity_raw(
     episodes: Optional[Sequence[Episode]] = None,
 ) -> Tuple[float, int, int]:
     if episodes is None:
-        used_states = set(range(genome.state_count))
-        used_rules = {
-            (state, obs)
-            for state in range(genome.state_count)
-            for obs in range(genome.observation_count)
-        }
+        used_states = {rule.state for rule in genome.rules} | {rule.next_state for rule in genome.rules}
+        used_rules = {rule.key for rule in genome.rules}
     else:
         used_states, used_rules = active_automaton_parts(episodes)
 
     active_states = len(used_states)
     active_rules = len(used_rules)
-    distinct_actions = len({genome.rule_for(state, obs).action for state, obs in used_rules}) if used_rules else 0
-    complexity = 1.5 * active_states + active_rules + 0.5 * distinct_actions
+    rule_map = genome.rule_map()
+    complexity = sum(rule_complexity(rule_map[key]) for key in used_rules if key in rule_map)
     return complexity, active_states, active_rules
 
 
 def table_complexity_raw(genome: Genome) -> float:
-    distinct_actions = len({rule.action for rule in genome.rules})
-    return 1.5 * genome.state_count + len(genome.rules) + 0.5 * distinct_actions
+    return sum(rule_complexity(rule) for rule in genome.rules)
 
 
 def pruned_complexity_raw(genome: Genome) -> Tuple[float, int, int]:
     reachable_states = reachable_automaton_states(genome)
-    reachable_rules = {
-        (state, obs)
-        for state in reachable_states
-        for obs in range(genome.observation_count)
-    }
-    distinct_actions = len({genome.rule_for(state, obs).action for state, obs in reachable_rules}) if reachable_rules else 0
-    complexity = 1.5 * len(reachable_states) + len(reachable_rules) + 0.5 * distinct_actions
+    reachable_rules = {rule.key for rule in genome.rules if rule.state in reachable_states}
+    rule_map = genome.rule_map()
+    complexity = sum(rule_complexity(rule_map[key]) for key in reachable_rules if key in rule_map)
     return complexity, len(reachable_states), len(reachable_rules)
 
 
 def reachable_automaton_states(genome: Genome) -> Set[int]:
     reachable = {0}
     frontier = [0]
+    rules_by_state: Dict[int, List[Rule]] = {}
+    for rule in genome.rules:
+        rules_by_state.setdefault(rule.state, []).append(rule)
     while frontier:
         state = frontier.pop()
-        for obs in range(genome.observation_count):
-            next_state = genome.rule_for(state, obs).next_state
+        for rule in rules_by_state.get(state, []):
+            next_state = rule.next_state
             if next_state not in reachable:
                 reachable.add(next_state)
                 frontier.append(next_state)
@@ -473,9 +675,16 @@ def free_energy_function(
     genome: Genome,
     levels: Sequence[Level],
     lambda_value: float,
-    complexity_mode: str = "active",
+    complexity_mode: str = "table",
+    max_steps: int = 48,
 ) -> float:
-    return evaluate(genome, levels, lambda_value=lambda_value, complexity_mode=complexity_mode).free_energy
+    return evaluate(
+        genome,
+        levels,
+        lambda_value=lambda_value,
+        complexity_mode=complexity_mode,
+        max_steps=max_steps,
+    ).free_energy
 
 
 def evaluate(
@@ -483,13 +692,14 @@ def evaluate(
     levels: Sequence[Level],
     lambda_value: float = 0.0,
     complexity_weight: Optional[float] = None,
-    complexity_mode: str = "active",
+    complexity_mode: str = "table",
+    max_steps: int = 48,
 ) -> Evaluation:
     if complexity_weight is not None:
         lambda_value = complexity_weight
 
-    episodes = [run_episode(genome, level) for level in levels]
-    loss = statistics.mean(episode_loss(episode) for episode in episodes)
+    episodes = [run_episode(genome, level, max_steps=max_steps) for level in levels]
+    loss = statistics.mean(episode_loss(episode, max_steps=max_steps) for episode in episodes)
     complexity = complexity_breakdown(genome, episodes, mode=complexity_mode)
     free_energy = loss + lambda_value * complexity.complexity
     fitness = -free_energy
@@ -499,6 +709,7 @@ def evaluate(
         free_energy=free_energy,
         lambda_value=lambda_value,
         complexity_mode=complexity.mode,
+        max_steps=max_steps,
         mean_collected=statistics.mean(ep.collected for ep in episodes),
         mean_steps=statistics.mean(ep.steps for ep in episodes),
         complexity=complexity.complexity,
@@ -521,13 +732,14 @@ def evaluate(
     )
 
 
-def active_automaton_parts(episodes: Sequence[Episode]) -> Tuple[Set[int], Set[Tuple[int, Observation]]]:
+def active_automaton_parts(episodes: Sequence[Episode]) -> Tuple[Set[int], Set[RuleKey]]:
     used_states = set()
     used_rules = set()
     for episode in episodes:
         used_states.update(episode.states)
-        for state, obs in zip(episode.states, episode.observations):
-            used_rules.add((state, obs))
+        for key in episode.rule_keys:
+            if key is not None:
+                used_rules.add(key)
     return used_states, used_rules
 
 
@@ -545,7 +757,12 @@ def evolve(
     elite_fraction: float = 0.10,
     complexity_weight: float = 0.02,
     lambda_value: Optional[float] = None,
-    complexity_mode: str = "active",
+    complexity_mode: str = "table",
+    max_steps: int = 48,
+    max_rule_length: int = 1,
+    initial_rule_count: Optional[int] = None,
+    max_rules: Optional[int] = None,
+    max_states: Optional[int] = None,
     train_levels: Optional[List[Level]] = None,
     val_levels: Optional[List[Level]] = None,
     report_every: int = 10,
@@ -556,8 +773,19 @@ def evolve(
     rng = random.Random(seed)
     train_levels = train_levels or make_levels(seed + 100, count=12)
     val_levels = val_levels or make_levels(seed + 200, count=8)
+    max_states = max_states or state_count
+    max_possible_rules = max_states * len(ACTION_NAMES) * len(OBS_LABELS)
+    max_rules = min(max_rules or max_possible_rules, max_possible_rules)
 
-    population = [Genome.random(rng, state_count=state_count) for _ in range(population_size)]
+    population = [
+        Genome.random(
+            rng,
+            state_count=state_count,
+            max_rule_length=max_rule_length,
+            initial_rule_count=initial_rule_count,
+        )
+        for _ in range(population_size)
+    ]
     initial_best = population[0]
     best = population[0]
     history: List[GenerationRecord] = []
@@ -566,7 +794,16 @@ def evolve(
 
     for generation in range(generations + 1):
         evaluations = [
-            (evaluate(genome, train_levels, lambda_value=lambda_value, complexity_mode=complexity_mode), genome)
+            (
+                evaluate(
+                    genome,
+                    train_levels,
+                    lambda_value=lambda_value,
+                    complexity_mode=complexity_mode,
+                    max_steps=max_steps,
+                ),
+                genome,
+            )
             for genome in population
         ]
         evaluations.sort(key=lambda item: item[0].fitness, reverse=True)
@@ -576,7 +813,13 @@ def evolve(
         if generation == 0:
             initial_best = best
 
-        val_eval = evaluate(best, val_levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
+        val_eval = evaluate(
+            best,
+            val_levels,
+            lambda_value=lambda_value,
+            complexity_mode=complexity_mode,
+            max_steps=max_steps,
+        )
         mean_fitness = statistics.mean(ev.fitness for ev, _ in evaluations)
         history.append(GenerationRecord(
             generation=generation,
@@ -610,25 +853,49 @@ def evolve(
         while len(next_population) < population_size:
             parent_a = tournament_select(scored, rng)
             parent_b = tournament_select(scored, rng)
-            child = parent_a.crossover(parent_b, rng).mutate(rng, mutation_rate)
+            child = parent_a.crossover(parent_b, rng).mutate(
+                rng,
+                mutation_rate,
+                max_rule_length=max_rule_length,
+                max_rules=max_rules,
+                max_states=max_states,
+            )
             next_population.append(child)
 
         population = next_population
 
-    train_eval = evaluate(best, train_levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
-    val_eval = evaluate(best, val_levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
+    train_eval = evaluate(
+        best,
+        train_levels,
+        lambda_value=lambda_value,
+        complexity_mode=complexity_mode,
+        max_steps=max_steps,
+    )
+    val_eval = evaluate(
+        best,
+        val_levels,
+        lambda_value=lambda_value,
+        complexity_mode=complexity_mode,
+        max_steps=max_steps,
+    )
     return initial_best, best, history, train_eval, val_eval
 
 
-def genome_from_hyperopt_params(params: Dict[str, int], state_count: int) -> Genome:
+def genome_from_hyperopt_params(params: Dict[str, int], state_count: int, max_rule_length: int = 1) -> Genome:
     rules = [
         Rule(
-            action=int(params[f"action_{idx}"]),
+            state=int(params[f"source_state_{idx}"]),
+            previous_action=int(params[f"previous_action_{idx}"]),
+            observation=int(params[f"observation_{idx}"]),
+            actions=tuple(
+                int(params[f"action_{idx}_{action_idx}"])
+                for action_idx in range(int(params[f"length_{idx}"]))
+            ),
             next_state=int(params[f"state_{idx}"]),
         )
         for idx in range(state_count * len(OBS_LABELS))
     ]
-    return Genome(state_count=state_count, rules=rules)
+    return Genome(state_count=state_count, rules=deduplicate_rules(rules))
 
 
 def hyperopt_search(
@@ -636,7 +903,9 @@ def hyperopt_search(
     lambda_value: float,
     state_count: int = 4,
     max_evals: int = 200,
-    complexity_mode: str = "active",
+    complexity_mode: str = "table",
+    max_steps: int = 48,
+    max_rule_length: int = 1,
 ) -> Tuple[Genome, List[GenerationRecord], Evaluation]:
     if fmin is None:
         raise RuntimeError("hyperopt is required for --optimizer hyperopt. Install with: pip install -r requirements.txt")
@@ -644,7 +913,15 @@ def hyperopt_search(
     rule_count = state_count * len(OBS_LABELS)
     space = {}
     for idx in range(rule_count):
-        space[f"action_{idx}"] = hp.choice(f"action_{idx}", list(range(len(ACTION_NAMES))))
+        space[f"source_state_{idx}"] = hp.choice(f"source_state_{idx}", list(range(state_count)))
+        space[f"previous_action_{idx}"] = hp.choice(f"previous_action_{idx}", list(range(len(ACTION_NAMES))))
+        space[f"observation_{idx}"] = hp.choice(f"observation_{idx}", list(range(len(OBS_LABELS))))
+        space[f"length_{idx}"] = hp.choice(f"length_{idx}", list(range(1, max(1, max_rule_length) + 1)))
+        for action_idx in range(max(1, max_rule_length)):
+            space[f"action_{idx}_{action_idx}"] = hp.choice(
+                f"action_{idx}_{action_idx}",
+                list(range(len(ACTION_NAMES))),
+            )
         space[f"state_{idx}"] = hp.choice(f"state_{idx}", list(range(state_count)))
 
     best_genome: Optional[Genome] = None
@@ -653,8 +930,14 @@ def hyperopt_search(
 
     def objective(params: Dict[str, int]) -> Dict[str, object]:
         nonlocal best_genome, best_eval
-        genome = genome_from_hyperopt_params(params, state_count)
-        current_eval = evaluate(genome, levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
+        genome = genome_from_hyperopt_params(params, state_count, max_rule_length=max_rule_length)
+        current_eval = evaluate(
+            genome,
+            levels,
+            lambda_value=lambda_value,
+            complexity_mode=complexity_mode,
+            max_steps=max_steps,
+        )
 
         if best_eval is None or current_eval.free_energy < best_eval.free_energy:
             best_genome = genome
@@ -721,7 +1004,12 @@ def lambda_sweep(
     train_levels: Sequence[Level],
     val_levels: Sequence[Level],
     report_every: int = 10,
-    complexity_mode: str = "active",
+    complexity_mode: str = "table",
+    max_steps: int = 48,
+    max_rule_length: int = 1,
+    initial_rule_count: Optional[int] = None,
+    max_rules: Optional[int] = None,
+    max_states: Optional[int] = None,
 ) -> Tuple[Genome, List[LambdaRecord], List[GenerationRecord], Evaluation, Evaluation]:
     records: List[LambdaRecord] = []
     all_history: List[GenerationRecord] = []
@@ -738,6 +1026,8 @@ def lambda_sweep(
                 state_count=state_count,
                 max_evals=hyperopt_evals,
                 complexity_mode=complexity_mode,
+                max_steps=max_steps,
+                max_rule_length=max_rule_length,
             )
         elif optimizer == "genetic":
             _initial, genome, history, _train_search_eval, _val_search_eval = evolve(
@@ -749,6 +1039,11 @@ def lambda_sweep(
                 complexity_weight=complexity_weight,
                 lambda_value=lambda_value,
                 complexity_mode=complexity_mode,
+                max_steps=max_steps,
+                max_rule_length=max_rule_length,
+                initial_rule_count=initial_rule_count,
+                max_rules=max_rules,
+                max_states=max_states,
                 train_levels=list(train_levels),
                 val_levels=list(val_levels),
                 report_every=report_every,
@@ -756,8 +1051,20 @@ def lambda_sweep(
         else:
             raise ValueError(f"unknown optimizer: {optimizer}")
 
-        train_eval = evaluate(genome, train_levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
-        val_eval = evaluate(genome, val_levels, lambda_value=lambda_value, complexity_mode=complexity_mode)
+        train_eval = evaluate(
+            genome,
+            train_levels,
+            lambda_value=lambda_value,
+            complexity_mode=complexity_mode,
+            max_steps=max_steps,
+        )
+        val_eval = evaluate(
+            genome,
+            val_levels,
+            lambda_value=lambda_value,
+            complexity_mode=complexity_mode,
+            max_steps=max_steps,
+        )
         all_history.extend(history)
         record = LambdaRecord(
             lambda_value=lambda_value,
@@ -807,10 +1114,10 @@ def print_lambda_record(record: LambdaRecord) -> None:
         f"L_train={record.train_loss:.4f} "
         f"L_val={record.val_loss:.4f} "
         f"F_val={record.val_free_energy:.4f} "
-        f"C_{record.complexity_mode}={record.complexity:.3f} "
-        f"Ca={record.active_complexity:.3f} "
-        f"Cp={record.pruned_complexity:.3f} "
-        f"Ct={record.table_complexity:.3f} "
+        f"C_{record.complexity_mode}={record.complexity:.1f} "
+        f"Ca={record.active_complexity:.1f} "
+        f"Cp={record.pruned_complexity:.1f} "
+        f"Ct={record.table_complexity:.1f} "
         f"chi_C={record.complexity_variance:.5f} "
         f"val_food={record.val_food:.2f} "
         f"active={record.active_states}/{record.active_rules} "
@@ -831,9 +1138,9 @@ def print_generation(record: GenerationRecord) -> None:
         f"L={record.best_loss:.4f} "
         f"train_food={record.train_food:.2f} "
         f"val_food={record.val_food:.2f} "
-        f"C_{record.complexity_mode}={record.complexity:.3f} "
-        f"Ca={record.active_complexity:.3f} "
-        f"Ct={record.table_complexity:.3f} "
+        f"C_{record.complexity_mode}={record.complexity:.1f} "
+        f"Ca={record.active_complexity:.1f} "
+        f"Ct={record.table_complexity:.1f} "
         f"active={record.active_states}/{record.active_rules}"
     )
 
@@ -870,8 +1177,10 @@ def render_episode(level: Level, episode: Episode, delayless: bool = True) -> st
 
         if step < len(episode.actions):
             obs = OBS_LABELS[episode.observations[step]]
+            prev = ACTION_NAMES[episode.previous_actions[step]]
             action = ACTION_NAMES[episode.actions[step]]
-            lines.append(f"obs={obs} action={action}")
+            rule = "encoded" if episode.rule_keys[step] is not None else "default"
+            lines.append(f"prev={prev} obs={obs} action={action} rule={rule}")
         frames.append("\n".join(lines))
 
     separator = "\n" + ("-" * level.width) + "\n"
@@ -880,19 +1189,23 @@ def render_episode(level: Level, episode: Episode, delayless: bool = True) -> st
 
 def export_policy_code(genome: Genome) -> str:
     table = [
-        (rule.action, rule.next_state)
+        (rule.state, rule.previous_action, rule.observation, rule.actions, rule.next_state)
         for rule in genome.rules
     ]
     return f'''# Auto-generated evolved finite-state automaton policy.
 ACTION_NAMES = {ACTION_NAMES!r}
 OBS_LABELS = {OBS_LABELS!r}
 STATE_COUNT = {genome.state_count}
-POLICY_TABLE = {table!r}
+RULES = {table!r}
+RULE_MAP = {{(state, previous_action, observation): (actions, next_state)
+            for state, previous_action, observation, actions, next_state in RULES}}
 
-def act(state, observation):
-    """Return (action_name, next_state) for a discrete observation."""
-    action, next_state = POLICY_TABLE[state * len(OBS_LABELS) + observation]
-    return ACTION_NAMES[action], next_state
+def act(state, previous_action, observation):
+    """Return (action_names, next_state) for a sparse FSA input."""
+    if (state, previous_action, observation) not in RULE_MAP:
+        return None, state
+    actions, next_state = RULE_MAP[(state, previous_action, observation)]
+    return [ACTION_NAMES[action] for action in actions], next_state
 '''
 
 
@@ -929,6 +1242,7 @@ def evaluation_summary(evaluation: Evaluation) -> Dict[str, object]:
         "free_energy": evaluation.free_energy,
         "lambda": evaluation.lambda_value,
         "complexity_mode": evaluation.complexity_mode,
+        "max_steps": evaluation.max_steps,
         "mean_collected": evaluation.mean_collected,
         "mean_steps": evaluation.mean_steps,
         "complexity": evaluation.complexity,
@@ -956,15 +1270,25 @@ def main() -> None:
     parser.add_argument("--generations", type=int, default=80)
     parser.add_argument("--population", type=int, default=160)
     parser.add_argument("--states", type=int, default=4)
+    parser.add_argument("--max-states", type=int, default=None)
+    parser.add_argument("--initial-rules", type=int, default=None)
+    parser.add_argument("--max-rules", type=int, default=None)
+    parser.add_argument("--width", type=int, default=7)
+    parser.add_argument("--height", type=int, default=7)
+    parser.add_argument("--food-count", type=int, default=4)
+    parser.add_argument("--train-levels", type=int, default=12)
+    parser.add_argument("--val-levels", type=int, default=8)
+    parser.add_argument("--max-steps", type=int, default=48)
+    parser.add_argument("--max-rule-length", type=int, default=1)
     parser.add_argument("--mutation-rate", type=float, default=0.04)
-    parser.add_argument("--complexity-weight", type=float, default=0.02)
+    parser.add_argument("--complexity-weight", type=float, default=0.002)
     parser.add_argument("--lambda-min", type=float, default=0.0)
-    parser.add_argument("--lambda-max", type=float, default=0.20)
+    parser.add_argument("--lambda-max", type=float, default=0.01)
     parser.add_argument("--lambda-points", type=int, default=5)
     parser.add_argument(
         "--complexity-mode",
         choices=COMPLEXITY_MODES,
-        default="active",
+        default="table",
         help="Complexity term optimized inside free energy.",
     )
     parser.add_argument("--optimizer", choices=["genetic", "hyperopt"], default="genetic")
@@ -974,8 +1298,20 @@ def main() -> None:
     parser.add_argument("--output-dir", default="./output/evo_game")
     args = parser.parse_args()
 
-    train_levels = make_levels(args.seed + 100, count=12)
-    val_levels = make_levels(args.seed + 200, count=8)
+    train_levels = make_levels(
+        args.seed + 100,
+        count=args.train_levels,
+        width=args.width,
+        height=args.height,
+        food_count=args.food_count,
+    )
+    val_levels = make_levels(
+        args.seed + 200,
+        count=args.val_levels,
+        width=args.width,
+        height=args.height,
+        food_count=args.food_count,
+    )
     lambda_values = make_lambda_values(args.lambda_min, args.lambda_max, args.lambda_points)
 
     if args.optimizer == "hyperopt" and fmin is None:
@@ -987,6 +1323,11 @@ def main() -> None:
         population_size=max(2, min(args.population, 50)),
         state_count=args.states,
         complexity_mode=args.complexity_mode,
+        max_steps=args.max_steps,
+        max_rule_length=args.max_rule_length,
+        initial_rule_count=args.initial_rules,
+        max_rules=args.max_rules,
+        max_states=args.max_states,
         train_levels=train_levels,
         val_levels=val_levels,
         report_every=0,
@@ -1002,6 +1343,11 @@ def main() -> None:
         mutation_rate=args.mutation_rate,
         complexity_weight=args.complexity_weight,
         complexity_mode=args.complexity_mode,
+        max_steps=args.max_steps,
+        max_rule_length=args.max_rule_length,
+        initial_rule_count=args.initial_rules,
+        max_rules=args.max_rules,
+        max_states=args.max_states,
         hyperopt_evals=args.hyperopt_evals,
         train_levels=train_levels,
         val_levels=val_levels,
@@ -1009,11 +1355,14 @@ def main() -> None:
     )
 
     replay_level = val_levels[0]
-    initial_episode = run_episode(initial_best, replay_level)
-    best_episode = run_episode(best, replay_level)
+    initial_episode = run_episode(initial_best, replay_level, max_steps=args.max_steps)
+    best_episode = run_episode(best, replay_level, max_steps=args.max_steps)
     best_replay = render_episode(replay_level, best_episode)
 
     print("\nFinal evaluation")
+    print(f"  ecology:         {args.width}x{args.height}, food={args.food_count}, max_steps={args.max_steps}")
+    print(f"  rule max length: {args.max_rule_length}")
+    print(f"  encoded rules:   {val_eval.table_rules}")
     print(f"  selected lambda: {val_eval.lambda_value:.4f}")
     print(f"  complexity mode: {val_eval.complexity_mode}")
     print(f"  train loss:      {train_eval.loss:.4f}")
@@ -1021,11 +1370,11 @@ def main() -> None:
     print(f"  val free energy: {val_eval.free_energy:.4f}")
     print(f"  train mean food: {train_eval.mean_collected:.2f}/{len(train_levels[0].food)}")
     print(f"  val mean food:   {val_eval.mean_collected:.2f}/{len(val_levels[0].food)}")
-    print(f"  selected C:      {val_eval.complexity:.3f} ({val_eval.raw_complexity:.1f} raw)")
-    print(f"  active C:        {val_eval.active_complexity:.3f} ({val_eval.active_states} states, {val_eval.active_rules} rules)")
-    print(f"  pruned C:        {val_eval.pruned_complexity:.3f} ({val_eval.reachable_states} states, {val_eval.reachable_rules} rules)")
-    print(f"  table C:         {val_eval.table_complexity:.3f} ({val_eval.table_states} states, {val_eval.table_rules} rules)")
-    print(f"  mixed C:         {val_eval.mixed_complexity:.3f}")
+    print(f"  selected C:      {val_eval.complexity:.1f}")
+    print(f"  active C:        {val_eval.active_complexity:.1f} ({val_eval.active_states} states, {val_eval.active_rules} rules)")
+    print(f"  pruned C:        {val_eval.pruned_complexity:.1f} ({val_eval.reachable_states} states, {val_eval.reachable_rules} rules)")
+    print(f"  table C:         {val_eval.table_complexity:.1f} ({val_eval.table_states} states, {val_eval.table_rules} rules)")
+    print(f"  mixed C:         {val_eval.mixed_complexity:.1f}")
 
     if args.render:
         print("\nInitial best replay")

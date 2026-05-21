@@ -67,16 +67,21 @@ For finite automata this must be measured several ways, because each proxy
 answers a different research question:
 
 ```text
-C_active(a): behavior actually expressed on sampled episodes
-C_table(a): full encoded transition table
-C_pruned(a): full transition table after removing unreachable states
-C_mixed(a): active behavior plus an explicit dead-code tax
+rule_complexity(r): number of moves in r plus its next-state pointer
+C_active(a): sum of complexities for behaviorally expressed rules
+C_table(a): sum of complexities for the full encoded sparse transition set
+C_pruned(a): sum of complexities after removing unreachable states
+C_mixed(a): active rule complexity plus an explicit dead-code tax
 ```
 
 `C_active` asks how simple the expressed behavior is. `C_table` asks how much
-machine was genetically carried. `C_pruned` asks how large the reachable machine
-is after obvious dead code is removed. These should be swept separately; a result
-that only appears under `C_active` may be an artifact of hiding unused capacity.
+machine was genetically carried, including unused rules and unused macro-rules.
+In the sparse FSA substrate, a rule matches `(state, previous_move,
+relative_food_azimuth)` and emits `(move_sequence, next_state)`. `C_pruned` asks
+how large the reachable machine is after obvious dead code is removed. These
+are raw code-length proxies, not normalized fractions. They should be swept
+separately; a result that only appears under `C_active` may be an artifact of
+hiding unused capacity.
 
 Then local selection minimizes:
 
