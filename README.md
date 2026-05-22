@@ -116,6 +116,12 @@ Run the pattern-transduction substrate:
 python pattern_fsa.py --task swap --primitive-set register --generations 120 --population 220 --lambda-points 4
 ```
 
+Reproduce the register-transducer benchmark matrix:
+
+```bash
+python3 experiments/run_register_transducer_benchmark.py
+```
+
 Use Hyperopt/TPE instead of the genetic population loop:
 
 ```bash
@@ -151,7 +157,7 @@ best_replay.txt          ASCII replay of the final best policy
 Pattern-transduction outputs are written to `output/pattern_fsa/` by default:
 
 ```text
-solver.json              selected sparse FSA solver
+solver.json              selected sparse register transducer
 history.json             per-generation training and validation metrics
 lambda_sweep.json        per-lambda validation frontier records
 summary.json             selected train/validation/hidden-test evaluation
@@ -189,7 +195,11 @@ The goal is not to make a clever game bot. The goal is to test whether free-ener
 ```text
 agent.py                         compatibility entry point for evo_game.py
 evo_game.py                      finite-state automata evolution experiment
-pattern_fsa.py                   sparse FSA pattern-transduction experiment
+pattern_fsa.py                   sparse register-transducer pattern experiment
+experiments/register_transducer_benchmark.md
+                                 register-transducer benchmark report
+experiments/run_register_transducer_benchmark.py
+                                 benchmark reproduction script
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
 FREE_ENERGY_EXPLANATION.md       mathematical background
 tests/test_evo_game.py           standard-library tests
@@ -201,5 +211,5 @@ requirements.txt                 optional Hyperopt/TPE dependency
 
 ```bash
 python -m unittest
-python -m py_compile agent.py evo_game.py pattern_fsa.py tests/test_evo_game.py tests/test_pattern_fsa.py
+python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_register_transducer_benchmark.py tests/test_evo_game.py tests/test_pattern_fsa.py
 ```
