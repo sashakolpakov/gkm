@@ -3,9 +3,10 @@ Sparse register-transducer synthesis for deterministic pattern-transduction task
 
 The meta-model evolves sparse deterministic transducers over opaque objects.
 The rule key never sees a token's literal identity. It sees only finite control
-and relational observations such as TOKEN, EOS, or current-token-equals-register.
+and relational observations such as TOKEN, EOS, BOS, or current-token-equals-register.
 This makes foreign-alphabet generalization possible and makes literal lookup
-tables unavailable as a shortcut.
+tables unavailable as a shortcut. A bidirectional tier can use the read-only
+input tape as external memory by moving left and right.
 """
 
 import argparse
@@ -28,17 +29,20 @@ SequencePair = Tuple[Tuple[Symbol, ...], Tuple[Symbol, ...]]
 MOVE_RIGHT = 0
 WRITE_CURRENT = 1
 HALT = 2
+MOVE_LEFT = 3
 STORE_REGISTER_BASE = 10
 WRITE_REGISTER_BASE = 30
 
 OBS_EOS = 0
 OBS_TOKEN = 1
-OBS_MATCH_BASE = 2
+OBS_BOS = 2
+OBS_MATCH_BASE = 3
 
 ACTION_NAMES = {
     MOVE_RIGHT: "MOVE_RIGHT",
     WRITE_CURRENT: "WRITE_CURRENT",
     HALT: "HALT",
+    MOVE_LEFT: "MOVE_LEFT",
 }
 
 
@@ -48,18 +52,28 @@ class PrimitiveSet:
     actions: Tuple[Action, ...]
     register_count: int = 0
     compare_registers: bool = False
+    bidirectional: bool = False
 
     def allows(self, action: Action, alphabet_size: int) -> bool:
         return action in self.actions
 
     @property
+    def observations(self) -> Tuple[Observation, ...]:
+        observations: List[Observation] = [OBS_EOS, OBS_TOKEN]
+        if self.bidirectional:
+            observations.append(OBS_BOS)
+        if self.compare_registers and self.register_count > 0:
+            observations.extend(OBS_MATCH_BASE + idx for idx in range(2**self.register_count - 1))
+        return tuple(observations)
+
+    @property
     def observation_count(self) -> int:
-        if not self.compare_registers or self.register_count <= 0:
-            return 2
-        return OBS_MATCH_BASE + (2**self.register_count - 1)
+        return len(self.observations)
 
     def observe(self, cursor: int, input_sequence: Sequence[Symbol], registers: Sequence[Optional[Symbol]]) -> Observation:
-        if cursor < 0 or cursor >= len(input_sequence):
+        if cursor < 0:
+            return OBS_BOS if self.bidirectional else OBS_EOS
+        if cursor >= len(input_sequence):
             return OBS_EOS
         if not self.compare_registers:
             return OBS_TOKEN
@@ -99,6 +113,16 @@ def stream_primitives(alphabet_size: int, register_count: int = 0) -> PrimitiveS
     )
 
 
+def bidirectional_primitives(alphabet_size: int, register_count: int = 0) -> PrimitiveSet:
+    return PrimitiveSet(
+        name="bidirectional",
+        actions=(MOVE_RIGHT, MOVE_LEFT, WRITE_CURRENT, HALT),
+        register_count=0,
+        compare_registers=False,
+        bidirectional=True,
+    )
+
+
 def register_primitives(alphabet_size: int, register_count: int = 2) -> PrimitiveSet:
     register_actions = tuple(
         action
@@ -127,6 +151,7 @@ PRIMITIVE_SETS = {
     "stream": stream_primitives,
     "register": register_primitives,
     "compare": compare_primitives,
+    "bidirectional": bidirectional_primitives,
 }
 
 
@@ -166,7 +191,7 @@ class PatternGenome:
         return (
             0 <= rule.state < self.state_count
             and 0 <= rule.next_state < self.state_count
-            and 0 <= rule.observation < primitives.observation_count
+            and rule.observation in primitives.observations
             and all(primitives.allows(action, self.alphabet_size) for action in rule.actions)
         )
 
@@ -184,7 +209,7 @@ class PatternGenome:
         max_rule_length: int,
     ) -> "PatternGenome":
         keys = rng.sample(
-            all_rule_keys(state_count, primitives.observation_count),
+            all_rule_keys(state_count, primitives.observations),
             k=min(initial_rule_count, state_count * primitives.observation_count),
         )
         rules = [
@@ -242,7 +267,7 @@ class PatternGenome:
             elif edit < 0.94:
                 rules[idx] = random_rule(
                     rng,
-                    random_rule_key(rng, state_count, primitives.observation_count),
+                    random_rule_key(rng, state_count, primitives.observations),
                     state_count,
                     self.alphabet_size,
                     primitives,
@@ -260,7 +285,7 @@ class PatternGenome:
             if len(kept) >= max_rules or rng.random() >= rate * 2.0:
                 continue
             existing = {rule.key for rule in kept}
-            available = [key for key in all_rule_keys(state_count, primitives.observation_count) if key not in existing]
+            available = [key for key in all_rule_keys(state_count, primitives.observations) if key not in existing]
             if not available:
                 break
             kept.append(
@@ -344,12 +369,12 @@ class PatternLambdaRecord:
     selected: bool = False
 
 
-def all_rule_keys(state_count: int, observation_count: int) -> List[RuleKey]:
-    return [(state, obs) for state in range(state_count) for obs in range(observation_count)]
+def all_rule_keys(state_count: int, observations: Sequence[Observation]) -> List[RuleKey]:
+    return [(state, obs) for state in range(state_count) for obs in observations]
 
 
-def random_rule_key(rng: random.Random, state_count: int, observation_count: int) -> RuleKey:
-    return rng.randrange(state_count), rng.randrange(observation_count)
+def random_rule_key(rng: random.Random, state_count: int, observations: Sequence[Observation]) -> RuleKey:
+    return rng.randrange(state_count), rng.choice(tuple(observations))
 
 
 def random_rule(
@@ -389,6 +414,8 @@ def observation_name(observation: Observation, register_count: int) -> str:
         return "EOS"
     if observation == OBS_TOKEN:
         return "TOKEN"
+    if observation == OBS_BOS:
+        return "BOS"
     mask = observation - OBS_MATCH_BASE + 1
     registers = [f"R{idx}" for idx in range(register_count) if mask & (1 << idx)]
     return "MATCH_" + "_".join(registers) if registers else f"OBS_{observation}"
@@ -432,10 +459,12 @@ def run_transducer(
 
             if action == MOVE_RIGHT:
                 cursor = min(cursor + 1, len(input_sequence))
-            elif action == WRITE_CURRENT and cursor < len(input_sequence):
+            elif action == MOVE_LEFT:
+                cursor = max(cursor - 1, -1)
+            elif action == WRITE_CURRENT and 0 <= cursor < len(input_sequence):
                 output.append(input_sequence[cursor])
             elif STORE_REGISTER_BASE <= action < STORE_REGISTER_BASE + primitives.register_count:
-                if cursor < len(input_sequence):
+                if 0 <= cursor < len(input_sequence):
                     registers[action - STORE_REGISTER_BASE] = input_sequence[cursor]
             elif WRITE_REGISTER_BASE <= action < WRITE_REGISTER_BASE + primitives.register_count:
                 value = registers[action - WRITE_REGISTER_BASE]
@@ -897,6 +926,7 @@ def export_solver(genome: PatternGenome, primitives: PrimitiveSet) -> Dict[str, 
         "primitive_set": primitives.name,
         "register_count": primitives.register_count,
         "compare_registers": primitives.compare_registers,
+        "bidirectional": primitives.bidirectional,
         "complexity": genome_complexity(genome, primitives),
         "rules": rules,
     }

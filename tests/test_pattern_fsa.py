@@ -3,13 +3,16 @@ import unittest
 
 from pattern_fsa import (
     HALT,
+    MOVE_LEFT,
     MOVE_RIGHT,
+    OBS_BOS,
     OBS_EOS,
     OBS_TOKEN,
     PatternGenome,
     PatternLambdaRecord,
     PatternRule,
     WRITE_CURRENT,
+    bidirectional_primitives,
     compare_primitives,
     evaluate_genome,
     evolve_solver,
@@ -79,11 +82,16 @@ class PatternFsaTests(unittest.TestCase):
         stream = stream_primitives(object_count)
         register = register_primitives(object_count, register_count=1)
         compare = compare_primitives(object_count, register_count=1)
+        bidirectional = bidirectional_primitives(object_count)
 
         self.assertFalse(stream.allows(register_store_action(0), object_count))
         self.assertTrue(register.allows(register_store_action(0), object_count))
+        self.assertFalse(stream.allows(MOVE_LEFT, object_count))
+        self.assertTrue(bidirectional.allows(MOVE_LEFT, object_count))
         self.assertFalse(register.compare_registers)
         self.assertTrue(compare.compare_registers)
+        self.assertFalse(stream.bidirectional)
+        self.assertTrue(bidirectional.bidirectional)
 
     def test_comparison_observation_can_branch_on_register_match(self):
         object_count = 12
@@ -106,6 +114,39 @@ class PatternFsaTests(unittest.TestCase):
 
         self.assertEqual(same.output, (7,))
         self.assertEqual(different.output, (7, 8))
+
+    def test_bidirectional_reverse_solver_generalizes_across_lengths(self):
+        object_count = 40
+        primitives = bidirectional_primitives(object_count)
+        rules = [
+            PatternRule(state=0, observation=OBS_TOKEN, actions=(MOVE_RIGHT,), next_state=0),
+            PatternRule(state=0, observation=OBS_EOS, actions=(MOVE_LEFT,), next_state=1),
+            PatternRule(state=1, observation=OBS_TOKEN, actions=(WRITE_CURRENT, MOVE_LEFT), next_state=1),
+            PatternRule(state=1, observation=OBS_BOS, actions=(HALT,), next_state=1),
+        ]
+        genome = PatternGenome(state_count=2, alphabet_size=object_count, rules=rules)
+
+        for length in range(1, 8):
+            task = make_object_task(
+                "reverse",
+                seed=length,
+                train_examples=3,
+                val_examples=3,
+                test_examples=3,
+                train_objects=10,
+                val_objects=10,
+                test_objects=20,
+                length=length,
+            )
+            with self.subTest(length=length):
+                train_eval = evaluate_genome(genome, task.train_pairs, primitives, lambda_value=0.0, max_steps=4 * length + 4)
+                val_eval = evaluate_genome(genome, task.val_pairs, primitives, lambda_value=0.0, max_steps=4 * length + 4)
+                test_eval = evaluate_genome(genome, task.test_pairs, primitives, lambda_value=0.0, max_steps=4 * length + 4)
+
+                self.assertEqual(train_eval.exact_match_rate, 1.0)
+                self.assertEqual(val_eval.exact_match_rate, 1.0)
+                self.assertEqual(test_eval.exact_match_rate, 1.0)
+                self.assertEqual(test_eval.loss, 0.0)
 
     def test_evolution_smoke_returns_valid_solver(self):
         task = make_object_task("copy", seed=4, train_examples=4, val_examples=2, test_examples=2, length=3)

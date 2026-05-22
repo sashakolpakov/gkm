@@ -72,14 +72,15 @@ identities are opaque: the rule key does not see `A`, `B`, or `X`. It sees only
 finite control and relational observations:
 
 ```text
-(state, TOKEN | EOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
+(state, TOKEN | EOS | BOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
 ```
 
 Primitive sets are intentionally tiered:
 
 - `stream`: move right, write current token, halt;
 - `register`: stream primitives plus store/write register actions;
-- `compare`: register primitives plus equality observations between the current token and stored registers.
+- `compare`: register primitives plus equality observations between the current token and stored registers;
+- `bidirectional`: stream primitives plus `MOVE_LEFT` and a beginning-of-sequence observation.
 
 This lets us ask which primitive set is sufficient for a task family, while
 selection still minimizes:

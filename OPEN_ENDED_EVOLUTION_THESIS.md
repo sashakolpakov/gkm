@@ -238,17 +238,20 @@ predicting the output sequence. The solver is a sparse register transducer over
 opaque objects. Its rule key does not expose literal token identity:
 
 ```text
-(state, TOKEN | EOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
+(state, TOKEN | EOS | BOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
 ```
 
 Primitive sets should be varied experimentally:
 
 ```text
-stream primitives -> register primitives -> comparison primitives -> richer object primitives
+stream primitives -> register primitives -> comparison primitives -> bidirectional tape -> richer object primitives
 ```
 
 This directly tests which substrate primitives are sufficient for compact
-deterministic solver synthesis under the same free-energy objective.
+deterministic solver synthesis under the same free-energy objective. Reversal is
+especially diagnostic: in a one-way stream it requires internal memory, while a
+bidirectional read-only input tape can solve it by scanning to the end and
+emitting while moving left.
 
 Minimum environment stages:
 

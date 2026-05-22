@@ -19,8 +19,9 @@ Primitive tiers:
 
 ```text
 stream   = MOVE_RIGHT, WRITE_CURRENT, HALT
-register = stream + STORE_Ri, WRITE_Ri
-compare  = register + current-token/register equality observations
+register      = stream + STORE_Ri, WRITE_Ri
+compare       = register + current-token/register equality observations
+bidirectional = stream + MOVE_LEFT + BOS observation
 ```
 
 ## Results
@@ -33,7 +34,8 @@ compare  = register + current-token/register equality observations
 | `duplicate_first`, length 2 | `stream` | 1.00 | 0.0000 | 5.0 | 2 | Solves because macro-rules can write current twice. |
 | `rotate_left`, length 3 | `stream` | 0.00 | 0.3333 | 3.0 | 1 | Fails: cannot delay first token. |
 | `rotate_left`, length 3 | `register` | 1.00 | 0.0000 | 8.0 | 3 | Solves with one register after larger search. |
-| `reverse`, length 3 | `register`, 2 regs | 1.00 | 0.0000 | 10.0 | 3 | Solves fixed-length reverse with two registers. |
+| `reverse`, length 3 | `register`, 2 regs | 1.00 | 0.0000 | 10.0 | 3 | Solves fixed-length reverse with internal memory. |
+| `reverse`, length 5 | `bidirectional` | 1.00 | 0.0000 | 7.0 | 3 | Solves reverse by scanning to EOS and reading left. |
 | `dedupe_pair` | `register` | 0.50 | 0.2500 | 2.0 | 1 | Half-solves; cannot branch on equality. |
 | `dedupe_pair` | `compare` | 1.00 | 0.0000 | 4.0 | 1 | Solves using current-token/register equality. |
 
@@ -59,6 +61,15 @@ write third object
 write stored first object
 ```
 
+`reverse + bidirectional` learned:
+
+```text
+TOKEN -> MOVE_RIGHT
+EOS   -> MOVE_LEFT, switch to emit-left state
+TOKEN -> WRITE_CURRENT, MOVE_LEFT
+BOS   -> no rule, so halt
+```
+
 `dedupe_pair + compare` found a sparse conditional halt motif:
 
 ```text
@@ -75,10 +86,14 @@ The primitive tiers separate cleanly:
   delayed object recall.
 - `register` enables positional rearrangement over foreign alphabets.
 - `compare` enables equality-conditioned behavior.
+- `bidirectional` uses the input tape as external read-only memory, so reversal
+  does not require storing the whole prefix internally.
 
-The `reverse` result is fixed-length reverse, not unbounded reverse. A true
-length-general reversal task should require stack memory or another stronger
-memory model, with memory usage counted in the free-energy complexity term.
+The `register` reverse result is fixed-length reverse. The `bidirectional`
+reverse result is the cleaner length-general motif: go to `EOS`, then emit while
+moving left until `BOS`. A stack is still the natural next memory tier for
+one-way stream settings where the input cannot be revisited. Stack depth should
+be counted in the free-energy complexity term.
 
 ## Reproduction
 

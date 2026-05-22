@@ -65,9 +65,11 @@ F_lambda(s, T_train) = edit_loss(s, T_train) + lambda C(s)
 
 where `s` is a sparse register transducer and `T_train` is the set of observed
 foreign-object transitions used for local evolutionary selection. Token
-identity is opaque to the rule key; the transducer can only move through the
-input, write the current object, store/write registers, and optionally branch on
-current-token/register equality. For model selection, the runner sweeps
+identity is opaque to the rule key; depending on the primitive tier, the
+transducer can move through the input, write the current object, store/write
+registers, branch on current-token/register equality, or use a bidirectional
+read-only input cursor with explicit beginning/end observations. For model
+selection, the runner sweeps
 `lambda` and chooses an empirical elbow on the validation loss-complexity
 frontier by taking the simplest Pareto solver within a small tolerance of the
 best validation loss. Hidden test transitions from disjoint object pools are

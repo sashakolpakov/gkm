@@ -51,6 +51,7 @@ CONFIGS = [
     BenchmarkConfig("rotate_left", "stream", 3, 0, 100, 180, 4, 12, 3),
     BenchmarkConfig("rotate_left", "register", 3, 1, 450, 500, 4, 16, 4, lambda_max=0.006),
     BenchmarkConfig("reverse", "register", 3, 2, 220, 320, 4, 16, 4),
+    BenchmarkConfig("reverse", "bidirectional", 5, 0, 180, 260, 3, 10, 2, lambda_max=0.006),
     BenchmarkConfig("dedupe_pair", "register", 2, 1, 120, 220, 3, 10, 3),
     BenchmarkConfig("dedupe_pair", "compare", 2, 1, 140, 240, 3, 10, 3),
 ]
