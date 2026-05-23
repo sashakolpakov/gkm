@@ -13,11 +13,15 @@ python3 -m unittest tests.test_abstraction_emergence
 
 ## Setup
 
-Each example is an opaque object represented by primitive observations only. The latent reusable substructure is not supplied as metadata:
+Each example is an opaque object represented by primitive observations only. The primitive observations are hand-defined in this scaffold. Atoms such as `low_closure_error`, `high_hull_fill`, `turn_balanced`, `has_curve`, and `thin` are not discovered here; they are the low-level sensory vocabulary made available to the solver.
+
+The latent reusable substructure is a conjunction over those primitive observations:
 
 ```text
 solid_loop = low_closure_error AND high_hull_fill AND turn_balanced
 ```
+
+What is discovered or selected is the encapsulation of that repeated conjunction as a reusable macro predicate, not the low-level observation atoms themselves.
 
 Task labels are deterministic conjunctions or disjunctions that reuse this substructure, for example:
 
@@ -51,7 +55,7 @@ Default lambda sweep:
 0.005, 0.01, 0.02, 0.04
 ```
 
-Selection is by training free energy at each lambda, then validation loss and complexity across lambdas. Transfer rows reuse the library selected on support tasks and report marginal task cost for the shared condition. For disjunctive tasks, candidate macro mutations are generated from repeated atoms in the best inline DNF branch structure; this models an encapsulation mutation after an inline solution exists.
+Selection is by training free energy at each lambda, then validation loss and complexity across lambdas. Transfer rows reuse the library selected on support tasks and report marginal task cost for the shared condition. For disjunctive tasks, candidate macro mutations are generated from repeated atoms in the best inline DNF branch structure; this models an encapsulation mutation after an inline solution exists. This is still not full predicate invention from raw input; it is predicate encapsulation over a supplied primitive vocabulary.
 
 ## Result
 
@@ -114,5 +118,7 @@ or_factor_transfer,oracle,0.0050,0.0000,0.0000,0.0000,1.000,1/1,2.00,0.0100,none
 ## Interpretation
 
 This is a positive internal control for abstraction emergence under the free-energy story. It does not show that Bongard-LOGO predicates have been evolved from pixels or even from raw LOGO programs. It shows a narrower mechanism working cleanly: when deterministic solvers repeat the same latent substructure across tasks or across OR branches, the complexity term can make a reusable predicate cheaper than duplicated inline code. Single-task, unrelated-OR, and no-share controls do not create the predicate.
+
+The key limitation is explicit: the primitive observations are predefined. The experiment demonstrates macro encapsulation and reuse, not the discovery of the primitive perceptual vocabulary.
 
 The next stronger experiment should replace the enumerated predicate candidates with evolved finite-state predicate automata over action-program observations, then run the same support, no-share, and transfer controls on Bongard-LOGO symbolic programs.

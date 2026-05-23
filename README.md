@@ -7,7 +7,7 @@ The thesis:
 
 > Open-ended artificial evolution is possible under a free-energy paradigm if free energy is used as a local selection principle over agents embedded in an expanding, archive-driven ecology. Fixed-task free-energy minimization converges to compression; open-endedness requires that solved structures generate new validation pressures.
 
-See [OPEN_ENDED_EVOLUTION_THESIS.md](OPEN_ENDED_EVOLUTION_THESIS.md) for the full argument.
+See [OPEN_ENDED_EVOLUTION_THESIS.md](OPEN_ENDED_EVOLUTION_THESIS.md) for the full argument. The Sphinx documentation source is in [docs/](docs/) and can be deployed through the included GitHub Pages workflow.
 
 ## Current Research Substrates
 
@@ -288,6 +288,16 @@ tests/test_abstraction_emergence.py
                                  abstraction-emergence tests
 requirements.txt                 optional Hyperopt/TPE dependency
 ```
+
+## Documentation
+
+Build the Sphinx documentation locally:
+
+```bash
+python3 -m sphinx -W -b html docs docs/_build/html
+```
+
+The repository includes `.github/workflows/pages.yml`, which builds `docs/` and deploys `docs/_build/html` through GitHub Pages when the `manuscript` branch is pushed. In the repository settings, set Pages to use GitHub Actions as the source.
 
 ## Tests
 

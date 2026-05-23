@@ -431,15 +431,95 @@ Prediction:
 
 This experiment is a bridge between toy automata and external Bongard benchmarks. It turns the overcapacity thesis into a rate statement over a family of deterministic rule-discovery problems.
 
-The next external step is Bongard-LOGO, first in symbolic mode. A first adapter now converts generated Basic and Abstract LOGO action programs into relational scene encodings and runs a free-energy sparse feature selector. The first result is a representation-bottleneck diagnostic: Basic Shape is mostly recoverable from action skeletons with enough hard negatives, while Abstract Shape is weak from action skeletons alone and becomes exact only when privileged metadata attributes are exposed. A first predicate-macro layer now derives reusable geometric predicates from action programs and lets Bongard rules use them while paying macro complexity. This improves Abstract action-only performance but does not yet close the gap to metadata, which is the desired next research pressure. Raw images should be used only after the symbolic path works, so perception failures can be separated from rule-induction failures. Bongard-OpenWorld and Bongard-HOI are later-stage benchmarks because they add real-image and open-vocabulary burdens before the free-energy rule-discovery story is isolated. A separate related-work note, `experiments/abstraction_related_work.md`, collects the predicate-invention, library-learning, automata-learning, MDL, and Bongard references needed to keep the novelty claim narrow. The first internal abstraction-emergence scaffold is `experiments/run_abstraction_emergence.py`: single-task, unrelated-OR, and no-share controls do not select a predicate macro, while multi-task shared compression and an `A OR B` factoring task select the reusable `low_closure_error AND high_hull_fill AND turn_balanced` predicate and lower marginal transfer complexity.
+The next external step is Bongard-LOGO, first in symbolic mode. A first adapter now converts generated Basic and Abstract LOGO action programs into relational scene encodings and runs a free-energy sparse feature selector. The first result is a representation-bottleneck diagnostic: Basic Shape is mostly recoverable from action skeletons with enough hard negatives, while Abstract Shape is weak from action skeletons alone and becomes exact only when privileged metadata attributes are exposed. A first predicate-macro layer now derives reusable geometric predicates from action programs and lets Bongard rules use them while paying macro complexity. This improves Abstract action-only performance but does not yet close the gap to metadata, which is the desired next research pressure. Raw images should be used only after the symbolic path works, so perception failures can be separated from rule-induction failures. Bongard-OpenWorld and Bongard-HOI are later-stage benchmarks because they add real-image and open-vocabulary burdens before the free-energy rule-discovery story is isolated. A separate related-work note, `experiments/abstraction_related_work.md`, collects the predicate-invention, library-learning, automata-learning, MDL, and Bongard references needed to keep the novelty claim narrow.
 
-## 12. Proposed Thesis Statement
+## 12. Abstraction Emergence And Predicate Encapsulation
+
+The current abstraction experiment must be read at three distinct levels.
+
+First, the primitive observations are hand-defined. In the internal scaffold, atoms such as:
+
+```text
+low_closure_error
+high_hull_fill
+turn_balanced
+has_curve
+thin
+```
+
+are supplied as primitive boolean observations over an opaque object description. They are not discovered from pixels, turtle programs, or raw geometry in this experiment. They play the role of low-level sensory predicates, analogous to a biological or engineered perceptual front end. Therefore the experiment does not yet claim discovery of `low_closure_error` itself.
+
+Second, the solver can express task rules directly over those primitive atoms. For example, a task can be solved inline as:
+
+```text
+low_closure_error AND high_hull_fill AND turn_balanced AND has_curve
+```
+
+or, for a disjunctive task:
+
+```text
+(low_closure_error AND high_hull_fill AND turn_balanced AND has_curve)
+OR
+(low_closure_error AND high_hull_fill AND turn_balanced AND thin)
+```
+
+Third, the abstraction step is predicate encapsulation. The system can create and pay for a macro predicate:
+
+```text
+solid_loop = low_closure_error AND high_hull_fill AND turn_balanced
+```
+
+Then the same disjunctive task becomes:
+
+```text
+(solid_loop AND has_curve) OR (solid_loop AND thin)
+```
+
+The free-energy question is whether this encapsulation is selected only when it reduces total description length without increasing loss.
+
+The OR experiment is the cleanest diagnostic. A simple unrelated disjunction:
+
+```text
+has_curve OR thin
+```
+
+does not create a macro, because there is no repeated substructure to factor. By contrast:
+
+```text
+(A AND B) OR (A AND C)
+```
+
+creates pressure to define `A` once and call it twice. In the scaffold, `A` is `solid_loop`, `B` is `has_curve`, and `C` is `thin`.
+
+The observed result is:
+
+```text
+or_control/shared: no macro, complexity 3.00
+or_factor/inline: no macro, complexity 9.00
+or_factor/shared: solid_loop macro selected, complexity 7.70
+or_factor/no_share: no macro, complexity 9.00
+or_factor_transfer/shared: transfer complexity 2.35 vs inline 5.00
+```
+
+The no-share ablation is essential. It allows macro syntax but charges the full macro definition at each use. Under that accounting, the system does not select the macro. This shows that the result is not a syntactic convenience; it is specifically a shared-description-length effect.
+
+The current positive claim is therefore narrow:
+
+> Given hand-defined primitive observations, free-energy selection can favor the encapsulation of a repeated predicate macro when the same latent structure is reused across tasks or across disjunctive branches.
+
+The current negative claim is equally important:
+
+> The experiment has not yet evolved the primitive observations themselves, and it has not yet evolved a finite-state predicate recognizer from raw Bongard-LOGO action programs.
+
+The next research step is to replace enumerated or branch-derived macro candidates with evolved predicate automata. In that stronger version, the system would first evolve a small deterministic recognizer for a property such as `solid_loop`, pay for that recognizer as library complexity, and then test whether later task solvers call it under the same single-task, unrelated-OR, OR-factor, no-share, and transfer controls.
+
+## 13. Proposed Thesis Statement
 
 The thesis can be stated as:
 
 > Open-ended artificial evolution is possible under a free-energy paradigm if free energy is used as a local selection principle over agents embedded in an expanding, archive-driven ecology. Fixed-task free-energy minimization converges to compression; open-endedness requires that solved structures generate new validation pressures. Lambda sweeps then reveal evolving loss-complexity frontiers, and sustained frontier movement provides the empirical signature of open-ended evolution.
 
-## 13. Falsification Criteria
+## 14. Falsification Criteria
 
 The thesis is wrong, or at least incomplete, if:
 
@@ -452,7 +532,7 @@ The thesis is wrong, or at least incomplete, if:
 
 These failure modes should be treated as research results, not engineering annoyances.
 
-## 14. Immediate Next Step
+## 15. Immediate Next Step
 
 The next implementation should be a research instrument, not a product:
 

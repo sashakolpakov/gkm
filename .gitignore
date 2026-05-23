@@ -1,6 +1,7 @@
 # Output directories
 output/
 old/
+docs/_build/
 PLANNING.md
 
 # Python
