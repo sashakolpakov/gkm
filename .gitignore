@@ -4,6 +4,16 @@ old/
 docs/_build/
 PLANNING.md
 
+# LaTeX build outputs
+manuscript/*.aux
+manuscript/*.bbl
+manuscript/*.blg
+manuscript/*.fdb_latexmk
+manuscript/*.fls
+manuscript/*.log
+manuscript/*.out
+manuscript/*.pdf
+
 # Python
 __pycache__/
 *.py[cod]

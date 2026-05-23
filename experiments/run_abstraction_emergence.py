@@ -646,7 +646,7 @@ def select_condition_result(
         )
     best_validation = min(result.validation_loss for result in train_selected)
     allowed = [result for result in train_selected if result.validation_loss <= best_validation]
-    return min(allowed, key=lambda result: (result.complexity, result.hidden_loss, result.lambda_value, describe_macro(result.macro)))
+    return min(allowed, key=lambda result: (result.complexity, result.lambda_value, describe_macro(result.macro)))
 
 
 def select_with_fixed_macro(

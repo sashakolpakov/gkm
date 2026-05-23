@@ -8,6 +8,7 @@ The thesis:
 > Open-ended artificial evolution is possible under a free-energy paradigm if free energy is used as a local selection principle over agents embedded in an expanding, archive-driven ecology. Fixed-task free-energy minimization converges to compression; open-endedness requires that solved structures generate new validation pressures.
 
 See [OPEN_ENDED_EVOLUTION_THESIS.md](OPEN_ENDED_EVOLUTION_THESIS.md) for the full argument. The Sphinx documentation source is in [docs/](docs/) and can be deployed through the included GitHub Pages workflow.
+There is also a research-style LaTeX manuscript in [manuscript/](manuscript/) focused on free-energy selection for predicate encapsulation in sparse deterministic solvers.
 
 ## Current Research Substrates
 
