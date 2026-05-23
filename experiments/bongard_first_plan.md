@@ -5,24 +5,28 @@ concept induction rather than direct answer memorization. A problem supplies
 positive and negative examples; the solver must infer a compact rule and classify
 held-out queries.
 
-## External Targets
+## Current Focus
 
-1. **Bongard-LOGO**
+Concentrate on three tracks only:
+
+1. **Internal generated Bongard rules**
+   - Purpose: controlled science.
+   - Data source: generated locally by `experiments/run_bongard_symbolic_baseline.py`.
+   - Why: we know the true rule, can generate hard negatives, can separate positive/negative panel design, and can run exact overcapacity ablations.
+   - Current output: sparse deterministic automata with train/validation/hidden/exhaustive-probe evaluation.
+
+2. **Bongard-LOGO as the first external benchmark**
    - Repository: https://github.com/NVlabs/Bongard-LOGO
    - Paper: https://arxiv.org/abs/2010.00763
-   - Why it fits: synthetic, program-guided, object/shape concepts, many
-     procedurally generated instances.
-   - Recent diagnostic support: https://arxiv.org/abs/2604.21346 argues that
-     symbolic inputs expose a representation bottleneck on Bongard-LOGO, which
-     is exactly the split we need between perception and sparse rule induction.
-   - First use: adapter target, not vendored data. We should load generated
-     problems or symbolic metadata outside this repo, then convert each problem
-     to our internal concept-induction protocol.
+   - Why it fits: synthetic, program-guided, object/shape concepts, many procedurally generated instances.
+   - The public repository describes a 12,000-problem dataset and a `bongard` Python library for synthesis. Each image is paired with an action program, which is the important handle for us.
+   - Dataset policy: do not vendor the dataset into this repository. The adapter accepts an external dataset path or generator path.
 
-2. **Bongard-OpenWorld**
-   - Paper: https://arxiv.org/abs/2310.10207
-   - Why it is harder: real images and open-vocabulary concepts.
-   - Use later as a robustness check after the symbolic/LOGO pipeline works.
+3. **Two Bongard-LOGO modes**
+   - **Symbolic mode first:** convert LOGO action programs or structured metadata into internal opaque-object / relational scene encodings. This tests rule induction without perception.
+   - **Visual mode later:** render or load images, run a parser/object extractor, then feed the resulting symbolic scene into the same solver. This tests the perception bottleneck separately.
+
+Everything else is deferred. Bongard-OpenWorld and Bongard-HOI are useful later stress tests, but they mix perception, open vocabulary, natural-image recognition, and rule induction. They should not be the next step.
 
 ## Research Question
 
@@ -119,44 +123,64 @@ where overcapacity succeeds but a cap equal to the final rule count fails. This
 is the right evidence shape: task-by-task discovery rates plus panel-design
 checks, not a claim that every Bongard rule needs overcapacity.
 
-### Stage 3: Bongard-LOGO Adapter
+### Stage 3: Bongard-LOGO Symbolic Adapter
 
-This should be the next real target before Bongard-OpenWorld. Bongard-LOGO is
-still visual, but its synthetic generation and shape/object concepts are closer
-to the sparse symbolic protocol. Bongard-OpenWorld should wait until the solver
-adapter works, because otherwise failures will mix perception, open-vocabulary
-recognition, and rule induction.
+This is now the first external target with a working symbolic adapter. It begins
+with LOGO action programs and structured metadata, not pixels. That keeps the
+experiment about rule induction and free-energy solver selection.
 
-Add an adapter with this shape:
+Adapter shape:
 
 ```text
 Bongard-LOGO problem
   -> positive examples
   -> negative examples
-  -> action-program / attribute metadata when available
-  -> internal opaque-object or relational scene encoding
+  -> action programs / shape metadata
+  -> relational scene encoding
   -> train/validation/hidden split
-  -> same free-energy solver-selection harness
+  -> same sparse free-energy solver-selection harness
 ```
 
-The first adapter should use symbolic metadata and action programs where the
-external dataset exposes them, then treat raw images as a later perception
-problem. This keeps the experiment about rule induction rather than object
-recognition.
+Initial scene features should be deliberately simple:
 
-We should avoid committing the full dataset. The adapter should accept an
-external dataset path.
+```text
+object count
+shape type or shape-family token
+stroke/action sequence tokenization
+relative position bins
+size/orientation bins
+equality relations across objects
+containment / intersection / symmetry flags when recoverable
+```
 
-### Stage 4: Image Path
+The first adapter does not solve all Bongard-LOGO categories. It starts with
+Basic Shape and Abstract Shape problems generated from the local checkout. The
+initial report is `experiments/bongard_logo_report.md`: one-shape Basic is mostly
+recoverable from action skeletons, while Abstract Shape exposes the expected
+representation bottleneck unless privileged metadata attributes are supplied.
+Freeform shapes can be added after the internal scene encoding is stable.
 
-Only after the symbolic path works:
+Dataset policy:
+
+- Do not commit the dataset.
+- Accept `--dataset-dir` pointing to a local Bongard-LOGO checkout/download.
+- Accept `--generated-dir` or a generator hook later for custom generated LOGO
+  problems.
+- Cache only small derived metadata if needed, not rendered images or the full
+  external corpus.
+
+### Stage 4: Bongard-LOGO Visual Path
+
+Only after the symbolic adapter works:
 
 ```text
 image -> parser/object extractor -> symbolic scene -> sparse solver
 ```
 
-At that point the thesis can distinguish failures of perception from failures of
-rule induction.
+This stage compares symbolic vs visual input while keeping the downstream solver
+fixed. The target question is whether failures come from perception or from rule
+induction. This matches the representation-bottleneck hypothesis suggested by
+recent Bongard-LOGO symbolic-grounding work.
 
 ## Initial Success Criteria
 

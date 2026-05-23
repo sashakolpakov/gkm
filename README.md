@@ -161,6 +161,14 @@ Run paired overcapacity ablations across a fast Bongard rule matrix:
 python3 -u experiments/run_bongard_overcapacity_ablation.py --replicates 1
 ```
 
+Run the local Bongard-LOGO symbolic adapter without vendoring external data:
+
+```bash
+git clone https://github.com/NVlabs/Bongard-LOGO.git downloads/Bongard-LOGO
+.venv/bin/python -m pip install pillow pandas
+.venv/bin/python experiments/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source both --feature-set both --limit 40 --support-count 10 --validation-count 3 --hidden-count 3 --summary-only
+```
+
 Use Hyperopt/TPE instead of the genetic population loop:
 
 ```bash
@@ -247,8 +255,14 @@ experiments/run_bongard_symbolic_baseline.py
                                  symbolic Bongard-style baseline
 experiments/run_bongard_sparse_classifier.py
                                  evolved sparse Bongard classifier
+experiments/run_bongard_overcapacity_ablation.py
+                                 paired Bongard overcapacity ablations
+experiments/run_bongard_logo_adapter.py
+                                 local Bongard-LOGO symbolic adapter and selector
 experiments/bongard_sparse_classifier_report.md
                                  sparse Bongard classifier report
+experiments/bongard_logo_report.md
+                                 Bongard-LOGO symbolic adapter report
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
 FREE_ENERGY_EXPLANATION.md       mathematical background
 tests/test_evo_game.py           standard-library tests
@@ -262,5 +276,5 @@ requirements.txt                 optional Hyperopt/TPE dependency
 
 ```bash
 python -m unittest
-python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_foraging_ecology.py experiments/run_register_transducer_benchmark.py experiments/run_bongard_symbolic_baseline.py experiments/run_bongard_sparse_classifier.py tests/test_evo_game.py tests/test_pattern_fsa.py tests/test_bongard_sparse_classifier.py
+python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_foraging_ecology.py experiments/run_register_transducer_benchmark.py experiments/run_bongard_symbolic_baseline.py experiments/run_bongard_sparse_classifier.py experiments/run_bongard_overcapacity_ablation.py experiments/run_bongard_logo_adapter.py tests/test_evo_game.py tests/test_pattern_fsa.py tests/test_bongard_sparse_classifier.py
 ```

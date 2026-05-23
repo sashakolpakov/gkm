@@ -152,6 +152,21 @@ This is not a failure of the complexity term. It is a basin-accessibility fact. 
 
 For the sparse automata experiments this means a hand-written minimal automaton is a representability witness, not the default expectation for cold stochastic search. The empirically important object is the naturally discovered basin: how much overcapacity was needed to escape local minima, whether the solution generalizes, and whether later evolutionary pressure can produce simpler descendants without external pruning.
 
+The current sparse Bongard-style experiments give a first controlled example. The task is not to predict labels directly, but to evolve deterministic sparse automata over opaque-object sequences. Discovery is credited only when the selected automaton solves train, validation, hidden, and exhaustive foreign-alphabet probes. Several paired capacity ablations now show developmental overcapacity: the final exact solver uses fewer rules than the genome was allowed to carry during search, yet a cold search capped at that final rule count fails.
+
+```text
+task,limited condition,overcapacity condition,result
+length_multiple_of_three,cap_4 fails,overcapacity_12 succeeds,final solver has 3 rules
+first_equals_last,cap_5 and cap_6 fail,overcapacity_12 succeeds,final solver has 6 rules
+first_equals_second,cap_3 fails,overcapacity_14 succeeds,final solver has 3 rules
+last_two_equal,cap_7 fails,overcapacity_14 succeeds,final solver has 7 rules
+second_equals_last,cap_6 fails,overcapacity_16 succeeds,final solver has 6 rules
+```
+
+The effect is not universal. `has_adjacent_duplicate` solves under a limited cap as well as under overcapacity, so the claim is not that every rule needs excess structure. The claim is that some useful basins are not reachable when the search is forced to remain minimal from the start. For those cases, complexity pressure is still essential: it prices extra structure, but it does not remove the need for a temporary developmental search volume.
+
+The same experiments also expose a second methodological point: some Bongard panels are genuinely ambiguous until the negative examples are strong enough. `first_equals_second` and `last_two_equal` were missed under small balanced panels but solved after adding hard negative examples. This matters because human readers are often primed to see the intended relation. The experiment must therefore report panel design, balanced accuracy, and exhaustive probes rather than treating the intended rule as self-evident.
+
 ## 6. The Complexity Ratchet
 
 A free-energy system can increase complexity only when complexity buys enough risk reduction.
@@ -395,6 +410,28 @@ Prediction:
 
 - Some lineages produce interpretable subroutines: wall following, trail use, resource sweeping, evasion.
 - Compression pressure makes these subroutines smaller over time.
+
+### Experiment 6: Sparse Bongard Rule Discovery
+
+Use procedural Bongard-style concept induction over opaque-object sequences. Each run evolves a deterministic sparse automaton, not a direct classifier table. Train, validation, hidden, and exhaustive foreign-alphabet probes are separated.
+
+Protocol:
+
+- Vary the rule family: length, local equality, boundary equality, offset-boundary equality, duplicate/uniqueness, and palindrome-like relations.
+- Vary panel design, especially hard negative examples, because some concepts are underconstrained by small balanced panels.
+- For each task, compare a limited cap against a larger developmental cap, then record the final selected rule count.
+- Report exact discovery rates, balanced probe accuracy, selected complexity, and selected rules.
+
+Prediction:
+
+- Some tasks solve under limited caps, showing overcapacity is not a universal requirement.
+- Some tasks fail under limited caps but solve under larger developmental caps, even when the final exact solver uses no more rules than the limited cap allowed.
+- Some tasks fail under both conditions until panel design or substrate primitives change.
+- Harder memory-like tasks should expose missing primitives rather than merely needing more search.
+
+This experiment is a bridge between toy automata and external Bongard benchmarks. It turns the overcapacity thesis into a rate statement over a family of deterministic rule-discovery problems.
+
+The next external step is Bongard-LOGO, first in symbolic mode. A first adapter now converts generated Basic and Abstract LOGO action programs into relational scene encodings and runs a free-energy sparse feature selector. The first result is a representation-bottleneck diagnostic: Basic Shape is mostly recoverable from action skeletons with enough hard negatives, while Abstract Shape is weak from action skeletons alone and becomes exact only when privileged metadata attributes are exposed. Raw images should be used only after the symbolic path works, so perception failures can be separated from rule-induction failures. Bongard-OpenWorld and Bongard-HOI are later-stage benchmarks because they add real-image and open-vocabulary burdens before the free-energy rule-discovery story is isolated.
 
 ## 12. Proposed Thesis Statement
 
