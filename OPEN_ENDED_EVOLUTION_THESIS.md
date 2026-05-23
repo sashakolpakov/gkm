@@ -144,7 +144,15 @@ Where:
 
 The important part is not adding arbitrary novelty reward. The important part is making the ecology generate new risk terms that are still grounded in survival, control, prediction, resource acquisition, or reproduction.
 
-## 5. The Complexity Ratchet
+## 5. Developmental Overcapacity
+
+A free-energy system should not be expected to find the globally minimal program basin directly. The first reachable basin for a nontrivial behavior may be overbuilt: it carries extra states, rules, registers, or scaffolding that make the behavior discoverable by local mutation and selection.
+
+This is not a failure of the complexity term. It is a basin-accessibility fact. The term `lambda C(a)` makes extra machinery costly, but it does not make the shortest possible program easy to discover. In many domains the historical trajectory is: first find a working machine with excess structure, then simplify after the behavioral principle is reachable and selection can compare viable descendants. The Raptor-engine analogy is apt: early working designs can be more complex than later generations because later generations inherit knowledge, constraints, and reachable redesign paths that did not exist at the start.
+
+For the sparse automata experiments this means a hand-written minimal automaton is a representability witness, not the default expectation for cold stochastic search. The empirically important object is the naturally discovered basin: how much overcapacity was needed to escape local minima, whether the solution generalizes, and whether later evolutionary pressure can produce simpler descendants without external pruning.
+
+## 6. The Complexity Ratchet
 
 A free-energy system can increase complexity only when complexity buys enough risk reduction.
 
@@ -164,7 +172,7 @@ This inequality is the complexity ratchet.
 
 It says that complexity growth is not inherently good. It is admitted only when it pays for itself. Across a changing ecology, new niches can make previously useless complexity useful. This creates the possibility of directional structural growth without abandoning parsimony.
 
-## 6. Lambda Sweeps as Structure-Function Probes
+## 7. Lambda Sweeps as Structure-Function Probes
 
 Following the loss-complexity structure-function viewpoint of
 [arXiv:2507.13543](https://arxiv.org/abs/2507.13543), `lambda` is swept rather
@@ -202,7 +210,7 @@ The empirical signature is not simply “best score goes up.” The stronger sig
 4. The archive accumulates agents that solve different ecological niches.
 5. Validation environments generated later require structures not present earlier.
 
-## 7. Proposed Research Substrate
+## 8. Proposed Research Substrate
 
 The first serious substrate should include two controlled regimes: visible
 embodied behavior and deterministic pattern transduction.
@@ -266,7 +274,7 @@ Minimum environment stages:
 
 The first stage demonstrates adaptation. Later stages test open-endedness.
 
-## 8. Environment Generation
+## 9. Environment Generation
 
 The environment generator must avoid two failures:
 
@@ -292,13 +300,13 @@ Practical approximations:
 
 This makes the environment a coevolving curriculum.
 
-## 9. What Counts as Open-Endedness?
+## 10. What Counts as Open-Endedness?
 
 A weak system merely improves score. A stronger system exhibits continuing innovation.
 
 Operational criteria:
 
-### 9.1 Continued Adaptive Novelty
+### 10.1 Continued Adaptive Novelty
 
 New agents solve validation worlds that no previous archive agent solved.
 
@@ -306,7 +314,7 @@ New agents solve validation worlds that no previous archive agent solved.
 NovelSolve(a_t) = count{e in V_t : success(a_t,e) and no archived a solved e}
 ```
 
-### 9.2 Complexity With Payoff
+### 10.2 Complexity With Payoff
 
 Complexity grows only when accompanied by frontier risk reduction:
 
@@ -314,15 +322,15 @@ Complexity grows only when accompanied by frontier risk reduction:
 Delta C_t > 0 and Delta R_frontier_t < -epsilon
 ```
 
-### 9.3 Transfer
+### 10.3 Transfer
 
 Agents evolved in earlier niches retain competence while acquiring new competence.
 
-### 9.4 Lineage Depth
+### 10.4 Lineage Depth
 
 Useful behavior depends on multiple accumulated innovations, not one lucky mutation.
 
-### 9.5 Frontier Movement
+### 10.5 Frontier Movement
 
 The empirical structure function changes over time:
 
@@ -330,11 +338,11 @@ The empirical structure function changes over time:
 C_{t+1}^*(R) != C_t^*(R)
 ```
 
-### 9.6 Non-Collapse
+### 10.6 Non-Collapse
 
 The archive maintains multiple behavioral strategies under different lambda values or ecological niches.
 
-## 10. Experimental Program
+## 11. Experimental Program
 
 ### Experiment 1: Closed-World Baseline
 
@@ -388,13 +396,13 @@ Prediction:
 - Some lineages produce interpretable subroutines: wall following, trail use, resource sweeping, evasion.
 - Compression pressure makes these subroutines smaller over time.
 
-## 11. Proposed Thesis Statement
+## 12. Proposed Thesis Statement
 
 The thesis can be stated as:
 
 > Open-ended artificial evolution is possible under a free-energy paradigm if free energy is used as a local selection principle over agents embedded in an expanding, archive-driven ecology. Fixed-task free-energy minimization converges to compression; open-endedness requires that solved structures generate new validation pressures. Lambda sweeps then reveal evolving loss-complexity frontiers, and sustained frontier movement provides the empirical signature of open-ended evolution.
 
-## 12. Falsification Criteria
+## 13. Falsification Criteria
 
 The thesis is wrong, or at least incomplete, if:
 
@@ -407,7 +415,7 @@ The thesis is wrong, or at least incomplete, if:
 
 These failure modes should be treated as research results, not engineering annoyances.
 
-## 13. Immediate Next Step
+## 14. Immediate Next Step
 
 The next implementation should be a research instrument, not a product:
 

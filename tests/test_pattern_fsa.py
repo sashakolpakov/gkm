@@ -12,6 +12,7 @@ from pattern_fsa import (
     PatternLambdaRecord,
     PatternRule,
     WRITE_CURRENT,
+    bidirectional_compare_primitives,
     bidirectional_primitives,
     compare_primitives,
     evaluate_genome,
@@ -83,6 +84,7 @@ class PatternFsaTests(unittest.TestCase):
         register = register_primitives(object_count, register_count=1)
         compare = compare_primitives(object_count, register_count=1)
         bidirectional = bidirectional_primitives(object_count)
+        bidirectional_compare = bidirectional_compare_primitives(object_count, register_count=1)
 
         self.assertFalse(stream.allows(register_store_action(0), object_count))
         self.assertTrue(register.allows(register_store_action(0), object_count))
@@ -92,6 +94,9 @@ class PatternFsaTests(unittest.TestCase):
         self.assertTrue(compare.compare_registers)
         self.assertFalse(stream.bidirectional)
         self.assertTrue(bidirectional.bidirectional)
+        self.assertTrue(bidirectional_compare.bidirectional)
+        self.assertTrue(bidirectional_compare.compare_registers)
+        self.assertTrue(bidirectional_compare.allows(register_store_action(0), object_count))
 
     def test_comparison_observation_can_branch_on_register_match(self):
         object_count = 12

@@ -80,7 +80,8 @@ Primitive sets are intentionally tiered:
 - `stream`: move right, write current token, halt;
 - `register`: stream primitives plus store/write register actions;
 - `compare`: register primitives plus equality observations between the current token and stored registers;
-- `bidirectional`: stream primitives plus `MOVE_LEFT` and a beginning-of-sequence observation.
+- `bidirectional`: stream primitives plus `MOVE_LEFT` and a beginning-of-sequence observation;
+- `bidirectional_compare`: bidirectional motion plus register equality observations.
 
 This lets us ask which primitive set is sufficient for a task family, while
 selection still minimizes:
@@ -101,14 +102,16 @@ is deterministic enough.
 
 ## Run
 
+Run the foraging ecology experiment:
+
 ```bash
-python agent.py --generations 80 --population 160 --render
+python3 experiments/run_foraging_ecology.py --generations 80 --population 160 --render
 ```
 
-Equivalent:
+Compatibility entry point:
 
 ```bash
-python evo_game.py --generations 80 --population 160 --render
+python agent.py --generations 80 --population 160 --render
 ```
 
 Run the pattern-transduction substrate:
@@ -123,26 +126,61 @@ Reproduce the register-transducer benchmark matrix:
 python3 experiments/run_register_transducer_benchmark.py
 ```
 
+Run the local symbolic Bongard-style concept-induction harness:
+
+```bash
+python3 experiments/run_bongard_symbolic_baseline.py
+```
+
+Run the evolved sparse Bongard classifier harness with clean-slate random initialization, concept-specific search budgets, counterexample-rich splits, and exhaustive discovery probes:
+
+```bash
+python3 experiments/run_bongard_sparse_classifier.py --concept length_even
+python3 experiments/run_bongard_sparse_classifier.py --concept has_adjacent_duplicate
+python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_last
+python3 experiments/run_bongard_sparse_classifier.py --concept length_multiple_of_three
+python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_second
+python3 experiments/run_bongard_sparse_classifier.py --concept last_two_equal
+python3 experiments/run_bongard_sparse_classifier.py --concept second_equals_last
+python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_penultimate
+python3 experiments/run_bongard_sparse_classifier.py --concept second_equals_penultimate
+python3 experiments/run_bongard_sparse_classifier.py --concept palindrome
+python3 experiments/run_bongard_sparse_classifier.py --concept contains_duplicate
+python3 experiments/run_bongard_sparse_classifier.py --concept all_unique
+```
+
+Override a concept budget explicitly:
+
+```bash
+python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_last --replicates 1 --population 700 --generations 450 --states 3 --initial-rules 6 --max-rules 12 --max-rule-length 1 --lambda-min 0.0001 --lambda-max 0.0001 --lambda-points 1 --train-count 16 --validation-count 12 --hidden-count 32 --mutation-rate 0.12 --lambda-warmup-fraction 0.9 --archive-training --archive-interval 40 --archive-add-per-interval 32 --stop-after-discovery
+```
+
+Run paired overcapacity ablations across a fast Bongard rule matrix:
+
+```bash
+python3 -u experiments/run_bongard_overcapacity_ablation.py --replicates 1
+```
+
 Use Hyperopt/TPE instead of the genetic population loop:
 
 ```bash
 pip install -r requirements.txt
-python agent.py --optimizer hyperopt --hyperopt-evals 300 --lambda-points 5
+python3 experiments/run_foraging_ecology.py --optimizer hyperopt --hyperopt-evals 300 --lambda-points 5
 ```
 
 Run a larger ecology with a less cramped episode horizon:
 
 ```bash
-python agent.py --width 10 --height 10 --food-count 6 --max-steps 80 --max-rule-length 3 --initial-rules 100 --max-rules 180 --generations 150 --population 260 --lambda-max 0.0012
+python3 experiments/run_foraging_ecology.py --width 10 --height 10 --food-count 6 --max-steps 80 --max-rule-length 3 --initial-rules 100 --max-rules 180 --generations 150 --population 260 --lambda-max 0.0012
 ```
 
 Compare complexity assumptions:
 
 ```bash
-python agent.py --complexity-mode active --lambda-points 5
-python agent.py --complexity-mode table --lambda-points 5
-python agent.py --complexity-mode pruned --lambda-points 5
-python agent.py --complexity-mode mixed --lambda-points 5
+python3 experiments/run_foraging_ecology.py --complexity-mode active --lambda-points 5
+python3 experiments/run_foraging_ecology.py --complexity-mode table --lambda-points 5
+python3 experiments/run_foraging_ecology.py --complexity-mode pruned --lambda-points 5
+python3 experiments/run_foraging_ecology.py --complexity-mode mixed --lambda-points 5
 ```
 
 Outputs are written to `output/evo_game/`:
@@ -194,17 +232,29 @@ The goal is not to make a clever game bot. The goal is to test whether free-ener
 ## Files
 
 ```text
-agent.py                         compatibility entry point for evo_game.py
-evo_game.py                      finite-state automata evolution experiment
+agent.py                         compatibility entry point for experiments/run_foraging_ecology.py
+evo_game.py                      grid-foraging FSA substrate library
+experiments/run_foraging_ecology.py
+                                 grid-foraging experiment runner
 pattern_fsa.py                   sparse register-transducer pattern experiment
 experiments/register_transducer_benchmark.md
                                  register-transducer benchmark report
 experiments/run_register_transducer_benchmark.py
                                  benchmark reproduction script
+experiments/bongard_first_plan.md
+                                 Bongard-first benchmark plan
+experiments/run_bongard_symbolic_baseline.py
+                                 symbolic Bongard-style baseline
+experiments/run_bongard_sparse_classifier.py
+                                 evolved sparse Bongard classifier
+experiments/bongard_sparse_classifier_report.md
+                                 sparse Bongard classifier report
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
 FREE_ENERGY_EXPLANATION.md       mathematical background
 tests/test_evo_game.py           standard-library tests
 tests/test_pattern_fsa.py        pattern-transduction tests
+tests/test_bongard_sparse_classifier.py
+                                 Bongard harness tests
 requirements.txt                 optional Hyperopt/TPE dependency
 ```
 
@@ -212,5 +262,5 @@ requirements.txt                 optional Hyperopt/TPE dependency
 
 ```bash
 python -m unittest
-python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_register_transducer_benchmark.py tests/test_evo_game.py tests/test_pattern_fsa.py
+python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_foraging_ecology.py experiments/run_register_transducer_benchmark.py experiments/run_bongard_symbolic_baseline.py experiments/run_bongard_sparse_classifier.py tests/test_evo_game.py tests/test_pattern_fsa.py tests/test_bongard_sparse_classifier.py
 ```

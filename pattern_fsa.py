@@ -147,11 +147,27 @@ def compare_primitives(alphabet_size: int, register_count: int = 2) -> Primitive
     )
 
 
+def bidirectional_compare_primitives(alphabet_size: int, register_count: int = 2) -> PrimitiveSet:
+    register_actions = tuple(
+        action
+        for idx in range(register_count)
+        for action in (register_store_action(idx), register_write_action(idx))
+    )
+    return PrimitiveSet(
+        name="bidirectional_compare",
+        actions=(MOVE_RIGHT, MOVE_LEFT, WRITE_CURRENT, HALT) + register_actions,
+        register_count=register_count,
+        compare_registers=True,
+        bidirectional=True,
+    )
+
+
 PRIMITIVE_SETS = {
     "stream": stream_primitives,
     "register": register_primitives,
     "compare": compare_primitives,
     "bidirectional": bidirectional_primitives,
+    "bidirectional_compare": bidirectional_compare_primitives,
 }
 
 
