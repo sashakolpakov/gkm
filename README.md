@@ -170,6 +170,13 @@ git clone https://github.com/NVlabs/Bongard-LOGO.git downloads/Bongard-LOGO
 .venv/bin/python experiments/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source abstract --feature-set all --limit 26 --support-count 10 --validation-count 3 --hidden-count 3 --max-rule-atoms 2 --max-candidate-atoms 20 --summary-only
 ```
 
+Run the internal abstraction-emergence predicate-library scaffold:
+
+```bash
+python3 experiments/run_abstraction_emergence.py
+python3 experiments/run_abstraction_emergence.py --scenario multi --show-rules
+```
+
 Use Hyperopt/TPE instead of the genetic population loop:
 
 ```bash
@@ -260,10 +267,14 @@ experiments/run_bongard_overcapacity_ablation.py
                                  paired Bongard overcapacity ablations
 experiments/run_bongard_logo_adapter.py
                                  local Bongard-LOGO symbolic adapter and selector
+experiments/run_abstraction_emergence.py
+                                 internal predicate-library abstraction scaffold
 experiments/bongard_sparse_classifier_report.md
                                  sparse Bongard classifier report
 experiments/bongard_logo_report.md
                                  Bongard-LOGO symbolic adapter report
+experiments/abstraction_emergence_report.md
+                                 abstraction-emergence predicate-library report
 experiments/abstraction_related_work.md
                                  abstraction-emergence related-work note
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
@@ -272,6 +283,8 @@ tests/test_evo_game.py           standard-library tests
 tests/test_pattern_fsa.py        pattern-transduction tests
 tests/test_bongard_sparse_classifier.py
                                  Bongard harness tests
+tests/test_abstraction_emergence.py
+                                 abstraction-emergence tests
 requirements.txt                 optional Hyperopt/TPE dependency
 ```
 
@@ -279,5 +292,5 @@ requirements.txt                 optional Hyperopt/TPE dependency
 
 ```bash
 python -m unittest
-python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_foraging_ecology.py experiments/run_register_transducer_benchmark.py experiments/run_bongard_symbolic_baseline.py experiments/run_bongard_sparse_classifier.py experiments/run_bongard_overcapacity_ablation.py experiments/run_bongard_logo_adapter.py tests/test_evo_game.py tests/test_pattern_fsa.py tests/test_bongard_sparse_classifier.py
+python -m py_compile agent.py evo_game.py pattern_fsa.py experiments/run_foraging_ecology.py experiments/run_register_transducer_benchmark.py experiments/run_bongard_symbolic_baseline.py experiments/run_bongard_sparse_classifier.py experiments/run_bongard_overcapacity_ablation.py experiments/run_bongard_logo_adapter.py experiments/run_abstraction_emergence.py tests/test_evo_game.py tests/test_pattern_fsa.py tests/test_bongard_sparse_classifier.py tests/test_abstraction_emergence.py
 ```
