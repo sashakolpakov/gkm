@@ -175,6 +175,7 @@ Run the internal abstraction-emergence predicate-library scaffold:
 ```bash
 python3 experiments/run_abstraction_emergence.py
 python3 experiments/run_abstraction_emergence.py --scenario multi --show-rules
+python3 experiments/run_abstraction_emergence.py --scenario or_factor --show-rules
 ```
 
 Use Hyperopt/TPE instead of the genetic population loop:

@@ -48,21 +48,29 @@ CORE_ABSTRACTION: Tuple[Atom, ...] = (
     "turn_balanced",
 )
 
-TASK_DEFINITIONS: Dict[str, Tuple[Atom, ...]] = {
-    "solid_loop": CORE_ABSTRACTION,
-    "solid_loop_curve": CORE_ABSTRACTION + ("has_curve",),
-    "solid_loop_thin": CORE_ABSTRACTION + ("thin",),
-    "solid_loop_symmetric": CORE_ABSTRACTION + ("symmetric_hint",),
-    "solid_loop_many": CORE_ABSTRACTION + ("many_segments",),
+TASK_DEFINITIONS: Dict[str, Tuple[Tuple[Atom, ...], ...]] = {
+    "solid_loop": (CORE_ABSTRACTION,),
+    "solid_loop_curve": (CORE_ABSTRACTION + ("has_curve",),),
+    "solid_loop_thin": (CORE_ABSTRACTION + ("thin",),),
+    "solid_loop_symmetric": (CORE_ABSTRACTION + ("symmetric_hint",),),
+    "solid_loop_many": (CORE_ABSTRACTION + ("many_segments",),),
+    "curve_or_thin": (("has_curve",), ("thin",)),
+    "solid_loop_curve_or_thin": (
+        CORE_ABSTRACTION + ("has_curve",),
+        CORE_ABSTRACTION + ("thin",),
+    ),
 }
 
 SCENARIOS: Dict[str, Tuple[Tuple[str, ...], Tuple[str, ...]]] = {
     "single": (("solid_loop_curve",), ("solid_loop_thin",)),
     "multi": (("solid_loop_curve", "solid_loop_thin", "solid_loop_symmetric"), ("solid_loop_many",)),
     "with_direct": (("solid_loop", "solid_loop_curve", "solid_loop_thin", "solid_loop_symmetric"), ("solid_loop_many",)),
+    "or_control": (("curve_or_thin",), ("solid_loop_many",)),
+    "or_factor": (("solid_loop_curve_or_thin",), ("solid_loop_symmetric",)),
 }
 
 CONDITIONS = ("inline", "shared", "no_share", "oracle")
+MAX_DNF_CANDIDATE_CLAUSES = 80
 
 
 @dataclass(frozen=True)
@@ -74,10 +82,16 @@ class Split:
 @dataclass(frozen=True)
 class Task:
     name: str
-    required_atoms: Tuple[Atom, ...]
+    positive_clauses: Tuple[Tuple[Atom, ...], ...]
     train: Split
     validation: Split
     hidden: Split
+
+    @property
+    def required_atoms(self) -> Tuple[Atom, ...]:
+        if len(self.positive_clauses) != 1:
+            raise ValueError(f"{self.name} is disjunctive and has no single required-atom clause")
+        return self.positive_clauses[0]
 
 
 @dataclass(frozen=True)
@@ -92,14 +106,25 @@ class Macro:
 @dataclass(frozen=True)
 class Rule:
     atoms: Tuple[Atom, ...] = ()
+    clauses: Tuple[Tuple[Atom, ...], ...] = ()
     constant: Optional[bool] = None
+
+    def active_clauses(self) -> Tuple[Tuple[Atom, ...], ...]:
+        if self.clauses:
+            return self.clauses
+        if self.atoms:
+            return (self.atoms,)
+        return ()
 
     def describe(self) -> str:
         if self.constant is True:
             return "CONST_TRUE"
         if self.constant is False:
             return "CONST_FALSE"
-        return " AND ".join(self.atoms)
+        clauses = self.active_clauses()
+        if len(clauses) == 1:
+            return " AND ".join(clauses[0])
+        return " OR ".join("(" + " AND ".join(clause) + ")" for clause in clauses)
 
 
 @dataclass(frozen=True)
@@ -164,24 +189,26 @@ def make_universe() -> Tuple[ObjectAtoms, ...]:
     return tuple(objects)
 
 
-def predicate(obj: ObjectAtoms, required_atoms: Sequence[Atom]) -> bool:
-    return all(atom in obj for atom in required_atoms)
+def predicate(obj: ObjectAtoms, positive_clauses: Sequence[Sequence[Atom]]) -> bool:
+    return any(all(atom in obj for atom in clause) for clause in positive_clauses)
 
 
-def split_candidates(universe: Sequence[ObjectAtoms], required_atoms: Sequence[Atom]) -> Tuple[List[ObjectAtoms], List[ObjectAtoms]]:
-    positives = [obj for obj in universe if predicate(obj, required_atoms)]
-    negatives = [obj for obj in universe if not predicate(obj, required_atoms)]
+def split_candidates(
+    universe: Sequence[ObjectAtoms], positive_clauses: Sequence[Sequence[Atom]]
+) -> Tuple[List[ObjectAtoms], List[ObjectAtoms]]:
+    positives = [obj for obj in universe if predicate(obj, positive_clauses)]
+    negatives = [obj for obj in universe if not predicate(obj, positive_clauses)]
     return positives, negatives
 
 
-def overlap_score(obj: ObjectAtoms, required_atoms: Sequence[Atom]) -> int:
-    return sum(atom in obj for atom in required_atoms)
+def overlap_score(obj: ObjectAtoms, positive_clauses: Sequence[Sequence[Atom]]) -> int:
+    return max((sum(atom in obj for atom in clause) for clause in positive_clauses), default=0)
 
 
 def sample_side(
     rng: random.Random,
     candidates: Sequence[ObjectAtoms],
-    required_atoms: Sequence[Atom],
+    positive_clauses: Sequence[Sequence[Atom]],
     count: int,
     label: bool,
     used: set[ObjectAtoms],
@@ -190,7 +217,7 @@ def sample_side(
     if label:
         rng.shuffle(available)
     else:
-        available.sort(key=lambda obj: (overlap_score(obj, required_atoms), rng.random()), reverse=True)
+        available.sort(key=lambda obj: (overlap_score(obj, positive_clauses), rng.random()), reverse=True)
     if len(available) < count:
         raise RuntimeError("not enough unique examples for split")
     chosen = tuple(available[:count])
@@ -199,22 +226,22 @@ def sample_side(
 
 
 def make_task(name: str, seed: int, train_count: int, validation_count: int, hidden_count: int) -> Task:
-    required_atoms = TASK_DEFINITIONS[name]
+    positive_clauses = TASK_DEFINITIONS[name]
     universe = make_universe()
-    positives, negatives = split_candidates(universe, required_atoms)
+    positives, negatives = split_candidates(universe, positive_clauses)
     rng = random.Random(seed)
     used_pos: set[ObjectAtoms] = set()
     used_neg: set[ObjectAtoms] = set()
 
     def make_split(count: int) -> Split:
         return Split(
-            positives=sample_side(rng, positives, required_atoms, count, True, used_pos),
-            negatives=sample_side(rng, negatives, required_atoms, count, False, used_neg),
+            positives=sample_side(rng, positives, positive_clauses, count, True, used_pos),
+            negatives=sample_side(rng, negatives, positive_clauses, count, False, used_neg),
         )
 
     return Task(
         name=name,
-        required_atoms=required_atoms,
+        positive_clauses=positive_clauses,
         train=make_split(train_count),
         validation=make_split(validation_count),
         hidden=make_split(hidden_count),
@@ -241,7 +268,7 @@ def features_for_object(obj: ObjectAtoms, macros: Sequence[Macro], oracle_task: 
     for macro in macros:
         if macro.holds(obj):
             features.add(macro_feature_name(macro))
-    if oracle_task is not None and predicate(obj, oracle_task.required_atoms):
+    if oracle_task is not None and predicate(obj, oracle_task.positive_clauses):
         features.add(oracle_feature_name(oracle_task))
     return frozenset(features)
 
@@ -250,7 +277,7 @@ def predict_rule(rule: Rule, obj: ObjectAtoms, macros: Sequence[Macro], oracle_t
     if rule.constant is not None:
         return rule.constant
     features = features_for_object(obj, macros, oracle_task=oracle_task)
-    return all(atom in features for atom in rule.atoms)
+    return any(all(atom in features for atom in clause) for clause in rule.active_clauses())
 
 
 def evaluate_accuracy(rule: Rule, split: Split, macros: Sequence[Macro], oracle_task: Optional[Task] = None) -> float:
@@ -263,6 +290,22 @@ def macro_definition_complexity(macro: Macro, macro_overhead: float) -> float:
     return macro_overhead + float(len(macro.atoms))
 
 
+def atom_reference_complexity(
+    atom: Atom,
+    macros: Sequence[Macro],
+    call_cost: float,
+    no_share: bool,
+    macro_overhead: float,
+) -> float:
+    by_name = {macro_feature_name(macro): macro for macro in macros}
+    macro = by_name.get(atom)
+    if macro is None:
+        return 1.0
+    if no_share:
+        return call_cost + macro_definition_complexity(macro, macro_overhead)
+    return call_cost
+
+
 def rule_complexity(
     rule: Rule,
     macros: Sequence[Macro],
@@ -273,17 +316,17 @@ def rule_complexity(
 ) -> float:
     if rule.constant is not None:
         return 0.0
-    by_name = {macro_feature_name(macro): macro for macro in macros}
-    total = rule_overhead
-    for atom in rule.atoms:
-        macro = by_name.get(atom)
-        if macro is None:
-            total += 1.0
-        elif no_share:
-            total += call_cost + macro_definition_complexity(macro, macro_overhead)
-        else:
-            total += call_cost
-    return total
+    return rule_overhead + sum(
+        atom_reference_complexity(
+            atom,
+            macros,
+            call_cost=call_cost,
+            no_share=no_share,
+            macro_overhead=macro_overhead,
+        )
+        for clause in rule.active_clauses()
+        for atom in clause
+    )
 
 
 @functools.lru_cache(maxsize=None)
@@ -297,12 +340,124 @@ def candidate_macros(max_macro_atoms: int) -> Tuple[Macro, ...]:
 
 
 @functools.lru_cache(maxsize=None)
-def candidate_rules(atom_pool: Sequence[Atom], max_atoms: int) -> Tuple[Rule, ...]:
-    rules: List[Rule] = [Rule(constant=False), Rule(constant=True)]
+def candidate_clauses(atom_pool: Sequence[Atom], max_atoms: int) -> Tuple[Tuple[Atom, ...], ...]:
+    clauses: List[Tuple[Atom, ...]] = []
     for size in range(1, max_atoms + 1):
-        for atoms in itertools.combinations(sorted(atom_pool), size):
-            rules.append(Rule(atoms=tuple(atoms)))
+        clauses.extend(tuple(atoms) for atoms in itertools.combinations(sorted(atom_pool), size))
+    return tuple(clauses)
+
+
+@functools.lru_cache(maxsize=None)
+def candidate_rules(atom_pool: Sequence[Atom], max_atoms: int, max_clauses: int) -> Tuple[Rule, ...]:
+    clauses = candidate_clauses(tuple(atom_pool), max_atoms)
+    rules: List[Rule] = [Rule(constant=False), Rule(constant=True)]
+    rules.extend(Rule(atoms=clause) for clause in clauses)
+    if max_clauses >= 2:
+        for left_idx, left in enumerate(clauses):
+            left_set = set(left)
+            for right in clauses[left_idx + 1 :]:
+                right_set = set(right)
+                if left_set <= right_set or right_set <= left_set:
+                    continue
+                rules.append(Rule(clauses=(left, right)))
     return tuple(rules)
+
+
+def clause_holds(clause: Sequence[Atom], features: Sequence[Atom]) -> bool:
+    feature_set = set(features)
+    return all(atom in feature_set for atom in clause)
+
+
+def ranked_candidate_clauses(
+    task: Task,
+    atom_pool: Sequence[Atom],
+    max_atoms: int,
+    macros: Sequence[Macro],
+    oracle: bool,
+) -> Tuple[Tuple[Atom, ...], ...]:
+    oracle_task = task if oracle else None
+    positive_features = [features_for_object(obj, macros, oracle_task=oracle_task) for obj in task.train.positives]
+    negative_features = [features_for_object(obj, macros, oracle_task=oracle_task) for obj in task.train.negatives]
+    scored: List[Tuple[int, int, int, Tuple[Atom, ...]]] = []
+    for clause in candidate_clauses(tuple(atom_pool), max_atoms):
+        positive_hits = sum(clause_holds(clause, features) for features in positive_features)
+        if positive_hits == 0:
+            continue
+        negative_hits = sum(clause_holds(clause, features) for features in negative_features)
+        scored.append((negative_hits, -positive_hits, len(clause), clause))
+    scored.sort(key=lambda item: (item[0], item[1], item[2], item[3]))
+    return tuple(item[3] for item in scored[:MAX_DNF_CANDIDATE_CLAUSES])
+
+
+def candidate_dnf_rules(
+    task: Task,
+    atom_pool: Sequence[Atom],
+    max_atoms: int,
+    macros: Sequence[Macro],
+    oracle: bool,
+) -> Tuple[Rule, ...]:
+    clauses = ranked_candidate_clauses(task, tuple(atom_pool), max_atoms, tuple(macros), oracle)
+    rules: List[Rule] = [Rule(constant=False), Rule(constant=True)]
+    rules.extend(Rule(atoms=clause) for clause in clauses)
+    for left_idx, left in enumerate(clauses):
+        left_set = set(left)
+        for right in clauses[left_idx + 1 :]:
+            right_set = set(right)
+            if left_set <= right_set or right_set <= left_set:
+                continue
+            rules.append(Rule(clauses=(left, right)))
+    return tuple(rules)
+
+
+def macros_from_repeated_inline_branches(
+    tasks: Sequence[Task],
+    max_inline_atoms: int,
+    max_macro_atoms: int,
+) -> Tuple[Macro, ...]:
+    macros: List[Macro] = []
+    seen: set[Tuple[Atom, ...]] = set()
+    for task in tasks:
+        if len(task.positive_clauses) < 2:
+            continue
+        rules = candidate_dnf_rules(task, PRIMITIVE_ATOMS, max_inline_atoms, (), False)
+        scores = [
+            score_rule(
+                task,
+                rule,
+                (),
+                call_cost=0.0,
+                rule_overhead=1.0,
+                no_share=False,
+                macro_overhead=1.0,
+                oracle=False,
+            )
+            for rule in rules
+        ]
+        best = min(scores, key=lambda score: (score.train_loss, score.complexity, score.rule.describe()))
+        clauses = best.rule.active_clauses()
+        if len(clauses) < 2:
+            continue
+        repeated_set = set.intersection(*(set(clause) for clause in clauses))
+        repeated_atoms = [atom for atom in PRIMITIVE_ATOMS if atom in repeated_set]
+        max_size = min(max_macro_atoms, len(repeated_atoms))
+        for size in range(2, max_size + 1):
+            for atoms in itertools.combinations(repeated_atoms, size):
+                if atoms in seen:
+                    continue
+                seen.add(atoms)
+                macros.append(Macro(name="+".join(atoms), atoms=atoms))
+    return tuple(macros)
+
+
+def candidate_macro_pool_for_tasks(
+    tasks: Sequence[Task],
+    max_inline_atoms: int,
+    max_macro_atoms: int,
+) -> Tuple[Macro, ...]:
+    repeated_branch_macros = macros_from_repeated_inline_branches(tasks, max_inline_atoms, max_macro_atoms)
+    if any(len(task.positive_clauses) > 1 for task in tasks):
+        return repeated_branch_macros
+    return candidate_macros(max_macro_atoms)
 
 
 @functools.lru_cache(maxsize=None)
@@ -369,7 +524,11 @@ def select_best_task_rule(
         max_atoms = max_solver_atoms if macros else max_inline_atoms
         no_share = condition == "no_share"
         oracle = False
-    rules = candidate_rules(atom_pool, max_atoms)
+    max_clauses = 1 if oracle else min(2, max(1, len(task.positive_clauses)))
+    if max_clauses == 1:
+        rules = candidate_rules(tuple(atom_pool), max_atoms, max_clauses)
+    else:
+        rules = candidate_dnf_rules(task, tuple(atom_pool), max_atoms, tuple(macros), oracle)
     scores = [
         score_rule(
             task,
@@ -384,6 +543,11 @@ def select_best_task_rule(
         for rule in rules
     ]
     return min(scores, key=lambda score: (score.train_loss + lambda_value * score.complexity, score.train_loss, score.complexity, score.rule.describe()))
+
+
+def rule_uses_macro(rule: Rule, macro: Macro) -> bool:
+    name = macro_feature_name(macro)
+    return any(atom == name for clause in rule.active_clauses() for atom in clause)
 
 
 def evaluate_library(
@@ -418,8 +582,9 @@ def evaluate_library(
         )
         for task in tasks
     )
+    macro_used = macro is not None and any(rule_uses_macro(score.rule, macro) for score in task_scores)
     library_complexity = 0.0
-    if charge_library and condition == "shared" and macro is not None:
+    if charge_library and condition == "shared" and macro_used:
         library_complexity = macro_definition_complexity(macro, macro_overhead)
     train_loss = sum(score.train_loss for score in task_scores)
     validation_loss = sum(score.validation_loss for score in task_scores)
@@ -429,7 +594,7 @@ def evaluate_library(
         condition=condition,
         scenario=scenario,
         lambda_value=lambda_value,
-        macro=macro if condition in {"shared", "no_share"} else None,
+        macro=macro if condition in {"shared", "no_share"} and macro_used else None,
         train_loss=train_loss,
         validation_loss=validation_loss,
         hidden_loss=hidden_loss,
@@ -455,7 +620,7 @@ def select_condition_result(
 ) -> LibraryResult:
     macros: Tuple[Optional[Macro], ...]
     if condition in {"shared", "no_share"}:
-        macros = (None,) + candidate_macros(max_macro_atoms)
+        macros = (None,) + candidate_macro_pool_for_tasks(tasks, max_inline_atoms, max_macro_atoms)
     else:
         macros = (None,)
 
