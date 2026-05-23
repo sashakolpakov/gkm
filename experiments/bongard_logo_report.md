@@ -88,6 +88,51 @@ metadata, atoms=3, support=20/5/5,80,1.000,1.000,1.000,80,3.4
 
 Conclusion: more examples help when the right predicates are available; more conjunction capacity alone does not fix missing predicates. Abstract action-only failure is therefore not mainly a capacity issue in the sparse selector. It is a substrate issue: the action skeleton needs derived geometric predicates, or the learner must evolve/learn those predicates before the Bongard selector can use them.
 
+## Predicate Macro Prototype
+
+The adapter now has a first predicate-macro mode. It derives simple geometric measurements from LOGO action programs, exposes reusable macro predicates, and charges those macro predicates in rule complexity. These predicates are not Bongard metadata; they are built from the action trace. Examples include:
+
+```text
+macro:line_count>=3
+macro:arc_count<=1
+macro:closure_error<=0.08
+macro:aspect_ratio>=2.5
+macro:hull_fill>=0.9
+macro:convex_fill_candidate
+macro:thin_candidate
+```
+
+The selector can then use a macro as an atom inside a higher-level Bongard rule. This is the first small version of predicate invention as reusable rule macros. Candidate macro atoms are ranked by training-panel separation before conjunction search; this is a search-budget cap, not a post-hoc simplification. Use `--max-candidate-atoms 0` to disable the cap.
+
+One-attribute Abstract rerun:
+
+```text
+command: --source abstract --feature-set all --limit 26 --support-count 10 --validation-count 3 --hidden-count 3 --max-rule-atoms 2 --max-candidate-atoms 20 --summary-only
+category,feature_set,problems,mean_train_acc,mean_val_acc,mean_hidden_acc,exact_hidden,mean_complexity
+abstract,action,26,0.598,0.558,0.583,3,1.1
+abstract,macro,26,0.852,0.737,0.731,6,4.8
+abstract,metadata,26,1.000,1.000,1.000,26,2.5
+```
+
+With larger 20/5/5 panels, macro mode remains better than action-only but does not close the gap:
+
+```text
+command: --source abstract --feature-set macro --limit 26 --support-count 20 --validation-count 5 --hidden-count 5 --max-rule-atoms 2 --max-candidate-atoms 20 --summary-only
+category,feature_set,problems,mean_train_acc,mean_val_acc,mean_hidden_acc,exact_hidden,mean_complexity
+abstract,macro,26,0.770,0.735,0.696,4,3.9
+```
+
+Example selected macro rules from a six-concept smoke run:
+
+```text
+convex: macro:abs_turn_total<=360 AND macro:convex_fill_candidate
+has_curve: has_arc
+has_straight_line: has_line
+self_transposed: macro:heading_error>=0.05 AND macro:line_count<=6
+```
+
+This is the right research direction but not a solved predicate system. The invented macros recover part of the missing abstraction layer from action geometry, while failures such as symmetry still indicate missing or weak predicates.
+
 ## Observations
 
 1. **Basic Shape is mostly accessible from action programs.** Exact action skeletons recover almost all one-shape Basic concepts once the support panel has enough hard negatives from the same superclass.

@@ -157,8 +157,11 @@ The first adapter does not solve all Bongard-LOGO categories. It starts with
 Basic Shape and Abstract Shape problems generated from the local checkout. The
 initial report is `experiments/bongard_logo_report.md`: one-shape Basic is mostly
 recoverable from action skeletons, while Abstract Shape exposes the expected
-representation bottleneck unless privileged metadata attributes are supplied.
-Freeform shapes can be added after the internal scene encoding is stable.
+representation bottleneck unless privileged metadata attributes are supplied. A
+first predicate-macro mode now derives reusable geometric predicates from action
+programs; it improves Abstract action-only performance but does not yet replace
+metadata. Freeform shapes can be added after the internal scene encoding is
+stable.
 
 Dataset policy:
 

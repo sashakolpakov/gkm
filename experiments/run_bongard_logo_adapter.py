@@ -33,6 +33,7 @@ Atom = str
 Scene = Tuple["LogoSceneObject", ...]
 LabeledScene = Tuple[Scene, bool]
 ActionProgram = List[List[List[List[str]]]]
+MeasurementItems = Tuple[Tuple[str, float], ...]
 
 
 @dataclass(frozen=True)
@@ -47,6 +48,7 @@ class LogoSceneObject:
     metadata_shape_names: Tuple[str, ...] = ()
     metadata_super_classes: Tuple[str, ...] = ()
     metadata_attributes: Tuple[str, ...] = ()
+    measurements: MeasurementItems = ()
 
 
 @dataclass(frozen=True)
@@ -141,13 +143,14 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--dataset-dir", type=Path, required=True, help="local Bongard-LOGO checkout or downloaded dataset directory")
     parser.add_argument("--source", choices=("basic", "abstract", "both"), default="both")
-    parser.add_argument("--feature-set", choices=("action", "metadata", "both"), default="both")
+    parser.add_argument("--feature-set", choices=("action", "macro", "metadata", "both", "all"), default="both")
     parser.add_argument("--limit", type=int, default=12, help="maximum generated problems per selected source")
     parser.add_argument("--seed", type=int, default=123)
     parser.add_argument("--support-count", type=int, default=4, help="positive and negative examples used for training")
     parser.add_argument("--validation-count", type=int, default=1, help="positive and negative examples used for validation elbow selection")
     parser.add_argument("--hidden-count", type=int, default=2, help="positive and negative examples held out until after selection")
     parser.add_argument("--max-rule-atoms", type=int, default=2, help="maximum conjunction size in the sparse feature rule")
+    parser.add_argument("--max-candidate-atoms", type=int, default=40, help="cap shared positive atoms before conjunction search, ranked by training-set separation; use 0 for no cap")
     parser.add_argument("--lambda-min", type=float, default=0.0)
     parser.add_argument("--lambda-max", type=float, default=0.02)
     parser.add_argument("--lambda-points", type=int, default=5)
@@ -254,6 +257,174 @@ def action_skeleton(action_string: str) -> str:
     raise ValueError(f"unsupported action string {action_string}")
 
 
+def denormalize_signed_turn(normalized_turn: float) -> float:
+    return normalized_turn * 360.0 - 180.0
+
+
+def denormalize_arc_angle(normalized_arc_angle: float) -> float:
+    return normalized_arc_angle * 720.0 - 360.0
+
+
+def canonical_heading_error(degrees: float) -> float:
+    return abs(((degrees + 180.0) % 360.0) - 180.0)
+
+
+def polygon_area(points: Sequence[Tuple[float, float]]) -> float:
+    if len(points) < 3:
+        return 0.0
+    area = 0.0
+    for (x0, y0), (x1, y1) in zip(points, points[1:] + points[:1]):
+        area += x0 * y1 - x1 * y0
+    return abs(area) / 2.0
+
+
+def cross(origin: Tuple[float, float], a: Tuple[float, float], b: Tuple[float, float]) -> float:
+    return (a[0] - origin[0]) * (b[1] - origin[1]) - (a[1] - origin[1]) * (b[0] - origin[0])
+
+
+def convex_hull(points: Sequence[Tuple[float, float]]) -> List[Tuple[float, float]]:
+    unique_points = sorted(set(points))
+    if len(unique_points) <= 1:
+        return list(unique_points)
+    lower: List[Tuple[float, float]] = []
+    for point in unique_points:
+        while len(lower) >= 2 and cross(lower[-2], lower[-1], point) <= 0:
+            lower.pop()
+        lower.append(point)
+    upper: List[Tuple[float, float]] = []
+    for point in reversed(unique_points):
+        while len(upper) >= 2 and cross(upper[-2], upper[-1], point) <= 0:
+            upper.pop()
+        upper.append(point)
+    return lower[:-1] + upper[:-1]
+
+
+def shape_measurements(signature: Tuple[str, ...]) -> MeasurementItems:
+    x = y = 0.0
+    heading = 0.0
+    points: List[Tuple[float, float]] = [(x, y)]
+    line_count = 0
+    arc_count = 0
+    total_line_length = 0.0
+    total_arc_angle = 0.0
+    abs_turn_total = 0.0
+    path_length = 0.0
+
+    for token in signature:
+        parts = token.split(":")
+        turn = denormalize_signed_turn(float(parts[-1]))
+        heading += turn
+        abs_turn_total += abs(turn)
+        if parts[0] == "line":
+            line_count += 1
+            length = float(parts[1])
+            total_line_length += length
+            path_length += length
+            radians = math.radians(heading)
+            x += length * math.cos(radians)
+            y += length * math.sin(radians)
+            points.append((round(x, 6), round(y, 6)))
+        elif parts[0] == "arc":
+            arc_count += 1
+            radius = float(parts[1])
+            arc_angle = denormalize_arc_angle(float(parts[2]))
+            total_arc_angle += abs(arc_angle)
+            steps = max(4, int(abs(arc_angle) // 30) + 1)
+            step_angle = arc_angle / steps
+            chord = 2.0 * radius * math.sin(abs(math.radians(step_angle)) / 2.0)
+            for _ in range(steps):
+                heading += step_angle / 2.0
+                radians = math.radians(heading)
+                x += chord * math.cos(radians)
+                y += chord * math.sin(radians)
+                heading += step_angle / 2.0
+                points.append((round(x, 6), round(y, 6)))
+            path_length += abs(math.radians(arc_angle) * radius)
+        else:
+            raise ValueError(f"unsupported skeleton token {token}")
+
+    xs = [point[0] for point in points]
+    ys = [point[1] for point in points]
+    width = max(xs) - min(xs) if xs else 0.0
+    height = max(ys) - min(ys) if ys else 0.0
+    min_extent = max(min(width, height), 1e-6)
+    max_extent = max(width, height)
+    endpoint_distance = math.hypot(x, y)
+    hull = convex_hull(points)
+    hull_area = polygon_area(hull)
+    trace_area = polygon_area(points)
+    hull_fill = trace_area / hull_area if hull_area > 1e-9 else 0.0
+    measurements = {
+        "action_count": float(len(signature)),
+        "line_count": float(line_count),
+        "arc_count": float(arc_count),
+        "curve_fraction": arc_count / max(1, len(signature)),
+        "line_fraction": line_count / max(1, len(signature)),
+        "total_line_length": total_line_length,
+        "total_arc_angle": total_arc_angle,
+        "abs_turn_total": abs_turn_total,
+        "path_length": path_length,
+        "closure_error": endpoint_distance / max(path_length, 1e-6),
+        "aspect_ratio": max_extent / min_extent if max_extent else 1.0,
+        "bbox_area": width * height,
+        "hull_area": hull_area,
+        "hull_fill": min(1.0, hull_fill),
+        "heading_error": canonical_heading_error(heading) / 180.0,
+    }
+    return tuple(sorted(measurements.items()))
+
+
+def measurements_dict(obj: LogoSceneObject) -> Dict[str, float]:
+    return dict(obj.measurements)
+
+
+def threshold_atom(name: str, op: str, threshold: float) -> str:
+    if threshold == int(threshold):
+        threshold_text = str(int(threshold))
+    else:
+        threshold_text = f"{threshold:.3f}".rstrip("0").rstrip(".")
+    return f"macro:{name}{op}{threshold_text}"
+
+
+def macro_features_for_object(obj: LogoSceneObject) -> Set[Atom]:
+    measurements = measurements_dict(obj)
+    atoms: Set[Atom] = set()
+    for name in ("line_count", "arc_count", "action_count"):
+        value = measurements.get(name, 0.0)
+        for threshold in range(1, 10):
+            if value >= threshold:
+                atoms.add(threshold_atom(name, ">=", float(threshold)))
+            if value <= threshold:
+                atoms.add(threshold_atom(name, "<=", float(threshold)))
+    for name, thresholds in {
+        "curve_fraction": (0.001, 0.25, 0.50, 0.75),
+        "line_fraction": (0.25, 0.50, 0.75, 0.999),
+        "closure_error": (0.03, 0.08, 0.15, 0.30),
+        "aspect_ratio": (1.25, 1.75, 2.50, 4.00),
+        "hull_fill": (0.25, 0.50, 0.75, 0.90),
+        "heading_error": (0.05, 0.15, 0.30, 0.60),
+        "abs_turn_total": (180.0, 360.0, 540.0, 720.0),
+        "total_arc_angle": (90.0, 180.0, 270.0, 360.0),
+    }.items():
+        value = measurements.get(name, 0.0)
+        for threshold in thresholds:
+            if value >= threshold:
+                atoms.add(threshold_atom(name, ">=", threshold))
+            if value <= threshold:
+                atoms.add(threshold_atom(name, "<=", threshold))
+    if measurements.get("closure_error", 1.0) <= 0.08:
+        atoms.add("macro:closed")
+    if measurements.get("closure_error", 0.0) > 0.15:
+        atoms.add("macro:open")
+    if measurements.get("aspect_ratio", 1.0) >= 2.5:
+        atoms.add("macro:thin_candidate")
+    if measurements.get("hull_fill", 0.0) >= 0.9 and measurements.get("closure_error", 1.0) <= 0.15:
+        atoms.add("macro:convex_fill_candidate")
+    if measurements.get("arc_count", 0.0) > 0 and measurements.get("line_count", 0.0) > 0:
+        atoms.add("macro:mixed_line_arc")
+    return atoms
+
+
 def scene_from_image_program(image_program: List[List[str]], shape_index: ShapeIndex) -> Scene:
     objects = []
     for shape_program in image_program:
@@ -274,6 +445,7 @@ def scene_from_image_program(image_program: List[List[str]], shape_index: ShapeI
                 metadata_shape_names=tuple(row.function_name for row in metadata_rows),
                 metadata_super_classes=tuple(shared_super_classes),
                 metadata_attributes=tuple(sorted(shared_attributes)),
+                measurements=shape_measurements(signature),
             )
         )
     return tuple(objects)
@@ -429,6 +601,10 @@ def scene_features(scene: Scene, feature_set: str) -> Set[Atom]:
         features.add("has_arc" if "arc" in action_names else "no_arc")
         features.add("type_sequence:" + ",".join(action_names))
         features.add(f"slot{idx}:sig:{signature}")
+        if feature_set == "macro":
+            for atom in macro_features_for_object(obj):
+                features.add(atom)
+                features.add(f"slot{idx}:{atom}")
         if feature_set == "metadata":
             for shape_name in obj.metadata_shape_names:
                 features.add(f"shape:{shape_name}")
@@ -459,6 +635,8 @@ def atom_complexity(atom: Atom, shape_index: ShapeIndex) -> float:
         return 1.5
     if ":super:" in atom or atom.startswith("super:"):
         return 1.5
+    if atom.startswith("macro:") or ":macro:" in atom:
+        return macro_atom_complexity(atom)
     if atom.startswith("object_count="):
         return 1.0
     if atom.startswith("action_count="):
@@ -468,6 +646,23 @@ def atom_complexity(atom: Atom, shape_index: ShapeIndex) -> float:
     if atom.startswith("type_sequence:"):
         return float(atom.count(",") + 2)
     return 2.0
+
+
+def macro_atom_complexity(atom: Atom) -> float:
+    macro = atom.split("macro:", 1)[1]
+    if macro in {"closed", "open", "thin_candidate", "convex_fill_candidate", "mixed_line_arc"}:
+        return 2.5
+    if macro.startswith(("line_count", "arc_count", "action_count")):
+        return 2.0
+    if macro.startswith(("curve_fraction", "line_fraction")):
+        return 2.5
+    if macro.startswith(("closure_error", "heading_error")):
+        return 3.0
+    if macro.startswith(("aspect_ratio", "hull_fill")):
+        return 3.5
+    if macro.startswith(("abs_turn_total", "total_arc_angle")):
+        return 2.5
+    return 3.0
 
 
 def rule_complexity(rule: LogoRule, shape_index: ShapeIndex) -> float:
@@ -511,13 +706,27 @@ def make_lambda_values(lambda_min: float, lambda_max: float, points: int) -> Lis
     return [lambda_min + idx * step for idx in range(points)]
 
 
-def candidate_rules(split: LogoSplit, feature_set: str, max_rule_atoms: int) -> List[LogoRule]:
+def candidate_rules(split: LogoSplit, feature_set: str, max_rule_atoms: int, max_candidate_atoms: int) -> List[LogoRule]:
     positive_features = [scene_features(scene, feature_set) for scene in split.positives]
+    negative_features = [scene_features(scene, feature_set) for scene in split.negatives]
     if not positive_features:
         return [LogoRule(constant=False), LogoRule(constant=True)]
     shared_positive = set.intersection(*positive_features)
+
+    def score_atom(atom: Atom) -> Tuple[float, int, str]:
+        negative_hits = sum(atom in features for features in negative_features)
+        negative_rate = negative_hits / max(1, len(negative_features))
+        # Every candidate is true on all positives. Rank by how many negatives it excludes,
+        # then prefer compact, non-slot predicates before exact signatures.
+        coarse_bonus = 0.05 if atom.startswith("macro:") or atom.startswith("attr:") or atom.startswith("super:") else 0.0
+        slot_penalty = 1 if atom.startswith("slot") else 0
+        return (1.0 - negative_rate + coarse_bonus, -slot_penalty, atom)
+
+    ranked_atoms = sorted(shared_positive, key=score_atom, reverse=True)
+    if max_candidate_atoms > 0:
+        ranked_atoms = ranked_atoms[:max_candidate_atoms]
+    atoms = sorted(ranked_atoms)
     candidates = [LogoRule(constant=False), LogoRule(constant=True)]
-    atoms = sorted(shared_positive)
     for size in range(1, max_rule_atoms + 1):
         for combo in itertools.combinations(atoms, size):
             candidates.append(LogoRule(atoms=tuple(combo)))
@@ -530,8 +739,8 @@ def validation_elbow(records: Sequence[Tuple[LogoRecord, LogoRule]]) -> Tuple[Lo
     return min(allowed, key=lambda item: (item[0].complexity, item[0].train_loss, item[0].lambda_value))
 
 
-def run_rule_selection(fewshot: LogoFewShotProblem, feature_set: str, lambda_values: Sequence[float], max_rule_atoms: int, shape_index: ShapeIndex) -> Tuple[LogoRecord, LogoRule]:
-    candidates = candidate_rules(fewshot.train, feature_set, max_rule_atoms)
+def run_rule_selection(fewshot: LogoFewShotProblem, feature_set: str, lambda_values: Sequence[float], max_rule_atoms: int, max_candidate_atoms: int, shape_index: ShapeIndex) -> Tuple[LogoRecord, LogoRule]:
+    candidates = candidate_rules(fewshot.train, feature_set, max_rule_atoms, max_candidate_atoms)
     selected_by_lambda: List[Tuple[LogoRecord, LogoRule]] = []
     for lambda_value in lambda_values:
         scored = []
@@ -632,12 +841,17 @@ def main() -> None:
     problems = generate_logo_problems(args, shape_index)
     print(summarize_problem_corpus(problems))
     lambda_values = make_lambda_values(args.lambda_min, args.lambda_max, args.lambda_points)
-    feature_sets = ("action", "metadata") if args.feature_set == "both" else (args.feature_set,)
+    if args.feature_set == "both":
+        feature_sets = ("action", "metadata")
+    elif args.feature_set == "all":
+        feature_sets = ("action", "macro", "metadata")
+    else:
+        feature_sets = (args.feature_set,)
     records: List[LogoRecord] = []
     for problem in problems:
         fewshot = split_problem(problem, args.support_count, args.validation_count, args.hidden_count)
         for feature_set in feature_sets:
-            record, _rule = run_rule_selection(fewshot, feature_set, lambda_values, args.max_rule_atoms, shape_index)
+            record, _rule = run_rule_selection(fewshot, feature_set, lambda_values, args.max_rule_atoms, args.max_candidate_atoms, shape_index)
             records.append(record)
     print_records(records, show_rules=args.show_rules, summary_only=args.summary_only)
 

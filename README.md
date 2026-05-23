@@ -167,6 +167,7 @@ Run the local Bongard-LOGO symbolic adapter without vendoring external data:
 git clone https://github.com/NVlabs/Bongard-LOGO.git downloads/Bongard-LOGO
 .venv/bin/python -m pip install pillow pandas
 .venv/bin/python experiments/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source both --feature-set both --limit 40 --support-count 10 --validation-count 3 --hidden-count 3 --summary-only
+.venv/bin/python experiments/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source abstract --feature-set all --limit 26 --support-count 10 --validation-count 3 --hidden-count 3 --max-rule-atoms 2 --max-candidate-atoms 20 --summary-only
 ```
 
 Use Hyperopt/TPE instead of the genetic population loop:
