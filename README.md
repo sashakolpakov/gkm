@@ -264,6 +264,8 @@ experiments/bongard_sparse_classifier_report.md
                                  sparse Bongard classifier report
 experiments/bongard_logo_report.md
                                  Bongard-LOGO symbolic adapter report
+experiments/abstraction_related_work.md
+                                 abstraction-emergence related-work note
 OPEN_ENDED_EVOLUTION_THESIS.md   thesis and experimental program
 FREE_ENERGY_EXPLANATION.md       mathematical background
 tests/test_evo_game.py           standard-library tests
