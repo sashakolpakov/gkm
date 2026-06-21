@@ -69,6 +69,7 @@ class World:
     movement: Dict[int, Tuple[int, int]]
     effects: Tuple[int, ...]          # non-movement action candidates
     barrier_colors: Tuple[int, ...]   # impassable structure colours (from priors)
+    anchor: object = None             # the per-component cofibrant Anchor (locate)
 
 
 def survey(game: str, use_llm=True, model=None) -> World:
@@ -85,10 +86,17 @@ def survey(game: str, use_llm=True, model=None) -> World:
     bg = int(np.bincount(frame.flatten()).argmax())
     struct = tuple(c for c in priors.structure_colours(frame.tolist()) if c != bg)
     return World(game, factory, ar.anchor.color, Grid.infer(frame),
-                 actions, movement, effects, struct)
+                 actions, movement, effects, struct, anchor=ar.anchor)
 
 
 def _anchor_xy(arr, w: World):
+    # use the per-component cofibrant anchor (handles avatars that are one of
+    # several same-colour components, e.g. g50t/ls20); fall back to largest comp.
+    if w.anchor is not None:
+        cell = w.anchor.locate(arr, w.grid)
+        if cell is not None:
+            return (cell[0]*w.grid.pitch + w.grid.phase[0] + w.grid.pitch/2,
+                    cell[1]*w.grid.pitch + w.grid.phase[1] + w.grid.pitch/2)
     comps = components(arr, w.anchor_color)
     return _centroid(max(comps, key=len)) if comps else None
 
@@ -215,7 +223,7 @@ def probe(w: World, start=None) -> List[Effect]:
     barr0 = _barrier_cells(arr_of(fd), w)
     if barr0:
         bc = next(iter(barr0))
-        appr = _nav_adjacent(w, g, fd, bc)
+        appr = _nav_to(w, g, fd, (bc[0]*PITCH + w.grid.phase[0], bc[1]*PITCH + w.grid.phase[1]))
         if appr:
             bg, bf, _ = appr
             for act in w.actions:
