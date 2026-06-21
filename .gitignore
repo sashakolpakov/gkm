@@ -49,3 +49,15 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets / environment (never commit API keys)
+.env
+.env.*
+!.env.example
+
+# ARC-AGI-3 local play: downloaded game sources + recordings (not vendored)
+environment_files/
+recordings/
+
+# scratch lab logs (keep the code + docs tracked)
+crack_lab/*.log
