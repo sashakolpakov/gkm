@@ -331,3 +331,21 @@ That LLM-driven scenario-comprehension + mechanic-discovery is the next build.
 
 Files: `gkm_crack.py` (the one module), `test_gkm_crack.py` (3 tests; 2 fast + 1
 end-to-end crack). Old intermediates removed.
+
+### Discovery phase (`discovery.py`) -- semantic binding by interaction
+The connector's mechanic vocabulary must be DISCOVERED, not assumed -- this is the
+foundation for later evolution and for new mechanics (gates/jumps). `discovery.py`
+generalises the carry probe into a channel-blind effect survey over the ABSTRACT
+actions:
+  PROBE (free space / facing a movable object / facing a barrier) -> CLASSIFY each
+  (action, context) into a channel-blind signature (self_translate | object_push |
+  object_attach_comove | object_release | barrier_open | ...) -> BIND to named verbs
+  with the local LLM from legible observations, with the interaction signatures as
+  the ground-truth VERIFIER.
+The SAME discovery runs PER LEVEL (`discover_per_level`): on wa30 it rediscovers
+`move(1-4)` + `pick_up_and_carry(5)` on L1, L2 AND L3. On L3 it finds NO crossing
+verb (no `open_gate`) -- consistent with the avatar being walled off, and an honest
+signal that L3 needs a new mechanic the current verb library does not contain. The
+next build is to enrich the verb library and the barrier percept so the LLM can
+discover and bind a wall-crossing mechanic (if the level affords one). Test:
+`test_gkm_crack.py::test_discovery_phase_grounds_move_and_carry`.
