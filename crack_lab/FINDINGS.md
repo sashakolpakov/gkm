@@ -358,3 +358,31 @@ L3 is either an intentionally unsolvable configuration under these five actions,
 its intended solution relies on a mechanic this game build does not expose. This is
 an HONEST impossibility result, established by exhaustive interaction, not a TODO.
 Test: `test_gkm_crack.py::test_discovery_phase_grounds_move_and_carry`.
+
+### Human-preconception strategist (`strategist.py`) -- and an honest negative
+The user's deeper point: figuring out wa30 L2/L3's orange HELPER -- it is a passive
+autonomous co-worker, but the METHOD OF COMMUNICATION (the wall as a drop-off /
+hand-off point: one agent leaves a box where the other can pick it up) is the crux,
+and only an agent carrying a lot of HUMAN PRECONCEPTIONS about the world (objects,
+containers, barriers, agency, cooperation, reachability-under-barriers) would
+discover it. We tested whether injecting those priors via a SYSTEM PROMPT is enough.
+
+`strategist.py` gives the local LLM a preconception-laden system prompt (objects /
+containers / barriers split space into regions / autonomous helper / per-agent
+reachability / cooperative hand-off only works if the drop and pick-up ranges meet)
+plus a grounded semantic scene, and asks for a plan + feasibility.
+
+RESULT (honest negative): on L3, qwen3-coder:30b **fails the reachability reasoning**
+even with the priors spelled out -- it asserts the right-side helper can reach the
+LEFT boxes and that the left-confined agent can deliver to the right-side target,
+and returns `feasible:true, stranded:[]`. So a system-prompt is NOT enough for this
+local model; it pattern-matches "every box reachable by someone" without tracking
+the wall-imposed sides. The INTERACTION VERIFIER gets it right (carried-box max
+x=28, helper min x=36, 8px gap > 4px pick-up range -> the 3 genuinely-left boxes are
+stranded; only the 2 boxes that START on the wall line are handed off, which is why
+the helper clears exactly two). This is the program's propose->verify thesis: the
+LLM proposes (often wrongly), interaction is ground truth. The standing need the
+user names is an agent whose human preconceptions are INTERNALISED (a real world
+model), not merely prompted -- the next research direction.
+
+Files added: `strategist.py`.
