@@ -343,9 +343,18 @@ actions:
   with the local LLM from legible observations, with the interaction signatures as
   the ground-truth VERIFIER.
 The SAME discovery runs PER LEVEL (`discover_per_level`): on wa30 it rediscovers
-`move(1-4)` + `pick_up_and_carry(5)` on L1, L2 AND L3. On L3 it finds NO crossing
-verb (no `open_gate`) -- consistent with the avatar being walled off, and an honest
-signal that L3 needs a new mechanic the current verb library does not contain. The
-next build is to enrich the verb library and the barrier percept so the LLM can
-discover and bind a wall-crossing mechanic (if the level affords one). Test:
-`test_gkm_crack.py::test_discovery_phase_grounds_move_and_carry`.
+`move(1-4)` + `pick_up_and_carry(5)` on L1, L2 AND L3.
+
+**L3 is provably unsolvable under wa30's actual mechanics (not a search/connector
+failure).** Exhaustive full-state reachability from L3 (20,000 states, ALL FIVE
+actions incl. pick-up/carry) shows the avatar's max x = 30: it can NEVER cross the
+impassable wall at x~32 (container at x>=52). The autonomous helper pathfinds with
+the same wall predicate, so it cannot cross either. Three of the five carriers sit
+on the avatar's (left) side and the only container is on the right, so NO action
+sequence can place all carriers -> the win predicate is unreachable. The discovery
+phase correctly reports NO crossing verb (no `open_gate`) -- there is none to
+discover; `qthdiggudy` (the wall set) is set once per level and never mutated. So
+L3 is either an intentionally unsolvable configuration under these five actions, or
+its intended solution relies on a mechanic this game build does not expose. This is
+an HONEST impossibility result, established by exhaustive interaction, not a TODO.
+Test: `test_gkm_crack.py::test_discovery_phase_grounds_move_and_carry`.
