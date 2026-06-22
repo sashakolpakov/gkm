@@ -166,6 +166,7 @@ class CarryConnector:
         # so a delivered box overwrites the ring and corrupts a live re-detection.
         # Perceive it ONCE per level (from the clean entry frame) and cache it.
         self._region_cache: Dict[int, Optional[Tuple[int, int, int, int]]] = {}
+        self._frontier_cache: Dict[int, Tuple[float, bool]] = {}
 
     def region_bbox(self, fd) -> Optional[Tuple[int, int, int, int]]:
         lvl = fd.levels_completed
@@ -274,6 +275,39 @@ class CarryConnector:
                         targets.append((sx, sy))
         return Scene(avatar, boxes, ring_bbox, targets)
 
+    def _frontier(self, g, fd):
+        """Flood the avatar's move-reachable x-extent. If the target region lies
+        beyond it (a barrier separates them), we are in HAND-OFF mode: the avatar
+        cannot reach the container, so it must relay boxes ACROSS its frontier into
+        the autonomous helper's domain (a carried box can cross the boundary even
+        where the avatar cannot -- the engine's collision check is asymmetric)."""
+        import collections
+        lvl = fd.levels_completed
+        if lvl in self._frontier_cache:
+            return self._frontier_cache[lvl]
+        a0 = self.perceive(arr_of(fd)).avatar
+        if a0 is None:
+            self._frontier_cache[lvl] = (1e9, False); return self._frontier_cache[lvl]
+        seen = {(round(a0[0]), round(a0[1]))}
+        q = collections.deque([(g, fd)]); maxx = a0[0]; n = 0
+        while q and n < 4000:
+            cg, cf = q.popleft(); n += 1
+            for a in MOVES:
+                ng, nf = step(cg, a)
+                if terminal(nf) or not getattr(nf, "frame", None):
+                    continue
+                av = self.perceive(arr_of(nf)).avatar
+                if av is None:
+                    continue
+                k = (round(av[0]), round(av[1]))
+                if k in seen:
+                    continue
+                seen.add(k); maxx = max(maxx, av[0]); q.append((ng, nf))
+        rb = self.region_bbox(fd)
+        handoff = rb is not None and rb[0] > maxx + PITCH    # container beyond reach
+        self._frontier_cache[lvl] = (maxx, handoff)
+        return self._frontier_cache[lvl]
+
     def _in_region(self, tl, scene):
         if scene.ring_bbox is None:
             return False
@@ -298,11 +332,15 @@ class CarryConnector:
         return g.ymzfopzgbq()
 
     def objective(self, fd) -> float:
-        """Potential to minimise: number of carriers not yet resting on the target.
-        A delivered carrier leaves this set (it sits in-region, or merges into the
-        same-colour structure and vanishes) -- so every genuine delivery lowers it."""
+        """Potential to minimise: number of carriers not yet resting on the target."""
         scene = self.perceive(arr_of(fd), self.region_bbox(fd))
         return float(sum(not self._placed(b, scene) for b in scene.boxes))
+
+    def delivered(self, fd) -> int:
+        """Ground-truth count of carriers resting on the target (for verifying a
+        proposed/evolved leg empirically -- the Goedel-machine 'is it better?' test)."""
+        scene = self.perceive(arr_of(fd), self.region_bbox(fd))
+        return sum(self._placed(b, scene) for b in scene.boxes)
 
     def describe(self, fd) -> str:
         sc = self.perceive(arr_of(fd), self.region_bbox(fd))
@@ -327,19 +365,24 @@ class CarryConnector:
         sc = self.perceive(arr, self.region_bbox(fd))
         tgts = sc.targets or [(0, 0)]
         helper = self._helper(arr)
-        unplaced = [b for b in sc.boxes if not self._placed(b, sc)
+        unplaced = [b for b in sc.boxes
+                    if not self._placed(b, sc)
                     and b.border in (self.B.rest_border, self.B.carried_border,
                                      self._faced(g, fd))]
 
         def cost(b):
-            d_target = min(abs(b.center[0]-sx) + abs(b.center[1]-sy) for sx, sy in tgts)
+            key = min(abs(b.center[0]-sx) + abs(b.center[1]-sy) for sx, sy in tgts)
             d_av = (abs(sc.avatar[0]-b.center[0]) + abs(sc.avatar[1]-b.center[1])
                     if sc.avatar else 0)
-            # leave carriers near the helper to the helper: penalise taking them
+            # leave carriers near the helper to the helper (avoid competing)
             d_help = (abs(helper[0]-b.center[0]) + abs(helper[1]-b.center[1])
                       if helper else 0)
-            return d_target + d_av - 0.5 * d_help
+            return key + d_av - 0.5 * d_help
         unplaced.sort(key=cost)
+        # NOTE: only the DISCOVERED carry leg is proposed here. The hand-off leg /
+        # wait leg are NOT hard-coded into the method -- they must be discovered
+        # (see godel.py: the LLM proposes new leg code, verified on the game). The
+        # carry leg cracks L1/L2; L3's hand-off is left to the evolution loop.
         return [self._deliver_leg(g, fd, b.tl) for b in unplaced]
 
     def fresh(self):

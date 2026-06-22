@@ -386,3 +386,36 @@ user names is an agent whose human preconceptions are INTERNALISED (a real world
 model), not merely prompted -- the next research direction.
 
 Files added: `strategist.py`.
+
+### R-GODEL (2026-06-21): the hand-off must be DISCOVERED, not hard-coded -> LLM writes leg code
+The user's hard constraint: wa30 L3's solution (the avatar RELAYS each left box across
+the central wall to the autonomous helper, which ferries it to the container -- the
+"wall as a drop-off point") must be DISCOVERED by the method, NOT hand-coded by the
+programmer. (I first hard-coded a `_handoff_leg`; that was removed -- `gkm_crack.py`
+now proposes only the DISCOVERED carry leg, which cracks L1/L2; L3 is left to
+discovery.) Two facts that make L3 solvable, both found by interaction:
+  * The engine's carry collision check is ASYMMETRIC -- a CARRIED box may be moved
+    onto the wall column (x=32) even though the avatar (x<=28) cannot walk there. So
+    the avatar can place a box ON the boundary; the helper (x>=36) then picks it up
+    (its pick-up range is one cell, and x=32 is one cell from x=36). Verified by play.
+  * Every avatar move TICKS the helper; after dropping a box on the wall the avatar
+    must STEP AWAY (else it re-attaches it), and the helper relays it to the container.
+
+`godel.py` implements the Schmidhuber GOEDEL-MACHINE / PowerPlay stance: when the
+grounded cone PLATEAUS, the local LLM -- given the discovered semantics + the plateau
++ a stock of HUMAN PRECONCEPTIONS (objects/containers/barriers/agency/cooperation/
+reachability) -- WRITES NEW LEG CODE (a `leg(C,g,fd,deadline)` function against the
+connector API). The agent compiles it in a restricted namespace and ADOPTS it only
+if it VERIFIABLY helps on the real game (delivered count rises / level advances) --
+the Goedel machine's proof obligation discharged EMPIRICALLY by the simulator.
+
+RESULT: with the WORKING local model (qwen3-coder:30b; gemma4:26b returns empty and
+is unusable), round 0 produced a leg that VERIFIED at delivered 0->1 on L3 -- i.e. an
+LLM-WRITTEN leg delivered a box on the level the cone could not crack, no hand-coding.
+[Longer multi-round run in progress to relay all left boxes and clear L3.] The
+local-LLM reasoning is still the bottleneck (the strategist negative stands; codegen
+is slow and timeout-prone), but the LOOP is real and the propose(LLM-code)->verify
+(game) architecture is the path the user wants toward an agent that evolves its own
+legs from human priors.
+
+Files added: `godel.py`; `llm_binder.ollama_text` (free-form completion for codegen).

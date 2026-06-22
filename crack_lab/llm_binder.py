@@ -49,6 +49,19 @@ def ollama_json(prompt: str, model: str = DEFAULT_MODEL, num_predict: int = 400,
         return {}
 
 
+def ollama_text(prompt: str, model: str = DEFAULT_MODEL, num_predict: int = 1400,
+                timeout: float = 300.0) -> str:
+    """Free-form completion (no JSON mode) -- used for code generation."""
+    body = json.dumps({
+        "model": model, "prompt": prompt, "stream": False,
+        "options": {"temperature": 0.3, "num_predict": num_predict},
+    }).encode()
+    req = urllib.request.Request(OLLAMA, data=body, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        resp = json.loads(r.read().decode())
+    return resp.get("response", "")
+
+
 def describe_scene(scene: Dict, avatar_color: Optional[int], win_levels: int) -> str:
     conts = "; ".join(f"ring={r} interior={i}" for (r, i, _c) in scene["containers"]) or "none"
     movers = ", ".join(f"colour {c}({s} cells)" for (c, _ce, s) in scene["movable_objects"][:10]) or "none"
