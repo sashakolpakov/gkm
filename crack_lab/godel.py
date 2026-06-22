@@ -71,31 +71,59 @@ CAUSALITY, BUDGET, ANTI-HALLUCINATION
 - When unsure, EXPERIMENT and observe rather than assume. Ground every belief in what \
 the perception/probe actually showed -- not in what would be convenient."""
 
-LEG_API = """Write a Python function with EXACTLY this signature:
+LEG_API = """Write ONE Python function with EXACTLY this signature:
 
     def leg(C, g, fd, deadline):
-        # returns (status, g, fd, path)
         ...
+        return (status, g, fd, path)
 
-where status is "done" (made progress / won) or "lost" (no good), path is a list of
-action ints you took (1=up,2=down,3=left,4=right,5=toggle pick-up/drop), and g, fd
-are the resulting game clone + frame-data AFTER your actions.
+status: "done" if you made progress, else "lost". path: the list of action ints you
+actually committed (1=up, 2=down, 3=left, 4=right, 5=toggle pick-up/drop). g, fd: the
+game clone and frame-data AFTER your committed actions.
 
-Available in scope (do NOT import anything):
-  step(g, a) -> (g2, fd2)         # apply ONE action to a CLONE; never mutates g
-  arr_of(fd) -> np.ndarray        # the 64x64 colour frame
-  terminal(fd) -> bool            # game over?
-  PITCH = 4                       # pixels per logical cell
-  C.B                             # binding: .avatar .carrier .region .toggle
-                                  #          .carried_border .rest_border colours
-  C.perceive(arr) -> scene        # scene.avatar=(x,y); scene.boxes=[Box(tl,center,border)];
-                                  #   scene.ring_bbox=(x0,y0,x1,y1); scene.targets=[(x,y)..]
-  C._frontier(g, fd) -> (max_x, handoff_bool)   # how far right YOU can walk; handoff=target beyond it
-  fd.levels_completed             # the reward; if it goes up you won the level
+In scope (no imports needed):
+  step(g, a) -> (g2, fd2)     # apply ONE action to a CLONE (g is never mutated)
+  terminal(fd) -> bool        # is the game over?
+  PITCH = 4                   # pixels per cell
+  C.avatar, C.carrier, C.region, C.toggle, C.carried_border, C.rest_border  # int colours/action
+  C.avatar_xy(fd) -> (x, y) or None        # your position (pixel centre)
+  C.boxes(fd) -> [box, ...]   # each: box.tl=(x,y) top-left, box.center=(x,y), box.border=int
+  C.target_cells(fd) -> [(x,y), ...]       # pixel-aligned cells inside the goal container
+  C.frontier(g, fd) -> (max_x, handoff)    # how far right you can walk; handoff=True if goal beyond it
+  C.delivered(fd) -> int      # how many boxes rest on the goal now
+  fd.levels_completed         # reward; goes up when the level is won
 
-Rules: explore on CLONES via step(); only the actions you actually commit go in path.
-Track a chosen box by continuity (nearest tl to its previous tl). Keep it under ~45
-actions. Return ("lost", g, fd, []) if you can't make progress."""
+To pick up box B: walk so you are one cell from B FACING it, then step(C.toggle). A box
+is yours while box.border == C.carried_border. Drop with step(C.toggle); after a drop
+the box border is NOT carried_border. Explore on CLONES; commit only the path you keep.
+
+EXAMPLE (carry the box nearest you to the goal -- copy this structure):
+```python
+def leg(C, g, fd, deadline):
+    sc = C.boxes(fd); av = C.avatar_xy(fd)
+    if not sc or av is None:
+        return ("lost", g, fd, [])
+    b = min(sc, key=lambda b: abs(b.center[0]-av[0]) + abs(b.center[1]-av[1]))
+    tx, ty = b.center
+    path = []
+    for _ in range(40):
+        if terminal(fd):
+            return ("lost", g, fd, [])
+        av = C.avatar_xy(fd)
+        # move toward the box, then toggle to grab when adjacent
+        if abs(av[0]-tx) + abs(av[1]-ty) <= PITCH + 1:
+            a = C.toggle
+        elif abs(av[0]-tx) >= abs(av[1]-ty):
+            a = 4 if tx > av[0] else 3
+        else:
+            a = 2 if ty > av[1] else 1
+        g, fd = step(g, a); path.append(a)
+        if fd.levels_completed > 0 and C.delivered(fd) > 0:
+            break
+    return ("done", g, fd, path)
+```
+Adapt the idea to the situation (e.g. if the goal is walled off, relay to the boundary).
+Keep it under ~45 committed actions."""
 
 
 def _build_prompt(C, g, fd, feedback: str = "") -> str:

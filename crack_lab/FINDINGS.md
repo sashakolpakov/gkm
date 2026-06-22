@@ -419,3 +419,32 @@ is slow and timeout-prone), but the LOOP is real and the propose(LLM-code)->veri
 legs from human priors.
 
 Files added: `godel.py`; `llm_binder.ollama_text` (free-form completion for codegen).
+
+### R-RAW (2026-06-21): the rawest boundary -- the only one that generalises
+Decisive course-correction from the user: I kept smuggling the SOLUTION in as a
+"primitive" (hard-coded hand-off -> `carry_to` -> a `search` planner). Each is the
+programmer solving it for the agent. The user's point: if the harness is anything
+richer than the rawest interface, it won't transfer to a DIFFERENT TYPE of game --
+so the engine must hand the agent ONLY `step(action)->frame`, the reward, and a
+clone for lookahead. EVERYTHING else -- perceiving objects from the 64x64 int frame,
+discovering which object is the avatar, learning the mechanic (push vs carry),
+finding the goal, modelling the helper/adversary, planning paths, composing the
+hand-off -- must be WRITTEN BY THE AGENT (the local LLM), carrying human
+preconceptions supplied as a system prompt. Admission is by reward only
+(Schmidhuber Goedel-machine, verified empirically).
+
+`raw_arena.py`: a thin `RawEnv` (reset/frame/step/clone/levels_completed/terminal --
+nothing game-specific) + a rich human-preconception system prompt + an evolution
+loop where the LLM writes a `solve(env)` PROGRAM, run on the real game, kept only if
+it verifiably clears more levels (replay-validated). No perception/connector/carry/
+search helpers exist. This is the substrate that would apply unchanged to any game.
+
+Standing honest caveat (the user names it): the LOCAL LLM is the bottleneck. The
+strategist negative (qwen3-coder mis-reasons two-sided reachability even with priors
+spelled out) and the codegen fragility (API/format errors, slow, timeout-prone) mean
+the rawest agent will likely fall short of the harder levels with this model -- the
+ARCHITECTURE is right and general; the cognition is rented from a weak model. The
+contribution is the general substrate + the demonstrated propose(code)->verify(game)
+loop; closing the gap needs a stronger (still local/offline) model.
+
+Files added: `raw_arena.py`.

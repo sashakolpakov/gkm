@@ -324,6 +324,37 @@ class CarryConnector:
         # plus those visibly placed.
         return scene.boxes
 
+    # ---- forgiving accessors for LLM-written legs (codegen ergonomics) --------
+    # The local model guesses names like C.region / C.carrier / C.scene(fd); expose
+    # them so a correct idea is not rejected over an attribute typo.
+    @property
+    def avatar(self): return self.B.avatar
+    @property
+    def carrier(self): return self.B.carrier
+    @property
+    def region(self): return self.B.region
+    @property
+    def toggle(self): return self.B.toggle
+    @property
+    def carried_border(self): return self.B.carried_border
+    @property
+    def rest_border(self): return self.B.rest_border
+
+    def scene(self, fd):
+        return self.perceive(arr_of(fd), self.region_bbox(fd))
+
+    def boxes(self, fd):
+        return self.scene(fd).boxes
+
+    def avatar_xy(self, fd):
+        return self.scene(fd).avatar
+
+    def target_cells(self, fd):
+        return self.scene(fd).targets
+
+    def frontier(self, g, fd):
+        return self._frontier(g, fd)
+
     # ---- abstract surface the ENGINE uses -------------------------------------
     def level(self, fd) -> int:
         return fd.levels_completed
