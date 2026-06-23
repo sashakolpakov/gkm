@@ -59,16 +59,23 @@ class Arena:
     """The whole interface the agent gets. Nothing game-specific is exposed."""
     def __init__(self, game="wa30", _budget=None, _clone=None):
         if _clone is not None:
+            self.game = _clone.game
             self._game = copy.deepcopy(_clone._game)
             self._fd = _clone._fd
             self.path = list(_clone.path)
             self._budget = _clone._budget
         else:
-            env = make_env(game)(); env.reset()
-            self._game = copy.deepcopy(env._env._game)
-            self._fd = self._game.perform_action(ActionInput(id=EA.RESET), raw=True)
-            self.path = []
+            self.game = game
             self._budget = _budget or _Budget(200000)
+            self.reset()
+
+    def reset(self) -> np.ndarray:
+        """Restart the run from the first level; returns the initial frame."""
+        env = make_env(self.game)(); env.reset()
+        self._game = copy.deepcopy(env._env._game)
+        self._fd = self._game.perform_action(ActionInput(id=EA.RESET), raw=True)
+        self.path = []
+        return self.frame()
 
     @property
     def actions(self):
