@@ -118,6 +118,16 @@ moves WITH you, and again detaches it? = pick-up-and-carry). Learn the move grid
 GOALS: infer the objective from the reward. A container/target region is where things
 must end up; deduce the win condition by what changes when reward increases.
 
+SPARSE REWARD -> INVENT YOUR OWN DENSE PROGRESS (this is essential here): the level
+reward usually fires ONLY when the whole goal is met (e.g. EVERY movable object is in
+the target region). Do NOT wait for that sparse signal or hill-climb mere "the frame
+changed". Construct your OWN dense progress measure from the frame -- e.g. how many
+movable objects already sit in the goal region, or the total distance of movable
+objects from it -- and drive that down, decomposing into per-object SUBGOALS (get one
+object into the region, then the next). Try the interaction action at the right moment
+(e.g. when adjacent/facing an object, or once an object is positioned). Re-check the
+real reward, but steer by your own dense measure.
+
 OTHER AGENTS (theory of mind): some objects move on their own each turn -- model them.
 A HELPER autonomously brings objects to the goal; an ADVERSARY hinders you and may be
 removed the way you grab things. They ACT ON EVERY MOVE YOU MAKE.
@@ -153,11 +163,13 @@ collections, heapq):
 Discover perception and rules from the frames via clones, then act on env. Keep total
 work bounded (a few hundred real moves). Output ONE ```python code block.
 
-PERFORMANCE: env.clone()/env.step() are EXPENSIVE (~300 calls/second). You have a
-wall-clock budget of a few minutes total, so do NOT run deep or exhaustive search
-over clones -- experiment briefly to learn the rules, then act GREEDILY on the real
-env, re-perceiving after each move. A short greedy controller that commits real moves
-beats a thorough planner that gets cut off before it acts."""
+PERFORMANCE: env.clone()/env.step() cost ~300 calls/second and you have a few minutes.
+So avoid EXHAUSTIVE GLOBAL search, but DO use BOUNDED per-subgoal search/lookahead
+(e.g. a short best-first to bring one object one step closer to the goal region, a
+few thousand clone-steps at most). Re-perceive and replan after each subgoal. A
+controller that pursues a dense per-object subgoal will far outperform both blind
+greedy wandering and an exhaustive planner that gets cut off. (numpy is 2.x: use
+np.ptp(a), not a.ptp().)"""
 
 
 def _save_program(game: str, rnd: int, code: str):
