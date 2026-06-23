@@ -15,6 +15,7 @@ human-preconception system prompt, (3) the verify-by-reward evolution loop.
 from __future__ import annotations
 import copy
 import re
+import subprocess
 import sys
 import time
 from typing import Optional
@@ -24,6 +25,23 @@ import numpy as np
 import llm_binder
 from lab import make_env
 from arcengine import ActionInput, GameAction as EA
+
+
+def propose_text(prompt: str, proposer: str = "ollama", model: Optional[str] = None,
+                 timeout: int = 900) -> str:
+    """The proposer is pluggable. 'ollama' = a LOCAL model (eval-legal, offline).
+    'claude' = the actual Claude Code AGENT invoked headlessly as a SUBPROCESS
+    (`claude -p`) -- a far stronger proposer, but it uses the network/API, so it is
+    a DEMO / upper-bound, NOT eval-legal. The substrate is identical either way; only
+    the cognition behind propose->verify changes."""
+    if proposer == "claude":
+        cmd = ["claude", "-p", prompt, "--output-format", "text"]
+        if model:
+            cmd += ["--model", model]
+        r = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout, cwd="/tmp")
+        return r.stdout or ""
+    return llm_binder.ollama_text(prompt, num_predict=1600, timeout=600,
+                                  **({} if model is None else {"model": model}))
 
 _NAME = {1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5"}
 
@@ -37,7 +55,7 @@ class _Budget:
             raise RuntimeError("step budget exhausted")
 
 
-class RawEnv:
+class Arena:
     """The whole interface the agent gets. Nothing game-specific is exposed."""
     def __init__(self, game="wa30", _budget=None, _clone=None):
         if _clone is not None:
@@ -74,8 +92,8 @@ class RawEnv:
         self.path.append(a)
         return self.frame()
 
-    def clone(self) -> "RawEnv":
-        return RawEnv(_clone=self)
+    def clone(self) -> "Arena":
+        return Arena(_clone=self)
 
 
 PRECONCEPTIONS = """You are an agent with a deep, human-like model of the world. You will be given ONLY
@@ -143,31 +161,23 @@ def _extract(text: str) -> Optional[str]:
 
 
 def _compile(code: str):
-    import math, collections, heapq
-    def _imp(name, *a, **k):
-        if name in ("numpy", "math", "collections", "heapq"):
-            return __import__(name, *a, **k)
-        raise ImportError(name)
-    bi = {k: getattr(__builtins__, k) if not isinstance(__builtins__, dict) else __builtins__[k]
-          for k in []}
-    import builtins as _b
-    safe = {k: getattr(_b, k) for k in (
-        "len range min max abs sorted set list dict tuple enumerate zip round sum any all "
-        "int float bool str print abs map filter reversed isinstance getattr setattr hasattr "
-        "True False None Exception".split())}
-    safe["__import__"] = _imp
+    """Return (solve_fn, error_str). Permissive builtins -- this is a local research
+    sandbox; the point is to test the MODEL, not to fight Python."""
+    import math, collections, heapq, builtins
     ns = {"np": np, "math": math, "collections": collections, "heapq": heapq,
-          "__builtins__": safe}
+          "__builtins__": builtins}
     try:
         exec(code, ns)
-        return ns.get("solve")
-    except Exception:
-        return None
+        fn = ns.get("solve")
+        return (fn, None) if fn else (None, "no top-level `def solve`")
+    except Exception as exc:
+        import traceback
+        return None, f"{type(exc).__name__}: {exc}".strip()[:160]
 
 
 def run_program(game, solve, step_cap=600, time_cap=120):
     """Run the agent program on a fresh real env; return (levels, path)."""
-    env = RawEnv(game, _budget=_Budget(step_cap * 400))
+    env = Arena(game, _budget=_Budget(step_cap * 400))
     started = time.time()
     # wrap step to enforce wall-clock + a hard real-move cap
     real = {"n": 0}
@@ -178,15 +188,16 @@ def run_program(game, solve, step_cap=600, time_cap=120):
             raise RuntimeError("real-move/time cap")
         return orig(a)
     env.step = guarded
+    err = None
     try:
         solve(env)
-    except Exception:
-        pass
-    return env.levels_completed, list(env.path)
+    except Exception as exc:
+        err = f"{type(exc).__name__}: {exc}".strip()[:160]
+    return env.levels_completed, list(env.path), err
 
 
 def validate(game, path, expected):
-    env = RawEnv(game)
+    env = Arena(game)
     for a in path:
         if env.terminal():
             break
@@ -194,51 +205,74 @@ def validate(game, path, expected):
     return env.levels_completed >= expected
 
 
-def evolve(game="wa30", model=None, rounds=8, verbose=True):
+def free_energy(levels, code, path, lam_c=0.04, lam_a=0.002):
+    """GKM free energy F = goal-risk R + lambda*complexity C (lower is better).
+    R = -levels (reward); C = program description length + committed-path length.
+    This is the Schmidhuber complexity pressure: a proposal is kept only if its
+    reward gain pays for the description complexity it adds."""
+    desc = len(code or "") / 1000.0
+    return (-float(levels)) + lam_c * desc + lam_a * len(path or [])
+
+
+def evolve(game="wa30", model=None, rounds=8, proposer="ollama", verbose=True):
+    """Schmidhuber GKM evolution: a PROPOSER (local model, or the Claude Code agent
+    as a subprocess) writes a solve() program; it is admitted only if it LOWERS the
+    free energy F = R + lambda*C on the real game (and replay-validates). The
+    simulator is the ground-truth verifier."""
     best_code, best_levels, best_path = None, 0, []
+    best_F = float("inf")
     feedback = ""
     for r in range(rounds):
         prompt = (PRECONCEPTIONS + "\n\n" + API +
                   (("\n\nYour current best program reached level %d. Improve it to go "
-                    "further. Feedback: " % best_levels + feedback) if best_code else
+                    "further (and keep it concise -- complexity is penalised). Feedback: "
+                    % best_levels + feedback) if best_code else
                    ("\n\nFeedback: " + feedback if feedback else "")))
         if best_code:
             prompt += "\n\nCurrent best program:\n```python\n" + best_code + "\n```"
         try:
-            raw = llm_binder.ollama_text(prompt, num_predict=1600, timeout=600,
-                                         **({} if model is None else {"model": model}))
+            raw = propose_text(prompt, proposer=proposer, model=model)
         except Exception as exc:
-            if verbose: print(f"round {r}: LLM timeout ({exc})"); feedback = "(timed out; keep it shorter)"; continue
+            if verbose: print(f"round {r}: proposer failed ({exc})"); feedback = "(call failed; keep it shorter)"; continue
         code = _extract(raw)
         if not code:
-            if verbose: print(f"round {r}: no code"); feedback = "no python `def solve` block found"; continue
-        solve = _compile(code)
+            if verbose: print(f"round {r}: no code"); feedback = "output exactly one ```python block defining def solve(env):"; continue
+        solve, cerr = _compile(code)
         if solve is None:
-            if verbose: print(f"round {r}: compile failed"); feedback = "your code did not compile"; continue
-        levels, path = run_program(game, solve)
+            if verbose: print(f"round {r}: compile failed -> {cerr}")
+            feedback = f"your code failed to compile: {cerr}. Fix it."; continue
+        levels, path, rerr = run_program(game, solve)
         ok = validate(game, path, levels) if path else False
+        F = free_energy(levels, code, path) if ok else float("inf")
+        admit = ok and F < best_F - 1e-9
         if verbose:
-            print(f"round {r}: program reached level {levels} (moves={len(path)}, replay-ok={ok})")
-        if levels > best_levels and ok:
-            best_code, best_levels, best_path = code, levels, path
-            feedback = (f"good -- reached level {levels} in {len(path)} moves. Go further: "
-                        "later levels add walls and a helper agent; relay across walls.")
+            print(f"round {r}: level {levels} moves={len(path)} replay-ok={ok} "
+                  f"F={F:.3f} (best {best_F:.3f}) -> {'ADMIT' if admit else 'reject'}"
+                  + (f" err: {rerr}" if rerr else ""))
+        if admit:
+            best_code, best_levels, best_path, best_F = code, levels, path, F
+            feedback = (f"admitted -- level {levels} in {len(path)} moves (F={F:.3f}). Go "
+                        "further with a CONCISE change: later levels add a wall splitting the "
+                        "board and a helper agent; relay boxes across the wall.")
         else:
-            feedback = (f"reached level {levels} (best so far {best_levels}). "
-                        "Inspect frames more carefully; learn the mechanic by clone-experiments "
-                        "before committing moves.")
-    print(f"\n=== {game}: best program reached level {best_levels} | "
+            why = (f"it raised {rerr}" if rerr else
+                   ("it committed 0 real env.step moves (you only stepped clones)" if not path
+                    else f"its free energy F={F:.3f} did not beat the best {best_F:.3f}"))
+            feedback = (f"not admitted: {why}. Commit real env.step moves; learn the mechanic by "
+                        "clone-experiments first; keep the program short.")
+    print(f"\n=== {game}: best level {best_levels} | F={best_F:.3f} | proposer={proposer} | "
           f"replay-validated={validate(game, best_path, best_levels) if best_path else False} "
           f"| moves={len(best_path)} ===")
     if best_path:
         print(f"PATH={best_path}")
-    return {"levels": best_levels, "path": best_path, "code": best_code}
+    return {"levels": best_levels, "path": best_path, "code": best_code, "F": best_F}
 
 
 if __name__ == "__main__":
-    model = None; game = "wa30"; rounds = 8
+    model = None; game = "wa30"; rounds = 8; proposer = "ollama"
     for a in sys.argv[1:]:
         if a.startswith("--model="): model = a.split("=", 1)[1]
         elif a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--rounds="): rounds = int(a.split("=", 1)[1])
-    evolve(game=game, model=model, rounds=rounds)
+        elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
+    evolve(game=game, model=model, rounds=rounds, proposer=proposer)

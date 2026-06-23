@@ -194,7 +194,9 @@ def probe(w: World, start=None) -> List[Effect]:
                 if not ms:
                     return None
                 return min(ms, key=lambda o: abs(o[3][0]-prev[0]) + abs(o[3][1]-prev[1]))[3]
-            # push test
+            # push test: a REAL push needs the agent to ADVANCE into the vacated
+            # cell AND the object to move with it. If walking in leaves the agent
+            # blocked (it didn't move), the object is not pushable -- no push.
             _, pf = step(ag, into)
             tp = centroid_of(arr_of(pf), tc0)
             if tp and (abs(tp[0]-tc0[0]) + abs(tp[1]-tc0[1])) >= PITCH*0.6:

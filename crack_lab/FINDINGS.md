@@ -332,9 +332,9 @@ That LLM-driven scenario-comprehension + mechanic-discovery is the next build.
 Files: `gkm_crack.py` (the one module), `test_gkm_crack.py` (3 tests; 2 fast + 1
 end-to-end crack). Old intermediates removed.
 
-### Discovery phase (`discovery.py`) -- semantic binding by interaction
+### Discovery phase (`gkm_discovery.py`) -- semantic binding by interaction
 The connector's mechanic vocabulary must be DISCOVERED, not assumed -- this is the
-foundation for later evolution and for new mechanics (gates/jumps). `discovery.py`
+foundation for later evolution and for new mechanics (gates/jumps). `gkm_discovery.py`
 generalises the carry probe into a channel-blind effect survey over the ABSTRACT
 actions:
   PROBE (free space / facing a movable object / facing a barrier) -> CLASSIFY each
@@ -359,7 +359,7 @@ its intended solution relies on a mechanic this game build does not expose. This
 an HONEST impossibility result, established by exhaustive interaction, not a TODO.
 Test: `test_gkm_crack.py::test_discovery_phase_grounds_move_and_carry`.
 
-### Human-preconception strategist (`strategist.py`) -- and an honest negative
+### Human-preconception strategist (`gkm_strategist.py`) -- and an honest negative
 The user's deeper point: figuring out wa30 L2/L3's orange HELPER -- it is a passive
 autonomous co-worker, but the METHOD OF COMMUNICATION (the wall as a drop-off /
 hand-off point: one agent leaves a box where the other can pick it up) is the crux,
@@ -367,7 +367,7 @@ and only an agent carrying a lot of HUMAN PRECONCEPTIONS about the world (object
 containers, barriers, agency, cooperation, reachability-under-barriers) would
 discover it. We tested whether injecting those priors via a SYSTEM PROMPT is enough.
 
-`strategist.py` gives the local LLM a preconception-laden system prompt (objects /
+`gkm_strategist.py` gives the local LLM a preconception-laden system prompt (objects /
 containers / barriers split space into regions / autonomous helper / per-agent
 reachability / cooperative hand-off only works if the drop and pick-up ranges meet)
 plus a grounded semantic scene, and asks for a plan + feasibility.
@@ -385,7 +385,7 @@ LLM proposes (often wrongly), interaction is ground truth. The standing need the
 user names is an agent whose human preconceptions are INTERNALISED (a real world
 model), not merely prompted -- the next research direction.
 
-Files added: `strategist.py`.
+Files added: `gkm_strategist.py`.
 
 ### R-GODEL (2026-06-21): the hand-off must be DISCOVERED, not hard-coded -> LLM writes leg code
 The user's hard constraint: wa30 L3's solution (the avatar RELAYS each left box across
@@ -401,7 +401,7 @@ discovery.) Two facts that make L3 solvable, both found by interaction:
   * Every avatar move TICKS the helper; after dropping a box on the wall the avatar
     must STEP AWAY (else it re-attaches it), and the helper relays it to the container.
 
-`godel.py` implements the Schmidhuber GOEDEL-MACHINE / PowerPlay stance: when the
+`gkm_godel.py` implements the Schmidhuber GOEDEL-MACHINE / PowerPlay stance: when the
 grounded cone PLATEAUS, the local LLM -- given the discovered semantics + the plateau
 + a stock of HUMAN PRECONCEPTIONS (objects/containers/barriers/agency/cooperation/
 reachability) -- WRITES NEW LEG CODE (a `leg(C,g,fd,deadline)` function against the
@@ -418,7 +418,7 @@ is slow and timeout-prone), but the LOOP is real and the propose(LLM-code)->veri
 (game) architecture is the path the user wants toward an agent that evolves its own
 legs from human priors.
 
-Files added: `godel.py`; `llm_binder.ollama_text` (free-form completion for codegen).
+Files added: `gkm_godel.py`; `llm_binder.ollama_text` (free-form completion for codegen).
 
 ### R-RAW (2026-06-21): the rawest boundary -- the only one that generalises
 Decisive course-correction from the user: I kept smuggling the SOLUTION in as a
@@ -433,7 +433,7 @@ hand-off -- must be WRITTEN BY THE AGENT (the local LLM), carrying human
 preconceptions supplied as a system prompt. Admission is by reward only
 (Schmidhuber Goedel-machine, verified empirically).
 
-`raw_arena.py`: a thin `RawEnv` (reset/frame/step/clone/levels_completed/terminal --
+`gkm_arena.py`: a thin `Arena` (reset/frame/step/clone/levels_completed/terminal --
 nothing game-specific) + a rich human-preconception system prompt + an evolution
 loop where the LLM writes a `solve(env)` PROGRAM, run on the real game, kept only if
 it verifiably clears more levels (replay-validated). No perception/connector/carry/
@@ -447,4 +447,4 @@ ARCHITECTURE is right and general; the cognition is rented from a weak model. Th
 contribution is the general substrate + the demonstrated propose(code)->verify(game)
 loop; closing the gap needs a stronger (still local/offline) model.
 
-Files added: `raw_arena.py`.
+Files added: `gkm_arena.py`.
