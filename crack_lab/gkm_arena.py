@@ -151,7 +151,25 @@ collections, heapq):
   env.actions -> (1,2,3,4,5)
 
 Discover perception and rules from the frames via clones, then act on env. Keep total
-work bounded (a few hundred real moves). Output ONE ```python code block."""
+work bounded (a few hundred real moves). Output ONE ```python code block.
+
+PERFORMANCE: env.clone()/env.step() are EXPENSIVE (~300 calls/second). You have a
+wall-clock budget of a few minutes total, so do NOT run deep or exhaustive search
+over clones -- experiment briefly to learn the rules, then act GREEDILY on the real
+env, re-perceiving after each move. A short greedy controller that commits real moves
+beats a thorough planner that gets cut off before it acts."""
+
+
+def _save_program(game: str, rnd: int, code: str):
+    """Persist each generated program so we can inspect WHAT the agent wrote."""
+    import os
+    d = "/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_programs"
+    try:
+        os.makedirs(d, exist_ok=True)
+        with open(os.path.join(d, f"{game}_round{rnd}.py"), "w") as fh:
+            fh.write(code)
+    except Exception:
+        pass
 
 
 def _extract(text: str) -> Optional[str]:
@@ -175,7 +193,7 @@ def _compile(code: str):
         return None, f"{type(exc).__name__}: {exc}".strip()[:160]
 
 
-def run_program(game, solve, step_cap=600, time_cap=120):
+def run_program(game, solve, step_cap=600, time_cap=600):
     """Run the agent program on a fresh real env; return (levels, path)."""
     env = Arena(game, _budget=_Budget(step_cap * 400))
     started = time.time()
@@ -237,6 +255,7 @@ def evolve(game="wa30", model=None, rounds=8, proposer="ollama", verbose=True):
         code = _extract(raw)
         if not code:
             if verbose: print(f"round {r}: no code"); feedback = "output exactly one ```python block defining def solve(env):"; continue
+        _save_program(game, r, code)              # so we can see what the agent wrote
         solve, cerr = _compile(code)
         if solve is None:
             if verbose: print(f"round {r}: compile failed -> {cerr}")
@@ -244,7 +263,8 @@ def evolve(game="wa30", model=None, rounds=8, proposer="ollama", verbose=True):
         levels, path, rerr = run_program(game, solve)
         ok = validate(game, path, levels) if path else False
         F = free_energy(levels, code, path) if ok else float("inf")
-        admit = ok and F < best_F - 1e-9
+        admit = ok and (F < best_F - 1e-9 or levels > best_levels)
+        capped = bool(rerr and "cap" in rerr)
         if verbose:
             print(f"round {r}: level {levels} moves={len(path)} replay-ok={ok} "
                   f"F={F:.3f} (best {best_F:.3f}) -> {'ADMIT' if admit else 'reject'}"
@@ -255,11 +275,14 @@ def evolve(game="wa30", model=None, rounds=8, proposer="ollama", verbose=True):
                         "further with a CONCISE change: later levels add a wall splitting the "
                         "board and a helper agent; relay boxes across the wall.")
         else:
-            why = (f"it raised {rerr}" if rerr else
-                   ("it committed 0 real env.step moves (you only stepped clones)" if not path
-                    else f"its free energy F={F:.3f} did not beat the best {best_F:.3f}"))
-            feedback = (f"not admitted: {why}. Commit real env.step moves; learn the mechanic by "
-                        "clone-experiments first; keep the program short.")
+            why = ("you were CUT OFF by the time limit -- CLONES ARE EXPENSIVE (~300 "
+                   "env-steps/second). Do far less lookahead: experiment on clones only "
+                   "briefly to learn the rules, then act GREEDILY on the real env. Avoid "
+                   "deep/exhaustive search." if capped else
+                   (f"it raised {rerr}" if rerr else
+                    ("it committed 0 real env.step moves (you only stepped clones)" if not path
+                     else f"its free energy F={F:.3f} did not beat the best {best_F:.3f}")))
+            feedback = (f"not admitted: {why} Commit real env.step moves and keep clone use small.")
     print(f"\n=== {game}: best level {best_levels} | F={best_F:.3f} | proposer={proposer} | "
           f"replay-validated={validate(game, best_path, best_levels) if best_path else False} "
           f"| moves={len(best_path)} ===")
