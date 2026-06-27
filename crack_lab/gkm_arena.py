@@ -118,9 +118,16 @@ FIND YOURSELF FIRST: one object is YOU. Discover which by EXPERIMENT -- on a clo
 take each action and see which object moves consistently; that is your avatar and
 those are your movement actions. A non-moving action is probably an interaction.
 
-AFFORDANCES & MECHANICS: by experimenting on clones, learn what the special action
-does (does walking into an object push it? does the action attach an object so it
-moves WITH you, and again detaches it? = pick-up-and-carry). Learn the move grid step.
+AFFORDANCES & MECHANICS -- run this experiment EXPLICITLY, it is usually decisive:
+movable objects often CANNOT be moved by walking into them (you just get blocked). To
+find how to move one, on a CLONE: navigate adjacent to a movable object FACING it,
+take the special (non-movement) action, then take a movement step and CHECK whether
+that object moved TOGETHER with the avatar. If it did, that action ATTACHES/PICKS UP
+the object -- you then CARRY it by moving, and take the special action again to
+RELEASE it. If walking into objects does nothing and this attach test works, the
+attach->carry->release loop is the ONLY way to move objects, so build your ENTIRE
+plan around it: for each object, go grab it, carry it into the target region, release,
+repeat. Verify (on a clone) that a release inside the region actually sticks.
 
 GOALS: infer the objective from the reward. A container/target region is where things
 must end up; deduce the win condition by what changes when reward increases.
