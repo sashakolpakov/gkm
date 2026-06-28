@@ -448,3 +448,28 @@ contribution is the general substrate + the demonstrated propose(code)->verify(g
 loop; closing the gap needs a stronger (still local/offline) model.
 
 Files added: `gkm_arena.py`.
+
+### R-AGENT (2026-06-27): the uncrippled Claude proposer cracks wa30 L1 on its own
+The earlier `--proposer=claude` underperformed because it was CRIPPLED (one-shot blind
+text: no tools, no ability to test against the game, no discovered context) -- same
+model as in-chat Claude, blindfolded. `gkm_solve_agent.py` fixes that: it (1) grounds
+the game's semantics by the GKM probe (avatar 14 / carrier 9 / region 2 / mechanic
+pick_up_and_carry / toggle 5 -- DISCOVERED by interaction, not hand-coded), (2) hands
+that context + the human-preconception priors to the REAL Claude Code agent invoked
+headlessly WITH Bash/Read/Write/Edit + a tester (`gkm_try.py`), so it writes
+`solution.py`, runs it on the real Arena, sees failures, and ITERATES -- the same
+write/run/fix loop a human uses. The GKM layer still verifies + prices the final
+program by free energy on the game.
+
+RESULT: the agent WROTE (iterating 217->237 lines) a genuine pick-and-carry solver --
+its own perception (`avatar_cell`/`scan`/`container_cells`/`agent_cells`), BFS
+navigation, a CARRY-AWARE `bfs_carry` carrying the carrier offset, the attach/facing
+geometry, and per-object planning -- and CRACKED wa30 LEVEL 1: replay-validated, 98
+moves, F=-0.509 (saved: `agent_solutions/wa30_L1_agent.py`). The agent figured it out
+ON ITS OWN from the discovered context + priors, no hand-coded leg. It was pushing
+toward L2/L3 when it hit the nested-Claude session limit, then the org ran OUT OF
+USAGE CREDITS -- so L2/L3 via the agent are blocked on credits/quota, NOT capability.
+Honest caveat: this proposer uses the network/API, so it is a demo / upper-bound, not
+the offline-eval-legal path (which needs a strong LOCAL model in the same loop).
+
+Files added: `gkm_solve_agent.py`, `agent_solutions/wa30_L1_agent.py`.
