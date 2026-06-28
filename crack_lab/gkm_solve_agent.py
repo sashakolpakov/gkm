@@ -65,6 +65,13 @@ def build_task(game: str, context: str) -> str:
         f"levels>=1 for {game} (push for 2 then 3 if you can).\n"
         "4. Leave your BEST working solve(env) in `solution.py`. Then print the final "
         "RESULT line you achieved.\n"
+        "IMPORTANT: if `solution.py` already clears some levels, do NOT restart -- "
+        "READ it and EXTEND it to clear the NEXT level. solve(env) keeps playing as "
+        "levels advance, so handle each level in turn. Later levels add an autonomous "
+        "HELPER (orange) that also carries (it moves on every move you make) and a WALL "
+        "that splits the board so YOU cannot reach the container -- then RELAY: carry a "
+        "carrier to the wall boundary, release it where the helper can take it, step "
+        "away. Discover these by experiment; push to level 2 then level 3.\n"
         "Note: env.clone()/step are ~300/s; use bounded per-subgoal search, not "
         "exhaustive global search. The move budget per level is limited.")
 
