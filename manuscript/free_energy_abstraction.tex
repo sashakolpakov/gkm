@@ -374,6 +374,159 @@ The planned progression is:
 This would move from predicate encapsulation over predefined atoms toward
 predicate discovery in a controlled symbolic visual-reasoning benchmark.
 
+\section{From selected macros to a self-improving agent}
+
+The macro experiment above isolates one half of the thesis: a free-energy rule
+that admits a reusable abstraction only when it pays for itself. That experiment
+supplies its own candidate structures by enumeration over a fixed symbolic
+vocabulary. The complementary half is where the candidate structures
+\emph{come from} when they cannot be enumerated. This section reports a
+qualitatively different substrate, developed in the repository's cracking lab,
+in which the reusable structures --- here whole programs of perception,
+mechanic discovery, planning, and strategy --- are \emph{written by a proposer}
+and admitted by the same free-energy accounting. The target environments are
+local ARC-style keyboard games \cite{chollet2019measure}, played only through
+their runtime; the running narrative is the game \texttt{wa30}.
+
+\subsection{The rawest substrate}
+
+A recurring failure mode in this line of work was smuggling the solution into
+the harness as a ``primitive.'' Any helper richer than the bare runtime
+interface --- a perception module, a typed object model, a push-versus-carry
+mechanic, a search planner --- is the programmer solving the game for the agent,
+and it does not transfer to a different \emph{type} of game. The corrective is
+to expose only the boundary that is common to all games behind the connector.
+The \texttt{Arena} substrate hands the proposer exactly four things:
+\texttt{step(action)} returning the next frame; the raw frame as a
+$64\times 64$ integer grid; a scalar reward, \texttt{levels\_completed}; and a
+\texttt{clone()} for lookahead. Nothing in this interface mentions objects,
+colours, walls, avatars, or goals. This is the only contract that survives a
+change of game type, so it is the only contract the substrate provides.
+
+Everything else must be produced inside the loop: perceiving objects from the
+integer frame, discovering which object is controllable, learning the mechanic
+(for \texttt{wa30}, that boxes are picked up and carried rather than pushed),
+inducing the per-level goal, modelling an autonomous helper agent, planning
+paths, and composing multi-step manoeuvres. None of this is hand-coded; it is
+the proposer's job.
+
+\subsection{Human preconceptions and the proposer}
+
+The proposer is given a rich system prompt of \emph{human preconceptions}: that
+frames contain objects with persistent identity; that some objects are
+containers and barriers partition space into regions; that one object may be a
+controllable avatar and others may be autonomous agents with their own goals;
+that cooperation can require a hand-off where one agent leaves something where
+another can reach it; that reachability is constrained by barriers and must be
+reasoned about per agent; that rewards may be sparse, so the agent should set
+itself dense surrogate objectives and discover the affordances of its actions.
+These priors are deliberately non-procedural: they describe what kinds of things
+a world tends to contain, not how to solve any particular game.
+
+Given those priors and the raw substrate, the proposer \emph{writes its own
+code} --- a \texttt{solve(env)} program containing its perception, its mechanic
+probe, its planner, and its strategy. The proposer is pluggable. One option is a
+local offline model, which is evaluation-legal (no network) but currently weak.
+The other is the Claude Code agent invoked headlessly with file and shell tools
+and a tester, so it writes a solution, runs it on the real \texttt{Arena}, reads
+the failures, and iterates --- the same write/run/fix loop a human programmer
+uses. The strong proposer is networked, so it is reported here as a
+demonstration and an upper bound, not as the offline evaluation path.
+
+\subsection{Free-energy admission and the source-of-novelty principle}
+
+A written program is admitted only if it verifiably improves on the incumbent,
+scored by the same free energy as the rest of the manuscript,
+\begin{equation}
+  F = R + \lambda C,
+  \label{eq:agent-free-energy}
+\end{equation}
+where $R$ is driven by \texttt{levels\_completed} on the real game and $C$ is the
+program's description length, with $\lambda$ small so that parsimony breaks ties
+between equally capable programs without stifling a program that is large but
+clears more levels. Compression-progress and disagreement signals
+\cite{schmidhuber2008driven} supply an intrinsic novelty term that \emph{steers}
+exploration when the reward is flat, and earlier admitted behavior is preserved
+against regression. The simulator is the ground-truth verifier throughout: a
+candidate is replayed on a fresh environment and kept only if the reward
+actually advances.
+
+The governing principle is that selection and pricing \emph{cannot} be a source
+of novelty. Free energy can only rank and compress structures it is given; the
+new structure must come from the proposer. The companion constraint is that
+discovery and strategy must be learned inside the loop and never hand-coded.
+Together these place the burden of invention squarely on the proposer and the
+burden of honesty squarely on the verifier. This is the stance of Schmidhuber's
+G\"odel machine and PowerPlay \cite{schmidhuber2015godel,
+schmidhuber2013powerplay}: a system that rewrites its own problem-solving code
+and adopts a rewrite only against an empirical proof of improvement --- here the
+proof is discharged by the simulator rather than by a formal theorem prover.
+
+\subsection{Result on \texttt{wa30}}
+
+The probe-discovered context for \texttt{wa30} (the controllable avatar, the
+carrier objects, the container region, the pick-up-and-carry mechanic, and the
+toggle action) is established by interaction, not declared. Handed that context
+and the preconception priors, the uncrippled Claude proposer wrote a single
+adaptive \texttt{solve(env)} program over roughly $4.2$ hours of write/run/fix
+iteration (final program $359$ lines) that cracks \texttt{wa30} levels~1, 2,
+\emph{and}~3. The result is replay-validated: an independent replay of the
+recorded $288$-move sequence on a fresh environment reaches level~3, at
+$F=-1.920$.
+
+What makes this more than a solved puzzle is that the proposer independently
+rediscovered the very insights that had earlier been hand-coded in failed
+attempts, and that it had been explicitly instructed not to be given:
+\begin{enumerate}[leftmargin=1.5em]
+  \item It learned to \emph{freeze} the container region at level start. A
+  delivered carrier turns its slot the carrier colour and disappears from the
+  interior detector; without freezing, delivered carriers are re-counted as
+  loose and the goal signal is corrupted.
+  \item On level~2 it learned to \emph{complement} the autonomous helper by
+  delivering the carriers farthest from the container, rather than competing for
+  the same ones, then idling to let the helper tick forward.
+  \item On level~3 it exploited the engine's \emph{asymmetric} carry collision:
+  a carried carrier can be placed onto a dividing-wall cell the avatar itself
+  cannot enter, so the avatar relays each left-side carrier onto the wall column,
+  where the right-side helper picks it up and ferries it to the container.
+\end{enumerate}
+All three were discovered from raw frames plus the probed context plus the
+priors, with no hand-coded leg. The agent then stopped honestly at level~4,
+which is a large escalation (a trapped avatar, a colour-5 wall lattice, multiple
+helpers, and several containers) and is left as its own next investigation.
+
+\subsection{Honest caveats}
+
+The result is a demonstration and an upper bound, and it is bounded in three
+ways that the manuscript states plainly. First, the strong proposer uses the
+network and a hosted model, so it is not the offline, evaluation-legal path; the
+local model alone is currently too weak --- a system-prompt-only strategist
+mis-reasoned two-sided reachability under barriers even with the priors spelled
+out, asserting feasibility where the interaction verifier proved boxes were
+stranded. Second, the claim is precisely levels~1 through~3 of one game, not all
+levels and not all games; level~4 is unsolved and generalization to a second
+game (\texttt{ls20}, a slide mechanic) is in progress. Third, the cognition is
+rented: the architecture --- the rawest substrate, the preconception priors, the
+free-energy admission, and the simulator as verifier --- is general and is the
+contribution, but closing the gap on the offline path needs a stronger local
+model in the same write/run/fix loop.
+
+\subsection{Relation to the colimit-cone program}
+
+This substrate is the culmination of the broader colimit-cone view that runs
+through the repository. There, reusable navigation and interaction \emph{legs}
+are discovered by interaction rather than hand-coded, and a \emph{cone} composes
+those legs into a solution priced by reward against complexity. The
+self-improving agent is the limiting case of that picture: the legs are no
+longer mined from a fixed motif library but are \emph{written by the proposer}
+as program fragments, the cone that glues them is the proposer's own planner,
+and admission is still the free-energy rule $F=R+\lambda C$ verified on the
+simulator. The macro experiment of
+Section~\ref{eq:library-free-energy}'s family and this agent experiment are thus
+two ends of one spectrum: the same accounting decides whether a reusable
+structure earns its cost; what changes is whether that structure is enumerated
+or invented.
+
 \section{Related work}
 
 \paragraph{Predicate invention and ILP.}
