@@ -473,3 +473,29 @@ Honest caveat: this proposer uses the network/API, so it is a demo / upper-bound
 the offline-eval-legal path (which needs a strong LOCAL model in the same loop).
 
 Files added: `gkm_solve_agent.py`, `agent_solutions/wa30_L1_agent.py`.
+
+### R-AGENT-2 (2026-06-30): the agent cracks wa30 L1+L2+L3 SEQUENTIALLY, on its own
+With credits restored, the same uncrippled proposer (Claude + discovered context +
+tools + tester) was pointed at extending its L1 solver. Over ~4.2h of write/run/fix
+iteration (final solver 359 lines) it produced ONE adaptive `solve(env)` that cracks
+**wa30 L1, L2 AND L3 -- replay-validated, 288 moves, F=-1.920** (saved:
+`agent_solutions/wa30_L1L2L3_agent.py`; independent replay reaches level 3).
+
+Crucially, the agent INDEPENDENTLY REDISCOVERED every insight I had earlier hand-coded
+(and was told to abstain from): (1) FREEZE the container region at level start --
+because delivered carriers turn the slot colour-9 and vanish from colour-2 detection,
+else they re-count as loose; (2) L2 -- COMPLEMENT the helper by delivering the
+carriers FARTHEST from the container (competing for the same ones cuts throughput),
+then idle to tick the helper; (3) L3 -- the carry collision is ASYMMETRIC (a carried
+carrier can be pushed onto a wall cell the avatar can't enter), so RELAY each
+left-side carrier onto the dividing wall column where the right-side helper grabs it.
+All discovered by the agent from raw frames + the probe-discovered context + priors,
+no hand-coded leg -- the goal demonstrated end to end. It honestly stopped at 3 (L4
+is a large escalation: trapped avatar, colour-5 wall lattice, multiple helpers,
+several containers -- its own next investigation).
+
+This closes the loop the user set: an agent with human preconceptions that figures
+such things out ON ITS OWN, inside the GKM (rawest substrate + priors + free-energy
+pricing + replay verification), with Claude as the strong proposer. Caveat unchanged:
+this proposer uses network/API = demo/upper-bound; the offline-eval-legal path needs
+a strong LOCAL model in the same write/run/fix loop.
