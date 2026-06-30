@@ -18,26 +18,31 @@ import sys
 import time
 
 import gkm_arena as A
-import gkm_crack as GC
 
 
 def discovered_context(game: str) -> str:
-    """Run the GKM discovery (probe, no hand-coding) to ground the game's semantics,
-    then state them as context for the proposer."""
-    C = GC.CarryConnector.build(game, use_llm=False, verbose=False)
-    B = C.B
+    """GAME-AGNOSTIC: run the GKM directed probe (gkm_discovery, no hand-coding) to
+    ground whatever this game affords -- the controllable avatar, its movement
+    actions/vectors, and any manipulation verb (push / pick_up_and_carry / ...). Hand
+    that, and ONLY that, to the proposer; the goal and any remaining mechanics are
+    for the agent to discover from frames."""
+    import gkm_discovery as D
+    try:
+        verbs, effects, w = D.discover(game, use_llm=False, verbose=False)
+    except Exception as ex:
+        return ("DISCOVERY: directed probing found NO clear controllable avatar "
+                f"({str(ex)[:80]}). Discover the avatar, the mechanics, and the goal "
+                "entirely from the raw frames yourself.")
+    mv = {a: tuple(v) for a, v in sorted(w.movement.items())}
     return (
-        f"DISCOVERED BY INTERACTION (grounded, trust these): the avatar (you) is colour "
-        f"{B.avatar}; movable carriers are colour {B.carrier}; the target container's "
-        f"interior is colour {B.region}; background is colour {B.background}. The "
-        f"manipulation mechanic is {B.mechanic}: action {B.toggle} ATTACHES the carrier "
-        f"you are facing (then moving carries it) and, pressed again, RELEASES it. A "
-        f"carrier counts as delivered when it rests inside the container region and is "
-        f"not attached. Movement actions translate the avatar; you cannot push carriers "
-        f"by walking into them -- you must attach+carry+release. Later levels may add a "
-        f"WALL splitting the board and an autonomous orange HELPER agent that also "
-        f"carries (it acts on every move you make) -- and a PURPLE adversary you can "
-        f"remove by attaching to it; confirm these by experiment on clones.")
+        f"DISCOVERED BY INTERACTION (grounded -- trust these, confirm the rest): the "
+        f"controllable avatar is colour {w.anchor_color}; movement actions {sorted(w.movement)} "
+        f"translate it with pixel vectors {mv}; non-movement (effect) actions are "
+        f"{list(w.effects)}; manipulation verb(s) observed: {sorted(set(verbs))}. These "
+        f"were found by probing each action on clones. The action numbering may be "
+        f"NON-standard. You must still DISCOVER the goal/win-condition (from how the "
+        f"reward changes) and any further mechanics, objects, barriers, or other agents "
+        f"by experiment on clones.")
 
 
 TESTER = '''import importlib.util, sys
@@ -67,11 +72,11 @@ def build_task(game: str, context: str) -> str:
         "RESULT line you achieved.\n"
         "IMPORTANT: if `solution.py` already clears some levels, do NOT restart -- "
         "READ it and EXTEND it to clear the NEXT level. solve(env) keeps playing as "
-        "levels advance, so handle each level in turn. Later levels add an autonomous "
-        "HELPER (orange) that also carries (it moves on every move you make) and a WALL "
-        "that splits the board so YOU cannot reach the container -- then RELAY: carry a "
-        "carrier to the wall boundary, release it where the helper can take it, step "
-        "away. Discover these by experiment; push to level 2 then level 3.\n"
+        "levels advance, so handle each level in turn. Later levels typically ESCALATE "
+        "(more objects, new barriers, and possibly other autonomous agents that act on "
+        "every move you make -- some helpful, some adversarial). Discover each level's "
+        "structure by experiment on clones and ADAPT your strategy per level; push to "
+        "level 2 then level 3.\n"
         "Note: env.clone()/step are ~300/s; use bounded per-subgoal search, not "
         "exhaustive global search. The move budget per level is limited.")
 
