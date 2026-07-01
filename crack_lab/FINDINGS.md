@@ -499,3 +499,14 @@ such things out ON ITS OWN, inside the GKM (rawest substrate + priors + free-ene
 pricing + replay verification), with Claude as the strong proposer. Caveat unchanged:
 this proposer uses network/API = demo/upper-bound; the offline-eval-legal path needs
 a strong LOCAL model in the same write/run/fix loop.
+
+### R-GENERALISE (2026-07-01): same agent, DIFFERENT game (ls20) -> L1-L4
+The generalisation test the rawest substrate is for: the SAME agent
+(`gkm_solve_agent.py`, now game-agnostic -- `discovered_context` uses the general
+gkm_discovery probe, no carry assumptions) was pointed at `ls20`, a different game
+with a SLIDE-to-match mechanic (not pick-up-and-carry). From scratch it discovered
+ls20's own perception/mechanic/goal and wrote a compact adaptive `solve(env)` (57
+lines) that cracks `ls20` LEVELS 1-4, replay-validated (140 moves, F=-3.650; saved
+`agent_solutions/ls20_L1-4_agent.py`). Nothing wa30-specific carried over -- the
+substrate + priors + free-energy loop transferred across game TYPES with zero code
+change, exactly the point of the rawest boundary.

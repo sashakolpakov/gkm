@@ -101,6 +101,61 @@ The goal is not to build a general ARC solver. The goal is to study a
 meta-model that produces compact deterministic solvers when the pattern family
 is deterministic enough.
 
+### ARC-AGI-3 Cracking via a Self-Improving GKM Agent
+
+The third substrate (scratch lab in [crack_lab/](crack_lab/)) pushes the same
+free-energy/GKM viewpoint onto live ARC-AGI-3 keyboard games, which run locally and
+offline. The question here is:
+
+```text
+Can an agent figure a game out ON ITS OWN -- discover its perception, its mechanics,
+its goal, and a winning strategy -- from the rawest interface, carrying only general
+human preconceptions, with free energy as the selection principle?
+```
+
+The design enforces one boundary, because it is the only one that transfers to a
+*different type* of game: the engine exposes nothing game-specific. The agent gets
+only `step(action) -> frame` (a 64x64 grid of colour integers), the reward
+(`levels_completed`), and a `clone()` for safe lookahead. Everything else --
+finding the avatar, learning the manipulation mechanic, locating the goal region,
+modelling other agents, planning -- must be discovered and written by the agent
+itself. The agent is an LLM **proposer** that writes a `solve(env)` program, plus:
+
+- a rich **human-preconception** system prompt (objects/space/barriers, agency and
+  theory-of-mind, reachability, cooperation, sparse-reward self-objectives,
+  affordance discovery);
+- **free-energy admission**: a proposed program is kept only if it lowers
+  `F = R + lambda C` on the real game (reward vs. program description length), with
+  `lambda` small so parsimony tie-breaks rather than stifles novelty, plus
+  compression-progress / disagreement as curiosity signals that *steer* novelty
+  (selection can price novelty but is never its source -- that is the proposer's
+  job), and replay-preservation;
+- the simulator as the **ground-truth verifier** (every result is replay-validated
+  on a fresh environment).
+
+The proposer is pluggable: a **local** model (offline, eval-legal, but currently too
+weak) or the **Claude Code agent** invoked headlessly with tools + a tester, so it
+writes a program, runs it on the real game, sees failures, and iterates -- a strong
+proposer, but it uses the network/API, so it is a demonstration / upper bound, not
+the offline-eval path.
+
+Result so far: on the game `wa30` the strong proposer wrote (and iterated into) an
+adaptive `solve(env)` that cracks **Levels 1, 2 and 3**, replay-validated. It
+independently rediscovered the non-obvious tricks -- freezing the target region at
+level start (delivered objects change colour and vanish from naive detection),
+complementing an autonomous helper agent by taking the farthest objects, and
+relaying objects across a dividing wall via an asymmetric carry-collision -- with no
+hand-coded strategy. It honestly stops at `wa30` Level 4 (a large escalation). Pointed
+at a **different** game (`ls20`, a slide-to-match mechanic, not carry), the same agent
+cracked its **Levels 1 through 4**, replay-validated -- the generalisation the rawest
+substrate is designed for.
+
+This line is documented in full on the **[Self-Improving Agent](docs/self_improving_agent.rst)**
+page (deployed at <https://sashakolpakov.github.io/gkm/>), which is the authoritative
+narrative; the chronological lab account, including honest negatives (a
+system-prompt-only strategist mis-reasons two-sided reachability; the local model is
+too weak), is in [crack_lab/FINDINGS.md](crack_lab/FINDINGS.md).
+
 ## Run
 
 Run the foraging ecology experiment:
@@ -219,6 +274,23 @@ history.json             per-generation training and validation metrics
 lambda_sweep.json        per-lambda validation frontier records
 summary.json             selected train/validation/hidden-test evaluation
 ```
+
+Crack a local ARC-AGI-3 game with the self-improving GKM agent (all offline except the
+networked strong-proposer demo):
+
+```bash
+# discovered-connector cone cracker (cracks wa30 L1/L2 from scratch, no network):
+python3 crack_lab/gkm_crack.py wa30 --no-llm
+# rawest agent substrate, local-model proposer (offline, eval-legal):
+python3 crack_lab/gkm_arena.py --game=wa30 --proposer=ollama --rounds=8
+# strong proposer = the Claude Code agent with discovered context + tools + tester
+# (networked; demonstration / upper bound, not the offline-eval path):
+python3 crack_lab/gkm_solve_agent.py --game=wa30 --minutes=40
+```
+
+Local ARC game sources live under `environment_files/` (downloaded once with a key,
+then run locally and key-free; gitignored). See [crack_lab/FINDINGS.md](crack_lab/FINDINGS.md)
+and [crack_lab/PLAN.md](crack_lab/PLAN.md).
 
 ## Research Direction
 

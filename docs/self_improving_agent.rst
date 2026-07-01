@@ -154,9 +154,11 @@ This is a demonstration and an upper bound, bounded in three ways:
   system-prompt-only strategist mis-reasoned two-sided reachability under
   barriers even with the priors spelled out, asserting feasibility where the
   interaction verifier proved boxes were stranded.
-- The claim is precisely levels 1 through 3 of **one** game, not all levels and
-  not all games. Level 4 is unsolved and generalization to a second game
-  (``ls20``, a slide mechanic) is in progress.
+- The claim is precisely levels 1 through 3 of ``wa30`` and, for the same agent
+  pointed at a **second** game (``ls20``, a slide-to-match mechanic), levels 1
+  through 4 -- both replay-validated. It is not all levels and not all games:
+  ``wa30`` level 4 remains unsolved. The ``ls20`` transfer is the intended
+  evidence that the rawest substrate carries across game *types*.
 - The cognition is rented. The architecture (the rawest substrate, the
   preconception priors, the free-energy admission, and the simulator as verifier)
   is general and is the contribution; closing the gap on the offline path needs a
