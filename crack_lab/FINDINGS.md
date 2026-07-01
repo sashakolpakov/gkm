@@ -579,3 +579,15 @@ not churn) and logged the recurring pattern as a candidate higher-order leg
 new structure, the novelty living in the combination/knob -- the colimit-cone made
 operational, priced by F=R+lambda*C_marginal. Saved: `agent_solutions/ls20_legs/`
 (legs.py, players.py, solve.py, legs_log.md). Not run beyond L4 to stay within credits.
+
+wa30 under the SAME enforced orchestration (capped L4): reached LEVEL 1 and built a
+substantial library (10 legs, 150 lines) with marginal_C=112 (wa30's carry+perception
+legs are far bigger than ls20's 55). It then stopped at L2 -- but this run is
+INCONCLUSIVE beyond L1, most likely a CREDIT / SESSION cut-out during the L2 proposal:
+`players.py` contains only `play_level_1` (no `play_level_2` was ever written, not even
+a failed attempt), and the orchestrator does not capture the nested `claude -p` output
+where a "session limit" message would appear (err=None just means the game ran fine
+with no L2 player). So this is NOT evidence that enforcement underperforms on wa30; it
+needs a re-run with credits to reach a real verdict. (Open design question regardless:
+whether to allow a bounded monolithic push per level, then have the debrief refactor it
+into legs, vs. composition-only up front -- but wa30 gives no evidence either way yet.)
