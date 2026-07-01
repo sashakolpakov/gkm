@@ -529,11 +529,23 @@ marginal C: parsimony now literally rewards transfer. This is the colimit-cone m
 operational -- the legs are written by the proposer (not mined from a fixed library),
 the cone is the proposer's composition, and admission prices marginal novelty.
 
-Mechanism (to build, needs a credited run): a PERSISTENT `legs.py` grown across levels;
-per level PROPOSE (compose legs + minimal new) -> VERIFY on the game -> DEBRIEF: compare
-this level's solver to the previous levels, refactor repeated structure into shared
-legs, and log the "repeated novelty" (the composition pattern that recurs, itself a
-candidate higher-order leg). Track per-level marginal C_new and the reuse ratio; F uses
-C_new, not total program length. The agent already writes per-level-adaptive solvers;
-the change is to externalise the legs into a reused library and add the debrief +
-marginal-novelty accounting.
+Mechanism (to build): a PERSISTENT `legs.py` grown across levels; per level PROPOSE
+(compose legs + minimal new) -> VERIFY on the game -> DEBRIEF: compare this level's
+solver to the previous levels, refactor repeated structure into shared legs, and log
+the "repeated novelty" (the composition pattern that recurs, itself a candidate
+higher-order leg). Track per-level marginal C_new and the reuse ratio; F uses C_new,
+not total program length.
+
+FIRST ATTEMPT (2026-07-01, credited run) + HONEST FINDING: pointed at wa30 with the
+leg-library instructions in the PROMPT, the agent pushed further -- it cracked wa30
+LEVELS 1-6, replay-validated (458 moves, F=-3.903; saved
+`agent_solutions/wa30_L1-6_agent.py`, path in `wa30_L1-6_path.txt`) before the session
+limit cut it off. BUT it did NOT follow the leg-library discipline: it produced NO
+`legs.py`/`legs_log.md`, grew a MONOLITHIC 801-line `solution.py` plus throwaway
+experiment scripts, and optimised purely for clearing levels. Lesson: a prompt REQUEST
+for leg growth is not enough -- a single monolithic `solve()` invocation will just grow.
+The discipline must be STRUCTURALLY ENFORCED by the harness: a per-level orchestration
+where each level's player may contain only composition and MUST import its skills from
+a shared `legs.py`, a separate debrief/refactor pass, and free energy scored on
+marginal new-leg description length (so reuse is literally the cheaper option). That
+enforced orchestration is the next build (needs credits; org ran out again after L6).

@@ -140,9 +140,12 @@ not to be given:
   right-side helper picks it up and ferries it to the container.
 
 All three were discovered from raw frames plus the probed context plus the
-priors, with no hand-coded leg. The agent then stopped honestly at level 4, a
-large escalation (a trapped avatar, a colour-5 wall lattice, multiple helpers,
-and several containers), left as its own next investigation.
+priors, with no hand-coded leg. A later credited run extended the same solver
+further, reaching ``wa30`` **level 6** (458 moves, replay-validated, ``F = -3.903``)
+before a session limit stopped it. That run also exposed a limitation: asked in the
+prompt to grow a reusable *leg library* (see below), the agent ignored the request
+and instead grew a single monolithic solver -- the leg-library discipline has to be
+enforced by the harness, not merely requested.
 
 Honest Caveats
 --------------
@@ -154,15 +157,41 @@ This is a demonstration and an upper bound, bounded in three ways:
   system-prompt-only strategist mis-reasoned two-sided reachability under
   barriers even with the priors spelled out, asserting feasibility where the
   interaction verifier proved boxes were stranded.
-- The claim is precisely levels 1 through 3 of ``wa30`` and, for the same agent
+- The claim is precisely levels 1 through 6 of ``wa30`` and, for the same agent
   pointed at a **second** game (``ls20``, a slide-to-match mechanic), levels 1
-  through 4 -- both replay-validated. It is not all levels and not all games:
-  ``wa30`` level 4 remains unsolved. The ``ls20`` transfer is the intended
-  evidence that the rawest substrate carries across game *types*.
+  through 4 -- all replay-validated. It is not all levels and not all games:
+  ``wa30`` levels 7-9 are unsolved. The ``ls20`` transfer is the intended evidence
+  that the rawest substrate carries across game *types*.
 - The cognition is rented. The architecture (the rawest substrate, the
   preconception priors, the free-energy admission, and the simulator as verifier)
   is general and is the contribution; closing the gap on the offline path needs a
   stronger local model in the same write/run/fix loop.
+
+Growing a Leg Library
+---------------------
+
+Re-deriving every level from scratch is wasteful and, worse, misses the point. The
+intended discipline is to grow a **library of legs** -- small, named, reusable
+program fragments (perception helpers, navigation, an object-transport skill, a
+relay-across-a-barrier skill) -- and to solve later levels by **composing** existing
+legs with as little new structure as possible. On the early levels the agent still
+invents legs, because it is learning the game's rules; by the later levels it should
+recognise a level as an earlier one in a different geometric configuration that is
+semantically the same, and clear it by combining known legs, adding almost nothing
+new. The novelty then lives in the *combination*, and the agent iterates on the
+composition far more than on the legs. After each level a **debrief** compares the new
+solver to the previous ones, refactors repeated code into shared legs, and logs the
+recurring composition pattern (itself a candidate higher-order leg).
+
+This is exactly ``F = R + lambda C`` with the right complexity term: ``C`` is the
+**marginal** novelty introduced -- the description length of *new* legs plus the
+composition glue -- so a reused leg costs nothing and parsimony directly rewards
+transfer. It is the same accounting as the macro experiments, now applied to
+invented rather than enumerated structure. In the first credited attempt the agent
+optimised only for clearing levels and did not externalise any legs, which is why the
+discipline must be enforced by the harness (each level's player restricted to
+composition over a shared ``legs.py``, a separate refactor pass, and free energy
+scored on marginal new-leg size) rather than merely requested in the prompt.
 
 Relation to the Colimit-Cone Program
 -------------------------------------

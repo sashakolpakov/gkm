@@ -472,7 +472,9 @@ adaptive \texttt{solve(env)} program over roughly $4.2$ hours of write/run/fix
 iteration (final program $359$ lines) that cracks \texttt{wa30} levels~1, 2,
 \emph{and}~3. The result is replay-validated: an independent replay of the
 recorded $288$-move sequence on a fresh environment reaches level~3, at
-$F=-1.920$.
+$F=-1.920$. A later run extended the same solver to \texttt{wa30}
+level~6 (replay-validated, $458$ moves) before a session limit stopped it;
+levels~7--9 remain unsolved.
 
 What makes this more than a solved puzzle is that the proposer independently
 rediscovered the very insights that had earlier been hand-coded in failed

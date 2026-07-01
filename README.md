@@ -140,15 +140,18 @@ proposer, but it uses the network/API, so it is a demonstration / upper bound, n
 the offline-eval path.
 
 Result so far: on the game `wa30` the strong proposer wrote (and iterated into) an
-adaptive `solve(env)` that cracks **Levels 1, 2 and 3**, replay-validated. It
-independently rediscovered the non-obvious tricks -- freezing the target region at
-level start (delivered objects change colour and vanish from naive detection),
-complementing an autonomous helper agent by taking the farthest objects, and
-relaying objects across a dividing wall via an asymmetric carry-collision -- with no
-hand-coded strategy. It honestly stops at `wa30` Level 4 (a large escalation). Pointed
-at a **different** game (`ls20`, a slide-to-match mechanic, not carry), the same agent
-cracked its **Levels 1 through 4**, replay-validated -- the generalisation the rawest
-substrate is designed for.
+adaptive `solve(env)`, cracking **Levels 1-3** first -- independently rediscovering
+non-obvious tricks (freezing the target region at level start, since delivered
+objects change colour and vanish from naive detection; complementing an autonomous
+helper agent by taking the farthest objects; relaying objects across a dividing wall
+via an asymmetric carry-collision) with no hand-coded strategy -- and a later run
+extended it to **Level 6**, replay-validated (`wa30` levels 7-9 remain unsolved).
+Pointed at a **different** game (`ls20`, a slide-to-match mechanic, not carry), the
+same agent cracked its **Levels 1 through 4**, replay-validated -- the generalisation
+the rawest substrate is designed for. (An intended next step -- growing a reusable
+*leg library* so later levels are solved by composing known legs with minimal new
+structure -- is designed but not yet realised: the agent grows a monolithic solver
+unless the harness enforces the library.)
 
 This line is documented in full on the **[Self-Improving Agent](docs/self_improving_agent.rst)**
 page (deployed at <https://sashakolpakov.github.io/gkm/>), which is the authoritative
