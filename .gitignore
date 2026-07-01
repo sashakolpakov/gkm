@@ -14,6 +14,16 @@ manuscript/*.log
 manuscript/*.out
 manuscript/*.pdf
 
+# LaTeX build outputs in any per-domain manuscript directory
+**/manuscript/*.aux
+**/manuscript/*.bbl
+**/manuscript/*.blg
+**/manuscript/*.fdb_latexmk
+**/manuscript/*.fls
+**/manuscript/*.log
+**/manuscript/*.out
+**/manuscript/*.pdf
+
 # Python
 __pycache__/
 *.py[cod]
