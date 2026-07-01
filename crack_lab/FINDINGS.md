@@ -510,3 +510,30 @@ lines) that cracks `ls20` LEVELS 1-4, replay-validated (140 moves, F=-3.650; sav
 `agent_solutions/ls20_L1-4_agent.py`). Nothing wa30-specific carried over -- the
 substrate + priors + free-energy loop transferred across game TYPES with zero code
 change, exactly the point of the rawest boundary.
+
+### R-LEGS (design, 2026-07-01): grow a leg LIBRARY; later levels = minimal novelty
+The user's next lever, and the proper PowerPlay/colimit-cone form: the proposer should
+not re-derive each level from scratch but GROW A LIBRARY OF LEGS (reusable program
+fragments/skills) and solve later levels by COMPOSING existing legs with as little NEW
+structure as possible. On L1-L3 you still learn the game's rules (legs are invented);
+by L7-L9 the proposer should recognise "this is L4 in a different geometric
+configuration that is semantically the same -- solve it with legs 1, 10, 12, 42" and
+introduce almost no new legs; the novelty is in the COMBINATION, and the proposer then
+iterates on the composition far more than on the legs.
+
+This is exactly the free energy F = R + lambda*C with the RIGHT complexity term:
+C is the NOVELTY introduced, i.e. the description length of NEW legs added this level
+plus the composition glue -- a REUSED leg costs ~0 (already paid for in an earlier
+level). So a later level that reuses legs and adds little structure has near-zero
+marginal C: parsimony now literally rewards transfer. This is the colimit-cone made
+operational -- the legs are written by the proposer (not mined from a fixed library),
+the cone is the proposer's composition, and admission prices marginal novelty.
+
+Mechanism (to build, needs a credited run): a PERSISTENT `legs.py` grown across levels;
+per level PROPOSE (compose legs + minimal new) -> VERIFY on the game -> DEBRIEF: compare
+this level's solver to the previous levels, refactor repeated structure into shared
+legs, and log the "repeated novelty" (the composition pattern that recurs, itself a
+candidate higher-order leg). Track per-level marginal C_new and the reuse ratio; F uses
+C_new, not total program length. The agent already writes per-level-adaptive solvers;
+the change is to externalise the legs into a reused library and add the debrief +
+marginal-novelty accounting.

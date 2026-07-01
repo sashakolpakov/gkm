@@ -75,10 +75,27 @@ def build_task(game: str, context: str) -> str:
         "levels advance, so handle each level in turn. Later levels typically ESCALATE "
         "(more objects, new barriers, and possibly other autonomous agents that act on "
         "every move you make -- some helpful, some adversarial). Discover each level's "
-        "structure by experiment on clones and ADAPT your strategy per level; push to "
-        "level 2 then level 3.\n"
+        "structure by experiment on clones and ADAPT your strategy per level.\n"
+        "\nGROW A LEG LIBRARY (this is the point -- minimise novelty on later levels):\n"
+        "- Keep a persistent `legs.py` of small, well-named, reusable skills (legs): "
+        "e.g. perception helpers, `go_adjacent_facing(env,cell)`, "
+        "`carry_object_to(env,obj,dest)`, `relay_across(env,obj,boundary)`, "
+        "`bfs(...)`. `solve(env)` and per-level players IMPORT from `legs.py` and "
+        "COMPOSE these legs; they should contain little logic of their own.\n"
+        "- On the EARLY levels you will invent most legs (you are still learning the "
+        "rules). On LATER levels, prefer to RECOGNISE that a level is an earlier one in "
+        "a different geometric configuration but semantically the same, and solve it by "
+        "COMPOSING existing legs, adding as FEW new legs as possible. The novelty should "
+        "live in the COMBINATION, not in new legs -- iterate on the composition, not the "
+        "legs. (Free energy rewards this: a reused leg is already paid for; only NEW "
+        "structure costs.)\n"
+        "- After you clear each level, DEBRIEF: compare this level's player to the "
+        "previous levels', refactor any repeated code into a shared leg in `legs.py` (so "
+        "it is written once), and jot the recurring composition pattern in "
+        "`legs_log.md`. Re-run `gkm_try.py` to confirm behaviour is unchanged.\n"
         "Note: env.clone()/step are ~300/s; use bounded per-subgoal search, not "
-        "exhaustive global search. The move budget per level is limited.")
+        "exhaustive global search. The move budget per level is limited. Push as far "
+        "through the levels as you can (they go up to 9).")
 
 
 def run(game="wa30", model=None, minutes=40, verbose=True):
