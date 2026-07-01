@@ -547,5 +547,15 @@ for leg growth is not enough -- a single monolithic `solve()` invocation will ju
 The discipline must be STRUCTURALLY ENFORCED by the harness: a per-level orchestration
 where each level's player may contain only composition and MUST import its skills from
 a shared `legs.py`, a separate debrief/refactor pass, and free energy scored on
-marginal new-leg description length (so reuse is literally the cheaper option). That
-enforced orchestration is the next build (needs credits; org ran out again after L6).
+marginal new-leg description length (so reuse is literally the cheaper option).
+
+BUILT (2026-07-01): `gkm_legs.py` implements this enforced orchestration -- workspace
+split into `legs.py` (shared skills) / `players.py` (per-level `play_level_K` that only
+compose legs) / `solve.py` (dispatch by level); per level PROPOSE (Claude agent, tools)
+-> VERIFY on the real game -> DEBRIEF (refactor repeated code into shared legs, log the
+recurring composition); `marginal_complexity()` counts NEW structure only (legs+players
+LOC growth, reused legs = 0) and `free_energy()` = R + lambda*C_marginal. The proposer
+and verifier are INJECTABLE so the loop + marginal-C accounting are unit-tested offline
+(`test_gkm_legs.py`, 5/5 pass -- incl. the load-bearing property that a reuse-only level
+is strictly cheaper than a leg-inventing one). Ready to run the moment credits return;
+the default proposer (the real Claude agent with tools) is the only part that needs them.
