@@ -201,6 +201,13 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     verify_fn = verify_fn or run_solve_file
 
     rep = Report(game=game, reached=0)
+    # resume: if the workspace already clears some levels, start above them (don't
+    # re-spend the proposer on solved levels; their marginal C was recorded earlier).
+    lv0, _, _ = verify_fn(game, solve_p)
+    if lv0 > 0:
+        rep.reached = lv0
+        if verbose:
+            print(f"resuming from level {lv0} (existing legs.py/players.py)")
     while rep.reached < max_level:
         K = rep.reached + 1
         legs_b, players_b = _read(legs_p), _read(players_p)
