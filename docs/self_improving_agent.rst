@@ -187,11 +187,20 @@ This is exactly ``F = R + lambda C`` with the right complexity term: ``C`` is th
 **marginal** novelty introduced -- the description length of *new* legs plus the
 composition glue -- so a reused leg costs nothing and parsimony directly rewards
 transfer. It is the same accounting as the macro experiments, now applied to
-invented rather than enumerated structure. In the first credited attempt the agent
-optimised only for clearing levels and did not externalise any legs, which is why the
-discipline must be enforced by the harness (each level's player restricted to
-composition over a shared ``legs.py``, a separate refactor pass, and free energy
-scored on marginal new-leg size) rather than merely requested in the prompt.
+invented rather than enumerated structure.
+
+Merely *requesting* this in the prompt was not enough (the agent grew a monolithic
+solver instead), so the discipline is **enforced by the harness**: each level's player
+is restricted to composition over a shared ``legs.py``, a separate refactor pass runs
+after each level, and free energy is scored on marginal new-leg size. Run that way on
+``ls20`` (capped at level 4), the enforced orchestration produced exactly the predicted
+signature. Level 1 invents the library (marginal cost 55; a clone-BFS skill that
+self-discovers which tiles to visit); levels 3 and 4 add essentially nothing (marginal
+cost 2 each) and are literally one call to the level-advancing leg; level 2 reuses the
+same leg with a single knob (a fuller state key, because its goal depends on carried
+sprites), threaded in by the debrief so both players share one generic search. Cracking
+ls20 levels 1-4 (replay-validated) cost total marginal novelty 77, front-loaded into
+level 1 -- transfer, not re-derivation, and priced as such.
 
 Relation to the Colimit-Cone Program
 -------------------------------------

@@ -559,3 +559,23 @@ and verifier are INJECTABLE so the loop + marginal-C accounting are unit-tested 
 (`test_gkm_legs.py`, 5/5 pass -- incl. the load-bearing property that a reuse-only level
 is strictly cheaper than a leg-inventing one). Ready to run the moment credits return;
 the default proposer (the real Claude agent with tools) is the only part that needs them.
+
+DEMONSTRATED on ls20 (2026-07-01, credited, capped at L4 to conserve credits): the
+enforced orchestration cracked ls20 L1-L4, replay-validated (composed solve.py -> level
+4, 142 moves), and the MARGINAL NOVELTY collapsed exactly as the thesis predicts:
+  level 1: marginal_C=55  (invents the legs -- learning the rules)   F=+0.10
+  level 2: marginal_C=18  (reuses most, adds a little)               F=-0.54
+  level 3: marginal_C=2   (pure composition, ~no new structure)      F=-1.50
+  level 4: marginal_C=2   (pure composition)                         F=-2.46
+`legs.py` stabilised at 5 general skills after L1 (`state_key`, `full_state_key`,
+`plan_to_next_level`, `run_plan`, `advance_one_level` = a clone-BFS over avatar/game
+states that self-discovers which transform tiles to visit). The players are thin
+composers: `play_level_1/3/4` are literally `advance_one_level(env)`; `play_level_2` is
+the SAME leg with one knob (`key_fn=full_state_key`) because L2 is a carry level whose
+goal depends on sprite positions, so the dedup key must include them. The DEBRIEF did a
+real refactor (threaded a `key_fn` param so both players share ONE generic BFS -- reuse,
+not churn) and logged the recurring pattern as a candidate higher-order leg
+(`legs_log.md`). So later levels are cracked by COMPOSING existing legs with near-zero
+new structure, the novelty living in the combination/knob -- the colimit-cone made
+operational, priced by F=R+lambda*C_marginal. Saved: `agent_solutions/ls20_legs/`
+(legs.py, players.py, solve.py, legs_log.md). Not run beyond L4 to stay within credits.
