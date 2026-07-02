@@ -8,7 +8,7 @@ from __future__ import annotations
 import logging, os, sys
 from pathlib import Path
 
-GKM = Path(__file__).resolve().parents[1]
+GKM = Path(__file__).resolve().parents[2]
 if str(GKM) not in sys.path:
     sys.path.insert(0, str(GKM))
 ENVDIR = str(GKM / "environment_files")

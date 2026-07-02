@@ -58,7 +58,7 @@ by the same free energy.
 
 ## Code
 
-The cracking code currently lives in `crack_lab/` (to be relocated under this domain).
+The cracking code lives in [`crack_lab/`](crack_lab/) within this domain.
 Key modules: `gkm_arena.py` (the rawest substrate + free-energy admission),
 `gkm_solve_agent.py` (proposer = Claude with discovered context + tools + tester),
 `gkm_legs.py` (enforced leg-library orchestration + marginal-C accounting),

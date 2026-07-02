@@ -33,11 +33,12 @@ same lens to a different substrate:
 - **[arc/](arc/ARC.md)** — a **self-improving agent** that cracks live ARC-AGI-3
   keyboard games from the rawest interface, carrying only human preconceptions, with a
   single free-energy rule deciding what structure (a growing *leg library*) is kept.
-  Code lives in [`crack_lab/`](crack_lab/).
+  Code lives in [`arc/crack_lab/`](arc/crack_lab/).
 
 Each domain directory has its own one-page guide (linked above), its runnable
 experiments, its tests, and — for foraging, transduction, and bongard — a
-self-contained LaTeX manuscript under `<domain>/manuscript/` (`make -C <domain>/manuscript`).
+self-contained LaTeX manuscript under `<domain>/manuscript/` (`make -C <domain>/manuscript`);
+the ARC manuscript is [`arc/manuscript/arc_agi3.tex`](arc/manuscript/arc_agi3.tex).
 
 ## Tests
 
