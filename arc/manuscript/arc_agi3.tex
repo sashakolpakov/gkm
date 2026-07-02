@@ -36,7 +36,9 @@ game-agnostic agent transferred to a second game, \texttt{ls20}, clearing levels
 When the harness enforces a growing \emph{leg library}, the marginal description length
 of each new level collapses ($55\to18\to2\to2$ on \texttt{ls20}), i.e.\ later levels are
 solved by \emph{composing} existing legs with almost no new structure --- transfer,
-priced by the same free energy. We report honest negatives: a weak local model, and a
+priced by the same free energy; on \texttt{wa30}, whose levels introduce genuinely new
+mechanics, marginal novelty instead tracks the novelty the game demands
+($112\to78\to95$), as a novelty-priced free energy should. We report honest negatives: a weak local model, and a
 strong (networked) proposer that makes the result a demonstration rather than an
 offline-legal system.
 \end{abstract}
@@ -199,6 +201,20 @@ level & marginal $C$ (new structure) & cumulative $C$ & $\F$ \\
 collapses as legs are reused ($\lambda=0.02$, $R=-\text{level}$).}
 \label{tab:marg}
 \end{table}
+
+\paragraph{The complement on \texttt{wa30}: novelty tracks the game's novelty.} Running
+\texttt{wa30} under the same enforced library (levels 1--3, replay-validated) shows the
+honest counterpart: marginal novelty does \emph{not} collapse ($112 \to 78 \to 95$),
+because each \texttt{wa30} level introduces a genuinely new mechanic --- level~2 an
+autonomous helper agent, level~3 a dividing wall crossed only by an asymmetric carry
+collision --- and the agent captured each as new named legs (\texttt{yield\_to\_helper},
+\texttt{wall\_col}, \texttt{relay\_to\_helper}). Reuse-collapse is therefore a property
+of the \emph{game's} level structure, not an artifact of the harness: the marginal price
+in Eq.~\eqref{eq:fe} is paid exactly when the game demands new structure and drops to
+composition cost when it does not, which is the intended behaviour of a novelty-priced
+free energy. The library discipline still holds --- players remain thin composers
+(25 lines over a 24-leg library), and the level-3 wall relay was discovered \emph{inside}
+the enforced loop and persists as a reusable skill.
 
 \section{Discussion and honest limitations}
 The architecture --- rawest substrate, preconception priors, free-energy admission,

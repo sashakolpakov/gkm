@@ -47,6 +47,13 @@ by the same free energy.
   code change.
 - Under the enforced leg library, per-level **marginal novelty collapses** as legs are
   reused — on `ls20`: `55 → 18 → 2 → 2`. Later levels are near-pure composition.
+- The same enforced library on `wa30` (L1–L3 validated) shows the honest complement:
+  marginal novelty does **not** collapse (`112 → 78 → 95`) because each `wa30` level
+  introduces a genuinely new mechanic (autonomous helper at L2; dividing wall +
+  asymmetric-carry relay at L3), and the agent captured each as new named legs
+  (`yield_to_helper`, `wall_col`, `relay_to_helper`, …). Reuse-collapse is a property
+  of the *game's* level structure; the method pays for novelty exactly when the game
+  demands it — which is what `F = R + λ·C_marginal` is for.
 
 ## Honest limitations
 
