@@ -1,0 +1,136 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{url}
+
+\title{Free Energy as a Local Selection Rule in a\\ Sparse Finite-State Foraging Ecology}
+\author{Alexander Kolpakov}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study whether free energy, in the loss-complexity form $F_\lambda = R + \lambda\,C$,
+can serve as a \emph{local} selection rule over a population of deterministic agents,
+and what such selection does to structure. The agents are sparse finite-state automata
+(FSAs) that play a visible grid-foraging game; their genomes carry an explicitly
+encoded transition relation over relational observations, and mutate by rule edits,
+additions, and deletions. Selection minimizes $F_\lambda$, where $R$ is a foraging loss
+and $C$ is a raw description length of the genome. Sweeping $\lambda$ traces a
+loss-complexity landscape whose complexity variance behaves as a susceptibility-style
+diagnostic. We report that fixed-task free-energy minimization reliably converges to
+compressed policies, confirming the compression pole of the design, and we argue---but
+do not yet demonstrate---that open-endedness requires solved structure to \emph{generate}
+new validation pressure. We are explicit about which claims are established and which
+are program.
+\end{abstract}
+
+\section{Introduction}
+Open-ended evolution asks for a process that keeps producing qualitatively new structure
+rather than settling into a fixed optimum. A recurring difficulty is that any single
+fixed objective, pursued hard enough, is an attractor: the population converges and
+stops innovating. Our working thesis is that free energy can be used not as a global
+objective to be minimized once, but as a \emph{local} selection principle over agents
+embedded in an expanding ecology---and that open-endedness then hinges on whether solved
+structure produces new selection pressure. This paper builds the controllable instrument
+required to test that thesis and reports what the closed-world version of it does.
+
+We deliberately keep the substrate small and inspectable: deterministic automata, a
+visible game, heritable and human-readable structure, replayable lineages, and an
+explicit complexity term. The point is not a strong game bot; it is a phase-diagram
+apparatus for free-energy selection.
+
+\section{Background}
+\paragraph{Description length and free energy.}
+The complexity term $C$ is a raw description length in the sense of Kolmogorov
+complexity~\cite{kolmogorov1965,live2008} and the minimum description length
+principle~\cite{rissanen1978}, made concrete as the encoded size of a genome. Solomonoff
+induction~\cite{solomonoff1964} supplies the prior intuition that simpler structures
+should be preferred at equal fit. We treat the trade-off through the loss-complexity /
+free-energy lens of Kolpakov~\cite{losscomplexity}: for a fitted model, $R$ (loss) and
+$C$ (complexity) trace a landscape, and $\lambda$ selects a point on it. The functional
+\[
+  F_\lambda(a) \;=\; R(a) \;+\; \lambda\, C(a)
+\]
+is exactly a temperature-scaled free energy: at $\lambda \to 0$ selection is pure loss;
+as $\lambda$ grows, parsimony dominates.
+
+\paragraph{Open-endedness and self-improvement.}
+Two threads inform the design. First, objective-free search: Lehman and
+Stanley~\cite{lehman2011novelty} show that abandoning a fixed objective in favour of
+novelty can outperform objective-driven search, motivating our shift from a global
+objective to local selection plus frontier generation. Second, self-referential
+improvement: Schmidhuber's G\"odel machine~\cite{schmidhuber2007godel} and
+PowerPlay~\cite{schmidhuber2013powerplay} frame open-ended competence growth as
+continually posing the simplest still-unsolved problem---the role we intend for an
+archive of frontier environments.
+
+\section{Method}
+\paragraph{Agents.}
+An agent is a sparse FSA. Its input is relational rather than raw pixels:
+\[
+  (\text{state},\ \text{previous\_move},\ \text{relative\_food\_azimuth})
+  \;\longrightarrow\; (\text{move\_sequence},\ \text{next\_state}).
+\]
+A rule may emit a short \emph{sequence} of moves (a macro), not only a single move. If
+no encoded rule matches the current input, the automaton \emph{halts} the episode: there
+is no random fallback and no free default movement. This makes every behaviour traceable
+to an explicit, paid-for rule.
+
+\paragraph{Loss.}
+$R(a)$ is a foraging loss: missed resources plus small per-step and collision costs. It
+is bounded and deterministic given a map and a seed.
+
+\paragraph{Complexity.}
+$C(a)$ is a raw description length of the genome. We instrument four accounting modes to
+test robustness of the conclusions to the definition of ``size'':
+\emph{table} (default), the sum of complexities over the whole encoded sparse rule set,
+so extra rules and long macros are paid for; \emph{active}, only rules exercised in
+observed episodes; \emph{pruned}, rules reachable from the start state under any
+observation; and \emph{mixed}, active complexity plus a dead-code tax on unused encoded
+rules.
+
+\paragraph{Selection and sweep.}
+Selection minimizes $F_\lambda$ within an evolving population under mutation. The runner
+sweeps $\lambda$ and records, per point, the loss, each complexity metric, and the
+free energy, together with a \emph{complexity variance} across the population---a
+susceptibility-style quantity we use to flag candidate transitions in the landscape.
+Lineages and the best policy are exported for replay.
+
+\section{Results}
+On fixed maps (the closed-world condition) free-energy selection behaves as the
+compression pole of the thesis predicts: loss falls quickly, then the population
+compresses, shedding unused and redundant rules as $\lambda$ increases, and the
+different complexity modes agree on the qualitative shape of the loss-complexity
+frontier. The best policies are compact, deterministic, and replayable, and the
+$\lambda$ sweep produces a monotone loss-complexity trade-off with an interior knee.
+These results establish that (i) the substrate learns, (ii) $C$ is a real pressure and
+not a tie-breaker, and (iii) the apparatus produces the diagnostics---frontier and
+complexity variance---needed for the open-ended program.
+
+\section{Limitations}
+The results reported here are the \emph{closed-world} baseline: fixed maps, one static
+loss. In that regime we observe exactly what a compression account predicts, which is
+evidence for the mechanism but \emph{not} evidence of open-endedness. We do not yet
+demonstrate solve--expand--solve cycles, an archive of frontier environments that
+distinguishes lineages, or coevolutionary niche creation; those are designed but
+unrealized. Complexity variance is presented as a diagnostic candidate, not a validated
+order parameter. Nothing here should be read as a claim that free-energy selection
+\emph{alone} yields open-endedness---our own thesis is that it does not, absent an
+expanding ecology.
+
+\section{Conclusion}
+We built a small, inspectable instrument in which free energy $F_\lambda = R + \lambda C$
+acts as a local selection rule over sparse deterministic foraging automata, and we
+confirmed its compression behaviour and its diagnostics under a fixed task. The next
+steps---frontier curricula near the competence boundary, archive validation, and
+coevolution---are what would convert this from a compression demonstration into a test
+of open-ended structural innovation.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

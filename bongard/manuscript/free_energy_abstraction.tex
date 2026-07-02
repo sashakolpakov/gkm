@@ -1,0 +1,629 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{enumitem}
+\usepackage{microtype}
+\usepackage{hyperref}
+
+\emergencystretch=2em
+
+\hypersetup{
+  colorlinks=true,
+  linkcolor=black,
+  citecolor=black,
+  urlcolor=blue
+}
+
+\title{Free-Energy Selection for Predicate Encapsulation in Sparse Deterministic Solvers}
+\author{GKM research manuscript}
+\date{\today}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Open-ended artificial evolution cannot be obtained by optimizing a fixed finite
+benchmark alone. With positive complexity pressure, a fixed benchmark eventually
+selects compression of the best observable behavior, not continuing innovation.
+This manuscript develops a narrower experimental step toward an open-ended
+research program: sparse deterministic solvers are selected by a free-energy
+objective that trades empirical loss against explicit description length, and
+reusable predicate macros are admitted only when their library cost is repaid by
+reducing repeated task code. The current result is deliberately limited. The
+primitive observations are hand-defined; the system does not yet discover
+perceptual atoms from pixels, turtle programs, or raw geometry. What is shown is
+that, given such atoms, free-energy accounting selects a shared predicate macro
+only when a latent conjunction is reused across tasks or across factored
+disjunctive branches, and removes the effect when sharing is made unavailable.
+We formalize the objective, report the internal abstraction-emergence control
+experiment, relate it to minimum description length, predicate invention,
+library learning, automata learning, and Bongard-style concept induction, and
+lay out the next step: evolving finite-state predicate recognizers over
+symbolic Bongard-LOGO action programs under the same accounting protocol.
+\end{abstract}
+
+\section{Introduction}
+
+The working thesis of this repository is that open-ended artificial evolution is
+possible only when a local selection rule is coupled to an expanding ecology.
+The local rule used here is a free-energy objective,
+\begin{equation}
+  F_{\lambda}(h;D)=R_D(h)+\lambda C(h),
+  \label{eq:basic-free-energy}
+\end{equation}
+where $h$ is an agent, automaton, transducer, or task solver, $R_D(h)$ is
+empirical risk on the current data or environment distribution, $C(h)$ is a
+description-length proxy, and $\lambda>0$ controls parsimony pressure. This form
+is close in spirit to minimum description length \cite{rissanen1978modeling,
+grunwald2007minimum,grunwaldroos2019mdl} and to the loss-complexity
+structure-function view in Kolpakov's recent free-energy formulation
+\cite{kolpakov2025loss}. It is also compatible with broader free-energy
+language in adaptive systems \cite{friston2010free}, although the present work
+uses the term operationally: selection minimizes a loss plus a complexity cost.
+
+Equation~\ref{eq:basic-free-energy} is not by itself an open-endedness
+principle. On a fixed finite benchmark, every candidate program induces a finite
+behavior vector. Once the best attainable vector is reached, extra machinery is
+penalized unless it reduces risk on an already specified item. In that regime,
+free-energy minimization compresses. Open-endedness requires that the risk term
+itself change as agents solve niches, create artifacts, or expose new
+frontiers:
+\begin{equation}
+  Q_{t+1}=G(Q_t,\mathcal{P}_t,\mathcal{A}_t),
+  \label{eq:ecology}
+\end{equation}
+where $Q_t$ is the environment distribution, $\mathcal{P}_t$ is the population,
+and $\mathcal{A}_t$ is an archive of earlier agents, environments, and
+counterexamples. Under this view, free energy selects locally; the ecology
+expands globally.
+
+The immediate research question is smaller and more measurable. Before claiming
+open-endedness, we need to show that the complexity term can do real structural
+work. In particular, can it favor reusable abstractions only when reuse earns
+its cost? The current experiment studies that question with sparse deterministic
+rules over predefined symbolic observations. The result is not predicate
+invention from raw input. It is predicate \emph{encapsulation}: a repeated
+conjunction can be defined once as a macro and called cheaply by several task
+rules.
+
+\paragraph{Contribution.}
+The present manuscript makes four contributions.
+\begin{enumerate}[leftmargin=1.5em]
+  \item It states a free-energy objective for sparse deterministic solvers and
+  library-bearing task families.
+  \item It defines the exact loss and complexity accounting used in the current
+  abstraction-emergence experiment.
+  \item It reports a controlled internal result showing when a shared predicate
+  macro is selected, when it is not selected, and why the no-share ablation
+  matters.
+  \item It positions the result relative to established work on predicate
+  invention, program-library learning, automata learning, and Bongard-style
+  visual reasoning, while keeping the novelty claim narrow.
+\end{enumerate}
+
+\section{Free-energy selection and structure functions}
+
+\subsection{Risk, complexity, and lambda sweeps}
+
+For a labeled concept task with data $D=\{(x_i,y_i)\}_{i=1}^{n}$ and a
+deterministic solver $h:X\to\{0,1\}$, the basic empirical risk is
+\begin{equation}
+  R_D(h)=\frac{1}{n}\sum_{i=1}^{n}\mathbf{1}[h(x_i)\ne y_i].
+  \label{eq:risk}
+\end{equation}
+For a set of tasks $\mathcal{T}=\{1,\ldots,T\}$, each with its own dataset
+$D_t$ and solver $h_t$, the total task risk is
+\begin{equation}
+  R_{\mathcal{D}}(H)=\sum_{t=1}^{T}R_{D_t}(h_t),
+  \qquad H=\{h_t\}_{t=1}^{T}.
+  \label{eq:total-risk}
+\end{equation}
+The experiments sweep $\lambda$ rather than treating it as a single tuned
+hyperparameter:
+\begin{equation}
+  F_t(\lambda)=\inf_{h}\left[R_t(h)+\lambda C(h)\right].
+  \label{eq:lambda-frontier}
+\end{equation}
+This estimates a loss-complexity frontier: the minimum complexity needed to
+reach a given risk level. Following the structure-function viewpoint
+\cite{kolpakov2025loss}, the frontier itself is an object of study. Sharp
+changes in selected complexity across $\lambda$ are diagnostics of structural
+tradeoffs, not merely hyperparameter artifacts.
+
+\subsection{The complexity ratchet}
+
+A more complex mutation $h'$ is selected over $h$ only when
+\begin{equation}
+  R_D(h)-R_D(h')>\lambda\left[C(h')-C(h)\right].
+  \label{eq:ratchet}
+\end{equation}
+This is the complexity ratchet. It does not reward complexity as such; it admits
+complexity only when risk reduction pays for it. In an expanding ecology,
+previously useless structure can become useful because later tasks make new risk
+terms visible. In a fixed ecology, the same rule eventually favors compression.
+
+\section{Sparse deterministic substrates}
+
+The repository currently uses three increasingly abstract substrates.
+
+\paragraph{Grid foraging automata.}
+The embodied baseline evolves sparse finite-state automata on grid foraging
+tasks. A rule has the form
+\begin{equation}
+  (\mathrm{state},\mathrm{previous\ move},\mathrm{food\ azimuth})
+  \mapsto
+  (\mathrm{move\ sequence},\mathrm{next\ state}).
+\end{equation}
+Undefined inputs halt the episode; there is no random fallback policy. The
+default complexity mode charges the full encoded sparse rule set, including
+unused carried rules and long move sequences.
+
+\paragraph{Register transducers.}
+The pattern substrate evolves deterministic transducers over opaque object
+tokens. Token identity is unavailable to the rule key. Primitive tiers expose
+streaming, registers, equality comparisons, and bidirectional input motion. This
+separates representability questions from search questions: if a one-way stream
+cannot express a reversal without unbounded memory, the failure is a substrate
+failure, not merely an optimizer failure.
+
+\paragraph{Predicate-library scaffold.}
+The current abstraction experiment is a non-visual Bongard-style scaffold. Each
+object is represented by a set of primitive boolean observations, such as
+\begin{equation}
+  \texttt{low\_closure\_error},\quad
+  \texttt{high\_hull\_fill},\quad
+  \texttt{turn\_balanced},\quad
+  \texttt{has\_curve},\quad
+  \texttt{thin}.
+\end{equation}
+These atoms are hand-defined. The experiment asks whether a repeated conjunction
+over them is encapsulated as a reusable predicate macro.
+
+\section{Library-aware free energy}
+
+Let $L$ be a library of reusable predicates and $H=\{h_t\}$ be task solvers that
+may call predicates in $L$. The library-aware objective is
+\begin{equation}
+  F_{\lambda}(L,H;\mathcal{D})=
+  \sum_{t=1}^{T} R_{D_t}(h_t;L)
+  +\lambda\left(C_{\mathrm{lib}}(L)+
+  \sum_{t=1}^{T}C_{\mathrm{task}}(h_t\mid L)\right).
+  \label{eq:library-free-energy}
+\end{equation}
+This objective is the central accounting device. A macro is useful only if its
+definition cost is smaller than the duplicated inline code it replaces.
+
+\subsection{Rule language}
+
+Task rules are disjunctive normal forms. A solver returns true if at least one
+clause is satisfied:
+\begin{equation}
+  h(x)=\bigvee_{j=1}^{m}\bigwedge_{a\in A_j} a(x).
+\end{equation}
+The reusable latent conjunction in the current experiment is
+\begin{equation}
+  A =
+  \texttt{low\_closure\_error}
+  \wedge
+  \texttt{high\_hull\_fill}
+  \wedge
+  \texttt{turn\_balanced}.
+  \label{eq:solid-loop}
+\end{equation}
+The selected macro is named \texttt{solid\_loop}. Example support tasks include
+$A\wedge\texttt{has\_curve}$,
+$A\wedge\texttt{thin}$, and
+$A\wedge\texttt{symmetric\_hint}$. The key disjunctive diagnostic is
+\begin{equation}
+  (A\wedge B)\vee(A\wedge C),
+  \label{eq:or-factor}
+\end{equation}
+where $B=\texttt{has\_curve}$ and $C=\texttt{thin}$. The unrelated OR control is
+\begin{equation}
+  B\vee C.
+  \label{eq:or-control}
+\end{equation}
+
+\subsection{Complexity accounting}
+
+The current scaffold uses the following costs:
+\begin{align}
+  C(\mathrm{primitive\ atom\ reference}) &= 1,\\
+  C(\mathrm{rule\ overhead}) &= 1,\\
+  C(\mathrm{macro\ definition}) &= 1+\left|\mathrm{body}\right|,\\
+  C(\mathrm{shared\ macro\ call}) &= \rho,\qquad \rho=0.35.
+\end{align}
+For a DNF rule $h$, the task complexity is
+\begin{equation}
+  C_{\mathrm{task}}(h\mid L)
+  =
+  1+
+  \sum_{j=1}^{m}\sum_{\ell\in A_j}
+  c(\ell\mid L),
+  \label{eq:task-complexity}
+\end{equation}
+where $c(\ell\mid L)=1$ for primitive atom references and $c(\ell\mid L)=\rho$
+for a shared macro call. In the no-share ablation, macro syntax is allowed but a
+macro call is charged as
+\begin{equation}
+  c_{\mathrm{no\ share}}(\ell\mid L)=\rho+C_{\mathrm{def}}(\ell),
+\end{equation}
+so every use repays the full definition. This ablation distinguishes genuine
+shared description-length savings from mere syntactic convenience.
+
+These numbers explain the observed controls. The unrelated OR control has
+complexity $1+1+1=3$. The inline factored OR in
+Equation~\ref{eq:or-factor} has complexity $1+4+4=9$. The shared version pays
+$4$ for defining \texttt{solid\_loop} and
+$1+(0.35+1)+(0.35+1)=3.7$ for the task rule, for total complexity $7.7$.
+
+\section{Abstraction-emergence experiment}
+
+\subsection{Protocol}
+
+Each task is generated from a deterministic boolean concept over the primitive
+atoms. Positive, validation, and hidden examples are sampled from the finite
+object universe, with hard negatives prioritized by overlap with the positive
+clauses. Conditions are:
+\begin{description}[leftmargin=2.2em,style=nextline]
+  \item[inline]
+  Each task solves directly over primitive atoms.
+  \item[shared]
+  A macro may be defined once and called cheaply by several task rules.
+  \item[no\_share]
+  Macro syntax is available, but the macro definition is charged at every use.
+  \item[oracle]
+  A privileged task predicate is supplied directly. This is an upper bound, not
+  a discovery condition.
+\end{description}
+The default sweep uses $\lambda\in\{0.005,0.01,0.02,0.04\}$. Selection minimizes
+training free energy for each $\lambda$ and then chooses the simplest candidate
+among those with best validation loss. Hidden examples are reported after
+selection as an audit of generalization within the finite symbolic scaffold.
+
+\subsection{Results}
+
+Table~\ref{tab:abstraction-results} reports the key rows from the May 23, 2026
+run. All listed rows reach zero train, validation, and hidden loss; the
+selection differences are therefore entirely due to complexity.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}llrrlp{0.33\linewidth}@{}}
+\toprule
+Scenario & Condition & Loss & Complexity & Macro & Interpretation \\
+\midrule
+single & inline & 0.00 & 5.00 & none & One task has no reuse pressure. \\
+single & shared & 0.00 & 5.00 & none & Sharing is available but not selected. \\
+multi & inline & 0.00 & 15.00 & none & Three support tasks duplicate the same core conjunction. \\
+multi & shared & 0.00 & 11.05 & \texttt{solid\_loop} & Defining the repeated core once lowers total description length. \\
+multi & no\_share & 0.00 & 15.00 & none & The effect disappears when the definition is repaid at every call. \\
+or\_control & shared & 0.00 & 3.00 & none & The simple $B\vee C$ control contains no repeated substructure. \\
+or\_factor & inline & 0.00 & 9.00 & none & $(A\wedge B)\vee(A\wedge C)$ repeats $A$ inline. \\
+or\_factor & shared & 0.00 & 7.70 & \texttt{solid\_loop} & Factoring the repeated $A$ lowers free energy. \\
+or\_factor & no\_share & 0.00 & 9.00 & none & Syntax alone is insufficient without shared cost accounting. \\
+or\_factor\_transfer & shared & 0.00 & 2.35 & \texttt{solid\_loop} & A new task using $A$ has lower marginal cost than inline complexity $5.00$. \\
+\bottomrule
+\end{tabular}
+\caption{Key abstraction-emergence controls. The macro body is
+\texttt{low\_closure\_error AND high\_hull\_fill AND turn\_balanced}.}
+\label{tab:abstraction-results}
+\end{table}
+
+\subsection{Interpretation}
+
+The experiment establishes a narrow but useful internal control. Single-task
+pressure does not create a macro. An unrelated OR does not create a macro. A
+multi-task family with repeated latent structure does create a macro. A
+factored disjunction of the form $(A\wedge B)\vee(A\wedge C)$ also creates a
+macro. The no-share ablation removes the effect, showing that the selected
+macro is a shared-description-length phenomenon.
+
+This is not yet full predicate invention. The atom
+\texttt{low\_closure\_error} is not learned. The conjunction in
+Equation~\ref{eq:solid-loop} is selected as a reusable macro over a supplied
+primitive vocabulary. The next experiment must evolve the predicate recognizer
+itself, for example as a finite-state acceptor over LOGO action-program traces,
+then ask whether downstream solvers call that acceptor when it reduces
+Equation~\ref{eq:library-free-energy}.
+
+\section{Developmental overcapacity}
+
+The broader automata experiments suggest another important mechanism. A useful
+behavior may first be discovered in an overbuilt part of the search space and
+only later become compressible. This is not a failure of the complexity term.
+Equation~\ref{eq:ratchet} still penalizes unused or redundant structure. The
+point is that the globally minimal basin may be hard to enter from cold
+stochastic mutation. Larger temporary capacity can expose a working behavior;
+after that, complexity pressure can favor smaller descendants.
+
+This developmental-overcapacity hypothesis is distinct from the macro result.
+In the macro scaffold, all relevant candidates are enumerated or derived from
+inline DNF branches. In the sparse Bongard-style classifier experiments, by
+contrast, some boundary-equality concepts are found only when the search is
+allowed more rules than the final exact solver uses. The manuscript therefore
+treats overcapacity as a search-accessibility hypothesis requiring separate
+rate experiments, not as proof of abstraction emergence.
+
+\section{Path to Bongard-style predicate discovery}
+
+Bongard problems are a natural target because they require few-shot concept
+induction from positive and negative panels \cite{bongard1970pattern}. Modern
+Bongard-LOGO provides program-guided synthetic concepts with ground-truth LOGO
+generation programs \cite{nie2020bongardlogo}. Recent symbolic-grounding
+diagnostics show that symbolic action-program inputs can greatly reduce the
+representational bottleneck relative to raw pixels \cite{vaishnav2026symbolic}.
+
+The planned progression is:
+\begin{enumerate}[leftmargin=1.5em]
+  \item Keep raw perception out of the loop initially. Use symbolic LOGO action
+  programs so failures can be attributed to rule induction rather than vision.
+  \item Evolve predicate automata that map an action program or structured trace
+  to true/false.
+  \item Charge each predicate automaton as library complexity.
+  \item Let task solvers call learned predicate automata when doing so lowers
+  total free energy.
+  \item Run the same controls as Table~\ref{tab:abstraction-results}: single
+  task, unrelated OR, factored OR, no-share, oracle metadata, and transfer.
+\end{enumerate}
+This would move from predicate encapsulation over predefined atoms toward
+predicate discovery in a controlled symbolic visual-reasoning benchmark.
+
+\section{From selected macros to a self-improving agent}
+
+The macro experiment above isolates one half of the thesis: a free-energy rule
+that admits a reusable abstraction only when it pays for itself. That experiment
+supplies its own candidate structures by enumeration over a fixed symbolic
+vocabulary. The complementary half is where the candidate structures
+\emph{come from} when they cannot be enumerated. This section reports a
+qualitatively different substrate, developed in the repository's cracking lab,
+in which the reusable structures --- here whole programs of perception,
+mechanic discovery, planning, and strategy --- are \emph{written by a proposer}
+and admitted by the same free-energy accounting. The target environments are
+local ARC-style keyboard games \cite{chollet2019measure}, played only through
+their runtime; the running narrative is the game \texttt{wa30}.
+
+\subsection{The rawest substrate}
+
+A recurring failure mode in this line of work was smuggling the solution into
+the harness as a ``primitive.'' Any helper richer than the bare runtime
+interface --- a perception module, a typed object model, a push-versus-carry
+mechanic, a search planner --- is the programmer solving the game for the agent,
+and it does not transfer to a different \emph{type} of game. The corrective is
+to expose only the boundary that is common to all games behind the connector.
+The \texttt{Arena} substrate hands the proposer exactly four things:
+\texttt{step(action)} returning the next frame; the raw frame as a
+$64\times 64$ integer grid; a scalar reward, \texttt{levels\_completed}; and a
+\texttt{clone()} for lookahead. Nothing in this interface mentions objects,
+colours, walls, avatars, or goals. This is the only contract that survives a
+change of game type, so it is the only contract the substrate provides.
+
+Everything else must be produced inside the loop: perceiving objects from the
+integer frame, discovering which object is controllable, learning the mechanic
+(for \texttt{wa30}, that boxes are picked up and carried rather than pushed),
+inducing the per-level goal, modelling an autonomous helper agent, planning
+paths, and composing multi-step manoeuvres. None of this is hand-coded; it is
+the proposer's job.
+
+\subsection{Human preconceptions and the proposer}
+
+The proposer is given a rich system prompt of \emph{human preconceptions}: that
+frames contain objects with persistent identity; that some objects are
+containers and barriers partition space into regions; that one object may be a
+controllable avatar and others may be autonomous agents with their own goals;
+that cooperation can require a hand-off where one agent leaves something where
+another can reach it; that reachability is constrained by barriers and must be
+reasoned about per agent; that rewards may be sparse, so the agent should set
+itself dense surrogate objectives and discover the affordances of its actions.
+These priors are deliberately non-procedural: they describe what kinds of things
+a world tends to contain, not how to solve any particular game.
+
+Given those priors and the raw substrate, the proposer \emph{writes its own
+code} --- a \texttt{solve(env)} program containing its perception, its mechanic
+probe, its planner, and its strategy. The proposer is pluggable. One option is a
+small local model, which is currently too weak to drive the loop. The other is
+the Claude Code agent invoked headlessly with file and shell tools and a tester,
+so it writes a solution, runs it on the real \texttt{Arena}, reads the failures,
+and iterates --- the same write/run/fix loop a human programmer uses. All
+reported results use the strong proposer.
+
+\subsection{Free-energy admission and the source-of-novelty principle}
+
+A written program is admitted only if it verifiably improves on the incumbent,
+scored by the same free energy as the rest of the manuscript,
+\begin{equation}
+  F = R + \lambda C,
+  \label{eq:agent-free-energy}
+\end{equation}
+where $R$ is driven by \texttt{levels\_completed} on the real game and $C$ is the
+program's description length, with $\lambda$ small so that parsimony breaks ties
+between equally capable programs without stifling a program that is large but
+clears more levels. Compression-progress and disagreement signals
+\cite{schmidhuber2008driven} supply an intrinsic novelty term that \emph{steers}
+exploration when the reward is flat, and earlier admitted behavior is preserved
+against regression. The simulator is the ground-truth verifier throughout: a
+candidate is replayed on a fresh environment and kept only if the reward
+actually advances.
+
+The governing principle is that selection and pricing \emph{cannot} be a source
+of novelty. Free energy can only rank and compress structures it is given; the
+new structure must come from the proposer. The companion constraint is that
+discovery and strategy must be learned inside the loop and never hand-coded.
+Together these place the burden of invention squarely on the proposer and the
+burden of honesty squarely on the verifier. This is the stance of Schmidhuber's
+G\"odel machine and PowerPlay \cite{schmidhuber2015godel,
+schmidhuber2013powerplay}: a system that rewrites its own problem-solving code
+and adopts a rewrite only against an empirical proof of improvement --- here the
+proof is discharged by the simulator rather than by a formal theorem prover.
+
+\subsection{Result on \texttt{wa30}}
+
+The probe-discovered context for \texttt{wa30} (the controllable avatar, the
+carrier objects, the container region, the pick-up-and-carry mechanic, and the
+toggle action) is established by interaction, not declared. Handed that context
+and the preconception priors, the uncrippled Claude proposer wrote a single
+adaptive \texttt{solve(env)} program over roughly $4.2$ hours of write/run/fix
+iteration (final program $359$ lines) that cracks \texttt{wa30} levels~1, 2,
+\emph{and}~3. The result is replay-validated: an independent replay of the
+recorded $288$-move sequence on a fresh environment reaches level~3, at
+$F=-1.920$. A later run extended the same solver to \texttt{wa30}
+level~6 (replay-validated, $458$ moves) before a session limit stopped it;
+levels~7--9 remain unsolved.
+
+The proposer found the insights that had earlier been hand-coded in failed
+attempts. One honest qualification: the priors of these runs were not fully
+neutral --- distilled from earlier human play of this game, they contained an
+attach--carry--release experiment recipe and a relay-at-a-boundary hint, and the
+interaction probe named the mechanic from a hand-coded verb vocabulary; the
+priors have since been neutralized (generic world-priors only), and re-cracking
+\texttt{wa30} from scratch under them is the discriminating experiment. Beyond
+the priors, the agent demonstrably found:
+\begin{enumerate}[leftmargin=1.5em]
+  \item It learned to \emph{freeze} the container region at level start. A
+  delivered carrier turns its slot the carrier colour and disappears from the
+  interior detector; without freezing, delivered carriers are re-counted as
+  loose and the goal signal is corrupted.
+  \item On level~2 it learned to \emph{complement} the autonomous helper by
+  delivering the carriers farthest from the container, rather than competing for
+  the same ones, then idling to let the helper tick forward.
+  \item On level~3 it exploited the engine's \emph{asymmetric} carry collision:
+  a carried carrier can be placed onto a dividing-wall cell the avatar itself
+  cannot enter, so the avatar relays each left-side carrier onto the wall column,
+  where the right-side helper picks it up and ferries it to the container.
+\end{enumerate}
+All three were discovered from raw frames plus the probed context plus the
+priors, with no hand-coded leg. The agent then stopped honestly at level~4,
+which is a large escalation (a trapped avatar, a colour-5 wall lattice, multiple
+helpers, and several containers) and is left as its own next investigation.
+
+\subsection{Honest caveats}
+
+The result is bounded in two ways that the manuscript states plainly. First,
+the claim is precisely levels~1 through~3 of \texttt{wa30} and, for the same
+agent pointed at a second game (\texttt{ls20}, a slide-to-match mechanic),
+levels~1 through~4 --- both replay-validated --- not all levels and not all
+games; \texttt{wa30} level~4 remains unsolved. Second, the loop currently needs
+a strong proposer: a system-prompt-only local model mis-reasoned two-sided
+reachability under barriers even with the priors spelled out, asserting
+feasibility where the interaction verifier proved boxes were stranded. The
+architecture --- the rawest substrate, the preconception priors, the
+free-energy admission, and the simulator as verifier --- is general and is the
+contribution; the open question is how weak a proposer that harness can lift to
+competence.
+
+\subsection{Relation to the colimit-cone program}
+
+This substrate is the culmination of the broader colimit-cone view that runs
+through the repository. There, reusable navigation and interaction \emph{legs}
+are discovered by interaction rather than hand-coded, and a \emph{cone} composes
+those legs into a solution priced by reward against complexity. The
+self-improving agent is the limiting case of that picture: the legs are no
+longer mined from a fixed motif library but are \emph{written by the proposer}
+as program fragments, the cone that glues them is the proposer's own planner,
+and admission is still the free-energy rule $F=R+\lambda C$ verified on the
+simulator. The macro experiment of
+Section~\ref{eq:library-free-energy}'s family and this agent experiment are thus
+two ends of one spectrum: the same accounting decides whether a reusable
+structure earns its cost; what changes is whether that structure is enumerated
+or invented.
+
+\section{Related work}
+
+\paragraph{Predicate invention and ILP.}
+Predicate invention is a central, long-standing problem in inductive logic
+programming, not a new idea introduced here. Muggleton and Buntine
+\cite{muggleton1988machine} introduced early predicate invention by inverting
+resolution; later work formalized predicate invention and utilization
+\cite{muggleton1994predicate} and ILP more broadly
+\cite{muggletonderaedt1994ilp}. Modern surveys and systems continue to treat
+predicate invention as powerful but difficult
+\cite{cropper2021ilp30,cropper2021predicate}. Meta-interpretive learning is
+especially relevant because it supports predicate invention in grammatical and
+program-induction settings \cite{muggleton2014meta}.
+
+\paragraph{Library learning and compression.}
+DreamCoder learns symbolic abstractions and neural search guidance across tasks
+\cite{ellis2020dreamcoder}. Stitch reframes abstraction discovery as efficient
+top-down synthesis for library learning \cite{bowers2023stitch}, and LILO adds
+LLM-assisted synthesis and documentation around compression-based library
+construction \cite{grand2023lilo}. The present experiment is close in spirit but
+uses a smaller deterministic substrate and explicit library-plus-task
+free-energy accounting.
+
+\paragraph{Automata learning.}
+Gold's work on language identification \cite{gold1967language} and Angluin's
+query-based learning of regular sets \cite{angluin1987learning} are
+foundational for thinking about sparse finite-state recognizers. Automata
+extraction from recurrent networks \cite{weiss2018extracting} is adjacent but
+has a different goal: interpreting an already trained neural model rather than
+evolving a compact symbolic solver under description-length pressure.
+
+\paragraph{Temporal abstraction.}
+The options framework \cite{sutton1999between}, Option-Critic
+\cite{bacon2017option}, and skill chaining \cite{konidaris2009skill} provide a
+reinforcement-learning analogy: reusable temporally extended structures can
+make later behavior cheaper to express. The current macros are sensory
+predicates rather than action policies, but the same accounting question
+appears: when does a reusable internal object earn its cost?
+
+\paragraph{Bongard reasoning.}
+Classical Bongard problems and later Bongard-LOGO benchmarks
+\cite{bongard1970pattern,nie2020bongardlogo} motivate the concept-learning
+setting. Depeweg et al. used visual languages and pragmatic reasoning
+\cite{depeweg2018solving}; Sonwane et al. combined program synthesis and ILP
+for Bongard-style reasoning \cite{sonwane2021using}. Bongard-HOI
+\cite{jiang2022bongardhoi} and Bongard-OpenWorld \cite{wu2023bongardopenworld}
+are harder downstream targets, but they introduce natural-image and
+open-vocabulary burdens before the free-energy predicate story is isolated.
+
+\section{Limitations}
+
+The current evidence is intentionally modest.
+\begin{enumerate}[leftmargin=1.5em]
+  \item Primitive observations are predefined. The experiment does not discover
+  \texttt{low\_closure\_error}, \texttt{high\_hull\_fill}, or
+  \texttt{turn\_balanced}.
+  \item Candidate macros are enumerated for conjunctive support tasks and
+  derived from repeated inline DNF branches for the OR-factor task. This is a
+  scaffold for studying accounting, not a complete invention mechanism.
+  \item The object universe is finite and symbolic. It is useful for controls
+  but too clean to support claims about natural visual abstraction.
+  \item The result demonstrates compression under fixed tasks. Open-endedness
+  still requires an endogenous environment generator as in Equation~\ref{eq:ecology}.
+  \item Macro selection is sensitive to the cost model. That sensitivity is a
+  feature for structure-function analysis, but it must be reported by lambda and
+  cost sweeps rather than hidden behind a single setting.
+\end{enumerate}
+
+\section{Conclusion}
+
+The present result is a small but necessary step. Under explicit free-energy
+accounting, a sparse deterministic solver does not create a reusable predicate
+macro merely because macro syntax exists. It creates one when repeated structure
+makes the shared definition cheaper than duplicated inline rules, and it stops
+doing so when sharing is made unavailable. This supports the local selection
+part of the larger thesis: complexity can grow or reorganize when it purchases
+loss reduction or transfer, and otherwise should be compressed away. The next
+scientific step is to replace predefined primitive atoms with evolved
+finite-state predicate recognizers on symbolic Bongard-LOGO traces and test
+whether the same library/free-energy controls still separate real abstraction
+from notation.
+
+\section*{Reproducibility note}
+
+The abstraction-emergence table is reproduced from the repository root with:
+\begin{verbatim}
+python3 experiments/run_abstraction_emergence.py
+python3 experiments/run_abstraction_emergence.py --scenario or_factor --show-rules
+python3 -m unittest tests.test_abstraction_emergence
+\end{verbatim}
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}

@@ -14,6 +14,16 @@ manuscript/*.log
 manuscript/*.out
 manuscript/*.pdf
 
+# LaTeX build outputs in any per-domain manuscript directory
+**/manuscript/*.aux
+**/manuscript/*.bbl
+**/manuscript/*.blg
+**/manuscript/*.fdb_latexmk
+**/manuscript/*.fls
+**/manuscript/*.log
+**/manuscript/*.out
+**/manuscript/*.pdf
+
 # Python
 __pycache__/
 *.py[cod]
@@ -60,4 +70,4 @@ environment_files/
 recordings/
 
 # scratch lab logs (keep the code + docs tracked)
-crack_lab/*.log
+arc/crack_lab/*.log

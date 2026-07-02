@@ -15,6 +15,7 @@ The central thesis is that open-ended artificial evolution requires more than a 
 
    thesis
    abstraction
+   self_improving_agent
 
 .. toctree::
    :maxdepth: 2
