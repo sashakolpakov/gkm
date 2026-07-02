@@ -698,3 +698,27 @@ Follow-up to R-NEUTRAL, auditing ls20 specifically (does the wa30-prior bias tai
 - No ls20-specific code anywhere (grep: only incidental word matches).
 CONCLUSION: ls20 L1-L4 is robustness evidence (solved DESPITE misleading priors), not
 prior-leakage. The R-NEUTRAL bias is specific to wa30; it does not taint ls20 or sp80.
+
+### R-NEUTRAL-WA30 (2026-07-02): the discriminating experiment -- carry DISCOVERED under clean priors
+
+Ran wa30 FROM SCRATCH (fresh workspace, old one moved aside) under the NEUTRALIZED
+priors -- verified before launch that PRECONCEPTIONS contains no 'attach->carry->release',
+no 'RELAY it', no 'pick_up_and_carry', no 'container', no 'HELPER autonomously', and
+discovered_context passes NO verb name. Result: wa30 LEVEL 1 reached, replay-validated
+(28 moves). The agent DISCOVERED the carry mechanic itself, on clones -- its own
+legs_log.md: "Interact while facing a carrier ATTACHES it, interact again RELEASES it.
+Win = every container slot filled." It built general legs (bfs_carry, deliver_one,
+fill_container) with NO recipe handed to it.
+
+Signature of genuine discovery: marginal_C = 181 under neutral priors vs 112 under the
+old carry-priming priors -- it paid MORE structure precisely because it had to find the
+mechanic rather than be told. So the R-NEUTRAL bias is DISCHARGED for wa30 L1: the
+carry nature was discovered, not scaffolded. (It even self-reported the container-extent
+gotcha and how it cut 200 wasted moves to 28.)
+
+Stopped at L2 (NOT reached within the 45-min budget; no play_level_2 written). Honest
+read: discovery-from-scratch is costlier per level (the 181 vs 112 gap), so a clean
+neutral L1-L4 needs a bigger per-level budget than the old primed runs did. wa30 L2-L4
+under neutral priors remains pending (would confirm the helper + wall-relay are also
+self-discovered, not just carry). L1 alone already answers the "was it hard-coded"
+question: no.
