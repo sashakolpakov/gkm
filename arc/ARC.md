@@ -39,10 +39,14 @@ by the same free energy.
 | `wa30` | pick-up-and-carry | L1–L6 |
 | `ls20` | slide-to-match | L1–L4 |
 
-- On `wa30` the agent independently rediscovered non-obvious tricks it was never given
-  (freeze the target region at level start; complement an autonomous helper by taking
-  the *farthest* objects; relay objects across a dividing wall via an asymmetric carry
-  collision).
+- On `wa30` the agent found level tactics beyond its priors: freeze the target region
+  at level start; complement an autonomous helper by taking the *farthest* objects; and
+  the *asymmetric carry collision* (a carried object can enter a wall cell the avatar
+  cannot) that makes the L3 relay geometrically possible. **Honest audit:** the priors
+  of those runs were not fully neutral — distilled from earlier human play, they named
+  the carry mechanic and hinted relay-at-a-boundary. The priors have since been
+  **neutralized** (generic world-priors only; no mechanic recipes, no verb names);
+  re-cracking `wa30` from scratch under neutral priors is the discriminating experiment.
 - The **same game-agnostic agent** transferred to `ls20` (a different mechanic) with no
   code change.
 - Under the enforced leg library, per-level **marginal novelty collapses** as legs are

@@ -31,7 +31,9 @@ description length. We connect this to Kolmogorov complexity and Solomonoff indu
 empirical proof of improvement, driven by compression-progress novelty), and to a
 colimit-cone view of skills (``legs'') composed into solutions. Empirically, on
 \texttt{wa30} the agent wrote a solver clearing levels~1--6 (replay-validated),
-independently rediscovering non-obvious tricks it was never given; the same
+finding level tactics beyond its priors --- though we identify, and retire, a bias:
+those runs' priors named the carry mechanic and hinted the relay, distilled from
+earlier human play; the same
 game-agnostic agent transferred to a second game, \texttt{ls20}, clearing levels~1--4.
 When the harness enforces a growing \emph{leg library}, the marginal description length
 of each new level collapses ($55\to18\to2\to2$ on \texttt{ls20}), i.e.\ later levels are
@@ -163,13 +165,21 @@ environment and must reach the claimed level.
 \paragraph{Discovery and depth (\texttt{wa30}).} Handed only the raw substrate and the
 priors, the strong proposer wrote a single adaptive \texttt{solve(env)} that cleared
 \texttt{wa30} levels~1--3, and a continued run reached level~6 (a $458$-move sequence,
-$\F=-3.903$). Levels~7--9 remain unsolved. The agent \emph{independently rediscovered}
-mechanisms it was explicitly not given: it froze the target region at level start
-(delivered objects take on the container colour and vanish from a naive detector);
-it \emph{complemented} an autonomous helper by taking the objects \emph{farthest} from the
-goal rather than competing; and it exploited an \emph{asymmetric} carry collision to
-\emph{relay} objects across a dividing wall to the helper. These were found from raw
-frames plus interaction, with no hand-coded strategy.
+$\F=-3.903$). Levels~7--9 remain unsolved. An honest audit of \emph{what was given}
+is owed here. The priors used in these runs were not fully neutral: distilled from
+earlier human play of this same game, they contained an attach$\to$carry$\to$release
+experiment recipe and a relay-at-a-shared-boundary hint, and the interaction probe
+handed the proposer a mechanic \emph{name} (``pick-up-and-carry'') from a hand-coded
+verb vocabulary. So the mechanic family and the relay \emph{concept} were pre-told.
+What the agent demonstrably found on its own, beyond the priors: it froze the target
+region at level start (delivered objects take on the container colour and vanish from
+a naive detector); it \emph{complemented} the autonomous helper by taking the objects
+\emph{farthest} from the goal rather than competing; and it discovered the
+\emph{asymmetric} carry collision --- a carried object can enter a wall cell the
+avatar cannot --- that makes the relay geometrically possible at all. We have since
+\emph{neutralized} the priors (generic world-priors only: no mechanic recipes, no
+verb names, no relay hint); re-cracking \texttt{wa30} from scratch under the neutral
+priors is the discriminating experiment.
 
 \paragraph{Transfer across game type (\texttt{ls20}).} The \emph{same} game-agnostic
 agent, pointed at \texttt{ls20} --- a slide-to-match game with a different mechanic --- and

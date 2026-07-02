@@ -22,10 +22,13 @@ import gkm_arena as A
 
 def discovered_context(game: str) -> str:
     """GAME-AGNOSTIC: run the GKM directed probe (gkm_discovery, no hand-coding) to
-    ground whatever this game affords -- the controllable avatar, its movement
-    actions/vectors, and any manipulation verb (push / pick_up_and_carry / ...). Hand
-    that, and ONLY that, to the proposer; the goal and any remaining mechanics are
-    for the agent to discover from frames."""
+    ground whatever this game affords -- the controllable avatar and its movement
+    actions/vectors. Hand that, and ONLY that, to the proposer; the manipulation
+    semantics, the goal, and any remaining mechanics are for the agent to discover
+    from frames. (Earlier versions also passed the probe's named manipulation verbs
+    -- 'push' / 'pick_up_and_carry' -- but those names come from a HAND-CODED verb
+    vocabulary in gkm_discovery, which pre-tells the game's nature. Retired: the
+    agent must name its own mechanics.)"""
     import gkm_discovery as D
     try:
         verbs, effects, w = D.discover(game, use_llm=False, verbose=False)
@@ -37,12 +40,13 @@ def discovered_context(game: str) -> str:
     return (
         f"DISCOVERED BY INTERACTION (grounded -- trust these, confirm the rest): the "
         f"controllable avatar is colour {w.anchor_color}; movement actions {sorted(w.movement)} "
-        f"translate it with pixel vectors {mv}; non-movement (effect) actions are "
-        f"{list(w.effects)}; manipulation verb(s) observed: {sorted(set(verbs))}. These "
-        f"were found by probing each action on clones. The action numbering may be "
-        f"NON-standard. You must still DISCOVER the goal/win-condition (from how the "
-        f"reward changes) and any further mechanics, objects, barriers, or other agents "
-        f"by experiment on clones.")
+        f"translate it with pixel vectors {mv}; the remaining action(s) "
+        f"{list(w.effects)} did something other than move the avatar -- what they do "
+        f"is for YOU to determine by experiment. These were found by probing each "
+        f"action on clones. The action numbering may be NON-standard. You must still "
+        f"DISCOVER the goal/win-condition (from how the reward changes) and any "
+        f"further mechanics, objects, barriers, or other agents by experiment on "
+        f"clones.")
 
 
 TESTER = '''import importlib.util, sys

@@ -475,9 +475,14 @@ $F=-1.920$. A later run extended the same solver to \texttt{wa30}
 level~6 (replay-validated, $458$ moves) before a session limit stopped it;
 levels~7--9 remain unsolved.
 
-What makes this more than a solved puzzle is that the proposer independently
-rediscovered the very insights that had earlier been hand-coded in failed
-attempts, and that it had been explicitly instructed not to be given:
+The proposer found the insights that had earlier been hand-coded in failed
+attempts. One honest qualification: the priors of these runs were not fully
+neutral --- distilled from earlier human play of this game, they contained an
+attach--carry--release experiment recipe and a relay-at-a-boundary hint, and the
+interaction probe named the mechanic from a hand-coded verb vocabulary; the
+priors have since been neutralized (generic world-priors only), and re-cracking
+\texttt{wa30} from scratch under them is the discriminating experiment. Beyond
+the priors, the agent demonstrably found:
 \begin{enumerate}[leftmargin=1.5em]
   \item It learned to \emph{freeze} the container region at level start. A
   delivered carrier turns its slot the carrier colour and disappears from the

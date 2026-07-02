@@ -121,9 +121,14 @@ program 359 lines) that cracks ``wa30`` levels 1, 2, **and** 3. The result is
 replay-validated: an independent replay of the recorded 288-move sequence on a
 fresh environment reaches level 3, at ``F = -1.920``.
 
-Crucially, the proposer **independently rediscovered** the insights that had
-earlier been hand-coded in failed attempts, and that it was explicitly instructed
-not to be given:
+The proposer found the insights that had earlier been hand-coded in failed
+attempts. An honest audit of *what was given*: the priors of these runs were not
+fully neutral -- distilled from earlier human play of this game, they contained an
+attach-carry-release experiment recipe and a relay-at-a-boundary hint, and the
+interaction probe named the mechanic ("pick-up-and-carry") from a hand-coded verb
+vocabulary. The priors have since been **neutralized** (generic world-priors only);
+re-cracking ``wa30`` from scratch under them is the discriminating experiment.
+Beyond the priors, the agent demonstrably found:
 
 - It learned to **freeze** the container region at level start. A delivered
   carrier turns its slot the carrier colour and disappears from the interior

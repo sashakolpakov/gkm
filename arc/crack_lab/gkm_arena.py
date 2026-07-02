@@ -118,39 +118,33 @@ FIND YOURSELF FIRST: one object is YOU. Discover which by EXPERIMENT -- on a clo
 take each action and see which object moves consistently; that is your avatar and
 those are your movement actions. A non-moving action is probably an interaction.
 
-AFFORDANCES & MECHANICS -- run this experiment EXPLICITLY, it is usually decisive:
-movable objects often CANNOT be moved by walking into them (you just get blocked). To
-find how to move one, on a CLONE: navigate adjacent to a movable object FACING it,
-take the special (non-movement) action, then take a movement step and CHECK whether
-that object moved TOGETHER with the avatar. If it did, that action ATTACHES/PICKS UP
-the object -- you then CARRY it by moving, and take the special action again to
-RELEASE it. If walking into objects does nothing and this attach test works, the
-attach->carry->release loop is the ONLY way to move objects, so build your ENTIRE
-plan around it: for each object, go grab it, carry it into the target region, release,
-repeat. Verify (on a clone) that a release inside the region actually sticks.
+AFFORDANCES: an action can mean anything -- move, toggle, transform, attach, select,
+rotate, open, fire. Do NOT assume. Discover what each action does by EXPERIMENT on
+clones, and repeat the experiment in DIFFERENT contexts (next to an object, on a
+special tile, facing different directions, after another action): an action's effect
+often depends on where you are and on the current state. Whatever mechanic you find,
+verify it on a clone before building a plan on it.
 
-GOALS: infer the objective from the reward. A container/target region is where things
-must end up; deduce the win condition by what changes when reward increases.
+GOALS: infer the objective from the reward. Deduce the win condition by comparing
+frames where the reward increases against frames where it does not.
 
 SPARSE REWARD -> INVENT YOUR OWN DENSE PROGRESS (this is essential here): the level
-reward usually fires ONLY when the whole goal is met (e.g. EVERY movable object is in
-the target region). Do NOT wait for that sparse signal or hill-climb mere "the frame
-changed". Construct your OWN dense progress measure from the frame -- e.g. how many
-movable objects already sit in the goal region, or the total distance of movable
-objects from it -- and drive that down, decomposing into per-object SUBGOALS (get one
-object into the region, then the next). Try the interaction action at the right moment
-(e.g. when adjacent/facing an object, or once an object is positioned). Re-check the
-real reward, but steer by your own dense measure.
+reward usually fires ONLY when the whole goal is met. Do NOT wait for that sparse
+signal or hill-climb mere "the frame changed". Construct your OWN dense progress
+measure from the frame -- some count or distance that plausibly tracks partial
+progress toward the inferred goal -- and drive it, decomposing the level into
+SUBGOALS you can verify one at a time. Re-check the real reward, but steer by your
+own dense measure.
 
-OTHER AGENTS (theory of mind): some objects move on their own each turn -- model them.
-A HELPER autonomously brings objects to the goal; an ADVERSARY hinders you and may be
-removed the way you grab things. They ACT ON EVERY MOVE YOU MAKE.
+OTHER AGENTS (theory of mind): some objects move on their own each turn -- model
+them. They may help you, hinder you, or ignore you; work out which by watching what
+they do to the things that matter for the goal. They ACT ON EVERY MOVE YOU MAKE.
 
-REACHABILITY & COOPERATION: for each agent work out, respecting walls, what it can
-reach. If you can reach an object but not the goal while a helper can reach the goal
-but not the object, RELAY it: carry it to the shared boundary, drop it where the
-helper can pick it up, then step away (your move also lets the helper act). Never
-assume an agent can cross a wall it cannot -- check.
+REACHABILITY & COOPERATION: for each agent (you included) work out, respecting
+walls, what it can reach. Never assume an agent can cross a barrier it cannot --
+check. If no single agent can reach everything that matters, study how their
+reachable regions interact: the solution may require staging the world so that
+another agent can finish what you cannot.
 
 PLAN & VERIFY: use clones to look ahead and plan; only commit moves on the real env.
 Budget is limited; be decisive."""

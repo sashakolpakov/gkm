@@ -631,3 +631,27 @@ live claims in ARC.md, the manuscripts, and the Sphinx docs have been rewritten:
 the results with the strong proposer ARE the results; the local-model weakness
 remains an honest empirical finding, and the open question is how weak a proposer
 the harness (priors + simulator-as-verifier + free-energy admission) can lift.
+
+### R-NEUTRAL (2026-07-02): priors audit -- the wa30 runs were NOT mechanic-blind; priors neutralized
+
+User asked the right question: was the nature of the game (pick-and-carry) discovered
+or hard-coded? Audit via git history: the PRECONCEPTIONS used by every agent run since
+6e48901 (06-22) contained a RELAY-at-shared-boundary hint, and since 648e138 (06-27) an
+explicit attach->carry->release experiment recipe -- both distilled from OUR earlier
+human/chat play of wa30 -- and discovered_context() handed the proposer the mechanic
+NAME ('pick_up_and_carry') from gkm_discovery's hand-coded VERB_LIBRARY. The wa30
+L1-L6 crack (07-01) postdates all of that: the mechanic family and the relay CONCEPT
+were pre-told. Still genuinely discovered by the agent: freeze-the-targets, complement
+-the-helper-by-farthest, and the ASYMMETRIC carry collision (the geometric fact that
+makes the relay possible). ls20 is unaffected in substance (priors were wa30-flavoured,
+i.e. misleading rather than helpful, and its slide-to-match nature appears nowhere in
+the prompt) -- robustness evidence, not neutrality.
+
+FIX (committed): PRECONCEPTIONS rewritten to generic world-priors only (affordances =
+"actions can mean anything, experiment in different contexts"; no mechanic recipes; no
+relay recipe; generic helper/adversary + reachability-interaction language);
+discovered_context() no longer passes verb names -- only avatar colour, movement
+vectors, and "the remaining actions did something other than move the avatar".
+Manuscript/ARC.md/rst claims corrected ("never given" retracted; audit stated).
+DISCRIMINATING EXPERIMENT (pending): re-crack wa30 from scratch under the neutral
+priors. NOTE: the sp80 and wa30-L4 runs in flight today imported the OLD priors.
