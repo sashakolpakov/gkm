@@ -1,6 +1,6 @@
 import unittest
 
-from experiments.run_bongard_sparse_classifier import (
+from run_bongard_sparse_classifier import (
     CONFIGS,
     PREDICT_TRUE,
     ClassifierGenome,
@@ -10,7 +10,7 @@ from experiments.run_bongard_sparse_classifier import (
     merge_splits,
     misclassified_split,
 )
-from experiments.run_bongard_symbolic_baseline import CONCEPTS, Split, make_problem
+from run_bongard_symbolic_baseline import CONCEPTS, Split, make_problem
 from pattern_fsa import (
     MOVE_LEFT,
     MOVE_RIGHT,

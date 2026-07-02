@@ -16,11 +16,13 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, List
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent
+for _p in (HERE, REPO_ROOT / "transduction"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
-from experiments.run_bongard_sparse_classifier import CONFIGS, ExperimentConfig, is_exact_discovery, run_config
+from run_bongard_sparse_classifier import CONFIGS, ExperimentConfig, is_exact_discovery, run_config  # noqa: E402
 
 
 @dataclass(frozen=True)

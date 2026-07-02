@@ -1,7 +1,7 @@
 import unittest
 from types import SimpleNamespace
 
-from experiments.run_abstraction_emergence import (
+from run_abstraction_emergence import (
     CORE_ABSTRACTION,
     make_tasks,
     run_scenario,

@@ -23,9 +23,11 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Sequence, Tuple
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+HERE = Path(__file__).resolve().parent
+REPO_ROOT = HERE.parent
+for _p in (HERE, REPO_ROOT / "transduction"):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 from pattern_fsa import (  # noqa: E402
     HALT,
@@ -44,7 +46,7 @@ from pattern_fsa import (  # noqa: E402
     observation_name,
     register_store_action,
 )
-from experiments.run_bongard_symbolic_baseline import (  # noqa: E402
+from run_bongard_symbolic_baseline import (  # noqa: E402
     CONCEPTS,
     Concept,
     Problem,
