@@ -1,0 +1,171 @@
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+
+\newcommand{\F}{F_\lambda}
+
+\title{Which Primitives Suffice? Free-Energy Synthesis of\\ Sparse Register Transducers over Opaque Alphabets}
+\author{Alexander Kolpakov}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study whether an evolutionary meta-process selecting under the loss-complexity free
+energy $\F = R + \lambda C$ can synthesise \emph{compact deterministic solvers} for
+pattern-transduction tasks, and use the synthesised solvers to measure \emph{which
+primitive tier a task family actually requires}. The substrate is a sparse deterministic
+register transducer whose rule keys never see literal token identities --- only finite
+control and relational observations (\textsc{token}, \textsc{eos}, \textsc{bos},
+current-token-equals-register) --- so train, validation, and hidden-test splits can use
+\emph{disjoint object pools} and success cannot come from memorising symbols. Selection
+minimises training free energy within a $\lambda$ sweep; the reported solver is then
+chosen from the \emph{validation} loss-complexity Pareto frontier (simplest within
+tolerance of the best), and the hidden test is evaluated only afterwards. Across a task
+matrix (copy, swap, duplicate, rotate, reverse, dedupe) the primitive tiers separate
+cleanly and interpretably: streaming primitives suffice for copying and local
+duplication; registers are necessary and sufficient for positional rearrangement;
+equality observations are necessary for content-conditional behaviour; bidirectional
+head motion turns the input tape into external read-only memory and yields the
+length-general reversal motif. The synthesised solvers are small enough to read, and
+their motifs are the textbook algorithms.
+\end{abstract}
+
+\section{Introduction}
+A recurring ambition behind program-synthesis benchmarks is not merely to solve tasks
+but to \emph{measure} something about them: what machinery does a task family demand?
+We operationalise this question with a deliberately austere substrate --- sparse
+deterministic register transducers --- and a single selection principle, the
+loss-complexity free energy
+\begin{equation}
+  \F \;=\; R \;+\; \lambda\, C ,
+  \label{eq:fe}
+\end{equation}
+where $R$ is a task loss and $C$ a description length of the solver
+\cite{losscomplexity,rissanen1978}. The $C$ term is the practical stand-in for
+Kolmogorov complexity \cite{kolmogorov1965,live2008}, and preferring low-$\F$ solvers is
+the computable shadow of Solomonoff's simplicity prior \cite{solomonoff1964}. Because
+the substrate's \emph{primitive set is tiered}, the synthesis process doubles as an
+instrument: if a task is solved exactly at tier $k$ but provably mis-solved at tier
+$k-1$, the tier difference names the capability the task requires. This echoes
+Chollet's position that intelligence should be measured by skill-acquisition efficiency
+over tasks with controlled priors \cite{chollet2019measure}, here reduced to a setting
+small enough to be exhaustive about.
+
+\section{Substrate}
+\subsection{Opaque objects and relational rule keys}
+A task instance is a pair of token sequences over a finite alphabet. The solver is a
+deterministic transducer: a sparse map from \emph{rule keys} to bounded action
+sequences plus a next state,
+\[
+  (\text{state},\ \text{observation}) \;\longmapsto\; (\text{actions},\ \text{state}') .
+\]
+The observation is \emph{relational only}: \textsc{token} (a token is under the head),
+\textsc{eos}, \textsc{bos}, or a match mask (the current token equals register $R_i$).
+The rule key never contains a token's identity, so a lookup table over literal symbols
+is not expressible. Correspondingly, the benchmark draws train, validation, and hidden
+test from \emph{disjoint object pools}: a solver that succeeds on the hidden split has
+learned the object-level operation (``swap the two things''), not the alphabet.
+
+\subsection{Tiered primitives}
+Actions are grouped in nested tiers, each a strict extension of the last capability:
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+tier & actions / observations added \\
+\midrule
+\texttt{stream} & \textsc{move\_right}, \textsc{write\_current}, \textsc{halt} \\
+\texttt{register} & $+$ \textsc{store\_$R_i$}, \textsc{write\_$R_i$} \\
+\texttt{compare} & $+$ current-token/register equality observations \\
+\texttt{bidirectional} & \texttt{stream} $+$ \textsc{move\_left} and the \textsc{bos} observation \\
+\bottomrule
+\end{tabular}
+\end{center}
+Complexity $C$ counts the rules and the actions they carry, so each tier's extra
+machinery is \emph{paid for} in Eq.~\eqref{eq:fe} --- a task solvable by streaming will
+not gratuitously acquire registers.
+
+\subsection{Selection protocol}
+Within each $\lambda$ of a sweep, a population of transducers evolves by rule edits,
+additions, and deletions under training $\F$. Model selection then moves to the
+\emph{validation} split: over the sweep's loss-complexity Pareto frontier, the simplest
+solver within a small tolerance of the best validation loss is kept --- parsimony as a
+selection pressure, not a post-hoc tie-break. The hidden split is evaluated only after
+this choice; no hidden information flows back. This validation-elbow selection is the
+loss-complexity landscape of \cite{losscomplexity} applied to program synthesis.
+
+\section{Results}
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{llcccl}
+\toprule
+task & tier & hidden exact & $C$ & rules & observation \\
+\midrule
+copy (len 3) & \texttt{stream} & 1.00 & 3 & 1 & streaming suffices \\
+swap (len 2) & \texttt{stream} & 0.00 & 3 & 1 & \emph{fails}: no memory for first token \\
+swap (len 2) & \texttt{register} & 1.00 & 7 & 3 & store, skip, write, recall \\
+duplicate first & \texttt{stream} & 1.00 & 5 & 2 & macro-rule writes current twice \\
+rotate left (len 3) & \texttt{stream} & 0.00 & 3 & 1 & \emph{fails}: cannot delay first token \\
+rotate left (len 3) & \texttt{register} & 1.00 & 8 & 3 & one register suffices \\
+reverse (len 3) & \texttt{register} (2 regs) & 1.00 & 10 & 3 & fixed-length reverse \\
+reverse (len 5) & \texttt{bidirectional} & 1.00 & 7 & 3 & scan to \textsc{eos}, emit leftward \\
+dedupe pair & \texttt{register} & 0.50 & 2 & 1 & \emph{half-solves}: cannot branch on equality \\
+dedupe pair & \texttt{compare} & 1.00 & 4 & 1 & conditional-halt motif \\
+\bottomrule
+\end{tabular}
+\caption{Benchmark matrix (hidden-test splits use disjoint object pools; hidden exact
+is exact-match accuracy). Failures are as informative as successes: they localise the
+missing capability.}
+\label{tab:matrix}
+\end{table}
+
+Three readings of Table~\ref{tab:matrix}:
+
+\paragraph{Tiers separate cleanly.} Streaming handles copying and local duplication and
+\emph{provably} cannot delay a token (swap, rotate fail at exact $0.00$); one register
+repairs exactly that; equality observations repair exactly the content-conditional
+failure of dedupe; bidirectional motion repairs the fixed-length limitation of
+register-based reversal. Each capability boundary in the matrix is crossed by exactly
+the tier that names it.
+
+\paragraph{The synthesised motifs are the textbook algorithms.} The selected solvers
+are small enough to read. Swap at the \texttt{register} tier is literally
+\emph{store first, move, write second, write stored}. Reverse at the
+\texttt{bidirectional} tier is the length-general motif: \textsc{move\_right} until
+\textsc{eos}, then \textsc{write\_current}, \textsc{move\_left} until \textsc{bos}
+halts it --- the input tape used as external read-only memory. Dedupe at the
+\texttt{compare} tier is a one-rule conditional halt: the \textsc{match\_$R_0$}
+observation simply has \emph{no rule}, so a repeated token halts the machine.
+Sparsity (absent rules halt) is itself used as a branch.
+
+\paragraph{Parsimony does the model selection.} Because reused structure is what the
+$\lambda$ sweep's validation elbow rewards, the selected solvers sit at the knee of the
+loss-complexity landscape: e.g.\ dedupe-with-compare is admitted at $C=4$ with one
+rule, not at some baroque equivalent. The free energy is doing double duty ---
+selection pressure during evolution and model selection across the sweep.
+
+\section{Discussion and limitations}
+The result is deliberately modest in scope and sharp in interpretation: for
+\emph{deterministic} pattern families over opaque alphabets, free-energy synthesis
+yields compact, human-readable solvers, and the tier at which a task first becomes
+solvable is a meaningful measurement of the capability the task requires. Honest
+bounds: (1) tasks are short, fixed-length or nearly so; the length-general claims rest
+on the motif structure (e.g.\ the bidirectional reverse loop), not on testing long
+inputs exhaustively. (2) The tier ladder is hand-designed; a natural next rung is a
+stack for one-way streams, whose depth should be priced in $C$. (3) Search is
+evolutionary and budgeted; failures at a tier are certain only where the tier is
+provably insufficient (memory-free streaming cannot swap), elsewhere ``not found within
+budget'' and ``not expressible'' must be kept distinct. The continuation of this
+programme in the spirit of PowerPlay \cite{schmidhuber2013powerplay} --- letting the
+task generator and the solver grow together, with the same free energy pricing both ---
+is left open.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

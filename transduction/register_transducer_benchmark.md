@@ -100,7 +100,7 @@ be counted in the free-energy complexity term.
 Run from the repository root:
 
 ```bash
-python3 experiments/run_register_transducer_benchmark.py
+python3 transduction/run_register_transducer_benchmark.py
 ```
 
 The script prints a CSV summary and selected sparse rules. It uses deterministic
