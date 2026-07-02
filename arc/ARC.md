@@ -49,7 +49,11 @@ by the same free energy.
   **neutralized** (generic world-priors only; no mechanic recipes, no verb names);
   re-cracking `wa30` from scratch under neutral priors is the discriminating experiment.
 - The **same game-agnostic agent** transferred to `ls20` (a different mechanic) with no
-  code change.
+  code change. Notably, ls20 got **no mechanic-name leak** (its interaction probe emitted
+  only `move`), and the shared priors were wa30-flavored — *wrong* for ls20's
+  transform-tile mechanic — yet the agent discovered the real mechanic itself (a generic
+  clone-BFS over game state). So ls20 succeeded **despite** misleading priors: robustness,
+  not leakage. The `sp80` liquid-pour result (below) is the same story on a third game.
 - Under the enforced leg library, per-level **marginal novelty collapses** as legs are
   reused — on `ls20`: `55 → 18 → 2 → 2`. Later levels are near-pure composition.
 - The same enforced library on `wa30` (L1–L3 validated) shows the honest complement:

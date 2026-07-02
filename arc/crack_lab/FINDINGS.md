@@ -680,3 +680,21 @@ direction likely inverted; legs may need an axis parameter."
 
 L2 not reached within the 40-min budget (no play_level_2 written -- proposer ran out of
 time on the flipped-axis level). sp80 L2-L4 is a clean continuation candidate (resume).
+
+### R-NEUTRAL-LS20 (2026-07-02): ls20 audit -- no leak, and success DESPITE misleading priors
+
+Follow-up to R-NEUTRAL, auditing ls20 specifically (does the wa30-prior bias taint it?):
+- NO verb-name leak: the old discovered_context on ls20 emits only ['move'] (avatar
+  colour 9, movement vectors); the carry/push/gate signatures never fired on ls20, so
+  its proposer got NO mechanic name (wa30 got 'pick_up_and_carry'; ls20 got nothing).
+- The shared PRECONCEPTIONS were wa30-flavoured -- "attach->carry->release is the ONLY
+  way to move objects, build your ENTIRE plan around it", container/helper/relay -- all
+  of which are WRONG for ls20's transform-tile L1. They were a HANDICAP, not a hint.
+- The agent overrode them and discovered ls20's real mechanic itself (legs_log.md: the
+  avatar carries a shape/colour/rotation state; transform tiles cycle a component;
+  target tiles need a combo). Its solution is a GENERIC clone-BFS over compact game
+  state (advance_one_level), nothing carry-specific; at L2 it noticed that sublevel is
+  carry-ish and adapted the dedup key (full_state_key).
+- No ls20-specific code anywhere (grep: only incidental word matches).
+CONCLUSION: ls20 L1-L4 is robustness evidence (solved DESPITE misleading priors), not
+prior-leakage. The R-NEUTRAL bias is specific to wa30; it does not taint ls20 or sp80.
