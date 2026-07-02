@@ -591,3 +591,33 @@ with no L2 player). So this is NOT evidence that enforcement underperforms on wa
 needs a re-run with credits to reach a real verdict. (Open design question regardless:
 whether to allow a bounded monolithic push per level, then have the debrief refactor it
 into legs, vs. composition-only up front -- but wa30 gives no evidence either way yet.)
+
+### R-LEGS-2 (2026-07-02): wa30 re-run with credits -- L1-L3 cracked under enforcement; marginal novelty does NOT collapse when levels introduce genuinely new mechanics
+
+Re-ran the enforced orchestration on wa30 (capped L4) after adding RESUME (start above
+already-solved levels, reusing the existing L1 library instead of re-spending credits)
+and making a proposer timeout salvage partial work instead of crashing the run (the
+first attempt died on an uncaught subprocess.TimeoutExpired at 25 min/level; re-launched
+at 40 min/level).
+
+Result, replay-validated: reached LEVEL 3.
+
+  level 1: marginal_C=112  (prior run: carry+perception legs)
+  level 2: marginal_C=78   F=-0.44
+  level 3: marginal_C=95   F=+0.46
+  level 4: not reached -- the L4 proposal coincided with another SESSION-LIMIT cut-out
+  (a parallel agent hit "session limit" at the same time), so L4 is again
+  INCONCLUSIVE, not a merit verdict.
+
+The honest headline: unlike ls20 (55 -> 18 -> 2 -> 2), wa30's marginal novelty does NOT
+collapse -- and it SHOULDN'T. ls20's levels are the same mechanic in new configurations,
+so later levels are pure composition. wa30's levels each introduce a genuinely new
+mechanic: L2 adds the autonomous colour-12 helper (new legs `yield_to_helper`,
+`in_progress`, `nearest_to_foot`), L3 adds the dividing wall + asymmetric-carry relay
+(new legs `wall_col`, `grab_from_left`, `relay_to_helper`, `fill_bin_with_helper`).
+Reuse-collapse is a property of the GAME's level structure, not of the method: the
+method pays for novelty exactly when the game demands novelty, which is what
+F = R + lambda*C_marginal is supposed to do. Qualitatively the library discipline still
+worked: the L3 wall-relay trick was discovered INSIDE enforcement and captured as
+named, reusable legs (24 legs, 360 lines; players stay thin composers, 25 lines total).
+Saved: `agent_solutions/wa30_legs/` (legs.py, players.py, solve.py, legs_log.md).
