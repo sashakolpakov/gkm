@@ -655,3 +655,28 @@ vectors, and "the remaining actions did something other than move the avatar".
 Manuscript/ARC.md/rst claims corrected ("never given" retracted; audit stated).
 DISCRIMINATING EXPERIMENT (pending): re-crack wa30 from scratch under the neutral
 priors. NOTE: the sp80 and wa30-L4 runs in flight today imported the OLD priors.
+
+### R-SP80 + wa30-L4 (2026-07-02): third game type discovered from scratch; wa30 L1-L4 complete
+
+wa30 under enforced legs is now L1-L4, all replay-validated (L4: marginal_C=47,
+F=-3.060; full L1-L4 library = 27 legs, players thin; agent_solutions/wa30_legs/).
+Per-level marginal novelty L2:78 L3:95 L4:47 -- L4 dropped because L4 REUSES the L2/L3
+helper+relay legs rather than inventing new mechanics.
+
+THIRD GAME, sp80, from scratch (same game-agnostic pipeline): reached LEVEL 1,
+replay-validated (4 moves: 4,4,4,5; marginal_C=66; agent_solutions/sp80_legs/). The
+agent DISCOVERED the mechanic itself and wrote it down in legs_log.md: a LIQUID-POURING
+game -- spout (colour 4) + liquid (6) at top, ACTION5 pours down the spout column; the
+BAR (colour 9) is the avatar (4 cells/step); liquid landing on the bar spills off BOTH
+ends into the 4-wide columns outside each edge; cups (colour 11) with 4-wide rim
+openings; hazards = strikes (~5 -> GAME_OVER) and a depleting top-row timer. Solution:
+align the bar so both spill columns hit the two cup openings, pour once. This is a THIRD
+mechanic family, neither wa30's carry nor ls20's slide-to-match, found from raw frames.
+IMPORTANT: this run used the OLD wa30-flavoured priors (attach/carry/relay recipe) --
+which are MISLEADING for a pouring game, so sp80-L1 is evidence the agent ignores
+inapplicable priors and discovers the real mechanic (robustness), NOT prior-leakage.
+The agent even left an L2 note: "layout appears vertically flipped ... gravity/pour
+direction likely inverted; legs may need an axis parameter."
+
+L2 not reached within the 40-min budget (no play_level_2 written -- proposer ran out of
+time on the flipped-axis level). sp80 L2-L4 is a clean continuation candidate (resume).

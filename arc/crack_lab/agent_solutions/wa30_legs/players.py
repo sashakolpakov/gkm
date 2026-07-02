@@ -23,3 +23,21 @@ def play_level_3(env):
     avatar's deeper boxes. The avatar relays each box flush against the wall for the
     helper to collect, then idles -> all boxes binned -> reward fires."""
     relay_to_helper(env, box_color=4, wall_color=2)
+
+
+def play_level_4(env):
+    """Smuggler warehouse: the avatar is SEALED inside a dashed-wall enclosure with
+    6 boxes; 3 helpers patrol 3 disjoint outside regions that together hold the 7
+    container slots (a 7th, outside box is delivered by a helper unaided). Carried
+    boxes may overlap the wall, so the avatar hoists each box onto the enclosure
+    ring at a spot the right region's helper can pick from -- 2 boxes per region to
+    match its slot count -- then idles while the helpers ferry them in."""
+    lvl0 = env.levels_completed
+    for stand, a, n in [((28, 24), 1, 1),   # up   -> top ring    (helper H2)
+                        ((28, 32), 1, 1),   # up   -> top ring    (helper H1)
+                        ((28, 36), 1, 1),   # up   -> top ring    (helper H1)
+                        ((36, 36), 3, 3),   # left -> left ring   (helper H2)
+                        ((36, 24), 2, 1),   # down -> bottom ring (helper H3)
+                        ((36, 36), 2, 1)]:  # down -> bottom ring (helper H3)
+        hoist_over_wall(env, stand, a, n)
+    yield_to_helper(env, lvl0)

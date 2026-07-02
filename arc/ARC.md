@@ -34,10 +34,11 @@ by the same free energy.
 
 ## Results (replay-validated)
 
-| game | mechanic | levels cracked |
+| game | mechanic (agent-discovered) | levels cracked |
 |---|---|---|
-| `wa30` | pick-up-and-carry | L1–L6 |
+| `wa30` | pick-up-and-carry | L1–L6 (L1–L4 under enforced legs) |
 | `ls20` | slide-to-match | L1–L4 |
+| `sp80` | liquid-pour / deflect | L1 (a genuine *third* mechanic, found from scratch) |
 
 - On `wa30` the agent found level tactics beyond its priors: freeze the target region
   at level start; complement an autonomous helper by taking the *farthest* objects; and

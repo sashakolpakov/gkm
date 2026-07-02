@@ -241,6 +241,43 @@ def grab_from_below(env, box):
     return True
 
 
+def face_grab(env, a):
+    """Grab the box adjacent in movement direction `a`. Grabbing requires FACING:
+    the engine only attaches the sprite the nose points at, and a bump into the box
+    (a blocked move) still sets the facing. The box then rides at the same relative
+    offset it had at grab time (above / below / left / right)."""
+    move(env, a)      # bump: sets rotation even though the box blocks the step
+    env.step(5)       # grab
+
+
+def carry_steps(env, a, n=1, tries=8):
+    """While carrying, take `n` real steps in direction `a`, retrying transient
+    blocks (e.g. a helper walking its cargo through the target cell). Rotation is
+    frozen while carrying, so a failed step is safe to repeat."""
+    done = 0
+    for _ in range(n + tries):
+        if done >= n or env.terminal():
+            break
+        if move(env, a):
+            done += 1
+    return done == n
+
+
+def hoist_over_wall(env, stand, a, carry=1):
+    """SMUGGLING skill: a CARRIED box may overlap static walls -- the engine checks
+    the carried sprite's target cell only against occupied cells, not the wall set.
+    A trapped avatar can therefore hand boxes across an enclosure wall: stand at
+    `stand` (adjacent to the box, wall beyond), face-grab in direction `a`, take
+    `carry` steps so the box comes to rest ON the wall band, and release. An
+    outside helper can then pick the box off the wall and deliver it."""
+    if not goto(env, *stand):
+        return False
+    face_grab(env, a)
+    ok = carry_steps(env, a, carry)
+    env.step(5)       # release (drops the box where it rides, wall included)
+    return ok
+
+
 def place_carried(env, trow, tcol):
     """With a box currently carried, drop it so its top-left lands at (trow,tcol).
     Calibrates the carry offset by probing a release on a clone, then positions

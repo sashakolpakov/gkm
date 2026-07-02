@@ -119,3 +119,42 @@ handoff loops differ enough -- quota counter vs. per-box wait-for-pickup -- that
 premature merge would obscure more than it saves); the shared primitives above
 (`in_progress` / `nearest_to_foot` / `yield_to_helper`) already remove the real
 duplication.
+
+## wa30 level 4 (solved, 252 moves total; replay_ok)
+Smuggler warehouse: the avatar starts SEALED inside a dashed colour-2 enclosure
+with 6 boxes; 3 helpers (colour 12) patrol 3 mutually disjoint outside regions
+(cut apart by colour-5 wall bands/diagonals) holding 7 container slots between
+them; a 7th box outside is delivered by the nearest helper unaided. 100-step
+budget. Decisive discoveries (frame experiments cross-checked against engine
+bytecode via dis):
+- GRAB requires FACING: action 5 attaches only the box the nose points at, and a
+  blocked bump still sets rotation -- so the grab idiom is "bump the box, then 5".
+  The transient border-3 recolour is exactly the "facing this box" highlight.
+  The carried box rides at whatever relative offset it had at grab time (any of
+  the four sides), and rotation is FROZEN while carrying.
+- THE key mechanic: collision checks the avatar's target cell against walls AND
+  occupied cells, but the CARRIED box's target cell only against occupied cells.
+  A carried box may therefore overlap the static wall: walk flush to the ring and
+  the box comes to rest ON the wall band; release leaves it there. Helpers (same
+  collision rules, so equally wall-bound) can pick a box OFF the wall from their
+  side -> the sealed enclosure is permeable to cargo, never to agents.
+- Helpers stall harmlessly when no reachable box exists, and re-target every
+  avatar step; a helper walking its cargo through your drop cell can transiently
+  block a carry step, so carries need a retry loop (rotation frozen -> safe).
+- Region/slot bookkeeping decides WHERE to hoist each box: each helper region's
+  drop count must match its slot count (here 2+2+2, with the outside box making
+  the third region's 3rd slot).
+
+New general legs: face_grab (bump+5, any side), carry_steps (n steps while
+carrying, retrying transient blocks), hoist_over_wall (goto stand -> face_grab ->
+carry_steps -> release). play_level_4 is six hoist_over_wall calls (the per-box
+stand/direction/depth table) + the existing yield_to_helper.
+
+## Recurring composition pattern (third cooperator)
+play_level_4 is the THIRD instance of "do bounded own work handing boxes into
+helper reach, then yield": handoff_one = hoist_over_wall (vs deliver_to_bin /
+relay-to-wall-band). The deferred `cooperate_then_yield` hoist is now justified in
+principle, but the three handoff loops still differ in stop conditions (quota /
+wait-for-pickup / fixed spec list), so the shared tail remains yield_to_helper and
+the merge stays deferred. What DID generalize: grab_from_below and grab_from_left
+are now special cases of face_grab; new callers should prefer face_grab.
