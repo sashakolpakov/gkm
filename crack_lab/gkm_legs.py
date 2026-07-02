@@ -136,7 +136,13 @@ def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> Non
            "--dangerously-skip-permissions", "--add-dir", labdir, "--output-format", "text"]
     if model:
         cmd += ["--model", model]
-    subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
+    try:
+        subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
+    except subprocess.TimeoutExpired:
+        # Out of the per-level time budget. Whatever the agent already wrote to the
+        # workspace (legs.py/players.py) persists; let the loop verify that partial
+        # work instead of crashing the whole run.
+        print(f"[proposer hit {minutes}min budget; verifying partial work]")
 
 
 def _propose_task(game, K, context, legs_index):
