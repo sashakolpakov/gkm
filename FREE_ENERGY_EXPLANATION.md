@@ -15,7 +15,7 @@ automata-evolution experiments.
 
 ## Core Functional
 
-The active experiment uses free energy as a local selection principle:
+Both current substrates use free energy as a local selection principle:
 
 ```text
 F_lambda(a, E_t) = R(a, E_t) + lambda C(a)
@@ -29,7 +29,7 @@ Where:
 - `C(a)` is a chosen description-length proxy.
 - `lambda` controls parsimony pressure.
 
-In the current grid foraging substrate:
+In the grid foraging substrate:
 
 ```text
 R(a, E_t) = missed_food + 0.05 * step_fraction + 0.10 * bump_fraction
@@ -56,6 +56,26 @@ state 0 but still charges for all encoded rules whose source state is reachable.
 inputs halt the episode rather than invoking a free fallback policy.
 
 The code minimizes free energy directly, and reports fitness as `-F_lambda`.
+
+In the pattern-transduction substrate, the same form is used:
+
+```text
+F_lambda(s, T_train) = edit_loss(s, T_train) + lambda C(s)
+```
+
+where `s` is a sparse register transducer and `T_train` is the set of observed
+foreign-object transitions used for local evolutionary selection. Token
+identity is opaque to the rule key; depending on the primitive tier, the
+transducer can move through the input, write the current object, store/write
+registers, branch on current-token/register equality, or use a bidirectional
+read-only input cursor with explicit beginning/end observations. For model
+selection, the runner sweeps
+`lambda` and chooses an empirical elbow on the validation loss-complexity
+frontier by taking the simplest Pareto solver within a small tolerance of the
+best validation loss. Hidden test transitions from disjoint object pools are
+evaluated only after that validation selection. This separates the meta-model
+from the solver: evolution searches for compact deterministic transducers; the
+transducer itself produces the pattern output.
 
 ## Why This Is Not Yet Open-Ended
 

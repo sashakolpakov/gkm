@@ -1,6 +1,18 @@
 # Output directories
 output/
 old/
+docs/_build/
+PLANNING.md
+
+# LaTeX build outputs
+manuscript/*.aux
+manuscript/*.bbl
+manuscript/*.blg
+manuscript/*.fdb_latexmk
+manuscript/*.fls
+manuscript/*.log
+manuscript/*.out
+manuscript/*.pdf
 
 # Python
 __pycache__/
@@ -37,3 +49,15 @@ wheels/
 # OS
 .DS_Store
 Thumbs.db
+
+# Local secrets / environment (never commit API keys)
+.env
+.env.*
+!.env.example
+
+# ARC-AGI-3 local play: downloaded game sources + recordings (not vendored)
+environment_files/
+recordings/
+
+# scratch lab logs (keep the code + docs tracked)
+crack_lab/*.log

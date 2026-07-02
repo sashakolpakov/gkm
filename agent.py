@@ -1,6 +1,6 @@
-"""Compatibility entry point for the automata evolution experiment."""
+"""Compatibility entry point for the foraging ecology experiment."""
 
-from evo_game import main
+from experiments.run_foraging_ecology import main
 
 
 if __name__ == "__main__":

@@ -144,7 +144,30 @@ Where:
 
 The important part is not adding arbitrary novelty reward. The important part is making the ecology generate new risk terms that are still grounded in survival, control, prediction, resource acquisition, or reproduction.
 
-## 5. The Complexity Ratchet
+## 5. Developmental Overcapacity
+
+A free-energy system should not be expected to find the globally minimal program basin directly. The first reachable basin for a nontrivial behavior may be overbuilt: it carries extra states, rules, registers, or scaffolding that make the behavior discoverable by local mutation and selection.
+
+This is not a failure of the complexity term. It is a basin-accessibility fact. The term `lambda C(a)` makes extra machinery costly, but it does not make the shortest possible program easy to discover. In many domains the historical trajectory is: first find a working machine with excess structure, then simplify after the behavioral principle is reachable and selection can compare viable descendants. The Raptor-engine analogy is apt: early working designs can be more complex than later generations because later generations inherit knowledge, constraints, and reachable redesign paths that did not exist at the start.
+
+For the sparse automata experiments this means a hand-written minimal automaton is a representability witness, not the default expectation for cold stochastic search. The empirically important object is the naturally discovered basin: how much overcapacity was needed to escape local minima, whether the solution generalizes, and whether later evolutionary pressure can produce simpler descendants without external pruning.
+
+The current sparse Bongard-style experiments give a first controlled example. The task is not to predict labels directly, but to evolve deterministic sparse automata over opaque-object sequences. Discovery is credited only when the selected automaton solves train, validation, hidden, and exhaustive foreign-alphabet probes. Several paired capacity ablations now show developmental overcapacity: the final exact solver uses fewer rules than the genome was allowed to carry during search, yet a cold search capped at that final rule count fails.
+
+```text
+task,limited condition,overcapacity condition,result
+length_multiple_of_three,cap_4 fails,overcapacity_12 succeeds,final solver has 3 rules
+first_equals_last,cap_5 and cap_6 fail,overcapacity_12 succeeds,final solver has 6 rules
+first_equals_second,cap_3 fails,overcapacity_14 succeeds,final solver has 3 rules
+last_two_equal,cap_7 fails,overcapacity_14 succeeds,final solver has 7 rules
+second_equals_last,cap_6 fails,overcapacity_16 succeeds,final solver has 6 rules
+```
+
+The effect is not universal. `has_adjacent_duplicate` solves under a limited cap as well as under overcapacity, so the claim is not that every rule needs excess structure. The claim is that some useful basins are not reachable when the search is forced to remain minimal from the start. For those cases, complexity pressure is still essential: it prices extra structure, but it does not remove the need for a temporary developmental search volume.
+
+The same experiments also expose a second methodological point: some Bongard panels are genuinely ambiguous until the negative examples are strong enough. `first_equals_second` and `last_two_equal` were missed under small balanced panels but solved after adding hard negative examples. This matters because human readers are often primed to see the intended relation. The experiment must therefore report panel design, balanced accuracy, and exhaustive probes rather than treating the intended rule as self-evident.
+
+## 6. The Complexity Ratchet
 
 A free-energy system can increase complexity only when complexity buys enough risk reduction.
 
@@ -164,7 +187,7 @@ This inequality is the complexity ratchet.
 
 It says that complexity growth is not inherently good. It is admitted only when it pays for itself. Across a changing ecology, new niches can make previously useless complexity useful. This creates the possibility of directional structural growth without abandoning parsimony.
 
-## 6. Lambda Sweeps as Structure-Function Probes
+## 7. Lambda Sweeps as Structure-Function Probes
 
 Following the loss-complexity structure-function viewpoint of
 [arXiv:2507.13543](https://arxiv.org/abs/2507.13543), `lambda` is swept rather
@@ -188,6 +211,11 @@ C_t^*(R) = minimum complexity needed to achieve risk <= R
 Open-endedness should appear as movement of this frontier over evolutionary time.
 In the implementation this frontier is sampled by genetic search or Hyperopt,
 so observed curves are empirical approximations.
+When a substrate admits a held-out split, local selection uses the training
+free energy, while the chosen reported model is selected by an elbow on the
+validation loss-complexity frontier: choose the simplest Pareto solver within a
+small tolerance of the best validation loss. Hidden test environments are used
+only after this selection step.
 
 The empirical signature is not simply “best score goes up.” The stronger signature is:
 
@@ -197,11 +225,12 @@ The empirical signature is not simply “best score goes up.” The stronger sig
 4. The archive accumulates agents that solve different ecological niches.
 5. Validation environments generated later require structures not present earlier.
 
-## 7. Proposed Research Substrate
+## 8. Proposed Research Substrate
 
-The first serious substrate should be a small world where agency is visible.
+The first serious substrate should include two controlled regimes: visible
+embodied behavior and deterministic pattern transduction.
 
-Recommended starting point:
+Embodied starting point:
 
 ```text
 2D grid ecology
@@ -219,6 +248,34 @@ This is simple enough to mutate directly and complex enough to show real behavio
 Rules are sparse. If no encoded rule matches the current input, the episode
 halts; there is no random fallback policy.
 
+Pattern-transduction starting point:
+
+```text
+train:      [A B] -> [B A], [C D] -> [D C]
+validation: [X Y] -> [Y X]
+hidden test: [p q] -> [q p]
+```
+
+Here the meta-model evolves a compact deterministic solver rather than directly
+predicting the output sequence. The solver is a sparse register transducer over
+opaque objects. Its rule key does not expose literal token identity:
+
+```text
+(state, TOKEN | EOS | BOS | MATCH_REGISTER_MASK) -> (action_sequence, next_state)
+```
+
+Primitive sets should be varied experimentally:
+
+```text
+stream primitives -> register primitives -> comparison primitives -> bidirectional tape -> richer object primitives
+```
+
+This directly tests which substrate primitives are sufficient for compact
+deterministic solver synthesis under the same free-energy objective. Reversal is
+especially diagnostic: in a one-way stream it requires internal memory, while a
+bidirectional read-only input tape can solve it by scanning to the end and
+emitting while moving left.
+
 Minimum environment stages:
 
 1. Static foraging.
@@ -232,7 +289,7 @@ Minimum environment stages:
 
 The first stage demonstrates adaptation. Later stages test open-endedness.
 
-## 8. Environment Generation
+## 9. Environment Generation
 
 The environment generator must avoid two failures:
 
@@ -258,13 +315,13 @@ Practical approximations:
 
 This makes the environment a coevolving curriculum.
 
-## 9. What Counts as Open-Endedness?
+## 10. What Counts as Open-Endedness?
 
 A weak system merely improves score. A stronger system exhibits continuing innovation.
 
 Operational criteria:
 
-### 9.1 Continued Adaptive Novelty
+### 10.1 Continued Adaptive Novelty
 
 New agents solve validation worlds that no previous archive agent solved.
 
@@ -272,7 +329,7 @@ New agents solve validation worlds that no previous archive agent solved.
 NovelSolve(a_t) = count{e in V_t : success(a_t,e) and no archived a solved e}
 ```
 
-### 9.2 Complexity With Payoff
+### 10.2 Complexity With Payoff
 
 Complexity grows only when accompanied by frontier risk reduction:
 
@@ -280,15 +337,15 @@ Complexity grows only when accompanied by frontier risk reduction:
 Delta C_t > 0 and Delta R_frontier_t < -epsilon
 ```
 
-### 9.3 Transfer
+### 10.3 Transfer
 
 Agents evolved in earlier niches retain competence while acquiring new competence.
 
-### 9.4 Lineage Depth
+### 10.4 Lineage Depth
 
 Useful behavior depends on multiple accumulated innovations, not one lucky mutation.
 
-### 9.5 Frontier Movement
+### 10.5 Frontier Movement
 
 The empirical structure function changes over time:
 
@@ -296,11 +353,11 @@ The empirical structure function changes over time:
 C_{t+1}^*(R) != C_t^*(R)
 ```
 
-### 9.6 Non-Collapse
+### 10.6 Non-Collapse
 
 The archive maintains multiple behavioral strategies under different lambda values or ecological niches.
 
-## 10. Experimental Program
+## 11. Experimental Program
 
 ### Experiment 1: Closed-World Baseline
 
@@ -354,13 +411,115 @@ Prediction:
 - Some lineages produce interpretable subroutines: wall following, trail use, resource sweeping, evasion.
 - Compression pressure makes these subroutines smaller over time.
 
-## 11. Proposed Thesis Statement
+### Experiment 6: Sparse Bongard Rule Discovery
+
+Use procedural Bongard-style concept induction over opaque-object sequences. Each run evolves a deterministic sparse automaton, not a direct classifier table. Train, validation, hidden, and exhaustive foreign-alphabet probes are separated.
+
+Protocol:
+
+- Vary the rule family: length, local equality, boundary equality, offset-boundary equality, duplicate/uniqueness, and palindrome-like relations.
+- Vary panel design, especially hard negative examples, because some concepts are underconstrained by small balanced panels.
+- For each task, compare a limited cap against a larger developmental cap, then record the final selected rule count.
+- Report exact discovery rates, balanced probe accuracy, selected complexity, and selected rules.
+
+Prediction:
+
+- Some tasks solve under limited caps, showing overcapacity is not a universal requirement.
+- Some tasks fail under limited caps but solve under larger developmental caps, even when the final exact solver uses no more rules than the limited cap allowed.
+- Some tasks fail under both conditions until panel design or substrate primitives change.
+- Harder memory-like tasks should expose missing primitives rather than merely needing more search.
+
+This experiment is a bridge between toy automata and external Bongard benchmarks. It turns the overcapacity thesis into a rate statement over a family of deterministic rule-discovery problems.
+
+The next external step is Bongard-LOGO, first in symbolic mode. A first adapter now converts generated Basic and Abstract LOGO action programs into relational scene encodings and runs a free-energy sparse feature selector. The first result is a representation-bottleneck diagnostic: Basic Shape is mostly recoverable from action skeletons with enough hard negatives, while Abstract Shape is weak from action skeletons alone and becomes exact only when privileged metadata attributes are exposed. A first predicate-macro layer now derives reusable geometric predicates from action programs and lets Bongard rules use them while paying macro complexity. This improves Abstract action-only performance but does not yet close the gap to metadata, which is the desired next research pressure. Raw images should be used only after the symbolic path works, so perception failures can be separated from rule-induction failures. Bongard-OpenWorld and Bongard-HOI are later-stage benchmarks because they add real-image and open-vocabulary burdens before the free-energy rule-discovery story is isolated. A separate related-work note, `experiments/abstraction_related_work.md`, collects the predicate-invention, library-learning, automata-learning, MDL, and Bongard references needed to keep the novelty claim narrow.
+
+## 12. Abstraction Emergence And Predicate Encapsulation
+
+The current abstraction experiment must be read at three distinct levels.
+
+First, the primitive observations are hand-defined. In the internal scaffold, atoms such as:
+
+```text
+low_closure_error
+high_hull_fill
+turn_balanced
+has_curve
+thin
+```
+
+are supplied as primitive boolean observations over an opaque object description. They are not discovered from pixels, turtle programs, or raw geometry in this experiment. They play the role of low-level sensory predicates, analogous to a biological or engineered perceptual front end. Therefore the experiment does not yet claim discovery of `low_closure_error` itself.
+
+Second, the solver can express task rules directly over those primitive atoms. For example, a task can be solved inline as:
+
+```text
+low_closure_error AND high_hull_fill AND turn_balanced AND has_curve
+```
+
+or, for a disjunctive task:
+
+```text
+(low_closure_error AND high_hull_fill AND turn_balanced AND has_curve)
+OR
+(low_closure_error AND high_hull_fill AND turn_balanced AND thin)
+```
+
+Third, the abstraction step is predicate encapsulation. The system can create and pay for a macro predicate:
+
+```text
+solid_loop = low_closure_error AND high_hull_fill AND turn_balanced
+```
+
+Then the same disjunctive task becomes:
+
+```text
+(solid_loop AND has_curve) OR (solid_loop AND thin)
+```
+
+The free-energy question is whether this encapsulation is selected only when it reduces total description length without increasing loss.
+
+The OR experiment is the cleanest diagnostic. A simple unrelated disjunction:
+
+```text
+has_curve OR thin
+```
+
+does not create a macro, because there is no repeated substructure to factor. By contrast:
+
+```text
+(A AND B) OR (A AND C)
+```
+
+creates pressure to define `A` once and call it twice. In the scaffold, `A` is `solid_loop`, `B` is `has_curve`, and `C` is `thin`.
+
+The observed result is:
+
+```text
+or_control/shared: no macro, complexity 3.00
+or_factor/inline: no macro, complexity 9.00
+or_factor/shared: solid_loop macro selected, complexity 7.70
+or_factor/no_share: no macro, complexity 9.00
+or_factor_transfer/shared: transfer complexity 2.35 vs inline 5.00
+```
+
+The no-share ablation is essential. It allows macro syntax but charges the full macro definition at each use. Under that accounting, the system does not select the macro. This shows that the result is not a syntactic convenience; it is specifically a shared-description-length effect.
+
+The current positive claim is therefore narrow:
+
+> Given hand-defined primitive observations, free-energy selection can favor the encapsulation of a repeated predicate macro when the same latent structure is reused across tasks or across disjunctive branches.
+
+The current negative claim is equally important:
+
+> The experiment has not yet evolved the primitive observations themselves, and it has not yet evolved a finite-state predicate recognizer from raw Bongard-LOGO action programs.
+
+The next research step is to replace enumerated or branch-derived macro candidates with evolved predicate automata. In that stronger version, the system would first evolve a small deterministic recognizer for a property such as `solid_loop`, pay for that recognizer as library complexity, and then test whether later task solvers call it under the same single-task, unrelated-OR, OR-factor, no-share, and transfer controls.
+
+## 13. Proposed Thesis Statement
 
 The thesis can be stated as:
 
 > Open-ended artificial evolution is possible under a free-energy paradigm if free energy is used as a local selection principle over agents embedded in an expanding, archive-driven ecology. Fixed-task free-energy minimization converges to compression; open-endedness requires that solved structures generate new validation pressures. Lambda sweeps then reveal evolving loss-complexity frontiers, and sustained frontier movement provides the empirical signature of open-ended evolution.
 
-## 12. Falsification Criteria
+## 14. Falsification Criteria
 
 The thesis is wrong, or at least incomplete, if:
 
@@ -373,7 +532,7 @@ The thesis is wrong, or at least incomplete, if:
 
 These failure modes should be treated as research results, not engineering annoyances.
 
-## 13. Immediate Next Step
+## 15. Immediate Next Step
 
 The next implementation should be a research instrument, not a product:
 
