@@ -67,14 +67,12 @@ Given those priors and the raw substrate, the proposer **writes its own code**:
 a ``solve(env)`` program containing its perception, its mechanic probe, its
 planner, and its strategy. The proposer is pluggable:
 
-- a **local offline model**, which is evaluation-legal (no network) but
-  currently weak; and
+- a **small local model**, which is currently too weak to drive the loop; and
 - the **Claude Code agent** invoked headlessly with file and shell tools and a
   tester, so it writes a solution, runs it on the real ``Arena``, reads the
   failures, and iterates -- the same write/run/fix loop a human programmer uses.
 
-The strong proposer is networked, so it is reported as a demonstration and an
-upper bound, not as the offline evaluation path.
+All reported results use the strong proposer.
 
 Free-Energy Admission
 ---------------------
@@ -150,22 +148,20 @@ enforced by the harness, not merely requested.
 Honest Caveats
 --------------
 
-This is a demonstration and an upper bound, bounded in three ways:
+The result is bounded in two ways:
 
-- The strong proposer uses the network and a hosted model, so it is **not** the
-  offline, evaluation-legal path. The local model alone is currently too weak: a
-  system-prompt-only strategist mis-reasoned two-sided reachability under
-  barriers even with the priors spelled out, asserting feasibility where the
-  interaction verifier proved boxes were stranded.
 - The claim is precisely levels 1 through 6 of ``wa30`` and, for the same agent
   pointed at a **second** game (``ls20``, a slide-to-match mechanic), levels 1
   through 4 -- all replay-validated. It is not all levels and not all games:
   ``wa30`` levels 7-9 are unsolved. The ``ls20`` transfer is the intended evidence
   that the rawest substrate carries across game *types*.
-- The cognition is rented. The architecture (the rawest substrate, the
-  preconception priors, the free-energy admission, and the simulator as verifier)
-  is general and is the contribution; closing the gap on the offline path needs a
-  stronger local model in the same write/run/fix loop.
+- The loop currently needs a **strong** proposer. A system-prompt-only local
+  model mis-reasoned two-sided reachability under barriers even with the priors
+  spelled out, asserting feasibility where the interaction verifier proved boxes
+  were stranded. The architecture (the rawest substrate, the preconception
+  priors, the free-energy admission, and the simulator as verifier) is general
+  and is the contribution; the open question is how weak a proposer that harness
+  can lift to competence.
 
 Growing a Leg Library
 ---------------------

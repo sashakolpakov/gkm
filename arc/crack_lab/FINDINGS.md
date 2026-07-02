@@ -621,3 +621,13 @@ F = R + lambda*C_marginal is supposed to do. Qualitatively the library disciplin
 worked: the L3 wall-relay trick was discovered INSIDE enforcement and captured as
 named, reusable legs (24 legs, 360 lines; players stay thin composers, 25 lines total).
 Saved: `agent_solutions/wa30_legs/` (legs.py, players.py, solve.py, legs_log.md).
+
+### NOTE (2026-07-02): the "offline / evaluation-legal" constraint is retired
+
+Earlier entries frame the Claude-agent proposer as "demo / upper bound, not the
+offline eval-legal path". That requirement NO LONGER APPLIES -- hosted/networked
+proposers are fine. Entries above are left as written (chronological log), but the
+live claims in ARC.md, the manuscripts, and the Sphinx docs have been rewritten:
+the results with the strong proposer ARE the results; the local-model weakness
+remains an honest empirical finding, and the open question is how weak a proposer
+the harness (priors + simulator-as-verifier + free-energy admission) can lift.

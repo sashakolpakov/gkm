@@ -426,12 +426,11 @@ a world tends to contain, not how to solve any particular game.
 Given those priors and the raw substrate, the proposer \emph{writes its own
 code} --- a \texttt{solve(env)} program containing its perception, its mechanic
 probe, its planner, and its strategy. The proposer is pluggable. One option is a
-local offline model, which is evaluation-legal (no network) but currently weak.
-The other is the Claude Code agent invoked headlessly with file and shell tools
-and a tester, so it writes a solution, runs it on the real \texttt{Arena}, reads
-the failures, and iterates --- the same write/run/fix loop a human programmer
-uses. The strong proposer is networked, so it is reported here as a
-demonstration and an upper bound, not as the offline evaluation path.
+small local model, which is currently too weak to drive the loop. The other is
+the Claude Code agent invoked headlessly with file and shell tools and a tester,
+so it writes a solution, runs it on the real \texttt{Arena}, reads the failures,
+and iterates --- the same write/run/fix loop a human programmer uses. All
+reported results use the strong proposer.
 
 \subsection{Free-energy admission and the source-of-novelty principle}
 
@@ -499,20 +498,18 @@ helpers, and several containers) and is left as its own next investigation.
 
 \subsection{Honest caveats}
 
-The result is a demonstration and an upper bound, and it is bounded in three
-ways that the manuscript states plainly. First, the strong proposer uses the
-network and a hosted model, so it is not the offline, evaluation-legal path; the
-local model alone is currently too weak --- a system-prompt-only strategist
-mis-reasoned two-sided reachability under barriers even with the priors spelled
-out, asserting feasibility where the interaction verifier proved boxes were
-stranded. Second, the claim is precisely levels~1 through~3 of \texttt{wa30}
-and, for the same agent pointed at a second game (\texttt{ls20}, a
-slide-to-match mechanic), levels~1 through~4 --- both replay-validated --- not
-all levels and not all games; \texttt{wa30} level~4 remains unsolved. Third, the cognition is
-rented: the architecture --- the rawest substrate, the preconception priors, the
+The result is bounded in two ways that the manuscript states plainly. First,
+the claim is precisely levels~1 through~3 of \texttt{wa30} and, for the same
+agent pointed at a second game (\texttt{ls20}, a slide-to-match mechanic),
+levels~1 through~4 --- both replay-validated --- not all levels and not all
+games; \texttt{wa30} level~4 remains unsolved. Second, the loop currently needs
+a strong proposer: a system-prompt-only local model mis-reasoned two-sided
+reachability under barriers even with the priors spelled out, asserting
+feasibility where the interaction verifier proved boxes were stranded. The
+architecture --- the rawest substrate, the preconception priors, the
 free-energy admission, and the simulator as verifier --- is general and is the
-contribution, but closing the gap on the offline path needs a stronger local
-model in the same write/run/fix loop.
+contribution; the open question is how weak a proposer that harness can lift to
+competence.
 
 \subsection{Relation to the colimit-cone program}
 

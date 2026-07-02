@@ -57,11 +57,11 @@ by the same free energy.
 
 ## Honest limitations
 
-- The strong proposer is **networked** (uses a hosted model), so these runs are a
-  demonstration / upper bound, **not** the offline evaluation-legal path; the local model
-  alone is currently too weak.
 - Claims are exactly L1–L6 of `wa30` and L1–L4 of `ls20` — not all levels, not all games.
-- Closing the offline gap needs a stronger **local** model in the same write/run/fix loop.
+- The loop currently needs a **strong** proposer: a prompt-only local model mis-reasoned
+  two-sided reachability under barriers even with the priors spelled out. The open
+  question is how weak a proposer the same harness (priors, simulator-as-verifier,
+  free-energy admission) can lift to competence.
 
 ## Code
 

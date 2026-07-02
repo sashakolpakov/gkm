@@ -38,9 +38,9 @@ of each new level collapses ($55\to18\to2\to2$ on \texttt{ls20}), i.e.\ later le
 solved by \emph{composing} existing legs with almost no new structure --- transfer,
 priced by the same free energy; on \texttt{wa30}, whose levels introduce genuinely new
 mechanics, marginal novelty instead tracks the novelty the game demands
-($112\to78\to95$), as a novelty-priced free energy should. We report honest negatives: a weak local model, and a
-strong (networked) proposer that makes the result a demonstration rather than an
-offline-legal system.
+($112\to78\to95$), as a novelty-priced free energy should. We report the honest
+negatives alongside: which levels remain unsolved, and that a prompt-only local model
+is currently too weak to drive the same loop.
 \end{abstract}
 
 \section{Introduction}
@@ -127,11 +127,11 @@ itself dense surrogate objectives and discover its actions' affordances by exper
 These priors are deliberately \emph{non-procedural}: they say what a world tends to
 contain, not how to solve any game. Given the priors and the raw substrate the proposer
 \emph{writes a} \texttt{solve(env)} \emph{program} --- its perception, its mechanic
-probe, its planner, its strategy. The proposer is pluggable: a local offline model
-(evaluation-legal but presently weak), or the Claude Code agent invoked headlessly with
-file/shell tools and a tester, so it writes, runs, observes failures, and iterates --- the
-same write/run/fix loop a programmer uses. The strong proposer is networked and is
-therefore reported as a demonstration and upper bound, not the offline path.
+probe, its planner, its strategy. The proposer is pluggable: a small local model, or the
+Claude Code agent invoked headlessly with file/shell tools and a tester, so it writes,
+runs, observes failures, and iterates --- the same write/run/fix loop a programmer uses.
+All reported results use the strong proposer; the small local model is presently too
+weak to drive the loop (Section~\ref{sec:discussion}).
 
 \subsection{Admission by free energy; the leg library}
 A written program is admitted only if it verifiably lowers Eq.~\eqref{eq:fe} on the real
@@ -216,15 +216,15 @@ free energy. The library discipline still holds --- players remain thin composer
 (25 lines over a 24-leg library), and the level-3 wall relay was discovered \emph{inside}
 the enforced loop and persists as a reusable skill.
 
-\section{Discussion and honest limitations}
+\section{Discussion and honest limitations}\label{sec:discussion}
 The architecture --- rawest substrate, preconception priors, free-energy admission,
 simulator-as-verifier, marginally-priced leg library --- is general and is the
-contribution. Three honest bounds apply. (1) The strong proposer is networked and hosted,
-so the demonstration is not the offline, evaluation-legal path; the local model alone is
-currently too weak (a prompt-only strategist mis-reasoned two-sided reachability under
-barriers even with the priors spelled out). (2) The claim is levels~1--6 of \texttt{wa30}
-and~1--4 of \texttt{ls20}, not all levels and not all games. (3) The cognition is rented:
-closing the offline gap needs a stronger local model in the same write/run/fix loop.
+contribution. Two honest bounds apply. (1) The claim is levels~1--6 of \texttt{wa30}
+and~1--4 of \texttt{ls20}, not all levels and not all games. (2) The loop currently needs
+a strong proposer: a prompt-only local model mis-reasoned two-sided reachability under
+barriers even with the priors spelled out, so the interesting open question is how weak a
+proposer the same harness --- priors, simulator-as-verifier, free-energy admission ---
+can lift to competence.
 Relative to the classical colimit-cone experiments, where reusable structure is enumerated
 and priced, here it is \emph{invented} and priced by the same free energy; the two are
 ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that on the invented
