@@ -22,6 +22,7 @@ default proposer.
 """
 from __future__ import annotations
 import importlib.util
+import json
 import os
 import subprocess
 import time
@@ -52,6 +53,42 @@ def marginal_complexity(legs_before: str, legs_after: str,
 def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
     """F = R + lambda*C with R = -levels_reached and C = total marginal novelty."""
     return -float(levels) + lam * float(marginal_C_total)
+
+
+CHECKPOINT_FILE = "checkpoint.json"
+"""Filename for per-level marginal-C checkpoint (enables cross-run resume)."""
+
+
+def _save_checkpoint(ws: str, rep: Report) -> None:
+    """Persist the Report so a later restart restores the full marginal-C history."""
+    data = {
+        "game": rep.game,
+        "reached": rep.reached,
+        "total_marginal_C": rep.total_marginal_C,
+        "records": [{"level": r.level, "marginal_C": r.marginal_C, "reached": r.reached}
+                     for r in rep.records],
+        "final_path": rep.final_path,
+        "validated": rep.validated,
+    }
+    with open(os.path.join(ws, CHECKPOINT_FILE), "w") as f:
+        json.dump(data, f)
+
+
+def _load_checkpoint(ws: str) -> Optional[Report]:
+    """Restore a checkpoint from a previous run, or None."""
+    path = os.path.join(ws, CHECKPOINT_FILE)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    return Report(
+        game=data["game"],
+        reached=data["reached"],
+        total_marginal_C=data["total_marginal_C"],
+        records=[LevelRecord(**r) for r in data.get("records", [])],
+        final_path=data.get("final_path", []),
+        validated=data.get("validated", False),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -166,6 +203,44 @@ def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> Non
         raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
 
 
+def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run the opencode agent headlessly as the proposer.
+
+    Pipes the task via stdin (avoids CLI arg length/encoding issues). Starts
+    a fresh session each call. Cross-run resume is handled at the orchestrate
+    level (checkpoint + persistent workspace files), so no ``--continue``
+    flag is used here.
+    """
+    cmd = ["opencode", "run", "--auto", "--dir", ws]
+    if model:
+        cmd += ["-m", model]
+    # Inject permission overrides so subagents don't get stuck on external_directory prompts.
+    # NO agent may read game source code or prior solutions — they must discover
+    # mechanics purely by experiment on clones, not by reading the implementation.
+    env = {**os.environ, "OPENCODE_CONFIG_CONTENT": json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "permission": {"external_directory": {
+            "*": "allow",
+            "**/environment_files/**": "deny",
+            "**/agent_solutions/**": "deny",
+            "**/FINDINGS.md": "deny",
+        }},
+    })}
+    out = err = ""
+    try:
+        r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True,
+                           timeout=minutes * 60, input=task, env=env)
+        out, err = r.stdout or "", r.stderr or ""
+    except subprocess.TimeoutExpired as ex:
+        out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+        print(f"[opencode proposer hit {minutes}min budget; verifying partial work]")
+    with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+        fh.write(out + ("\n--- STDERR ---\n" + err if err else ""))
+    blob = (out + " " + err).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
+
+
 def _propose_task(game, K, context, legs_index):
     return (A.PRECONCEPTIONS + "\n\n" + context +
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
@@ -213,36 +288,48 @@ class Report:
 
 
 def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
+                proposer="claude",
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
                 verbose=True) -> Report:
-    """Per-level compose->verify->debrief with marginal-C accounting. propose_fn(ws,K)
-    / verify_fn(game, solve_path)->(levels,path,err) / debrief_fn(ws,K) are injectable;
-    defaults use the real Claude agent + real game (credits needed)."""
+    """Per-level compose->verify->debrief with marginal-C accounting.
+
+    propose_fn(ws,K) / verify_fn(game, solve_path)->(levels,path,err) /
+    debrief_fn(ws,K) are injectable; defaults use either the Claude Code agent
+    (``proposer="claude"``) or opencode (``proposer="opencode"``) as proposer,
+    and the real game as verifier (credits needed for either proposer).
+    """
     ws = setup_workspace(game)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
     context = discovered_context(game) if propose_fn is None else ""
-    propose_fn = propose_fn or (lambda w, k: _claude_agent(w, _propose_task(game, k, context, _defs(_read(legs_p))), model, minutes_per))
-    debrief_fn = debrief_fn or (lambda w, k: _claude_agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2)))
+    if propose_fn is None:
+        _agent = _claude_agent if proposer == "claude" else _opencode_agent
+        propose_fn = lambda w, k: _agent(w, _propose_task(game, k, context, _defs(_read(legs_p))), model, minutes_per)
+    if debrief_fn is None:
+        _agent = _claude_agent if proposer == "claude" else _opencode_agent
+        debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
     verify_fn = verify_fn or run_solve_file
 
     rep = Report(game=game, reached=0)
-    # resume: if the workspace already clears some levels, start above them (don't
-    # re-spend the proposer on solved levels; their marginal C was recorded earlier).
+    # resume from checkpoint (restores marginal-C history across restarts)
+    ckpt = _load_checkpoint(ws)
+    if ckpt is not None:
+        rep = ckpt
+        if verbose:
+            print(f"resumed checkpoint: reached={rep.reached} total_marginal_C={rep.total_marginal_C}")
+    # also verify the workspace files: if they beat the checkpoint, use that
     lv0, _, _ = verify_fn(game, solve_p)
-    if lv0 > 0:
+    if lv0 > rep.reached:
         rep.reached = lv0
         if verbose:
-            print(f"resuming from level {lv0} (existing legs.py/players.py)")
+            print(f"workspace solve.py clears level {lv0} (resuming from there)")
     while rep.reached < max_level:
         K = rep.reached + 1
         legs_b, players_b = _read(legs_p), _read(players_p)
         try:
             propose_fn(ws, K)
         except CreditOut as ex:
-            # SAFEGUARD: no credits -- stop cleanly, keep whatever earlier levels we
-            # cleared. The runner greps this line to abort the remaining games.
             print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
             break
         levels, path, err = verify_fn(game, solve_p)
@@ -259,6 +346,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         rep.total_marginal_C += Cm
         rep.reached = reached
         rep.final_path = path
+        _save_checkpoint(ws, rep)
         if verbose:
             print(f"level {K}: reached={reached} marginal_C={Cm} "
                   f"total_C={rep.total_marginal_C} F={rep.free_energy:.3f}")
@@ -286,10 +374,11 @@ def _defs(code: str):
 
 if __name__ == "__main__":
     import sys
-    game, model, minutes, maxl = "wa30", None, 40, 9
+    game, model, minutes, maxl, proposer = "wa30", None, 40, 9, "opencode"
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
         elif a.startswith("--minutes="): minutes = int(a.split("=", 1)[1])
         elif a.startswith("--max-level="): maxl = int(a.split("=", 1)[1])
-    orchestrate(game=game, max_level=maxl, model=model, minutes_per=minutes)
+        elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
+    orchestrate(game=game, max_level=maxl, proposer=proposer, model=model, minutes_per=minutes)

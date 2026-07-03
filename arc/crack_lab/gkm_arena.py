@@ -43,7 +43,7 @@ def propose_text(prompt: str, proposer: str = "ollama", model: Optional[str] = N
     return llm_binder.ollama_text(prompt, num_predict=1600, timeout=600,
                                   **({} if model is None else {"model": model}))
 
-_NAME = {1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5"}
+_NAME = {1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5", 6: "ACTION6"}
 
 
 class _Budget:
@@ -79,7 +79,7 @@ class Arena:
 
     @property
     def actions(self):
-        return (1, 2, 3, 4, 5)
+        return (1, 2, 3, 4, 5, 6)
 
     @property
     def levels_completed(self) -> int:
@@ -93,8 +93,8 @@ class Arena:
 
     def step(self, a: int) -> np.ndarray:
         self._budget.tick()
-        if a not in (1, 2, 3, 4, 5):
-            raise ValueError("action must be 1..5")
+        if a not in (1, 2, 3, 4, 5, 6):
+            raise ValueError("action must be 1..6")
         self._fd = self._game.perform_action(ActionInput(id=EA[_NAME[a]]), raw=True)
         self.path.append(a)
         return self.frame()

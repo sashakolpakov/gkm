@@ -22,12 +22,12 @@ from __future__ import annotations
 import copy
 from collections import Counter
 from dataclasses import dataclass
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
 from logical_grid import Grid, components, objects
-from cofibrant import Anchor, identify_anchor
+from cofibrant import Anchor, identify_anchor, identify_all_anchors
 
 NAME = {0: "RESET", 1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5",
         6: "ACTION6", 7: "ACTION7"}
@@ -164,3 +164,15 @@ class AnchorConnector:
             return AnchorResult(anchor=algo, source="algorithmic",
                                 llm_ranked=ranked, rejected=rejected)
         return AnchorResult(anchor=algo, source="none", llm_ranked=ranked, rejected=rejected)
+
+    def identify_all(self, make_env, actions=(1, 2, 3, 4, 5)) -> Tuple[List[Anchor], Grid]:
+        """Find ALL steerable components --- every component that responds to
+        directional actions with distinct, consistent movement.
+
+        Returns (anchors, grid) where *anchors* is the list of all
+        independently steerable objects (empty if none). Uses the algorithmic
+        probe only (no LLM round-trip) so the result is deterministic and
+        game-agnostic."""
+        sequences, start = directed_probe(make_env, actions=actions)
+        grid = Grid.infer(start)
+        return identify_all_anchors(sequences, grid), grid

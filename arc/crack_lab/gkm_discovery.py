@@ -20,7 +20,7 @@ import copy
 import time
 from collections import Counter
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -28,9 +28,11 @@ import priors
 from lab import make_env
 from logical_grid import Grid, components, objects
 from anchor_connector import AnchorConnector
+from cofibrant import Anchor
 from arcengine import ActionInput, GameAction as EA
 
-NAME = {0: "RESET", 1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5"}
+NAME = {0: "RESET", 1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5",
+        6: "ACTION6", 7: "ACTION7"}
 PITCH = 4
 
 
@@ -69,7 +71,8 @@ class World:
     movement: Dict[int, Tuple[int, int]]
     effects: Tuple[int, ...]          # non-movement action candidates
     barrier_colors: Tuple[int, ...]   # impassable structure colours (from priors)
-    anchor: object = None             # the per-component cofibrant Anchor (locate)
+    anchor: object = None             # primary per-component cofibrant Anchor
+    anchors: List[Anchor] = field(default_factory=list)  # ALL steerable anchors
 
 
 def survey(game: str, use_llm=True, model=None) -> World:
@@ -80,13 +83,17 @@ def survey(game: str, use_llm=True, model=None) -> World:
     ar = AnchorConnector(use_llm=use_llm, **kw).identify(factory, actions=actions)
     if ar.anchor is None:
         raise RuntimeError("no controllable anchor")
+    # discover ALL steerable components (colimit cone: every object with distinct
+    # movement, not just the best one)
+    all_anchors, _ = AnchorConnector(use_llm=False).identify_all(factory, actions=actions)
     frame = np.asarray(snap.frame)
     movement = {a: v for a, v in ar.anchor.vectors.items() if a in actions and v != (0, 0)}
     effects = tuple(a for a in actions if a not in movement)
     bg = int(np.bincount(frame.flatten()).argmax())
     struct = tuple(c for c in priors.structure_colours(frame.tolist()) if c != bg)
     return World(game, factory, ar.anchor.color, Grid.infer(frame),
-                 actions, movement, effects, struct, anchor=ar.anchor)
+                 actions, movement, effects, struct, anchor=ar.anchor,
+                 anchors=all_anchors)
 
 
 def _anchor_xy(arr, w: World):

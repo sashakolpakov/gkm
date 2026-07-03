@@ -21,32 +21,29 @@ import gkm_arena as A
 
 
 def discovered_context(game: str) -> str:
-    """GAME-AGNOSTIC: run the GKM directed probe (gkm_discovery, no hand-coding) to
-    ground whatever this game affords -- the controllable avatar and its movement
-    actions/vectors. Hand that, and ONLY that, to the proposer; the manipulation
-    semantics, the goal, and any remaining mechanics are for the agent to discover
-    from frames. (Earlier versions also passed the probe's named manipulation verbs
-    -- 'push' / 'pick_up_and_carry' -- but those names come from a HAND-CODED verb
-    vocabulary in gkm_discovery, which pre-tells the game's nature. Retired: the
-    agent must name its own mechanics.)"""
-    import gkm_discovery as D
-    try:
-        verbs, effects, w = D.discover(game, use_llm=False, verbose=False)
-    except Exception as ex:
-        return ("DISCOVERY: directed probing found NO clear controllable avatar "
-                f"({str(ex)[:80]}). Discover the avatar, the mechanics, and the goal "
-                "entirely from the raw frames yourself.")
-    mv = {a: tuple(v) for a, v in sorted(w.movement.items())}
+    """Raw-substrate context: no pre-discovery. Just describe what the raw frame
+    looks like and what actions exist; the proposer determines the avatar,
+    mechanics, and goal entirely by experiment on clones."""
+    from lab import make_env
+    import numpy as np
+    factory = make_env(game)
+    env = factory()
+    snap = env.reset()
+    # snap.frame is a list of 1D arrays (rows); stack into a 2D frame
+    if hasattr(snap, "frame") and snap.frame:
+        frame = np.asarray(snap.frame)
+    else:
+        frame = np.asarray(snap)
+    h, w = frame.shape
+    palette = sorted(int(c) for c in np.unique(frame) if c != 0)
+    actions = env.available_actions or ()
     return (
-        f"DISCOVERED BY INTERACTION (grounded -- trust these, confirm the rest): the "
-        f"controllable avatar is colour {w.anchor_color}; movement actions {sorted(w.movement)} "
-        f"translate it with pixel vectors {mv}; the remaining action(s) "
-        f"{list(w.effects)} did something other than move the avatar -- what they do "
-        f"is for YOU to determine by experiment. These were found by probing each "
-        f"action on clones. The action numbering may be NON-standard. You must still "
-        f"DISCOVER the goal/win-condition (from how the reward changes) and any "
-        f"further mechanics, objects, barriers, or other agents by experiment on "
-        f"clones.")
+        f"RAW SUBSTRATE: game={game} frame={h}x{w} colours={palette} "
+        f"actions={list(actions)}. No pre-discovery: determine the avatar, "
+        f"mechanics, and goal entirely by experiment on clones. Write tiny "
+        f"probe scripts, observe pixel changes, and discover what each action "
+        f"does. The GKM discovery layer is NOT used -- you work from raw frames."
+    )
 
 
 TESTER = '''import importlib.util, sys
