@@ -1,7 +1,0 @@
-Still `levels=1, replay_ok=True`. No behaviour changed.
-
-**Summary of debrief:**
-
-- `play_level_1` is already maximally thin — it's just `play_sequence(env, _L1)`. No repeated code exists yet to refactor (there's only one player).
-- The single leg `play_sequence` is the right primitive; all player logic lives there.
-- Appended to `legs_log.md`: the recurring **sequence-replay player** pattern and the candidate higher-order leg `sequence_player(actions)` — a factory that collapses each player to a one-liner assignment. The rule: promote it to `legs.py` the moment a second hardcoded-sequence player appears.
