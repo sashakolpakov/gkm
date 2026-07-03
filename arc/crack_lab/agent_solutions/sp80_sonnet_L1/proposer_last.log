@@ -1,0 +1,7 @@
+Done. Here's the summary of what changed:
+
+**legs.py** — added `sense_align_trigger(env, sense_fn, align_fn, trigger_fn)`: a higher-order leg that binds the recurring `sense → align → trigger` spine. The three existing legs (`best_deflect_left_col`, `move_bar_to_left_col`, `pour`) remain unchanged — they're now arguments, not inlined callers.
+
+**players.py** — `play_level_1` collapsed from 3 explicit lines to a single `sense_align_trigger(...)` call. Still the same 4 moves; `replay_ok=True` confirms identical behaviour.
+
+**legs_log.md** — entry appended explaining the `sense_align_trigger` pattern, contrasting it with ls20's replay and wa30's monolithic BFS delivery, and sketching when the pattern applies and how to extend it (loop it for multi-pour levels).

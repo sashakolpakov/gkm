@@ -1,0 +1,8 @@
+Done. Here's the summary:
+
+**What changed:**
+- `legs.py`: extracted the inline step-counter closure from `sokoban_deliver` into a new shared leg `make_step_budget(env, max_real)` → `(step_fn, budget_ok_fn)`. `sokoban_deliver` now calls it on entry. No other behaviour touched.
+- `players.py`: unchanged — `play_level_1` was already a single-line thin composition.
+- `legs_log.md`: appended the debrief entry documenting the recurring `make_step_budget` + scan→plan→execute→stuck loop skeleton, and the candidate higher-order leg `loop_with_budget`.
+
+**Candidate higher-order leg identified:** `loop_with_budget(env, max_real, plan_fn, exec_fn, stuck_limit)` — the retry harness that every future level leg will need, parameterised by a domain-specific planner and executor.

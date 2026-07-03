@@ -722,3 +722,19 @@ neutral L1-L4 needs a bigger per-level budget than the old primed runs did. wa30
 under neutral priors remains pending (would confirm the helper + wall-relay are also
 self-discovered, not just carry). L1 alone already answers the "was it hard-coded"
 question: no.
+
+### R-SONNET (2026-07-03): Sonnet is strong enough as the proposer -- L1 of all 3 games, validated
+
+Tested whether the cheaper Sonnet can replace Opus as the headless-agent proposer. Ran
+wa30, ls20, sp80 in parallel, from scratch, neutral priors, --model=sonnet, capped L1,
+30-min budget, with the new safeguards (capture proposer output; resume; salvage on
+timeout; abort on credit-out). RESULT: all THREE reached LEVEL 1, replay-validated.
+  wa30 L1: marginal_C=164 (Sonnet)   vs 181 (Opus neutral) vs 112 (Opus primed)
+  ls20 L1: marginal_C=7   (Sonnet)   vs 55 (Opus)   -- Sonnet wrote a far leaner L1
+  sp80 L1: marginal_C=66  (Sonnet)   vs 66 (Opus)   -- identical structure size
+Sonnet discovered each mechanic itself (e.g. wa30 = "sokoban_deliver" carry; sp80 =
+liquid-pour) and wrote working, replay-validated solve.py. So the write/run/fix loop
+does NOT require Opus for L1; Sonnet is ~4-5x cheaper on output ($15 vs $75/M). This
+unlocks the cheap path: progress through levels on Sonnet, only escalating to Opus if a
+level defeats it. Snapshots: agent_solutions/{wa30,ls20,sp80}_sonnet_L1/.
+NEXT: progressive Sonnet runs to L4 per game (resume from these L1 libraries).
