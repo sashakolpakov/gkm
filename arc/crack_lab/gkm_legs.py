@@ -130,19 +130,40 @@ def setup_workspace(game: str) -> str:
 # ---------------------------------------------------------------------------
 # default proposer: the real Claude Code agent (tools) -- needs credits
 # ---------------------------------------------------------------------------
+# markers that mean "no credits / rate-limited" -- the whole run should abort, not
+# silently churn out empty proposals against a dead API.
+_CREDIT_OUT_MARKERS = ("out of usage credits", "credit balance", "session limit",
+                       "rate limit", "insufficient", "quota")
+
+
+class CreditOut(RuntimeError):
+    """Raised when the proposer subprocess reports it is out of credits/quota, so the
+    orchestrator can stop the whole sequence cleanly instead of burning the budget."""
+
+
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
     labdir = os.path.dirname(os.path.abspath(__file__))
     cmd = ["claude", "-p", task, "--allowedTools", "Bash", "Read", "Write", "Edit",
            "--dangerously-skip-permissions", "--add-dir", labdir, "--output-format", "text"]
     if model:
         cmd += ["--model", model]
+    out = err = ""
     try:
-        subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
-    except subprocess.TimeoutExpired:
+        r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
+        out, err = r.stdout or "", r.stderr or ""
+    except subprocess.TimeoutExpired as ex:
         # Out of the per-level time budget. Whatever the agent already wrote to the
         # workspace (legs.py/players.py) persists; let the loop verify that partial
         # work instead of crashing the whole run.
+        out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
         print(f"[proposer hit {minutes}min budget; verifying partial work]")
+    # SAFEGUARD: persist the proposer's own output so a credit-out / crash is visible
+    # (previously discarded). And if it reports no-credits, abort the whole sequence.
+    with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+        fh.write(out + ("\n--- STDERR ---\n" + err if err else ""))
+    blob = (out + " " + err).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
 
 
 def _propose_task(game, K, context, legs_index):
@@ -217,7 +238,13 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     while rep.reached < max_level:
         K = rep.reached + 1
         legs_b, players_b = _read(legs_p), _read(players_p)
-        propose_fn(ws, K)
+        try:
+            propose_fn(ws, K)
+        except CreditOut as ex:
+            # SAFEGUARD: no credits -- stop cleanly, keep whatever earlier levels we
+            # cleared. The runner greps this line to abort the remaining games.
+            print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
+            break
         levels, path, err = verify_fn(game, solve_p)
         if levels < K:
             if verbose:
