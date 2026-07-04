@@ -1,0 +1,6 @@
+Level 1 is solved. Summary:
+
+- **Mechanic discovered**: ls20 level 1's avatar is a 5x5 sliding tile (colors 12/9) that moves exactly one tile-length per action (1=up, 2=down, 3=left, 4=right) along a color-3 track network. A move only succeeds if the destination 5x5 block is entirely track. The winning room entrance is gated behind a hidden switch elsewhere on the track — passing over one specific cell before approaching the doorway is what opens it, which is why naive "shortest path by block position" search missed it but full-frame BFS found it.
+- **legs.py**: added `find_winning_path` (generic BFS over clones, deduped on raw frame bytes, returns the first action sequence that raises `levels_completed`), `execute_path` (replay on the real env), and `solve_by_search` (composes the two). All game-agnostic — no ls20-specific assumptions baked in.
+- **players.py**: `play_level_1` is just `solve_by_search(env)`.
+- Verified via `python gkm_try.py`: `RESULT levels=1 moves=13 replay_ok=True err=None`.
