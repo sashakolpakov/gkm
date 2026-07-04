@@ -114,9 +114,23 @@ occupy space; a background colour fills empty space; some colours form walls/bar
 that divide the space into regions you cannot cross. Things persist and don't vanish
 without cause.
 
-FIND YOURSELF FIRST: one object is YOU. Discover which by EXPERIMENT -- on a clone,
-take each action and see which object moves consistently; that is your avatar and
-those are your movement actions. A non-moving action is probably an interaction.
+FIND WHAT YOU CONTROL (there may be MORE THAN ONE): do NOT assume a single avatar.
+One OR SEVERAL objects may be under your control. Discover them by EXPERIMENT -- on a
+clone, take each action and see which object(s) move consistently. DIFFERENT actions
+may steer DIFFERENT objects (e.g. one action-set drives avatar A, another drives
+avatar B), or an action may move several objects at once. ENUMERATE EVERY controllable
+object and record which actions steer each; a controllable object is one YOUR action
+reproducibly moves. An action that moves nothing is probably an interaction. Some
+objects move on their own no matter what you do -- those are AUTONOMOUS agents, NOT
+yours (see OTHER AGENTS); tell them apart by whether your action reproducibly steers
+them.
+
+SEVERAL CONTROLLABLE AVATARS -> COORDINATE THEM (the colimit cone over avatars): when
+more than one object is controllable, the level may be UNSOLVABLE by any single one
+alone -- do not try to win with just one. Treat each controllable avatar as its own
+controller with its own movement legs, and COMPOSE them: stage the world with one
+avatar so another can finish, or drive them in turn toward the shared goal. Build a
+SEPARATE control routine per avatar and glue them into one plan.
 
 AFFORDANCES: an action can mean anything -- move, toggle, transform, attach, select,
 rotate, open, fire. Do NOT assume. Discover what each action does by EXPERIMENT on
