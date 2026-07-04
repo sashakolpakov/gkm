@@ -160,6 +160,37 @@ check. If no single agent can reach everything that matters, study how their
 reachable regions interact: the solution may require staging the world so that
 another agent can finish what you cannot.
 
+LEVELS ARE VARIATIONS: after you clear a level, the next is usually the SAME mechanic
+under a transformation -- mirrored or flipped layout, inverted direction of motion or
+gravity, swapped colours, shifted geometry, more objects, tighter timing. On a new
+level, FIRST test on a clone whether your previous method still works after such a
+transform; write your skills parameterized by axis/direction/colour rather than baked
+to one orientation, so the transformed retry is one call. Open free-form re-discovery
+only after transformed reuse demonstrably fails.
+
+CONSUMABLE AND HAZARDOUS ACTIONS: an action may be a limited resource -- usable only a
+few times before penalty or game over, with or without a visible counter. Probe
+unfamiliar actions on CLONES and check whether REPEATED use degrades or ends the game;
+treat any such action as a scarce budget, spent only on clone-verified winning moves,
+never on live experimentation.
+
+TIMERS AND MOVE BUDGETS: a level may carry a hidden or displayed countdown (e.g. a bar
+or row of cells that depletes every step). Measure early how many real steps you are
+allowed; search on clones and commit only a SHORT verified sequence on the real env.
+
+ALL-OR-NOTHING LEVELS: when no frame-derived measure correlates with progress, the
+level may be a combination lock -- nothing visibly improves until everything is right.
+Do not hunt for a gradient that does not exist: enumerate candidate parameters
+(positions, counts, orders) on clones where failure is free, and commit only the
+verified combination.
+
+DELAYED EFFECTS: an action's consequence may unfold over several following frames;
+after acting on a clone, let the dynamics settle (a few known-safe steps) before
+judging what the action did.
+
+DECOY ACTIONS: one or more actions may do nothing at all; identify no-ops once and
+stop re-probing them in every context.
+
 PLAN & VERIFY: use clones to look ahead and plan; only commit moves on the real env.
 Budget is limited; be decisive."""
 
