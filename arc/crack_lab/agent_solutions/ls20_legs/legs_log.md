@@ -2,106 +2,77 @@
 
 Recurring composition patterns and repeated novelty.
 
-## ls20 (LS20) -- core mechanic
-The avatar carries a (shape, colour, rotation) state. Transform tiles cycle one
-component when stepped on; a TARGET tile requires a specific combo AND the avatar
-to stand exactly on it (it blocks movement until matched). A level clears when
-all targets are satisfied. Directions: 1=up 2=down 3=left 4=right, 5=noop. A
-step-counter UI drains every move, so raw frames never repeat -> useless as a
-search key; the compact game state (avatar pos + shape/colour/rot + done-mask) is
-the right dedup key.
+## bfs_to_level_up (legs.py)
+Generic blind BFS over env clones, deduping states by frame bytes with an
+auto-detected HUD/counter mask (probes the least-changing action, repeats it
+to reveal cells that drift every step regardless of movement/action, e.g. a
+"moves used" countdown bar). Commits the shortest winning path to the real
+env. Used for level 1 (ls20): a 4-direction avatar sliding on a 5px lattice
+through a maze that LOOKS solid (color 3) but is actually mostly open track;
+a small stationary "switch" object toggles a HUD flag when stepped on, and
+reaching a specific chamber after the switch completes the level. No
+level-specific logic was hardcoded into the leg -- it should generalize to
+other small-state-space levels in ls20 as long as HUD noise is the only
+non-deterministic-looking part of the frame.
 
-## Legs
-- `state_key` / `plan_to_next_level` / `run_plan` / `advance_one_level`
-  BFS over avatar states on clones to the shortest path that advances one level,
-  then commit it. General: it self-discovers which transform tiles to visit.
+## Debrief: comparing play_level_1 to earlier players (cross-workspace)
 
-## Level 1
-`advance_one_level(env)` alone. Solves in 13 moves, replay-validated. (One target,
-one rotation tile: rotation off by one, shape+colour already matched.)
+`players.py` here has only one player so far (`play_level_1`), and it is
+already a single call into `bfs_to_level_up` -- no repeated code within this
+workspace to extract. Diffing against the sibling leg workspaces
+(gkm_legs_ws_sp80, gkm_legs_ws_wa30) to look for a cross-game pattern instead:
 
-## Level 2
-Object-moving / carry level (NOT a transform level). Big colour-4 maze; avatar
-can only go up/left/right (no down); action 2 is the interaction (attach/release
-a carried sprite). The win condition depends on where SPRITES end up, so the
-avatar-only `state_key` collapses distinct worlds and BFS wrongly reports the
-goal unreachable (whole reachable space = 81 states, no solution). Adding every
-sprite's (name,x,y,rot) to the dedup key (`full_state_key`) makes the true space
-~576 states; BFS then finds a 45-move solution. `play_level_2` =
-`advance_one_level(env, key_fn=full_state_key)`. 45 moves (58 total), replay-ok.
+- sp80's `shift_and_confirm(env, move_action, n, confirm_action)`: move n
+  steps, then press one separate "lock it in" action.
+- wa30's `move_interact(env, *steps)`: walk a sequence of (direction, times)
+  steps, then press one separate "interact" action.
+- ls20's `bfs_to_level_up(env)`: try candidate action sequences on *clones*,
+  and only commit the one sequence that succeeds to the real env.
 
-Refactor done (real reuse, not churn): threaded a `key_fn` param through
-`plan_to_next_level` / `advance_one_level` (default = `state_key`) and added the
-general `full_state_key` leg. Both players share ONE generic BFS; the only
-per-level knob is which dedup key captures "what matters" for the goal.
+**Recurring shape:** every one of these legs is "propose/attempt a sequence
+of provisional actions, then gate on a single decisive action or check
+before it counts." sp80/wa30 hardcode the decisive action (confirm/interact)
+as the last step of a known-good sequence; ls20 generalizes the same shape
+by making the whole sequence provisional (on a clone) and the "decisive
+step" the success check (`levels_completed` increased) rather than a fixed
+action id.
 
-## Debrief: candidate higher-order leg (updated after level 2)
-Two players now exist and the pattern is confirmed across both:
+## play_level_2 (players.py)
+Level 2's frame is a much larger, more elaborate maze (multiple nested
+chambers of color 3 walls, colored "rooms" in 5/9/11/8/12/0/1) but the same
+`bfs_to_level_up` leg solved it with zero level-specific code -- confirms
+the leg's HUD-mask + blind-BFS-with-frame-dedup approach generalizes across
+very different level geometries in ls20, not just superficial variants of
+level 1. No new leg was needed.
 
-    play_level_1(env) -> advance_one_level(env)
-    play_level_2(env) -> advance_one_level(env, key_fn=full_state_key)
+## play_level_3 (players.py)
+Same `bfs_to_level_up` leg, zero new code, solved level 3 in one shot
+(97 moves, replay_ok). Third level in a row where blind BFS + HUD-mask
+dedup is sufficient -- ls20 levels so far are all small-state-space mazes
+distinguished only by geometry/color layout, not by new mechanics, so no
+new leg was warranted.
 
-Every `play_level_K` is a SINGLE `advance_one_level` call whose only per-level knob
-is which dedup `key_fn` captures "what matters" for that level's goal. There is no
-cross-player code duplication to hoist -- each player is already a one-line thin
-composition, and the shared skill (`advance_one_level` over the generic BFS) is
-written exactly once in `legs.py`. Nothing was refactored this round: a refactor
-would be pure churn with no shared code left to extract.
+**Candidate higher-order leg:** `attempt_then_commit(env, propose, is_win)`
+-- where `propose` yields one or more candidate action sequences (either a
+fixed script like shift/move-interact, or a generator like BFS/DFS), and
+`is_win(env_after)` decides whether that sequence's effect should be kept.
+Fixed-script legs (`shift_and_confirm`, `move_interact`) would become
+`attempt_then_commit` calls with `is_win` always true and `propose`
+returning exactly one sequence; search legs (`bfs_to_level_up`) would supply
+a `propose` that enumerates many candidates and an `is_win` checking level
+progress. Not extracted yet since it would require touching two other
+workspaces' legs.py for a pattern only 3 instances deep -- worth revisiting
+if a 4th leg (in any game) repeats the shape.
 
-Recurring composition pattern (candidate higher-order leg): a per-level player =
-`advance_one_level(env, key_fn=<per-level choice>)`, dispatched by level number.
-The natural promotion is `advance_levels(env, n=None, key_fn=...)` -- repeatedly
-call `advance_one_level` until `n` levels clear (or the game terminates / no plan
-is found), returning the count advanced. STILL PREMATURE, and for a concrete
-reason now visible with two data points: the multi-level loop lives in `solve.py`,
-and each player itself advances exactly ONE level -- no player repeats a loop. A
-blind `advance_levels(env, key_fn=K)` would also be wrong because the correct key
-VARIES per level (`state_key` for L1, `full_state_key` for L2), so it needs a
-per-level key selector, not a single fixed key. Promote only once a single player
-must clear several sub-levels, or a data-driven `{level: key_fn}` dispatch table
-actually recurs; until then `advance_one_level` + `solve.py`'s dispatch loop is the
-right altitude.
-
-
-## Level 3
-Same family as level 1 (avatar-configuration level), NOT a carry level despite 97
-sprites (nearly all are static maze/wall cells). `play_level_3` =
-`advance_one_level(env)` with the default avatar-only `state_key`. BFS finds a
-41-move clearing path in ~7s / <8000 clone-steps. `full_state_key` also solves it
-(39 moves) but costs ~10x more search (67s) for no benefit, so the cheap key wins.
-Key insight reconfirmed: a BFS path that raises levels_completed is
-simulator-verified, so the dedup key only risks MISSING solutions, never inventing
-false ones -- prefer the cheapest key that still finds a path. 99 moves total,
-replay-ok. No new legs needed; pure reuse.
-
-## Debrief: candidate higher-order leg (updated after level 3)
-Three players now exist and the pattern holds cleanly across all of them:
-
-    play_level_1(env) -> advance_one_level(env)
-    play_level_2(env) -> advance_one_level(env, key_fn=full_state_key)
-    play_level_3(env) -> advance_one_level(env)
-
-New this round: `play_level_1` and `play_level_3` have BYTE-IDENTICAL bodies
-(`advance_one_level(env)` with the default `state_key`). That looks like repeated
-code but is NOT duplication to hoist -- it is two call-sites of the ONE shared leg,
-which is exactly the thin-composition target. The BFS skill is still written once
-in `legs.py`; the players carry only per-level intent (comments) plus the single
-knob that varies: which dedup `key_fn` captures "what matters" for the goal
-(avatar-only for configuration levels 1/3, full-sprite for carry level 2). Nothing
-was refactored -- there is no shared implementation left to extract, so a refactor
-would be churn.
-
-Recurring composition pattern (candidate higher-order leg): a per-level player =
-`advance_one_level(env, key_fn=<per-level choice>)`, dispatched by level number in
-`solve.py`. With three data points the key selector is clearly a 2-valued function
-of the level FAMILY (configuration vs carry), not of the level number -- levels 1
-and 3 share a key precisely because they share a family. The natural promotion is
-therefore NOT a fixed-key `advance_levels(env, key_fn=K)` but a data-driven
-`advance_by_table(env, {family_or_level: key_fn})` (or a `pick_key(env)` leg that
-sniffs whether the goal depends on sprite positions and picks the cheapest
-sufficient key automatically). STILL PREMATURE: each player advances exactly one
-level, the multi-level loop already lives in `solve.py`, and a hand-written
-per-level `key_fn` is cheaper than a heuristic sniffer while the table has only two
-distinct values. Promote once a single player must clear several sub-levels, OR the
-`{level: key_fn}` mapping grows enough that repeating it at call-sites recurs.
-Until then, `advance_one_level` + `solve.py`'s dispatch loop is the right altitude.
+## play_level_4 (players.py)
+Same `bfs_to_level_up` leg again, zero new legs. The only change needed was
+raising `max_nodes` from the default 6000 to 30000 in the `play_level_4`
+call -- at the default budget BFS ran out of nodes before finding the
+level-up transition (level 4's state space/solution path is larger, 140
+total moves vs 97 for level 3). Confirms the leg's search itself
+generalizes across all 4 levels seen so far; the only per-level knob ever
+needed is the node budget, not new logic. Suggests a future refinement of
+`bfs_to_level_up` could auto-escalate `max_nodes` (e.g. retry with 5x budget
+on failure) instead of callers hardcoding a bigger number, but not worth
+doing until a level actually needs >30000 or auto-escalation avoids
+real repeated tuning.

@@ -245,6 +245,43 @@ def identify_anchor(sequences, grid: Grid, candidate_colors=None,
     return best
 
 
+def identify_all_anchors(sequences, grid: Grid, candidate_colors=None,
+                         directional_actions=(1, 2, 3, 4),
+                         min_distinct=1) -> List[Anchor]:
+    """Return ALL components that respond to directional actions with at least
+    ``min_distinct`` distinct movement vectors. Unlike ``identify_anchor()``,
+    which returns the single best anchor, this function returns every steerable
+    component --- enabling the colimit cone: one leg composed for each anchor.
+
+    A lower ``min_distinct`` (default 1) admits objects that move in only one
+    direction (e.g. a bar against a game boundary), which a 2-distinct filter
+    would reject."""
+    if not sequences:
+        return []
+    start = next(iter(sequences.values()))[0][0]
+    palette = (candidate_colors
+               if candidate_colors is not None
+               else [c for c in range(1, 16) if (start == c).any()])
+
+    result: List[Anchor] = []
+    for color in palette:
+        for component in components(start, color):
+            seed = grid.majblock(component)
+            vectors, consistency, moved = score_seed(sequences, grid, color, seed, directional_actions)
+            mv = [a for a in directional_actions if moved.get(a)]
+            distinct = {vectors[a] for a in mv}
+            if len(distinct) < min_distinct:
+                continue
+            distinctiveness = len(distinct) / len(directional_actions)
+            mc = float(np.mean([consistency[a] for a in mv])) if mv else 0.0
+            score = distinctiveness * mc
+            result.append(Anchor(color=color, seed=seed, size=len(component),
+                                 vectors=vectors, consistency=consistency,
+                                 moved=moved, distinctiveness=distinctiveness,
+                                 score=score))
+    return result
+
+
 # ---------------------------------------------------------------------------
 # Action->avatar-displacement probe by direct intervention (no random walk)
 # ---------------------------------------------------------------------------

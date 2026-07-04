@@ -22,6 +22,7 @@ default proposer.
 """
 from __future__ import annotations
 import importlib.util
+import json
 import os
 import subprocess
 import time
@@ -52,6 +53,42 @@ def marginal_complexity(legs_before: str, legs_after: str,
 def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
     """F = R + lambda*C with R = -levels_reached and C = total marginal novelty."""
     return -float(levels) + lam * float(marginal_C_total)
+
+
+CHECKPOINT_FILE = "checkpoint.json"
+"""Filename for per-level marginal-C checkpoint (enables cross-run resume)."""
+
+
+def _save_checkpoint(ws: str, rep: Report) -> None:
+    """Persist the Report so a later restart restores the full marginal-C history."""
+    data = {
+        "game": rep.game,
+        "reached": rep.reached,
+        "total_marginal_C": rep.total_marginal_C,
+        "records": [{"level": r.level, "marginal_C": r.marginal_C, "reached": r.reached}
+                     for r in rep.records],
+        "final_path": rep.final_path,
+        "validated": rep.validated,
+    }
+    with open(os.path.join(ws, CHECKPOINT_FILE), "w") as f:
+        json.dump(data, f)
+
+
+def _load_checkpoint(ws: str) -> Optional[Report]:
+    """Restore a checkpoint from a previous run, or None."""
+    path = os.path.join(ws, CHECKPOINT_FILE)
+    if not os.path.exists(path):
+        return None
+    with open(path) as f:
+        data = json.load(f)
+    return Report(
+        game=data["game"],
+        reached=data["reached"],
+        total_marginal_C=data["total_marginal_C"],
+        records=[LevelRecord(**r) for r in data.get("records", [])],
+        final_path=data.get("final_path", []),
+        validated=data.get("validated", False),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -95,8 +132,9 @@ def _read(path: str) -> str:
     return open(path).read() if os.path.exists(path) else ""
 
 
-def setup_workspace(game: str) -> str:
-    ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}")
+def setup_workspace(game: str, tag: str = "") -> str:
+    suffix = f"_{tag}" if tag else ""
+    ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}{suffix}")
     os.makedirs(ws, exist_ok=True)
     labdir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(ws, "gkm_try.py"), "w") as fh:
@@ -130,19 +168,109 @@ def setup_workspace(game: str) -> str:
 # ---------------------------------------------------------------------------
 # default proposer: the real Claude Code agent (tools) -- needs credits
 # ---------------------------------------------------------------------------
+# markers that mean "no credits / rate-limited" -- the whole run should abort, not
+# silently churn out empty proposals against a dead API.
+_CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
+                       "rate limit", "insufficient", "quota")
+
+
+class CreditOut(RuntimeError):
+    """Raised when the proposer subprocess reports it is out of credits/quota, so the
+    orchestrator can stop the whole sequence cleanly instead of burning the budget."""
+
+
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
     labdir = os.path.dirname(os.path.abspath(__file__))
     cmd = ["claude", "-p", task, "--allowedTools", "Bash", "Read", "Write", "Edit",
            "--dangerously-skip-permissions", "--add-dir", labdir, "--output-format", "text"]
     if model:
         cmd += ["--model", model]
+    out = err = ""
     try:
-        subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
-    except subprocess.TimeoutExpired:
+        r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
+        out, err = r.stdout or "", r.stderr or ""
+    except subprocess.TimeoutExpired as ex:
         # Out of the per-level time budget. Whatever the agent already wrote to the
         # workspace (legs.py/players.py) persists; let the loop verify that partial
         # work instead of crashing the whole run.
+        out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
         print(f"[proposer hit {minutes}min budget; verifying partial work]")
+    # SAFEGUARD: persist the proposer's own output so a credit-out / crash is visible
+    # (previously discarded). And if it reports no-credits, abort the whole sequence.
+    with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+        fh.write(out + ("\n--- STDERR ---\n" + err if err else ""))
+    blob = (out + " " + err).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
+
+
+def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run the opencode agent headlessly as the proposer.
+
+    Pipes the task via stdin (avoids CLI arg length/encoding issues). Starts
+    a fresh session each call. Cross-run resume is handled at the orchestrate
+    level (checkpoint + persistent workspace files), so no ``--continue``
+    flag is used here.
+    """
+    cmd = ["opencode", "run", "--auto", "--dir", ws]
+    if model:
+        cmd += ["-m", model]
+    # Inject permission overrides so subagents don't get stuck on external_directory prompts.
+    # NO agent may read game source code or prior solutions — they must discover
+    # mechanics purely by experiment on clones, not by reading the implementation.
+    env = {**os.environ, "OPENCODE_CONFIG_CONTENT": json.dumps({
+        "$schema": "https://opencode.ai/config.json",
+        "permission": {"external_directory": {
+            "*": "allow",
+            "**/environment_files/**": "deny",
+            "**/agent_solutions/**": "deny",
+            "**/FINDINGS.md": "deny",
+        }},
+    })}
+    out = err = ""
+    try:
+        r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True,
+                           timeout=minutes * 60, input=task, env=env)
+        out, err = r.stdout or "", r.stderr or ""
+    except subprocess.TimeoutExpired as ex:
+        out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+        print(f"[opencode proposer hit {minutes}min budget; verifying partial work]")
+    with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+        fh.write(out + ("\n--- STDERR ---\n" + err if err else ""))
+    blob = (out + " " + err).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
+
+
+def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run Codex headlessly as the proposer, writing a transcript as it streams."""
+    labdir = os.path.dirname(os.path.abspath(__file__))
+    cmd = [
+        "codex", "exec",
+        "--cd", ws,
+        "--add-dir", labdir,
+        "--skip-git-repo-check",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--color", "never",
+        task,
+    ]
+    if model:
+        cmd[2:2] = ["--model", model]
+    log_path = os.path.join(ws, "proposer_last.log")
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(cmd, cwd=ws, stdout=log, stderr=subprocess.STDOUT,
+                                text=True)
+        try:
+            proc.wait(timeout=minutes * 60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            print(f"[codex proposer hit {minutes}min budget; verifying partial work]")
+        if proc.returncode not in (0, -9):
+            txt = _read(log_path).lower()
+            if any(m in txt for m in _CREDIT_OUT_MARKERS):
+                raise CreditOut(f"codex reported no credits/quota (see {log_path})")
+            raise RuntimeError(f"codex proposer CLI failed (see {log_path})")
 
 
 def _propose_task(game, K, context, legs_index):
@@ -151,7 +279,12 @@ def _propose_task(game, K, context, legs_index):
             f"legs in legs.py: {legs_index or '(none yet)'}.\n"
             f"GOAL: make solve.py reach LEVEL {K}. First run `python gkm_try.py` to see "
             "where you are; solve.py dispatches to players.play_level_K. On a clone at "
-            f"level {K}, learn its structure. Then WRITE `play_level_{K}(env)` in "
+            f"level {K}, learn its structure. FIRST test HOW MANY objects are "
+            "CONTROLLABLE (different actions may steer different objects -- do NOT "
+            "assume a single avatar); if several are controllable the level may be "
+            "UNSOLVABLE with one alone, so grow a SEPARATE movement leg-set per avatar "
+            "and compose them (the colimit cone over avatars). Then WRITE "
+            f"`play_level_{K}(env)` in "
             "players.py that ONLY COMPOSES legs imported from legs.py. REUSE existing "
             "legs wherever the level is an earlier one in a new configuration; add NEW "
             "legs to legs.py ONLY when nothing fits, and keep them minimal and general. "
@@ -192,46 +325,72 @@ class Report:
 
 
 def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
+                proposer="claude", tag="",
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
                 verbose=True) -> Report:
-    """Per-level compose->verify->debrief with marginal-C accounting. propose_fn(ws,K)
-    / verify_fn(game, solve_path)->(levels,path,err) / debrief_fn(ws,K) are injectable;
-    defaults use the real Claude agent + real game (credits needed)."""
-    ws = setup_workspace(game)
+    """Per-level compose->verify->debrief with marginal-C accounting.
+
+    propose_fn(ws,K) / verify_fn(game, solve_path)->(levels,path,err) /
+    debrief_fn(ws,K) are injectable; defaults use either the Claude Code agent
+    (``proposer="claude"``) or opencode (``proposer="opencode"``) as proposer,
+    and the real game as verifier (credits needed for either proposer).
+    """
+    ws = setup_workspace(game, tag)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
     context = discovered_context(game) if propose_fn is None else ""
-    propose_fn = propose_fn or (lambda w, k: _claude_agent(w, _propose_task(game, k, context, _defs(_read(legs_p))), model, minutes_per))
-    debrief_fn = debrief_fn or (lambda w, k: _claude_agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2)))
+    if propose_fn is None:
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        _agent = agents[proposer]
+        propose_fn = lambda w, k: _agent(w, _propose_task(game, k, context, _defs(_read(legs_p))), model, minutes_per)
+    if debrief_fn is None:
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        _agent = agents[proposer]
+        debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
     verify_fn = verify_fn or run_solve_file
 
     rep = Report(game=game, reached=0)
-    # resume: if the workspace already clears some levels, start above them (don't
-    # re-spend the proposer on solved levels; their marginal C was recorded earlier).
-    lv0, _, _ = verify_fn(game, solve_p)
-    if lv0 > 0:
-        rep.reached = lv0
+    # resume from checkpoint (restores marginal-C history across restarts)
+    ckpt = _load_checkpoint(ws)
+    if ckpt is not None:
+        rep = ckpt
         if verbose:
-            print(f"resuming from level {lv0} (existing legs.py/players.py)")
+            print(f"resumed checkpoint: reached={rep.reached} total_marginal_C={rep.total_marginal_C}")
+    # also verify the workspace files: if they beat the checkpoint, use that
+    lv0, path0, _ = verify_fn(game, solve_p)
+    if lv0 > rep.reached:
+        rep.reached = lv0
+        rep.final_path = path0
+        if verbose:
+            print(f"workspace solve.py clears level {lv0} (resuming from there)")
     while rep.reached < max_level:
         K = rep.reached + 1
         legs_b, players_b = _read(legs_p), _read(players_p)
-        propose_fn(ws, K)
+        try:
+            propose_fn(ws, K)
+        except CreditOut as ex:
+            print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
+            break
         levels, path, err = verify_fn(game, solve_p)
         if levels < K:
             if verbose:
                 print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
             break
         Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-        debrief_fn(ws, K)
-        levels2, path2, _ = verify_fn(game, solve_p)      # behaviour preserved?
+        try:
+            debrief_fn(ws, K)
+            levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
+        except CreditOut as ex:
+            print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+            levels2, path2 = levels, path
         reached = max(levels, levels2)
         path = path2 if levels2 >= levels else path
         rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
         rep.total_marginal_C += Cm
         rep.reached = reached
         rep.final_path = path
+        _save_checkpoint(ws, rep)
         if verbose:
             print(f"level {K}: reached={reached} marginal_C={Cm} "
                   f"total_C={rep.total_marginal_C} F={rep.free_energy:.3f}")
@@ -239,6 +398,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             break
 
     rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
+    _save_checkpoint(ws, rep)
     if verbose:
         print(f"\n=== {game}: reached level {rep.reached} | validated={rep.validated} | "
               f"total_marginal_C={rep.total_marginal_C} | F={rep.free_energy:.3f} ===")
@@ -259,10 +419,12 @@ def _defs(code: str):
 
 if __name__ == "__main__":
     import sys
-    game, model, minutes, maxl = "wa30", None, 40, 9
+    game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
         elif a.startswith("--minutes="): minutes = int(a.split("=", 1)[1])
         elif a.startswith("--max-level="): maxl = int(a.split("=", 1)[1])
-    orchestrate(game=game, max_level=maxl, model=model, minutes_per=minutes)
+        elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
+        elif a.startswith("--tag="): tag = a.split("=", 1)[1]
+    orchestrate(game=game, max_level=maxl, proposer=proposer, model=model, minutes_per=minutes, tag=tag)
