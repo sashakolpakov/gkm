@@ -1,0 +1,20 @@
+{
+  "attempt": "after_debrief_b2872b134107",
+  "metadata": {
+    "game": "ls20",
+    "level": 1,
+    "phase": "after_debrief",
+    "reached": 1,
+    "err": null,
+    "attempt": "after_debrief_b2872b134107",
+    "created_at": "2026-07-04T21:08:46.466396+00:00",
+    "files": [
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "players.py",
+      "proposer_last.log",
+      "solve.py"
+    ]
+  }
+}

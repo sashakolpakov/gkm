@@ -1,0 +1,6 @@
+**Debrief summary:**
+
+- `players.py` has only `play_level_1`, and it's already thin composition (`solve_by_search(env)`) — no earlier players existed to compare against, and no intra-file repeated code was found to extract.
+- `legs.py` already factors the skill cleanly: `find_winning_path` (BFS on clones), `execute_path` (replay), `solve_by_search` (composes both) — each written once, no duplication. No refactor needed.
+- Compared against the sibling `wa30` leg workspace to find a cross-game pattern instead. Appended a candidate higher-order leg, `propose_then_commit(env, propose, is_win=None)`, to `legs_log.md` — it would unify wa30's scripted "run action + fixed follow-up" legs with this workspace's "search on clones + gate on success predicate" leg. Left unextracted since it's only 2 instances deep across games.
+- Verified `python gkm_try.py` → `RESULT levels=1 moves=13 replay_ok=True err=None`, unchanged since no source files (`players.py`/`legs.py`) were modified.

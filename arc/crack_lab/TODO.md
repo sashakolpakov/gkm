@@ -67,12 +67,11 @@ ls -d $SCRATCH/gkm_legs_ws_* | grep -vE 'gkm_legs_ws_(ls20|wa30|sp80)$' | xargs 
 ```
 
 ## Status (2026-07-04 cleanup)
-- Current stable published artifact: `ls20` L1-L4, replay-validated, at
-  `arc/crack_lab/agent_solutions/ls20_legs/`.
-- The authoritative `ls20` run summary is in
-  `arc/crack_lab/agent_solutions/ls20_legs/run.log`: marginal_C
-  `55 -> 18 -> 2 -> 2`, total_marginal_C `77`, `validated=True`.
-- `wa30` and `sp80` are work-in-progress unless a fresh run is explicitly promoted
-  with replay validation and copied into `arc/crack_lab/agent_solutions/`.
+- Verified artifacts are now promoted automatically under
+  `arc/crack_lab/agent_solutions/<game>_legs/` after replay validation.
+- `ls20`: promoted through L4, replay-validated, marginal_C `70 -> 2 -> 2 -> 0`,
+  total_marginal_C `74`.
+- `wa30`: promoted through L3, replay-validated, WIP for L4+.
+- `sp80`: WIP unless/until a fresh replay-validated run is promoted.
 - Multi-avatar priors are now the default (replaced single-avatar "one object is YOU").
   Model capability is per-game; stronger proposers may still be needed for harder games.

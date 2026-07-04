@@ -1,7 +1,2 @@
-level 1: reached=1 marginal_C=55 total_C=55 F=0.100
-level 2: reached=2 marginal_C=18 total_C=73 F=-0.540
-level 3: reached=3 marginal_C=2 total_C=75 F=-1.500
-level 4: reached=4 marginal_C=2 total_C=77 F=-2.460
-
-=== ls20: reached level 4 | validated=True | total_marginal_C=77 | F=-2.460 ===
-  per-level marginal novelty (should trend DOWN as legs are reused): L1:55, L2:18, L3:2, L4:2
+=== ls20: reached level 4 | validated=True | total_marginal_C=74 | F=-2.520 ===
+per-level marginal novelty: L1:70, L2:2, L3:2, L4:0

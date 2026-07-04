@@ -1,0 +1,17 @@
+{
+  "game": "ls20",
+  "level": 1,
+  "phase": "reached_before_debrief",
+  "reached": 1,
+  "err": null,
+  "attempt": "reached_before_debrief_991b5fc4b37f",
+  "created_at": "2026-07-04T21:05:46.674698+00:00",
+  "files": [
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

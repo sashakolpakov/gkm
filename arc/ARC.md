@@ -32,16 +32,16 @@ legs only — a reused leg is free), so parsimony rewards transfer. This is the
 colimit-cone made operational: legs written by the proposer, composed by a cone, priced
 by the same free energy.
 
-## Current Published Artifact
+## Current Promoted Artifacts
 
-As of the 2026-07-04 cleanup, only the most recent `ls20` leg-library run is
-promoted as a stable artifact in the repo. Other game notes remain lab/WIP context
-until a fresh replay-validated run is copied into `crack_lab/agent_solutions/`.
+As of the 2026-07-04 cleanup, replay-validated leg-library states are promoted
+automatically into `crack_lab/agent_solutions/`. Other game notes remain lab/WIP
+context until represented by one of these promoted artifacts.
 
 | game | status | artifact |
 |---|---|---|
 | `ls20` | L1-L4 replay-validated | `crack_lab/agent_solutions/ls20_legs/` |
-| `wa30` | WIP / active re-crack | not currently promoted |
+| `wa30` | L1-L3 replay-validated; WIP for L4+ | `crack_lab/agent_solutions/wa30_legs/` |
 | `sp80` | WIP / separate concurrent run | not currently promoted |
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
@@ -62,7 +62,8 @@ until a fresh replay-validated run is copied into `crack_lab/agent_solutions/`.
   clone-BFS over game state). So ls20 succeeded **despite** misleading priors: robustness,
   not leakage. The `sp80` liquid-pour result (below) is the same story on a third game.
 - Under the enforced leg library, per-level **marginal novelty collapses** as legs are
-  reused — on `ls20`: `55 → 18 → 2 → 2`. Later levels are near-pure composition.
+  reused — on the current promoted `ls20` artifact: `70 → 2 → 2 → 0`. Later levels are
+  near-pure composition.
 - The same enforced library on `wa30` (L1–L3 validated) shows the honest complement:
   marginal novelty does **not** collapse (`112 → 78 → 95`) because each `wa30` level
   introduces a genuinely new mechanic (autonomous helper at L2; dividing wall +
@@ -73,8 +74,8 @@ until a fresh replay-validated run is copied into `crack_lab/agent_solutions/`.
 
 ## Honest limitations
 
-- The current promoted repo artifact is exactly `ls20` L1-L4. Older `wa30` and
-  `sp80` notes are retained as lab history/WIP, not current stable published artifacts.
+- The current promoted repo artifacts are `ls20` L1-L4 and `wa30` L1-L3. Higher
+  `wa30` levels and `sp80` remain WIP unless represented by promoted artifacts.
 - The loop currently needs a **strong** proposer: a prompt-only local model mis-reasoned
   two-sided reachability under barriers even with the priors spelled out. The open
   question is how weak a proposer the same harness (priors, simulator-as-verifier,

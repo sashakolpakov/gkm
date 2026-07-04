@@ -114,23 +114,9 @@ occupy space; a background colour fills empty space; some colours form walls/bar
 that divide the space into regions you cannot cross. Things persist and don't vanish
 without cause.
 
-FIND WHAT YOU CONTROL (there may be MORE THAN ONE): do NOT assume a single avatar.
-One OR SEVERAL objects may be under your control. Discover them by EXPERIMENT -- on a
-clone, take each action and see which object(s) move consistently. DIFFERENT actions
-may steer DIFFERENT objects (e.g. one action-set drives avatar A, another drives
-avatar B), or an action may move several objects at once. ENUMERATE EVERY controllable
-object and record which actions steer each; a controllable object is one YOUR action
-reproducibly moves. An action that moves nothing is probably an interaction. Some
-objects move on their own no matter what you do -- those are AUTONOMOUS agents, NOT
-yours (see OTHER AGENTS); tell them apart by whether your action reproducibly steers
-them.
-
-SEVERAL CONTROLLABLE AVATARS -> COORDINATE THEM (the colimit cone over avatars): when
-more than one object is controllable, the level may be UNSOLVABLE by any single one
-alone -- do not try to win with just one. Treat each controllable avatar as its own
-controller with its own movement legs, and COMPOSE them: stage the world with one
-avatar so another can finish, or drive them in turn toward the shared goal. Build a
-SEPARATE control routine per avatar and glue them into one plan.
+FIND YOURSELF FIRST: one object is YOU. Discover which by EXPERIMENT -- on a clone,
+take each action and see which object moves consistently; that is your avatar and
+those are your movement actions. A non-moving action is probably an interaction.
 
 AFFORDANCES: an action can mean anything -- move, toggle, transform, attach, select,
 rotate, open, fire. Do NOT assume. Discover what each action does by EXPERIMENT on
@@ -159,37 +145,6 @@ walls, what it can reach. Never assume an agent can cross a barrier it cannot --
 check. If no single agent can reach everything that matters, study how their
 reachable regions interact: the solution may require staging the world so that
 another agent can finish what you cannot.
-
-LEVELS ARE VARIATIONS: after you clear a level, the next is usually the SAME mechanic
-under a transformation -- mirrored or flipped layout, inverted direction of motion or
-gravity, swapped colours, shifted geometry, more objects, tighter timing. On a new
-level, FIRST test on a clone whether your previous method still works after such a
-transform; write your skills parameterized by axis/direction/colour rather than baked
-to one orientation, so the transformed retry is one call. Open free-form re-discovery
-only after transformed reuse demonstrably fails.
-
-CONSUMABLE AND HAZARDOUS ACTIONS: an action may be a limited resource -- usable only a
-few times before penalty or game over, with or without a visible counter. Probe
-unfamiliar actions on CLONES and check whether REPEATED use degrades or ends the game;
-treat any such action as a scarce budget, spent only on clone-verified winning moves,
-never on live experimentation.
-
-TIMERS AND MOVE BUDGETS: a level may carry a hidden or displayed countdown (e.g. a bar
-or row of cells that depletes every step). Measure early how many real steps you are
-allowed; search on clones and commit only a SHORT verified sequence on the real env.
-
-ALL-OR-NOTHING LEVELS: when no frame-derived measure correlates with progress, the
-level may be a combination lock -- nothing visibly improves until everything is right.
-Do not hunt for a gradient that does not exist: enumerate candidate parameters
-(positions, counts, orders) on clones where failure is free, and commit only the
-verified combination.
-
-DELAYED EFFECTS: an action's consequence may unfold over several following frames;
-after acting on a clone, let the dynamics settle (a few known-safe steps) before
-judging what the action did.
-
-DECOY ACTIONS: one or more actions may do nothing at all; identify no-ops once and
-stop re-probing them in every context.
 
 PLAN & VERIFY: use clones to look ahead and plan; only commit moves on the real env.
 Budget is limited; be decisive."""
