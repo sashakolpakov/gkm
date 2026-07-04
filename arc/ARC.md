@@ -32,13 +32,20 @@ legs only — a reused leg is free), so parsimony rewards transfer. This is the
 colimit-cone made operational: legs written by the proposer, composed by a cone, priced
 by the same free energy.
 
-## Results (replay-validated)
+## Current Published Artifact
 
-| game | mechanic (agent-discovered) | levels cracked |
+As of the 2026-07-04 cleanup, only the most recent `ls20` leg-library run is
+promoted as a stable artifact in the repo. Other game notes remain lab/WIP context
+until a fresh replay-validated run is copied into `crack_lab/agent_solutions/`.
+
+| game | status | artifact |
 |---|---|---|
-| `wa30` | pick-up-and-carry | L1–L6 (L1–L4 under enforced legs) |
-| `ls20` | slide-to-match | L1–L4 |
-| `sp80` | liquid-pour / deflect | L1 (a genuine *third* mechanic, found from scratch) |
+| `ls20` | L1-L4 replay-validated | `crack_lab/agent_solutions/ls20_legs/` |
+| `wa30` | WIP / active re-crack | not currently promoted |
+| `sp80` | WIP / separate concurrent run | not currently promoted |
+
+- Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
+  unless they have a promoted artifact.
 
 - On `wa30` the agent found level tactics beyond its priors: freeze the target region
   at level start; complement an autonomous helper by taking the *farthest* objects; and
@@ -66,7 +73,8 @@ by the same free energy.
 
 ## Honest limitations
 
-- Claims are exactly L1–L6 of `wa30` and L1–L4 of `ls20` — not all levels, not all games.
+- The current promoted repo artifact is exactly `ls20` L1-L4. Older `wa30` and
+  `sp80` notes are retained as lab history/WIP, not current stable published artifacts.
 - The loop currently needs a **strong** proposer: a prompt-only local model mis-reasoned
   two-sided reachability under barriers even with the priors spelled out. The open
   question is how weak a proposer the same harness (priors, simulator-as-verifier,

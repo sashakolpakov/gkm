@@ -66,9 +66,13 @@ rm -rf $SCRATCH/gkm_legs_ws_<GAME>                                        # wipe
 ls -d $SCRATCH/gkm_legs_ws_* | grep -vE 'gkm_legs_ws_(ls20|wa30|sp80)$' | xargs rm -rf
 ```
 
-## Status (2026-07-04)
-- ls20: L1–L4 ALL validated (marginal_C 70→2→2→0). DONE on Sonnet.
-- sp80: L1 validated (single-avatar bar). L2 in progress under multi-avatar priors.
-- wa30: L1 validated; parked. Resume with `--model=opus` (Sonnet stalled on L2 delivery).
+## Status (2026-07-04 cleanup)
+- Current stable published artifact: `ls20` L1-L4, replay-validated, at
+  `arc/crack_lab/agent_solutions/ls20_legs/`.
+- The authoritative `ls20` run summary is in
+  `arc/crack_lab/agent_solutions/ls20_legs/run.log`: marginal_C
+  `55 -> 18 -> 2 -> 2`, total_marginal_C `77`, `validated=True`.
+- `wa30` and `sp80` are work-in-progress unless a fresh run is explicitly promoted
+  with replay validation and copied into `arc/crack_lab/agent_solutions/`.
 - Multi-avatar priors are now the default (replaced single-avatar "one object is YOU").
-- Model capability is per-game: Sonnet ok for ls20; harder games need Fable/Opus.
+  Model capability is per-game; stronger proposers may still be needed for harder games.

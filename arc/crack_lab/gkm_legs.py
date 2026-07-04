@@ -132,8 +132,9 @@ def _read(path: str) -> str:
     return open(path).read() if os.path.exists(path) else ""
 
 
-def setup_workspace(game: str) -> str:
-    ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}")
+def setup_workspace(game: str, tag: str = "") -> str:
+    suffix = f"_{tag}" if tag else ""
+    ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}{suffix}")
     os.makedirs(ws, exist_ok=True)
     labdir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(ws, "gkm_try.py"), "w") as fh:
@@ -169,7 +170,7 @@ def setup_workspace(game: str) -> str:
 # ---------------------------------------------------------------------------
 # markers that mean "no credits / rate-limited" -- the whole run should abort, not
 # silently churn out empty proposals against a dead API.
-_CREDIT_OUT_MARKERS = ("out of usage credits", "credit balance", "session limit",
+_CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
                        "rate limit", "insufficient", "quota")
 
 
@@ -241,6 +242,37 @@ def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> N
         raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
 
 
+def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run Codex headlessly as the proposer, writing a transcript as it streams."""
+    labdir = os.path.dirname(os.path.abspath(__file__))
+    cmd = [
+        "codex", "exec",
+        "--cd", ws,
+        "--add-dir", labdir,
+        "--skip-git-repo-check",
+        "--dangerously-bypass-approvals-and-sandbox",
+        "--color", "never",
+        task,
+    ]
+    if model:
+        cmd[2:2] = ["--model", model]
+    log_path = os.path.join(ws, "proposer_last.log")
+    with open(log_path, "w") as log:
+        proc = subprocess.Popen(cmd, cwd=ws, stdout=log, stderr=subprocess.STDOUT,
+                                text=True)
+        try:
+            proc.wait(timeout=minutes * 60)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            proc.wait()
+            print(f"[codex proposer hit {minutes}min budget; verifying partial work]")
+        if proc.returncode not in (0, -9):
+            txt = _read(log_path).lower()
+            if any(m in txt for m in _CREDIT_OUT_MARKERS):
+                raise CreditOut(f"codex reported no credits/quota (see {log_path})")
+            raise RuntimeError(f"codex proposer CLI failed (see {log_path})")
+
+
 def _propose_task(game, K, context, legs_index):
     return (A.PRECONCEPTIONS + "\n\n" + context +
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
@@ -293,7 +325,7 @@ class Report:
 
 
 def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
-                proposer="claude",
+                proposer="claude", tag="",
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
@@ -305,14 +337,16 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     (``proposer="claude"``) or opencode (``proposer="opencode"``) as proposer,
     and the real game as verifier (credits needed for either proposer).
     """
-    ws = setup_workspace(game)
+    ws = setup_workspace(game, tag)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
     context = discovered_context(game) if propose_fn is None else ""
     if propose_fn is None:
-        _agent = _claude_agent if proposer == "claude" else _opencode_agent
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        _agent = agents[proposer]
         propose_fn = lambda w, k: _agent(w, _propose_task(game, k, context, _defs(_read(legs_p))), model, minutes_per)
     if debrief_fn is None:
-        _agent = _claude_agent if proposer == "claude" else _opencode_agent
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        _agent = agents[proposer]
         debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
     verify_fn = verify_fn or run_solve_file
 
@@ -324,9 +358,10 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         if verbose:
             print(f"resumed checkpoint: reached={rep.reached} total_marginal_C={rep.total_marginal_C}")
     # also verify the workspace files: if they beat the checkpoint, use that
-    lv0, _, _ = verify_fn(game, solve_p)
+    lv0, path0, _ = verify_fn(game, solve_p)
     if lv0 > rep.reached:
         rep.reached = lv0
+        rep.final_path = path0
         if verbose:
             print(f"workspace solve.py clears level {lv0} (resuming from there)")
     while rep.reached < max_level:
@@ -343,8 +378,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
             break
         Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-        debrief_fn(ws, K)
-        levels2, path2, _ = verify_fn(game, solve_p)      # behaviour preserved?
+        try:
+            debrief_fn(ws, K)
+            levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
+        except CreditOut as ex:
+            print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+            levels2, path2 = levels, path
         reached = max(levels, levels2)
         path = path2 if levels2 >= levels else path
         rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
@@ -359,6 +398,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             break
 
     rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
+    _save_checkpoint(ws, rep)
     if verbose:
         print(f"\n=== {game}: reached level {rep.reached} | validated={rep.validated} | "
               f"total_marginal_C={rep.total_marginal_C} | F={rep.free_energy:.3f} ===")
@@ -379,11 +419,12 @@ def _defs(code: str):
 
 if __name__ == "__main__":
     import sys
-    game, model, minutes, maxl, proposer = "wa30", None, 40, 9, "opencode"
+    game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
         elif a.startswith("--minutes="): minutes = int(a.split("=", 1)[1])
         elif a.startswith("--max-level="): maxl = int(a.split("=", 1)[1])
         elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
-    orchestrate(game=game, max_level=maxl, proposer=proposer, model=model, minutes_per=minutes)
+        elif a.startswith("--tag="): tag = a.split("=", 1)[1]
+    orchestrate(game=game, max_level=maxl, proposer=proposer, model=model, minutes_per=minutes, tag=tag)

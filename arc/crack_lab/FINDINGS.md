@@ -1,5 +1,19 @@
 # Cracking local ARC-AGI-3 games with the colimit construction (scratch lab)
 
+## Current stable artifact (2026-07-04 cleanup)
+
+Only the most recent `ls20` leg-library crack is currently documented as a stable
+published artifact in this repo:
+
+- `ls20` levels 1 through 4, replay-validated.
+- Visible artifact directory: `arc/crack_lab/agent_solutions/ls20_legs/`.
+- Authoritative run log: `arc/crack_lab/agent_solutions/ls20_legs/run.log`.
+- Final run summary: marginal_C `55 -> 18 -> 2 -> 2`, total_marginal_C `77`,
+  `validated=True`.
+
+Other crack notes below are historical lab/WIP context unless separately promoted
+with a fresh replay-validated artifact.
+
 Agentic run: use the GKM machinery (learned legs + a cone that composes them,
 priced by the adapter's `levels_completed` reward) to actually crack local games
 — running code, not prose. All games run locally (offline, no network) via
