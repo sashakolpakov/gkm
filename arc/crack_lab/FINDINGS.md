@@ -1,18 +1,19 @@
 # Cracking local ARC-AGI-3 games with the colimit construction (scratch lab)
 
-## Current stable artifact (2026-07-04 cleanup)
+## Current promoted artifacts (2026-07-04 cleanup)
 
-Only the most recent `ls20` leg-library crack is currently documented as a stable
-published artifact in this repo:
+`gkm_legs.py` now promotes every replay-validated leg-library state into
+`arc/crack_lab/agent_solutions/<game>_legs/`, and future runs seed scratch from
+that clean artifact before asking a proposer for the next level.
 
-- `ls20` levels 1 through 4, replay-validated.
-- Visible artifact directory: `arc/crack_lab/agent_solutions/ls20_legs/`.
-- Authoritative run log: `arc/crack_lab/agent_solutions/ls20_legs/run.log`.
-- Final run summary: marginal_C `55 -> 18 -> 2 -> 2`, total_marginal_C `77`,
-  `validated=True`.
+- `ls20`: levels 1 through 4, replay-validated, artifact
+  `arc/crack_lab/agent_solutions/ls20_legs/`; marginal_C `70 -> 2 -> 2 -> 0`,
+  total_marginal_C `74`.
+- `wa30`: levels 1 through 3, replay-validated, artifact
+  `arc/crack_lab/agent_solutions/wa30_legs/`; WIP for level 4+.
 
-Other crack notes below are historical lab/WIP context unless separately promoted
-with a fresh replay-validated artifact.
+Other crack notes below are historical lab/WIP context unless separately represented
+by a promoted replay-validated artifact.
 
 Agentic run: use the GKM machinery (learned legs + a cone that composes them,
 priced by the adapter's `levels_completed` reward) to actually crack local games
@@ -752,3 +753,30 @@ does NOT require Opus for L1; Sonnet is ~4-5x cheaper on output ($15 vs $75/M). 
 unlocks the cheap path: progress through levels on Sonnet, only escalating to Opus if a
 level defeats it. Snapshots: agent_solutions/{wa30,ls20,sp80}_sonnet_L1/.
 NEXT: progressive Sonnet runs to L4 per game (resume from these L1 libraries).
+
+### R-PROMPT-MINIMALISM (2026-07-04): prompt bloat degraded the proposer -- rolled back to the 7-sentence task
+
+Post-mortem of the failed runs after commit `ce87c58`. The proposer task that produced
+every success (commits `d2bb86b`..`fe0dc30`: ls20 L1-L4 with marginal novelty
+55->18->2->2, wa30 L1-L4, sp80 L1, and all three games at L1 via Sonnet) was SEVEN
+sentences, unchanged across every success. Later commits, believing more prose would
+fix perceived failure modes, added: (1) a colimit-cone explanation with multi-avatar
+enumeration priors, (2) a 6-step procedural protocol, (3) "REUSE FIRST" leg directives
+licensing parameter sweeps / mirrors / flips, (4) workflow paragraphs, (5) stitched
+"VERIFIED ARTIFACT CONTEXT TO RESUME FROM" blocks. Result: analysis paralysis. Where
+the minimal prompt said "learn its structure" (quick clone experiment -> write code),
+the bloat pushed exhaustive exploration BEFORE writing anything: one run produced 29
+probe scripts (1811 lines, probe_l2.py..probe_l2v.py) analyzing frame contents, cursor
+quadrants, and HUD regions without writing a single line of play_level_2. The agent
+flipped from "produce first, iterate" to "analyze exhaustively, maybe produce later".
+
+The irony: commit `9402087` correctly said the leg discipline "must be STRUCTURALLY
+ENFORCED by the harness, not merely requested" -- the enforcement that works is the
+legs.py/players.py/solve.py file split, the marginal_C metric, and code-level
+mechanisms like auto-solve. Subsequent commits confused "structural enforcement" with
+"more prose in the prompt", which made everything worse. OPERATIONAL RULE: marginal_C
+and the file split are the only enforcers that worked; every future improvement should
+be CODE in the harness (like auto-solve), never prose in the prompt. The prompt is
+restored verbatim to the `fe0dc30` version (PRECONCEPTIONS included), the artifact
+context stitching and wip_context.md injection are removed, and WIP snapshots remain
+forensic-only (never fed back to the proposer).

@@ -32,7 +32,7 @@ def test_free_energy_rewards_levels_and_penalises_novelty():
     assert L.free_energy(4, 50) < L.free_energy(3, 50)
 
 
-def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path=None):
+def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path, monkeypatch):
     """Drive the loop with a mock proposer that INVENTS legs on L1-L2 (learning the
     rules) and REUSES them on L3-L4 (no new legs). Marginal novelty must drop."""
     def mock_propose(ws, K):
@@ -47,6 +47,9 @@ def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path=None):
         n = len(re.findall(r"def play_level_\d+", players))
         return (n, [], None)   # empty path => real A.validate is skipped
 
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
     # isolated, clean workspace (fake game name; mocks ignore the real game)
     shutil.rmtree(os.path.join(L.SCRATCH, "gkm_legs_ws_legstest"), ignore_errors=True)
     rep = L.orchestrate("legstest", max_level=4, propose_fn=mock_propose,
@@ -55,8 +58,9 @@ def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path=None):
     assert rep.reached == 4
     by = {r.level: r.marginal_C for r in rep.records}
     assert set(by) == {1, 2, 3, 4}
-    # L1/L2 invent a leg (legs delta > 0); L3/L4 reuse (legs delta 0) -> strictly cheaper
-    assert by[3] < by[1] and by[4] < by[2]
+    # L1 invents a leg; L2-L4 reuse with auto-solve (player-stub-only marginal cost)
+    assert by[3] < by[1]                        # reuse cheaper than invention
+    assert by[4] <= by[2]                       # not strictly increasing
     assert by[3] == by[4]                       # pure reuse: identical marginal cost
     assert rep.total_marginal_C == sum(by.values())
 
@@ -67,3 +71,90 @@ def test_setup_workspace_builds_valid_dispatch():
         assert os.path.exists(os.path.join(ws, f))
     import ast
     ast.parse(open(os.path.join(ws, "solve.py")).read())   # solve.py is valid Python
+
+
+def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, body in {
+        "legs.py": "def leg(env):\n    pass\n",
+        "players.py": "from legs import *\n\ndef play_level_1(env):\n    leg(env)\n",
+        "solve.py": "def solve(env):\n    return None\n",
+        "legs_log.md": "# log\n",
+    }.items():
+        (ws / name).write_text(body)
+
+    rep = L.Report(
+        game="artifacttest",
+        reached=1,
+        records=[L.LevelRecord(level=1, marginal_C=3, reached=True)],
+        total_marginal_C=3,
+        final_path=[1, 2, 3],
+        validated=True,
+    )
+    assert L.promote_verified_artifact("artifacttest", str(ws), rep, verbose=False)
+    assert (artifact_root / "artifacttest_legs" / "README.md").exists()
+
+    (ws / "players.py").write_text("contaminated unfinished edit\n")
+    seeded = L.seed_workspace_from_artifact("artifacttest", str(ws), verbose=False)
+    assert seeded is not None and seeded.reached == 1
+    assert "play_level_1" in (ws / "players.py").read_text()
+
+
+def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, body in {
+        "legs.py": "def old_leg(env):\n    pass\n",
+        "players.py": "from legs import *\n\ndef play_level_1(env):\n    old_leg(env)\n",
+        "solve.py": "def solve(env):\n    return None\n",
+        "legs_log.md": "old leg context\n",
+        "proposer_last.log": "fresh probe observation\n",
+    }.items():
+        (ws / name).write_text(body)
+    rep = L.Report(
+        game="snaptest",
+        reached=1,
+        records=[L.LevelRecord(level=1, marginal_C=1, reached=True)],
+        total_marginal_C=1,
+        final_path=[1],
+        validated=True,
+    )
+    L._save_checkpoint(str(ws), rep)
+    assert L.promote_verified_artifact("snaptest", str(ws), rep, verbose=False)
+    snap = L.snapshot_wip_context("snaptest", str(ws), 2, "not_reached", 1, "probe failed", verbose=False)
+    assert (artifact_root / "snaptest_legs" / "wip_context" / "level_02" / "latest.json").exists()
+    assert "fresh probe observation" in (os.path.join(snap, "files", "proposer_last.log") and
+                                         open(os.path.join(snap, "files", "proposer_last.log")).read())
+
+    (ws / "players.py").write_text("contaminated unfinished edit\n")
+    seeded = L.seed_workspace_from_artifact("snaptest", str(ws), verbose=False)
+    assert seeded is not None and seeded.reached == 1
+    assert "play_level_1" in (ws / "players.py").read_text()
+    # WIP snapshots are forensic only: seeding must NOT inject probe context back
+    # into the workspace (that stitching caused analysis paralysis; see FINDINGS).
+    assert not (ws / "wip_context.md").exists()
+
+
+def test_propose_task_is_minimal(tmp_path):
+    """The proposer prompt is the known-good 7-sentence task; no artifact/probe
+    context is stitched in (prompt bloat degraded the proposer; see FINDINGS)."""
+    task = L._propose_task("ls20", 5, "raw substrate context", ["bfs_to_level_up"])
+
+    assert "GOAL: make solve.py reach LEVEL 5" in task
+    assert "bfs_to_level_up" in task
+    assert "REUSE existing legs" in task
+    assert "play_level_5" in task
+    assert "python gkm_try.py" in task
+    assert "VERIFIED ARTIFACT CONTEXT" not in task
+    assert "wip" not in task.lower()
+
+
+def test_tagged_workspace_uses_canonical_artifact_dir():
+    assert L.artifact_dir("ls20") == L.artifact_dir("ls20", tag="continue")
