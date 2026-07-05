@@ -412,7 +412,7 @@ def setup_workspace(game: str, tag: str = "") -> str:
 # markers that mean "no credits / rate-limited" -- the whole run should abort, not
 # silently churn out empty proposals against a dead API.
 _CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
-                       "rate limit", "insufficient", "quota")
+                       "rate limit", "insufficient", "quota", "not logged in", "please run /login")
 
 
 class CreditOut(RuntimeError):
