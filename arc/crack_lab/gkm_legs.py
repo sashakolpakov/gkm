@@ -429,16 +429,22 @@ _TRANSIENT_RETRIES = 2
 """Extra proposer attempts per level when the failure looks infrastructural."""
 
 
-def _transient_proposer_failure(ws: str) -> bool:
+def _transient_proposer_failure(ws: str, code_changed: bool = True) -> bool:
     """True when proposer_last.log shows an aborted run rather than real work.
 
-    A genuine capability failure leaves a substantial transcript; an infrastructure
-    failure leaves a short log dominated by an error banner. Requiring BOTH the
-    marker and a short log avoids retrying a real hour-long attempt that happened
-    to mention a transient API blip along the way."""
+    A genuine capability failure leaves a substantial transcript; an aborted one
+    leaves a short log -- an error banner (dropped connection, server error) or a
+    sign-off with no work behind it (e.g. an agent that backgrounded its probe and
+    ended its turn expecting a wakeup that headless mode never delivers). Requiring
+    a short log avoids retrying a real hour-long attempt that happened to mention a
+    transient API blip along the way."""
     txt = _read(os.path.join(ws, "proposer_last.log"))
+    if len(txt) >= 2000:
+        return False
     blob = txt.lower()
-    return len(txt) < 2000 and any(m in blob for m in _TRANSIENT_MARKERS)
+    if any(m in blob for m in _TRANSIENT_MARKERS):
+        return True
+    return not code_changed  # said little AND wrote nothing: no real attempt was made
 
 
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
@@ -693,7 +699,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             levels, path, err = verify_fn(game, solve_p)
             if levels >= K:
                 break
-            if attempt < _TRANSIENT_RETRIES and _transient_proposer_failure(ws):
+            code_changed = (_read(legs_p) != legs_b or _read(players_p) != players_b)
+            if attempt < _TRANSIENT_RETRIES and _transient_proposer_failure(ws, code_changed):
                 if verbose:
                     print(f"level {K}: transient proposer failure (see proposer_last.log); retrying")
                 continue

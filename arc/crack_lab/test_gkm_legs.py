@@ -201,3 +201,13 @@ def test_transient_detector_requires_short_log(tmp_path):
     assert L._transient_proposer_failure(str(ws))
     (ws / "proposer_last.log").write_text("probing level...\n" * 200 + "api error once, recovered\n")
     assert not L._transient_proposer_failure(str(ws))
+
+
+def test_noop_proposal_is_retried(tmp_path):
+    """A proposer that signs off without touching any code (e.g. backgrounded its
+    probe and exited) is a no-attempt: retry. A short log WITH code changes is a
+    real (cheap) attempt: no retry."""
+    (tmp_path / "proposer_last.log").write_text(
+        "I'll stop here and wait for the background search to notify me.\n")
+    assert L._transient_proposer_failure(str(tmp_path), code_changed=False)
+    assert not L._transient_proposer_failure(str(tmp_path), code_changed=True)
