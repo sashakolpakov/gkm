@@ -158,3 +158,46 @@ def test_propose_task_is_minimal(tmp_path):
 
 def test_tagged_workspace_uses_canonical_artifact_dir():
     assert L.artifact_dir("ls20") == L.artifact_dir("ls20", tag="continue")
+
+
+def test_transient_proposer_failure_is_retried(tmp_path, monkeypatch):
+    """A dropped-connection proposal (short log with an API error banner) must be
+    retried instead of read as a capability failure; a genuine full-transcript
+    failure must NOT be retried."""
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    calls = []
+
+    def flaky_propose(ws, K):
+        calls.append(K)
+        if len(calls) == 1:  # first attempt: infrastructure failure, no work done
+            with open(os.path.join(ws, "proposer_last.log"), "w") as f:
+                f.write("API Error: Connection closed mid-response.\n")
+            return
+        with open(os.path.join(ws, "proposer_last.log"), "w") as f:
+            f.write("wrote play_level_1 composing a new leg\n")
+        with open(os.path.join(ws, "legs.py"), "a") as f:
+            f.write("\n\ndef leg_1(env):\n    pass\n")
+        with open(os.path.join(ws, "players.py"), "a") as f:
+            f.write("\n\ndef play_level_1(env):\n    leg_1(env)\n")
+
+    def mock_verify(game, solve_path):
+        players = open(os.path.join(os.path.dirname(solve_path), "players.py")).read()
+        n = len(re.findall(r"def play_level_\d+", players))
+        return (n, [], None)
+
+    shutil.rmtree(os.path.join(L.SCRATCH, "gkm_legs_ws_retrytest"), ignore_errors=True)
+    rep = L.orchestrate("retrytest", max_level=1, propose_fn=flaky_propose,
+                        verify_fn=mock_verify, debrief_fn=lambda w, k: None,
+                        verbose=False)
+    assert calls == [1, 1]          # retried once after the transient failure
+    assert rep.reached == 1
+
+
+def test_transient_detector_requires_short_log(tmp_path):
+    ws = tmp_path
+    (ws / "proposer_last.log").write_text("API Error: Connection closed mid-response.\n")
+    assert L._transient_proposer_failure(str(ws))
+    (ws / "proposer_last.log").write_text("probing level...\n" * 200 + "api error once, recovered\n")
+    assert not L._transient_proposer_failure(str(ws))

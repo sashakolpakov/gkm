@@ -420,6 +420,27 @@ class CreditOut(RuntimeError):
     orchestrator can stop the whole sequence cleanly instead of burning the budget."""
 
 
+# markers of a transient infrastructure failure (dropped connection, server error):
+# the proposer never worked on the level, so the attempt is retried, not judged.
+_TRANSIENT_MARKERS = ("api error", "connection closed", "connection error", "connection refused",
+                      "overloaded", "internal server error", "service unavailable")
+
+_TRANSIENT_RETRIES = 2
+"""Extra proposer attempts per level when the failure looks infrastructural."""
+
+
+def _transient_proposer_failure(ws: str) -> bool:
+    """True when proposer_last.log shows an aborted run rather than real work.
+
+    A genuine capability failure leaves a substantial transcript; an infrastructure
+    failure leaves a short log dominated by an error banner. Requiring BOTH the
+    marker and a short log avoids retrying a real hour-long attempt that happened
+    to mention a transient API blip along the way."""
+    txt = _read(os.path.join(ws, "proposer_last.log"))
+    blob = txt.lower()
+    return len(txt) < 2000 and any(m in blob for m in _TRANSIENT_MARKERS)
+
+
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
     labdir = os.path.dirname(os.path.abspath(__file__))
     cmd = ["claude", "-p", task, "--allowedTools", "Bash", "Read", "Write", "Edit",
@@ -655,19 +676,32 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 break
             continue
 
-        # PHASE 1: proposer (existing legs could not solve the level)
-        try:
-            propose_fn(ws, K)
-        except CreditOut as ex:
-            print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
-            snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
-            break
-        snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
-        levels, path, err = verify_fn(game, solve_p)
-        if levels < K:
+        # PHASE 1: proposer (existing legs could not solve the level). A transient
+        # infrastructure failure (dropped connection, logged-out CLI that slipped
+        # past the credit-out check) says nothing about the level, so it is retried;
+        # only a real full-budget attempt that falls short stops the run.
+        credit_out = False
+        for attempt in range(1 + _TRANSIENT_RETRIES):
+            try:
+                propose_fn(ws, K)
+            except CreditOut as ex:
+                print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
+                snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
+                credit_out = True
+                break
+            snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
+            levels, path, err = verify_fn(game, solve_p)
+            if levels >= K:
+                break
+            if attempt < _TRANSIENT_RETRIES and _transient_proposer_failure(ws):
+                if verbose:
+                    print(f"level {K}: transient proposer failure (see proposer_last.log); retrying")
+                continue
             snapshot_wip_context(game, ws, K, "not_reached", levels, err, tag, verbose=verbose)
             if verbose:
                 print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
+            break
+        if credit_out or levels < K:
             break
         Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
         snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
