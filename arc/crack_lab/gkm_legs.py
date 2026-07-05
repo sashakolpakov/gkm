@@ -541,6 +541,22 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None
             raise RuntimeError(f"codex proposer CLI failed (see {log_path})")
 
 
+def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run the Messages-API agentic loop (gkm_api_agent) as the proposer.
+
+    Bills against ANTHROPIC_API_KEY Console credits -- a separate pool from the
+    Claude Code CLI subscription, so it works as a credit-out fallback."""
+    import gkm_api_agent
+    try:
+        gkm_api_agent.run_agent(ws, task, model=model, minutes=minutes)
+    except Exception as ex:
+        with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+            fh.write(f"API Error: {type(ex).__name__}: {ex}\n")
+    blob = _read(os.path.join(ws, "proposer_last.log")).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
+
+
 def _propose_task(game, K, context, legs_index):
     return (A.PRECONCEPTIONS + "\n\n" + context +
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
@@ -609,7 +625,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         print("fresh run requested: skipping artifact seed")
     context = discovered_context(game) if propose_fn is None else ""
     if propose_fn is None:
-        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
         propose_fn = lambda w, k: _agent(
             w,
@@ -618,7 +634,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             minutes_per,
         )
     if debrief_fn is None:
-        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
         debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
     verify_fn = verify_fn or run_solve_file
