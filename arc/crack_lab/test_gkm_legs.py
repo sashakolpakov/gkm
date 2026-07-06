@@ -158,3 +158,139 @@ def test_propose_task_is_minimal(tmp_path):
 
 def test_tagged_workspace_uses_canonical_artifact_dir():
     assert L.artifact_dir("ls20") == L.artifact_dir("ls20", tag="continue")
+
+
+def test_transient_proposer_failure_is_retried(tmp_path, monkeypatch):
+    """A dropped-connection proposal (short log with an API error banner) must be
+    retried instead of read as a capability failure; a genuine full-transcript
+    failure must NOT be retried."""
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    calls = []
+
+    def flaky_propose(ws, K):
+        calls.append(K)
+        if len(calls) == 1:  # first attempt: infrastructure failure, no work done
+            with open(os.path.join(ws, "proposer_last.log"), "w") as f:
+                f.write("API Error: Connection closed mid-response.\n")
+            return
+        with open(os.path.join(ws, "proposer_last.log"), "w") as f:
+            f.write("wrote play_level_1 composing a new leg\n")
+        with open(os.path.join(ws, "legs.py"), "a") as f:
+            f.write("\n\ndef leg_1(env):\n    pass\n")
+        with open(os.path.join(ws, "players.py"), "a") as f:
+            f.write("\n\ndef play_level_1(env):\n    leg_1(env)\n")
+
+    def mock_verify(game, solve_path):
+        players = open(os.path.join(os.path.dirname(solve_path), "players.py")).read()
+        n = len(re.findall(r"def play_level_\d+", players))
+        return (n, [], None)
+
+    shutil.rmtree(os.path.join(L.SCRATCH, "gkm_legs_ws_retrytest"), ignore_errors=True)
+    rep = L.orchestrate("retrytest", max_level=1, propose_fn=flaky_propose,
+                        verify_fn=mock_verify, debrief_fn=lambda w, k: None,
+                        verbose=False)
+    assert calls == [1, 1]          # retried once after the transient failure
+    assert rep.reached == 1
+
+
+def test_transient_detector_requires_short_log(tmp_path):
+    ws = tmp_path
+    (ws / "proposer_last.log").write_text("API Error: Connection closed mid-response.\n")
+    assert L._transient_proposer_failure(str(ws))
+    (ws / "proposer_last.log").write_text("probing level...\n" * 200 + "api error once, recovered\n")
+    assert not L._transient_proposer_failure(str(ws))
+
+
+def test_noop_proposal_is_retried(tmp_path):
+    """A proposer that signs off without touching any code (e.g. backgrounded its
+    probe and exited) is a no-attempt: retry. A short log WITH code changes is a
+    real (cheap) attempt: no retry."""
+    (tmp_path / "proposer_last.log").write_text(
+        "I'll stop here and wait for the background search to notify me.\n")
+    assert L._transient_proposer_failure(str(tmp_path), code_changed=False)
+    assert not L._transient_proposer_failure(str(tmp_path), code_changed=True)
+
+
+def test_auto_solve_failure_recorded_and_skipped(tmp_path):
+    ws = str(tmp_path)
+    legs = "def solve_all(env):\n    pass\n"
+    assert not L._auto_solve_failed_before(ws, 5, legs)
+    L._record_auto_solve_failure(ws, 5, legs)
+    assert L._auto_solve_failed_before(ws, 5, legs)
+    # a changed library invalidates the negative record; other levels unaffected
+    assert not L._auto_solve_failed_before(ws, 5, legs + "def new_leg(env):\n    pass\n")
+    assert not L._auto_solve_failed_before(ws, 6, legs)
+
+
+def test_seed_restores_wip_probes_without_clobbering(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, body in {
+        "legs.py": "def leg(env):\n    pass\n",
+        "players.py": "from legs import *\n\ndef play_level_1(env):\n    leg(env)\n",
+        "solve.py": "def solve(env):\n    return None\n",
+        "legs_log.md": "# log\n",
+    }.items():
+        (ws / name).write_text(body)
+    rep = L.Report(game="probetest", reached=1,
+                   records=[L.LevelRecord(level=1, marginal_C=1, reached=True)],
+                   total_marginal_C=1, final_path=[1], validated=True)
+    L._save_checkpoint(str(ws), rep)
+    assert L.promote_verified_artifact("probetest", str(ws), rep, verbose=False)
+
+    # an interrupted L2 attempt leaves probes + a candidate players.py in scratch
+    (ws / "probe_l2.py").write_text("print('probe knowledge')\n")
+    (ws / "players.py").write_text("UNVERIFIED candidate\n")
+    L.snapshot_wip_context("probetest", str(ws), 2, "interrupted", 1, "killed", verbose=False)
+
+    # scratch dies; a fresh seed must restore the probe but keep players.py verified
+    ws2 = tmp_path / "ws2"
+    ws2.mkdir()
+    seeded = L.seed_workspace_from_artifact("probetest", str(ws2), verbose=False)
+    assert seeded is not None and seeded.reached == 1
+    assert (ws2 / "probe_l2.py").read_text() == "print('probe knowledge')\n"
+    assert "play_level_1" in (ws2 / "players.py").read_text()  # verified, not candidate
+    # a probe already present in scratch is NOT overwritten by the older snapshot
+    (ws2 / "probe_l2.py").write_text("newer scratch state\n")
+    L._restore_wip_probes("probetest", str(ws2), 2, verbose=False)
+    assert (ws2 / "probe_l2.py").read_text() == "newer scratch state\n"
+
+
+def test_interrupt_snapshots_and_promotes(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    def propose(ws, K):
+        if K == 1:
+            with open(os.path.join(ws, "players.py"), "a") as f:
+                f.write(f"\n\ndef play_level_1(env):\n    pass\n")
+        else:
+            with open(os.path.join(ws, "probe_l2.py"), "w") as f:
+                f.write("half-done probe\n")
+            raise KeyboardInterrupt  # user hits Ctrl-C mid-L2
+
+    def mock_verify(game, solve_path):
+        players = open(os.path.join(os.path.dirname(solve_path), "players.py")).read()
+        n = len(re.findall(r"def play_level_\d+", players))
+        return (n, [1] * n, None)
+
+    monkeypatch.setattr(L.A, "validate", lambda g, p, l: True)
+    shutil.rmtree(os.path.join(L.SCRATCH, "gkm_legs_ws_inttest"), ignore_errors=True)
+    import pytest
+    with pytest.raises(KeyboardInterrupt):
+        L.orchestrate("inttest", max_level=3, propose_fn=propose,
+                      verify_fn=mock_verify, debrief_fn=lambda w, k: None,
+                      verbose=False)
+    # L1 was promoted despite the interrupt; the L2 probe context was snapshotted
+    art = artifact_root / "inttest_legs"
+    assert (art / "players.py").exists()
+    level2 = art / "wip_context" / "level_02"
+    assert level2.exists()
+    import json as _json
+    latest = _json.loads((level2 / "latest.json").read_text())
+    assert latest["metadata"]["phase"] == "interrupted"

@@ -26,6 +26,7 @@ import hashlib
 import json
 import os
 import shutil
+import signal
 import subprocess
 import time
 from datetime import datetime, timezone
@@ -61,7 +62,12 @@ def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
 CHECKPOINT_FILE = "checkpoint.json"
 """Filename for per-level marginal-C checkpoint (enables cross-run resume)."""
 
-PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT_FILE)
+AUTO_SOLVE_LOG = "auto_solve_attempts.json"
+"""Per-level record of failed auto-solve attempts, keyed by (level, legs-hash), so a
+relaunch does not re-pay a long BFS that already failed against the same legs."""
+
+PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT_FILE,
+                  AUTO_SOLVE_LOG)
 """Files that define a verified leg-library state and should survive scratch loss."""
 
 SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache"}
@@ -219,11 +225,69 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
     return attempt_dir
 
 
+def _legs_hash(legs_code: str) -> str:
+    return hashlib.sha256((legs_code or "").encode("utf-8")).hexdigest()[:12]
+
+
+def _auto_solve_failed_before(ws: str, K: int, legs_code: str) -> bool:
+    """True when auto-solve already failed at level K against this exact legs.py."""
+    data = json.loads(_read(os.path.join(ws, AUTO_SOLVE_LOG)) or "{}")
+    return f"{K}:{_legs_hash(legs_code)}" in data.get("failed", [])
+
+
+def _record_auto_solve_failure(ws: str, K: int, legs_code: str) -> None:
+    path = os.path.join(ws, AUTO_SOLVE_LOG)
+    data = json.loads(_read(path) or "{}")
+    key = f"{K}:{_legs_hash(legs_code)}"
+    failed = data.setdefault("failed", [])
+    if key not in failed:
+        failed.append(key)
+    with open(path, "w") as f:
+        json.dump(data, f)
+
+
+def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
+                        verbose: bool = True) -> int:
+    """Copy the latest WIP snapshot's probe context for `level` into the workspace.
+
+    Restores ONLY files missing from scratch (scratch, when present, is newer) and
+    NEVER the promoted names (those are unverified candidates in a snapshot; the
+    artifact root is the verified source of truth). This puts earlier probe scripts
+    and the prior proposer transcript back on disk where the next proposer can find
+    them itself -- context lives in the filesystem, never stitched into the prompt.
+    """
+    level_dir = _wip_level_dir(artifact_dir(game, tag), level)
+    latest_path = os.path.join(level_dir, "latest.json")
+    if not os.path.exists(latest_path):
+        return 0
+    try:
+        with open(latest_path) as f:
+            attempt = json.load(f).get("attempt")
+    except Exception:
+        return 0
+    files_dir = os.path.join(level_dir, attempt or "", "files")
+    if not attempt or not os.path.isdir(files_dir):
+        return 0
+    skip = set(PROMOTED_FILES) | {"gkm_try.py"}
+    restored = 0
+    for name in sorted(os.listdir(files_dir)):
+        if name in skip or os.path.exists(os.path.join(ws, name)):
+            continue
+        shutil.copy2(os.path.join(files_dir, name), os.path.join(ws, name))
+        restored += 1
+    if verbose and restored:
+        print(f"restored {restored} WIP probe file(s) for level {level} from {attempt}")
+    return restored
+
+
 def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: bool = True) -> Optional[Report]:
     """Overwrite scratch with the latest promoted verified state, if one exists.
 
     Scratch is treated as disposable and possibly contaminated by an unfinished next
-    level. The repo artifact is the source of truth for resuming.
+    level. The repo artifact is the source of truth for resuming. Unverified probe
+    context for the NEXT level is restored alongside (fill-gaps-only), so an
+    interrupted attempt's probes survive scratch loss without contaminating the
+    verified files.
     """
     art = artifact_dir(game, tag)
     rep = _load_checkpoint(art)
@@ -233,6 +297,7 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
         src = os.path.join(art, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(ws, name))
+    _restore_wip_probes(game, ws, rep.reached + 1, tag, verbose=verbose)
     if verbose:
         print(f"seeded workspace from artifact: {art} (reached={rep.reached})")
     return rep
@@ -412,12 +477,43 @@ def setup_workspace(game: str, tag: str = "") -> str:
 # markers that mean "no credits / rate-limited" -- the whole run should abort, not
 # silently churn out empty proposals against a dead API.
 _CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
-                       "rate limit", "insufficient", "quota")
+                       "rate limit", "insufficient", "quota", "not logged in", "please run /login")
+
+
+def _raise_keyboard_interrupt(signum, frame):
+    raise KeyboardInterrupt
 
 
 class CreditOut(RuntimeError):
     """Raised when the proposer subprocess reports it is out of credits/quota, so the
     orchestrator can stop the whole sequence cleanly instead of burning the budget."""
+
+
+# markers of a transient infrastructure failure (dropped connection, server error):
+# the proposer never worked on the level, so the attempt is retried, not judged.
+_TRANSIENT_MARKERS = ("api error", "connection closed", "connection error", "connection refused",
+                      "overloaded", "internal server error", "service unavailable")
+
+_TRANSIENT_RETRIES = 2
+"""Extra proposer attempts per level when the failure looks infrastructural."""
+
+
+def _transient_proposer_failure(ws: str, code_changed: bool = True) -> bool:
+    """True when proposer_last.log shows an aborted run rather than real work.
+
+    A genuine capability failure leaves a substantial transcript; an aborted one
+    leaves a short log -- an error banner (dropped connection, server error) or a
+    sign-off with no work behind it (e.g. an agent that backgrounded its probe and
+    ended its turn expecting a wakeup that headless mode never delivers). Requiring
+    a short log avoids retrying a real hour-long attempt that happened to mention a
+    transient API blip along the way."""
+    txt = _read(os.path.join(ws, "proposer_last.log"))
+    if len(txt) >= 2000:
+        return False
+    blob = txt.lower()
+    if any(m in blob for m in _TRANSIENT_MARKERS):
+        return True
+    return not code_changed  # said little AND wrote nothing: no real attempt was made
 
 
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
@@ -514,6 +610,22 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None
             raise RuntimeError(f"codex proposer CLI failed (see {log_path})")
 
 
+def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+    """Run the Messages-API agentic loop (gkm_api_agent) as the proposer.
+
+    Bills against ANTHROPIC_API_KEY Console credits -- a separate pool from the
+    Claude Code CLI subscription, so it works as a credit-out fallback."""
+    import gkm_api_agent
+    try:
+        gkm_api_agent.run_agent(ws, task, model=model, minutes=minutes)
+    except Exception as ex:
+        with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+            fh.write(f"API Error: {type(ex).__name__}: {ex}\n")
+    blob = _read(os.path.join(ws, "proposer_last.log")).lower()
+    if any(m in blob for m in _CREDIT_OUT_MARKERS):
+        raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
+
+
 def _propose_task(game, K, context, legs_index):
     return (A.PRECONCEPTIONS + "\n\n" + context +
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
@@ -582,7 +694,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         print("fresh run requested: skipping artifact seed")
     context = discovered_context(game) if propose_fn is None else ""
     if propose_fn is None:
-        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
         propose_fn = lambda w, k: _agent(
             w,
@@ -591,7 +703,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             minutes_per,
         )
     if debrief_fn is None:
-        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent}
+        agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
         debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
     verify_fn = verify_fn or run_solve_file
@@ -620,25 +732,98 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
             if verbose:
                 print(f"workspace solve.py clears level {lv0} (resuming from there)")
-    while rep.reached < max_level:
-        K = rep.reached + 1
-        legs_b, players_b = _read(legs_p), _read(players_p)
+    # A hard interrupt (Ctrl-C / SIGTERM) must not lose the in-flight probe
+    # context: snapshot it as phase 'interrupted', still checkpoint + promote
+    # whatever is verified, then re-raise.
+    interrupted = False
+    try:
+        signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
+    except ValueError:
+        pass  # not in the main thread; Ctrl-C still covered
+    try:
+        while rep.reached < max_level:
+            K = rep.reached + 1
+            legs_b, players_b = _read(legs_p), _read(players_p)
 
-        # PHASE 0: auto-solve with existing legs (structural reuse, zero proposer cost)
-        auto_result = _try_auto_solve(K, legs_b, players_b,
-                                      players_p, solve_p, game, verify_fn)
-        if auto_result is not None:
-            levels, path, err = auto_result
+            # PHASE 0: auto-solve with existing legs (structural reuse, zero proposer cost).
+            # Skip when it already failed at this level against this exact legs.py -- a
+            # relaunch should not re-pay a long BFS for a known-negative result.
+            if _auto_solve_failed_before(ws, K, legs_b):
+                if verbose:
+                    print(f"level {K}: auto-solve previously failed for current legs; skipping")
+                auto_result = None
+            else:
+                auto_result = _try_auto_solve(K, legs_b, players_b,
+                                              players_p, solve_p, game, verify_fn)
+                if auto_result is None:
+                    _record_auto_solve_failure(ws, K, legs_b)
+            if auto_result is not None:
+                levels, path, err = auto_result
+                Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
+                if verbose:
+                    print(f"level {K}: auto-solved via existing legs (marginal_C={Cm})")
+                # still debrief: the auto-solve succeeded, but legs_log.md may need an entry
+                try:
+                    debrief_fn(ws, K)
+                    levels2, path2, _ = verify_fn(game, solve_p)
+                except CreditOut as ex:
+                    print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                    levels2, path2 = levels, path
+                reached = max(levels, levels2)
+                path = path2 if levels2 >= levels else path
+                rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
+                rep.total_marginal_C += Cm
+                rep.reached = reached
+                rep.final_path = path
+                rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
+                _save_checkpoint(ws, rep)
+                promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
+                if verbose:
+                    print(f"level {K}: reached={reached} marginal_C={Cm} "
+                          f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
+                if reached <= K - 1:
+                    break
+                continue
+
+            # PHASE 1: proposer (existing legs could not solve the level). A transient
+            # infrastructure failure (dropped connection, logged-out CLI that slipped
+            # past the credit-out check) says nothing about the level, so it is retried;
+            # only a real full-budget attempt that falls short stops the run.
+            credit_out = False
+            for attempt in range(1 + _TRANSIENT_RETRIES):
+                try:
+                    propose_fn(ws, K)
+                except CreditOut as ex:
+                    print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
+                    snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
+                    credit_out = True
+                    break
+                snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
+                levels, path, err = verify_fn(game, solve_p)
+                if levels >= K:
+                    break
+                code_changed = (_read(legs_p) != legs_b or _read(players_p) != players_b)
+                if attempt < _TRANSIENT_RETRIES and _transient_proposer_failure(ws, code_changed):
+                    if verbose:
+                        print(f"level {K}: transient proposer failure (see proposer_last.log); retrying")
+                    continue
+                snapshot_wip_context(game, ws, K, "not_reached", levels, err, tag, verbose=verbose)
+                if verbose:
+                    print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
+                break
+            if credit_out or levels < K:
+                break
             Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-            if verbose:
-                print(f"level {K}: auto-solved via existing legs (marginal_C={Cm})")
-            # still debrief: the auto-solve succeeded, but legs_log.md may need an entry
+            snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
             try:
                 debrief_fn(ws, K)
-                levels2, path2, _ = verify_fn(game, solve_p)
+                levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
             except CreditOut as ex:
                 print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
                 levels2, path2 = levels, path
+                snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
+            else:
+                snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
             rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
@@ -653,47 +838,11 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                       f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
             if reached <= K - 1:
                 break
-            continue
 
-        # PHASE 1: proposer (existing legs could not solve the level)
-        try:
-            propose_fn(ws, K)
-        except CreditOut as ex:
-            print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
-            snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
-            break
-        snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
-        levels, path, err = verify_fn(game, solve_p)
-        if levels < K:
-            snapshot_wip_context(game, ws, K, "not_reached", levels, err, tag, verbose=verbose)
-            if verbose:
-                print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
-            break
-        Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-        snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
-        try:
-            debrief_fn(ws, K)
-            levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
-        except CreditOut as ex:
-            print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
-            levels2, path2 = levels, path
-            snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
-        else:
-            snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
-        reached = max(levels, levels2)
-        path = path2 if levels2 >= levels else path
-        rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
-        rep.total_marginal_C += Cm
-        rep.reached = reached
-        rep.final_path = path
-        rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
-        _save_checkpoint(ws, rep)
-        promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
-        if verbose:
-            print(f"level {K}: reached={reached} marginal_C={Cm} "
-                  f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
-        if reached <= K - 1:
-            break
+    except KeyboardInterrupt:
+        snapshot_wip_context(game, ws, rep.reached + 1, "interrupted",
+                             rep.reached, "interrupted mid-level", tag, verbose=verbose)
+        interrupted = True
 
     rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
     _save_checkpoint(ws, rep)
@@ -703,6 +852,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
               f"total_marginal_C={rep.total_marginal_C} | F={rep.free_energy:.3f} ===")
         print("  per-level marginal novelty (should trend DOWN as legs are reused): "
               + ", ".join(f"L{r.level}:{r.marginal_C}" for r in rep.records))
+    if interrupted:
+        raise KeyboardInterrupt
     return rep
 
 
