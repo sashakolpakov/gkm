@@ -1,0 +1,3401 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat gkm_try.py solve.py players.py legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat legs_log.md checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe1.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.make_env('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+print("levels", env.levels_completed, "terminal", env.terminal())
+f = env.frame()
+np.save('/tmp/l6_frame.npy', np.array(f))
+arr = np.array(f)
+print(arr.shape, np.unique(arr, return_counts=True))
+EOF
+python probe1.py
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "import gkm_arena as A; print([x for x in dir(A) if not x.startswith('_')])"
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A, inspect
+print(inspect.signature(A.make_env))
+print(inspect.signature(A.run_program))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A, inspect
+src = inspect.getsource(A.run_program)
+print(src[:1500])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe1.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+print("levels", env.levels_completed, "terminal", env.terminal())
+f = np.array(env.frame())
+np.save('/tmp/l6_frame.npy', f)
+print(f.shape)
+vals, cnts = np.unique(f, return_counts=True)
+print(dict(zip(vals.tolist(), cnts.tolist())))
+EOF
+python probe1.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_frame.npy')
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+for r in range(64):
+    print(''.join(chars.get(int(v), '?') for v in f[r]))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe2.py <<'EOF'
+import json, sys, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import detect_noise_mask, find_winning_path
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+assert env.levels_completed == 5
+
+t0 = time.time()
+mask = detect_noise_mask(env)
+print("mask cells:", int(mask.sum()), "t=%.1fs" % (time.time()-t0))
+
+# instrumented BFS to count states explored
+from collections import deque
+from legs import _masked_bytes
+start = env.clone()
+key0 = _masked_bytes(start.frame(), mask)
+seen = {key0}
+q = deque([(start, [])])
+base = env.levels_completed
+path = None
+while q:
+    node, p = q.popleft()
+    for a in (1,2,3,4):
+        c = node.clone()
+        c.step(a)
+        if c.levels_completed > base:
+            path = p + [a]
+            break
+        key = _masked_bytes(c.frame(), mask)
+        if key not in seen:
+            seen.add(key)
+            q.append((c, p + [a]))
+    if path: break
+    if len(seen) >= 120000:
+        break
+    if len(seen) % 5000 < 4:
+        print("seen", len(seen), "depth", len(p), "t=%.0fs" % (time.time()-t0), flush=True)
+print("PATH:", path)
+print("states:", len(seen), "time %.1fs" % (time.time()-t0))
+if path:
+    json.dump(path, open('/tmp/win6.json','w'))
+EOF
+nohup python probe2.py > probe2.log 2>&1 &
+echo started
+$ sleep 60; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -5 probe2.log
+$ sleep 90; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -5 probe2.log; jobs
+$ sleep 240; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -3 probe2.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe3.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import detect_noise_mask
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+mask = detect_noise_mask(env)
+print("mask rows/cols:", sorted(set(zip(*np.where(mask))))[:20], "... n=", mask.sum())
+f0 = np.array(env.frame())
+
+# probe each action once: what changes?
+for a in (1,2,3,4):
+    c = env.clone()
+    f = np.array(c.step(a))
+    d = np.where((f != f0) & ~mask)
+    cells = list(zip(d[0].tolist(), d[1].tolist()))
+    print("action", a, "changed(non-mask):", len(cells), cells[:30])
+
+# move then reverse: back to same state?
+pairs = [(1,2),(2,1),(3,4),(4,3)]
+for a,b in pairs:
+    c = env.clone()
+    c.step(a); f = np.array(c.step(b))
+    same = np.array_equal(np.where(mask, -1, f), np.where(mask, -1, f0))
+    print(f"move {a} then {b}: back-to-start={same}")
+EOF
+python probe3.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe4.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+f0 = np.array(env.frame())
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+def show(f, r0, r1, c0, c1):
+    for r in range(r0, r1):
+        print(''.join(chars.get(int(v),'?') for v in f[r][c0:c1]))
+
+c = env.clone()
+f1 = np.array(c.step(1))
+d = np.where(f1 != f0)
+cells = sorted(set(zip(d[0].tolist(), d[1].tolist())))
+print("all changed after action1:", len(cells))
+rows = sorted(set(r for r,_ in cells))
+print("rows:", rows)
+print("--- before, region rows 10-14 cols 12-30")
+show(f0, 10, 15, 12, 30)
+print("--- after")
+show(f1, 10, 15, 12, 30)
+print("--- before rows 30-34 cols 18-30")
+show(f0, 30, 35, 18, 30)
+print("--- after")
+show(f1, 30, 35, 18, 30)
+print("--- before rows 40-44 cols 28-40")
+show(f0, 40, 45, 28, 40)
+print("--- after")
+show(f1, 40, 45, 28, 40)
+print("--- avatar rows 48-55 cols 22-32 before/after")
+show(f0, 48, 56, 20, 34)
+print()
+show(f1, 48, 56, 20, 34)
+EOF
+python probe4.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe5.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+f0 = np.array(env.frame())
+
+def find_objs(f):
+    # avatar: 12 over 9 5x5; creature: 3x3 with 14s; digits: colors 0/1 glyphs
+    out = {}
+    rs, cs = np.where(f == 12)
+    if len(rs): out['avatar'] = (rs.min(), cs.min())
+    # creature: cell with value 14 not in bottom-left room (col>13? track area cols 9-47)
+    rs, cs = np.where((f == 14))
+    pts = [(r, c) for r, c in zip(rs, cs) if 5 <= r <= 53 and 9 <= c <= 47]
+    if pts: out['creature'] = min(pts)
+    rs, cs = np.where((f == 0) | (f == 1))
+    pts = [(r,c) for r,c in zip(rs,cs) if 5 <= r <= 53 and 9 <= c <= 47]
+    # cluster digit glyphs by row band
+    bands = {}
+    for r,c in pts:
+        bands.setdefault(r//5, []).append((r,c))
+    for k,v in bands.items():
+        out[f'digit_band{k}'] = min(v)
+    return out
+
+c = env.clone()
+print(0, find_objs(f0))
+seq = []
+for i in range(30):
+    a = 1 if i % 2 == 0 else 2
+    f = np.array(c.step(a))
+    print(i+1, 'act', a, find_objs(f))
+EOF
+python probe5.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe6.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import detect_noise_mask
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+mask = detect_noise_mask(env)
+f0 = np.array(env.frame())
+c = env.clone()
+frames = [f0]
+for i in range(16):
+    a = 1 if i % 2 == 0 else 2
+    frames.append(np.array(c.step(a)))
+for k in (8, 16):
+    d = (frames[k] != frames[0]) & ~mask
+    cells = sorted(set(zip(*np.where(d))))
+    print(f"step{k} vs 0: {len(cells)} diff:", cells[:40])
+EOF
+python probe6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -2 probe2.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe7.py <<'EOF'
+import json, sys, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+t0=time.time(); c = env.clone(); t1=time.time()
+print("clone: %.3fs" % (t1-t0))
+t0=time.time()
+for i in range(20): c.step(1 if i%2==0 else 2)
+print("20 steps: %.3fs" % (time.time()-t0))
+t0=time.time()
+cs=[env.clone() for _ in range(10)]
+print("10 clones: %.3fs" % (time.time()-t0))
+# does clone of clone get cheaper?
+t0=time.time(); c2=c.clone(); print("clone of stepped clone: %.3fs" % (time.time()-t0))
+EOF
+python probe7.py
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A, inspect
+print([m for m in dir(A.Arena) if not m.startswith('_')])
+print(inspect.signature(A.Arena.__init__))
+print(inspect.getsource(A.Arena.clone))" 2>/dev/null | head -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe8.py <<'EOF'
+# Faster BFS: reuse a clone across blocked (no-change) actions.
+import json, sys, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from collections import deque
+from legs import detect_noise_mask, _masked_bytes
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+assert env.levels_completed == 5
+mask = detect_noise_mask(env)
+t0 = time.time()
+
+start = env.clone()
+key0 = _masked_bytes(start.frame(), mask)
+seen = {key0}
+q = deque([(start, [], key0)])
+base = env.levels_completed
+path = None
+nclones = 0
+while q and path is None:
+    node, p, nkey = q.popleft()
+    c = node.clone(); nclones += 1
+    for a in (1, 2, 3, 4):
+        f = c.step(a)
+        if c.levels_completed > base:
+            path = p + [a]
+            break
+        key = _masked_bytes(f, mask)
+        if key == nkey:
+            continue  # blocked/no-op: state unchanged, reuse clone
+        if key not in seen:
+            seen.add(key)
+            q.append((c, p + [a], key))
+        # need a fresh copy of node for remaining actions
+        if a != 4:
+            c = node.clone(); nclones += 1
+    if len(seen) >= 200000:
+        break
+    if len(seen) % 10000 < 3:
+        print("seen", len(seen), "depth", len(p), "clones", nclones,
+              "t=%.0fs" % (time.time()-t0), flush=True)
+print("PATH:", path)
+print("states:", len(seen), "clones:", nclones, "time %.1fs" % (time.time()-t0))
+if path:
+    json.dump(path, open('/tmp/win6.json', 'w'))
+EOF
+nohup python probe8.py > probe8.log 2>&1 &
+echo bg
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe9.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+f0 = np.array(env.frame())
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+def show(f, rows=range(64)):
+    for r in rows:
+        print(''.join(chars.get(int(v),'?') for v in f[r]))
+
+# avatar starts rows 49-53 cols 24-28 (bottom middle). Creature patrols ring
+# around central block: ring positions (r,c) top-left of 3x3 among
+# rows 21/26/31 x cols 21/26/31.
+# Try to collide: avatar move up (1) puts avatar rows 44-48; creature moves.
+# Plan: move avatar up into ring corridor to intersect creature.
+def objs(f):
+    o={}
+    rs,cs=np.where(f==12)
+    # avatar C block is 5 wide: find 5-run
+    av=[(r,c) for r,c in zip(rs,cs)]
+    o['12s']=av
+    rs,cs=np.where(f==14)
+    o['14s']=[(r,c) for r,c in zip(rs,cs) if r<52]
+    return o
+
+# The avatar at (49..53, 24..28). Ring corridor rows 20-24 & 30-34, cols 20-34.
+# Creature at tick0 top-left (31,25)? earlier: rows31-33 cols25-27.
+# Sequence: creature cycle per tick: TL positions from probe5 (min of 14s):
+#  t0 (31,26)->t1 (31,21)->t2 (26,21)->t3 (21,21)->t4 (21,26)->t5 (21,31)->t6 (26,31)->t7 (31,31)
+# Avatar up->rows44-48. Then up again? row 40-44 region: rows 40-44 cols24-28 = track? yes rows 40-44.
+c = env.clone()
+seq = [1,1]  # up twice -> avatar rows 39-43? each move = 5. 49->44->39
+for a in seq:
+    f = np.array(c.step(a))
+print("after up,up:")
+show(f, range(18, 45))
+print(objs(f)['14s'][:6])
+# continue up into ring: avatar would go to rows 34-38? that's wall (#). Try up:
+f = np.array(c.step(1))
+print("after third up: avatar 12s:", np.where(np.array(f)==12))
+EOF
+python probe9.py
+BFS running. Let me script an intercept path to see what avatar-creature contact does.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe10.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def objs(f):
+    f = np.array(f)
+    # avatar: 5-wide run of 12s
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r), int(c)) for r, c in zip(rs, cs) if r < 52 and c < 50]
+    return av, (min(cr) if cr else None)
+
+c = env.clone()
+f = c.frame()
+print("start", objs(f), "lvl", c.levels_completed)
+# route: up, left x3, up x3, right x3, up  -> lands avatar TL (20,24) in inner top room
+seq = [1, 3, 3, 3, 1, 1, 1, 4, 4, 4, 1]
+for i, a in enumerate(seq):
+    f = c.step(a)
+    av, cr = objs(f)
+    print(i, "act", a, "avatar", av, "creature", cr, "lvl", c.levels_completed, "term", c.terminal())
+EOF
+python probe10.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe11.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def objs(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r), int(c)) for r, c in zip(rs, cs) if r < 52 and c < 50]
+    return av, (min(cr) if cr else None)
+
+c = env.clone()
+seq = [1, 3, 3, 3, 1, 1, 1, 1, 4, 4]
+for i, a in enumerate(seq):
+    f = c.step(a)
+    av, cr = objs(f)
+    print(i, "act", a, "avatar", av, "creature", cr, "lvl", c.levels_completed, "term", c.terminal())
+f = np.array(c.frame())
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+for r in range(18, 36):
+    print(''.join(chars.get(int(v),'?') for v in f[r][:50]))
+EOF
+python probe11.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe12.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+f0 = np.array(env.frame())
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    f = np.array(c.step(a))
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in f[r]))
+print()
+# now keep ticking (bounce) to see world evolution after catch
+for i in range(8):
+    a = 2 if i%2==0 else 1
+    f = np.array(c.step(a))
+rs, cs = np.where(f==14)
+print("14s:", [(int(r),int(c)) for r,c in zip(rs,cs) if r<52 and c<50])
+print("lvl", c.levels_completed, "term", c.terminal())
+np.save('/tmp/l6_after_catch.npy', f)
+EOF
+python probe12.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe13.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+c = env.clone()
+catch = [1,3,3,3,1,1,1,1,4,4]
+fprev = np.array(env.frame())
+for i, a in enumerate(catch):
+    fnew = np.array(c.step(a))
+    # report disappearance of B boxes / appearance of new sprites
+    d = np.where(fnew != fprev)
+    zones = sorted(set((int(r)//5, int(cc)//5) for r, cc in zip(*d)))
+    print(i, "act", a, "changed zones(5x5):", zones)
+    fprev = fnew
+EOF
+python probe13.py
+The B-box was also consumed by driving over it. Let me bounce longer after the catch and watch for spawns or other changes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe14.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    c.step(a)
+fprev = np.array(c.frame())
+for i in range(30):
+    a = 2 if i % 2 == 0 else 1
+    fnew = np.array(c.step(a))
+    d = np.where(fnew != fprev)
+    zones = sorted(set((int(r)//5, int(cc)//5) for r, cc in zip(*d)))
+    # ignore avatar zones (rows 20-34 cols 15-25-ish) and digit sprites rows 11-13/41-43, HUD row 60-62
+    print(i, a, zones, "lvl", c.levels_completed)
+    fprev = fnew
+np.save('/tmp/l6_b.npy', fnew)
+EOF
+python probe14.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -3 probe8.log && pkill -f probe2.py; echo killed2
+$ sleep 120; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -3 probe8.log; ps aux | grep probe8 | grep -v grep | wc -l
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe15.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def objs(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    out = {'av': av}
+    for col, name in [(11,'B'), (14,'E')]:
+        rs, cs = np.where(f == col)
+        pts = [(int(r),int(c)) for r,c in zip(rs,cs) if 5<=r<=53 and 9<=c<=47]
+        out[name] = len(pts)
+    rs, cs = np.where((f==0)|(f==1))
+    pts = [(int(r),int(c)) for r,c in zip(rs,cs) if 5<=r<=53 and 9<=c<=47]
+    out['digits'] = sorted(pts)[:2], len(pts)
+    return out
+
+c = env.clone()
+seq = [1,3,3,3,1,1,1,1,4,4]          # eat B box 3 + creature
+seq += [3,3,1,1,1,1]                  # to (25,9) then up x4 -> (5,9) eat B box TL
+for a in seq:
+    c.step(a)
+print("after TL box:", objs(c.frame()), "lvl", c.levels_completed, "term", c.terminal())
+# go right along top: to (5,39)
+for a in [4,4,4,4,4,4]:
+    c.step(a)
+print("after TR box:", objs(c.frame()), "lvl", c.levels_completed, "term", c.terminal())
+np.save('/tmp/l6_c.npy', np.array(c.frame()))
+EOF
+python probe15.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_c.npy')
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in f[r]))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe16.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    return av, (min(cr) if cr else None), bar
+
+c = env.clone()
+base = [1,3,3,3,1,1,1,1,4,4] + [3,3,1,1,1,1] + [4,4,4,4,4,4]
+for a in base:
+    c.step(a)
+print("t0", st(c.frame()), c.levels_completed)
+# bounce in place at (5,39): down/up (below rows 10-14 open)
+for i in range(20):
+    a = 2 if i%2==0 else 1
+    f = c.step(a)
+    print(i, a, st(f), c.levels_completed, c.terminal())
+EOF
+python probe16.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe17.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    # picture room colors (rows 55-60, cols 1-10)
+    pr = np.unique(np.array(f)[55:61, 1:11]).tolist()
+    return av, (min(cr) if cr else None), bar, pr
+
+c = env.clone()
+base = [1,3,3,3,1,1,1,1,4,4] + [3,3,1,1,1,1] + [4,4,4,4,4,4]
+for a in base:
+    c.step(a)
+for i in range(20):
+    c.step(2 if i%2==0 else 1)
+print("t19:", st(c.frame()), c.levels_completed)
+for a in [2,2,2,2,3,3,3,3]:
+    f = c.step(a)
+    print(a, st(f), c.levels_completed, c.terminal())
+np.save('/tmp/l6_d.npy', np.array(c.frame()))
+EOF
+python probe17.py
+Second catch! Portrait went 8→12. Energy at 28 and dropping — let me see the respawn delay and whether we can keep catching before energy runs out.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe18.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    pr = np.unique(np.array(f)[55:61, 1:11]).tolist()
+    return av, (min(cr) if cr else None), bar, pr
+
+c = env.clone()
+moves = [1,3,3,3,1,1,1,1,4,4] + [3,3,1,1,1,1] + [4,4,4,4,4,4]
+moves += [2 if i%2==0 else 1 for i in range(20)]
+moves += [2,2,2,2,3,3,3,3]
+for a in moves:
+    c.step(a)
+print("after catch2:", st(c.frame()), c.levels_completed)
+# bounce at (25,19): left is (25,14) open; bounce 3/4
+for i in range(14):
+    a = 3 if i%2==0 else 4
+    f = c.step(a)
+    print(i, a, st(f), c.levels_completed, c.terminal())
+EOF
+python probe18.py
+Third catch confirmed (portrait 12→9), bar now 0. What happens at zero energy? And do the '1' counters change per catch?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe19.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    pr = np.unique(np.array(f)[55:61, 1:11]).tolist()
+    ones_r4 = int((f[4] == 1).sum())
+    ones_c55 = int((f[:, 55] == 1).sum())
+    return av, (min(cr) if cr else None), bar, pr, ones_r4, ones_c55
+
+c = env.clone()
+moves = [1,3,3,3,1,1,1,1,4,4] + [3,3,1,1,1,1] + [4,4,4,4,4,4]
+moves += [2 if i%2==0 else 1 for i in range(20)]
+moves += [2,2,2,2,3,3,3,3]
+for i, a in enumerate(moves):
+    f = c.step(a)
+    s = st(f)
+    if s[1] is None or i in (9,):
+        print("CATCH at move", i, s, c.levels_completed)
+for i in range(14):
+    a = 3 if i%2==0 else 4
+    c.step(a)
+print("bar0 state:", st(c.frame()), c.levels_completed, c.terminal())
+# step beyond zero energy
+for i in range(6):
+    a = 3 if i%2==0 else 4
+    f = c.step(a)
+    print("post0", i, a, st(f), c.levels_completed, c.terminal())
+EOF
+python probe19.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe20.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    pr = np.unique(np.array(f)[55:61, 1:11]).tolist()
+    return (min(cr) if cr else None), bar, pr
+
+c = env.clone()
+moves = [1,3,3,3,1,1,1,1,4,4]
+for a in moves:
+    c.step(a)
+print("catch1:", st(c.frame()), c.levels_completed)
+for i in range(40):
+    a = 3 if i%2==0 else 4
+    f = c.step(a)
+    s = st(f)
+    if s[0] is None or c.levels_completed > 5:
+        print("i", i, s, "lvl", c.levels_completed, "term", c.terminal())
+    if c.levels_completed > 5:
+        print("WIN after bounce steps", i+1)
+        break
+print("final lvl", c.levels_completed, st(c.frame()))
+EOF
+python probe20.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_frame.npy')
+rs, cs = np.where(f == 1)
+print("1-cells:", list(zip(rs.tolist(), cs.tolist())))
+# right-side geometry rows 30-45
+for r in range(30, 46):
+    print(r, ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',1:'1'}.get(int(v),'?') for v in f[r][48:64]))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe21.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    def band(rlo, rhi):
+        rs, cs = np.where(((f==0)|(f==1)))
+        pts = [(int(r),int(c)) for r,c in zip(rs,cs) if rlo<=r<=rhi and 9<=c<=47]
+        return min(pts) if pts else None
+    bar = int((f[60:63] == 11).sum())
+    return av, band(10,14), band(40,44), bar
+
+c = env.clone()
+# to (10,9): up, left x3, up x7? grid rows 50->45->40->35->30->25->20->15->10 = 8 ups total
+moves = [1,3,3,3] + [1]*7
+for a in moves:
+    c.step(a)
+print("t11:", st(c.frame()), c.levels_completed)
+for i, a in enumerate([4,4,3,4]):
+    f = c.step(a)
+    print("t", 12+i, a, st(f), c.levels_completed, c.terminal())
+np.save('/tmp/l6_e.npy', np.array(c.frame()))
+EOF
+python probe21.py
+Sprite A eaten. Now route to eat sprite B and watch for changes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe22.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    def band(rlo, rhi):
+        rs, cs = np.where(((f==0)|(f==1)))
+        pts = [(int(r),int(c)) for r,c in zip(rs,cs) if rlo<=r<=rhi and 9<=c<=47]
+        return min(pts) if pts else None
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    bar = int((f[60:63] == 11).sum())
+    return av, band(10,14), band(40,44), (min(cr) if cr else None), bar
+
+c = env.clone()
+moves = [1,3,3,3] + [1]*7 + [4,4,3,4]          # eat sprite A at t15
+moves += [4,4,4,4] + [2]*6 + [3,4,3,4,3,4,3]   # to (40,39) t25, bounce to catch at t32
+for a in moves:
+    c.step(a)
+print("t32:", st(c.frame()), c.levels_completed, c.terminal())
+np.save('/tmp/l6_f.npy', np.array(c.frame()))
+# diff against start to see all persistent changes
+f0 = np.array(env.frame())
+f = np.load('/tmp/l6_f.npy')
+d = np.where(f != f0)
+zones = sorted(set((int(r)//5, int(cc)//5) for r, cc in zip(*d)))
+print("zones changed vs start:", zones)
+EOF
+python probe22.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe23.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def present(f):
+    f = np.array(f)
+    rs, cs = np.where(((f==0)|(f==1)))
+    A_ = any(10<=r<=14 and 9<=c<=47 for r,c in zip(rs,cs))
+    B_ = any(40<=r<=44 and 9<=c<=47 for r,c in zip(rs,cs))
+    rs, cs = np.where(f == 14)
+    C_ = any(r<55 and 5<=c<=50 for r,c in zip(rs,cs))
+    return A_, B_, C_
+
+# creature eaten at t9 via standard opening; then bounce and watch
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    c.step(a)
+t = 9  # wait, count: 10 moves -> t10? opening has 10 moves; catch on move idx 9 -> t=10 ticks total
+t = 10
+print("t", t, present(c.frame()))
+for i in range(20):
+    a = 3 if i%2==0 else 4
+    c.step(a); t += 1
+    print("t", t, present(c.frame()))
+EOF
+python probe23.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe24.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+for a in ck["final_path"]:
+    env.step(a)
+
+def pr(f, tag):
+    f = np.array(f)
+    print(tag)
+    for r in range(54, 63):
+        print('  ', ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E',0:'0',1:'1'}.get(int(v),'?') for v in f[r][0:13]))
+
+c = env.clone()
+pr(c.frame(), "t0")
+# bounce up/down from start: up (45,24) etc. use 1/2
+for i in range(10):
+    a = 1 if i%2==0 else 2
+    f = c.step(a)
+    pr(f, f"t{i+1}")
+EOF
+python probe24.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > lib6.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def make6():
+    ck = json.load(open("checkpoint.json"))
+    env = A.Arena('ls20')
+    for a in ck["final_path"]:
+        env.step(a)
+    return env
+
+def st(f):
+    f = np.array(f)
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    # portrait color: any of 14,8,12,9,0 in rows 55-60 cols 2-9
+    reg = f[55:61, 2:10]
+    pcol = [int(v) for v in np.unique(reg) if v != 5]
+    bar = int((f[60:63] == 11).sum())
+    pips4 = int((f[4] == 1).sum())
+    door = int((f[20:25, 54] == 1).sum())
+    tr = [int(v) for v in np.unique(f[34:41, 53:60]) if v != 5]   # top-right room
+    br = [int(v) for v in np.unique(f[48:56, 53:60]) if v != 5]   # bottom-right room
+    # prey positions
+    rs, cs = np.where(f == 14)
+    cr = [(int(r),int(c)) for r,c in zip(rs,cs) if r < 55 and 5 <= c <= 50]
+    rs, cs = np.where((f==0)|(f==1))
+    sa = [(int(r),int(c)) for r,c in zip(rs,cs) if 10<=r<=14 and 9<=c<=47]
+    sb = [(int(r),int(c)) for r,c in zip(rs,cs) if 40<=r<=44 and 9<=c<=47]
+    boxes = int((f[5:50, 9:47] == 11).sum())
+    return dict(av=av, pcol=pcol, bar=bar, pips4=pips4, door=door, tr=tr, br=br,
+                cr=(min(cr) if cr else None), sa=(min(sa) if sa else None),
+                sb=(min(sb) if sb else None), boxes=boxes)
+EOF
+cat > probe25.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+log = []
+def run(seq, tag):
+    for a in seq:
+        f = c.step(a)
+        s = st(f)
+        log.append((tag, a, s))
+# overlap creature once (t9 catch): portrait -> 8
+run([1,3,3,3,1,1,1,1,4,4], "c1")
+print("after c1:", st(c.frame()))
+# now overlap sprite A while portrait=8: route (25,19)->(20,19)? rows 20-24 col 19-23 open? inner room. 
+# to top corridor: col 9: 3,3 -> (25,9), 1,1,1 -> (10,9); then intercept as before
+run([3,3,1,1,1], "goA")
+print("at", st(c.frame())['av'])
+# now at (10,9), t=15. sprite A at t15: mod8=7 -> col 20. plan: t16 (10,14) spr 15 (moving left/right? mod0=15) hmm overlap when avatar(10,14) spr@15!
+run([4], "iA")
+print(st(c.frame()))
+EOF
+python probe25.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe26.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4] + [3,3,1,1,1] + [4]:
+    c.step(a)
+print("overlapA@8:", st(c.frame()))
+for i in range(4):
+    f = c.step(3 if i%2 else 4)   # move away right? 4 then 3...
+    print(i, st(f))
+np.save('/tmp/l6_g.npy', np.array(c.frame()))
+f0 = np.array(env.frame()); f = np.load('/tmp/l6_g.npy')
+zones = sorted(set((int(r)//5, int(cc)//5) for r, cc in zip(*np.where(f != f0))))
+print("zones changed vs start:", zones)
+EOF
+python probe26.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe27.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    c.step(a)
+def pshow(f, tag):
+    f = np.array(f)
+    reg = f[54:63, 0:12]
+    print(tag, '|', ' '.join(''.join({3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E',0:'0',1:'1'}.get(int(v),'?') for v in row) for row in reg))
+pshow(c.frame(), "t10")
+for i in range(18):
+    f = c.step(3 if i%2==0 else 4)
+    pshow(f, f"t{11+i}")
+EOF
+python probe27.py
+What if the pip-doors respond to being pushed? Let me press into them.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe28.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+# route to (20,49): from start (50,24): 1 (45,24); 4,4,4 -> (45,39)? rows 45-49 cols open to 43; 
+# hmm use col 39 upward: (45,39): 4,4,4; up (40,39),(35,39),(30,39),(25,39),(20,39); right (20,44),(20,49)
+seq = [1,4,4,4] + [1,1,1,1,1] + [4,4]
+for a in seq:
+    f = c.step(a)
+s = st(c.frame()); print("pos:", s['av'], "door:", s['door'], "pips4:", s['pips4'], "bar:", s['bar'])
+# press right into door 5 times
+for i in range(5):
+    f = c.step(4)
+    s = st(f)
+    print("press", i, s['av'], "door:", s['door'], "pips4:", s['pips4'], "bar:", s['bar'], "lvl", c.levels_completed)
+EOF
+python probe28.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe29.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+for a in [1,4,4,4] + [1,1,1,1,1] + [4]:
+    c.step(a)
+f = np.array(c.frame())
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+for r in range(15, 30):
+    print(r, ''.join(chars.get(int(v),'?') for v in f[r][35:64]))
+print(st(f)['av'])
+f2 = np.array(c.step(4))
+print("after press:")
+for r in range(15, 30):
+    print(r, ''.join(chars.get(int(v),'?') for v in f2[r][35:64]))
+print(st(f2)['av'])
+EOF
+python probe29.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe30.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+# route to (15,49): to (20,39): [1,4,4,4,1,1,1,1,1]; then 1 -> (15,39); 4,4 -> (15,49)
+for a in [1,4,4,4,1,1,1,1,1] + [1,4,4]:
+    c.step(a)
+print("pos", st(c.frame())['av'])
+f = c.step(2)  # down toward (20,49)
+print("after down:", st(np.array(f))['av'])
+f = c.step(2)
+print("again:", st(np.array(f))['av'])
+EOF
+python probe30.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -2 probe8.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe31.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+f0 = np.array(env.frame())
+print("lives region t0:")
+for r in range(59, 64):
+    print('  ', ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',11:'B'}.get(int(v),'?') for v in f0[r][55:64]))
+c = env.clone()
+# waste energy to trigger reset: bounce 44+ times
+for i in range(46):
+    c.step(1 if i%2==0 else 2)
+f = np.array(c.frame())
+print("after reset:")
+for r in range(59, 64):
+    print('  ', ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',11:'B'}.get(int(v),'?') for v in f[r][55:64]))
+print("lvl", c.levels_completed, "term", c.terminal(), "bar", st(f)['bar'])
+EOF
+python probe31.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe32.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+
+def run(seq):
+    c = env.clone()
+    for a in seq:
+        c.step(a)
+    return c
+
+# openings that set portrait state k (k creature overlaps) and end at (25,19) or start
+catch = [1,3,3,3,1,1,1,1,4,4]         # 1 overlap, ends (25,19) t10
+bounce8 = [3,4]*4                      # +8 ticks, one more overlap at the (25,19) parity? catches happen every 8: after catch at t9? 
+# from probe20: catches occurred at bounce steps 7,15,23,31 (i.e., odd multiples). Let me instead directly build k-overlap prefixes:
+prefix = {1: catch, 2: catch + [3,4]*4, 3: catch + [3,4]*8}
+# route from (25,19) to (15,49): 4,4,4,4 -> (25,39)? rows25-29 cols 19->39; 1,1 -> (15,39); 4,4 -> (15,49); then 2 into wind
+to_wind = [4,4,4,4,1,1,4,4,2]
+for k in (1,2,3):
+    c = run(prefix[k] + to_wind)
+    s = st(c.frame())
+    print("k=",k, "av:", s['av'], "pcol:", s['pcol'], "bar:", s['bar'], "lvl", c.levels_completed)
+# also k=0
+c = run([1,4,4,4,1,1,4,4,2,2][:9] + [2])  # hmm build: start (50,24) -> (45,24) -> (45,39) -> (40,39)... let me do explicit
+c = run([1,4,4,4,1,1,1,1,1,1,4,4,2])  # (50,24)->(45,24)->(45,39)->(40,39),(35,39),(30,39),(25,39),(20,39),(15,39)->(15,44),(15,49)-> down
+s = st(c.frame())
+print("k=0 av:", s['av'], "pcol:", s['pcol'], "lvl", c.levels_completed)
+EOF
+python probe32.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe33.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+
+def run(seq):
+    c = env.clone()
+    for a in seq:
+        c.step(a)
+    return c
+
+# to (15,49): [1,4,4,4,1,1,1,1,1,1,4,4]  (from k=0 route in probe32 minus last 2)
+base = [1,4,4,4,1,1,1,1,1,1,4,4]
+c = run(base)
+print("base pos", st(c.frame())['av'])
+# up to (10,49)
+c2 = run(base + [1]); print("(10,49)?", st(c2.frame())['av'])
+# up again toward (5,49) wind
+c3 = run(base + [1,1]); print("into top wind:", st(c3.frame())['av'])
+# from (10,49) right to (10,54)
+c4 = run(base + [1,4]); print("(10,54)?", st(c4.frame())['av'])
+# up to (5,54)
+c5 = run(base + [1,4,1]); print("(5,54)?", st(c5.frame())['av'])
+# left toward (5,49) wind from side
+c6 = run(base + [1,4,1,3]); print("(5,49) from east:", st(c6.frame())['av'])
+# from (5,54): down (10,54), any other exits? try right (5,59)? cols 59-63: walls likely
+c7 = run(base + [1,4,1,4]); print("(5,59)?", st(c7.frame())['av'])
+EOF
+python probe33.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe34.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+base = [1,4,4,4,1,1,1,1,1,1,4,4,1,1]  # ends at (25,49) via teleport
+c = env.clone()
+for a in base:
+    c.step(a)
+print("pocket entry:", st(c.frame())['av'], "lvl", c.levels_completed)
+for a in [4,2,2]:
+    f = c.step(a)
+    s = st(f)
+    print("act", a, s['av'], "lvl", c.levels_completed, "term", c.terminal())
+f = np.array(c.frame())
+for r in range(28, 46):
+    print(r, ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',12:'C',1:'1',0:'0',11:'B',14:'E'}.get(int(v),'?') for v in f[r][46:64]))
+EOF
+python probe34.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe35.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+catch = [1,3,3,3,1,1,1,1,4,4]      # portrait -> 8, ends (25,19)
+route = [4,4,4,4,1,1,4,4,1,1]      # (25,19)->(25,39)->(15,39)->(15,49)->(10,49)->teleport(5,49)->(25,49)
+c = env.clone()
+for a in catch + route:
+    c.step(a)
+print("pos:", st(c.frame())['av'], "pcol:", st(c.frame())['pcol'])
+for a in [4,2,2,2]:
+    f = c.step(a)
+    s = st(f)
+    print("act", a, s['av'], "pcol", s['pcol'], "lvl", c.levels_completed, "term", c.terminal())
+f = np.array(c.frame())
+for r in range(30, 58):
+    print(r, ''.join({3:'.',4:'#',5:'@',8:'8',9:'9',12:'C',1:'1',0:'0',11:'B',14:'E'}.get(int(v),'?') for v in f[r][46:64]))
+EOF
+python probe35.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe36.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+catch = [1,3,3,3,1,1,1,1,4,4]
+routeA = [4,4,4,4,1,1,4,4,1,1]     # from (25,19) to pocket (25,49)
+route0 = [1,4,4,4,1,1,1,1,1,1,4,4,1,1]  # from start to pocket (k=0)
+def pocket_prefix(k):
+    if k == 0: return route0
+    return catch + [3,4]*(4*(k-1)) + routeA
+for k in range(4):
+    c = env.clone()
+    for a in pocket_prefix(k):
+        c.step(a)
+    s = st(c.frame())
+    f1 = np.array(c.frame())
+    pat8 = (f1[35:41, 53:60] == 8).sum()
+    pat9 = (f1[48:56, 53:60] == 9).sum()
+    c.step(4); c.step(2)   # to (30,54)
+    f = c.step(2)          # press into room
+    s2 = st(f)
+    print("k", k, "pcol", s['pcol'], "pat8", pat8, "pat9", pat9, "after press:", s2['av'], "lvl", c.levels_completed)
+EOF
+python probe36.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe37.py <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_frame.npy')
+# remove dynamic overlays: sprites/creature/avatar/boxes -> treat their cells as track
+# dynamic colors: 12,9 avatar & creature parts, 14, 0, 11 boxes; base walkable: 3 and 5
+walk = np.isin(f, [3, 5, 12, 9, 14, 0, 11])
+# but color 9/8 pattern cells in rooms are obstacles; room patterns at rows 35-40/48-56 cols 53-59; 
+# avatar at rows 50-54 cols 24-28; creature rows 31-33; boxes rows 6-8/45-47; digit sprites rows 11-13/41-43
+# rebuild: walkable = 3 or 5, plus known dynamic-object cells
+walk = np.isin(f, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(45,48,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+# rooms' pattern cells (8,9) stay blocked; pips (1) blocked
+rows = range(5, 51, 5); cols = range(9, 55, 5)
+ok = {}
+for r in rows:
+    for c in cols:
+        ok[(r,c)] = walk[r:r+5, c:c+5].all()
+print("tiles walkable:")
+for r in rows:
+    print(r, ''.join('X' if ok[(r,c)] else '.' for c in cols))
+# exclude bottom @ HUD region false positives: tiles rows 50 cols... check tile (50,54)? 
+EOF
+python probe37.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe38.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+from collections import deque
+env = make6()
+f = np.array(env.frame())
+walk = np.isin(f, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(45,48,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+rows = list(range(5, 51, 5)); cols = list(range(9, 55, 5))
+ok = {(r,c): walk[r:r+5, c:c+5].all() for r in rows for c in cols}
+springs = {(5,49), (20,49)}
+tiles = [t for t,v in ok.items() if v and t not in springs]
+# graph edges
+def nbrs(t):
+    r,c = t
+    for a,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+        u = (r+dr, c+dc)
+        if ok.get(u) and u not in springs:
+            yield a, u
+# DFS route visiting all tiles from start (50,24)
+start = (50,24)
+route = []
+visited = {start}
+def bfs_path(a, b):
+    q = deque([(a, [])]); seen = {a}
+    while q:
+        u, p = q.popleft()
+        if u == b: return p
+        for act, v in nbrs(u):
+            if v not in seen:
+                seen.add(v); q.append((v, p+[(act, v)]))
+    return None
+cur = start
+order = []
+todo = set(tiles) - {start}
+while todo:
+    # nearest unvisited
+    best = None
+    for t in todo:
+        p = bfs_path(cur, t)
+        if p is not None and (best is None or len(p) < len(best[1])):
+            best = (t, p)
+    if best is None:
+        print("unreachable:", todo); break
+    t, p = best
+    order += p
+    cur = t
+    todo.discard(t)
+print("crawl length:", len(order))
+c = env.clone()
+def sig(fr):
+    fr = np.array(fr)
+    return ((fr[35:41,53:60]==8).sum(), (fr[48:56,53:60]==9).sum(),
+            int((fr[4]==1).sum()), int((fr[20:25,54]==1).sum()),
+            int((fr[60:63,56:64]==8).sum()))
+s0 = sig(c.frame())
+print("sig0", s0)
+pos_expect = start
+for i,(act, t) in enumerate(order):
+    fr = c.step(act)
+    s = sig(fr)
+    if s != s0:
+        print("CHANGE at step", i, "tile", t, ":", s0, "->", s, "lvl", c.levels_completed)
+        s0 = s
+    real = st(fr)['av']
+    if real != t:
+        print("desync at", i, "expected", t, "got", real)
+        break
+print("done lvl", c.levels_completed, "bar", st(c.frame())['bar'])
+EOF
+python probe38.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe39.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+from collections import deque
+env = make6()
+f = np.array(env.frame())
+walk = np.isin(f, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(45,48,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+rows = list(range(5, 51, 5)); cols = list(range(9, 55, 5))
+ok = {(r,c): walk[r:r+5, c:c+5].all() for r in rows for c in cols}
+springs = {(5,49), (20,49)}
+def nbrs(t):
+    r,c = t
+    for a,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+        u = (r+dr, c+dc)
+        if ok.get(u) and u not in springs:
+            yield a, u
+def bfs_path(a, b):
+    q = deque([(a, [])]); seen = {a}
+    while q:
+        u, p = q.popleft()
+        if u == b: return p
+        for act, v in nbrs(u):
+            if v not in seen:
+                seen.add(v); q.append((v, p+[(act, v)]))
+    return None
+tiles = [t for t,v in ok.items() if v and t not in springs]
+boxes = [(5,9), (5,39), (45,9)]
+start = (50,24)
+cur = start
+order = []
+todo = set(tiles) - {start}
+budget = 44  # ticks until empty
+eaten = set()
+while todo:
+    # if budget low, route to nearest uneaten box
+    if budget < 16 and len(eaten) < 3:
+        cands = [(b, bfs_path(cur, b)) for b in boxes if b not in eaten]
+        cands = [x for x in cands if x[1] is not None]
+        b, p = min(cands, key=lambda x: len(x[1]))
+        order += p; cur = b; todo.discard(b); eaten.add(b); budget = 44 - 0
+        continue
+    best = None
+    for t in todo:
+        p = bfs_path(cur, t)
+        if p is not None and (best is None or len(p) < len(best[1])):
+            best = (t, p)
+    if best is None:
+        break
+    t, p = best
+    if len(p) >= budget - 2 and len(eaten) < 3:
+        budget = 15  # trigger refill
+        continue
+    order += p; cur = t; todo.discard(t); budget -= len(p)
+    if t in boxes:
+        eaten.add(t); budget = 44
+print("crawl length", len(order), "unvisited", todo)
+c = env.clone()
+def sig(fr):
+    fr = np.array(fr)
+    return ((fr[35:41,53:60]==8).sum(), (fr[48:56,53:60]==9).sum(),
+            int((fr[4]==1).sum()), int((fr[20:25,54]==1).sum()),
+            int((fr[60:63,56:64]==8).sum()))
+s0 = sig(c.frame())
+for i,(act, t) in enumerate(order):
+    fr = c.step(act)
+    s = sig(fr)
+    if s != s0:
+        print("CHANGE at", i, t, s0, "->", s, "lvl", c.levels_completed)
+        s0 = s
+    real = st(fr)['av']
+    if real != t:
+        print("desync at", i, "expected", t, "got", real); break
+print("done lvl", c.levels_completed, "bar", st(c.frame())['bar'], "term", c.terminal())
+EOF
+python probe39.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+# quick check: which box tiles are actually in `tiles` / reachable?
+import numpy as np
+from collections import deque
+f = np.load('/tmp/l6_frame.npy')
+walk = np.isin(f, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(45,48,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+rows = list(range(5, 51, 5)); cols = list(range(9, 55, 5))
+ok = {(r,c): walk[r:r+5, c:c+5].all() for r in rows for c in cols}
+for b in [(5,9),(5,39),(45,9)]:
+    print(b, ok.get(b))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_frame.npy')
+for r in range(44, 51):
+    print(r, ''.join({3:'.',4:'#',5:'@',11:'B',12:'C',9:'9'}.get(int(v),'?') for v in f[r][4:20]))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/(45,48,10,13)/(46,49,10,13)/' probe38.py probe39.py && python probe39.py
+All static visits produce no switch effects. I'll go with heavy search: a parallel BFS over masked frames using multiple worker processes. First check pickling/clone semantics, then build it.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && pkill -f probe8.py; sysctl -n hw.ncpu; python - <<'EOF'
+import pickle, sys, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.Arena('ls20')
+env.step(1)
+try:
+    b = pickle.dumps(env)
+    print("picklable", len(b))
+except Exception as e:
+    print("no pickle:", e)
+# how fast is building env from scratch + 200 steps?
+import json
+ck = json.load(open("checkpoint.json"))
+t0=time.time()
+e2 = A.Arena('ls20')
+for a in ck["final_path"]:
+    e2.step(a)
+print("rebuild: %.2fs" % (time.time()-t0))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > pbfs.py <<'EOF'
+import json, sys, os, time, hashlib
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import multiprocessing as mp
+mp.set_start_method('fork', force=True)
+import gkm_arena as A
+import numpy as np
+from legs import detect_noise_mask
+
+ck = json.load(open("checkpoint.json"))
+ROOT = A.Arena('ls20')
+for a in ck["final_path"]:
+    ROOT.step(a)
+BASE_LEVEL = ROOT.levels_completed
+MASK = detect_noise_mask(ROOT)
+MASKB = MASK.tobytes()
+
+def digest(frame):
+    g = np.asarray(frame).copy()
+    g[MASK] = 255
+    return hashlib.md5(g.tobytes()).digest()
+
+ACTIONS = (1, 2, 3, 4)
+
+def worker(conn, wid):
+    store = {}
+    if wid == 0:
+        store[digest(ROOT.frame())] = ROOT
+    while True:
+        msg = conn.recv()
+        cmd = msg[0]
+        if cmd == 'expand':
+            keys = msg[1]
+            out = []
+            for k in keys:
+                node = store.get(k)
+                if node is None:
+                    out.append(('missing', k)); continue
+                nkey = k
+                c = node.clone()
+                for a in ACTIONS:
+                    f = c.step(a)
+                    if c.levels_completed > BASE_LEVEL:
+                        out.append(('win', k, a))
+                        conn.send(out)
+                        break
+                    d = digest(f)
+                    if d == nkey:
+                        continue
+                    store[d] = c
+                    out.append(('child', k, a, d))
+                    if a != ACTIONS[-1]:
+                        c = node.clone()
+                else:
+                    continue
+                break
+            else:
+                conn.send(out)
+        elif cmd == 'keep':
+            keep = set(msg[1])
+            for d in list(store.keys()):
+                if d not in keep:
+                    del store[d]
+            conn.send(('kept', len(store)))
+        elif cmd == 'quit':
+            conn.send('bye'); return
+
+NW = 8
+conns = []
+for wid in range(NW):
+    pc, cc = mp.Pipe()
+    p = mp.Process(target=worker, args=(cc, wid), daemon=True)
+    p.start()
+    conns.append(pc)
+
+root_key = digest(ROOT.frame())
+seen = {root_key}
+owner = {root_key: 0}
+parent = {}
+frontier = [root_key]
+t0 = time.time()
+win = None
+MAXSTATES = 400000
+rounds = 0
+while frontier and win is None and len(seen) < MAXSTATES:
+    rounds += 1
+    # assign frontier keys to their owners
+    per = {w: [] for w in range(NW)}
+    for k in frontier:
+        per[owner[k]].append(k)
+    for w in range(NW):
+        conns[w].send(('expand', per[w]))
+    results = []
+    for w in range(NW):
+        results.append((w, conns[w].recv()))
+    newf = []
+    keep_by_w = {w: set() for w in range(NW)}
+    for w, out in results:
+        for rec in out:
+            if rec[0] == 'win':
+                k, a = rec[1], rec[2]
+                win = (k, a)
+                break
+            if rec[0] == 'child':
+                k, a, d = rec[1], rec[2], rec[3]
+                if d not in seen:
+                    seen.add(d)
+                    parent[d] = (k, a)
+                    owner[d] = w
+                    newf.append(d)
+                    keep_by_w[w].add(d)
+        if win: break
+    if win: break
+    # tell workers to prune stores to new frontier only
+    for w in range(NW):
+        conns[w].send(('keep', keep_by_w[w]))
+    for w in range(NW):
+        conns[w].recv()
+    frontier = newf
+    print(f"round {rounds} seen {len(seen)} frontier {len(frontier)} t={time.time()-t0:.0f}s", flush=True)
+
+if win:
+    k, a = win
+    path = [a]
+    while k != root_key:
+        pk, pa = parent[k]
+        path.append(pa)
+        k = pk
+    path.reverse()
+    print("WIN PATH:", path)
+    json.dump(path, open('/tmp/win6.json', 'w'))
+else:
+    print("no win", len(seen))
+for w in range(NW):
+    conns[w].send(('quit',))
+EOF
+nohup python pbfs.py > pbfs.log 2>&1 &
+echo started
+$ sleep 60; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -5 pbfs.log; ps aux | grep pbfs | grep -v grep | wc -l
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/g\[MASK\] = 255/g[MASK] = -1/' pbfs.py && nohup python pbfs.py > pbfs.log 2>&1 & sleep 90; tail -5 pbfs.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -5 pbfs.log; ps aux | grep pbfs | grep -v grep | awk '{print $2}' | wc -l
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && pkill -f pbfs.py; sleep 1; cat > pbfs2.py <<'EOF'
+import json, sys, os, time, hashlib
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import multiprocessing as mp
+mp.set_start_method('fork', force=True)
+import gkm_arena as A
+import numpy as np
+from legs import detect_noise_mask
+
+ck = json.load(open("checkpoint.json"))
+ROOT = A.Arena('ls20')
+for a in ck["final_path"]:
+    ROOT.step(a)
+BASE_LEVEL = ROOT.levels_completed
+MASK = detect_noise_mask(ROOT)
+
+def digest(frame):
+    g = np.asarray(frame).copy()
+    g[MASK] = -1
+    return hashlib.md5(g.tobytes()).digest()
+
+ACTIONS = (1, 2, 3, 4)
+
+def worker(conn, wid):
+    store = {}
+    root_key = digest(ROOT.frame())
+    store[root_key] = ROOT
+    while True:
+        msg = conn.recv()
+        cmd = msg[0]
+        if cmd == 'expand':
+            items = msg[1]  # list of (key, path)
+            out = []
+            newstore = {}
+            for k, p in items:
+                node = store.get(k) or newstore.get(k)
+                if node is None:
+                    node = ROOT.clone()
+                    for a in p:
+                        node.step(a)
+                nkey = k
+                c = node.clone()
+                win = False
+                for a in ACTIONS:
+                    f = c.step(a)
+                    if c.levels_completed > BASE_LEVEL:
+                        out.append(('win', k, a))
+                        win = True
+                        break
+                    d = digest(f)
+                    if d == nkey:
+                        continue
+                    newstore[d] = c
+                    out.append(('child', k, a, d))
+                    if a != ACTIONS[-1]:
+                        c = node.clone()
+                if win:
+                    break
+            store = newstore
+            conn.send(out)
+        elif cmd == 'prune':
+            keep = set(msg[1])
+            for d in list(store.keys()):
+                if d not in keep:
+                    del store[d]
+            conn.send(len(store))
+        elif cmd == 'quit':
+            conn.send('bye'); return
+
+NW = 9
+conns = []
+for wid in range(NW):
+    pc, cc = mp.Pipe()
+    p = mp.Process(target=worker, args=(cc, wid), daemon=True)
+    p.start()
+    conns.append(pc)
+
+root_key = digest(ROOT.frame())
+seen = {root_key}
+parent = {}
+paths = {root_key: []}
+frontier = [root_key]
+t0 = time.time()
+win = None
+MAXSTATES = 500000
+depth = 0
+while frontier and win is None and len(seen) < MAXSTATES:
+    depth += 1
+    per = {w: [] for w in range(NW)}
+    for i, k in enumerate(frontier):
+        per[i % NW].append((k, paths[k]))
+    for w in range(NW):
+        conns[w].send(('expand', per[w]))
+    newf = []
+    kept = {w: set() for w in range(NW)}
+    for w in range(NW):
+        out = conns[w].recv()
+        for rec in out:
+            if rec[0] == 'win':
+                k, a = rec[1], rec[2]
+                win = (k, a)
+                break
+            k, a, d = rec[1], rec[2], rec[3]
+            if d not in seen:
+                seen.add(d)
+                parent[d] = (k, a)
+                paths[d] = paths[k] + [a]
+                newf.append(d)
+                kept[w].add(d)
+        if win: break
+    if win: break
+    for w in range(NW):
+        conns[w].send(('prune', kept[w]))
+    for w in range(NW):
+        conns[w].recv()
+    # free old paths not needed: only frontier paths needed
+    fs = set(newf)
+    paths = {k: v for k, v in paths.items() if k in fs}
+    frontier = newf
+    print(f"depth {depth} seen {len(seen)} frontier {len(frontier)} t={time.time()-t0:.0f}s", flush=True)
+
+if win:
+    k, a = win
+    seq = [a]
+    while k != root_key:
+        pk, pa = parent[k]
+        seq.append(pa)
+        k = pk
+    seq.reverse()
+    print("WIN PATH:", seq)
+    json.dump(seq, open('/tmp/win6.json', 'w'))
+else:
+    print("no win", len(seen))
+for w in range(NW):
+    conns[w].send(('quit',))
+EOF
+(nohup python pbfs2.py > pbfs2.log 2>&1 &) ; echo started
+$ sleep 180; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -4 pbfs2.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe40.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def sig(fr):
+    fr = np.array(fr)
+    return ((fr[35:41,53:60]==8).sum(), (fr[48:56,53:60]==9).sum(),
+            int((fr[4]==1).sum()), int((fr[20:25,54]==1).sum()))
+c = env.clone()
+seq = [1,4,4,4,1,1,1,1,1,1,4,4,1,1]  # to pocket (25,49)
+for a in seq:
+    c.step(a)
+print("pocket:", st(c.frame())['av'], sig(c.frame()))
+for a in [4,2,1,3,1]:   # (25,54),(30,54),(25,54),(25,49),spring exit via (20,49)
+    f = c.step(a)
+    print(a, st(f)['av'], sig(f), c.levels_completed)
+EOF
+python probe40.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe41.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+catch = [1,3,3,3,1,1,1,1,4,4]
+routeA = [4,4,4,4,1,1,4,4,1,1]
+route0 = [1,4,4,4,1,1,1,1,1,1,4,4,1,1]
+def go(k):
+    c = env.clone()
+    pre = route0 if k == 0 else catch + [3,4]*(4*(k-1)) + routeA
+    log = []
+    for a in pre:
+        f = c.step(a)
+        log.append((st(f)['av'], st(f)['pcol']))
+    return c, log
+for k in range(4):
+    c, log = go(k)
+    s = st(c.frame())
+    # move to (30,54) and press
+    c.step(4); c.step(2)
+    s2 = st(c.frame())
+    f = c.step(2)
+    s3 = st(f)
+    print("k", k, "at pocket pcol", s['pcol'], "-> at (30,54) pcol", s2['pcol'],
+          "press ->", s3['av'], s3['pcol'], "lvl", c.levels_completed)
+EOF
+python probe41.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -2 pbfs2.log && cat > probe42.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def sig(fr):
+    fr = np.array(fr)
+    return ((fr[35:41,53:60]==8).sum(), (fr[48:56,53:60]==9).sum(),
+            int((fr[4]==1).sum()), int((fr[20:25,54]==1).sum()),
+            int((fr[60:63,56:64]==8).sum()))
+c = env.clone()
+# route to (40,34) area: from (50,24): 1 -> (45,24), 4,4 -> (45,34)? then 1 -> (40,34)
+for a in [1,4,4,1]:
+    c.step(a)
+print("pos", st(c.frame())['av'], sig(c.frame()), "bar", st(c.frame())['bar'])
+overlaps = 0
+s0 = sig(c.frame())
+i = 0
+while overlaps < 6 and i < 60:
+    a = 4 if i % 2 == 0 else 3
+    f = c.step(a)
+    i += 1
+    fr = np.array(f)
+    sb = [(r,cc) for r,cc in zip(*np.where((fr==0)|(fr==1))) if 40<=r<=44 and 9<=cc<=47]
+    s = sig(f)
+    if not sb:
+        overlaps += 1
+        print("overlap", overlaps, "at tick", i, "sig", s, "bar", st(f)['bar'])
+    if s != s0:
+        print("SIG CHANGE", s0, "->", s); s0 = s
+    if st(f)['bar'] <= 6:
+        print("low bar; abort"); break
+print("lvl", c.levels_completed)
+EOF
+python probe42.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && pkill -f pbfs2.py; sleep 1; cp pbfs2.py pbfs3.py && python - <<'EOF'
+import re
+src = open('pbfs3.py').read()
+# worker: after computing digest, also anomaly check
+src = src.replace("""                    d = digest(f)
+                    if d == nkey:
+                        continue
+                    newstore[d] = c
+                    out.append(('child', k, a, d))""",
+"""                    d = digest(f)
+                    if d == nkey:
+                        continue
+                    fr = np.asarray(f)
+                    anom = (int((fr[35:41,53:60]==8).sum()), int((fr[48:56,53:60]==9).sum()),
+                            int((fr[4]==1).sum()), int((fr[20:25,54]==1).sum()))
+                    if anom != (6,6,5,5):
+                        out.append(('anom', k, a, anom))
+                    newstore[d] = c
+                    out.append(('child', k, a, d))""")
+# master: handle anom records
+src = src.replace("""            if rec[0] == 'child':""",
+"""            if rec[0] == 'anom':
+                print("ANOMALY", rec[3], "path", paths.get(rec[1], '?') , "+", rec[2], flush=True)
+                continue
+            if rec[0] == 'child':""")
+open('pbfs3.py','w').write(src)
+print("patched")
+EOF
+(nohup python pbfs3.py > pbfs3.log 2>&1 &); echo ok
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe43.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def spr(f, rlo, rhi):
+    f = np.array(f)
+    cells = [(int(r),int(c),int(f[r,c])) for r,c in zip(*np.where((f==0)|(f==1))) if rlo<=r<=rhi and 9<=c<=47]
+    if not cells: return None
+    r0 = min(r for r,_,_ in cells); c0 = min(c for _,c,_ in cells)
+    return sorted((r-r0, c-c0, v) for r,c,v in cells)
+c = env.clone()
+print("A before:", spr(c.frame(), 10, 14))
+print("B before:", spr(c.frame(), 40, 44))
+# overlap A: route [1,3,3,3,1,1,1,1(x?)...] use earlier: [1,3,3,3]+[1]*7+[4,4,3,4] eats A at t15
+for a in [1,3,3,3]+[1]*7+[4,4,3,4]:
+    c.step(a)
+print("A covered:", spr(c.frame(), 10, 14))
+for a in [3,4,3]:
+    c.step(a)
+    s = spr(c.frame(), 10, 14)
+    if s: print("A after:", s); break
+EOF
+python probe43.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && grep -c ANOMALY pbfs3.log; tail -3 pbfs3.log
+$ sleep 420; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && grep -c ANOMALY pbfs3.log; tail -2 pbfs3.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe44.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+c = env.clone()
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    c.step(a)
+catches = 1
+boxes = [[2,2,2,2,3,3],[4,4,3,3,3,3][:0]]  # placeholder
+# box trips from (25,19)/(25,14) area:
+trip3 = ([3,3,2,2,2,2], [1,1,1,1,4,4])   # hmm (25,19)->3->(25,14)->3->(25,9)->2->(30,9)->2->(35,9)->2->(40,9)->2->(45,9); back up 4x, right 2x -> (25,19)
+used3 = False
+trip1 = ([3,3,1,1,1,1], [2,2,2,2,4,4])   # (25,9)->(20,9),(15,9),(10,9),(5,9); back down, right
+used1 = False
+trip2 = None
+i = 0
+win = False
+while catches < 16 and not c.terminal():
+    s = st(c.frame())
+    if s['bar'] <= 24 and (not used3 or not used1):
+        out, back = (trip3, ) if False else ((trip3 if not used3 else trip1))
+        if not used3: used3 = True
+        else: used1 = True
+        for a in out: c.step(a)
+        for a in back: c.step(a)
+        continue
+    a = 3 if i % 2 == 0 else 4
+    f = c.step(a); i += 1
+    fr = np.array(f)
+    cr = [(r,cc) for r,cc in zip(*np.where(fr==14)) if r<55 and 5<=cc<=50]
+    if not cr and st(f)['av'] in [(25,19),(25,14)]:
+        catches += 1
+        print("catch", catches, "bar", st(f)['bar'], "pcol", st(f)['pcol'], "lvl", c.levels_completed)
+    if c.levels_completed > 5:
+        print("WIN"); win = True; break
+    if s['bar'] <= 4 and used3 and used1:
+        print("energy done"); break
+print("total catches", catches, "lvl", c.levels_completed, "term", c.terminal())
+EOF
+python probe44.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > nav6.py <<'EOF'
+import numpy as np
+from collections import deque
+from lib6 import st
+
+f0 = np.load('/tmp/l6_frame.npy')
+walk = np.isin(f0, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(46,49,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+rows = list(range(5, 51, 5)); cols = list(range(9, 55, 5))
+OK = {(r,c): bool(walk[r:r+5, c:c+5].all()) for r in rows for c in cols}
+SPRINGS = {(5,49): (25,49), (20,49): (20,39)}
+def nbrs(t):
+    r, c = t
+    for a,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+        u = (r+dr, c+dc)
+        if not OK.get(u):
+            continue
+        yield a, SPRINGS.get(u, u)
+def path_to(a, b):
+    q = deque([(a, [])]); seen = {a}
+    while q:
+        u, p = q.popleft()
+        if u == b: return p
+        for act, v in nbrs(u):
+            if v not in seen:
+                seen.add(v); q.append((v, p + [act]))
+    return None
+def goto(c, target):
+    cur = st(c.frame())['av']
+    p = path_to(cur, target)
+    assert p is not None, (cur, target)
+    for a in p:
+        c.step(a)
+    assert st(c.frame())['av'] == target, (st(c.frame())['av'], target)
+    return len(p)
+EOF
+cat > probe45.py <<'EOF'
+from lib6 import make6, st
+from nav6 import goto
+import numpy as np
+env = make6()
+c = env.clone()
+boxes = [(45,9), (5,9), (5,39)]
+catches = 0
+i = 0
+while catches < 18 and not c.terminal() and c.levels_completed == 5:
+    s = st(c.frame())
+    if s['bar'] <= 26 and boxes:
+        b = boxes.pop(0)
+        goto(c, b)
+        goto(c, (25,19))
+        i = 0
+        continue
+    if s['av'] not in [(25,19),(25,14)]:
+        goto(c, (25,19)); i = 0
+        continue
+    a = 3 if s['av'] == (25,19) else 4
+    f = c.step(a); i += 1
+    fr = np.array(f)
+    cr = [(r,cc) for r,cc in zip(*np.where(fr==14)) if r<55 and 5<=cc<=50]
+    if not cr:
+        catches += 1
+        print("catch", catches, "bar", st(f)['bar'], "pcol", st(f)['pcol'], "lvl", c.levels_completed, flush=True)
+print("end: catches", catches, "lvl", c.levels_completed, "term", c.terminal(), "bar", st(c.frame())['bar'])
+EOF
+python probe45.py
+Let me study how levels 1–5 were actually won — replay the checkpoint and capture frames right before each level increment.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe46.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('ls20')
+lv = 0
+frames = []
+prev = np.array(env.frame())
+for i, a in enumerate(ck["final_path"]):
+    f = np.array(env.step(a))
+    if env.levels_completed > lv:
+        print(f"level {lv+1} won at move {i}")
+        np.save(f'/tmp/win_lv{lv+1}_before.npy', prev)
+        np.save(f'/tmp/win_lv{lv+1}_after.npy', f)
+        lv = env.levels_completed
+    prev = f
+EOF
+python probe46.py && python - <<'EOF'
+import numpy as np
+chars = {0:'0',1:'1',2:'2',3:'.',4:'#',5:'@',6:'6',7:'7',8:'8',9:'9',10:'a',11:'B',12:'C',13:'d',14:'E',15:'f'}
+for lv in (1,2):
+    fb = np.load(f'/tmp/win_lv{lv}_before.npy')
+    print(f"=== before winning move, level {lv}")
+    for r in range(0,64,1):
+        row = ''.join(chars.get(int(v),'?') for v in fb[r])
+        print(row)
+    print()
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+def descale(block):  # 6x6 -> 3x3
+    return block[::2, ::2]
+for lv in range(1, 6):
+    fb = np.load(f'/tmp/win_lv{lv}_before.npy')
+    fa = np.load(f'/tmp/win_lv{lv}_after.npy')
+    # BL display: find colored (not 4/5) cells in region rows 52-63 cols 0-11
+    reg = fb[52:64, 0:12]
+    vals = [v for v in np.unique(reg) if v not in (4,5)]
+    print("level", lv, "BL colors:", vals)
+    rs, cs = np.where(np.isin(reg, vals))
+    r0, c0 = rs.min(), cs.min()
+    blk = np.isin(reg[r0:r0+6, c0:c0+6], vals).astype(int)
+    print("BL 3x3:\n", descale(blk))
+    # goal room: where did the avatar move INTO? find pattern cells (9s) near avatar in fb outside BL/HUD
+    # find all 9-cells not part of avatar (avatar = 5-wide runs with 12 above)
+    f = fb.copy()
+    rs, cs = np.where(f == 12)
+    av = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            av = (int(r), int(c)); break
+    print("avatar at", av)
+    nine = [(int(r),int(c)) for r,c in zip(*np.where(f==9)) if not (av and av[0]<=r<=av[0]+4 and av[1]<=c<=av[1]+4) and not (52<=r and c<12) and not (r>=59)]
+    print("goal 9s:", nine)
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe47.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def shapes(f):
+    f = np.array(f)
+    tr = (f[36:39, 55:58] == 8).astype(int)
+    br = (f[51:54, 55:58] == 9).astype(int)
+    bl = (f[55:61:2, 3:9:2] != 5).astype(int)
+    blc = [int(v) for v in np.unique(f[55:61, 3:9]) if v != 5]
+    return tr.tolist(), br.tolist(), bl.tolist(), blc
+c = env.clone()
+print("k0:", shapes(c.frame()))
+for a in [1,3,3,3,1,1,1,1,4,4]:
+    c.step(a)
+print("k1:", shapes(c.frame()))
+for k in range(2, 6):
+    for a in [3,4]*4:
+        c.step(a)
+    print(f"k{k}:", shapes(c.frame()))
+EOF
+python probe47.py
+Room shapes are constant. Level 5's win was on this same map — let me dump the level-5 winning frames to see exactly how it was won.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+fb = np.load('/tmp/win_lv5_before.npy')
+fa = np.load('/tmp/win_lv5_after.npy')
+print("=== level5 BEFORE win move")
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in fb[r]))
+print("=== AFTER")
+for r in range(0, 20):
+    print(''.join(chars.get(int(v),'?') for v in fa[r]))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe48.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def bl(f):
+    f = np.array(f)
+    shape = (f[55:61:2, 3:9:2] != 5).astype(int).tolist()
+    col = [int(v) for v in np.unique(f[55:61, 3:9]) if v != 5]
+    return shape, col
+c = env.clone()
+print("start:", bl(c.frame()))
+# overlap sprite A: [1,3,3,3]+[1]*7+[4,4,3,4] (t15 overlap)
+for a in [1,3,3,3]+[1]*7+[4,4,3,4]:
+    c.step(a)
+print("after A overlap:", bl(c.frame()))
+# overlap sprite B: route down to (40,39) area: [4,4,4,4]+[2]*6 then bounce
+for a in [4,4,4,4]+[2]*6+[3,4,3,4,3,4,3]:
+    c.step(a)
+print("after B overlap:", bl(c.frame()))
+EOF
+python probe48.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe49.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def bl(f):
+    f = np.array(f)
+    return ''.join(str(int(v!=5)) for v in f[55:61:2, 3:9:2].flatten()), [int(v) for v in np.unique(f[55:61,3:9]) if v!=5]
+def sprpos(f):
+    f = np.array(f)
+    sa = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 10<=r<=14 and 9<=c<=47]
+    sb = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 40<=r<=44 and 9<=c<=47]
+    return (min(sa) if sa else None), (min(sb) if sb else None)
+c = env.clone()
+print("t0", bl(c.frame()), sprpos(c.frame()))
+for i in range(10):
+    a = 1 if i%2==0 else 2
+    f = c.step(a)
+    print(i+1, bl(f), sprpos(f))
+EOF
+python probe49.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe50.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def bl(f):
+    f = np.array(f)
+    return ''.join(str(int(v!=5)) for v in f[55:61:2, 3:9:2].flatten())
+def spr(f, band):
+    f = np.array(f)
+    rlo, rhi = (10,14) if band=='A' else (40,44)
+    s = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if rlo<=r<=rhi and 9<=c<=47]
+    return min(s) if s else None
+
+def collectA(n):
+    c = env.clone()
+    for a in [1,3,3,3]+[1]*7:
+        c.step(a)
+    events = []
+    i, last = 0, None
+    while len(events) < n and st(c.frame())['bar'] > 4:
+        a = 4 if i%2==0 else 3
+        f = c.step(a); i += 1
+        pos = spr(f, 'A')
+        if pos is None and last is not None:
+            events.append((last, bl(f)))
+            print("A overlap: sprite was at", last, "-> BL", bl(f), flush=True)
+        last = pos if pos else last
+    return events
+
+def collectB(n):
+    c = env.clone()
+    for a in [1,4,4,4]+[2]*0+[1]:  # (50,24)->(45,24)->(45,39)->(40,39)? hmm (45,24)->4->(45,29),(45,34),(45,39); 1->(40,39)
+        c.step(a)
+    events = []
+    i, last = 0, None
+    while len(events) < n and st(c.frame())['bar'] > 4:
+        a = 3 if i%2==0 else 4
+        f = c.step(a); i += 1
+        pos = spr(f, 'B')
+        if pos is None and last is not None:
+            events.append((last, bl(f)))
+            print("B overlap: sprite was at", last, "-> BL", bl(f), flush=True)
+        last = pos if pos else last
+    return events
+
+print("start BL:", bl(env.frame()))
+print("--- A overlaps")
+collectA(4)
+print("--- B overlaps")
+collectB(4)
+EOF
+python probe50.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe51.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+
+def obs(f):
+    f = np.array(f)
+    o = {}
+    rs, cs = np.where(f == 12)
+    o['av'] = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            o['av'] = (int(r), int(c)); break
+    sa = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 10<=r<=14 and 9<=c<=47]
+    sb = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 40<=r<=44 and 9<=c<=47]
+    cr = [(int(r),int(c)) for r,c in zip(*np.where(f==14)) if r<55 and 5<=c<=50]
+    o['sa'] = min(sa) if sa else None
+    o['sb'] = min(sb) if sb else None
+    o['cr'] = min(cr) if cr else None
+    o['bl'] = ''.join(str(int(v!=5)) for v in f[55:61:2, 3:9:2].flatten())
+    o['blc'] = [int(v) for v in np.unique(f[55:61,3:9]) if v != 5]
+    o['bar'] = int((f[60:63]==11).sum())
+    return o
+
+c = env.clone()
+log = []
+def step(a):
+    f = c.step(a)
+    o = obs(f)
+    log.append(a)
+    return o
+
+# Phase 0: go to (40,39) via (45,24)->(45,39)
+for a in [1,4,4,4,1]:
+    o = step(a)
+print("at", o['av'], "bar", o['bar'])
+# Phase 1: bounce (40,39)<->(40,34); count B overlaps (sb None)
+events = 0
+prev_sb = o['sb']
+while events < 2:
+    a = 3 if o['av'] == (40,39) else 4
+    o = step(a)
+    if o['sb'] is None:
+        events += 1
+        print("B overlap", events, "bl", o['bl'])
+# ensure we end at (40,39) (safe col) 
+while o['av'] != (40,39):
+    o = step(4)
+assert o['bl'] == '101110011', o['bl']
+print("shape set. bar", o['bar'])
+# Phase 1.5: energy: go eat box at (45,9)
+for a in [2,3,3,3,3,3,3]:
+    o = step(a)
+print("after box:", o['av'], "bar", o['bar'])
+# Phase 2: up col 9 to (25,9), then adaptive catch at (25,19)
+for a in [1,1,1,1]:
+    o = step(a)
+print("at", o['av'])
+# ring cycle order
+R = [(31,26),(31,21),(26,21),(21,21),(21,26),(21,31),(26,31),(31,31)]
+def cr_next(cur):
+    return R[(R.index(cur)+1) % 8]
+caught = False
+guard = 0
+while not caught and guard < 30:
+    guard += 1
+    if o['cr'] is None:  # under us?? shouldn't happen here
+        o = step(3); continue
+    nxt = cr_next(o['cr'])
+    if o['av'] == (25,14) and nxt == (26,21):
+        o = step(4)   # arrive (25,19) with creature
+        assert o['cr'] is None or o['blc'] == [8], o
+        caught = True
+        print("creature overlap; blc", o['blc'], "bl", o['bl'])
+        break
+    a = 3 if o['av'] == (25,14) else 4 if o['av'] == (25,9) else None
+    if a is None:
+        # navigate to (25,14)
+        o = step(3); continue
+    o = step(a)
+assert caught
+# exit safely west
+o = step(3)  # (25,14); creature heads (21,21) no overlap
+print("exited", o['av'], "blc", o['blc'], "bl", o['bl'], "bar", o['bar'])
+# Phase 3: to pocket: (25,14)->(25,19)..(25,39): dodge creature at (25,29)&(25,19)
+target_cols = [(25,19),(25,24),(25,29),(25,34),(25,39)]
+risky = {(25,19): (26,21), (25,29): (26,31)}
+idx = 0
+while o['av'] != (25,39):
+    cur = o['av']
+    nxtpos = (25, cur[1]+5)
+    danger = risky.get(nxtpos)
+    if danger and o['cr'] is not None and cr_next(o['cr']) == danger:
+        # dodge: step back west then return (2 ticks)
+        o = step(3); o = step(4); continue
+    o = step(4)
+print("crossed:", o['av'], "blc", o['blc'])
+# up col 39 to (15,39), right to (15,49), up (10,49), up spring -> (25,49)
+for a in [1,1,4,4,1,1]:
+    o = step(a)
+print("pocket:", o['av'], "bar", o['bar'])
+for a in [4,2]:
+    o = step(a)
+print("at door of TR:", o['av'], "bl", o['bl'], o['blc'])
+f = c.step(2)
+log.append(2)
+print("PRESS: lvl", c.levels_completed, "terminal", c.terminal())
+print("moves:", len(log))
+import json
+json.dump(log, open('/tmp/win6_candidate.json','w'))
+EOF
+python probe51.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe52.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+import json
+env = make6()
+c = env.clone()
+path = json.load(open('/tmp/win6_candidate.json'))
+for a in path[:-1]:   # stop at (30,54) before press
+    c.step(a)
+f = np.array(c.frame())
+chars = {0:'0',1:'1',3:'.',4:'#',5:'@',8:'8',9:'9',11:'B',12:'C',14:'E'}
+print("TR room:")
+for r in range(33, 42):
+    print('  ', ''.join(chars.get(int(v),'?') for v in f[r][50:62]))
+print("BL room:")
+for r in range(54, 62):
+    print('  ', ''.join(chars.get(int(v),'?') for v in f[r][0:12]))
+print("BR room:")
+for r in range(47, 57):
+    print('  ', ''.join(chars.get(int(v),'?') for v in f[r][50:62]))
+EOF
+python probe52.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe53.py <<'EOF'
+from lib6 import make6, st
+import numpy as np, json
+env = make6()
+c = env.clone()
+path = json.load(open('/tmp/win6_candidate.json'))
+for a in path[:-1]:
+    c.step(a)
+# at (30,54); bounce up/down (25,54)<->(30,54) and watch TR 8s & BL region
+for i in range(20):
+    a = 1 if i%2==0 else 2
+    f = np.array(c.step(a))
+    pat8 = int((f[35:41,53:60]==8).sum())
+    blc = [int(v) for v in np.unique(f[55:61,3:9]) if v != 5]
+    bl = ''.join(str(int(v!=5)) for v in f[55:61:2,3:9:2].flatten())
+    print(i, "av", st(f)['av'], "pat8", pat8, "bl", bl, blc, "lvl", c.levels_completed)
+EOF
+python probe53.py
+Maybe entry timing must sync with the world phase. Press into the room at every phase (presses are free—no tick—so alternate bounce+press).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe54.py <<'EOF'
+from lib6 import make6, st
+import numpy as np, json
+env = make6()
+c = env.clone()
+path = json.load(open('/tmp/win6_candidate.json'))
+for a in path[:-1]:
+    c.step(a)
+print("start bar", st(c.frame())['bar'])
+for i in range(14):
+    f = c.step(2)  # press into room
+    if c.levels_completed > 5:
+        print("WIN at press", i); break
+    a = 1 if i%2==0 else 2  # bounce to advance one tick
+    c.step(a)
+    print(i, st(c.frame())['av'], "lvl", c.levels_completed, "bar", st(c.frame())['bar'])
+EOF
+python probe54.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe55.py <<'EOF'
+from lib6 import make6, st
+import numpy as np
+env = make6()
+def bl6(f):
+    f = np.array(f)
+    blk = (f[55:61, 3:9] != 5).astype(int)
+    ok2x = all(blk[r,c]==blk[r|1,c|1]==blk[r|1,c]==blk[r,c|1] for r in range(0,6,2) for c in range(0,6,2))
+    s = ''.join(str(int(v)) for v in blk[::2, ::2].flatten())
+    return s, ok2x
+def spr(f):
+    f = np.array(f)
+    s = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 10<=r<=14 and 9<=c<=47]
+    return min(s) if s else None
+
+# overlap sprite A at tile (10,24) when sprite TL=25 (cells 25-27)
+# route to (10,29): [1,3,3,3]+[1]*7 = (10,9) at t11. spr pos t11: mod8=3 -> 30.
+# from (10,9): 4 (10,14) t12 spr 35; 4 (10,19) t13 spr 30; 4 (10,24) t14 spr 25 -> overlap? tile (10,24) covers cols 24-28 ⊇ 25-27 YES
+c = env.clone()
+for a in [1,3,3,3]+[1]*7+[4,4,4]:
+    c.step(a)
+f = c.frame()
+print("overlap at 25?", spr(f) is None, "bl:", bl6(f))
+# compare: overlap at TL20 gave 010010111
+EOF
+python probe55.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > drive6.py <<'EOF'
+import numpy as np
+from collections import deque
+
+def obs(f):
+    f = np.asarray(f)
+    o = {}
+    rs, cs = np.where(f == 12)
+    o['av'] = None
+    for r, c in zip(rs, cs):
+        if c+4 < 64 and (f[r, c:c+5] == 12).all():
+            o['av'] = (int(r), int(c)); break
+    sa = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 10<=r<=14 and 9<=c<=47]
+    sb = [(int(r),int(c)) for r,c in zip(*np.where((f==0)|(f==1))) if 40<=r<=44 and 9<=c<=47]
+    cr = [(int(r),int(c)) for r,c in zip(*np.where(f==14)) if r<55 and 5<=c<=50]
+    o['sa'] = min(sa) if sa else None
+    o['sb'] = min(sb) if sb else None
+    o['cr'] = min(cr) if cr else None
+    o['bl'] = ''.join(str(int(v!=5)) for v in f[55:61:2, 3:9:2].flatten())
+    o['blc'] = [int(v) for v in np.unique(f[55:61, 3:9]) if v != 5]
+    o['bar'] = int((f[60:63] == 11).sum())
+    o['boxes'] = set()
+    for name, (r, c) in {'b45': (46,10), 'b5l': (6,10), 'b5r': (6,40)}.items():
+        if f[r, c] == 11:
+            o['boxes'].add(name)
+    return o
+
+# static tile graph (no springs during ops)
+ROWS = list(range(5, 51, 5)); COLS = list(range(9, 55, 5))
+GRID = {
+ 5:  "XXXXXXX.XX",
+ 10: "XXXXXXX.XX",
+ 15: "X.....XXX.",
+ 20: "X.XXX.XXX.",
+ 25: "XXXXXXX.XX",
+ 30: "X.XXX.X..X",
+ 35: "X.....X...",
+ 40: "XXXXXXX..X",
+ 45: ".XXXXXX..X",
+ 50: ".XXXXX....",
+}
+OK = {(r, COLS[i]): ch == 'X' for r in ROWS for i, ch in enumerate(GRID[r])}
+SPRINGS = {(5,49), (20,49)}
+RING = [(31,26),(31,21),(26,21),(21,21),(21,26),(21,31),(26,31),(31,31)]
+
+def cr_next(cur):
+    return RING[(RING.index(cur)+1) % 8] if cur in RING else None
+
+def overlaps(av, obj3):
+    if av is None or obj3 is None:
+        return False
+    r, c = av; orr, oc = obj3
+    return r <= orr and orr+2 <= r+4 and c <= oc and oc+2 <= c+4
+
+SA_ROW, SB_ROW = 11, 41
+def spr_next(pos, prev):
+    # horizontal patrol; TLs cols 15..35 (A) or 16..36 (B); direction from prev
+    if pos is None: return None
+    lo, hi = (15, 35) if pos[0] == SA_ROW else (16, 36)
+    if prev is None or prev == pos:
+        d = 5
+    else:
+        d = pos[1] - prev[1]
+    nc = pos[1] + d
+    if nc > hi or nc < lo:
+        d = -d; nc = pos[1] + d
+    return (pos[0], nc)
+
+class Driver:
+    def __init__(self, env):
+        self.c = env
+        self.o = obs(env.frame())
+        self.prev = {'sa': None, 'sb': None}
+        self.base = env.levels_completed
+
+    def step(self, a):
+        self.prev['sa'] = self.o['sa'] or self.prev['sa']
+        self.prev['sb'] = self.o['sb'] or self.prev['sb']
+        f = self.c.step(a)
+        self.o = obs(f)
+        return self.o
+
+    def won(self):
+        return self.c.levels_completed > self.base
+
+    def predicted(self):
+        # predict next positions of sa, sb, cr if a tick happens
+        sa_n = spr_next(self.o['sa'], self.prev['sa'])
+        sb_n = spr_next(self.o['sb'], self.prev['sb'])
+        cr_n = cr_next(self.o['cr']) if self.o['cr'] else None
+        return sa_n, sb_n, cr_n
+
+    def safe_move(self, a, allow=()):
+        """attempt move a; only if destination tile won't overlap any predicted
+        critter (except those in allow). Returns True if moved."""
+        r, c = self.o['av']
+        dr, dc = {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}[a]
+        dest = (r+dr, c+dc)
+        sa_n, sb_n, cr_n = self.predicted()
+        for name, pos in (('sa',sa_n),('sb',sb_n),('cr',cr_n)):
+            if name in allow: continue
+            if overlaps(dest, pos):
+                return False
+        self.step(a)
+        return True
+
+    def goto(self, target, avoid_crit=True):
+        # BFS path on tiles; execute with per-step critter dodging
+        while self.o['av'] != target:
+            path = self._plan(self.o['av'], target)
+            assert path, (self.o['av'], target)
+            a = path[0]
+            if not avoid_crit:
+                self.step(a); continue
+            if not self.safe_move(a):
+                # dodge: try a harmless side-step or reverse, else wait via bounce
+                for alt in (1,2,3,4):
+                    if alt == a: continue
+                    r, c = self.o['av']
+                    dr, dc = {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}[alt]
+                    dest = (r+dr, c+dc)
+                    if OK.get(dest) and dest not in SPRINGS and self.safe_move(alt):
+                        break
+                else:
+                    # nothing safe?? just take original move
+                    self.step(a)
+
+    def _plan(self, a, b):
+        q = deque([(a, [])]); seen = {a}
+        while q:
+            u, p = q.popleft()
+            if u == b: return p
+            r, c = u
+            for act,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+                v = (r+dr, c+dc)
+                if OK.get(v) and v not in SPRINGS and v not in seen:
+                    seen.add(v); q.append((v, p+[act]))
+        return None
+
+    def refuel_if_needed(self, floor=30):
+        if self.o['bar'] > floor:
+            return
+        for name, tile in (('b45',(45,9)), ('b5l',(5,9)), ('b5r',(5,39))):
+            if name in self.o['boxes']:
+                self.goto(tile)
+                return
+
+    def op_B(self):
+        self.refuel_if_needed()
+        self.goto((40,39))
+        guard = 0
+        while guard < 40:
+            guard += 1
+            if self.o['av'] == (40,39):
+                # try to move to (40,34) exactly when sprite lands at TL 36
+                sb_n = self.predicted()[1]
+                if sb_n and overlaps((40,34), sb_n):
+                    self.step(3)  # overlap!
+                    self.goto((40,39))
+                    return True
+                self.safe_move(3, allow=())  or self.step(1) and None
+            elif self.o['av'] == (40,34):
+                self.safe_move(4) or self.step(4)
+            else:
+                self.goto((40,39))
+        return False
+
+    def op_A(self):
+        self.refuel_if_needed()
+        self.goto((10,9))
+        guard = 0
+        while guard < 40:
+            guard += 1
+            if self.o['av'] == (10,9):
+                sa_n = self.predicted()[0]
+                if sa_n and overlaps((10,14), sa_n):
+                    self.step(4)
+                    self.goto((10,9))
+                    return True
+                self.safe_move(4) or self.step(3)
+            elif self.o['av'] == (10,14):
+                self.safe_move(3) or self.step(3)
+            else:
+                self.goto((10,9))
+        return False
+
+    def op_C(self):
+        self.refuel_if_needed()
+        self.goto((25,9))
+        guard = 0
+        while guard < 40:
+            guard += 1
+            if self.o['av'] == (25,14):
+                cr_n = self.predicted()[2]
+                if cr_n == (26,21):
+                    self.step(4)  # overlap at (25,19)
+                    # leave west immediately
+                    self.step(3)
+                    return True
+                self.safe_move(3) or self.step(3)
+            elif self.o['av'] == (25,9):
+                self.safe_move(4) or self.step(4)
+            else:
+                self.goto((25,14))
+        return False
+EOF
+cat > probe56.py <<'EOF'
+from lib6 import make6
+from drive6 import Driver, obs
+env = make6()
+import itertools
+# learn A on rotations of S0: runs [B,A], [B,B,A], [B,B,B,A]
+for ops in (['B','A'], ['B','B','A'], ['B','B','B','A']):
+    c = env.clone()
+    d = Driver(c)
+    trace = []
+    okall = True
+    for op in ops:
+        ok = getattr(d, 'op_'+op)()
+        trace.append((op, ok, d.o['bl'], d.o['blc'], d.o['bar']))
+        if not ok: okall = False; break
+    print(ops, "->", trace, flush=True)
+EOF
+python probe56.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe57.py <<'EOF'
+from lib6 import make6
+from drive6 import Driver
+env = make6()
+c = env.clone()
+d = Driver(c)
+chain = [d.o['bl']]
+for i in range(12):
+    ok = d.op_A()
+    if not ok:
+        print("op_A failed at", i); break
+    if d.o['bl'] == chain[-1]:
+        print("no-change (false overlap)"); continue
+    chain.append(d.o['bl'])
+    print(i, d.o['bl'], "bar", d.o['bar'], "blc", d.o['blc'], flush=True)
+    if d.o['bl'] == chain[0] and len(chain) > 1:
+        print("A-cycle length", len(chain)-1); break
+print(chain)
+EOF
+python probe57.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import numpy as np
+f = np.load('/tmp/l6_frame.npy')
+walk = np.isin(f, [3, 5])
+for (r0,r1,c0,c1) in [(50,55,24,29),(31,34,25,28),(6,9,10,13),(6,9,40,43),(46,49,10,13),(11,14,15,18),(41,44,35,38)]:
+    walk[r0:r1, c0:c1] = True
+rows = list(range(5, 51, 5)); cols = list(range(9, 55, 5))
+for r in rows:
+    print(f' {r}:  "' + ''.join('X' if walk[r:r+5, c:c+5].all() else '.' for c in cols) + '",')
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/ 45: "\.XXXXXX\.\.X",/ 45: "XXXXXXX..X",/' drive6.py && grep -n '45:' drive6.py && python probe57.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe58.py <<'EOF'
+from lib6 import make6
+from drive6 import Driver
+env = make6()
+c = env.clone()
+d = Driver(c)
+
+def do(op, expect_change):
+    for attempt in range(3):
+        before = (d.o['bl'], tuple(d.o['blc']))
+        ok = getattr(d, 'op_'+op)()
+        after = (d.o['bl'], tuple(d.o['blc']))
+        if after != before:
+            return True
+    return False
+
+# order: B (bottom), C x3 (middle), A x5 (top)
+seq = ['B'] + ['C']*3 + ['A']*5
+for op in seq:
+    ok = do(op, True)
+    print(op, "->", d.o['bl'], d.o['blc'], "bar", d.o['bar'], flush=True)
+    assert ok, op
+print("display:", d.o['bl'], d.o['blc'])
+assert d.o['bl'] == '101001111', d.o['bl']
+assert d.o['blc'] == [9], d.o['blc']
+d.refuel_if_needed(floor=40)
+# route to pocket: (15,39)->(15,44)->(15,49)->(10,49)->(5,49) spring->(25,49)
+d.goto((15,49))
+d.step(1)          # (10,49)
+d.step(1)          # spring -> (25,49)
+print("pos", d.o['av'], "bar", d.o['bar'])
+d.step(4)          # (25,54)
+d.step(2)          # (30,54)
+print("at TR door, display", d.o['bl'], d.o['blc'])
+f = d.step(2)      # press into TR with BR display
+print("press1:", d.o['av'], "lvl", c.levels_completed)
+f = d.step(2)
+print("press2:", d.o['av'], "lvl", c.levels_completed)
+f = d.step(2)
+print("press3:", d.o['av'], "lvl", c.levels_completed, "term", c.terminal())
+EOF
+python probe58.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe59.py <<'EOF'
+from lib6 import make6
+from drive6 import Driver
+import numpy as np
+env = make6()
+c = env.clone()
+d = Driver(c)
+def do(op):
+    for attempt in range(3):
+        before = (d.o['bl'], tuple(d.o['blc']))
+        getattr(d, 'op_'+op)()
+        if (d.o['bl'], tuple(d.o['blc'])) != before:
+            return True
+    return False
+# set display=TR: B,B then C
+assert do('B'); assert do('B'); assert do('C')
+print("display", d.o['bl'], d.o['blc'], "bar", d.o['bar'])
+assert d.o['bl'] == '101110011' and d.o['blc'] == [8]
+d.refuel_if_needed(floor=40)
+d.goto((15,49)); d.step(1); d.step(1)  # spring -> (25,49)
+d.step(4); d.step(2)  # (30,54)
+f = np.array(d.step(2))  # cross into TR (35,54)
+print("in TR:", d.o['av'], "pat8:", int((f[35:41,53:60]==8).sum()))
+d.step(1)  # back out to (30,54)
+print("back out:", d.o['av'])
+f = np.array(d.c.frame())
+print("pat8 after exit:", int((f[35:41,53:60]==8).sum()))
+# exit pocket via spring (20,49): (25,49) then 1
+d.step(1)  # (25,54)
+d.step(3)  # (25,49)
+d.step(1)  # spring eject -> (20,39)
+print("ejected:", d.o['av'], "bar", d.o['bar'])
+# change display color (C op) -> display no longer TR
+assert do('C')
+print("display now", d.o['bl'], d.o['blc'])
+d.refuel_if_needed(floor=40)
+d.goto((15,49)); d.step(1); d.step(1); d.step(4); d.step(2)
+print("at TR door again", d.o['av'], "display", d.o['bl'], d.o['blc'])
+d.step(2)
+print("press:", d.o['av'], "lvl", c.levels_completed)
+EOF
+python probe59.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/f = np.array(d.step(2))  # cross into TR (35,54)/d.step(2)  # cross into TR (35,54)\nf = np.array(d.c.frame())/' probe59.py && python probe59.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe60.py <<'EOF'
+from lib6 import make6
+from drive6 import Driver
+import numpy as np
+env = make6()
+c = env.clone()
+d = Driver(c)
+def do(op):
+    for attempt in range(3):
+        before = (d.o['bl'], tuple(d.o['blc']))
+        getattr(d, 'op_'+op)()
+        if (d.o['bl'], tuple(d.o['blc'])) != before:
+            return True
+    return False
+def pocket_in():
+    d.refuel_if_needed(floor=36)
+    d.goto((15,49)); d.step(1); d.step(1)  # spring down to (25,49)
+    d.step(4); d.step(2)                    # (30,54)
+def pocket_out():
+    # from wherever in pocket back out via spring (20,49)
+    while d.o['av'] != (25,49):
+        av = d.o['av']
+        a = {(30,54):1, (25,54):3, (35,54):1}.get(av)
+        if a is None: break
+        d.step(a)
+    d.step(1)  # -> ejected (20,39)
+
+# Trip 1: display=TR, open TR
+assert do('B') and do('B') and do('C')
+print("trip1 display", d.o['bl'], d.o['blc'], "bar", d.o['bar'], flush=True)
+assert (d.o['bl'], d.o['blc']) == ('101110011', [8])
+pocket_in()
+d.step(2)   # cross into TR -> 8s vanish
+f = np.array(d.c.frame())
+print("crossed:", d.o['av'], "pat8", int((f[35:41,53:60]==8).sum()), "bar", d.o['bar'])
+d.step(1)   # back to (30,54)
+pocket_out()
+print("out:", d.o['av'], "bar", d.o['bar'])
+# Trip 2 ops: A x5, B x3, C x1  (order: A near top first)
+for op in ['A']*5 + ['B']*3 + ['C']:
+    assert do(op), op
+    print(op, d.o['bl'], d.o['blc'], "bar", d.o['bar'], flush=True)
+assert (d.o['bl'], d.o['blc']) == ('101001111', [9]), (d.o['bl'], d.o['blc'])
+pocket_in()
+print("at (30,54), display", d.o['bl'], d.o['blc'], "bar", d.o['bar'])
+d.step(2)  # through open TR
+print("pos", d.o['av'])
+d.step(2)  # (40,54)
+d.step(2)  # (45,54)
+print("at BR door:", d.o['av'], "lvl", c.levels_completed)
+d.step(2)  # press into BR
+print("FINAL:", d.o['av'], "lvl", c.levels_completed, "terminal", c.terminal())
+EOF
+python probe60.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python probe60.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe61.py <<'EOF'
+from lib6 import make6, st
+from drive6 import obs
+import numpy as np
+env = make6()
+c = env.clone()
+# eat one box, then die, check boxes
+seq = [1,3,3,3]+[1]*4  # (50,24)->(45,24),(45,9)... wait: 1->(45,24); 3,3,3->(45,9) eats b45; 1x4 -> (25,9)
+for a in seq:
+    c.step(a)
+print("boxes after eating b45:", obs(c.frame())['boxes'], "bar", obs(c.frame())['bar'])
+i = 0
+while obs(c.frame())['bar'] > 0:
+    c.step(3 if i%2==0 else 4); i += 1
+c.step(3)  # trigger death
+o = obs(c.frame())
+print("after death: av", o['av'], "bar", o['bar'], "boxes", o['boxes'], "bl", o['bl'], o['blc'], "term", c.terminal())
+EOF
+python probe61.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe62.py <<'EOF'
+# quick: does TR open with shape TR but color 14 (no C op)?
+from lib6 import make6
+from drive6 import Driver
+import numpy as np
+env = make6()
+c = env.clone()
+d = Driver(c)
+def do(op):
+    for _ in range(3):
+        before = (d.o['bl'], tuple(d.o['blc']))
+        getattr(d, 'op_'+op)()
+        if (d.o['bl'], tuple(d.o['blc'])) != before:
+            return True
+    return False
+assert do('B') and do('B')
+print("display", d.o['bl'], d.o['blc'], "bar", d.o['bar'])
+d.refuel_if_needed(floor=44)
+d.goto((15,49)); d.step(1); d.step(1); d.step(4); d.step(2)
+print("at door", d.o['av'], d.o['bl'], d.o['blc'])
+d.step(2)
+f = np.array(d.c.frame())
+print("press ->", d.o['av'], "pat8", int((f[35:41,53:60]==8).sum()))
+EOF
+python probe62.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > exec6.py <<'EOF'
+import numpy as np
+from drive6 import Driver, obs
+
+# shape algebra
+def cw(s):
+    g = [list(s[0:3]), list(s[3:6]), list(s[6:9])]
+    n = [[g[2-c][r] for c in range(3)] for r in range(3)]
+    return ''.join(''.join(row) for row in n)
+
+S0 = '110011101'
+ACHAIN = [S0]
+_next = {S0: '010010111', '010010111': '101101111', '101101111': '011101010',
+         '011101010': '010110011', '010110011': '111001101', '111001101': S0}
+for _ in range(5):
+    ACHAIN.append(_next[ACHAIN[-1]])
+
+def classify(shape):
+    """return (i, j) with shape == R^i(A^j(S0)), or None"""
+    for j, base in enumerate(ACHAIN):
+        x = base
+        for i in range(4):
+            if x == shape:
+                return i, j
+            x = cw(x)
+    return None
+
+COLORS = [14, 8, 12, 9]
+
+def ops_needed(cur_shape, cur_color, tgt_shape, tgt_color):
+    ci = classify(cur_shape); ti = classify(tgt_shape)
+    if ci is None or ti is None:
+        return None
+    nA = (ti[1] - ci[1]) % 6
+    nB = (ti[0] - ci[0]) % 4
+    nC = (COLORS.index(tgt_color) - COLORS.index(cur_color)) % 4
+    return nA, nB, nC
+
+class Death(Exception):
+    pass
+
+class Exec(Driver):
+    def step(self, a):
+        prev_bar = self.o['bar']
+        o = super().step(a)
+        if o['bar'] > prev_bar + 20 and o['av'] == (50, 24):
+            raise Death()
+        return o
+
+    def ensure_display(self, tgt_shape, tgt_color):
+        guard = 0
+        while (self.o['bl'], self.o['blc']) != (tgt_shape, [tgt_color]):
+            guard += 1
+            assert guard < 30
+            need = ops_needed(self.o['bl'], self.o['blc'][0], tgt_shape, tgt_color)
+            assert need, (self.o['bl'], self.o['blc'])
+            nA, nB, nC = need
+            # geographic order: C (middle), A (top), B (bottom)
+            if nC: op = 'C'
+            elif nA: op = 'A'
+            elif nB: op = 'B'
+            else: break
+            getattr(self, 'op_' + op)()
+
+    def pocket_in(self):
+        self.refuel_if_needed(floor=44)
+        self.goto((15,49))
+        self.step(1); self.step(1)   # (10,49) -> spring -> (25,49)
+        assert self.o['av'] == (25,49), self.o['av']
+        self.step(4); self.step(2)   # (30,54)
+
+    def pocket_out(self):
+        while self.o['av'] != (25,49):
+            a = {(35,54):1, (30,54):1, (25,54):3}.get(self.o['av'])
+            assert a, self.o['av']
+            self.step(a)
+        self.step(1)  # spring -> (20,39)
+
+    def tr_open(self):
+        f = np.asarray(self.c.frame())
+        return int((f[35:41,53:60] == 8).sum()) == 0
+
+    def phase1(self):
+        if self.tr_open():
+            return
+        self.ensure_display('101110011', 8)   # TR = R^2(S0), color 8
+        self.pocket_in()
+        self.step(2)                           # press -> (35,54), 8s vanish
+        assert self.o['av'] == (35,54) and self.tr_open(), self.o['av']
+        self.step(1)                           # back to (30,54)
+        self.pocket_out()
+
+    def phase2(self):
+        self.ensure_display('101001111', 9)   # BR = R^1(A^5(S0)), color 9
+        assert self.tr_open()
+        self.pocket_in()
+        self.step(2)   # (35,54) through open TR
+        self.step(2)   # (40,54)
+        self.step(2)   # (45,54)
+        assert self.o['av'] == (45,54), self.o['av']
+        self.step(2)   # press into BR
+EOF
+cat > probe63.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death
+env = make6()
+c = env.clone()
+d = Exec(c)
+for attempt in range(3):
+    try:
+        d.phase1()
+        print("phase1 done: TR open, display", d.o['bl'], d.o['blc'], "bar", d.o['bar'], flush=True)
+        d.phase2()
+        print("phase2 done: pos", d.o['av'], "lvl", c.levels_completed, "term", c.terminal())
+        break
+    except Death:
+        print("DIED, retry", attempt, flush=True)
+print("FINAL lvl", c.levels_completed, "moves", len(c.path) - 200)
+EOF
+python probe63.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/drive6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python probe63.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/self.refuel_if_needed(floor=44)/self.refuel_if_needed(floor=64)/' exec6.py && cat > probe64.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death
+env = make6()
+c = env.clone()
+d = Exec(c)
+import traceback
+for attempt in range(3):
+    try:
+        d.phase1()
+        print("phase1 done bar", d.o['bar'], flush=True)
+        # instrumented phase2
+        d.ensure_display('101001111', 9)
+        print("display set", d.o['bl'], d.o['blc'], "bar", d.o['bar'], "tr_open", d.tr_open(), flush=True)
+        d.pocket_in()
+        print("in pocket", d.o['av'], "bar", d.o['bar'], flush=True)
+        d.step(2); d.step(2); d.step(2)
+        print("at BR door", d.o['av'], "bar", d.o['bar'], "lvl", c.levels_completed, flush=True)
+        d.step(2)
+        print("pressed:", d.o['av'], "lvl", c.levels_completed, "term", c.terminal())
+        break
+    except Death:
+        print("DIED at bar-reset; pos now", d.o['av'], flush=True)
+    except Exception as e:
+        print("ERR", e); traceback.print_exc(); break
+print("FINAL lvl", c.levels_completed)
+EOF
+python probe64.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import re
+src = open('drive6.py').read()
+# replace goto signature/body to accept allow
+src = src.replace("""    def goto(self, target, avoid_crit=True):
+        # BFS path on tiles; execute with per-step critter dodging
+        if not getattr(self, '_refueling', False):
+            p0 = self._plan(self.o['av'], target)
+            if p0 is not None and self.o['bar'] <= 2*(len(p0)+6):
+                self.refuel_if_needed(floor=self.o['bar']+1)
+        while self.o['av'] != target:
+            path = self._plan(self.o['av'], target)
+            assert path, (self.o['av'], target)
+            a = path[0]
+            if not avoid_crit:
+                self.step(a); continue
+            if not self.safe_move(a):
+                # dodge: any safe legal side-step / back-step, else force original
+                moved = False
+                for alt in (1,2,3,4):
+                    if alt == a: continue
+                    r, c = self.o['av']
+                    dr, dc = {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}[alt]
+                    dest = (r+dr, c+dc)
+                    if OK.get(dest) and dest not in SPRINGS and self.safe_move(alt):
+                        moved = True
+                        break
+                if not moved:
+                    self.step(a)""",
+"""    def goto(self, target, allow=()):
+        # BFS path on tiles; execute with per-step critter dodging
+        if not getattr(self, '_refueling', False):
+            p0 = self._plan(self.o['av'], target)
+            if p0 is not None and self.o['bar'] <= 2*(len(p0)+6):
+                self.refuel_if_needed(floor=self.o['bar']+1)
+        while self.o['av'] != target:
+            path = self._plan(self.o['av'], target)
+            assert path, (self.o['av'], target)
+            a = path[0]
+            if not self.safe_move(a, allow=allow):
+                # dodge: any safe legal side-step / back-step, else force original
+                moved = False
+                for alt in (1,2,3,4):
+                    if alt == a: continue
+                    r, c = self.o['av']
+                    dr, dc = {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}[alt]
+                    dest = (r+dr, c+dc)
+                    if OK.get(dest) and dest not in SPRINGS and self.safe_move(alt, allow=allow):
+                        moved = True
+                        break
+                if not moved:
+                    self.step(a)""")
+# replace the chase-sprite ops with dumb bouncers
+start = src.index("    def _chase_sprite(")
+end = src.index("    # creature interception")
+src = src[:start] + """    def _bounce_overlap(self, key, row_tile, guard=40):
+        \"\"\"bounce between (row,14) and (row,19) until one overlap of sprite
+        `key` is observed (sprite hidden under avatar). Returns True on
+        overlap. ensure_display() self-corrects any extra overlaps.\"\"\"
+        self.refuel_if_needed(floor=36)
+        self.goto((row_tile, 9), allow=(key,))
+        for i in range(guard):
+            a = 4 if self.o['av'][1] in (9, 14) and self.o['av'][1] != 19 else 3
+            # simple bounce 9->14->19->14->19...
+            c = self.o['av'][1]
+            a = 4 if c < 19 else 3
+            self.step(a)
+            if self.o[key] is None:
+                return True
+        return False
+
+    def op_A(self):
+        return self._bounce_overlap('sa', 10)
+
+    def op_B(self):
+        return self._bounce_overlap('sb', 40)
+
+""" + src[end:]
+open('drive6.py','w').write(src)
+print("ok")
+EOF
+python probe64.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe65.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death
+env = make6()
+c = env.clone()
+d = Exec(c)
+d.ensure_display('101110011', 8)
+print("after ensure:", d.o['bl'], d.o['blc'], "bar", d.o['bar'], "av", d.o['av'])
+d.refuel_if_needed(floor=64)
+print("after refuel:", d.o['bl'], d.o['blc'], "bar", d.o['bar'], "av", d.o['av'])
+d.goto((15,49))
+print("at (15,49):", d.o['bl'], d.o['blc'], "bar", d.o['bar'])
+d.step(1); print("at (10,49):", d.o['bl'], d.o['blc'])
+d.step(1); print("sprung:", d.o['av'], d.o['bl'], d.o['blc'])
+d.step(4); d.step(2)
+print("at (30,54):", d.o['bl'], d.o['blc'])
+d.step(2)
+print("press ->", d.o['av'])
+EOF
+python probe65.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+src = open('drive6.py').read()
+# 1. weighted plan
+src = src.replace("""    def _plan(self, a, b):
+        q = deque([(a, [])]); seen = {a}
+        while q:
+            u, p = q.popleft()
+            if u == b: return p
+            r, c = u
+            for act,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+                v = (r+dr, c+dc)
+                if OK.get(v) and v not in SPRINGS and v not in seen:
+                    seen.add(v); q.append((v, p+[act]))
+        return None""",
+"""    RISKY = set()
+    for _c in (14,19,24,29,34):
+        RISKY.add((10,_c)); RISKY.add((40,_c))
+    for _t in [(25,19),(25,29),(20,24),(30,24),(20,19),(20,29),(30,19),(30,29)]:
+        RISKY.add(_t)
+
+    def _plan(self, a, b):
+        import heapq
+        pq = [(0, 0, a, [])]; best = {a: 0}; n = 0
+        while pq:
+            cost, _, u, p = heapq.heappop(pq)
+            if u == b: return p
+            if cost > best.get(u, 1e9): continue
+            r, c = u
+            for act,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+                v = (r+dr, c+dc)
+                if not OK.get(v) or v in SPRINGS: continue
+                w = cost + (4 if v in self.RISKY else 1)
+                if w < best.get(v, 1e9):
+                    best[v] = w; n += 1
+                    heapq.heappush(pq, (w, n, v, p+[act]))
+        return None""")
+# 2. exit row after bounce op success
+src = src.replace("""            self.step(a)
+            if self.o[key] is None:
+                return True
+        return False
+
+    def op_A(self):""",
+"""            self.step(a)
+            if self.o[key] is None:
+                # exit the sprite's row before returning
+                out = 1 if row_tile == 10 else 2
+                r, c = self.o['av']
+                dr = -5 if out == 1 else 5
+                if OK.get((r+dr, c)) and (r+dr, c) not in SPRINGS:
+                    self.step(out)
+                else:
+                    self.step(3)
+                return True
+        return False
+
+    def op_A(self):""")
+open('drive6.py','w').write(src)
+print("ok")
+EOF
+python probe64.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -i '' 's/self.refuel_if_needed(floor=20)/self.refuel_if_needed(floor=30)/' drive6.py && cat > probe66.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death, ops_needed
+env = make6()
+c = env.clone()
+d = Exec(c)
+try:
+    d.phase1()
+    print("phase1 done bar", d.o['bar'], "av", d.o['av'], flush=True)
+    guard = 0
+    while (d.o['bl'], d.o['blc']) != ('101001111', [9]):
+        guard += 1; assert guard < 25
+        nA, nB, nC = ops_needed(d.o['bl'], d.o['blc'][0], '101001111', 9)
+        op = 'C' if nC else ('A' if nA else 'B')
+        ok = getattr(d, 'op_'+op)()
+        print(op, ok, d.o['bl'], d.o['blc'], "bar", d.o['bar'], "av", d.o['av'], flush=True)
+    print("display set; bar", d.o['bar'], flush=True)
+    d.pocket_in()
+    print("pocket", d.o['av'], "bar", d.o['bar'], flush=True)
+    d.step(2); d.step(2); d.step(2)
+    print("BR door", d.o['av'], "lvl", c.levels_completed, flush=True)
+    d.step(2)
+    print("pressed", d.o['av'], "lvl", c.levels_completed)
+except Death:
+    print("DIED. av", d.o['av'], "bl", d.o['bl'], d.o['blc'])
+print("FINAL", c.levels_completed)
+EOF
+python probe66.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+src = open('drive6.py').read()
+src = src.replace("""        if cands:
+            self._refueling = True""",
+"""        if getattr(self, 'debug', False):
+            print("  [refuel] bar", self.o['bar'], "floor", floor, "boxes", self.o['boxes'], "cands", cands, flush=True)
+        if cands:
+            self._refueling = True""")
+open('drive6.py','w').write(src)
+EOF
+sed -i '' 's/d = Exec(c)/d = Exec(c); d.debug = True/' probe66.py && python probe66.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+src = open('drive6.py').read()
+src = src.replace("""            if cost > best.get(u, 1e9): continue
+            r, c = u
+            for act,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+                v = (r+dr, c+dc)
+                if not OK.get(v) or v in SPRINGS: continue
+                w = cost + (4 if v in self.RISKY else 1)""",
+"""            if cost > best.get(u, 1e9): continue
+            box_tiles = {('b45',(45,9)), ('b5l',(5,9)), ('b5r',(5,39))}
+            live_boxes = {t for n, t in box_tiles if n in self.o['boxes']}
+            r, c = u
+            for act,(dr,dc) in {1:(-5,0),2:(5,0),3:(0,-5),4:(0,5)}.items():
+                v = (r+dr, c+dc)
+                if not OK.get(v) or v in SPRINGS: continue
+                w = cost + (12 if v in live_boxes else (4 if v in self.RISKY else 1))""")
+open('drive6.py','w').write(src)
+print('ok')
+EOF
+python probe66.py
+Batch the overlap ops, use distance-aware refuel floors, and drop the wasteful phase-1 pre-pocket refuel.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+src = open('drive6.py').read()
+
+# 1. auto refuel floor
+src = src.replace("""    def refuel_if_needed(self, floor=30):
+        if self.o['bar'] > floor or getattr(self, '_refueling', False):
+            return
+        cands = []
+        for name, tile in (('b45',(45,9)), ('b5l',(5,9)), ('b5r',(5,39))):
+            if name in self.o['boxes']:
+                p = self._plan(self.o['av'], tile)
+                if p is not None:
+                    cands.append((len(p), tile))""",
+"""    def refuel_if_needed(self, floor=None):
+        if getattr(self, '_refueling', False):
+            return
+        cands = []
+        for name, tile in (('b45',(45,9)), ('b5l',(5,9)), ('b5r',(5,39))):
+            if name in self.o['boxes']:
+                p = self._plan(self.o['av'], tile)
+                if p is not None:
+                    cands.append((len(p), tile))
+        if floor is None:
+            floor = 2*(min(cands)[0] + 6) if cands else 0
+        if self.o['bar'] > floor:
+            return""")
+
+# 2. batched bounce op
+src = src.replace("""    def _bounce_overlap(self, key, row_tile, guard=40):
+        \"\"\"bounce between (row,14) and (row,19) until one overlap of sprite
+        `key` is observed (sprite hidden under avatar). Returns True on
+        overlap. ensure_display() self-corrects any extra overlaps.\"\"\"
+        self.refuel_if_needed(floor=36)
+        self.goto((row_tile, 9), allow=(key,))
+        for i in range(guard):
+            a = 4 if self.o['av'][1] in (9, 14) and self.o['av'][1] != 19 else 3
+            # simple bounce 9->14->19->14->19...
+            c = self.o['av'][1]
+            a = 4 if c < 19 else 3
+            self.step(a)
+            if self.o[key] is None:
+                # exit the sprite's row before returning
+                out = 1 if row_tile == 10 else 2
+                r, c = self.o['av']
+                dr = -5 if out == 1 else 5
+                if OK.get((r+dr, c)) and (r+dr, c) not in SPRINGS:
+                    self.step(out)
+                else:
+                    self.step(3)
+                return True
+        return False
+
+    def op_A(self):
+        return self._bounce_overlap('sa', 10)
+
+    def op_B(self):
+        return self._bounce_overlap('sb', 40)""",
+"""    def _bounce_overlap(self, key, row_tile, n=1, guard=80):
+        \"\"\"bounce along (row,19)<->(row,24) until n overlaps of sprite `key`
+        are observed (sprite hidden under avatar), then exit the row.
+        ensure_display() self-corrects any over/under-counts.\"\"\"
+        self.refuel_if_needed()
+        self.goto((row_tile, 9), allow=(key,))
+        got = 0
+        for i in range(guard):
+            if i % 8 == 0:
+                self.refuel_if_needed()
+                if self.o['av'][0] != row_tile:
+                    self.goto((row_tile, 9), allow=(key,))
+            c = self.o['av'][1]
+            a = 4 if c < 24 else 3
+            self.step(a)
+            if self.o[key] is None:
+                got += 1
+                if got >= n:
+                    break
+        # exit the sprite's row before returning
+        out = 1 if row_tile == 10 else 2
+        r, c = self.o['av']
+        dr = -5 if out == 1 else 5
+        if OK.get((r+dr, c)) and (r+dr, c) not in SPRINGS:
+            self.step(out)
+        return got
+
+    def op_A(self, n=1):
+        return self._bounce_overlap('sa', 10, n)
+
+    def op_B(self, n=1):
+        return self._bounce_overlap('sb', 40, n)""")
+open('drive6.py','w').write(src)
+
+src = open('exec6.py').read()
+src = src.replace("""            nA, nB, nC = need
+            # geographic order: C (middle), A (top), B (bottom)
+            if nC: op = 'C'
+            elif nA: op = 'A'
+            elif nB: op = 'B'
+            else: break
+            getattr(self, 'op_' + op)()""",
+"""            nA, nB, nC = need
+            # geographic order: C (middle), B (bottom), A (top)
+            if nC:
+                self.op_C()
+            elif nB:
+                self.op_B(n=nB)
+            elif nA:
+                self.op_A(n=nA)
+            else:
+                break""")
+src = src.replace("self.refuel_if_needed(floor=64)", "self.refuel_if_needed(floor=44)")
+open('exec6.py','w').write(src)
+print('ok')
+EOF
+python probe66.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe67.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death
+env = make6()
+c = env.clone()
+d = Exec(c); d.debug = True
+for attempt in range(3):
+    try:
+        d.phase1()
+        print("phase1 done bar", d.o['bar'], flush=True)
+        d.phase2()
+        print("phase2 done: pos", d.o['av'], "lvl", c.levels_completed, "term", c.terminal())
+        break
+    except Death:
+        print("DIED, retry", attempt, flush=True)
+print("FINAL lvl", c.levels_completed, "moves", len(c.path)-200)
+EOF
+python probe67.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > probe68.py <<'EOF'
+from lib6 import make6
+from exec6 import Exec, Death
+import json
+env = make6()
+c = env.clone()
+d = Exec(c)
+for attempt in range(3):
+    try:
+        d.phase1()
+        d.phase2()
+        break
+    except Death:
+        pass
+assert c.levels_completed == 6
+path6 = list(c.path)[200:]
+print("len", len(path6))
+json.dump(path6, open('/tmp/win6_final.json','w'))
+# validate on a fresh clone
+c2 = env.clone()
+for a in path6:
+    c2.step(a)
+print("validation: lvl", c2.levels_completed)
+EOF
+python probe68.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import json
+path = json.load(open('/tmp/win6_final.json'))
+snippet = f'''
+
+def play_level_6(env):
+    # Discovered mechanics (see legs_log.md): the bottom-left 2x-scaled display
+    # is a combination lock; overlapping the top digit-sprite applies a
+    # 6-cycle shape transform, the bottom digit-sprite rotates the shape 90
+    # degrees CW, and overlapping the ring-patrolling creature cycles the
+    # display colour 14->8->12->9. A pattern room opens only while the display
+    # equals its pattern (shape+colour). Level 6: set display to the top-right
+    # room's pattern (B^2, C^1), cross it (its cells vanish for this life),
+    # exit via the one-way springs, re-dial the display to the bottom-right
+    # room's pattern (A^5 B^3 C^2), and drive through the opened top-right
+    # room into the bottom-right room. Path below was produced by that
+    # adaptive controller on a clone and validated; committed via replay.
+    solve_by_replay(env, {path})
+'''
+open('players.py','a').write(snippet)
+print(open('players.py').read()[-600:])
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && timeout 550 python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && pkill -f pbfs3.py; python - <<'EOF'
+import json
+ck = json.load(open('checkpoint.json'))
+path6 = json.load(open('/tmp/win6_final.json'))
+ck['reached'] = 6
+ck['records'].append({"level": 6, "marginal_C": 0, "reached": True})
+ck['final_path'] = ck['final_path'] + path6
+ck['validated'] = True
+json.dump(ck, open('checkpoint.json','w'))
+print("checkpoint: reached", ck['reached'], "path len", len(ck['final_path']))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat >> legs_log.md <<'EOF'
+
+## Level 6: the combination-lock display (major mechanic discovery)
+
+Level 6 (same engine/map family as level 5) defeated blind masked BFS -- the
+state space (avatar pos x world phase x display state x boxes x lives)
+explodes past ~100k frames with the win ~50+ moves deep -- so it had to be
+cracked by understanding the mechanics. What the level actually is:
+
+- The 5x5 avatar slides one 5-cell tile per move on the 5-aligned track
+  grid; a blocked move is a no-op that does NOT advance the world (no tick).
+- An energy bar (colour-11 HUD, rows 60-62) drains 2 per tick; 3 colour-11
+  "boxes" on the map each refill it; at 0 the level soft-resets (avatar,
+  bar, display, boxes AND the two pattern-rooms are restored) at the cost of
+  one of 3 lives (the 8-coloured tokens, bottom-right HUD). 3 deaths ends
+  the run.
+- Colour-1 pip strips mark one-way SPRINGS: entering the marked tile flings
+  the avatar away from the pips until it hits a wall ((5,49)->(25,49) into
+  the right-side pocket; (20,49)->(20,39) back out). That pocket is the only
+  approach to the two sealed pattern-rooms.
+- Three patrolling critters tick 1 tile per world tick: a multicolour 3x3
+  creature loops an 8-position ring; two digit-glyph sprites patrol the top
+  (rows 11-13) and bottom (rows 41-43) corridors. Overlapping them with the
+  avatar is the INPUT DEVICE of the level:
+    - creature overlap: display COLOUR cycles 14 -> 8 -> 12 -> 9 -> 14
+    - bottom sprite overlap: display SHAPE rotates 90 degrees CW (order 4)
+    - top sprite overlap: display SHAPE steps through a fixed 6-cycle
+      (order 6), and this transform COMMUTES with the rotation
+  (sprites also pause 1 tick while covered, shifting their patrol phase).
+- The bottom-left room shows the display: a 2x-scaled 3x3 pattern in the
+  current colour. Each sealed room (top-right pattern in 8s, bottom-right in
+  9s) is a LOCK: pressing into it succeeds only while the display equals the
+  room's pattern in BOTH shape and colour; on a successful entry the room's
+  pattern cells vanish for the rest of the life, leaving it open.
+- Retro-explanation of levels 1-5 wins (verified from their winning frames):
+  every level's win was "enter the room whose pattern matches the display";
+  in earlier levels the display already matched at level start, so blind BFS
+  never had to understand it.
+- Level 6's win: the bottom-right room. Its only approach corridor passes
+  THROUGH the top-right room, and the two rooms need different display
+  states, so the level takes two dial-ins: (1) dial display = top-right
+  pattern (2 rotations + 1 colour), cross it to consume its lock, exit via
+  the springs; (2) dial display = bottom-right pattern (5 six-cycle steps +
+  3 rotations + 2 colours), come back through the now-open top-right room
+  and press into the bottom-right room -> level complete. Energy is the real
+  constraint (~150 of ~176 available ticks): refuel only when nearly empty,
+  don't waste boxes by driving over them early, and batch overlaps.
+
+The adaptive controller that executes this (tile-graph goto with critter
+dodging, overlap ops, display dial-in, energy management) lives in the
+exploration artifacts (drive6.py / exec6.py); it produced and validated a
+deterministic 128-move path, which play_level_6 commits with the existing
+`solve_by_replay` leg -- same composition shape as level 5, so no new leg
+was added; the level-specific controller was deliberately NOT promoted into
+legs.py (same reasoning as the level-4 debrief: don't promote single-use
+exploratory machinery).
+
+## Debrief: play_level_6 vs. earlier players
+
+`play_level_6` is a single `solve_by_replay(env, [...])` call -- identical
+composition shape to `play_level_5`, so `players.py` stays a set of thin,
+strategy-level one-liners and no refactor of `legs.py` was needed. The
+"plan-then-execute" higher-order pattern flagged in the level-5 debrief now
+has a 4th instance (replay) but still only 3 distinct plan sources, so
+`solve_by_plan` remains unpromoted. One genuinely reusable lesson for future
+levels of this game family: when masked BFS stalls AND the frame contains a
+small "display" region plus patrolling objects, suspect a combination-lock
+mechanic -- diff the display before/after overlapping each mobile object to
+recover the generator set, then solve the resulting tiny group-word problem
+instead of searching raw frames.
+EOF
+rm -f probe*.py probe*.log pbfs*.py pbfs*.log && ls
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python gkm_try.py
+API Error: BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CcmCbP4ADeCRh1xMqQCZ7'}

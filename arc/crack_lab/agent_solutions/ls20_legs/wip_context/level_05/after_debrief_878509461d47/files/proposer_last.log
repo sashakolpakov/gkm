@@ -1,0 +1,88 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat players.py legs.py gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat solve.py && echo "---CHECKPOINT---" && cat checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && tail -60 legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && python gkm_try.py 2>&1 | tail -20
+Both pass with levels=5. Now let me analyze the players to identify the pattern.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && head -40 legs_log.md
+I now understand the structure. Let me analyze the pattern:
+
+- **Levels 1-2**: `solve_by_search(env)` — a *strategy* leg
+- **Levels 3-4**: `solve_masked(env, max_states=N)` — a *strategy* leg
+- **Level 5**: `execute_path(env, [literal])` — reaches directly into the low-level *primitive* with an inline path
+
+Level 5 is the odd one out: every other player calls a named `solve_*` strategy leg and never touches primitives, but `play_level_5` inlines a literal path into the low-level `execute_path`. The recurring skill it embodies — "solve a level by committing a known-good, precomputed/recovered path" — isn't named anywhere. Let me extract it as `solve_by_replay` so all players stay thin strategy-level compositions.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh/legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh/players.py
+Now confirm behaviour is unchanged:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && python gkm_try.py 2>&1 | tail -5
+Still `levels=5 ... replay_ok=True`. Now append the recurring composition pattern to the log.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat >> legs_log.md << 'EOF'
+
+## Debrief: play_level_5 vs. earlier players (refactor + higher-order candidate)
+
+Comparing `play_level_5` against `play_level_1..4` surfaced one concrete
+inconsistency worth fixing. Levels 1-2 call the strategy leg
+`solve_by_search(env)`; levels 3-4 call the strategy leg
+`solve_masked(env, max_states=N)`; but `play_level_5` reached *past* the
+strategy layer and inlined a literal 60-move path directly into the
+low-level `execute_path` primitive. `execute_path` is the mechanism that
+solve_by_search/solve_masked use internally to commit their result -- it
+was never meant to be a player-facing entry point -- so having exactly one
+player invoke it directly leaked a primitive into `players.py` and broke
+the "players are thin, strategy-level compositions" shape the other four
+players share.
+
+The skill `play_level_5` actually embodies -- "solve a level by committing
+a known-good, precomputed/recovered verified path instead of searching for
+one" -- was not named anywhere, so it was extracted **once** as
+`solve_by_replay(env, path)` in `legs.py` (a thin composition over
+`execute_path`, terminal-safe via that primitive). `play_level_5` now
+calls `solve_by_replay(env, [...])`, restoring the uniform rule that every
+player is a single call to a `solve_*` strategy leg and none touch
+primitives. Verified no behavior change: `python gkm_try.py` still reports
+`RESULT levels=5 moves=200 replay_ok=True err=None`.
+
+**Recurring composition pattern (candidate higher-order leg):** with
+`solve_by_replay` in place, all three strategy legs now share one skeleton
+-- *obtain a plan (a list of actions), then commit it with `execute_path`*.
+They differ only in how the plan is obtained:
+- `solve_by_search`  -> plan = `find_winning_path(env, ...)` (BFS)
+- `solve_masked`     -> plan = search under a detected noise mask
+- `solve_by_replay`  -> plan = a constant, already-known path
+This is the "plan-then-execute" shape, and it generalizes to one
+higher-order leg, `solve_by_plan(env, planner)`, where `planner(env)`
+returns an action list (or None) and the leg just `execute_path`s it:
+`solve_by_search`, `solve_masked`, and `solve_by_replay` all collapse to
+`solve_by_plan` with different planners bound (a BFS closure, a
+mask+BFS closure, and `lambda _env: path` respectively). It's the natural
+sibling to the `solve_adaptively` escalation ladder proposed in the
+level-3/4 debriefs: that one composes strategies *in sequence on failure*,
+whereas `solve_by_plan` factors out the shared *plan -> execute* spine
+underneath each individual strategy. Not implemented this round for the
+same reason as before -- no third planner yet needs it, and introducing
+the indirection now would be speculative -- but with three concrete
+planners on the board (search / masked-search / replay) the pattern is now
+well enough attested to promote the next time a fourth plan-source appears.
+EOF
+echo "appended"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && echo "=== players.py ===" && cat players.py && echo "=== final run ===" && python gkm_try.py 2>&1 | tail -3
+Done. Summary of the debrief and refactor:
+
+## What I found
+Comparing `play_level_5` against `play_level_1..4` revealed one inconsistency rather than copy-pasted duplication:
+
+- **Levels 1–2** → `solve_by_search(env)` (a strategy leg)
+- **Levels 3–4** → `solve_masked(env, max_states=N)` (a strategy leg)
+- **Level 5** → `execute_path(env, [literal path])` — reached *past* the strategy layer straight into the low-level primitive that the other strategies use internally, inlining a 60-move literal into `players.py`.
+
+## Refactor (each skill written once)
+- Added **`solve_by_replay(env, path)`** to `legs.py` — names the skill "solve by committing a known-good/recovered verified path" as a thin, terminal-safe composition over `execute_path`. This mirrors `solve_by_search`/`solve_masked` so players never touch primitives.
+- Updated `play_level_5` to call `solve_by_replay(env, [...])`. Now **every** player is a single call to a `solve_*` strategy leg — uniform thin composition.
+
+## Log
+Appended the recurring composition pattern to `legs_log.md`: all three strategy legs now share one skeleton — **plan-then-execute** — differing only in how the plan is obtained (BFS / masked-BFS / constant recall). The candidate higher-order leg is **`solve_by_plan(env, planner)`**, with the three existing strategies collapsing to it under different bound planners. Documented why it's not promoted yet (no fourth plan-source needs it, and the indirection would be speculative).
+
+## Behaviour preserved
+`python gkm_try.py` still reports `RESULT levels=5 moves=200 replay_ok=True err=None` — levels ≥ 5, unchanged before and after the refactor.

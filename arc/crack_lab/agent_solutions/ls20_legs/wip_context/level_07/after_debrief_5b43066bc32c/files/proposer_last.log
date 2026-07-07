@@ -1,0 +1,55 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat gkm_try.py 2>/dev/null | head -50
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat players.py legs.py solve.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && tail -60 legs_log.md && echo ---- && cat checkpoint.json
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat >> legs_log.md <<'EOF'
+
+## Debrief after level 7: replay-player unification + higher-order candidate
+
+Comparing `play_level_7` to the earlier players exposed one drift: levels 6
+and 7 (installed by harness recovery) called the low-level `execute_path`
+primitive with an inline literal path, while level 5 used the strategy-level
+`solve_by_replay` leg for the exact same skill. Refactored: all three
+replay-style players (5, 6, 7) now call `solve_by_replay` -- the skill lives
+ONCE in legs.py and players.py is pure thin composition. No behaviour change
+(`solve_by_replay` == `execute_path` + return-path), confirmed by rerunning
+`gkm_try.py` with levels >= 7.
+
+Recurring composition pattern (candidate higher-order leg): every player is
+now an instance of ONE shape --
+
+    solve_with_plan(env, plan_source) := path = plan_source(env); execute_path(env, path)
+
+with three plan sources so far:
+  - `lambda env: LITERAL_PATH`            -> solve_by_replay   (levels 5, 6, 7)
+  - `find_winning_path` (raw frames)      -> solve_by_search   (levels 1, 2)
+  - `detect_noise_mask` + masked search   -> solve_masked      (levels 3, 4)
+
+That is 7/7 players, 3 distinct plan sources. If a 4th plan source appears
+(e.g. the map-then-controller planner used offline for level 7's fog level),
+promote `solve_with_plan(env, plan_source)` into legs.py and re-express
+solve_by_replay/solve_by_search/solve_masked as partial applications of it.
+The deeper invariant making this work: the game family is deterministic and
+world-ticks only on (successful) moves, so "plan on clones offline, commit a
+literal path" is always a valid decomposition.
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && timeout 1800 python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python gkm_try.py
+Done. Summary of the debrief refactor:
+
+**Comparison finding:** `play_level_7` (and `play_level_6`, both installed by harness recovery) duplicated the replay skill by calling the low-level `execute_path` primitive with inline literal paths, while `play_level_5` used the strategy-level `solve_by_replay` leg for the identical skill — same code shape written twice at two abstraction levels.
+
+**Refactor (players.py):**
+- Levels 5, 6, and 7 all now call the single shared `solve_by_replay` leg from legs.py — the skill exists exactly once (`solve_by_replay` = `execute_path` + return-path, so behaviour is unchanged).
+- Fixed the out-of-order definitions (7 before 6) for readability.
+- No new legs were needed; legs.py already had the right abstraction — the fix was making the players actually use it, keeping players.py pure thin composition.
+
+**legs_log.md:** Appended the recurring composition pattern as a candidate higher-order leg:
+```
+solve_with_plan(env, plan_source) := path = plan_source(env); execute_path(env, path)
+```
+All 7/7 players are instances of it with 3 distinct plan sources (literal replay, raw-frame BFS, noise-masked BFS). Promotion criterion recorded: promote when a 4th plan source appears (e.g. the map-then-controller planner used offline for level 7), then re-express the three `solve_*` legs as partial applications.
+
+**Verification:** `python gkm_try.py` → `RESULT levels=7 moves=393 replay_ok=True err=None` — behaviour unchanged, levels ≥ 7 confirmed.

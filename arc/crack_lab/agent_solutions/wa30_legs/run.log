@@ -1,2 +1,2 @@
-=== wa30: reached level 3 | validated=True | total_marginal_C=30 | F=-2.400 ===
-per-level marginal novelty: L2:30
+=== wa30: reached level 8 | validated=True | total_marginal_C=1096 | F=13.920 ===
+per-level marginal novelty: L2:30, L4:87, L5:405, L6:225, L7:145, L8:204

@@ -1,0 +1,3640 @@
+I'll start by exploring the workspace and understanding the current state.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat gkm_try.py solve.py players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && timeout 120 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python gkm_try.py 2>&1 | tail -20
+We're at level 7. Now let me examine perception.py and the checkpoint to understand tooling.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat checkpoint.json
+Let me understand the arena API and how to reach level 8 on a clone.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && ls /Users/sasha/gkm/arc/crack_lab/ 2>&1 | head; echo "---"; python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print([x for x in dir(A) if not x.startswith('__')])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.make_env('wa30')
+print('methods:', [x for x in dir(env) if not x.startswith('_')])
+print('levels_completed:', env.levels_completed)
+print('terminal:', env.terminal())
+import numpy as np
+f = np.asarray(env.frame())
+print('frame shape', f.shape, 'dtype', f.dtype)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import inspect
+print(inspect.signature(A.make_env))
+print('---run_program---')
+print(inspect.getsource(A.run_program))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.Arena('wa30', _budget=A._Budget(600*400))
+print('methods:', [x for x in dir(env) if not x.startswith('_')])
+print('levels_completed:', env.levels_completed)
+import numpy as np
+f = np.asarray(env.frame())
+print('frame shape', f.shape)
+"
+Now let me get to level 8 by replaying the checkpoint path, then explore.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.Arena('wa30', _budget=A._Budget(2000*400))
+ck = json.load(open('checkpoint.json'))
+path = ck['final_path']
+for i,a in enumerate(path):
+    env.step(a)
+print('After ck path: levels_completed', env.levels_completed, 'terminal', env.terminal(), 'moves', len(path))
+"
+The checkpoint path completes 7 levels, so we're now at level 8. Let me build a helper to reach this state and explore.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > l8env.py << 'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+def l8():
+    env = A.Arena('wa30', _budget=A._Budget(50000*400))
+    ck = json.load(open('checkpoint.json'))
+    for a in ck['final_path']:
+        env.step(a)
+    assert env.levels_completed == 7
+    return env
+EOF
+python -c "
+from l8env import l8
+import numpy as np
+env = l8()
+f = np.asarray(env.frame())
+vals,cnts = np.unique(f, return_counts=True)
+print('colors:', dict(zip(vals.tolist(), cnts.tolist())))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env = l8()
+f = np.asarray(env.frame())
+for r in range(64):
+    print(''.join('{:X}'.format(int(v)) for v in f[r]))
+"
+Let me analyze the structure and find the avatar via action deltas.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import action_deltas, ACTION_NAME
+env = l8()
+d = action_deltas(env)
+for a in [1,2,3,4,5]:
+    print(ACTION_NAME[a], d[a]['count'], d[a]['bbox'], d[a]['samples'][:6])
+"
+Multiple objects change each step (there's likely a self-mover). Let me track blob movements more carefully.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import connected_components
+import numpy as np
+
+def summarize(env):
+    f = np.asarray(env.frame())
+    blobs = connected_components(f, colors=[4,12,14,15], min_area=1)
+    return [(b.color, b.bbox) for b in blobs]
+
+env = l8()
+print('BASE:')
+for x in summarize(env): print(' ',x)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import connected_components, ACTION_NAME
+import numpy as np
+
+def summarize(env):
+    f = np.asarray(env.frame())
+    blobs = connected_components(f, colors=[4,12,14,15], min_area=1)
+    return {(b.color,)+b.bbox for b in blobs}
+
+env = l8()
+base = summarize(env)
+for a in [1,2,3,4,5]:
+    c = env.clone(); c.step(a)
+    s = summarize(c)
+    added = s - base
+    removed = base - s
+    print(ACTION_NAME[a])
+    print('  gone:', sorted(removed))
+    print('  new :', sorted(added))
+"
+The avatar is color 14 (E). Let me track it with the color-0 cap included.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import ACTION_NAME
+import numpy as np
+env = l8()
+def show(env, label):
+    f=np.asarray(env.frame())
+    # region rows 28-40 cols 0-12
+    print(label)
+    for r in range(28,40):
+        print('  ',''.join('{:X}'.format(int(v)) for v in f[r,0:14]))
+show(env,'BASE')
+for a in [1,2,3,4]:
+    c=env.clone(); c.step(a); show(c,ACTION_NAME[a])
+"
+The avatar is a 4x4 block with a color-0 direction cap. Model: press a direction turns to face it (if not already facing), else moves. Let me verify.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import connected_components
+import numpy as np
+def epos(env):
+    f=np.asarray(env.frame())
+    b=[x for x in connected_components(f,colors=[14]) ][0]
+    # find 0 cap adjacent
+    return b.bbox
+env=l8()
+print('base E',epos(env))
+c=env.clone()
+c.step(3) # LEFT (turn)
+print('after LEFT',epos(c))
+c.step(3) # LEFT again -> move?
+print('after LEFT LEFT',epos(c))
+c.step(3)
+print('after LEFT x3',epos(c))
+"
+Standard 4px-cell movement with facing indicator. Now let me build a cell-grid (16x16) view to understand the level layout.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+f=np.asarray(env.frame())
+# 16x16 cells of 4x4. Show dominant/multi color
+for cr in range(16):
+    row=''
+    for cc in range(16):
+        block=f[cr*4:cr*4+4, cc*4:cc*4+4]
+        vals=np.unique(block)
+        if len(vals)==1:
+            row+='{:X}'.format(int(vals[0]))
+        else:
+            # show as lowercase of most common non-bg
+            row+='?'
+    print('{:2d} '.format(cr)+row)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+f=np.asarray(env.frame())
+# classify each 4x4 cell
+def cls(block):
+    vals=set(int(v) for v in np.unique(block))
+    if vals=={1}: return '.'
+    if vals=={5}: return '#'
+    if vals=={7}: return '='
+    if vals=={2}: return '2'  # 2-region
+    if vals=={12}: return 'C'
+    if vals=={0,14}: return 'A'  # avatar
+    if vals=={4,9}: return 'b'  # box(4) with 9 hole
+    if vals=={15}: return 'M'  # mover
+    if vals=={9,2}: return 'g'  # goal container fill (9 frame + 2)
+    if vals=={9}: return '9'
+    return '?'+str(sorted(vals))
+for cr in range(16):
+    row=''
+    for cc in range(16):
+        block=f[cr*4:cr*4+4, cc*4:cc*4+4]
+        row+=cls(block).ljust(1)[:1] if not cls(block).startswith('?') else 'x'
+    print('{:2d} '.format(cr)+row)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+f=np.asarray(env.frame())
+def cls(block):
+    vals=frozenset(int(v) for v in np.unique(block))
+    m={
+     frozenset({1}):'.', frozenset({5}):'#', frozenset({7}):'=',
+     frozenset({1,7}):'=', frozenset({2}):'2', frozenset({12}):'C',
+     frozenset({0,14}):'A', frozenset({4,9}):'b', frozenset({15}):'M',
+     frozenset({9,2}):'g', frozenset({9}):'9', frozenset({2,9}):'g',
+    }
+    if vals in m: return m[vals]
+    # partial container edges
+    if vals<=frozenset({1,9}): return '9'
+    if vals<=frozenset({1,9,2}): return 'g'
+    if vals<=frozenset({1,4,9}): return 'b'
+    if vals<=frozenset({1,2}): return '2'
+    if vals<=frozenset({1,5}): return '#'
+    if vals<=frozenset({1,12}): return 'C'
+    if vals<=frozenset({1,0,14}): return 'A'
+    if vals<=frozenset({1,15}): return 'M'
+    return '?'
+for cr in range(16):
+    row=''
+    for cc in range(16):
+        block=f[cr*4:cr*4+4, cc*4:cc*4+4]
+        row+=cls(block)
+    print('{:2d} '.format(cr)+row)
+"
+Clear map. Two walls create 3 horizontal bands. Avatar (A) in middle band. Let me observe the movers (color 15) behavior over time and test USE.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import connected_components
+import numpy as np
+def movers(env):
+    f=np.asarray(env.frame())
+    return sorted([b.bbox for b in connected_components(f,colors=[15])])
+def avatar(env):
+    f=np.asarray(env.frame())
+    return [b.bbox for b in connected_components(f,colors=[14])]
+env=l8()
+print('t0 M',movers(env),'A',avatar(env))
+c=env.clone()
+for t in range(1,8):
+    c.step(5) # USE repeatedly - see if avatar moves and movers move
+    print('t%d USE M'%t,movers(c),'A',avatar(c))
+"
+USE doesn't move avatar (it's an interaction). Movers wander autonomously. Let me watch longer to understand mover behavior and box interactions.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from perception import connected_components
+import numpy as np
+def state(env):
+    f=np.asarray(env.frame())
+    box=len([b for b in connected_components(f,colors=[4],min_area=4)])
+    mv=sorted([b.bbox for b in connected_components(f,colors=[15])])
+    return box,mv
+env=l8()
+c=env.clone()
+for t in range(30):
+    b,m=state(c)
+    print('t%2d boxes=%d movers=%s'%(t,b,m))
+    c.step(5)
+"
+Box count fluctuates as movers carry boxes. Let me read the legs library and log to understand the recurring mechanics and vocabulary.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && wc -l legs.py legs_log.md; echo "===LOG==="; cat legs_log.md
+Let me look at the key legs' code to understand the perception and delivery verbs.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -n '1,120p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && grep -n "^def \|^    def " legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -n '203,360p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -n '361,510p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -n '510,748p' legs.py
+Now I understand the leg vocabulary. Let me understand the goal: watch the world evolve while idling (USE = no avatar move) and check if the budget bar depletes and containers fill.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+def info(c):
+    f=np.asarray(c.frame())
+    row63=int((f[63]==7).sum())
+    # top container interior 2-count: rows9-14 cols47-60 approx. Just count total 2 and total box(9-in-4)
+    two=int((f==2).sum())
+    nine=int((f==9).sum())
+    four=int((f==4).sum())
+    return dict(lvl=c.levels_completed, r63=row63, two=two, nine=nine, four=four)
+print('t0',info(c))
+for t in range(1,60):
+    c.step(5)
+    if t%5==0: print('t%d'%t, info(c))
+"
+Row63 is a depleting budget (~128 steps total). Let me examine the goal containers precisely and watch if movers fill them.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+f=np.asarray(env.frame())
+print('TOP container px rows8-15 cols44-61:')
+for r in range(8,16):
+    print(''.join('{:X}'.format(int(v)) for v in f[r,44:62]))
+print()
+print('BOTTOM container px rows48-59 cols44-61:')
+for r in range(48,60):
+    print(''.join('{:X}'.format(int(v)) for v in f[r,44:62]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+def cont(f,r0,r1,c0,c1):
+    # count 2 vs non-2-non-9 inside interior
+    interior=f[r0:r1,c0:c1]
+    two=int((interior==2).sum()); other=int(((interior!=2)&(interior!=9)).sum())
+    return two,other
+for t in range(0,80,8):
+    f=np.asarray(c.frame())
+    top=cont(f,9,15,45,60)
+    bot=cont(f,49,59,49,59)
+    print('t%2d top2/other=%s bot2/other=%s'%(t,top,bot))
+    for _ in range(8): c.step(5)
+"
+Movers autonomously deliver boxes into containers but plateau. Let me look at the full frame after the plateau to see what's stuck.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+for _ in range(50): c.step(5)
+f=np.asarray(c.frame())
+def cls(block):
+    vals=frozenset(int(v) for v in np.unique(block))
+    if vals<=frozenset({1}): return '.'
+    if vals<=frozenset({1,7}): return '='
+    if vals<=frozenset({1,5}): return '#'
+    if vals<=frozenset({1,2}): return '2'
+    if vals<=frozenset({1,12}): return 'C'
+    if vals<=frozenset({1,0,14}): return 'A'
+    if vals<=frozenset({1,15}): return 'M'
+    if vals<=frozenset({1,4,9,0,3}): return 'b'
+    if vals<=frozenset({1,2,9}): return 'g'
+    if 15 in vals: return 'm'
+    return '?'
+for cr in range(16):
+    print('{:2d} '.format(cr)+''.join(cls(f[cr*4:cr*4+4,cc*4:cc*4+4]) for cc in range(16)))
+"
+The real step budget is ~134 (600 cap − 466 used), matching the in-game bar. Movers auto-deliver but plateau. Let me idle to the budget end and see what happens.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+prev=64
+for t in range(1,200):
+    c.step(5)
+    f=np.asarray(c.frame())
+    r63=int((f[63]==7).sum())
+    if r63!=prev or c.levels_completed>7 or c.terminal():
+        print('t%d r63=%d lvl=%d term=%s'%(t,r63,c.levels_completed,c.terminal()))
+        prev=r63
+    if c.terminal() or c.levels_completed>7:
+        break
+"
+Movers plateau — never complete alone. Budget ~134 real moves. Avatar must help. Let me probe key mechanics: is the 2-region solid? What do C blocks do? Can avatar grab/carry a box?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+env=l8()
+c=env.clone()
+# avatar at (8,1). Move it up into top band via gap cols4-5.
+# First check wall row6 gap and try nav to a top-band cell e.g. (5,4)
+print('avatar',_grid_scan(c)[0])
+ok=_avatar_nav(c,(5,4),cap=30)
+print('nav to (5,4):',ok,'avatar now',_grid_scan(c)[0])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+env=l8()
+# Test: is 2-region solid? Avatar go to (5,4) then try to move onto 2-region (4,3)?(2 at (4,1)(4,2)(4,3))
+# navigate manually. avatar (8,1) facing up.
+c=env.clone()
+from legs import _avatar_nav
+_avatar_nav(c,(5,3),cap=30)
+print('at',_grid_scan(c)[0])
+# now try UP toward (4,3) which is 2-region
+c.step(UP)  # face up (already?) 
+print('after UP',_grid_scan(c)[0])
+c.step(UP)
+print('after UP2',_grid_scan(c)[0])
+"
+2-region is walkable floor. Avatar can navigate freely. Let me enumerate all boxes and test C-block interaction, and measure whether avatar-delivered boxes complete the level.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+env=l8()
+av,boxes,walls=_grid_scan(env)
+print('avatar',av)
+print('num box cells',len(boxes))
+print('boxes',sorted(boxes))
+print('walls rows',sorted(set(r for r,c in walls)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+env=l8()
+# Test if avatar can enter container 2-interior / 9-border
+c=env.clone()
+_avatar_nav(c,(4,10),cap=40)
+print('at',_grid_scan(c)[0])
+# container top at rows2-3 cols11-14. approach (4,11) then up into (3,11)
+_avatar_nav(c,(4,11),cap=20)
+print('at',_grid_scan(c)[0])
+c.step(UP); print('after UP toward (3,11)',_grid_scan(c)[0])
+c.step(UP); print('after UP2',_grid_scan(c)[0])
+"
+Avatar can partially enter containers. Let me test C-block interaction and measure how many boxes movers seat over a long idle (to find which boxes are the avatar's job).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+env=l8()
+def seated(env):
+    av,boxes,walls=_grid_scan(env)
+    top=[b for b in boxes if 2<=b[0]<=3 and 11<=b[1]<=14]
+    bot=[b for b in boxes if 12<=b[0]<=14 and 11<=b[1]<=14]
+    free_top=[b for b in boxes if b[0]<6 and not(2<=b[0]<=3 and b[1]>=11)]
+    free_bot=[b for b in boxes if b[0]>9 and not(12<=b[0]<=14 and b[1]>=11)]
+    return len(top),len(bot),len(free_top),len(free_bot),len(boxes)
+c=env.clone()
+for t in range(0,150,15):
+    st,sb,ft,fb,tot=seated(c)
+    print('t%3d seated top=%d bot=%d | free top=%d bot=%d | total=%d'%(t,st,sb,ft,fb,tot))
+    for _ in range(15):
+        if c.terminal():break
+        c.step(5)
+"
+Movers plateau seating only ~5 boxes. Boxes also appear on standalone 2-regions. Let me test C-block interaction and trace one mover's behavior in detail.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+env=l8()
+# Test USE near top C block (1,7). Approach from below (2,7) is a box. from (1,6).
+c=env.clone()
+ok=_avatar_nav(c,(1,6),cap=40)
+print('nav (1,6):',ok, _grid_scan(c)[0])
+f0=np.asarray(c.frame()).copy()
+c.step(RIGHT) # face C
+c.step(USE)
+f1=np.asarray(c.frame())
+d=np.argwhere(f0!=f1)
+print('USE near C changed cells:',len(d))
+# where is C now
+cy,cx=np.where(f1==12)
+print('C(12) cells present:',len(cy))
+"
+Let me look at the final idle-state map to see where boxes end up (2-regions, containers, or background) — this reveals the target.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+for _ in range(135): 
+    if c.terminal():break
+    c.step(5)
+f=np.asarray(c.frame())
+def cls(block):
+    vals=frozenset(int(v) for v in np.unique(block))
+    if vals<=frozenset({1}): return '.'
+    if vals<=frozenset({1,7}): return '='
+    if vals<=frozenset({1,5}): return '#'
+    if vals<=frozenset({1,2}): return '2'
+    if vals<=frozenset({1,12}): return 'C'
+    if vals<=frozenset({1,0,14}): return 'A'
+    if 15 in vals: return 'm'
+    # box on background vs box on 2
+    if 9 in vals and (4 in vals or 3 in vals or 0 in vals):
+        if 2 in vals: return 'G'  # box in container(2 present)
+        return 'b'  # box on bg
+    if vals<=frozenset({1,2,9}): return 'g'  # empty container
+    return '?'
+for cr in range(16):
+    print('{:2d} '.format(cr)+''.join(cls(f[cr*4:cr*4+4,cc*4:cc*4+4]) for cc in range(16)))
+"
+Let me pragmatically test: use existing `fill_targets_nearest_first` to deliver boxes onto the standalone 2-region cells, and check if the level completes and how many moves it costs.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import fill_targets_nearest_first, _grid_scan
+import numpy as np
+env=l8()
+c=env.clone()
+# standalone 2-region cells
+top2=[(2,3),(3,3),(4,1),(4,2),(4,3)]
+bot2=[(12,3),(12,4),(12,5),(13,3),(13,4),(13,5),(14,3),(14,4),(14,5)]
+targets=bot2+top2
+def moves_used(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+fill_targets_nearest_first(c,targets)
+print('lvl',c.levels_completed,'moves_used~',moves_used(c),'term',c.terminal())
+av,boxes,walls=_grid_scan(c)
+print('boxes remaining',sorted(boxes))
+" 2>&1 | tail -20
+Let me test the "fill containers" hypothesis directly: greedily carry every free box into container cells and watch the level counter.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+env=l8()
+c=env.clone()
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (11,12,13,14)]
+cont=topc+botc
+for it in range(20):
+    if c.terminal() or c.levels_completed>7: break
+    av,boxes,walls=_grid_scan(c)
+    free=[b for b in boxes if not any(b==t for t in cont) and not(2<=b[0]<=3 and b[1]>=11) and not(12<=b[0]<=14 and b[1]>=11)]
+    if not free: 
+        print('no free boxes'); break
+    # empty container cells
+    empt=[t for t in cont if t not in boxes]
+    if not empt: break
+    # nearest free box to av
+    free.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=free[0]
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=carry_box_to(c,box,empt[0])
+    print('it%d box%s->%s ok=%s lvl=%d mu=%d'%(it,box,empt[0],ok,c.levels_completed,mu(c)))
+" 2>&1 | tail -25
+Avatar CAN seat boxes into containers (~10 moves each). The loop just needs proper occupancy detection. Let me fix that and run to completion to test if filling containers wins.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp1.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+
+def cellcolors(f,R,C):
+    return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (11,12,13,14)]
+cont=topc+botc
+
+def empty_cont(f):
+    out=[]
+    for (R,C) in cont:
+        u=cellcolors(f,R,C)
+        if 2 in u and not (4 in u or 3 in u or 0 in u):
+            out.append((R,C))
+    return out
+
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    fb=[]
+    for b in boxes:
+        if 2<=b[0]<=3 and b[1]>=11: continue
+        if 12<=b[0]<=14 and b[1]>=11: continue
+        fb.append(b)
+    return av,fb
+
+c=l8().clone()
+for it in range(30):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free_boxes(c)
+    empt=empty_cont(f)
+    if not fb:
+        print('no free boxes at it',it); break
+    if not empt:
+        print('no empty cont'); break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=False
+    for tgt in empt[:3]:
+        ok=carry_box_to(c,box,tgt)
+        if ok: break
+    print('it%d box%s ok=%s lvl=%d mu=%d freeleft=%d'%(it,box,ok,c.levels_completed,mu(c),len(free_boxes(c)[1])))
+    if not ok:
+        # skip: nudge to avoid infinite loop
+        c.step(2)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'term',c.terminal())
+EOF
+python exp1.py 2>&1 | tail -35
+Avatar seated ~5 top boxes but level didn't complete, and wasted moves on unreachable boxes. Let me build a robust controller (both bands, blacklist failures, idle tail) and see if fully seating boxes wins.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp2.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (11,12,13,14)]
+cont=topc+botc
+def empty_cont(f):
+    return [(R,C) for (R,C) in cont if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    fb=[b for b in boxes if not(2<=b[0]<=3 and b[1]>=11) and not(12<=b[0]<=14 and b[1]>=11)]
+    return av,fb
+
+c=l8().clone()
+fail={}
+for it in range(40):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free_boxes(c)
+    fb=[b for b in fb if fail.get(b,0)<2]
+    empt=empty_cont(f)
+    if not fb or not empt:
+        break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=False
+    for tgt in empt[:2]:
+        ok=carry_box_to(c,box,tgt)
+        if ok: break
+    if not ok:
+        fail[box]=fail.get(box,0)+1
+    print('it%d box%s ok=%s lvl=%d mu=%d freeleft=%d'%(it,box,ok,c.levels_completed,mu(c),len(free_boxes(c)[1])))
+# idle tail
+for _ in range(30):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'term',c.terminal(),'freeleft',len(free_boxes(c)[1]))
+EOF
+python exp2.py 2>&1 | tail -40
+Cross-band carries fail (mover interference). Let me build a mover-aware carry and test whether seating all boxes into containers wins.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > mvcarry.py << 'EOF'
+import numpy as np
+from collections import deque
+from legs import _grid_scan, _grid_grabbed, _bfs_path, _bfs_pair, _mover_cell
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+
+def movers(env):
+    f=np.asarray(env.frame())
+    ys,xs=np.where(f==15)
+    cells=set()
+    # cluster into 4x4 cells
+    for y,x in zip(ys,xs):
+        cells.add((y//4,x//4))
+    return cells
+
+def obstacles(env, exclude_box=None):
+    av,boxes,walls=_grid_scan(env)
+    blk=set(walls)|set(boxes)
+    if exclude_box in blk: blk.discard(exclude_box)
+    blk|=movers(env)
+    return av,blk
+
+def nav(env, goal, cap=40):
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,blk=obstacles(env)
+        if av==goal: return True
+        b=set(blk); b.discard(goal); b.discard(av)
+        p=_bfs_path(av,goal,b)
+        if not p:
+            # maybe mover transiently blocks; try step toward goal ignoring movers
+            av2,boxes,walls=_grid_scan(env)
+            b2=set(walls)|set(boxes); b2.discard(goal); b2.discard(av2)
+            p=_bfs_path(av2,goal,b2)
+            if not p: return False
+        before=av
+        env.step(p[0])
+        # if didn't move (mover blocked), just continue/retry
+    return obstacles(env)[0]==goal
+
+def carry(env, box, drop, cap=60):
+    av,boxes,walls=_grid_scan(env)
+    if box not in boxes: return False
+    faces={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+    # choose grab cell reachable
+    best=None
+    _,blk=obstacles(env,exclude_box=box)
+    for (dr,dc),fa in faces.items():
+        ac=(box[0]+dr,box[1]+dc)
+        if not(0<=ac[0]<16 and 0<=ac[1]<16) or ac in blk: continue
+        p=_bfs_path(av,ac,set(blk)-{box}|set())
+        if p is not None and (best is None or len(p)<best[0]):
+            best=(len(p),ac,fa)
+    if best is None: return False
+    _,ac,fa=best
+    if not nav(env,ac,cap): return False
+    env.step(fa); env.step(USE)
+    held=_grid_grabbed(env)
+    if not held: 
+        env.step(USE); return False
+    rav=_grid_scan(env)[0]
+    off=(box[0]-rav[0],box[1]-rav[1])
+    gav=(drop[0]-off[0],drop[1]-off[1])
+    stuck=0
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,boxes,walls=_grid_scan(env)
+        if av==gav:
+            env.step(USE); return True
+        held=_grid_grabbed(env)
+        blk=set(walls)
+        for b in boxes:
+            if b not in held: blk.add(b)
+        blk|=movers(env)
+        blk.discard(gav); blk.discard(av)
+        p=_bfs_pair(av,off,gav,blk)
+        if not p:
+            # try ignoring movers
+            blk2=set(walls)
+            for b in boxes:
+                if b not in held: blk2.add(b)
+            blk2.discard(gav); blk2.discard(av)
+            p=_bfs_pair(av,off,gav,blk2)
+            if not p:
+                env.step(USE); return False
+        before=av
+        env.step(p[0])
+        if _grid_scan(env)[0]==before:
+            stuck+=1
+            if stuck>6:
+                env.step(USE); return False
+        else:
+            stuck=0
+    env.step(USE)
+    return _grid_scan(env)[0]==gav
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp3.py << 'EOF'
+from l8env import l8
+from mvcarry import carry, nav, movers
+from legs import _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (11,12,13,14)]
+cont=topc+botc
+def empty_cont(f):
+    return [(R,C) for (R,C) in cont if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    return av,[b for b in boxes if not(2<=b[0]<=3 and b[1]>=11) and not(12<=b[0]<=14 and b[1]>=11)]
+c=l8().clone()
+fail={}
+for it in range(40):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free_boxes(c)
+    fb=[b for b in fb if fail.get(b,0)<3]
+    empt=empty_cont(f)
+    if not fb or not empt: 
+        print('stop it',it,'fb',len(fb),'empt',len(empt)); break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=False
+    for tgt in empt[:2]:
+        ok=carry(c,box,tgt)
+        if ok: break
+    if not ok: fail[box]=fail.get(box,0)+1
+    print('it%d box%s ok=%s lvl=%d mu=%d freeleft=%d'%(it,box,ok,c.levels_completed,mu(c),len(free_boxes(c)[1])))
+for _ in range(20):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'freeleft',len(free_boxes(c)[1]))
+EOF
+python exp3.py 2>&1 | tail -40
+My mover-aware version is worse. Original carry_box_to worked for top. Let me test bottom-band carries in isolation with the original leg.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _avatar_nav
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+# bottom box (13,7)->bottom container (13,11)? or (12,12)
+print('start avatar',_grid_scan(c)[0])
+for (box,tgt) in [((13,7),(13,11)),((11,6),(12,11)),((13,8),(12,12))]:
+    ok=carry_box_to(c,box,tgt)
+    print('carry %s->%s ok=%s lvl=%d mu=%d'%(box,tgt,ok,c.levels_completed,mu(c)))
+    av,boxes,walls=_grid_scan(c)
+    print('   boxes now',sorted(boxes))
+" 2>&1 | tail
+I had wrong container cells for the bottom (it's cols 12-14, not 11). Let me fix and test seating all boxes into the correct container cells.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp4.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=topc+botc
+def empty_cont(f):
+    return [(R,C) for (R,C) in cont if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def occ_cont(f):
+    return [(R,C) for (R,C) in cont if {4,3,0}&cc(f,R,C)]
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    return av,[b for b in boxes if b not in cont]
+c=l8().clone()
+fail={}
+for it in range(40):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free_boxes(c)
+    fb=[b for b in fb if fail.get(b,0)<2]
+    empt=empty_cont(f)
+    if not fb or not empt: 
+        print('stop it',it,'fb',len(fb),'empt',len(empt)); break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=False
+    for tgt in empt[:2]:
+        ok=carry_box_to(c,box,tgt)
+        if ok: break
+    if not ok: fail[box]=fail.get(box,0)+1
+    f2=np.asarray(c.frame())
+    print('it%d box%s ok=%s lvl=%d mu=%d occ=%d freeleft=%d'%(it,box,ok,c.levels_completed,mu(c),len(occ_cont(f2)),len(free_boxes(c)[1])))
+for _ in range(25):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+f=np.asarray(c.frame())
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'occ',len(occ_cont(f)),'freeleft',len(free_boxes(c)[1]))
+EOF
+python exp4.py 2>&1 | tail -40
+Let me test a decisive question: do the movers REMOVE boxes I seat in containers? Seat one, then idle, and check persistence.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=topc+botc
+def occ(f): return sorted([(R,C) for (R,C) in cont if {4,3,0}&cc(f,R,C)])
+c=l8().clone()
+carry_box_to(c,(3,1),(2,11))
+carry_box_to(c,(3,2),(3,11))
+f=np.asarray(c.frame()); print('after 2 seats occ',occ(f))
+for k in range(1,7):
+    for _ in range(5): c.step(5)
+    f=np.asarray(c.frame()); print('idle',k*5,'occ',occ(f))
+"
+Top seats persist; bottom fluctuates as its mover works, but total stays. "Fill containers" looks stable. exp4 failed only because bottom carries failed late. Let me seat bottom boxes reliably (avatar starts near bottom) and watch when lvl increments.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp5.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=topc+botc
+def empty_cont(f,cells):
+    return [(R,C) for (R,C) in cells if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def occ(f):
+    return len([(R,C) for (R,C) in cont if {4,3,0}&cc(f,R,C)])
+def free_boxes(c,region):
+    av,boxes,walls=_grid_scan(c)
+    if region=='bot': fb=[b for b in boxes if b[0]>9 and b not in cont]
+    else: fb=[b for b in boxes if b[0]<6 and b not in cont]
+    return av,fb
+
+c=l8().clone()
+fail={}
+def run_region(region,cells,iters):
+    global c,fail
+    for it in range(iters):
+        if c.terminal() or c.levels_completed>7: return
+        f=np.asarray(c.frame())
+        av,fb=free_boxes(c,region)
+        fb=[b for b in fb if fail.get(b,0)<3]
+        empt=empty_cont(f,cells)
+        if not fb or not empt: return
+        fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+        box=fb[0]
+        empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+        ok=False
+        for tgt in empt[:3]:
+            ok=carry_box_to(c,box,tgt)
+            if ok: break
+        if not ok: fail[box]=fail.get(box,0)+1
+        f2=np.asarray(c.frame())
+        print('%s it%d box%s ok=%s lvl=%d mu=%d occ=%d'%(region,it,box,ok,c.levels_completed,mu(c),occ(f2)))
+run_region('bot',botc,12)
+run_region('top',topc,12)
+for _ in range(15):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+f=np.asarray(c.frame())
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'occ',occ(f))
+EOF
+python exp5.py 2>&1 | tail -40
+Bottom worked but then top nav fails immediately (mu stuck). Let me debug the state/reachability after the bottom batch.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _avatar_nav, _bfs_path
+import numpy as np
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+c=l8().clone()
+# do a couple bottom carries
+carry_box_to(c,(11,6),(12,12))
+carry_box_to(c,(13,7),(13,12))
+av,boxes,walls=_grid_scan(c)
+print('avatar',av)
+print('walls',sorted(walls))
+blk=set(walls)|set(boxes); blk.discard(av)
+p=_bfs_path(av,(3,3),blk)
+print('bfs av->(3,3):',p)
+# print band-crossing gaps: wall row6 cells, row9 cells
+w6=sorted([w for w in walls if w[0]==6]); w9=sorted([w for w in walls if w[0]==9])
+print('wall row6',w6)
+print('wall row9',w9)
+print('boxes',sorted(boxes))
+"
+Let me reproduce exp5's bottom batch and inspect why the avatar can't reach the top band afterward.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp6.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _bfs_path, _avatar_nav
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+def empty_cont(f,cells):
+    return [(R,C) for (R,C) in cells if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def free_bot(c):
+    av,boxes,walls=_grid_scan(c)
+    return av,[b for b in boxes if b[0]>9 and b not in botc]
+c=l8().clone()
+fail={}
+for it in range(6):
+    f=np.asarray(c.frame())
+    av,fb=free_bot(c)
+    fb=[b for b in fb if fail.get(b,0)<3]
+    empt=empty_cont(f,botc)
+    if not fb or not empt: break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]; empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=any(carry_box_to(c,box,t) for t in empt[:3])
+    if not ok: fail[box]=fail.get(box,0)+1
+    print('bot it%d box%s ok=%s mu=%d av=%s'%(it,box,ok,mu(c),_grid_scan(c)[0]))
+av,boxes,walls=_grid_scan(c)
+print('after bottom: avatar',av,'mu',mu(c))
+blk=set(walls)|set(boxes); blk.discard(av)
+p=_bfs_path(av,(3,3),blk)
+print('bfs av->(3,3):',p)
+print('boxes',sorted(boxes))
+# is avatar boxed in? neighbors
+for a,(dr,dc) in {1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}.items():
+    nb=(av[0]+dr,av[1]+dc)
+    print(' nb',nb,'wall' if nb in walls else ('box' if nb in boxes else 'free'))
+EOF
+python exp6.py 2>&1 | tail -30
+Path across bands DOES exist; carry_box_to's trial-lookahead is the fragile part. Let me test the cheaper "feed the mover" strategy: relocate far top boxes near the container and see if the mover then seats them.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+def occtop(f): return len([(R,C) for (R,C) in topc if {4,3,0}&cc(f,R,C)])
+c=l8().clone()
+# relocate far top-left boxes near container (drop at (2,8),(3,8),(2,10),(3,10))
+for box,drop in [((3,1),(3,8)),((3,2),(2,8)),((2,1),(3,10)),((2,2),(2,10))]:
+    ok=carry_box_to(c,box,drop)
+    print('feed',box,'->',drop,ok,'mu',mu(c),'occtop',occtop(np.asarray(c.frame())))
+print('now idle to let top mover seat...')
+for k in range(1,10):
+    for _ in range(6): 
+        if c.terminal():break
+        c.step(5)
+    f=np.asarray(c.frame()); print('idle',k*6,'occtop',occtop(f),'mu',mu(c))
+"
+Feeding doesn't help — mover has fixed small capacity. Avatar must seat most boxes. The carry needs to be robust to transient mover blocks (wait instead of abort). Let me write a robust carry.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > mvcarry2.py << 'EOF'
+import numpy as np
+from legs import _grid_scan, _grid_grabbed, _bfs_path, _bfs_pair
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+
+def movers(env):
+    f=np.asarray(env.frame())
+    ys,xs=np.where(f==15)
+    return set((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+
+def _wait(env):
+    # advance one turn without moving: step into a wall/box neighbor if possible
+    av,boxes,walls=_grid_scan(env)
+    blk=set(walls)|set(boxes)
+    for a,(dr,dc) in DIRS.items():
+        nb=(av[0]+dr,av[1]+dc)
+        if nb in blk or not(0<=nb[0]<16 and 0<=nb[1]<16):
+            env.step(a); return
+    env.step(UP)
+
+def nav(env, goal, cap=60):
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,boxes,walls=_grid_scan(env)
+        if av==goal: return True
+        hard=set(walls)|set(boxes); hard.discard(goal); hard.discard(av)
+        mv=movers(env)
+        blk=hard|mv
+        p=_bfs_path(av,goal,blk)
+        if p:
+            nb=(av[0]+DIRS[p[0]][0],av[1]+DIRS[p[0]][1])
+            if nb in mv:
+                _wait(env); continue
+            env.step(p[0]); continue
+        # movers block: plan ignoring movers
+        p=_bfs_path(av,goal,hard)
+        if not p: return False
+        nb=(av[0]+DIRS[p[0]][0],av[1]+DIRS[p[0]][1])
+        if nb in mv:
+            _wait(env); continue
+        env.step(p[0])
+    return _grid_scan(env)[0]==goal
+
+def grab(env, box, cap=60):
+    # navigate adjacent and grab; robust to mover on box/adjacent
+    for attempt in range(8):
+        av,boxes,walls=_grid_scan(env)
+        if box not in boxes:
+            # box may be carried by mover; give up
+            return False
+        hard=set(walls)|set(boxes)
+        mv=movers(env)
+        # pick reachable adjacent cell
+        best=None
+        for (dr,dc),fa in FACE.items():
+            ac=(box[0]+dr,box[1]+dc)
+            if not(0<=ac[0]<16 and 0<=ac[1]<16): continue
+            if ac in walls or ac in (boxes-{box}): continue
+            p=_bfs_path(av,ac,(hard-{box})|mv)
+            if p is None:
+                p=_bfs_path(av,ac,hard-{box})
+                extra=100
+            else: extra=0
+            if p is not None and (best is None or len(p)+extra<best[0]):
+                best=(len(p)+extra,ac,fa)
+        if best is None: return False
+        _,ac,fa=best
+        if not nav(env,ac,cap): 
+            continue
+        # face and grab, waiting if mover on box
+        if box in movers(env):
+            _wait(env); continue
+        env.step(fa); 
+        if box in movers(env):
+            continue
+        env.step(USE)
+        if _grid_grabbed(env):
+            return True
+    return False
+
+def carry_to(env, drop, cap=80):
+    # box currently held; rigid-carry so held box lands on drop
+    held=_grid_grabbed(env)
+    if not held: return False
+    av=_grid_scan(env)[0]
+    # offset from avatar to held box (use first held cell)
+    hb=sorted(held)[0]
+    off=(hb[0]-av[0],hb[1]-av[1])
+    gav=(drop[0]-off[0],drop[1]-off[1])
+    stuck=0
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,boxes,walls=_grid_scan(env)
+        if av==gav:
+            env.step(USE); return True
+        held=_grid_grabbed(env)
+        hard=set(walls)
+        for b in boxes:
+            if b not in held: hard.add(b)
+        hard.discard(gav); hard.discard(av)
+        mv=movers(env)
+        p=_bfs_pair(av,off,gav,hard|mv)
+        usemv=True
+        if not p:
+            p=_bfs_pair(av,off,gav,hard); usemv=False
+        if not p:
+            stuck+=1
+            if stuck>10: env.step(USE); return False
+            _wait(env); continue
+        nb=(av[0]+DIRS[p[0]][0],av[1]+DIRS[p[0]][1])
+        nbb=(nb[0]+off[0],nb[1]+off[1])
+        if nb in mv or nbb in mv:
+            _wait(env); stuck+=1
+            if stuck>12: env.step(USE); return False
+            continue
+        before=av
+        env.step(p[0])
+        if _grid_scan(env)[0]==before:
+            stuck+=1
+            if stuck>12: env.step(USE); return False
+        else: stuck=0
+    env.step(USE); return _grid_scan(env)[0]==gav
+
+def carry(env, box, drop):
+    if not grab(env, box): return False
+    return carry_to(env, drop)
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp7.py << 'EOF'
+from l8env import l8
+from mvcarry2 import carry
+from legs import _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=topc+botc
+def empty_cont(f,cells):
+    return [(R,C) for (R,C) in cells if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def occ(f): return len([(R,C) for (R,C) in cont if {4,3,0}&cc(f,R,C)])
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    return av,[b for b in boxes if b not in cont]
+c=l8().clone()
+fail={}
+for it in range(30):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free_boxes(c)
+    fb=[b for b in fb if fail.get(b,0)<3]
+    if not fb: break
+    # nearest box to avatar
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    # target: empty container cell in SAME band, nearest to box
+    cells=topc if box[0]<6 else botc
+    empt=empty_cont(f,cells)
+    if not empt:
+        empt=empty_cont(f,cont)
+    if not empt: break
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=False
+    for tgt in empt[:3]:
+        ok=carry(c,box,tgt)
+        if ok: break
+    if not ok: fail[box]=fail.get(box,0)+1
+    f2=np.asarray(c.frame())
+    print('it%d box%s ok=%s lvl=%d mu=%d occ=%d fb=%d'%(it,box,ok,c.levels_completed,mu(c),occ(f2),len(free_boxes(c)[1])))
+for _ in range(15):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+f=np.asarray(c.frame())
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'occ',occ(f),'fb',len(free_boxes(c)[1]))
+EOF
+python exp7.py 2>&1 | tail -35
+My robust carry wastes moves. Key realization: carry_box_to's failures use a clone trial (no real steps wasted). Let me measure ACTUAL env.step counts per carry to understand the real budget picture.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+c=l8().clone()
+cnt=[0]
+orig=c.step
+def cs(a):
+    cnt[0]+=1; return orig(a)
+c.step=cs
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+seq=[((3,1),(3,11)),((3,2),(2,11)),((2,1),(2,12)),((2,2),(3,12)),((3,6),(2,13))]
+for box,tgt in seq:
+    b=cnt[0]
+    ok=carry_box_to(c,box,tgt)
+    print('box%s->%s ok=%s steps=%d total=%d'%(box,tgt,ok,cnt[0]-b,cnt[0]))
+"
+One carry costs ~25 steps — seating all 13 is impossible in 134 budget. The 2-regions sit RIGHT NEXT TO the boxes (cheap to fill!). New hypothesis (L7 pattern): movers are thieves stealing boxes into containers; the GOAL is filling the standalone 2-regions. Let me test: can I clear a mover here?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import idle_until_mover_frozen, clear_frozen_mover, _grid_scan
+import numpy as np
+def nmov(c):
+    f=np.asarray(c.frame()); return int((f==15).sum())//16
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+print('movers',nmov(c),'mu',mu(c))
+fc=idle_until_mover_frozen(c,1)  # idle UP
+print('frozen at',fc,'movers',nmov(c),'mu',mu(c))
+ok=clear_frozen_mover(c)
+print('clear ok',ok,'movers',nmov(c),'mu',mu(c))
+" 2>&1 | tail
+Boxes are different sizes (one 8×8, one 4×8, several 4×4). Let me find each box's cheapest carry cost to a container and check whether lvl increments at some seated-count threshold. First, measure cheapest carry per box.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+env=l8()
+av,boxes,walls=_grid_scan(env)
+print('boxes',sorted(boxes))
+# For each box, find cheapest reachable container cell (measure steps on clone)
+for box in sorted(boxes):
+    cells=topc if box[0]<6 else botc
+    best=(999,None)
+    for tgt in cells:
+        c=env.clone()
+        cnt=[0]; o=c.step
+        def cs(a,o=o,cnt=cnt): cnt[0]+=1; return o(a)
+        c.step=cs
+        if carry_box_to(c,box,tgt):
+            if cnt[0]<best[0]: best=(cnt[0],tgt)
+    print('box',box,'cheapest',best)
+"
+Half the boxes can't be avatar-carried, and combined avatar+mover can't seat all 13 in budget. My "fill containers" model is likely wrong. Let me run a broad random search on clones to see if the win is something simpler (a location/switch).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np, random
+env=l8()
+best=7
+for trial in range(120):
+    c=env.clone()
+    random.seed(trial)
+    for _ in range(140):
+        if c.terminal() or c.levels_completed>7: break
+        c.step(random.choice([1,2,3,4,5]))
+    if c.levels_completed>best:
+        best=c.levels_completed
+        print('trial',trial,'lvl',c.levels_completed)
+print('best',best)
+" 2>&1 | tail
+Random search found nothing — needs a specific plan. Let me trace one mover's internal state (its cell contents) to understand exactly how it picks up and deposits boxes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+c=env.clone()
+def top_mover(c):
+    f=np.asarray(c.frame())
+    ys,xs=np.where(f==15)
+    # top mover = min row
+    m=[(y,x) for y,x in zip(ys,xs)]
+    if not m: return None,None
+    m.sort()
+    y0,x0=m[0]
+    R,C=y0//4,x0//4
+    blk=f[R*4:R*4+4,C*4:C*4+4]
+    return (R,C),blk
+for t in range(30):
+    (rc,blk)=top_mover(c)
+    u=sorted(set(int(v) for v in np.unique(blk))) if blk is not None else None
+    print('t%2d mover@%s content=%s'%(t,rc,u))
+    c.step(5)
+"
+The mover just WANDERS — it never carries a box (content always 15). Yet container occ increased earlier. Let me track all box cells + container fill step-by-step to see what actually moves boxes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+def occtop(f): return sorted([(R,C) for (R,C) in topc if {4,3,0}&cc(f,R,C)])
+env=l8()
+c=env.clone()
+prev=None
+for t in range(25):
+    f=np.asarray(c.frame())
+    av,boxes,walls=_grid_scan(c)
+    tb=sorted([b for b in boxes if b[0]<6])
+    ot=occtop(f)
+    if tb!=prev:
+        print('t%2d topboxes=%s occtop=%s'%(t,tb,ot))
+        prev=tb
+    c.step(5)
+"
+Boxes drift/get bulldozed by the wandering mover unpredictably. Let me verify: can carry_box_to seat a top box when the avatar is currently in the bottom band? (Tests if the exp5 stranding was fundamental.)
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _avatar_nav
+import numpy as np
+env=l8()
+c=env.clone()
+# move avatar to bottom band first
+_avatar_nav(c,(13,14),cap=40)
+print('avatar',_grid_scan(c)[0])
+# now try to seat a top box
+ok=carry_box_to(c,(3,6),(3,11))
+print('top carry from bottom ok=',ok,'avatar',_grid_scan(c)[0])
+"
+carry_box_to is too fragile here. Let me re-examine USE's context-dependent effects (on C blocks, 2-regions, containers, colliding with movers) — I may have missed the real mechanic.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+env=l8()
+# Can avatar walk onto C block (1,7)? approach from (1,6)
+c=env.clone()
+_avatar_nav(c,(1,6),cap=40)
+print('at',_grid_scan(c)[0])
+c.step(RIGHT)
+print('after RIGHT (toward C)',_grid_scan(c)[0])  # if moved to (1,7) C is walkable
+c.step(RIGHT)
+print('after RIGHT2',_grid_scan(c)[0])
+# C count
+f=np.asarray(c.frame()); print('C cells',int((f==12).sum()))
+"
+The mover instantly "collects" boxes adjacent to it (courier-collector). This is complex bulldozer dynamics. Let me run a beam search over avatar actions, guided by a container-fill metric, to both discover the win and find a completing sequence.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > beam.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np, sys, time
+def frame(c): return np.asarray(c.frame())
+def interior2(f):
+    t=int((f[9:15,45:59]==2).sum())
+    b=int((f[49:59,49:59]==2).sum())
+    return t,b
+def free_boxes(c):
+    av,boxes,walls=_grid_scan(c)
+    fb=[b for b in boxes if not(2<=b[0]<=3 and b[1]>=11) and not(12<=b[0]<=14 and b[1]>=12)]
+    return av,fb,boxes
+def movers(f):
+    ys,xs=np.where(f==15); return frozenset((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+def score(c):
+    f=frame(c)
+    if c.levels_completed>7: return 1e9
+    t,b=interior2(f)
+    av,fb,boxes=free_boxes(c)
+    return -(t+b) - 6*len(fb)
+def key(c):
+    f=frame(c)
+    av,fb,boxes=free_boxes(c)
+    return (av,movers(f),frozenset(boxes))
+
+start=l8()
+beam=[(score(start),start.clone(),[])]
+seen=set([key(start)])
+best=(score(start),[])
+t0=time.time()
+DEPTH=130; W=60
+found=None
+for d in range(DEPTH):
+    cand=[]
+    for sc,c,path in beam:
+        for a in (1,2,3,4,5):
+            n=c.clone()
+            if n.terminal(): continue
+            n.step(a)
+            if n.levels_completed>7:
+                found=path+[a]; print('FOUND lvl up at depth',d,'len',len(found)); break
+            k=key(n)
+            if k in seen: continue
+            seen.add(k)
+            s=score(n)
+            cand.append((s,n,path+[a]))
+        if found: break
+    if found: break
+    if not cand: break
+    cand.sort(key=lambda x:-x[0])
+    beam=cand[:W]
+    if beam[0][0]>best[0]: best=(beam[0][0],beam[0][2])
+    if d%10==0: print('d%d best_sc=%.0f beamtop=%.0f elapsed=%.0f'%(d,best[0],beam[0][0],time.time()-t0))
+print('found',found is not None,'best_sc',best[0])
+if found:
+    import json; json.dump(found, open('l8path.json','w')); print('saved',len(found))
+EOF
+python beam.py 2>&1 | tail -30
+Beam maximized container fill but never won — so "fill containers" isn't the goal. Let me view the level image to get a gestalt.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+try:
+    from PIL import Image
+    f=np.asarray(l8().frame()).astype(np.uint8)
+    pal={0:(0,0,0),1:(230,230,230),2:(120,120,255),4:(255,140,0),5:(90,60,30),7:(200,0,0),9:(0,180,0),12:(255,0,255),14:(0,0,0),15:(255,255,0)}
+    img=np.zeros((64,64,3),np.uint8)
+    for k,v in pal.items(): img[f==k]=v
+    Image.fromarray(img).resize((512,512),Image.NEAREST).save('l8_now.png')
+    print('saved')
+except Exception as e: print(e)
+"
+[edit] view /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry/l8_now.png
+[edit] view /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry/l8_now.png
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && file l8_now.png l8.png; ls -la l8_now.png
+[edit] view /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry/l8_now.png
+Image viewer is broken; I'll continue symbolically. Container-fill isn't the win. Let me beam-search optimizing coverage of the standalone 2-regions instead.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > beam2.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np, time
+def frame(c): return np.asarray(c.frame())
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+reg=[(2,3),(3,3),(4,1),(4,2),(4,3),(12,3),(12,4),(12,5),(13,3),(13,4),(13,5),(14,3),(14,4),(14,5)]
+def covered(f): return sum(1 for (R,C) in reg if {4,3,0}&cc(f,R,C))
+def movers(f):
+    ys,xs=np.where(f==15); return frozenset((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+def key(c):
+    f=frame(c); av,boxes,walls=_grid_scan(c)
+    return (av,movers(f),frozenset(boxes))
+def score(c):
+    if c.levels_completed>7: return 1e9
+    return covered(frame(c))
+start=l8()
+beam=[(score(start),start.clone(),[])]; seen={key(start)}; best=(0,[]); found=None; t0=time.time()
+for d in range(130):
+    cand=[]
+    for sc,c,path in beam:
+        for a in (1,2,3,4,5):
+            n=c.clone()
+            if n.terminal(): continue
+            n.step(a)
+            if n.levels_completed>7: found=path+[a]; break
+            k=key(n)
+            if k in seen: continue
+            seen.add(k); cand.append((score(n),n,path+[a]))
+        if found: break
+    if found: break
+    if not cand: break
+    cand.sort(key=lambda x:-x[0]); beam=cand[:60]
+    if beam[0][0]>best[0]: best=(beam[0][0],beam[0][2])
+    if d%15==0: print('d%d bestcov=%d elapsed=%.0f'%(d,best[0],time.time()-t0))
+print('found',found is not None,'bestcov',best[0],'of',len(reg))
+EOF
+python beam2.py 2>&1 | tail -20
+Neither container-fill nor region-coverage wins. Let me beam purely to minimize floor-boxes (all boxes off the plain floor = delivered somewhere).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > beam3.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np, time
+def frame(c): return np.asarray(c.frame())
+def movers(f):
+    ys,xs=np.where(f==15); return frozenset((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+def fb(c):
+    av,boxes,walls=_grid_scan(c); return len(boxes)
+def key(c):
+    f=frame(c); av,boxes,walls=_grid_scan(c)
+    return (av,movers(f),frozenset(boxes))
+def score(c):
+    if c.levels_completed>7: return 1e9
+    return -fb(c)
+start=l8()
+beam=[(score(start),start.clone(),[])]; seen={key(start)}; best=(-99,[]); found=None; t0=time.time()
+minfb=99
+for d in range(130):
+    cand=[]
+    for sc,c,path in beam:
+        for a in (1,2,3,4,5):
+            n=c.clone()
+            if n.terminal(): continue
+            n.step(a)
+            if n.levels_completed>7: found=path+[a]; break
+            k=key(n)
+            if k in seen: continue
+            seen.add(k); s=score(n); cand.append((s,n,path+[a]))
+            minfb=min(minfb,fb(n))
+        if found: break
+    if found: break
+    if not cand: break
+    cand.sort(key=lambda x:-x[0]); beam=cand[:80]
+    if beam[0][0]>best[0]: best=(beam[0][0],beam[0][2])
+    if d%15==0: print('d%d best_fb=%d minfb_seen=%d elapsed=%.0f'%(d,-best[0],minfb,time.time()-t0))
+print('found',found is not None,'best_fb',-best[0],'minfb',minfb)
+EOF
+python beam3.py 2>&1 | tail -20
+Floor-boxes plateau at 8. The stuck ones are likely the big multi-cell boxes. Key question: does grabbing the 8×8 top-left box move all 4 cells rigidly (clearing 4 floor-boxes per carry)? Let me test.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _grid_grabbed, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+env=l8()
+c=env.clone()
+print('boxes before',sorted(_grid_scan(c)[1]))
+# top-left 8x8 box cells (2,1),(2,2),(3,1),(3,2). Approach from (2,3)? that's 2-region walkable. face left toward (2,2)
+_avatar_nav(c,(2,3),cap=40)
+print('avatar',_grid_scan(c)[0])
+c.step(LEFT)  # face left toward (2,2)
+c.step(USE)   # grab
+print('grabbed cells',sorted(_grid_grabbed(c)))
+print('avatar after grab',_grid_scan(c)[0])
+print('boxes after grab',sorted(_grid_scan(c)[1]))
+# move right and see what moves
+c.step(RIGHT)
+print('after RIGHT: grabbed',sorted(_grid_grabbed(c)),'boxes',sorted(_grid_scan(c)[1]))
+"
+The "8×8" is actually 4 separate 4×4 boxes. Movers collect boxes in their wander zone; far boxes (cols 1-2, outside zone) stay. Hypothesis: push far boxes into the mover's zone → mover collects → fb→0 → win. Let me test.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def fb(c): return len(_grid_scan(c)[1])
+c=l8().clone()
+# push one far top-left box into mover zone center
+ok=carry_box_to(c,(3,1),(4,7))
+print('carry (3,1)->(4,7)',ok,'fb',fb(c),'boxes',sorted(_grid_scan(c)[1]))
+for k in range(1,8):
+    for _ in range(5): c.step(5)
+    print('idle',k*5,'fb',fb(c),'floorboxes',sorted(_grid_scan(c)[1]))
+"
+The box I placed at (4,7) is NEVER collected — my collector theory is wrong. Let me trace exactly what happens to a specific box in a single idle step (pixel diff).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+c=l8().clone()
+f0=np.asarray(c.frame()).copy()
+c.step(5)
+f1=np.asarray(c.frame())
+# focus top band rows 8-19 (px), cols 24-62
+print('CHANGES top band (row,col: old->new):')
+for r in range(8,20):
+    for co in range(24,62):
+        if f0[r,co]!=f1[r,co]:
+            print('  (%d,%d) %d->%d'%(r,co,f0[r,co],f1[r,co]))
+" 2>&1 | head -60
+The boxes RIPEN (border 4→5) near the courier — this is the L4/L5 courier world! _grid_scan doesn't detect ripened (5-border) boxes. Let me build proper box perception and find which boxes never ripen (need avatar ferrying).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+def boxes_all(f):
+    # cells with core 9 and border in {4,5,3,0}, not inside socket (socket has 2)
+    out={}
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            u=set(int(v) for v in np.unique(blk))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u:
+                # border color
+                border=4 if 4 in u else (5 if 5 in u else (3 if 3 in u else 0))
+                out[(R,C)]=border
+    return out
+def seatedpix(f):
+    t=int(((f[9:15,45:59]!=2)&(f[9:15,45:59]!=9)).sum())
+    b=int(((f[49:59,49:59]!=2)&(f[49:59,49:59]!=9)).sum())
+    return t,b
+c=l8().clone()
+for t in range(0,60,6):
+    f=np.asarray(c.frame())
+    bx=boxes_all(f)
+    ripe=[k for k,v in bx.items() if v==5]
+    raw=[k for k,v in bx.items() if v==4]
+    print('t%2d nboxes=%d raw4=%s ripe5=%s seated=%s'%(t,len(bx),sorted(raw),sorted(ripe),seatedpix(f)))
+    for _ in range(6): c.step(5)
+"
+Boxes ripen near the courier and seat, but the top-left cluster (cols 1-2, plain floor) never reaches a courier. Boxes also rest on 2-regions. Likely win = no box left on plain floor. Let me test: relocate the 4 cluster boxes onto the top 2-region, idle, and check floor-box count + lvl.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+sockT=set((r,co) for r in (2,3) for co in (11,12,13,14))
+sockB=set((r,co) for r in (12,13,14) for co in (12,13,14))
+def floorboxes(f):
+    out=[]
+    for R in range(16):
+        for C in range(16):
+            u=cc(f,R,C)
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u:
+                if (R,C) in sockT or (R,C) in sockB: continue
+                out.append((R,C))
+    return out
+c=l8().clone()
+# move cluster boxes onto top 2-region cells (4,1),(4,2),(4,3),(2,3)
+seq=[((3,1),(4,1)),((3,2),(4,2)),((2,1),(4,3)),((2,2),(2,3))]
+for box,tgt in seq:
+    ok=carry_box_to(c,box,tgt)
+    print('carry',box,'->',tgt,ok,'mu',mu(c),'floorbx',len(floorboxes(np.asarray(c.frame()))))
+print('idle...')
+for k in range(1,10):
+    for _ in range(5): 
+        if c.terminal():break
+        c.step(5)
+    f=np.asarray(c.frame())
+    print('idle',k*5,'lvl',c.levels_completed,'mu',mu(c),'floorbx',sorted(floorboxes(f)))
+    if c.levels_completed>7: print('WIN'); break
+"
+Boxes on 2-regions are indistinguishable from floor boxes (they cover the 2). Let me measure region-2 pixels vs socket-2 pixels over idle, and check if the system reaches a stable fixed point.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+# standalone region pixel masks
+def region2(f):
+    s=0
+    # top region cells
+    for (R,C) in [(2,3),(3,3),(4,1),(4,2),(4,3)]:
+        s+=int((f[R*4:R*4+4,C*4:C*4+4]==2).sum())
+    for R in (12,13,14):
+        for C in (3,4,5):
+            s+=int((f[R*4:R*4+4,C*4:C*4+4]==2).sum())
+    return s
+def socket2(f):
+    return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+def total2(f): return int((f==2).sum())
+c=l8().clone()
+prevf=None
+for t in range(80):
+    f=np.asarray(c.frame())
+    if t%8==0:
+        print('t%2d region2=%d socket2=%d total2=%d'%(t,region2(f),socket2(f),total2(f)))
+    if prevf is not None and np.array_equal(f,prevf):
+        print('FIXED POINT at t',t); break
+    prevf=f.copy()
+    c.step(5)
+"
+Neither region2 nor socket2 reaches 0; couriers plateau due to far boxes. Let me find the ripening rule: correlate courier positions with which boxes ripen (border→5) each step.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+def boxes_border(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u:
+                out[(R,C)]=4 if 4 in u else (5 if 5 in u else(3 if 3 in u else 0))
+    return out
+def couriers(f):
+    ys,xs=np.where(f==15)
+    cells=set((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+    # cluster to centers
+    return sorted(cells)
+c=l8().clone()
+prev=boxes_border(np.asarray(c.frame()))
+for t in range(1,15):
+    c.step(5)
+    f=np.asarray(c.frame())
+    cur=boxes_border(f)
+    cou=couriers(f)
+    # newly ripened
+    newripe=[k for k,v in cur.items() if v==5 and prev.get(k)!=5]
+    print('t%2d couriers=%s newripe=%s'%(t,cou,newripe))
+    prev=cur
+"
+Couriers push/carry boxes to both sockets AND regions; the far-left cluster (cols 1-2) is out of courier reach. Let me relocate the cluster into reach, then idle to budget end, watching total-2 and lvl.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def t2(c): return int((np.asarray(c.frame())==2).sum())
+c=l8().clone()
+# push cluster into courier reach (drop at col 4-6, rows 3-4 = courier zone)
+for box,tgt in [((3,1),(3,4)),((3,2),(4,4)),((2,1),(2,4)),((2,2),(3,5))]:
+    ok=carry_box_to(c,box,tgt)
+    print('carry',box,'->',tgt,ok,'mu',mu(c),'t2',t2(c))
+print('idle to end...')
+last=7
+while not c.terminal():
+    c.step(5)
+    if c.levels_completed>7:
+        print('WIN at mu',mu(c)); last=c.levels_completed; break
+    if mu(c)%8==0:
+        pass
+f=np.asarray(c.frame())
+print('END lvl',c.levels_completed,'mu',mu(c),'t2',t2(c),'term',c.terminal())
+"
+Even relocating the cluster + full idle doesn't win, and total-2 barely drops. I'm misreading the win. Let me calibrate by observing a KNOWN courier-level win (level 5): capture the frame right before/after its win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > cal5.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players, numpy as np
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+# play levels 1-4 to reach level 5 start
+for k in range(1,5):
+    fn=getattr(players,f'play_level_{k}')
+    before=env.levels_completed
+    fn(env)
+    print('after L%d play, levels=%d'%(k,env.levels_completed))
+assert env.levels_completed==4
+# Now at level 5 start. Snapshot, then play with capture of win transition.
+f5start=np.asarray(env.frame()).copy()
+np.save('l5start.npy',f5start)
+# manually run play_level_5 but capture frame just before win: wrap step
+prev=[f5start.copy()]
+cap={'before':None,'after':None}
+orig=env.step
+def cs(a):
+    b=env.levels_completed
+    r=orig(a)
+    if env.levels_completed>b and cap['before'] is None:
+        cap['before']=prev[0].copy()
+        cap['after']=np.asarray(env.frame()).copy()
+    prev[0]=np.asarray(env.frame()).copy()
+    return r
+env.step=cs
+players.play_level_5(env)
+print('after L5 play levels=',env.levels_completed)
+if cap['before'] is not None:
+    np.save('l5_before.npy',cap['before']); np.save('l5_after.npy',cap['after'])
+    print('captured win transition')
+EOF
+python cal5.py 2>&1 | tail -15
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import numpy as np
+s=np.load('l5start.npy'); b=np.load('l5_before.npy'); a=np.load('l5_after.npy')
+def show(f,title):
+    print(title)
+    for r in range(64):
+        print(''.join('{:X}'.format(int(v)) for v in f[r]))
+    print()
+show(s,'L5 START')
+" 2>&1 | head -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import numpy as np
+b=np.load('l5_before.npy'); a=np.load('l5_after.npy')
+def counts(f):
+    v,c=np.unique(f,return_counts=True); return dict(zip(v.tolist(),c.tolist()))
+print('BEFORE win counts',counts(b))
+print('AFTER  win counts',counts(a))
+print()
+print('BEFORE win frame (left socket region rows24-40 cols4-20):')
+for r in range(24,40):
+    print(''.join('{:X}'.format(int(v)) for v in b[r,4:20]))
+"
+L5's win = socket 2-core fully covered (couriers seat boxes brought to a handoff). In L8, avatar must ferry far boxes to each courier's handoff. Let me DISCOVER the top handoff: place a box at candidate cells near the socket and see which gets seated into the socket.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to
+import numpy as np
+def socket2top(f): return int((f[9:15,45:59]==2).sum())
+def boxat(f,R,C):
+    u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+    return 9 in u and ({4,5,3,0}&u)
+for cand in [(3,10),(2,10),(4,10),(3,9),(2,9),(4,9),(3,8),(2,8)]:
+    c=l8().clone()
+    ok=carry_box_to(c,(3,1),cand)
+    if not ok: 
+        print(cand,'carry failed'); continue
+    s0=socket2top(np.asarray(c.frame()))
+    present0=boxat(np.asarray(c.frame()),*cand)
+    for _ in range(20): c.step(5)
+    f=np.asarray(c.frame())
+    print('%s seated_delta=%d boxstillthere=%s'%(cand, s0-socket2top(f), boxat(f,*cand)))
+" 2>&1 | tail
+Feeding fails — couriers don't process avatar-placed boxes. The color-15 movers match L7's THIEVES (haul boxes to their stores). The 2-regions are on the LEFT (like L7's left goal!). Let me calibrate L7's win to understand the neutralize-then-fill pattern.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > cal7.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players, numpy as np
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+for k in range(1,7):
+    getattr(players,f'play_level_{k}')(env)
+    print('after L%d levels=%d'%(k,env.levels_completed))
+assert env.levels_completed==6
+np.save('l7start.npy', np.asarray(env.frame()).copy())
+prev=[np.asarray(env.frame()).copy()]; cap={'b':None,'a':None}
+orig=env.step
+def cs(a):
+    bl=env.levels_completed; r=orig(a)
+    if env.levels_completed>bl and cap['b'] is None:
+        cap['b']=prev[0].copy(); cap['a']=np.asarray(env.frame()).copy()
+    prev[0]=np.asarray(env.frame()).copy(); return r
+env.step=cs
+players.play_level_7(env)
+print('after L7 levels=',env.levels_completed)
+if cap['b'] is not None:
+    np.save('l7_before.npy',cap['b'])
+    print('captured')
+EOF
+python cal7.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import numpy as np
+s=np.load('l7start.npy'); b=np.load('l7_before.npy')
+def show(f,t,r0,r1):
+    print(t)
+    for r in range(r0,r1):
+        print(''.join('{:X}'.format(int(v)) for v in f[r]))
+    print()
+show(s,'L7 START',0,64)
+" 2>&1 | head -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import numpy as np
+b=np.load('l7_before.npy')
+print('L7 BEFORE-WIN play area rows20-40:')
+for r in range(20,40):
+    print(''.join('{:X}'.format(int(v)) for v in b[r]))
+print('counts',{int(k):int(v) for k,v in zip(*np.unique(b,return_counts=True))})
+"
+L7 win = the 9-frame goal FILLED with boxes (thief neutralized). L8's two 9-frame containers are likely the goals. First, let me verify the ACTUAL step budget available for level 8 (is it really ~134?).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > probe_budget.py << 'EOF'
+import importlib.util, json, os, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+def probe_player(env):
+    n=0
+    try:
+        while not env.terminal():
+            env.step(5); n+=1
+    except Exception as e:
+        print('stopped at n=%d err=%s lvl=%d'%(n,e,env.levels_completed))
+        return
+    print('reached terminal at n=%d lvl=%d'%(n,env.levels_completed))
+players.play_level_8=probe_player
+def resumed(env):
+    ck=json.load(open('checkpoint.json'))
+    for a in ck['final_path']: env.step(a)
+    from solve import solve as s
+    s(env)
+import solve
+levels,path,err=A.run_program('wa30', resumed)
+print('RESULT levels=%d moves=%d err=%s'%(levels,len(path),err))
+EOF
+python probe_budget.py 2>&1 | tail
+Confirmed: exactly 134 moves. Let me determine if the color-15 movers can be cleared at all (try USE-beside and collision), since L7's clear failed here.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _bfs_path
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+def movers(f):
+    ys,xs=np.where(f==15); return set((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+def nmov(f):return len(set((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==15))))//1
+# Try: navigate avatar toward the bottom mover and step into it repeatedly
+c=l8().clone()
+# get avatar to bottom band near bottom mover
+from legs import _avatar_nav
+_avatar_nav(c,(13,9),cap=40)
+f=np.asarray(c.frame())
+print('avatar',_grid_scan(c)[0],'movers',sorted(movers(f)))
+# chase: each step move toward nearest mover, try to bump/USE
+for t in range(20):
+    f=np.asarray(c.frame())
+    av,boxes,walls=_grid_scan(c)
+    mv=sorted(movers(f))
+    if not mv: print('MOVERS GONE at t',t); break
+    # nearest mover in bottom band
+    bm=[m for m in mv if m[0]>9]
+    if not bm: break
+    target=min(bm,key=lambda m:abs(m[0]-av[0])+abs(m[1]-av[1]))
+    # step toward it
+    dr=np.sign(target[0]-av[0]); dc=np.sign(target[1]-av[1])
+    a=DOWN if dr>0 else UP if dr<0 else (RIGHT if dc>0 else LEFT)
+    before_n=len(mv)
+    c.step(a)
+    c.step(USE)
+    f2=np.asarray(c.frame())
+    print('t%d av=%s target=%s nmov=%d'%(t,_grid_scan(c)[0],target,len(movers(f2))))
+"
+A mover got cleared at t8 (adjacent + USE)! The movers CAN be neutralized by chasing and USE. Let me build a chase-clear for both movers and examine the resulting state.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > chase.py << 'EOF'
+import numpy as np
+from legs import _grid_scan, _bfs_path
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def movers(f):
+    return set((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==15)))
+def chase_clear_one(env, band, cap=40):
+    # band: 'top' rows<6, 'bot' rows>9
+    for t in range(cap):
+        if env.terminal(): return False
+        f=np.asarray(env.frame())
+        mv=[m for m in movers(f) if (m[0]<6 if band=='top' else m[0]>9)]
+        if not mv: return True
+        av,boxes,walls=_grid_scan(env)
+        target=min(mv,key=lambda m:abs(m[0]-av[0])+abs(m[1]-av[1]))
+        # if adjacent, face+USE
+        d=(target[0]-av[0],target[1]-av[1])
+        if abs(d[0])+abs(d[1])==1:
+            env.step(FACE[d]); env.step(USE)
+            continue
+        # else path toward an adjacent cell of target (avoid walls, movers as soft)
+        blk=set(walls)|set(boxes)|(set(mv)-{target})
+        best=None
+        for (dr,dc),fa in FACE.items():
+            adj=(target[0]+dr,target[1]+dc)
+            if adj in blk or not(0<=adj[0]<16 and 0<=adj[1]<16): continue
+            p=_bfs_path(av,adj,blk)
+            if p and (best is None or len(p)<len(best)): best=p
+        if not best:
+            # step toward target ignoring boxes
+            dr=np.sign(target[0]-av[0]); dc=np.sign(target[1]-av[1])
+            a=DOWN if dr>0 else (UP if dr<0 else (RIGHT if dc>0 else LEFT))
+            env.step(a); continue
+        env.step(best[0])
+    return not [m for m in movers(np.asarray(env.frame())) if (m[0]<6 if band=='top' else m[0]>9)]
+def clear_both(env):
+    # clear whichever band avatar is closer to first
+    av=_grid_scan(env)[0]
+    if av[0]<8:
+        chase_clear_one(env,'top'); chase_clear_one(env,'bot')
+    else:
+        chase_clear_one(env,'bot'); chase_clear_one(env,'top')
+EOF
+python -c "
+from l8env import l8
+from chase import clear_both, movers
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+clear_both(c)
+f=np.asarray(c.frame())
+print('after clear_both: movers',sorted(movers(f)),'mu',mu(c),'avatar',_grid_scan(c)[0])
+# now idle and see if boxes are static
+prev=None
+for k in range(6):
+    for _ in range(4): c.step(5)
+    f=np.asarray(c.frame())
+    av,boxes,walls=_grid_scan(c)
+    print('idle',(k+1)*4,'floorboxcells',len(boxes),'movers',len(movers(f)),'mu',mu(c))
+"
+After clearing, boxes go static — so the movers are HELPERS that fill the goals! Plateau is due to unreachable far boxes. Feed failed maybe because released boxes stay border-3 (not free-4). Let me test the release/step-away border state.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def border(f,R,C):
+    u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+    for col in (4,5,3,0):
+        if col in u: return col
+    return None
+c=l8().clone()
+# grab cluster box (3,1), carry to (3,5) in mover zone
+ok=carry_box_to(c,(3,1),(3,5))
+f=np.asarray(c.frame())
+print('after carry to (3,5): border=',border(f,3,5),'ok',ok,'avatar',_grid_scan(c)[0])
+# step away a couple times
+for a in [DOWN,DOWN]:
+    c.step(a)
+f=np.asarray(c.frame())
+# box may have moved; find nearest box to (3,5)
+av,boxes,walls=_grid_scan(c)
+print('avatar',av)
+for R in range(2,6):
+    row=''
+    for C in range(2,10):
+        b=border(f,R,C)
+        row+=('%X'%b if b is not None else '.')
+    print('row%d cols2-9 border:'%R,row)
+"
+carry_box_to is too fragile. Let me use the simpler, reliable `grab_push_release` (L4's core verb) to push cluster boxes into mover reach. Let me check its signature.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -n '122,205p' legs.py
+Movers are helpers filling goals. Let me run a definitive budget-capped (134) greedy that carries boxes into goals interleaved across both bands (movers help), monitoring lvl throughout, to see if all-delivered ever wins.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp8.py << 'EOF'
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=set(topc+botc)
+def empty(f,cells):
+    return [(R,C) for (R,C) in cells if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def free(c):
+    av,boxes,walls=_grid_scan(c); return av,[b for b in boxes if b not in cont]
+c=l8().clone()
+cnt=[0]; o=c.step
+def cs(a): 
+    if cnt[0]>=134: raise RuntimeError('cap')
+    cnt[0]+=1; return o(a)
+c.step=cs
+fail={}
+try:
+    while cnt[0]<108:
+        f=np.asarray(c.frame())
+        av,fb=free(c)
+        fb=[b for b in fb if fail.get(b,0)<2]
+        if not fb: break
+        fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+        box=fb[0]
+        cells=topc if box[0]<6 else botc
+        empt=empty(f,cells) or empty(f,topc+botc)
+        if not empt: break
+        empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+        ok=False
+        for tgt in empt[:2]:
+            b=cnt[0]
+            ok=carry_box_to(c,box,tgt)
+            if ok: break
+        if not ok: fail[box]=fail.get(box,0)+1
+        print('box%s ok=%s steps=%d lvl=%d'%(box,ok,cnt[0],c.levels_completed))
+        if c.levels_completed>7: print('WIN'); break
+    while cnt[0]<134 and c.levels_completed==7 and not c.terminal():
+        c.step(5)
+except RuntimeError:
+    pass
+print('FINAL lvl',c.levels_completed,'steps',cnt[0])
+EOF
+python exp8.py 2>&1 | tail -20
+5 carries max in budget — avatar-fill is infeasible. Movers must do the bulk. Let me carefully re-test feeding: place a box in mover zone, verify its border state, step away, and see if the mover takes it.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def bstate(f,R,C):
+    u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+    return sorted(u)
+c=l8().clone()
+ok=carry_box_to(c,(3,1),(3,7))
+f=np.asarray(c.frame())
+print('placed at (3,7)? ok=',ok,'cell(3,7)=',bstate(f,3,7),'avatar',_grid_scan(c)[0])
+# find where the box actually is (border 3/0 near 3,7)
+# step avatar away to bottom
+_avatar_nav(c,(8,1),cap=30)
+f=np.asarray(c.frame())
+print('cell(3,7) after avatar leaves=',bstate(f,3,7),'avatar',_grid_scan(c)[0])
+# idle and watch cell (3,7) and nearby for the box being taken
+for k in range(1,8):
+    for _ in range(4): c.step(5)
+    f=np.asarray(c.frame())
+    # scan row2-4 cols5-11 for box borders
+    print('idle',k*4,'row3 cols5-11:',[bstate(f,3,C)[-1] if bstate(f,3,C) else 0 for C in range(5,12)])
+"
+carry_box_to doesn't truly release on floor (box stays attached, border 3). Let me calibrate L6 (the other color-15 level) to understand its mechanic and win, as it may mirror L8.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > cal6.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players, numpy as np
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+for k in range(1,6):
+    getattr(players,f'play_level_{k}')(env)
+assert env.levels_completed==5
+np.save('l6start.npy', np.asarray(env.frame()).copy())
+prev=[np.asarray(env.frame()).copy()]; cap={'b':None}
+orig=env.step
+def cs(a):
+    bl=env.levels_completed; r=orig(a)
+    if env.levels_completed>bl and cap['b'] is None:
+        cap['b']=prev[0].copy()
+    prev[0]=np.asarray(env.frame()).copy(); return r
+env.step=cs
+players.play_level_6(env)
+print('after L6 levels=',env.levels_completed)
+if cap['b'] is not None: np.save('l6_before.npy',cap['b']); print('captured')
+EOF
+python cal6.py 2>&1 | tail -3
+python -c "
+import numpy as np
+s=np.load('l6start.npy')
+print('L6 START:')
+for r in range(64):
+    print(''.join('{:X}'.format(int(v)) for v in s[r]))
+" 2>&1 | head -70
+L6 confirms: 9-frame = GOAL to fill; color-15 = thief to clear. So L8 = clear both thieves, then fill the two 9-frame goals. Let me check L6's before-win to gauge required goal fill.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import numpy as np
+b=np.load('l6_before.npy')
+print('L6 BEFORE-WIN goal region rows12-20 cols28-36:')
+for r in range(12,20):
+    print(''.join('{:X}'.format(int(v)) for v in b[r,28:36]))
+print('counts',{int(k):int(v) for k,v in zip(*np.unique(b,return_counts=True))})
+print()
+print('L6 START goal region rows12-20 cols28-36:')
+s=np.load('l6start.npy')
+for r in range(12,20):
+    print(''.join('{:X}'.format(int(v)) for v in s[r,28:36]))
+"
+Key insight: movers deliver *ripened* (border-5) boxes to goals; a box ripens when adjacent to a mover. carry_box_to doesn't properly release on floor (box stays attached). Let me test proper release (grab then USE) border states to enable feeding boxes to movers for ripening.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def bcells(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u:
+                out[(R,C)]=4 if 4 in u else(5 if 5 in u else(3 if 3 in u else 0))
+    return out
+c=l8().clone()
+# approach box (3,6) from left (3,5)? (3,5) empty. face right, grab
+_avatar_nav(c,(3,5),cap=40)
+print('avatar',_grid_scan(c)[0])
+c.step(RIGHT)  # face right toward (3,6)
+c.step(USE)    # grab
+f=np.asarray(c.frame())
+print('after grab: grabbed=',sorted(_grid_grabbed(c)),'box(3,6)border=',bcells(f).get((3,6)),'avatar',_grid_scan(c)[0])
+# move up (carry), then release with USE, then step away
+c.step(UP)
+f=np.asarray(c.frame()); print('after UP: avatar',_grid_scan(c)[0],'grabbed',sorted(_grid_grabbed(c)))
+c.step(USE)  # release
+f=np.asarray(c.frame()); print('after release USE: grabbed',sorted(_grid_grabbed(c)),'nearby boxes',{k:v for k,v in bcells(f).items() if 1<=k[0]<=4 and 4<=k[1]<=8})
+c.step(LEFT); c.step(LEFT)  # step away
+f=np.asarray(c.frame()); print('after stepaway: nearby boxes',{k:v for k,v in bcells(f).items() if 1<=k[0]<=4 and 4<=k[1]<=8},'avatar',_grid_scan(c)[0])
+"
+Release mechanic found: USE releases to border-3, then STEP AWAY frees it to border-4. Now feeding should work. Let me confirm a freed box in the mover zone gets ripened and delivered.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def socket2top(f): return int((f[9:15,45:59]==2).sum())
+c=l8().clone()
+# feed cluster box (3,1) into mover zone and release properly
+_avatar_nav(c,(3,0),cap=30)
+c.step(RIGHT); c.step(USE)  # grab (3,1)
+print('grabbed',sorted(_grid_grabbed(c)))
+# carry right into zone: move right several
+for _ in range(5): c.step(RIGHT)
+print('after carry avatar',_grid_scan(c)[0],'grabbed',sorted(_grid_grabbed(c)))
+c.step(USE)  # release
+c.step(DOWN); c.step(DOWN)  # step away to free
+print('freed, avatar',_grid_scan(c)[0])
+s0=socket2top(np.asarray(c.frame()))
+for k in range(1,8):
+    for _ in range(4): c.step(5)
+    f=np.asarray(c.frame())
+    print('idle',k*4,'socket2top',socket2top(f),'delta',s0-socket2top(f))
+"
+Movers CYCLE (oscillate, no net progress) — they'll never finish alone. Let me test: clear both movers (stops cycling, partial fill sticks), then carry boxes into goals one-by-one, checking lvl after each to find the win threshold.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp9.py << 'EOF'
+from l8env import l8
+from chase import clear_both, movers
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+topc=[(r,co) for r in (2,3) for co in (11,12,13,14)]
+botc=[(r,co) for r in (12,13,14) for co in (12,13,14)]
+cont=set(topc+botc)
+def empty(f,cells):
+    return [(R,C) for (R,C) in cells if 2 in cc(f,R,C) and not({4,3,0}&cc(f,R,C))]
+def free(c):
+    av,boxes,walls=_grid_scan(c); return av,[b for b in boxes if b not in cont]
+def occ(f): return len([(R,C) for (R,C) in cont if {4,3,0}&cc(f,R,C)])
+c=l8().clone()
+clear_both(c)
+print('cleared, movers',len(movers(np.asarray(c.frame()))),'mu',mu(c))
+fail={}
+for it in range(12):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,fb=free(c)
+    fb=[b for b in fb if fail.get(b,0)<2]
+    if not fb: print('no free'); break
+    fb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=fb[0]
+    cells=topc if box[0]<6 else botc
+    empt=empty(f,cells) or empty(f,topc+botc)
+    if not empt: break
+    empt.sort(key=lambda t:abs(t[0]-box[0])+abs(t[1]-box[1]))
+    ok=any(carry_box_to(c,box,t) for t in empt[:2])
+    if not ok: fail[box]=fail.get(box,0)+1
+    print('carry box%s ok=%s lvl=%d mu=%d occ=%d'%(box,ok,c.levels_completed,mu(c),occ(np.asarray(c.frame()))))
+print('FINAL lvl',c.levels_completed,'mu',mu(c))
+EOF
+python exp9.py 2>&1 | tail -20
+Crucial: nearly all boxes in the 9-frames (occ=12, no floor boxes) but NO win — so 9-frames aren't the goal. The LEFT 2-regions must be. Let me test: clear movers, then carry boxes into the 2-regions, watching lvl.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp10.py << 'EOF'
+from l8env import l8
+from chase import clear_both, movers
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+reg=[(2,3),(3,3),(4,1),(4,2),(4,3),(12,3),(12,4),(12,5),(13,3),(13,4),(13,5),(14,3),(14,4),(14,5)]
+regset=set(reg)
+def covered(f): return [r for r in reg if {4,3,0}&cc(f,r)]
+def allboxes(c):
+    av,boxes,walls=_grid_scan(c); return av,boxes
+c=l8().clone()
+clear_both(c)
+print('cleared movers=%d mu=%d'%(len(movers(np.asarray(c.frame()))),mu(c)))
+fail={}
+for it in range(14):
+    if c.terminal() or c.levels_completed>7: break
+    f=np.asarray(c.frame())
+    av,boxes=allboxes(c)
+    # boxes not already on a region cell
+    src=[b for b in boxes if b not in regset and fail.get(b,0)<2]
+    tgts=[r for r in reg if not({4,3,0}&cc(f,r))]  # uncovered region cells
+    if not src or not tgts: print('done it',it,'src',len(src),'tgts',len(tgts)); break
+    # nearest region cell to avatar, then nearest box to it
+    tgts.sort(key=lambda t:abs(t[0]-av[0])+abs(t[1]-av[1]))
+    tgt=tgts[0]
+    src.sort(key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+    ok=carry_box_to(c,src[0],tgt)
+    if not ok: fail[src[0]]=fail.get(src[0],0)+1
+    print('box%s->%s ok=%s lvl=%d mu=%d cov=%d'%(src[0],tgt,ok,c.levels_completed,mu(c),len(covered(np.asarray(c.frame())))))
+print('FINAL lvl',c.levels_completed,'cov',len(covered(np.asarray(c.frame()))),'of',len(reg))
+EOF
+python exp10.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && sed -i 's/cc(f,r)/cc(f,r[0],r[1])/g' exp10.py && python exp10.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && perl -pi -e 's/cc\(f,r\)/cc(f,r[0],r[1])/g' exp10.py && python exp10.py 2>&1 | tail -20
+Filling regions also fails. Let me test if my USE-idle was interfering — idle by bumping a wall (no grab) and see if the movers complete the level on their own.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+# idle by DOWN (avatar (8,1), (9,1) is wall -> no move, no grab)
+c=l8().clone()
+print('start avatar',_grid_scan(c)[0])
+for t in range(160):
+    c.step(2)  # DOWN
+    if c.levels_completed>7:
+        print('WIN at t',t); break
+    if c.terminal(): print('term t',t,'lvl',c.levels_completed); break
+print('final lvl',c.levels_completed)
+# also try LEFT idle (avatar at col1, moving left to col0 then stuck)
+c=l8().clone()
+for t in range(160):
+    c.step(3)
+    if c.levels_completed>7: print('LEFT WIN t',t); break
+    if c.terminal(): break
+print('LEFT idle final lvl',c.levels_completed)
+"
+Idle never wins; movers cycle. The C(12) blocks are the only unexplored structure. Let me clear movers (clean state) then test C-block interactions cleanly.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+c=l8().clone()
+clear_both(c)
+print('movers',len(movers(np.asarray(c.frame()))))
+# C blocks at (1,7) and (11,9). navigate adjacent and USE, diff.
+for Cc in [(1,7),(11,9)]:
+    cc=c.clone()
+    _avatar_nav(cc,(Cc[0]+1,Cc[1]),cap=40)  # below C
+    f0=np.asarray(cc.frame()).copy()
+    cc.step(UP); cc.step(USE)
+    f1=np.asarray(cc.frame())
+    ch=np.argwhere(f0!=f1)
+    print('C',Cc,'avatar',_grid_scan(cc)[0],'changes',len(ch), 'C-count',int((f1==12).sum()))
+    # show changes
+    for y,x in ch[:20]:
+        print('   (%d,%d) %d->%d'%(y,x,f0[y,x],f1[y,x]))
+" 2>&1 | head -40
+The C(12) blocks appear to MOVE — they may be a SECOND type of agent (color 12 = courier, like L5!). Let me check if they move on their own.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+def c12(f):
+    ys,xs=np.where(f==12)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+c=l8().clone()
+for t in range(0,20,2):
+    print('t%2d C12cells=%s'%(t,c12(np.asarray(c.frame()))))
+    for _ in range(2): c.step(5)
+"
+The C(12) blocks are a SECOND pair of agents — couriers, like L5! This is the L5 courier world (doubled). Let me try the L5 leg directly and observe.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import ferry_all_to_courier_then_yield, _cells
+import numpy as np
+c=l8().clone()
+# see what _cells reports (courier=12)
+av,head,boxes,cour,walls=_cells(c)
+print('avatar',av,'courier(12)',cour,'nboxes',len(boxes))
+print('boxes',sorted(boxes))
+try:
+    ferry_all_to_courier_then_yield(c, drops=((3,10),(2,10)), region_min_col=6, max_iters=30)
+except Exception as e:
+    print('err',e)
+print('lvl',c.levels_completed)
+" 2>&1 | tail -15
+Likely: avatar-placed boxes aren't "seated" — only couriers seat (incrementing the win counter). Let me verify: free a cluster box (border-4) in the mover/courier's range and confirm the courier seats it (goal fill increases, box delivered).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def bcells(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u:
+                out[(R,C)]=4 if 4 in u else(5 if 5 in u else(3 if 3 in u else 0))
+    return out
+c=l8().clone()
+# extract (3,1): approach (3,0), face right, grab
+_avatar_nav(c,(3,0),cap=30)
+c.step(RIGHT); c.step(USE)
+print('grabbed',sorted(_grid_grabbed(c)),'avatar',_grid_scan(c)[0])
+# carry DOWN then RIGHT into mover zone
+c.step(DOWN)  # avatar (4,0), box (4,1)
+print('after DOWN grabbed',sorted(_grid_grabbed(c)),'avatar',_grid_scan(c)[0])
+for _ in range(4): c.step(RIGHT)
+print('after RIGHTx4 grabbed',sorted(_grid_grabbed(c)),'avatar',_grid_scan(c)[0])
+c.step(USE)  # release ->3
+c.step(DOWN)  # step away -> free 4
+f=np.asarray(c.frame())
+gb=[k for k,v in bcells(f).items() if 3<=k[0]<=5]
+print('freed box location(s) rows3-5:',gb,'avatar',_grid_scan(c)[0])
+# idle and track that box + goal fill
+def s2t(f): return int((f[9:15,45:59]==2).sum())
+for k in range(1,10):
+    for _ in range(4): c.step(5)
+    f=np.asarray(c.frame())
+    bx=bcells(f)
+    myb=[k2 for k2 in bx if 3<=k2[0]<=5 and 1<=k2[1]<=6]
+    print('idle',k*4,'boxes rows3-5 cols1-6:',{k2:bx[k2] for k2 in myb},'s2top',s2t(f))
+"
+Freed box at (4,4) never fetched — fetch zone is further right (col6+). Let me move it into the fetch zone (col7) and confirm the courier seats it.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def bcells(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out[(R,C)]=max(u&{4,5,3,0})
+    return out
+c=l8().clone()
+_avatar_nav(c,(3,0),cap=30)
+c.step(RIGHT); c.step(USE)  # grab (3,1)
+c.step(DOWN)  # box->(4,1)
+for _ in range(6): c.step(RIGHT)  # push box right along row4
+print('avatar',_grid_scan(c)[0],'grabbed',sorted(_grid_grabbed(c)))
+c.step(USE); c.step(DOWN)  # free
+f=np.asarray(c.frame())
+mine=[k for k,v in bcells(f).items() if 3<=k[0]<=5 and 5<=k[1]<=9]
+print('freed at',mine,'avatar',_grid_scan(c)[0])
+def s2t(f): return int((f[9:15,45:59]==2).sum())
+for k in range(1,10):
+    for _ in range(4): c.step(5)
+    f=np.asarray(c.frame())
+    bx=bcells(f)
+    mine=[k2 for k2 in bx if 3<=k2[0]<=5 and 5<=k2[1]<=9]
+    print('idle',k*4,'boxes r3-5 c5-9:',{k2:bx[k2] for k2 in mine},'s2top',s2t(f))
+"
+A box freed in the fetch zone (col6-7) DOES ripen and get seated by the courier! So the solution: ferry the far cluster boxes into the fetch zone and free them (proper release). Let me build ferry-and-free and test delivering the cluster, then idle for the win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > ferry.py << 'EOF'
+import numpy as np
+from legs import _grid_scan, _grid_grabbed, _avatar_nav, _bfs_pair, _bfs_path
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def boxes_all(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out.add((R,C))
+    return out
+def ferry_free(env, box, drop, cap=60):
+    av,boxes,walls=_grid_scan(env)
+    faces={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+    for (dr,dc) in faces:
+        ac=(box[0]+dr,box[1]+dc)
+        if not(0<=ac[0]<16 and 0<=ac[1]<16): continue
+        if ac in walls or ac in (boxes-{box}): continue
+        face=faces[(box[0]-ac[0],box[1]-ac[1])]
+        trial=env.clone()
+        if not _avatar_nav(trial,ac,cap): continue
+        trial.step(face); trial.step(USE)
+        if not _grid_grabbed(trial): continue
+        tav=_grid_scan(trial)[0]; off=(box[0]-tav[0],box[1]-tav[1])
+        gav=(drop[0]-off[0],drop[1]-off[1])
+        probe=trial.clone()
+        # rigid carry probe
+        ok=_rigid(probe,off,gav,cap)
+        if not ok: continue
+        # commit
+        if not _avatar_nav(env,ac,cap): return False
+        env.step(face); env.step(USE)
+        if not _grid_grabbed(env): return False
+        rav=_grid_scan(env)[0]; off=(box[0]-rav[0],box[1]-rav[1]); gav=(drop[0]-off[0],drop[1]-off[1])
+        if not _rigid(env,off,gav,cap):
+            env.step(USE); _stepaway(env); return False
+        env.step(USE); _stepaway(env); return True
+    return False
+def _rigid(env,off,gav,cap):
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,boxes,walls=_grid_scan(env)
+        if av==gav: return True
+        held=_grid_grabbed(env)
+        blk=set(walls)
+        for b in boxes:
+            if b not in held: blk.add(b)
+        bx=(av[0]+off[0],av[1]+off[1])
+        if not(0<=av[0]<16 and 0<=av[1]<16 and 0<=bx[0]<16 and 0<=bx[1]<16 and av not in blk and bx not in blk): return False
+        blk.discard(gav); blk.discard(av)
+        p=_bfs_pair(av,off,gav,blk)
+        if not p: return False
+        before=av; env.step(p[0])
+        if _grid_scan(env)[0]==before: return False
+    return _grid_scan(env)[0]==gav
+def _stepaway(env):
+    av,boxes,walls=_grid_scan(env)
+    held=_grid_grabbed(env)
+    for a,(dr,dc) in {UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}.items():
+        nb=(av[0]+dr,av[1]+dc)
+        if nb in held: continue
+        if nb in walls or nb in boxes: continue
+        if not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+        env.step(a); return
+    env.step(DOWN)
+EOF
+python -c "
+from l8env import l8
+from ferry import ferry_free, boxes_all
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+# ferry the 4 top cluster boxes into fetch zone, free them
+drops=[(4,6),(3,6),(4,7),(3,7)]
+i=0
+for _ in range(8):
+    av,boxes,walls=_grid_scan(c)
+    stuck=[b for b in boxes if b[0]<6 and b[1]<5]
+    if not stuck: break
+    stuck.sort(key=lambda b:(b[1],b[0]))
+    box=stuck[0]
+    ok=ferry_free(c,box,drops[i%len(drops)]); i+=1
+    print('ferry',box,'ok',ok,'mu',mu(c),'stuckleft',len([b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]))
+print('idle...')
+while not c.terminal() and c.levels_completed==7:
+    c.step(5)
+    if c.levels_completed>7: print('WIN mu',mu(c)); break
+print('FINAL lvl',c.levels_completed,'mu',mu(c))
+" 2>&1 | tail -20
+Top cluster ferried (all seated-zone) but still no win — bottom band must also have stuck boxes. Let me identify bottom stuck boxes and check the end distribution.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+def boxes_border(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out[(R,C)]=max(u&{4,5,3,0})
+    return out
+c=l8().clone()
+# track which cells persistently hold border-4 boxes (stuck) over idle, per band
+from collections import Counter
+persist=Counter()
+for t in range(60):
+    f=np.asarray(c.frame())
+    for k,v in boxes_border(f).items():
+        if v in (4,): persist[k]+=1
+    c.step(5)
+# cells that were border-4 most often = stuck
+print('most-persistent border-4 cells:')
+for k,n in persist.most_common(20):
+    print('  ',k,n)
+"
+Top cluster (60/60) is clearly the stuck set; (11,6) somewhat stuck in bottom. Let me ferry both bands' stuck boxes PACED (idle between, to avoid fetch-zone congestion) and check for a win on a clone.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp11.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def goalfill(f):
+    return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+c=l8().clone()
+topdrops=[(4,7),(3,7)]; botdrops=[(13,9),(12,9)]
+di=0
+def stuck_top(c): return [b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+def stuck_bot(c): return [b for b in _grid_scan(c)[1] if b[0]>9 and b[1]<6]
+def idle(c,n):
+    for _ in range(n):
+        if c.terminal() or c.levels_completed>7: return
+        c.step(5)
+for rnd in range(8):
+    if c.levels_completed>7 or c.terminal(): break
+    st=stuck_top(c)
+    if st:
+        st.sort(key=lambda b:(b[1],b[0]))
+        ok=ferry_free(c,st[0],topdrops[di%2]); di+=1
+        print('top ferry',st[0],ok,'mu',mu(c),'gf',goalfill(np.asarray(c.frame())),'lvl',c.levels_completed)
+        idle(c,4)
+    sb=stuck_bot(c)
+    if sb:
+        sb.sort(key=lambda b:(b[1],b[0]))
+        ok=ferry_free(c,sb[0],botdrops[di%2]); di+=1
+        print('bot ferry',sb[0],ok,'mu',mu(c),'gf',goalfill(np.asarray(c.frame())),'lvl',c.levels_completed)
+        idle(c,4)
+    if not st and not sb: break
+print('ferry done mu',mu(c))
+idle(c,60)
+f=np.asarray(c.frame())
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'goalfill',goalfill(f))
+print('remaining floor boxes',sorted(_grid_scan(c)[1]))
+EOF
+python exp11.py 2>&1 | tail -25
+goalfill cycles (couriers oscillate); ferrying too slow. Let me reconsider using the L5 handoff protocol: `grab_and_deliver` leaves the box at border-3 for the color-12 courier to seat cleanly. Let me test if feeding via grab_and_deliver gets seated without cycling.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import grab_and_deliver, _cells, _grid_scan
+import numpy as np
+def gf(f): return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+c=l8().clone()
+av,head,boxes,cour,walls=_cells(c)
+print('courier(12) top',cour)
+# feed cluster box (3,1) to a handoff near top courier/goal
+for drop in [(2,10),(3,10),(2,9),(1,9)]:
+    cc=c.clone()
+    ok=grab_and_deliver(cc,(3,1),drop)
+    f=np.asarray(cc.frame())
+    print('deliver (3,1)->',drop,'ok',ok,'gf',gf(f))
+    g0=gf(f)
+    for _ in range(20): cc.step(5)
+    print('   after idle20 gf',gf(np.asarray(cc.frame())),'lvl',cc.levels_completed)
+" 2>&1 | tail
+Couriers cycle regardless. In L5 the avatar ferried CONTINUOUSLY. Let me run a continuous two-band ferry (nearest box → band handoff, rotating) capped at 134, monitoring goalfill and lvl.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp12.py << 'EOF'
+from l8env import l8
+from legs import grab_and_deliver, _grid_scan, _cells
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+def gf(f): return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+topg=set((r,co) for r in (2,3) for co in (11,12,13,14))
+botg=set((r,co) for r in (12,13,14) for co in (12,13,14))
+goals=topg|botg
+top_h=[(2,10),(3,10),(1,9)]; bot_h=[(13,11),(12,11),(11,10)]
+c=l8().clone()
+cnt=[0]; o=c.step
+def cs(a):
+    if cnt[0]>=134: raise RuntimeError('cap')
+    cnt[0]+=1; return o(a)
+c.step=cs
+ti=0; bi=0
+try:
+  while cnt[0]<134 and c.levels_completed==7:
+    f=np.asarray(c.frame())
+    av,boxes,walls=_grid_scan(c)
+    free=[b for b in boxes if b not in goals]
+    if not free:
+        c.step(5); continue
+    free.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    box=free[0]
+    if box[0]<6:
+        h=top_h[ti%len(top_h)]; ti+=1
+    else:
+        h=bot_h[bi%len(bot_h)]; bi+=1
+    ok=grab_and_deliver(c,box,h)
+    if cnt[0]%20<3 or c.levels_completed>7:
+        print('box%s->%s ok=%s steps=%d gf=%d lvl=%d'%(box,h,ok,cnt[0],gf(np.asarray(c.frame())),c.levels_completed))
+    if not ok:
+        c.step(5)  # nudge
+except RuntimeError: pass
+print('FINAL lvl',c.levels_completed,'steps',cnt[0],'gf',gf(np.asarray(c.frame())))
+EOF
+python exp12.py 2>&1 | tail -25
+Let me test a different win model: maybe clearing agents is the goal. Can the color-12 couriers also be cleared with adjacent+USE?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def agents(f,col):
+    ys,xs=np.where(f==col); return set((int(y)//4,int(x)//4) for y,x in zip(ys,xs))
+c=l8().clone()
+# try to clear a color-12 courier: chase and USE
+for t in range(30):
+    f=np.asarray(c.frame())
+    a12=[m for m in agents(f,12) if m[0]<8]  # top courier
+    if not a12: print('12 cleared t',t); break
+    av,boxes,walls=_grid_scan(c)
+    tgt=min(a12,key=lambda m:abs(m[0]-av[0])+abs(m[1]-av[1]))
+    d=(tgt[0]-av[0],tgt[1]-av[1])
+    if abs(d[0])+abs(d[1])==1:
+        c.step(FACE[d]); c.step(USE); continue
+    dr=np.sign(d[0]); dc=np.sign(d[1])
+    c.step(DOWN if dr>0 else (UP if dr<0 else (RIGHT if dc>0 else LEFT)))
+f=np.asarray(c.frame())
+print('top 12 count', len(agents(f,12)&{m for m in agents(f,12) if m[0]<8}),'total12',len(agents(f,12)))
+"
+Couriers (12) can't be cleared. Let me test if the 15-movers are the CYCLERS: clear both 15-movers, then idle and watch if the 12-couriers cleanly fill the goals to a win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+import numpy as np
+def gf(f): return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+clear_both(c)
+print('cleared 15s, movers15=',len(movers(np.asarray(c.frame()))),'mu',mu(c),'gf',gf(np.asarray(c.frame())))
+for k in range(1,16):
+    for _ in range(4):
+        if c.terminal() or c.levels_completed>7: break
+        c.step(5)
+    f=np.asarray(c.frame())
+    print('idle',k*4,'gf',gf(f),'lvl',c.levels_completed,'mu',mu(c))
+    if c.levels_completed>7 or c.terminal(): break
+"
+After clearing 15s, couriers still plateau (gf~94, never 0). Full clear+ferry exceeds even the in-game budget, so my model must be wrong. Let me run a strong beam purely targeting lvl-up with a total-2 heuristic to definitively find a win or rule out the coverage model.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > beam4.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np, time
+def frame(c): return np.asarray(c.frame())
+def movers(f): return frozenset((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==15)))
+def c12(f): return frozenset((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==12)))
+def total2(f): return int((f==2).sum())
+def key(c):
+    f=frame(c); av,boxes,walls=_grid_scan(c)
+    return (av,movers(f),c12(f),frozenset(boxes))
+def score(c):
+    if c.levels_completed>7: return 1e9
+    return -total2(frame(c))
+start=l8()
+beam=[(score(start),start.clone(),[])]; seen={key(start)}; best=(-9999,[]); found=None; t0=time.time()
+mn=9999
+for d in range(134):
+    cand=[]
+    for sc,c,path in beam:
+        for a in (1,2,3,4,5):
+            n=c.clone()
+            if n.terminal(): continue
+            n.step(a)
+            if n.levels_completed>7: found=path+[a]; break
+            k=key(n)
+            if k in seen: continue
+            seen.add(k); s=score(n); cand.append((s,n,path+[a])); mn=min(mn,total2(frame(n)))
+        if found: break
+    if found: break
+    if not cand: break
+    cand.sort(key=lambda x:-x[0]); beam=cand[:120]
+    if beam[0][0]>best[0]: best=beam[0]
+    if d%20==0: print('d%d best_total2=%d min_seen=%d el=%.0f'%(d,-best[0],mn,time.time()-t0))
+print('found',found is not None,'best_total2',-best[0],'min_total2',mn)
+EOF
+python beam4.py 2>&1 | tail -15
+Let me definitively test whether the avatar can PUSH boxes by walking into them (without USE) — this could be a much cheaper handling mechanic.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def boxes_all(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out.add((R,C))
+    return out
+c=l8().clone()
+# avatar to (3,0), face right toward box (3,1), move RIGHT WITHOUT grab
+_avatar_nav(c,(3,0),cap=30)
+print('avatar',_grid_scan(c)[0])
+b0=boxes_all(np.asarray(c.frame()))
+c.step(RIGHT)  # face right (turn) - avatar was facing? this may just turn
+print('after RIGHT1 avatar',_grid_scan(c)[0])
+c.step(RIGHT)  # move right into box?
+f=np.asarray(c.frame())
+print('after RIGHT2 avatar',_grid_scan(c)[0])
+print('box(3,1) still?',(3,1) in boxes_all(f),'box(3,2)?',(3,2) in boxes_all(f),'box(3,3)?',(3,3) in boxes_all(f))
+"
+No free push — grab required. KEY INSIGHT: the 15-movers RIPEN boxes (4→5), and the 12-couriers fetch ripe boxes to goals. Clearing 15s starves the couriers! So keep 15s, and ferry stuck cluster boxes into the ripening range. Let me run an efficient ferry (no clearing) to completion and check for the win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp14.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def gf(f): return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+def stuck(c):
+    av,boxes,walls=_grid_scan(c)
+    return [b for b in boxes if (b[0]<6 and b[1]<5) or (b[0]>9 and b[1]<6)]
+c=l8().clone()
+di=0
+tdrops=[(4,6),(3,6),(2,6),(4,7)]; bdrops=[(13,7),(12,7),(14,7),(11,7)]
+while not c.terminal() and c.levels_completed==7:
+    st=stuck(c)
+    if not st: break
+    st.sort(key=lambda b:(b[1],b[0]))
+    box=st[0]
+    drop=(tdrops if box[0]<6 else bdrops)[di%4]; di+=1
+    ok=ferry_free(c,box,drop)
+    print('ferry %s->%s ok=%s mu=%d gf=%d stuckleft=%d lvl=%d'%(box,drop,ok,mu(c),gf(np.asarray(c.frame())),len(stuck(c)),c.levels_completed))
+    if not ok:
+        # skip by nudging
+        c.step(5)
+print('ferry done mu',mu(c),'lvl',c.levels_completed)
+while not c.terminal() and c.levels_completed==7:
+    c.step(5)
+    if c.levels_completed>7: print('WIN'); break
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'gf',gf(np.asarray(c.frame())))
+EOF
+python exp14.py 2>&1 | tail -20
+Let me see the full exp14 output (early top ferries scrolled off) and guard against the terminal crash.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && perl -0pi -e 's/for \(dr,dc\) in faces:/for (dr,dc) in faces:\n        if env.terminal(): return False/' ferry.py
+python exp14.py 2>&1 | head -20
+Beam covered the GOALS fully (total2→229≈goals-empty) with NO win — so goals aren't the objective. Neither partial regions. Let me run a bounded BFS to find ANY lvl-up sequence (maybe a non-coverage/switch mechanic).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && timeout_run() { python "$@"; }
+cat > bfsprobe.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+from collections import deque
+def movers(f,col): return tuple(sorted((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==col))))
+def key(c):
+    f=np.asarray(c.frame()); av,boxes,walls=_grid_scan(c)
+    return (av, movers(f,15), movers(f,12), frozenset(boxes))
+start=l8()
+q=deque([(start.clone(),[])]); seen={key(start)}
+import time; t0=time.time(); best=0
+while q:
+    c,path=q.popleft()
+    if len(path)>=45: continue
+    for a in (1,2,3,4,5):
+        n=c.clone()
+        if n.terminal(): continue
+        n.step(a)
+        if n.levels_completed>7:
+            print('WIN len',len(path)+1,'path',path+[a]); 
+            import json; json.dump(path+[a],open('l8win.json','w')); raise SystemExit
+        k=key(n)
+        if k in seen: continue
+        seen.add(k); q.append((n,path+[a]))
+    if len(seen)%20000<6:
+        print('seen',len(seen),'depth~',len(path),'el',round(time.time()-t0))
+    if len(seen)>250000 or time.time()-t0>150: print('stop, seen',len(seen)); break
+print('no win found in BFS')
+EOF
+python bfsprobe.py 2>&1 | tail -15
+BFS to depth 45 emptied the queue at only 13k states with no win — the state space is small/deterministic. Let me BFS the ENTIRE reachable space (higher depth) to find any win state.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > bfsprobe2.py << 'EOF'
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+from collections import deque
+import time,json
+def mv(f,col): return tuple(sorted((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==col))))
+def key(c):
+    f=np.asarray(c.frame()); av,boxes,walls=_grid_scan(c)
+    return (av, mv(f,15), mv(f,12), frozenset(boxes))
+start=l8()
+q=deque([(start.clone(),0)]); seen={key(start):None}
+# store parent for path reconstruction
+parent={key(start):(None,None)}
+t0=time.time(); maxd=0
+win=None
+while q:
+    c,d=q.popleft()
+    maxd=max(maxd,d)
+    if d>=120: continue
+    ck=key(c)
+    for a in (1,2,3,4,5):
+        n=c.clone()
+        if n.terminal(): continue
+        n.step(a)
+        if n.levels_completed>7:
+            win=(ck,a); print('WIN at depth',d+1); break
+        k=key(n)
+        if k in seen: continue
+        seen[k]=None; parent[k]=(ck,a); q.append((n,d+1))
+    if win: break
+    if len(seen)>800000 or time.time()-t0>220:
+        print('cap hit seen',len(seen),'maxd',maxd,'time',round(time.time()-t0)); break
+print('total seen',len(seen),'maxdepth',maxd,'win',win is not None)
+if win:
+    # reconstruct
+    ck,a=win; path=[a]
+    while ck is not None:
+        p,pa=parent[ck]
+        if pa is None: break
+        path.append(pa); ck=p
+    path=path[::-1]
+    print('winpath len',len(path)); json.dump(path,open('l8win.json','w'))
+EOF
+python bfsprobe2.py 2>&1 | tail -10
+The BFS is too slow (78 states/s due to _grid_scan). Let me profile raw clone+step speed and use a fast frame-bytes key.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import time,numpy as np
+c=l8()
+t0=time.time()
+n=0
+for _ in range(2000):
+    cc=c.clone(); cc.step(1); f=cc.frame(); n+=1
+print('clone+step+frame:',round(2000/(time.time()-t0)),'/s')
+t0=time.time()
+for _ in range(2000):
+    cc=c.clone(); cc.step(1); b=np.asarray(cc.frame()).tobytes()
+print('with tobytes key:',round(2000/(time.time()-t0)),'/s')
+"
+Clone speed is capped at ~318/s (as noted in the task), so heavy search is out. Beam ruled out coverage-based wins. Let me BFS purely over avatar POSITIONS (fast, ≤256 states) to test for a location/switch-based win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+from collections import deque
+start=l8()
+q=deque([(start.clone(),[])]); seen={_grid_scan(start)[0]}
+found=None
+while q:
+    c,path=q.popleft()
+    for a in (1,2,3,4,5):
+        n=c.clone()
+        if n.terminal(): continue
+        n.step(a)
+        if n.levels_completed>7: found=path+[a]; break
+        av=_grid_scan(n)[0]
+        if av in seen: continue
+        seen.add(av); q.append((n,path+[a]))
+    if found: break
+print('avatar-cell BFS: reachable cells',len(seen),'win',found is not None)
+if found: print('path',found)
+"
+gf decreased MONOTONICALLY (145→106) as I fed the top cluster — feeding works! The couriers seat fed boxes. Let me drive gf toward 0 by feeding all stuck boxes (both bands) and confirm the win, fixing bottom drops.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan
+import numpy as np
+# find bottom ripening zone: free a box at various bottom cells, see which ripens/delivered
+# use ferry to place, but first just find where bottom courier/mover operate
+def a15(f): return sorted((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==15)) if int(y)//4>9)
+def a12(f): return sorted((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==12)) if int(y)//4>9)
+c=l8().clone()
+for t in range(24):
+    f=np.asarray(c.frame())
+    print('t%2d 15bot=%s 12bot=%s'%(t,a15(f),a12(f)))
+    c.step(5)
+" 2>&1 | head -26
+Bottom agents cover cols4-12, so bottom boxes self-process; only the TOP cluster (cols1-2) is truly stuck. Let me test: feed just the 4 top cluster into the top zone, then idle, and watch gf drop toward 0 / a win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp16.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def gf(f): return int((f[9:15,45:59]==2).sum())+int((f[49:59,49:59]==2).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()), int((f[49:59,49:59]==2).sum())
+def topstuck(c):
+    av,boxes,walls=_grid_scan(c)
+    return [b for b in boxes if b[0]<6 and b[1]<5]
+c=l8().clone()
+drops=[(4,6),(3,6),(4,7),(2,6),(3,7)]; di=0
+while c.levels_completed==7 and not c.terminal():
+    st=topstuck(c)
+    if not st: break
+    st.sort(key=lambda b:(b[1],b[0]))
+    ok=ferry_free(c,st[0],drops[di%len(drops)]); di+=1
+    print('fed %s ok=%s mu=%d s2=%s left=%d'%(st[0],ok,mu(c),s2(np.asarray(c.frame())),len(topstuck(c))))
+    if not ok: c.step(5)
+print('feeding done mu',mu(c))
+mn=999
+while c.levels_completed==7 and not c.terminal():
+    c.step(5)
+    g=gf(np.asarray(c.frame())); mn=min(mn,g)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'s2',s2(np.asarray(c.frame())),'min_gf',mn)
+EOF
+python exp16.py 2>&1 | tail -15
+TOP goal nearly filled (84→18) by feeding cluster one-at-a-time — but BOTTOM barely filled (boxes dumped together = congestion, like L5!). Let me feed BOTH bands one-at-a-time to decongest, and check for the win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp17.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()), int((f[49:59,49:59]==2).sum())
+topg=set((r,co) for r in (2,3) for co in (11,12,13,14))
+botg=set((r,co) for r in (12,13,14) for co in (12,13,14))
+def boxes(c):
+    av,b,w=_grid_scan(c); return b
+c=l8().clone()
+# Phase 1: feed top cluster
+tdrops=[(4,6),(3,6),(4,7),(2,6),(3,7)]; di=0
+for _ in range(6):
+    st=[b for b in boxes(c) if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(key=lambda b:(b[1],b[0]))
+    ferry_free(c,st[0],tdrops[di%len(tdrops)]); di+=1
+print('top fed mu',mu(c),'s2',s2(np.asarray(c.frame())))
+# Phase 2: feed bottom boxes one-at-a-time to rotating handoffs (decongest)
+bdrops=[(13,9),(12,8),(11,9),(13,8),(12,9)]; bi=0
+for _ in range(6):
+    if c.levels_completed>7 or c.terminal(): break
+    bb=[b for b in boxes(c) if b[0]>9 and b not in botg]
+    if not bb: break
+    # pick box closest to avatar
+    av=_grid_scan(c)[0]
+    bb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    ok=ferry_free(c,bb[0],bdrops[bi%len(bdrops)]); bi+=1
+    print('bot fed %s ok=%s mu=%d s2=%s'%(bb[0],ok,mu(c),s2(np.asarray(c.frame()))))
+    # brief idle to let courier seat (decongest)
+    for _ in range(3):
+        if c.levels_completed>7 or c.terminal(): break
+        c.step(5)
+print('bottom fed mu',mu(c))
+mn=(99,99)
+while c.levels_completed==7 and not c.terminal():
+    c.step(5)
+    ss=s2(np.asarray(c.frame())); 
+    if ss[0]+ss[1]<mn[0]+mn[1]: mn=ss
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'s2',s2(np.asarray(c.frame())),'min_s2',mn)
+EOF
+python exp17.py 2>&1 | tail -20
+Beam4 showed couriers fill the GOALS for free — so goals aren't the win. But feeding still helped bottom. Let me build a LEAN (no-clone-trial) feeder to ~halve cost, and decisively test if feeding both bands can drive a win within budget.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > lean.py << 'EOF'
+import numpy as np
+from legs import _grid_scan, _grid_grabbed, _bfs_path, _bfs_pair, _avatar_nav
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def lean_ferry(env, box, drop, cap=40):
+    av,boxes,walls=_grid_scan(env)
+    # nav to a reachable adjacent grab cell
+    best=None
+    blk=set(walls)|(boxes-{box})
+    for (dr,dc),fa in FACE.items():
+        ac=(box[0]+dr,box[1]+dc)
+        if not(0<=ac[0]<16 and 0<=ac[1]<16) or ac in blk: continue
+        p=_bfs_path(av,ac,blk)
+        if p is not None and (best is None or len(p)<best[0]): best=(len(p),ac,fa)
+    if best is None: return False
+    _,ac,fa=best
+    if not _avatar_nav(env,ac,cap): return False
+    if env.terminal(): return False
+    env.step(fa); env.step(USE)
+    if not _grid_grabbed(env): return False
+    rav=_grid_scan(env)[0]
+    hb=sorted(_grid_grabbed(env))[0]; off=(hb[0]-rav[0],hb[1]-rav[1])
+    gav=(drop[0]-off[0],drop[1]-off[1])
+    for _ in range(cap):
+        if env.terminal(): return False
+        av,boxes,walls=_grid_scan(env)
+        if av==gav: break
+        held=_grid_grabbed(env)
+        b2=set(walls)
+        for b in boxes:
+            if b not in held: b2.add(b)
+        b2.discard(gav); b2.discard(av)
+        p=_bfs_pair(av,off,gav,b2)
+        if not p: break
+        before=av; env.step(p[0])
+        if _grid_scan(env)[0]==before: break
+    # release + stepaway
+    env.step(USE)
+    av,boxes,walls=_grid_scan(env); held=_grid_grabbed(env)
+    for a,(dr,dc) in FACE.items():
+        nb=(av[0]+dr,av[1]+dc)
+        if nb in held or nb in walls or nb in boxes or not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+        env.step(a); break
+    return True
+EOF
+python -c "
+from l8env import l8
+from lean import lean_ferry
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()),int((f[49:59,49:59]==2).sum())
+botg=set((r,co) for r in (12,13,14) for co in (12,13,14))
+def bx(c): return _grid_scan(c)[1]
+c=l8().clone()
+# feed top cluster
+td=[(4,6),(3,6),(4,7),(2,6),(3,7)]; i=0
+for _ in range(6):
+    st=[b for b in bx(c) if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); lean_ferry(c,st[0],td[i%5]); i+=1
+    if c.terminal():break
+print('top fed mu',mu(c),'s2',s2(np.asarray(c.frame())))
+# feed bottom stuck (col<6) and agitate in-zone: refeed all bottom non-goal boxes
+bd=[(13,9),(12,8),(11,9),(13,8),(12,9),(14,8)]; j=0
+for _ in range(7):
+    if c.terminal() or c.levels_completed>7: break
+    bb=[b for b in bx(c) if b[0]>9 and b not in botg]
+    if not bb: break
+    av=_grid_scan(c)[0]; bb.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    lean_ferry(c,bb[0],bd[j%6]); j+=1
+    for _ in range(2):
+        if c.terminal():break
+        c.step(5)
+print('bottom fed mu',mu(c),'s2',s2(np.asarray(c.frame())))
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'s2',s2(np.asarray(c.frame())))
+" 2>&1 | tail -10
+The persistent floor set is EXACTLY the 4 top cluster boxes. Maybe win = no box on plain floor (all 13 in goal/region areas). Let me test: move cluster into region, then track floor-box count each idle step for a winning moment.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp18.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def boxcells(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out.add((R,C))
+    return out
+# placed areas: goals + regions (position-based). floor = box outside these.
+def is_placed(R,C):
+    if 2<=R<=3 and 11<=C<=14: return True   # top goal
+    if 12<=R<=14 and 12<=C<=14: return True  # bottom goal
+    if (R,C) in {(2,3),(3,3),(4,1),(4,2),(4,3)}: return True  # top region
+    if 12<=R<=14 and 3<=C<=5: return True    # bottom region
+    return False
+def floor(f): return [b for b in boxcells(f) if not is_placed(*b)]
+c=l8().clone()
+# ferry cluster into top region cells
+tgts=[(4,1),(4,2),(4,3),(2,3),(3,3)]; i=0
+for _ in range(6):
+    av,boxes,w=_grid_scan(c)
+    st=[b for b in boxes if not is_placed(*b) and b[0]<6]
+    if not st: break
+    st.sort()
+    ferry_free(c,st[0],tgts[i%len(tgts)]); i+=1
+    if c.terminal():break
+print('cluster placed mu',mu(c),'floor',sorted(floor(np.asarray(c.frame()))))
+# idle, watch floor count and lvl
+minf=99
+for t in range(200):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+    fl=len(floor(np.asarray(c.frame()))); minf=min(minf,fl)
+    if fl<=1 or c.levels_completed>7:
+        print('t%d floor=%d lvl=%d mu=%d'%(t,fl,c.levels_completed,mu(c)))
+print('FINAL lvl',c.levels_completed,'minfloor',minf,'mu',mu(c))
+EOF
+python exp18.py 2>&1 | tail -20
+ferry to region cells failed (packed cluster). But feeding cluster to the fetch zone (couriers→goal) DID place them. Let me re-run the top-cluster feed and track position-based floor count, looking for floor→0 and a win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp19.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def boxcells(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out.add((R,C))
+    return out
+def is_placed(R,C):
+    if 2<=R<=3 and 11<=C<=14: return True
+    if 12<=R<=14 and 12<=C<=14: return True
+    if (R,C) in {(2,3),(3,3),(4,1),(4,2),(4,3)}: return True
+    if 12<=R<=14 and 3<=C<=5: return True
+    return False
+def floor(f): return [b for b in boxcells(f) if not is_placed(*b)]
+c=l8().clone()
+td=[(4,6),(3,6),(4,7),(2,6),(3,7)]; i=0
+for _ in range(6):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],td[i%5]); i+=1
+    if c.terminal(): break
+print('fed mu',mu(c),'floor',len(floor(np.asarray(c.frame()))))
+minf=99; winat=None
+for t in range(300):
+    if c.terminal() or c.levels_completed>7: break
+    c.step(5)
+    fl=floor(np.asarray(c.frame())); minf=min(minf,len(fl))
+    if len(fl)<=2:
+        print('t%d floor=%s lvl=%d mu=%d'%(t,sorted(fl),c.levels_completed,mu(c)))
+    if c.levels_completed>7: winat=t; break
+print('FINAL lvl',c.levels_completed,'minfloor',minf,'mu',mu(c),'winat',winat)
+EOF
+python exp19.py 2>&1 | tail -20
+Floor min=2 (always 2 boxes in-transit by couriers) — floor-0 unreachable. But KEY realization: maybe the real L8 needs >134 steps, and the checkpoint's 466-step L1-7 replay is wasteful. Let me check how many steps the players take for L1-7, and whether running fresh (invalid checkpoint) gives more L8 budget.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+n=[0]; o=env.step
+def cs(a): n[0]+=1; return o(a)
+env.step=cs
+for k in range(1,8):
+    b=n[0]
+    getattr(players,f'play_level_{k}')(env)
+    print('L%d: +%d steps (total %d) levels=%d'%(k,n[0]-b,n[0],env.levels_completed))
+print('TOTAL L1-7 steps:',n[0])
+" 2>&1 | tail -12
+Players L1-7 = 466 (same as checkpoint), so 134 is fixed. Top goal maxes at s2~18 via feeding, but bottom doesn't self-fill. Let me check WHERE the bottom courier deposits — bottom goal (right) or bottom region (left)?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+import numpy as np
+def bgoal2(f): return int((f[49:59,49:59]==2).sum())  # bottom goal interior
+def breg2(f):  # bottom region cols12-23 rows48-59
+    return int((f[48:60,12:24]==2).sum())
+def tgoal2(f): return int((f[9:15,45:59]==2).sum())
+def treg2(f):  # top region: cells (2,3)(3,3)(4,1-3) => px rows8-19 cols4-15 area
+    s=int((f[8:16,12:16]==2).sum())+int((f[16:20,4:16]==2).sum())
+    return s
+c=l8().clone()
+for t in range(0,60,6):
+    f=np.asarray(c.frame())
+    print('t%2d Tgoal=%d Treg=%d | Bgoal=%d Breg=%d'%(t,tgoal2(f),treg2(f),bgoal2(f),breg2(f)))
+    for _ in range(6): c.step(5)
+"
+Both goals AND regions partially fill and cycle. Let me test one more mechanic: THROW — grab a box, face the goal, USE again — does it launch the box toward the goal (instant delivery)?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan,_avatar_nav,_grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def bx(f):
+    out={}
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 9 in u and ({4,5,3,0}&u) and 2 not in u: out[(R,C)]=max(u&{4,5,3,0})
+    return out
+c=l8().clone()
+_avatar_nav(c,(3,5),cap=30)
+c.step(RIGHT); c.step(USE)  # grab (3,6)
+print('grabbed',sorted(_grid_grabbed(c)),'av',_grid_scan(c)[0])
+# already facing right (toward goal). USE again = throw?
+before=bx(np.asarray(c.frame()))
+c.step(USE)
+after=bx(np.asarray(c.frame()))
+print('after 2nd USE: grabbed',sorted(_grid_grabbed(c)),'av',_grid_scan(c)[0])
+# where is the box now
+print('box near (3,6..14):',{k:v for k,v in after.items() if k[0]==3 and k[1]>=6})
+"
+No throw. Let me do a final comprehensive clone test: feed ALL non-goal boxes in both bands to goal-adjacent handoffs (so couriers seat into goals), guarded to budget end, checking for any win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat > exp20.py << 'EOF'
+from l8env import l8
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()),int((f[49:59,49:59]==2).sum())
+topg=set((r,co) for r in (2,3) for co in (11,12,13,14))
+botg=set((r,co) for r in (12,13,14) for co in (12,13,14))
+def bx(c): return _grid_scan(c)[1]
+def nongoal(c,band):
+    b=bx(c)
+    if band=='t': return [x for x in b if x[0]<6 and x not in topg]
+    return [x for x in b if x[0]>9 and x not in botg]
+c=l8().clone()
+th=[(3,10),(2,10),(3,9)]; bh=[(13,11),(12,11),(11,11)]; ti=bi=0
+# interleave: feed nearest non-goal box to its band's goal-handoff
+while c.levels_completed==7 and not c.terminal():
+    av=_grid_scan(c)[0]
+    tb=nongoal(c,'t'); bb=nongoal(c,'b')
+    if not tb and not bb: break
+    cand=[]
+    if tb: cand.append(('t',min(tb,key=lambda x:abs(x[0]-av[0])+abs(x[1]-av[1]))))
+    if bb: cand.append(('b',min(bb,key=lambda x:abs(x[0]-av[0])+abs(x[1]-av[1]))))
+    band,box=min(cand,key=lambda kb:abs(kb[1][0]-av[0])+abs(kb[1][1]-av[1]))
+    if band=='t': h=th[ti%3]; ti+=1
+    else: h=bh[bi%3]; bi+=1
+    ok=ferry_free(c,box,h)
+    print('feed %s %s->%s ok=%s mu=%d s2=%s lvl=%d'%(band,box,h,ok,mu(c),s2(np.asarray(c.frame())),c.levels_completed))
+    if not ok:
+        if not c.terminal(): c.step(5)
+    else:
+        for _ in range(2):
+            if c.terminal() or c.levels_completed>7: break
+            c.step(5)
+print('feed loop done mu',mu(c),'lvl',c.levels_completed)
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'s2',s2(np.asarray(c.frame())))
+EOF
+python exp20.py 2>&1 | tail -20
+I've extensively tested; feeding fills goals partially but couriers cycle. Let me add the ferry-to-zone skill as a leg and implement play_level_8, then get REAL feedback from gkm_try (my segmented clone tests may miss the actual win threshold).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat >> legs.py << 'PYEOF'
+
+
+# --- wa30 L8: two-band courier world (15=ripener mover, 12=courier). --------
+# A far-left box cluster is out of the movers' ripening range and never gets
+# ripened/seated.  Free such stuck boxes inside the mover's ripening zone so the
+# mover ripens them (border 4->5) and the courier seats them into the goal.
+
+def _boxset(env, G=16):
+    f = np.asarray(env.frame())
+    out = set()
+    for R in range(G):
+        for C in range(G):
+            blk = f[R*4:R*4+4, C*4:C*4+4]
+            u = set(int(v) for v in np.unique(blk))
+            if 9 in u and ({4, 5, 3, 0} & u) and 2 not in u:
+                out.add((R, C))
+    return out
+
+
+def _held(env):
+    return _grid_grabbed(env)
+
+
+def free_box_into_zone(env, box, drop, cap=40):
+    """Grab ``box``, rigid-carry it onto ``drop``, USE-release then STEP AWAY so
+    the box becomes a free (border-4) box the ripener/courier can process."""
+    av, boxes, walls = _grid_scan(env)
+    faces = {(-1, 0): UP, (1, 0): DOWN, (0, -1): LEFT, (0, 1): RIGHT}
+    best = None
+    blk = set(walls) | (boxes - {box})
+    for (dr, dc), fa in faces.items():
+        ac = (box[0]+dr, box[1]+dc)
+        if not (0 <= ac[0] < 16 and 0 <= ac[1] < 16) or ac in blk:
+            continue
+        p = _bfs_path(av, ac, blk)
+        if p is not None and (best is None or len(p) < best[0]):
+            best = (len(p), ac, fa)
+    if best is None:
+        return False
+    _, ac, fa = best
+    if not _avatar_nav(env, ac, cap) or env.terminal():
+        return False
+    env.step(fa); env.step(USE)
+    if not _held(env):
+        return False
+    rav = _grid_scan(env)[0]
+    hb = sorted(_held(env))[0]
+    off = (hb[0]-rav[0], hb[1]-rav[1])
+    gav = (drop[0]-off[0], drop[1]-off[1])
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        av, boxes, walls = _grid_scan(env)
+        if av == gav:
+            break
+        held = _held(env)
+        b2 = set(walls)
+        for b in boxes:
+            if b not in held:
+                b2.add(b)
+        b2.discard(gav); b2.discard(av)
+        p = _bfs_pair(av, off, gav, b2)
+        if not p:
+            break
+        before = av
+        env.step(p[0])
+        if _grid_scan(env)[0] == before:
+            break
+    if env.terminal():
+        return False
+    env.step(USE)  # release -> border 3
+    # step away to free (border 3 -> 4)
+    av, boxes, walls = _grid_scan(env)
+    held = _held(env)
+    for a, (dr, dc) in _DIRS.items():
+        nb = (av[0]+dr, av[1]+dc)
+        if nb in held or nb in walls or nb in boxes or not (0 <= nb[0] < 16 and 0 <= nb[1] < 16):
+            continue
+        if not env.terminal():
+            env.step(a)
+        break
+    return True
+
+
+def feed_stuck_boxes_two_band(env, top_zone, bot_zone,
+                              top_pred=lambda b: b[0] < 6 and b[1] < 5,
+                              bot_pred=lambda b: b[0] > 9 and b[1] < 6,
+                              max_feeds=12, settle=3):
+    """Ferry far-left stuck boxes in each band into that band's ripening zone
+    and free them, so the band's mover/courier ripen+seat them.  Rotates over a
+    small set of zone drop cells (to avoid congesting the handoff, the L5
+    lesson), settling a few turns after each free so the helper can process it,
+    then yields the rest of the budget for the helpers to finish."""
+    base = env.levels_completed
+    ti = bi = 0
+    for _ in range(max_feeds):
+        if env.terminal() or env.levels_completed > base:
+            return
+        boxes = _boxset(env)
+        av = _grid_scan(env)[0]
+        ts = [b for b in boxes if top_pred(b)]
+        bs = [b for b in boxes if bot_pred(b)]
+        if not ts and not bs:
+            break
+        cand = []
+        if ts:
+            cand.append(('t', min(ts, key=lambda b: abs(b[0]-av[0])+abs(b[1]-av[1]))))
+        if bs:
+            cand.append(('b', min(bs, key=lambda b: abs(b[0]-av[0])+abs(b[1]-av[1]))))
+        band, box = min(cand, key=lambda kb: abs(kb[1][0]-av[0])+abs(kb[1][1]-av[1]))
+        if band == 't':
+            drop = top_zone[ti % len(top_zone)]; ti += 1
+        else:
+            drop = bot_zone[bi % len(bot_zone)]; bi += 1
+        ok = free_box_into_zone(env, box, drop)
+        if not ok and not env.terminal():
+            env.step(USE)
+        for _ in range(settle):
+            if env.terminal() or env.levels_completed > base:
+                return
+            env.step(USE)
+    yield_until_level_up(env, USE, cap=80)
+PYEOF
+echo "legs added"; python -c "import legs; print('ok', hasattr(legs,'feed_stuck_boxes_two_band'))"
+Key insight: L5 (no 15-mover) had no cycling; here 15-movers cause cycling. Let me test: feed cluster into zone, let 15s ripen everything, THEN clear 15s (stop cycling) so couriers seat cleanly → win?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from ferry import ferry_free
+from chase import clear_both, movers
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()),int((f[49:59,49:59]==2).sum())
+c=l8().clone()
+# feed cluster
+td=[(4,6),(3,6),(4,7),(2,6)]; i=0
+for _ in range(5):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],td[i%4]); i+=1
+    if c.terminal():break
+print('fed mu',mu(c),'s2',s2(np.asarray(c.frame())))
+# ripen
+for _ in range(6): 
+    if c.terminal():break
+    c.step(5)
+print('ripened mu',mu(c),'s2',s2(np.asarray(c.frame())))
+# clear 15s
+clear_both(c)
+print('cleared mu',mu(c),'m15',len(movers(np.asarray(c.frame()))),'s2',s2(np.asarray(c.frame())))
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('FINAL lvl',c.levels_completed,'mu',mu(c),'s2',s2(np.asarray(c.frame())))
+" 2>&1 | tail -12
+BREAKTHROUGH insight: 14 region cells, 13 boxes but one is 2-wide (covers 2 cells) = exactly 14! Win is likely "all region cells covered". The 9-frames are decoy stores. Let me test: clear the 15-movers (goal-fillers), let 12-couriers fill REGIONS, and check region coverage + win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+reg=[(2,3),(3,3),(4,1),(4,2),(4,3),(12,3),(12,4),(12,5),(13,3),(13,4),(13,5),(14,3),(14,4),(14,5)]
+def cov(f): return [r for r in reg if {4,3,0}&cc(f,r[0],r[1])]
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+c=l8().clone()
+clear_both(c)
+print('cleared 15s mu',mu(c),'cov',len(cov(np.asarray(c.frame()))))
+for k in range(20):
+    for _ in range(2):
+        if c.terminal() or c.levels_completed>7: break
+        c.step(5)
+    f=np.asarray(c.frame())
+    print('idle',(k+1)*2,'cov=%d/14'%len(cov(f)),'lvl',c.levels_completed,'mu',mu(c))
+    if c.levels_completed>7 or c.terminal(): break
+"
+Discovery: 15-movers carry boxes to REGIONS, 12-couriers to GOALS — they compete! 14 region cells = 13 boxes (one double). Win is likely regions-full. I need 15s to win / 12s removed. Let me definitively test if 12-couriers can be cleared.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav, _bfs_path
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def a12(f): return set((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==12)))
+def a15(f): return set((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==15)))
+# aggressive chase of top-12: each step move to an adjacent cell of it and USE
+c=l8().clone()
+n0=len(a12(np.asarray(c.frame())))
+for t in range(40):
+    f=np.asarray(c.frame())
+    tt=[m for m in a12(f) if m[0]<8]
+    if not tt: print('12 top cleared t',t); break
+    av,boxes,walls=_grid_scan(c)
+    tg=min(tt,key=lambda m:abs(m[0]-av[0])+abs(m[1]-av[1]))
+    d=(tg[0]-av[0],tg[1]-av[1])
+    if abs(d[0])+abs(d[1])==1:
+        c.step(FACE[d]); c.step(USE)
+    else:
+        # nav toward an adjacent open cell of tg
+        blk=set(walls)|set(boxes)|(a12(f)-{tg})|a15(f)
+        cand=[(tg[0]+dr,tg[1]+dc) for (dr,dc) in FACE if (tg[0]+dr,tg[1]+dc) not in blk and 0<=tg[0]+dr<16 and 0<=tg[1]+dc<16]
+        cand=[x for x in cand if _bfs_path(av,x,blk)]
+        if cand:
+            adj=min(cand,key=lambda x:len(_bfs_path(av,x,blk)))
+            p=_bfs_path(av,adj,blk); 
+            if p: c.step(p[0])
+        else:
+            c.step(2)
+f=np.asarray(c.frame())
+print('final 12 count',len(a12(f)),'(was',n0,')')
+"
+12-couriers are permanent. Let me test the decisive feasibility question: if the avatar SEATS a box on a region cell, does it persist (immune to agent theft) so I can build region coverage?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def cc(f,R,C): return set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+reg=[(2,3),(3,3),(4,1),(4,2),(4,3),(12,3),(12,4),(12,5),(13,3),(13,4),(13,5),(14,3),(14,4),(14,5)]
+def cov(f): return sorted([r for r in reg if {4,3,0}&cc(f,r[0],r[1])])
+c=l8().clone()
+# seat boxes onto top region cells
+for box,tgt in [((3,6),(3,3)),((2,7),(2,3))]:
+    ok=carry_box_to(c,box,tgt)
+    print('seat',box,'->',tgt,ok,'cov',cov(np.asarray(c.frame())))
+print('idle, watch if seated region boxes persist:')
+for k in range(1,10):
+    for _ in range(4): 
+        if c.terminal():break
+        c.step(5)
+    print('idle',k*4,'cov',cov(np.asarray(c.frame())))
+"
+carry to region cells fails; agents cycle regions at ~3. Despite extensive analysis I can't confirm the win offline. Let me implement play_level_8 with the two-band feeding leg and get REAL feedback from gkm_try.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python gkm_try.py 2>&1 | tail -5
+Bottom fills its REGION primarily; both bands fill regions. Let me test the goals-hypothesis cleanly: clear 15-movers (stop region competition), then does a freed box in the 12-courier zone get seated into the goal (goals fillable without 15s)?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()),int((f[49:59,49:59]==2).sum())
+c=l8().clone()
+clear_both(c)
+print('cleared mu',mu(c),'m15',len(movers(np.asarray(c.frame()))),'s2',s2(np.asarray(c.frame())))
+# free a cluster box in top-12 zone (cols8-11) 
+st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+if st: 
+    ferry_free(c,sorted(st)[0],(3,9))
+    print('fed to (3,9) mu',mu(c),'s2',s2(np.asarray(c.frame())))
+for k in range(8):
+    for _ in range(3): 
+        if c.terminal():break
+        c.step(5)
+    print('idle',(k+1)*3,'s2',s2(np.asarray(c.frame())),'lvl',c.levels_completed,'mu',mu(c))
+    if c.terminal():break
+"
+The 12-couriers cycle (seat then unseat) — full filling seems impossible. Let me verify whether 12-couriers can be cleared by INTERCEPTION (parking in their path + USE when adjacent), since my chase never caught the fleeing courier.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def a12(f): return set((int(y)//4,int(x)//4) for y,x in zip(*np.where(f==12)))
+c=l8().clone()
+# park avatar at (2,9) (in top-12 patrol), then each step if a 12 is adjacent, face+USE
+_avatar_nav(c,(2,9),cap=30)
+print('parked at',_grid_scan(c)[0])
+n0=len(a12(np.asarray(c.frame())))
+for t in range(30):
+    f=np.asarray(c.frame())
+    av=_grid_scan(c)[0]
+    adj=[m for m in a12(f) if abs(m[0]-av[0])+abs(m[1]-av[1])==1]
+    if adj:
+        m=adj[0]; c.step(FACE[(m[0]-av[0],m[1]-av[1])]); c.step(USE)
+        if len(a12(np.asarray(c.frame())))<n0:
+            print('12 CLEARED at t',t,'count',len(a12(np.asarray(c.frame())))); break
+    else:
+        # move toward nearest 12
+        tt=sorted(a12(f))
+        if tt:
+            m=tt[0]; dr=np.sign(m[0]-av[0]); dc=np.sign(m[1]-av[1])
+            c.step(DOWN if dr>0 else (UP if dr<0 else (RIGHT if dc>0 else LEFT)))
+print('final 12 count',len(a12(np.asarray(c.frame()))),'was',n0)
+"
+The 12-couriers are permanent and cycle. Let me make a real-harness attempt with tuned feeding (reduced idle waste) targeting both bands, and iterate via gkm_try.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python gkm_try.py 2>&1 | tail -3
+Still 7. Let me try a fundamentally different real-harness strategy: clear both 15-movers (region-fillers) so the 12-couriers fill goals uncontested, then yield. Let me add the clearing as a leg.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && cat >> legs.py << 'PYEOF'
+
+
+def _agent_cells(env, color, band=None):
+    f = np.asarray(env.frame())
+    cells = set((int(y)//4, int(x)//4) for y, x in zip(*np.where(f == color)))
+    if band == 't':
+        cells = {c for c in cells if c[0] < 8}
+    elif band == 'b':
+        cells = {c for c in cells if c[0] > 8}
+    return cells
+
+
+def chase_clear_mover(env, band, color=15, cap=45):
+    """Chase a self-mover in ``band`` and USE when adjacent to clear it."""
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        f = np.asarray(env.frame())
+        mv = _agent_cells(env, color, band)
+        if not mv:
+            return True
+        av, boxes, walls = _grid_scan(env)
+        tg = min(mv, key=lambda m: abs(m[0]-av[0])+abs(m[1]-av[1]))
+        d = (tg[0]-av[0], tg[1]-av[1])
+        if abs(d[0])+abs(d[1]) == 1:
+            env.step(_DIRS_INV[d]); env.step(USE); continue
+        blk = set(walls) | set(boxes) | (_agent_cells(env, color) - {tg})
+        best = None
+        for (dr, dc) in _DIRS.values():
+            adj = (tg[0]+dr, tg[1]+dc)
+            if adj in blk or not (0 <= adj[0] < 16 and 0 <= adj[1] < 16):
+                continue
+            p = _bfs_path(av, adj, blk)
+            if p and (best is None or len(p) < len(best)):
+                best = p
+        if best:
+            env.step(best[0])
+        else:
+            dr = 1 if tg[0] > av[0] else (-1 if tg[0] < av[0] else 0)
+            dc = 1 if tg[1] > av[1] else (-1 if tg[1] < av[1] else 0)
+            env.step(DOWN if dr > 0 else (UP if dr < 0 else (RIGHT if dc > 0 else LEFT)))
+    return not _agent_cells(env, color, band)
+
+
+_DIRS_INV = {v: k for k, v in _DIRS.items()}
+
+
+def clear_movers_then_yield(env, color=15, idle=USE):
+    av = _grid_scan(env)[0]
+    order = ['t', 'b'] if av[0] < 8 else ['b', 't']
+    for band in order:
+        chase_clear_mover(env, band, color)
+    yield_until_level_up(env, idle, cap=90)
+PYEOF
+perl -0pi -e 's/def play_level_8\(env\):.*?settle=1,\n    \)/def play_level_8(env):\n    clear_movers_then_yield(env)/s' players.py
+python -c "import players; print('ok')" && python gkm_try.py 2>&1 | tail -3
+Key refinement: after clearing 15s, 12-couriers fill goals CLEANLY and STOP (gf plateau 94, no cycling). The remaining ~6 = cluster + region-stuck. Let me test: clear 15s, feed cluster into 12-reach, idle → do goals fill to ~0 (WIN)?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+def mu(c):
+    f=np.asarray(c.frame()); return 64-int((f[63]==7).sum())
+def s2(f): return int((f[9:15,45:59]==2).sum()),int((f[49:59,49:59]==2).sum())
+c=l8().clone()
+clear_both(c)
+print('cleared mu',mu(c),'s2',s2(np.asarray(c.frame())))
+# feed 4 cluster into 12-reach (cols8-9)
+zd=[(4,8),(3,8),(4,9),(2,8)]; i=0
+for _ in range(5):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],zd[i%4]); i+=1
+    if c.terminal():break
+print('fed cluster mu',mu(c),'s2',s2(np.asarray(c.frame())))
+for k in range(12):
+    for _ in range(2):
+        if c.terminal() or c.levels_completed>7:break
+        c.step(5)
+    print('idle',(k+1)*2,'s2',s2(np.asarray(c.frame())),'lvl',c.levels_completed,'mu',mu(c))
+    if c.terminal() or c.levels_completed>7:break
+" 2>&1 | tail -18
+🎉 WIN! Clear both 15-movers → feed cluster into 12-reach → idle → couriers fill both goals → LEVEL 8! Let me measure exact real steps to confirm it fits the 134 budget.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && python -c "
+from l8env import l8
+from chase import clear_both, movers
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+c=l8().clone()
+cnt=[0]; o=c.step
+def cs(a): cnt[0]+=1; return o(a)
+c.step=cs
+clear_both(c); print('after clear steps',cnt[0])
+zd=[(4,8),(3,8),(4,9),(2,8)]; i=0
+for _ in range(5):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],zd[i%4]); i+=1
+    if c.terminal():break
+print('after feed steps',cnt[0])
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('WIN? lvl',c.levels_completed,'total steps',cnt[0])
+"
+WIN at 142 steps — 8 over the 134 budget. Let me optimize: test if fewer cluster feeds still win, and count steps.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && for N in 1 2 3 4; do python -c "
+from l8env import l8
+from chase import clear_both
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+c=l8().clone()
+cnt=[0]; o=c.step
+def cs(a): cnt[0]+=1; return o(a)
+c.step=cs
+clear_both(c)
+zd=[(4,8),(3,8),(4,9),(2,8)]; i=0
+for _ in range($N):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],zd[i%4]); i+=1
+    if c.terminal():break
+fs=cnt[0]
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('N=$N feedsteps=%d totalsteps=%d WIN=%s'%(fs,cnt[0],c.levels_completed>7))
+"; done
+Only N=4 wins. Feeding to col8-9 is far. Let me feed to nearer col6-7 (12-reach edge) to save carry steps, and check total.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry && for ZD in "(4,7),(3,7),(4,6),(2,7)" "(4,6),(3,6),(4,7),(2,6)" "(3,7),(4,7),(3,6),(2,7)"; do python -c "
+from l8env import l8
+from chase import clear_both
+from ferry import ferry_free
+from legs import _grid_scan
+import numpy as np
+c=l8().clone()
+cnt=[0]; o=c.step
+def cs(a): cnt[0]+=1; return o(a)
+c.step=cs
+clear_both(c); cl=cnt[0]
+zd=[$ZD]; i=0
+for _ in range(5):
+    st=[b for b in _grid_scan(c)[1] if b[0]<6 and b[1]<5]
+    if not st: break
+    st.sort(); ferry_free(c,st[0],zd[i%len(zd)]); i+=1
+    if c.terminal():break
+fs=cnt[0]
+while c.levels_completed==7 and not c.terminal(): c.step(5)
+print('zd=$ZD clear=%d feed=%d total=%d WIN=%s'%(cl,fs-cl,cnt[0],c.levels_completed>7))
+"; done
+API Error: BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'Your credit balance is too low to access the Anthropic API. Please go to Plans & Billing to upgrade or purchase credits.'}, 'request_id': 'req_011CcnwNdFaqDiSXzPYDqhKr'}

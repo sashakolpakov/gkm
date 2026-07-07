@@ -1,0 +1,773 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat gkm_try.py legs.py players.py solve.py legs_log.md checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python gkm_try.py 2>&1 | tail -3
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > probe.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+PREFIX = ck["final_path"]
+
+def get_env():
+    env = A.make('wa30')
+    for a in PREFIX:
+        env.step(a)
+    return env
+
+def show(f):
+    f = np.array(f)
+    # compact display
+    chars = {0:'.',1:'1',2:'2',3:'3',4:'4',5:'5',6:'6',7:'7',8:'8',9:'9',10:'a',11:'b',12:'c',13:'d',14:'e',15:'f'}
+    for r in f:
+        print(''.join(chars.get(int(v),'?') for v in r))
+
+if __name__ == '__main__':
+    env = get_env()
+    print("levels:", env.levels_completed, "terminal:", env.terminal())
+    show(env.frame())
+EOF
+python probe.py 2>&1 | tail -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print([x for x in dir(A) if not x.startswith('_')])"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import inspect
+print(inspect.signature(A.make_env))
+e = A.make_env('wa30')
+print([x for x in dir(e) if not x.startswith('_')])"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+e = A.make_env('wa30')
+print(type(e))
+print([x for x in dir(e) if not x.startswith('__')])"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys, inspect; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print(inspect.signature(A.run_program))
+e = A.make_env('wa30')
+print(inspect.signature(e))"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+e = A.make_env('wa30')()
+print(type(e))
+print([x for x in dir(e) if not x.startswith('__')])"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys, inspect; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+e = A.make_env('wa30')()
+s = e.reset()
+print(type(s), s if not hasattr(s,'frame') else '')
+print(inspect.signature(e.step))
+" 2>&1 | head -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print([x for x in dir(A.Arena) if not x.startswith('__')])
+import inspect
+print(inspect.signature(A.Arena.__init__))"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > probe.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+PREFIX = ck["final_path"]
+
+def get_env(extra=()):
+    env = A.Arena('wa30')
+    for a in PREFIX:
+        env.step(a)
+    # finish level 3 with our player
+    import players
+    players.play_level_3(env)
+    for a in extra:
+        env.step(a)
+    return env
+
+CH = '.1234567890abcdef'
+def show(f):
+    f = np.array(f)
+    for r in f:
+        print(''.join(CH[int(v)] if int(v)<16 else '?' for v in r))
+
+def diff(f1, f2):
+    f1, f2 = np.array(f1), np.array(f2)
+    ys, xs = np.where(f1 != f2)
+    for y, x in zip(ys, xs):
+        print(f"({y},{x}): {f1[y,x]} -> {f2[y,x]}")
+
+if __name__ == '__main__':
+    env = get_env()
+    print("levels:", env.levels_completed, "terminal:", env.terminal())
+    show(env.frame())
+EOF
+python probe.py 2>&1 | tail -70
+Level 4 frame is up. The `.ddd` object (colour 14 with a 0 pixel) looks like a candidate avatar. Let me test actions on clones.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t1.py << 'EOF'
+from probe import *
+env = get_env()
+f0 = np.array(env.frame())
+for a in [1,2,3,4,5]:
+    c = env.clone()
+    c.step(a)
+    f1 = np.array(c.frame())
+    ys, xs = np.where(f0 != f1)
+    print(f"action {a}: {len(ys)} diffs", end='')
+    if len(ys):
+        print(f" bbox rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()}")
+        vals = set(zip(f0[ys,xs].tolist(), f1[ys,xs].tolist()))
+        print("  changes:", sorted(vals))
+    else:
+        print()
+EOF
+python t1.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t2.py << 'EOF'
+from probe import *
+env = get_env()
+f0 = np.array(env.frame())
+for a in [1,2,3,4]:
+    c = env.clone()
+    c.step(a)
+    f1 = np.array(c.frame())
+    ys, xs = np.where(f0 != f1)
+    print(f"--- action {a}")
+    for y, x in zip(ys, xs):
+        print(f"  ({y},{x}): {f0[y,x]} -> {f1[y,x]}")
+EOF
+python t2.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t3.py << 'EOF'
+from probe import *
+env = get_env()
+c = env.clone()
+# walk down repeatedly to see movement and timer expiry
+for i in range(16):
+    c.step(2)
+    f = np.array(c.frame())
+    n7 = (f[63]==7).sum()
+    # avatar position
+    ys, xs = np.where(f==14)
+    pos = (ys.min(), xs.min()) if len(ys) else None
+    print(i, "timer7s:", n7, "avatar14 bbox:", pos, "levels:", c.levels_completed, "term:", c.terminal())
+EOF
+python t3.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t4.py << 'EOF'
+from probe import *
+env = get_env()
+c = env.clone()
+for i in range(30):
+    c.step(2)
+    f = np.array(c.frame())
+    n7 = (f[63]==7).sum()
+    if n7 <= 1 or c.terminal():
+        print("step",i,"timer:",n7,"term:",c.terminal(),"levels:",c.levels_completed)
+    if c.terminal():
+        break
+print("final n7:", n7, "term:", c.terminal())
+show(np.array(c.frame()))
+EOF
+python t4.py 2>&1 | tail -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t5.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('wa30')
+for a in ck["final_path"]:
+    env.step(a)
+print("after prefix levels:", env.levels_completed)
+# replay level3 moves step by step
+import legs
+moves = []
+class Rec:
+    def __init__(s, e): s.e=e
+    def step(s,a):
+        s.e.step(a); moves.append(a)
+    def terminal(s): return s.e.terminal()
+    @property
+    def levels_completed(s): return s.e.levels_completed
+r = Rec(env)
+import players
+# replicate play_level_3 but track when level increments
+before = env.levels_completed
+players.play_level_3(r)
+print("total L3 moves:", len(moves))
+# find minimal: replay fresh, step until level increments
+env2 = A.Arena('wa30')
+for a in ck["final_path"]:
+    env2.step(a)
+for i, a in enumerate(moves):
+    env2.step(a)
+    if env2.levels_completed > before:
+        print("level 3 done after move index", i, "of", len(moves))
+        break
+f = np.array(env2.frame())
+print("timer 7s at clean L4 start:", (f[63]==7).sum())
+json.dump(moves[:i+1], open("l3_moves.json","w"))
+EOF
+python t5.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t6.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open("checkpoint.json"))
+env = A.Arena('wa30')
+path = ck["final_path"]
+for i, a in enumerate(path):
+    env.step(a)
+    if env.levels_completed == 3:
+        print("level 3 completed at path index", i, "of", len(path)-1)
+        break
+f = np.array(env.frame())
+print("timer 7s:", (f[63]==7).sum())
+EOF
+python t6.py
+The checkpoint prefix already finishes level 3 — my probe was double-running level 3 and burning the level-4 timer. Fix probe:
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean/probe.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python probe.py 2>&1 | tail -66
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > helpers.py << 'EOF'
+import numpy as np
+
+def avatar(f):
+    f = np.array(f)
+    ys, xs = np.where(f == 14)
+    if len(ys) == 0:
+        return None
+    # avatar is 4x4 region including 0 strip; use 14+0 combined bbox
+    y0, x0 = ys.min(), xs.min()
+    y1, x1 = ys.max(), xs.max()
+    # expand to 4x4 by checking 0s adjacent
+    if y1 - y0 < 3:  # 0-strip is horizontal
+        if y0 > 0 and (np.array(f)[y0-1, x0:x1+1] == 0).all():
+            y0 -= 1
+        else:
+            y1 += 1
+    if x1 - x0 < 3:
+        if x0 > 0 and (np.array(f)[y0:y1+1, x0-1] == 0).all():
+            x0 -= 1
+        else:
+            x1 += 1
+    return (y0, x0)
+
+def objects(f, border):
+    """find 4x4-ish blocks with given border colour; return set of top-left corners"""
+    f = np.array(f)
+    out = []
+    ys, xs = np.where(f == border)
+    seen = set()
+    for y, x in zip(ys, xs):
+        if (y, x) in seen:
+            continue
+        # candidate top-left if cell up-left isn't border
+        if (y == 0 or f[y-1, x] != border) and (x == 0 or f[y, x-1] != border):
+            out.append((y, x))
+    return out
+
+def timer(f):
+    f = np.array(f)
+    return int((f[63] == 7).sum())
+EOF
+cat > t7.py << 'EOF'
+from probe import *
+from helpers import avatar, timer
+env = get_env()
+f = np.array(env.frame())
+print("avatar:", avatar(f), "timer:", timer(f))
+# Try USE at start
+c = env.clone(); c.step(5)
+f1 = np.array(c.frame())
+ys, xs = np.where(f != f1)
+print("USE diffs:", [(int(y),int(x),int(f[y,x]),int(f1[y,x])) for y,x in zip(ys,xs)][:20])
+EOF
+python t7.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t8.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+for i in range(14):
+    c.step(5)
+    f = np.array(c.frame())
+    bs = objects(f, 12)
+    print(i, "b:", bs, "timer:", timer(f))
+EOF
+python t8.py
+One `b` block is a patrolling agent. Now test box interaction — bump and USE next to a box:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t9.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+
+def snap(e):
+    f = np.array(e.frame())
+    return f
+
+def report(f0, f1, label):
+    ys, xs = np.where(f0 != f1)
+    changes = {}
+    for y,x in zip(ys,xs):
+        changes.setdefault((int(f0[y,x]),int(f1[y,x])), []).append((int(y),int(x)))
+    print(label, {k: (len(v), v[0]) for k,v in changes.items()})
+
+# experiment A: right then down (bump box below-right)
+c = env.clone()
+c.step(4)  # right -> avatar (32,32)
+f0 = snap(c)
+print("A avatar:", avatar(f0))
+c.step(2)  # down: bump box at rows36-39 cols32-35
+f1 = snap(c)
+report(f0, f1, "A bump down:")
+# press down again
+c.step(2)
+f2 = snap(c)
+report(f1, f2, "A bump down x2:")
+# then USE
+c.step(5)
+f3 = snap(c)
+report(f2, f3, "A then USE:")
+EOF
+python t9.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t10.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+c.step(4); c.step(2); c.step(5)  # face box below, USE
+f0 = np.array(c.frame())
+# show local area rows 30-45 cols 24-44
+for r in range(30,46):
+    print(''.join(CH[int(v)] for v in f0[r,24:44]))
+print("avatar:", avatar(f0))
+# now move up: does box follow?
+c.step(1)
+f1 = np.array(c.frame())
+ys,xs = np.where(f0!=f1)
+ch = {}
+for y,x in zip(ys,xs): ch.setdefault((int(f0[y,x]),int(f1[y,x])),[]).append((int(y),int(x)))
+print("after UP:", {k:(len(v),v[0]) for k,v in ch.items()})
+for r in range(26,42):
+    print(''.join(CH[int(v)] for v in f1[r,24:44]))
+EOF
+python t10.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t11.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+prev = None
+for i in range(40):
+    c.step(3)  # left; will hit fence soon and become idle-ish
+    f = np.array(c.frame())
+    bs = tuple(objects(f, 12))
+    if bs != prev:
+        print(i, "b:", bs, "timer:", timer(f), "term:", c.terminal())
+        prev = bs
+    if c.terminal(): break
+EOF
+python t11.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t12.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+# grab the box below-right, carry up to fence, face up at fence, USE
+c.step(4); c.step(2); c.step(5)  # attach box below
+# avatar (32,32). carry up: box follows below. Move up to fence row: avatar can reach row 24 (fence rows 20-23)
+c.step(1); c.step(1)  # avatar rows 24-27
+f0 = np.array(c.frame())
+print("avatar:", avatar(f0))
+for r in range(20,44):
+    print(''.join(CH[int(v)] for v in f0[r,20:48]))
+c.step(5)  # USE while carrying, facing up at fence
+f1 = np.array(c.frame())
+ys,xs = np.where(f0!=f1)
+ch={}
+for y,x in zip(ys,xs): ch.setdefault((int(f0[y,x]),int(f1[y,x])),[]).append((int(y),int(x)))
+print("USE:", {k:(len(v),v[0]) for k,v in ch.items()})
+EOF
+python t12.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t13.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+for i in range(30):
+    c.step(3)
+    f = np.array(c.frame())
+    border = int(f[4,24])
+    print(i, "outer box border:", border, "b12 top-right:", int(f[4,56]), "b bottom:", int(f[56,24]))
+    if border != 4:
+        break
+EOF
+python t13.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t14.py << 'EOF'
+from probe import *
+from helpers import objects, avatar, timer
+env = get_env()
+c = env.clone()
+prevf = np.array(c.frame())
+for i in range(60):
+    c.step(3)
+    f = np.array(c.frame())
+    # summarize changes excluding avatar(14/0) and timer row
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b = int(prevf[y,x]), int(f[y,x])
+        if 14 in (a,b) or 0 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch:
+        print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()})
+    prevf = f
+    if c.terminal():
+        print("TERMINAL at", i, "levels:", c.levels_completed); break
+EOF
+python t14.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t15.py << 'EOF'
+from probe import *
+env = get_env()
+c = env.clone()
+for i in range(20):
+    c.step(3)
+f = np.array(c.frame())
+for r in range(0,36):
+    print(''.join(CH[int(v)] for v in f[r,0:32]))
+EOF
+python t15.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t16.py << 'EOF'
+from probe import *
+from helpers import avatar
+env = get_env()
+# test fence crossing empty-handed in each direction
+for name, moves in [("left", [3]*4), ("up", [1]*4), ("down",[2]*4), ("right",[4]*5)]:
+    c = env.clone()
+    for a in moves: c.step(a)
+    print(name, "avatar:", avatar(np.array(c.frame())))
+EOF
+cat > t17.py << 'EOF'
+from probe import *
+from helpers import avatar
+env = get_env()
+c = env.clone()
+# grab box below (at 36,32): right, down(bump), use
+c.step(4); c.step(2); c.step(5)
+# now face up (move up once - box follows below), then face up again... box trails.
+c.step(1)  # up; avatar (28,32), box (32,32)
+f0 = np.array(c.frame())
+print("avatar:", avatar(f0))
+c.step(5)  # USE while facing up (away from box)
+f1 = np.array(c.frame())
+ys,xs = np.where(f0!=f1)
+ch={}
+for y,x in zip(ys,xs): ch.setdefault((int(f0[y,x]),int(f1[y,x])),[]).append((int(y),int(x)))
+print("USE facing away:", {k:(len(v),v[0],v[-1]) for k,v in ch.items()})
+EOF
+python t16.py && python t17.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t18.py << 'EOF'
+from probe import *
+from helpers import avatar
+env = get_env()
+c = env.clone()
+c.step(4); c.step(2); c.step(5)  # grab box below; avatar(32,32), box(36,32)
+# move down: box leads toward bottom fence (rows 44-47)
+for i in range(4):
+    c.step(2)
+    f = np.array(c.frame())
+    print(i, "avatar:", avatar(f))
+for r in range(32,64):
+    print(''.join(CH[int(v)] for v in f[r,20:48]))
+EOF
+python t18.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t19.py << 'EOF'
+from probe import *
+from helpers import avatar, timer, objects
+env = get_env()
+c = env.clone()
+c.step(4); c.step(2); c.step(5); c.step(2); c.step(2)  # box embedded in bottom fence at (44,32)
+c.step(5)  # release
+prevf = np.array(c.frame())
+for i in range(50):
+    c.step(1)  # idle-ish: up (will re-enter arena)
+    f = np.array(c.frame())
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()})
+    prevf=f
+    if c.terminal(): print("TERM", c.levels_completed); break
+print("timer:", timer(prevf))
+EOF
+python t19.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t20.py << 'EOF'
+from probe import *
+from helpers import avatar, timer, objects
+env = get_env()
+c = env.clone()
+# box A: at (36,32) -> bottom fence at cols 32-35
+c.step(4); c.step(2); c.step(5); c.step(2); c.step(2); c.step(5)
+# now avatar (40,32). box B: at (40,36) right of avatar -> bump right, grab, push into right fence? 
+# grab: face right
+c.step(4)  # bump into box at (40,36)
+c.step(5)  # grab
+# carry right: box leads right toward right fence (cols 44-47)
+c.step(4); c.step(4)
+f = np.array(c.frame())
+print("avatar:", avatar(f))
+c.step(5)  # release in right fence
+for r in range(36,52):
+    print(''.join(CH[int(v)] for v in f[r,32:60]))
+prevf = np.array(c.frame())
+for i in range(60):
+    c.step(1)
+    f = np.array(c.frame())
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()}, "lv:", c.levels_completed)
+    prevf=f
+    if c.terminal(): print("TERM lv:", c.levels_completed); break
+print("timer:", timer(prevf), "levels:", c.levels_completed)
+EOF
+python t20.py
+Key question: can the avatar carry a box around corners (perpendicular moves)? Test:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t21.py << 'EOF'
+from probe import *
+from helpers import avatar
+env = get_env()
+c = env.clone()
+c.step(4); c.step(2); c.step(5)  # grab B4 below avatar; avatar(32,32), box(36,32)
+c.step(4)  # move right while box attached below
+f = np.array(c.frame())
+print("avatar:", avatar(f))
+for r in range(28,48):
+    print(''.join(CH[int(v)] for v in f[r,24:48]))
+EOF
+python t21.py
+Perpendicular carry works (box stays on its grab side). Now verify couriers do repeat trips — continue after three deliveries with a fourth box:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t22.py << 'EOF'
+from probe import *
+from helpers import avatar, timer
+env = get_env()
+c = env.clone()
+# deliver B4 bottom, B6 right as in t20 but minimal, then immediately B2 top, then watch
+c.step(4); c.step(2); c.step(5); c.step(2); c.step(2); c.step(5)      # B4 -> (44,32); avatar (40,32)
+c.step(4); c.step(5); c.step(4); c.step(4); c.step(5)                # B6 -> (40,44); avatar (40,40)
+# B2 at (24,32): avatar to (28,32): up? avatar at (40,40): up->(36,40), up->(32,40), left->(32,36)?... plan: up,up,left,left? cells: (40,40)->(36,40)->(32,36)? no, one move at a time.
+for a in [1,1,3,3,1]:  # (36,40),(32,40),(32,36),(32,32),(28,32)
+    c.step(a)
+print("avatar before grab B2:", avatar(np.array(c.frame())))
+c.step(1)  # bump B2 (24,32)
+c.step(5)  # grab (box on top)
+c.step(1)  # push up: avatar (24,32)? box embeds (20,32)
+f=np.array(c.frame()); print("after push:", avatar(f))
+c.step(5)  # release
+prevf = np.array(c.frame())
+print("timer:", timer(prevf))
+for i in range(60):
+    c.step(2)
+    f = np.array(c.frame())
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()}, "lv:", c.levels_completed, "t:", timer(f))
+    prevf=f
+    if c.terminal(): print("TERM lv:", c.levels_completed); break
+EOF
+python t22.py
+Concerning: after each courier did one trip, the 4th box never ripened. Test if parked couriers reactivate for a new bottom-fence drop:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t23.py << 'EOF'
+from probe import *
+from helpers import avatar, timer
+env = get_env()
+c = env.clone()
+c.step(4); c.step(2); c.step(5); c.step(2); c.step(2); c.step(5)      # B4 bottom
+c.step(4); c.step(5); c.step(4); c.step(4); c.step(5)                # B6 -> (40,40) inside! courier grabs anyway
+# B5 (40,24): avatar (40,40): left moves: cells row4: (40,36),(40,32),(40,28) then bump (40,24)
+for a in [3,3,3]:
+    c.step(a)
+c.step(3)  # bump B5
+c.step(5)  # grab on left side
+c.step(2)  # move down? box on left: avatar (44?) no avatar at (40,28) can't go down (fence). push left: 
+c.step(3)  # avatar (40,24), box embeds (40,20)? 
+f=np.array(c.frame()); print("avatar:", avatar(f), "timer:", timer(f))
+c.step(5)
+prevf = np.array(c.frame())
+for i in range(70):
+    c.step(2)
+    f = np.array(c.frame())
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()}, "lv:", c.levels_completed, "t:", timer(f))
+    prevf=f
+    if c.terminal(): print("TERM lv:", c.levels_completed, "t:", timer(f)); break
+EOF
+python t23.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t24.py << 'EOF'
+from probe import *
+from helpers import avatar, timer
+env = get_env()
+c = env.clone()
+PLAN = (
+    [4,2,5,2,2,5] +        # B4 -> bottom (44,32)
+    [1,4,2,5,2,5] +        # B6 -> bottom (44,36)
+    [3,3,3,5,3,5] +        # B5 -> left (40,20)
+    [1,1,1,4,1,3,5,3,5] +  # B1 -> left (24,20)
+    [2,4,4,4,1,5,2,2,5,3,1,4,5,4,4,5] +  # B3 -> right (32,44)
+    [1,3,3,3,1,4,5,4,4,4,5]              # B2 -> right (24,44)
+)
+for i, a in enumerate(PLAN):
+    c.step(a)
+    if c.terminal():
+        print("TERM during plan at", i, "lv", c.levels_completed); break
+f = np.array(c.frame())
+print("plan done. avatar:", avatar(f), "timer:", timer(f), "lv:", c.levels_completed)
+prevf = f
+for i in range(40):
+    c.step(5)
+    f = np.array(c.frame())
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()}, "lv:", c.levels_completed, "t:", timer(f))
+    prevf=f
+    if c.terminal(): print("TERM lv:", c.levels_completed, "t:", timer(f)); break
+EOF
+python t24.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > t25.py << 'EOF'
+from probe import *
+from helpers import avatar, timer
+env = get_env()
+c = env.clone()
+PLAN = (
+    [4,2,5,2,2,5] +        # B4 -> bottom (44,32)
+    [1,4,2,5,2,5] +        # B6 -> bottom (44,36)
+    [3,3,3,5,3,5] +        # B5 -> left (40,20)
+    [1,1,1,4,1,3,5,3,5] +  # B1 -> left (24,20)
+    [2,4,4,4,1,5,2,2,5,3,1,4,5,4,4,5] +  # B3 -> right (32,44)
+    [1,3,3,3,1,4,5,4,4,4,5] +            # B2 -> right, embed or rest at (24,40)
+    [2]                                   # step away
+)
+for i, a in enumerate(PLAN):
+    c.step(a)
+    if c.terminal():
+        print("TERM during plan at", i, "lv", c.levels_completed); break
+f = np.array(c.frame())
+print("plan done. avatar:", avatar(f), "timer:", timer(f), "lv:", c.levels_completed)
+prevf=f
+for i in range(40):
+    c.step(2)   # idle: walk/bump down
+    f = np.array(c.frame())
+    if c.levels_completed > 3:
+        print("LEVEL UP at idle step", i, "lv:", c.levels_completed, "t:", timer(f)); break
+    ys,xs = np.where(f!=prevf)
+    ch={}
+    for y,x in zip(ys,xs):
+        if y==63: continue
+        a,b=int(prevf[y,x]),int(f[y,x])
+        if 14 in (a,b): continue
+        ch.setdefault((a,b),[]).append((int(y),int(x)))
+    if ch: print(i, {k:(len(v),v[0],v[-1]) for k,v in ch.items()}, "lv:", c.levels_completed, "t:", timer(f))
+    prevf=f
+    if c.terminal(): print("TERM lv:", c.levels_completed, "t:", timer(f)); break
+print("final lv:", c.levels_completed, "terminal:", c.terminal())
+EOF
+python t25.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean/legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python gkm_try.py 2>&1 | tail -3
+RESULT levels=4, replay validated. Update the checkpoint and log for future levels:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > save_ck.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+spec = importlib.util.spec_from_file_location("solve", "solve.py")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+ck = json.load(open("checkpoint.json"))
+def resumed(env):
+    for a in ck["final_path"]:
+        env.step(a)
+    m.solve(env)
+levels, path, err = A.run_program('wa30', resumed)
+ok = A.validate('wa30', path, levels)
+print("levels", levels, "moves", len(path), "ok", ok)
+if levels >= 4 and ok:
+    ck2 = {"game": "wa30", "reached": 4,
+           "records": ck.get("records", []) + [{"level": 4, "reached": True}],
+           "final_path": path, "validated": True}
+    json.dump(ck2, open("checkpoint.json", "w"))
+    print("checkpoint updated")
+EOF
+python save_ck.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat >> legs_log.md << 'EOF'
+
+## wa30 level 4 (replay-validated)
+
+Structure: the avatar is fenced inside a central arena of six boxes. Three courier
+agents (colour 12) patrol outside; boxes that are released near/into the fence
+"ripen" (border 4->5) and a courier fetches each one and places it in a socket
+(9-border/2-core) slot; slot count equals box count (one outer box is handled by
+the couriers automatically). A depleting bar on row 63 is a hard step budget, so
+no idle waiting mid-plan and no USE-spam while yielding (USE re-grabs a nearby
+box and blocks ripening).
+
+New legs (kept minimal and general):
+- `grab_push_release(face, push, steps)` -- bump-face an adjacent box, USE to
+  attach, push/carry it, USE to release. This is the core box-handling verb; the
+  whole level is seven calls of it plus `follow_plan` repositioning.
+- `yield_until_level_up(idle_action)` -- yield turns with a harmless move until
+  the level counter increments (generalizes level 3's blind `use(env, 33)` wait).
+
+Mechanics worth remembering: carried boxes stay on the grab side and can turn
+corners; a box leading into the fence embeds one cell into it; couriers walk
+through the fence band and can fetch a released box sitting just inside it; the
+top fence next to the tall interior wall was a dead drop zone -- prefer bottom /
+left / right handoffs.
+EOF
+python gkm_try.py 2>&1 | tail -2
+**Done — RESULT levels=4, replay_ok=True.**
+
+Summary of what I discovered and built, entirely from raw frames on clones:
+
+**Level 4 mechanics (discovered by experiment):**
+- The avatar is a 4×4 colour-14 block with a 0-strip showing facing; actions 1/2/3/4 = move up/down/left/right, 5 = USE.
+- Moving into a box "primes" it (border 4→3); USE attaches it (border→0); it then follows on its grab side, can turn corners, and embeds one cell into the dithered fence when it leads into it; USE releases.
+- The avatar is fenced inside an arena with 6 boxes. Three courier agents (colour 12) patrol outside, walk *through* the fence band, fetch released/ripened boxes (border 4→5), and deliver each to a free socket slot (9-border/2-core). 7 boxes ↔ 7 slots; one outer box is handled automatically.
+- Row 63 is a hard step budget (game over when depleted), so the plan pipelines all six handoffs with no waiting, then yields.
+- Pitfalls found and avoided: the top fence next to the tall wall is a dead drop zone; idling with USE re-grabs a nearby box and blocks ripening (yield with a harmless move instead).
+
+**Leg library additions (minimal, general):**
+- `grab_push_release(env, face, push, steps)` — the core box-handling verb (bump-face, attach, push/carry, release).
+- `yield_until_level_up(env, idle_action)` — yield turns to helper agents until the level counter increments (generalizes level 3's blind wait).
+
+`play_level_4` is pure composition: `right/left/down/follow_plan` repositioning + seven `grab_push_release` calls + `yield_until_level_up`, and the checkpoint was updated with the validated 230-move path.

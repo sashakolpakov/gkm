@@ -1,0 +1,1451 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python gkm_try.py 2>&1 | head -50
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat gkm_try.py solve.py players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat checkpoint.json legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && ls /Users/sasha/gkm/arc/crack_lab/ | head; python -c "import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); import gkm_arena as A; print([x for x in dir(A) if not x.startswith('_')])"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.make_env('wa30')
+print([x for x in dir(env) if not x.startswith('_')])
+print('levels_completed', env.levels_completed)
+print('terminal', env.terminal())
+import numpy as np
+f = np.asarray(env.frame())
+print('shape', f.shape, 'colors', np.unique(f))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import inspect
+print(inspect.signature(A.make_env))
+print(inspect.getsource(A.make_env)[:500])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.make_env('wa30')()
+print([x for x in dir(env) if not x.startswith('_')])
+print('levels_completed', env.levels_completed)
+import numpy as np
+f = np.asarray(env.frame())
+print('shape', f.shape, 'colors', np.unique(f))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import inspect
+print(inspect.getsource(A.run_program))
+" 2>&1 | head -60
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print([x for x in dir(A.Arena) if not x.startswith('_')])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+ck = json.load(open('checkpoint.json'))
+path = ck['final_path']
+env = A.Arena('wa30')
+for a in path:
+    env.step(a)
+print('after final_path levels=', env.levels_completed, 'terminal', env.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat > probe.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+def env_at_level5():
+    ck = json.load(open('checkpoint.json'))
+    env = A.Arena('wa30')
+    for a in ck['final_path']:
+        env.step(a)
+    assert env.levels_completed == 4
+    return env
+
+if __name__ == '__main__':
+    import numpy as np
+    env = env_at_level5()
+    f = np.asarray(env.frame())
+    print('shape', f.shape)
+    print('colors', np.unique(f))
+    # print compact
+    for row in f:
+        print(''.join('%X'%v for v in row))
+EOF
+python probe.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import perception as P
+import numpy as np
+env = env_at_level5()
+f = np.asarray(env.frame())
+objs = P.object_candidates(f, min_area=3)
+for o in objs:
+    print(o['color'], o['bbox'], 'area', o['area'])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import perception as P
+env = env_at_level5()
+d = P.action_deltas(env)
+for a,info in d.items():
+    print(P.ACTION_NAME[a], info['count'], info['bbox'], info['samples'][:6])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env = env_at_level5()
+base = np.asarray(env.frame())
+frames={}
+for a in [1,2,3,4,5]:
+    c = env.clone(); c.step(a); frames[a]=np.asarray(c.frame())
+# find cells that differ between action results (excluding courier & budget)
+allchange = np.zeros_like(base, bool)
+for a in frames: allchange |= (frames[a]!=base)
+# cells where actions disagree with each other
+import itertools
+disagree = np.zeros_like(base, bool)
+for a,b in itertools.combinations(frames,2):
+    disagree |= (frames[a]!=frames[b])
+ys,xs = np.where(disagree)
+print('disagree cells:', len(ys))
+for y,x in list(zip(ys,xs))[:40]:
+    print(y,x,'base',base[y,x],{a:int(frames[a][y,x]) for a in frames})
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import perception as P
+import numpy as np
+env = env_at_level5()
+def show(env):
+    f=np.asarray(env.frame())
+    for col in [0,14]:
+        ys,xs=np.where(f==col)
+        if len(ys): print(' color',col,'bbox',(ys.min(),xs.min(),ys.max(),xs.max()),'n',len(ys))
+print('BASE'); show(env)
+for a in [1,2,3,4,5]:
+    c=env.clone(); c.step(a)
+    print('after',P.ACTION_NAME[a]); show(c)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+f=np.asarray(env.frame())
+# vertical wall cols 36-39: which rows are wall(5) vs open
+for r in range(64):
+    seg=f[r,36:40]
+    print(r, ''.join('%X'%v for v in seg))
+" | awk 'NR<=64'
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+f=np.asarray(env.frame())
+for r in range(22,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,0:52]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+def show(f,label):
+    print('==',label)
+    for r in range(24,44):
+        print('%2d'%r, ''.join('%X'%v for v in f[r,40:52]))
+env=env_at_level5()
+c=env.clone()
+show(np.asarray(c.frame()),'base')
+for i,a in enumerate([1,1]):
+    c.step(a)
+    show(np.asarray(c.frame()),'after UP #%d'%(i+1))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+def show(f,label):
+    print('==',label)
+    for r in range(24,44):
+        print('%2d'%r, ''.join('%X'%v for v in f[r,40:52]))
+env=env_at_level5()
+c=env.clone()
+c.step(1)  # UP, now adjacent below box, box highlighted 3
+show(np.asarray(c.frame()),'after UP')
+c.step(5)  # USE
+show(np.asarray(c.frame()),'after USE')
+c.step(2)  # DOWN
+show(np.asarray(c.frame()),'after DOWN')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+c=env.clone()
+for i in range(20):
+    f=np.asarray(c.frame())
+    ys,xs=np.where(f==12)
+    if len(ys): box=(ys.min(),xs.min(),ys.max(),xs.max())
+    else: box='GONE'
+    print(i, 'courier', box)
+    c.step(5)  # idle-ish USE (avatar not adjacent box)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+def show(f,label):
+    print('==',label)
+    for r in range(26,42):
+        print('%2d'%r, ''.join('%X'%v for v in f[r,36:52]))
+env=env_at_level5()
+c=env.clone()
+c.step(1); c.step(5)  # UP grab
+show(np.asarray(c.frame()),'grabbed')
+c.step(3)  # LEFT
+show(np.asarray(c.frame()),'after LEFT')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+c=env.clone()
+# grab top-right box and drop at col40-43
+c.step(1); c.step(5); c.step(3); c.step(5)  # UP grab LEFT release
+# move avatar away down
+c.step(2)
+print('levels', c.levels_completed)
+def stats(c):
+    f=np.asarray(c.frame())
+    n4=int((f==4).sum()); n9=int((f==9).sum()); n2=int((f==2).sum())
+    ys,xs=np.where(f==12); cour=(int(ys.min()),int(xs.min())) if len(ys) else None
+    return n4,n9,n2,cour
+for i in range(40):
+    print(i, 'lvl',c.levels_completed,'4/9/2', stats(c)[:3], 'cour', stats(c)[3])
+    c.step(5)
+    if c.levels_completed>4: print('LEVEL UP'); break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+c=env.clone()
+c.step(1); c.step(5); c.step(3); c.step(5); c.step(2)
+for _ in range(10): c.step(5)  # let courier deliver
+f=np.asarray(c.frame())
+print('socket region cols6-17 rows22-41')
+for r in range(22,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,6:18]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import env_at_level5
+import numpy as np
+env=env_at_level5()
+c=env.clone()
+for i in range(0,220,20):
+    f=np.asarray(c.frame())
+    row=f[63]
+    n7=int((row==7).sum())
+    print('step',i,'row63 7-count',n7, 'sample', ''.join('%X'%v for v in row[:16]))
+    for _ in range(20):
+        c.step(5)
+        if c.terminal(): print('terminal at extra step'); break
+    if c.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> probe.py <<'EOF'
+
+import numpy as np
+
+def avatar_cell(c):
+    f=np.asarray(c.frame())
+    ys,xs=np.where(f==14)
+    if len(ys)==0: return None
+    # include head (0) nearest? just use 14 body center rounded
+    r=(ys.min()+ys.max())//2; cc=(xs.min()+xs.max())//2
+    return (ys.min()//4, xs.min()//4)  # top-left cell
+
+def boxes_cells(c):
+    f=np.asarray(c.frame())
+    # boxes are 4-border components with 9 core, size 4x4, located right region
+    out=[]
+    import perception as P
+    for o in P.object_candidates(f, min_area=8):
+        if o['color']==4 and o['area']==12:
+            r0,c0,r1,c1=o['bbox']
+            out.append((r0//4,c0//4))
+    return out
+EOF
+python -c "
+from probe import env_at_level5, avatar_cell, boxes_cells
+env=env_at_level5()
+print('avatar', avatar_cell(env))
+print('boxes', boxes_cells(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> probe.py <<'EOF'
+
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+
+def step_count_used(c):
+    f=np.asarray(c.frame())
+    return 64-int((f[63]==7).sum())
+
+def move_avatar_to(c, target, log=None):
+    # greedy move empty avatar to target cell within right region (cols>=10)
+    for _ in range(40):
+        cur=avatar_cell(c)
+        if cur is None: return False
+        r,cc=int(cur[0]),int(cur[1])
+        tr,tc=target
+        if (r,cc)==(tr,tc): return True
+        # move col first toward tc but keep cc>=10
+        if cc<tc: a=RIGHT
+        elif cc>tc: a=LEFT
+        elif r<tr: a=DOWN
+        elif r>tr: a=UP
+        else: return True
+        c.step(a)
+        if log is not None: log.append(a)
+    return avatar_cell(c)==tuple(target)
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> probe.py <<'EOF'
+
+def ferry_one(c, box, drop=(7,10), log=None):
+    br,bc=box
+    # navigate to two below box then up to grab
+    if not move_avatar_to(c,(br+2,bc),log):
+        # try one below directly
+        move_avatar_to(c,(br+1,bc),log)
+    cur=avatar_cell(c)
+    if cur is None: return False
+    # step up to be adjacent below box (face up)
+    if int(cur[0])>br+1:
+        c.step(UP);  log and log.append(UP)
+    # now at (br+1,bc) facing up, box above
+    c.step(USE); log and log.append(USE)  # grab
+    # box now attached above avatar. translate avatar to (drop_r+1, drop_c)
+    tr,tc=drop  # box target; avatar goes to (tr+1,tc)
+    move_avatar_to(c,(tr+1,tc),log)
+    c.step(USE); log and log.append(USE)  # release
+    return True
+EOF
+python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+log=[]
+r=ferry_one(c,(7,11),log=log)
+print('ferry box(7,11) ok?',r,'steps used',step_count_used(c),'nlog',len(log))
+print('avatar',avatar_cell(c),'boxes',boxes_cells(c))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+log=[]
+ferry_one(c,(7,11),log=log)
+print('log',log)
+f=np.asarray(c.frame())
+for r in range(26,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,36:52]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+# deliver just box (7,11), move avatar away, yield, check level and socket
+ferry_one(c,(7,11))
+c.step(RIGHT); c.step(DOWN)  # move avatar away from corridor
+print('after deliver+away: budget used', step_count_used(c),'lvl',c.levels_completed)
+for i in range(40):
+    c.step(DOWN) if i%2 else c.step(RIGHT)
+    if c.levels_completed>4: print('LEVELUP at yield',i); break
+    if c.terminal(): print('terminal',i); break
+f=np.asarray(c.frame())
+print('final lvl',c.levels_completed,'budget used',step_count_used(c))
+print('2-count',int((f==2).sum()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+ferry_one(c,(7,11))
+c.step(RIGHT); c.step(DOWN)
+for i in range(40):
+    c.step(DOWN) if i%2 else c.step(RIGHT)
+    if c.levels_completed>4 or c.terminal(): break
+f=np.asarray(c.frame())
+print('SOCKET cols6-17')
+for r in range(22,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,6:18]))
+print('boxes remaining', boxes_cells(c))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+# just yield with USE (avatar not adjacent box -> harmless) and watch
+for i in range(200):
+    if c.levels_completed>4: print('LEVELUP at',i); break
+    if c.terminal(): print('terminal at',i,'used',step_count_used(c)); break
+    c.step(USE)
+f=np.asarray(c.frame())
+print('lvl',c.levels_completed,'2-count',int((f==2).sum()),'boxes',boxes_cells(c))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+delivered=0
+for it in range(8):
+    bs=[b for b in boxes_cells(c) if b[1]>=10]  # boxes still in right region
+    if not bs: print('no more right boxes at iter',it); break
+    av=avatar_cell(c); 
+    # nearest box to avatar
+    bs.sort(key=lambda b:abs(b[0]-int(av[0]))+abs(b[1]-int(av[1])))
+    tgt=bs[0]
+    ferry_one(c,tgt)
+    c.step(RIGHT)  # step away so courier can grab
+    delivered+=1
+    print('iter',it,'ferried',tgt,'budget',step_count_used(c),'lvl',c.levels_completed,'right boxes',[b for b in boxes_cells(c) if b[1]>=10])
+    if c.terminal() or c.levels_completed>4: break
+# yield remainder
+for i in range(200):
+    if c.levels_completed>4: print('LEVELUP yield',i); break
+    if c.terminal(): print('terminal yield',i); break
+    c.step(USE)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+# grab box (7,11): avatar (9,11)->up to (8,11), USE grab. box above at (7,11).
+log=[]
+c.step(UP); c.step(USE)
+print('grabbed, avatar',avatar_cell(c))
+# now carry LEFT through corridor toward socket. box is above avatar.
+# avatar at (8,11). move LEFT repeatedly into corridor.
+for k in range(8):
+    before=avatar_cell(c)
+    c.step(LEFT)
+    after=avatar_cell(c)
+    print('LEFT',k,'avatar',before,'->',after, 'term',c.terminal())
+    if c.terminal(): break
+f=np.asarray(c.frame())
+for r in range(26,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,4:44]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+c.step(UP); c.step(USE)  # grab box(7,11), avatar(8,11) box above(7,11)
+# carry left along row cell 8 to socket mouth; box rides at cell 7 (row28-31)
+target_col=4  # avatar col cell 4 = cols16-19, box above at cell(7,4)? we want box near socket col15
+for k in range(40):
+    av=avatar_cell(c)
+    if av is None or c.terminal(): print('stop',k); break
+    r,cc=int(av[0]),int(av[1])
+    if cc<=target_col: print('reached',av,'k',k); break
+    before=av
+    c.step(LEFT)
+    if avatar_cell(c)==before:
+        # blocked, wait (harmless: face down then up? use down/up that dont move into box). use RIGHT then LEFT? just USE
+        c.step(USE)  # might release! avoid. use a vertical wiggle instead
+print('final avatar',avatar_cell(c),'term',c.terminal(),'budget',step_count_used(c))
+f=np.asarray(c.frame())
+for r in range(26,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,4:44]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+def realsteps(c): return len(np.asarray(c.frame()))  # not steps; use counter
+# count env.step calls via wrapper
+class Cnt:
+    def __init__(s,c): s.c=c; s.n=0
+    def step(s,a): s.n+=1; return s.c.step(a)
+    def frame(s): return s.c.frame()
+    def clone(s): return s.c.clone()
+    def terminal(s): return s.c.terminal()
+    levels_completed=property(lambda s:s.c.levels_completed)
+w=Cnt(c)
+import probe
+# ferry (12,13)
+n0=w.n
+ferry_one(w,(12,13))
+print('ferry (12,13) steps',w.n-n0,'avatar',avatar_cell(c),'term',c.terminal())
+n0=w.n
+ferry_one(w,(14,11))
+print('ferry (14,11) steps',w.n-n0,'avatar',avatar_cell(c),'term',c.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from probe import *
+env=env_at_level5()
+c=env.clone()
+log=[]
+# navigate empty avatar from (9,11) to below box (12,13)=(14,13)
+move_avatar_to(c,(14,13),log)
+print('to below (12,13): log',log,'avatar',avatar_cell(c))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat > ctrl.py <<'EOF'
+from probe import env_at_level5, step_count_used
+import numpy as np
+from collections import deque
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+
+def cells(c):
+    """Return (avatar_cell, facing, grabbed_bool, obstacle_set, boxes_set, courier_cell)."""
+    f=np.asarray(c.frame())
+    G=16
+    # coarse cell color majority (ignore avatar/box internal)
+    av=None; head=None
+    ys,xs=np.where(f==14)
+    if len(ys): av=(int(ys.min())//4,int(xs.min())//4)
+    hy,hx=np.where(f==0)
+    if len(hy): head=(int(hy.min())//4,int(hx.min())//4)
+    boxes=set()
+    # boxes: 4-border 4x4. detect by scanning cell blocks whose border is 4 or 3 or 0(grabbed)
+    for R in range(G):
+        for C in range(G):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            u=set(int(v) for v in np.unique(blk))
+            if 9 in u and (4 in u or 3 in u) and len(u)<=3:
+                boxes.add((R,C))
+    cour=None
+    cy,cx=np.where(f==12)
+    if len(cy):
+        cour=(int(cy.min())//4,int(cx.min())//4)
+    # walls: any cell that is majority 5
+    walls=set()
+    for R in range(G):
+        for C in range(G):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            if int((blk==5).sum())>=8:
+                walls.add((R,C))
+    return av,head,boxes,cour,walls
+
+def avatar_facing(av,head):
+    if av is None or head is None: return None
+    dr=head[0]-av[0]; dc=head[1]-av[1]
+    for a,(r,c) in DIRS.items():
+        if (dr,dc)==(r,c): return a
+    # head is within same cell region; determine by pixel offset
+    return None
+EOF
+python -c "
+from ctrl import *
+c=env_at_level5()
+av,head,boxes,cour,walls=cells(c)
+print('avatar',av,'head',head,'facing',avatar_facing(av,head))
+print('boxes',sorted(boxes))
+print('courier',cour)
+print('nwalls',len(walls))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> ctrl.py <<'EOF'
+
+def bfs_path(start, goal, blocked, G=16):
+    """cell-path (list of actions) from start to goal avoiding blocked set."""
+    if start==goal: return []
+    q=deque([start]); prev={start:None}
+    while q:
+        cur=q.popleft()
+        for a,(dr,dc) in DIRS.items():
+            nb=(cur[0]+dr,cur[1]+dc)
+            if not(0<=nb[0]<G and 0<=nb[1]<G): continue
+            if nb in prev: continue
+            if nb in blocked and nb!=goal: continue
+            prev[nb]=(cur,a)
+            if nb==goal:
+                # reconstruct
+                path=[]; n=nb
+                while prev[n] is not None:
+                    p,act=prev[n]; path.append(act); n=p
+                return path[::-1]
+            q.append(nb)
+    return None
+
+def nav_to(c, goal, extra_block=(), log=None, cap=60):
+    """Move empty avatar to goal cell, replanning each step (courier moves)."""
+    for _ in range(cap):
+        if c.terminal(): return False
+        av,head,boxes,cour,walls=cells(c)
+        if av==goal: return True
+        blocked=set(walls)|set(boxes)
+        if cour: blocked.add(cour)
+        blocked.discard(goal)
+        blocked.discard(av)
+        path=bfs_path(av,goal,blocked)
+        if not path:
+            return False
+        a=path[0]
+        before=av
+        c.step(a); log and log.append(a)
+        av2,_,_,_,_=cells(c)
+        if av2==before:
+            # blocked (courier). wait one step with harmless USE (not adjacent box? risk). try perpendicular
+            pass
+    return cells(c)[0]==goal
+EOF
+python -c "
+from ctrl import *
+c=env_at_level5()
+log=[]
+# nav to below box (12,13) = (13,13)
+ok=nav_to(c,(13,13),log=log)
+print('nav ok',ok,'steps',len(log),'avatar',cells(c)[0],'log',log)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+print('start avatar',cells(c)[0])
+log=[]
+ok=nav_to(c,(13,13),log=log)
+print('nav ok',ok,'steps',len(log),'avatar',cells(c)[0])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && sed -i '' 's/log and log.append(a)/(log is not None) and log.append(a)/' ctrl.py
+python -c "
+from ctrl import *
+c=env_at_level5()
+class Cnt:
+    def __init__(s,c): s.c=c; s.n=0
+    def step(s,a): s.n+=1; return s.c.step(a)
+    def frame(s): return s.c.frame()
+    def terminal(s): return s.c.terminal()
+    levels_completed=property(lambda s:s.c.levels_completed)
+w=Cnt(c)
+ok=nav_to(w,(13,13))
+print('nav to below(12,13): ok',ok,'steps',w.n,'avatar',cells(c)[0])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> ctrl.py <<'EOF'
+
+def adj(cell):
+    r,c=cell
+    return {UP:(r-1,c),DOWN:(r+1,c),LEFT:(r,c-1),RIGHT:(r,c+1)}
+
+def bfs_pair(start_av, offset, goal_av, blocked, G=16):
+    """BFS moving avatar; box=avatar+offset; both must stay in-bounds & unblocked."""
+    def ok(a):
+        b=(a[0]+offset[0],a[1]+offset[1])
+        if not(0<=a[0]<G and 0<=a[1]<G and 0<=b[0]<G and 0<=b[1]<G): return False
+        if a in blocked or b in blocked: return False
+        return True
+    if start_av==goal_av: return []
+    q=deque([start_av]); prev={start_av:None}
+    while q:
+        cur=q.popleft()
+        for act,(dr,dc) in DIRS.items():
+            nb=(cur[0]+dr,cur[1]+dc)
+            if nb in prev: continue
+            if nb!=goal_av and not ok(nb): continue
+            # also goal must be ok
+            if nb==goal_av and not ok(nb): continue
+            prev[nb]=(cur,act)
+            if nb==goal_av:
+                path=[]; n=nb
+                while prev[n] is not None:
+                    p,ac=prev[n]; path.append(ac); n=p
+                return path[::-1]
+            q.append(nb)
+    return None
+
+def carry_pair(c, offset, goal_av, log=None, cap=60):
+    for _ in range(cap):
+        if c.terminal(): return False
+        av,head,boxes,cour,walls=cells(c)
+        if av==goal_av: return True
+        blocked=set(walls)
+        # other boxes block, but our carried box is at av+offset (exclude)
+        carried=(av[0]+offset[0],av[1]+offset[1])
+        for b in boxes:
+            if b!=carried: blocked.add(b)
+        if cour: blocked.add(cour)
+        blocked.discard(goal_av)
+        blocked.discard(av)
+        path=bfs_pair(av,offset,goal_av,blocked)
+        if not path:
+            # maybe courier blocking; wait by stepping in place-safe? try USE would release. skip -> fail
+            return False
+        a=path[0]; before=av
+        c.step(a); (log is not None) and log.append(a)
+        if cells(c)[0]==before:
+            # blocked by moving courier; try again (courier will move)
+            continue
+    return cells(c)[0]==goal_av
+
+def ferry(c, box, drop=(7,10), log=None):
+    av,head,boxes,cour,walls=cells(c)
+    if box not in boxes: return False
+    # pick approach side: reachable open adjacent cell
+    blocked=set(walls)|(set(boxes)-{box})
+    if cour: blocked.add(cour)
+    best=None
+    for act,ac in adj(box).items():
+        if not(0<=ac[0]<16 and 0<=ac[1]<16): continue
+        if ac in blocked: continue
+        p=bfs_path(av,ac,blocked)
+        if p is not None and (best is None or len(p)<best[0]):
+            best=(len(p),ac,act)
+    if best is None: return False
+    _,ac,act=best
+    if not nav_to(c,ac,log=log): return False
+    # face box: step toward box (opposite of approach dir from box). dir from ac to box:
+    dr=box[0]-ac[0]; dc=box[1]-ac[1]
+    face={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}[(dr,dc)]
+    c.step(face); (log is not None) and log.append(face)  # blocked, sets facing, highlight
+    c.step(USE); (log is not None) and log.append(USE)     # grab
+    # offset box relative to avatar after grab
+    av2,_,_,_,_=cells(c)
+    offset=(box[0]-av2[0],box[1]-av2[1])
+    goal_av=(drop[0]-offset[0],drop[1]-offset[1])
+    if not carry_pair(c,offset,goal_av,log=log): 
+        c.step(USE); (log is not None) and log.append(USE)  # release wherever
+        return False
+    c.step(USE); (log is not None) and log.append(USE)  # release at drop
+    return True
+EOF
+python -c "
+from ctrl import *
+c=env_at_level5()
+class Cnt:
+    def __init__(s,c): s.c=c; s.n=0
+    def step(s,a): s.n+=1; return s.c.step(a)
+    def frame(s): return s.c.frame()
+    def terminal(s): return s.c.terminal()
+    levels_completed=property(lambda s:s.c.levels_completed)
+w=Cnt(c)
+for box in [(7,11),(12,13),(14,11)]:
+    n0=w.n
+    ok=ferry(w,box)
+    print('ferry',box,'ok',ok,'steps',w.n-n0,'budget',step_count_used(c),'term',c.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+order=[(7,11),(12,13),(14,11),(1,12),(2,14),(13,15)]
+for box in order:
+    if c.terminal(): print('terminal before',box); break
+    ok=ferry(c,box)
+    rem=[b for b in cells(c)[2] if b[1]>=10]
+    print('ferry',box,'ok',ok,'budget',step_count_used(c),'lvl',c.levels_completed,'right-boxes',sorted(rem))
+    if c.levels_completed>4: print('LEVELUP'); break
+# yield
+for i in range(200):
+    if c.terminal() or c.levels_completed>4: break
+    c.step(USE)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c),'term',c.terminal())
+print('boxes',sorted(cells(c)[2]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+order=[(7,11),(12,13),(14,11),(1,12),(2,14)]  # skip (13,15) for courier
+for box in order:
+    if c.terminal(): break
+    ferry(c,box)
+    print('ferry',box,'budget',step_count_used(c),'right',sorted(b for b in cells(c)[2] if b[1]>=10))
+    if c.levels_completed>4: break
+for i in range(300):
+    if c.terminal() or c.levels_completed>4: break
+    c.step(USE)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c),'term',c.terminal(),'boxes',sorted(cells(c)[2]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> ctrl.py <<'EOF'
+
+def safe_yield(c, cap=200):
+    """Yield turns without grabbing: move avatar in an empty area, bouncing."""
+    # move avatar to a parking cell away from boxes/corridor
+    for i in range(cap):
+        if c.terminal() or c.levels_completed>4: return
+        av,head,boxes,cour,walls=cells(c)
+        # pick a harmless move: one that doesn't face a box adjacent (avoid grab on subsequent USE-not used) 
+        # we only move, never USE, so grabbing won't happen. But bumping a box highlights (harmless) and could accidentally... 
+        # Actually moving INTO a box just highlights; fine. But we must not leave avatar attached. Moving never attaches.
+        # choose a direction that changes position (prefer away from any box)
+        best=None
+        for a,(dr,dc) in DIRS.items():
+            nb=(av[0]+dr,av[1]+dc)
+            if not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+            if nb in walls or nb in boxes: continue
+            if cour and nb==cour: continue
+            # distance from nearest box
+            d=min([abs(nb[0]-b[0])+abs(nb[1]-b[1]) for b in boxes], default=99)
+            if best is None or d>best[0]: best=(d,a)
+        if best is None:
+            c.step(UP)
+        else:
+            c.step(best[1])
+EOF
+python -c "
+from ctrl import *
+c=env_at_level5()
+order=[(7,11),(12,13),(14,11),(1,12),(2,14)]
+for box in order:
+    if c.terminal(): break
+    ferry(c,box)
+    if c.levels_completed>4: break
+print('after ferries budget',step_count_used(c))
+safe_yield(c)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c),'term',c.terminal(),'boxes',sorted(cells(c)[2]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+order=[(7,11),(12,13),(14,11),(1,12),(2,14)]
+for box in order:
+    if c.terminal(): break
+    ferry(c,box)
+safe_yield(c)
+f=np.asarray(c.frame())
+print('lvl',c.levels_completed,'term',c.terminal())
+print('2-count',int((f==2).sum()),'4-count',int((f==4).sum()),'9-count',int((f==9).sum()))
+print('SOCKET cols6-17 rows22-41')
+for r in range(22,42):
+    print('%2d'%r, ''.join('%X'%v for v in f[r,6:18]))
+print('right region boxes any color-4:')
+for R in range(16):
+  for C in range(10,16):
+    blk=f[R*4:R*4+4,C*4:C*4+4]
+    if (blk==4).sum()>0: print(' cell',(R,C),'has 4')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+f=np.asarray(c.frame())
+# distinct colors and their locations (non-background,non-wall)
+import collections
+for col in [0,2,4,7,9,12,14]:
+    ys,xs=np.where(f==col)
+    if len(ys):
+        print('color',col,'n',len(ys),'bbox',(int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max())))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+# ferry 4 cheap boxes, let courier fetch (13,15),(2,14)
+for box in [(7,11),(12,13),(14,11),(1,12)]:
+    if c.terminal(): break
+    ferry(c,box)
+print('after 4 ferries budget',step_count_used(c))
+maxlvl=c.levels_completed
+for i in range(300):
+    if c.terminal(): break
+    if c.levels_completed>4: print('LEVELUP at yield step',i,'budget',step_count_used(c)); break
+    safe_yield(c,cap=1)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c),'boxes',sorted(cells(c)[2]))
+f=np.asarray(c.frame()); print('2-count',int((f==2).sum()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+def run(order, drop, ferry_last=True):
+    c=env_at_level5()
+    boxes=order[:] if ferry_last else order[:-1]
+    for box in boxes:
+        if c.terminal(): break
+        ferry(c,box,drop=drop)
+        if c.levels_completed>4: return c,'LEVELUP-ferry',step_count_used(c)
+    b_after=step_count_used(c)
+    for i in range(400):
+        if c.terminal(): break
+        if c.levels_completed>4: return c,'LEVELUP-yield',step_count_used(c)
+        safe_yield(c,cap=1)
+    return c,'end lvl%d'%c.levels_completed,(b_after,step_count_used(c))
+order=[(7,11),(12,13),(14,11),(1,12),(2,14),(13,15)]
+for drop in [(7,10),(7,7),(7,6)]:
+    c,msg,b=run(order,drop)
+    f=np.asarray(c.frame())
+    print('drop',drop,msg,'budget',b,'2cnt',int((f==2).sum()),'rightboxes',sorted(x for x in cells(c)[2] if x[1]>=10 and x[0]<15))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+import random
+# From start, deliver all 6 (best-known), then from that state random-walk avatar looking for level up.
+def deliver_all():
+    c=env_at_level5()
+    for box in [(7,11),(12,13),(14,11),(1,12),(2,14),(13,15)]:
+        if c.terminal(): break
+        ferry(c,box,drop=(7,10))
+    return c
+base=deliver_all()
+print('delivered budget',step_count_used(base),'lvl',base.levels_completed)
+# from base, try moving avatar around remaining budget checking level
+import itertools
+found=False
+for trial in range(30):
+    c=base.clone() if hasattr(base,'clone') else None
+    # base is real Arena clone? env_at_level5 returns Arena; .clone exists
+    c=base.clone()
+    seq=[random.choice([1,2,3,4,5]) for _ in range(20)]
+    for a in seq:
+        if c.terminal(): break
+        c.step(a)
+        if c.levels_completed>4: print('WIN seq',seq); found=True; break
+    if found: break
+print('found',found)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+# move avatar up to corridor row (from (9,11) to (8,11)), then push left, retry on block
+c.step(UP)  # (9,11)->(8,11)
+print('avatar',cells(c)[0])
+for k in range(40):
+    if c.terminal(): break
+    av=cells(c)[0]
+    if av[1]<=4: print('reached',av); break
+    before=av
+    c.step(LEFT)
+    now=cells(c)[0]
+    if now==before:
+        # blocked (courier or box). wiggle: step DOWN then continue? corridor rows 7,8 both open
+        c.step(DOWN) if av[0]==7 else c.step(UP)
+    print(k,'avatar',cells(c)[0],'lvl',c.levels_completed)
+    if c.levels_completed>4: print('LEVELUP'); break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+c.step(UP)
+for k in range(20):
+    av=cells(c)[0]
+    if av[1]<=4: break
+    before=av; c.step(LEFT)
+    if cells(c)[0]==before: c.step(DOWN) if av[0]==7 else c.step(UP)
+# now at (8,4). try to go into socket
+for k in range(12):
+    if c.terminal(): break
+    av=cells(c)[0]; before=av
+    c.step(LEFT)
+    print('LEFT k',k,'avatar',before,'->',cells(c)[0],'lvl',c.levels_completed)
+    if c.levels_completed>4: print('LEVELUP'); break
+    if cells(c)[0]==before:
+        print('blocked at',before); break
+f=np.asarray(c.frame())
+for r in range(24,40):
+    print('%2d'%r,''.join('%X'%v for v in f[r,4:28]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+ferry(c,(7,11),drop=(7,10))
+# move avatar far away so it doesn't interfere
+for _ in range(3): c.step(RIGHT)
+prev2=None
+for i in range(30):
+    f=np.asarray(c.frame())
+    n2=int((f==2).sum())
+    ys,xs=np.where(f==12); cour=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    if n2!=prev2:
+        print('step',i,'2cnt',n2,'courier',cour)
+        prev2=n2
+    c.step(RIGHT) if i%2 else c.step(DOWN)
+    if c.terminal(): break
+f=np.asarray(c.frame())
+print('socket:')
+for r in range(24,40): print('%2d'%r,''.join('%X'%v for v in f[r,8:16]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+c.step(UP); c.step(USE)  # grab box(7,11), box above avatar at (7,11), avatar (8,11)
+# carry left along row 8 into socket
+for k in range(12):
+    if c.terminal(): break
+    av=cells(c)[0]
+    if av[1]<=2: break
+    before=av; c.step(LEFT)
+    if cells(c)[0]==before:
+        # blocked by courier; wait one step by moving box up/down? risky. try continue
+        c.step(LEFT)
+    print('k',k,'avatar',cells(c)[0])
+print('final avatar',cells(c)[0])
+f=np.asarray(c.frame())
+for r in range(24,40): print('%2d'%r,''.join('%X'%v for v in f[r,4:24]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+c.step(UP); c.step(USE)
+print('after grab boxes',sorted(cells(c)[2]),'4cnt',int((np.asarray(c.frame())==4).sum()),'0cnt',int((np.asarray(c.frame())==0).sum()))
+for k in range(4):
+    c.step(LEFT)
+print('after 4 LEFT avatar',cells(c)[0],'boxes',sorted(cells(c)[2]),'4cnt',int((np.asarray(c.frame())==4).sum()))
+f=np.asarray(c.frame())
+# where are color 0 (grabbed border) and any box
+for col in [0,3,4]:
+    ys,xs=np.where(f==col)
+    if len(ys): print('color',col,'bbox',(int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max())),'n',len(ys))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+ferry(c,(7,11),drop=(7,10))
+# park avatar far bottom-right
+for _ in range(4): c.step(RIGHT)
+for _ in range(3): c.step(DOWN)
+print('parked avatar',cells(c)[0],'budget',step_count_used(c))
+# watch socket cols8-15 rows24-39 each step, print when it changes
+prev=None
+for i in range(50):
+    if c.terminal(): break
+    f=np.asarray(c.frame())
+    sock=tuple(tuple(int(v) for v in f[r,8:16]) for r in range(24,40))
+    if sock!=prev:
+        print('--- step',i,'lvl',c.levels_completed)
+        for r in range(16): print(''.join('%X'%v for v in sock[r]))
+        prev=sock
+    # keep avatar parked wiggling
+    c.step(UP if i%2 else DOWN)
+" 2>&1 | head -60
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+# count boxes over a pure-yield run
+maxb=0
+c2=env_at_level5()
+for i in range(250):
+    if c2.terminal(): break
+    b=int((np.asarray(c2.frame())==4).sum())//12
+    maxb=max(maxb,b)
+    c2.step(USE)
+print('pure-yield max box count seen',maxb)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+import perception as P
+c=env_at_level5()
+maxb=0; series=[]
+for i in range(250):
+    if c.terminal(): break
+    f=np.asarray(c.frame())
+    # count proper boxes: 4x4 blocks border4 core9, exclude budget bar rows>=60
+    cnt=0
+    for R in range(15):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            if (blk==4).sum()==12 and (blk==9).sum()==4: cnt+=1
+    if i%25==0: series.append((i,cnt))
+    maxb=max(maxb,cnt)
+    c.step(USE)
+print('max proper boxes',maxb,'series',series)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+for box in [(7,11),(12,13),(14,11),(1,12),(2,14),(13,15)]:
+    if c.terminal(): break
+    ferry(c,box,drop=(7,10))
+print('all delivered budget',step_count_used(c),'rightboxes',[b for b in cells(c)[2] if b[1]>=10 and b[0]<15])
+# park avatar bottom-right far
+for a in [RIGHT,RIGHT,DOWN,DOWN]:
+    if not c.terminal(): c.step(a)
+for i in range(60):
+    if c.terminal(): print('terminal',i,'lvl',c.levels_completed); break
+    if c.levels_completed>4: print('WIN',i); break
+    av,head,boxes,cour,walls=cells(c)
+    f=np.asarray(c.frame()); n2=int((f==2).sum())
+    if i%5==0: print('i',i,'lvl',c.levels_completed,'cour',cour,'2cnt',n2,'rightboxes',[b for b in boxes if b[1]>=10 and b[0]<15])
+    c.step(UP if i%2 else DOWN)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+c=env_at_level5()
+# ferry (13,15) first from fresh state
+log=[]
+ok=ferry(c,(13,15),drop=(7,10),log=log)
+print('ferry (13,15) ok',ok,'steps',len(log),'budget',step_count_used(c),'avatar',cells(c)[0])
+print('rightboxes',[b for b in cells(c)[2] if b[1]>=10 and b[0]<15])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+for order in [
+  [(13,15),(12,13),(14,11),(2,14),(1,12),(7,11)],
+  [(2,14),(13,15),(1,12),(12,13),(14,11),(7,11)],
+  [(13,15),(2,14),(12,13),(1,12),(14,11),(7,11)],
+]:
+    c=env_at_level5()
+    oks=[]
+    for box in order:
+        if c.terminal(): break
+        oks.append(ferry(c,box,drop=(7,10)))
+    b_deliv=step_count_used(c)
+    rb=[x for x in cells(c)[2] if x[1]>=10 and x[0]<15]
+    # park + yield
+    for a in [RIGHT,RIGHT,DOWN,DOWN]:
+        if not c.terminal(): c.step(a)
+    won=False
+    for i in range(80):
+        if c.terminal(): break
+        if c.levels_completed>4: won=True; break
+        c.step(UP if i%2 else DOWN)
+    print('order0',order[0],'oks',oks,'deliv_budget',b_deliv,'rightleft',rb,'WON',won,'finalbudget',step_count_used(c),'lvl',c.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> ctrl.py <<'EOF'
+
+def right_boxes(c):
+    av,head,boxes,cour,walls=cells(c)
+    return [b for b in boxes if b[1]>=11 and b[0]<15]  # in right region proper (col>=11)
+
+def orchestrate(c, drops=((7,10),(8,10)), verbose=False):
+    while not c.terminal() and c.levels_completed<=4:
+        av,head,boxes,cour,walls=cells(c)
+        rb=[b for b in boxes if b[1]>=11 and b[0]<15]
+        at_drop=[d for d in drops if d in boxes]
+        if not rb and not at_drop:
+            break  # all delivered/seating
+        # find an empty drop
+        empty=[d for d in drops if d not in boxes and (cour is None or cour!=d)]
+        if rb and empty:
+            # ferry nearest box to nearest empty drop
+            av0=av
+            rb.sort(key=lambda b:abs(b[0]-av0[0])+abs(b[1]-av0[1]))
+            box=rb[0]
+            # choose drop closest to box
+            empty.sort(key=lambda d:abs(d[0]-box[0])+abs(d[1]-box[1]))
+            ok=ferry(c,box,drop=empty[0])
+            if verbose: print('ferried',box,'->',empty[0],'ok',ok,'budget',step_count_used(c))
+            if not ok:
+                # give courier time
+                for _ in range(3):
+                    if c.terminal(): break
+                    c.step(DOWN)
+        else:
+            # yield to let courier clear a drop; move avatar harmlessly away from drops
+            safe_yield(c,cap=1)
+    # final seating yield
+    for a in [RIGHT,RIGHT,DOWN,DOWN]:
+        if not c.terminal(): c.step(a)
+    for i in range(120):
+        if c.terminal() or c.levels_completed>4: break
+        c.step(UP if i%2 else DOWN)
+EOF
+python -c "
+from ctrl import *
+c=env_at_level5()
+orchestrate(c,verbose=True)
+print('FINAL lvl',c.levels_completed,'budget',step_count_used(c),'term',c.terminal())
+f=np.asarray(c.frame()); print('2cnt',int((f==2).sum()),'rightboxes',right_boxes(c))
+"
+Excellent! **WIN — level 5 reached!** The key was using two drop cells `(7,10),(8,10)` to avoid handoff congestion so all 6 boxes get seated within budget. Let me verify robustness, then encode as clean legs.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python -c "
+from ctrl import *
+# run 3 times (deterministic, but confirm)
+for t in range(3):
+    c=env_at_level5()
+    orchestrate(c)
+    print('trial',t,'lvl',c.levels_completed,'term',c.terminal())
+"
+Reliable. Now let me encode this as reusable legs and a clean `play_level_5`.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && sed -n '1,12p' legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean/legs.py
+Now append the courier-handoff ferry machinery as reusable legs:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> legs.py <<'EOF'
+
+
+# --- Courier-handoff ferry machinery (grid-of-4 cells) --------------------
+# Reusable skill for "sokoban/courier" levels (e.g. wa30 L5): the avatar is a
+# 4x4 mover (colour 14 body + colour 0 head) that GRABs a 4x4 box (4-border,
+# 9-core) by facing it and pressing USE, then translates it rigidly.  A helper
+# agent (courier, colour 12) patrols a corridor and seats boxes the avatar
+# leaves in its reach.  The win fires once every box is seated, so we shuttle
+# each box to a small set of handoff cells (kept un-congested by rotating drop
+# cells) and then yield turns for the courier to finish.
+
+def _cells(env, box_border=4, box_core=9, courier=12, wall=5, G=16):
+    """Coarse 16x16 cell view: avatar cell, head cell, box set, courier, walls."""
+    f = np.asarray(env.frame())
+    av = head = cour = None
+    ys, xs = np.where(f == 14)
+    if len(ys):
+        av = (int(ys.min()) // 4, int(xs.min()) // 4)
+    hy, hx = np.where(f == 0)
+    if len(hy):
+        head = (int(hy.min()) // 4, int(hx.min()) // 4)
+    cy, cx = np.where(f == courier)
+    if len(cy):
+        cour = (int(cy.min()) // 4, int(cx.min()) // 4)
+    boxes = set()
+    walls = set()
+    for R in range(G):
+        for C in range(G):
+            blk = f[R * 4:R * 4 + 4, C * 4:C * 4 + 4]
+            u = set(int(v) for v in np.unique(blk))
+            if box_core in u and (box_border in u or 3 in u) and len(u) <= 3:
+                boxes.add((R, C))
+            if int((blk == wall).sum()) >= 8:
+                walls.add((R, C))
+    return av, head, boxes, cour, walls
+
+
+def _bfs_path(start, goal, blocked, G=16):
+    if start == goal:
+        return []
+    q = deque([start])
+    prev = {start: None}
+    while q:
+        cur = q.popleft()
+        for a, (dr, dc) in _DIRS.items():
+            nb = (cur[0] + dr, cur[1] + dc)
+            if not (0 <= nb[0] < G and 0 <= nb[1] < G):
+                continue
+            if nb in prev:
+                continue
+            if nb in blocked and nb != goal:
+                continue
+            prev[nb] = (cur, a)
+            if nb == goal:
+                path = []
+                n = nb
+                while prev[n] is not None:
+                    p, act = prev[n]
+                    path.append(act)
+                    n = p
+                return path[::-1]
+            q.append(nb)
+    return None
+
+
+def _bfs_pair(start_av, offset, goal_av, blocked, G=16):
+    """Path for avatar so that avatar and box (avatar+offset) both stay clear."""
+    def ok(a):
+        b = (a[0] + offset[0], a[1] + offset[1])
+        if not (0 <= a[0] < G and 0 <= a[1] < G and 0 <= b[0] < G and 0 <= b[1] < G):
+            return False
+        return a not in blocked and b not in blocked
+    if start_av == goal_av:
+        return []
+    q = deque([start_av])
+    prev = {start_av: None}
+    while q:
+        cur = q.popleft()
+        for act, (dr, dc) in _DIRS.items():
+            nb = (cur[0] + dr, cur[1] + dc)
+            if nb in prev:
+                continue
+            if not ok(nb):
+                continue
+            prev[nb] = (cur, act)
+            if nb == goal_av:
+                path = []
+                n = nb
+                while prev[n] is not None:
+                    p, ac = prev[n]
+                    path.append(ac)
+                    n = p
+                return path[::-1]
+            q.append(nb)
+    return None
+
+
+def _nav_to(env, goal, cap=60):
+    """Drive the empty avatar to a cell, replanning each step (courier moves)."""
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        av, head, boxes, cour, walls = _cells(env)
+        if av == goal:
+            return True
+        blocked = set(walls) | set(boxes)
+        if cour:
+            blocked.add(cour)
+        blocked.discard(goal)
+        blocked.discard(av)
+        path = _bfs_path(av, goal, blocked)
+        if not path:
+            return False
+        env.step(path[0])
+    return _cells(env)[0] == goal
+
+
+def _carry_pair(env, offset, goal_av, cap=60):
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        av, head, boxes, cour, walls = _cells(env)
+        if av == goal_av:
+            return True
+        carried = (av[0] + offset[0], av[1] + offset[1])
+        blocked = set(walls)
+        for b in boxes:
+            if b != carried:
+                blocked.add(b)
+        if cour:
+            blocked.add(cour)
+        blocked.discard(goal_av)
+        blocked.discard(av)
+        path = _bfs_pair(av, offset, goal_av, blocked)
+        if not path:
+            return False
+        before = av
+        env.step(path[0])
+        if _cells(env)[0] == before:
+            continue  # transiently blocked by moving courier; retry
+    return _cells(env)[0] == goal_av
+
+
+def grab_and_deliver(env, box, drop):
+    """Grab the 4x4 box at cell ``box`` and rigidly carry it onto cell ``drop``."""
+    av, head, boxes, cour, walls = _cells(env)
+    if box not in boxes:
+        return False
+    blocked = set(walls) | (set(boxes) - {box})
+    if cour:
+        blocked.add(cour)
+    best = None
+    for act, (dr, dc) in _DIRS.items():
+        ac = (box[0] + dr, box[1] + dc)
+        if not (0 <= ac[0] < 16 and 0 <= ac[1] < 16) or ac in blocked:
+            continue
+        p = _bfs_path(av, ac, blocked)
+        if p is not None and (best is None or len(p) < best[0]):
+            best = (len(p), ac)
+    if best is None:
+        return False
+    ac = best[1]
+    if not _nav_to(env, ac):
+        return False
+    face = {(-1, 0): UP, (1, 0): DOWN, (0, -1): LEFT, (0, 1): RIGHT}[
+        (box[0] - ac[0], box[1] - ac[1])]
+    env.step(face)   # bump-face: sets facing, highlights box
+    env.step(USE)    # grab (border -> 0, box attaches rigidly)
+    av2 = _cells(env)[0]
+    offset = (box[0] - av2[0], box[1] - av2[1])
+    goal_av = (drop[0] - offset[0], drop[1] - offset[1])
+    if not _carry_pair(env, offset, goal_av):
+        env.step(USE)  # release wherever we ended up
+        return False
+    env.step(USE)      # release on the drop cell
+    return True
+
+
+def _park_and_wait(env, moves=(UP, DOWN), setup=(RIGHT, RIGHT, DOWN, DOWN), cap=120):
+    """Yield turns without grabbing: park clear of boxes, then wiggle in place."""
+    for a in setup:
+        if env.terminal() or env.levels_completed > _park_and_wait._base:
+            return
+        env.step(a)
+    for i in range(cap):
+        if env.terminal() or env.levels_completed > _park_and_wait._base:
+            return
+        env.step(moves[i % len(moves)])
+
+
+def ferry_all_to_courier_then_yield(env, drops=((7, 10), (8, 10)),
+                                    region_min_col=11, max_iters=60):
+    """Shuttle every free box to rotating handoff cells, then yield for the courier.
+
+    Rotating over several ``drops`` keeps the handoff un-congested so a single
+    courier can seat all boxes inside the step budget.  Generalises level 4's
+    "ferry a batch, then yield" to a self-pacing loop that reads the live frame.
+    """
+    _park_and_wait._base = env.levels_completed
+    for _ in range(max_iters):
+        if env.terminal() or env.levels_completed > _park_and_wait._base:
+            return
+        av, head, boxes, cour, walls = _cells(env)
+        free = [b for b in boxes if b[1] >= region_min_col and b[0] < 15]
+        at_drop = [d for d in drops if d in boxes]
+        if not free and not at_drop:
+            break  # everything is seated or in flight
+        empty = [d for d in drops if d not in boxes and d != cour]
+        if free and empty:
+            free.sort(key=lambda b: abs(b[0] - av[0]) + abs(b[1] - av[1]))
+            box = free[0]
+            empty.sort(key=lambda d: abs(d[0] - box[0]) + abs(d[1] - box[1]))
+            if not grab_and_deliver(env, box, empty[0]):
+                for _ in range(3):
+                    if env.terminal():
+                        return
+                    env.step(DOWN)
+        else:
+            # both drops busy: cede a turn so the courier can clear one
+            _yield_one(env)
+    _park_and_wait(env)
+
+
+def _yield_one(env):
+    av, head, boxes, cour, walls = _cells(env)
+    best = None
+    for a, (dr, dc) in _DIRS.items():
+        nb = (av[0] + dr, av[1] + dc)
+        if not (0 <= nb[0] < 16 and 0 <= nb[1] < 16):
+            continue
+        if nb in walls or nb in boxes or nb == cour:
+            continue
+        d = min([abs(nb[0] - b[0]) + abs(nb[1] - b[1]) for b in boxes], default=99)
+        if best is None or d > best[0]:
+            best = (d, a)
+    env.step(best[1] if best else UP)
+EOF
+echo appended
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python gkm_try.py 2>&1 | tail -5
+Level 5 reached and replay-validated (`levels=5 replay_ok=True`). Let me clean up scratch files and log the debrief.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && rm -f probe.py ctrl.py && cat >> legs_log.md <<'EOF'
+
+## wa30 level 5 (replay-validated; reaches LEVEL 5)
+
+Same courier-handoff world as L4, one level harder. Discovered by clone probing:
+
+- Avatar is a 4x4 mover: colour-14 body + colour-0 head (head marks facing).
+  Every action moves it exactly one 4-cell; USE grabs the box it faces
+  (border 4->3 when adjacent-highlighted, ->0 when grabbed) and the box then
+  translates rigidly with the avatar. The world lives on a 16x16 grid of 4x4
+  cells.
+- A vertical colour-5 wall (cell col 9) splits the map; a corridor gap at cell
+  rows 7-8 joins the right arena to a big colour-9/2 socket on the left.
+- ONE courier (colour 12) patrols the corridor, auto-fetches boxes from the
+  right and seats them in the socket. Six boxes; the win fires only when all
+  six are seated (socket coverage never reaches 0 -- 6 four-wide boxes can't
+  tile the offset 2-core -- so the goal is "all boxes delivered", not "socket
+  full").
+- Row-63 colour-7 bar is a hard step budget (~128 steps; ~0.5 cell/step).
+
+Key insight: a single courier round-trip (~16-22 steps) x6 barely fits the
+budget, and feeding ALL boxes to one handoff cell CONGESTS it (later ferries
+fail because the cell is still occupied). Rotating between TWO handoff cells
+(7,10) and (8,10) keeps the pickup point clear so the courier seats one per
+pass while the avatar keeps supplying -- all six land inside budget and the
+level completes.
+
+New legs (general "courier handoff" skill, grid-of-4 perception from frames):
+- `_cells` / `_bfs_path` / `_bfs_pair` / `_nav_to` / `_carry_pair` -- coarse
+  cell perception + obstacle-aware pathing (avatar alone, and avatar+carried
+  box as a rigid pair), replanned each step because the courier moves.
+- `grab_and_deliver(env, box, drop)` -- bump-face + USE grab, then rigidly
+  carry the box onto a target cell and USE release. The core box verb.
+- `ferry_all_to_courier_then_yield(env, drops=...)` -- self-pacing loop: while
+  boxes remain, ferry the nearest free box to the nearest EMPTY handoff cell
+  (rotating over `drops` to avoid congestion); if all drops are busy, cede a
+  turn so the courier clears one; finally park clear of the boxes and yield
+  until the level counter increments. This realises the debrief's predicted
+  higher-order leg "ferry a batch, then yield" as a live-frame controller.
+
+`play_level_5` is a single call to `ferry_all_to_courier_then_yield`.
+EOF
+echo logged
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python gkm_try.py 2>&1 | tail -3
+Done. Final verification confirms the goal is met: **`RESULT levels=5 moves=354 replay_ok=True err=None`**.
+
+## Summary
+
+Starting from level 4, I discovered level 5's mechanics entirely by clone experiments on top of `perception.py`, then wrote a `play_level_5` that only composes legs.
+
+**What level 5 is:** A harder version of the level-4 courier-handoff world.
+- The avatar is a 4×4 mover (colour-14 body + colour-0 head showing facing); each action moves it one 4-cell step, and `USE` grabs the box it faces so the box translates rigidly with it.
+- A colour-5 wall splits the map, with a corridor gap joining the right arena (6 boxes) to a large colour-9/2 socket on the left.
+- A **single** courier (colour 12) patrols the corridor and auto-seats boxes the avatar leaves in its reach. The win fires only when **all six** boxes are seated. A row-63 colour-7 bar is a hard ~128-step budget.
+
+**Key discovery:** One courier round-trip ×6 barely fits the budget, and dumping every box on *one* handoff cell congests it (later ferries fail). **Rotating between two handoff cells `(7,10)`/`(8,10)`** keeps the pickup clear so the courier seats one per pass while the avatar keeps supplying — all six land in time.
+
+**Legs added (general, source-free frame perception):**
+- `_cells`, `_bfs_path`, `_bfs_pair`, `_nav_to`, `_carry_pair` — coarse cell view + obstacle-aware pathing (avatar alone, and avatar+carried box as a rigid pair), replanned each step since the courier moves.
+- `grab_and_deliver(env, box, drop)` — the core grab/carry/release verb.
+- `ferry_all_to_courier_then_yield(env, drops=...)` — the self-pacing "ferry a batch, then yield" higher-order leg predicted in the debrief, now a live-frame controller.
+
+`play_level_5(env)` is a single call to `ferry_all_to_courier_then_yield`. Scratch probes removed; debrief logged in `legs_log.md`.

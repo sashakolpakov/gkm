@@ -1,0 +1,27 @@
+{
+  "game": "wa30",
+  "level": 6,
+  "phase": "reached_before_debrief",
+  "reached": 6,
+  "err": null,
+  "attempt": "reached_before_debrief_d5358f75e0ad",
+  "created_at": "2026-07-06T20:12:16.575771+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "bfs6.py",
+    "bfs_fast.py",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "macro.py",
+    "nav.py",
+    "perception.py",
+    "players.py",
+    "probe6.py",
+    "proposer_last.log",
+    "sim6.py",
+    "solve.py",
+    "tester.py"
+  ]
+}

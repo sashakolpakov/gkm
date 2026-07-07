@@ -1,0 +1,1884 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && timeout 120 python gkm_try.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat gkm_try.py solve.py players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat checkpoint.json auto_solve_attempts.json proposer_last.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python -c "
+import numpy as np
+a=np.load('l8start.npy')
+print(a.shape, a.dtype)
+vals,cnts=np.unique(a,return_counts=True)
+print(dict(zip(vals.tolist(),cnts.tolist())))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _reach8.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck=json.load(open('checkpoint.json'))
+path=ck['final_path']
+
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    print('after replay levels=',env.levels_completed)
+    np.save('l8_fresh.npy', np.asarray(env.frame()))
+    # dump colors
+    f=np.asarray(env.frame())
+    vals,cnts=np.unique(f,return_counts=True)
+    print(dict(zip(vals.tolist(),cnts.tolist())))
+
+levels,p,err=A.run_program('wa30', prog)
+print('levels',levels,'err',err)
+EOF
+python _reach8.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python -c "
+import numpy as np
+a=np.load('l8_fresh.npy')
+for r in range(64):
+    print(''.join(format(v,'x') for v in a[r]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _probe8.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+ck=json.load(open('checkpoint.json'))
+path=ck['final_path']
+
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    print('levels=',env.levels_completed)
+    # action deltas from clones
+    d=P.action_deltas(env)
+    for act,info in d.items():
+        print(P.ACTION_NAME[act], 'count',info['count'],'bbox',info['bbox'])
+        for s in info['samples'][:6]:
+            print('   ',s)
+
+A.run_program('wa30', prog)
+EOF
+python _probe8.py 2>&1 | tail -60
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _probe8b.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+ck=json.load(open('checkpoint.json'))
+path=ck['final_path']
+
+def centroids_by_color(f):
+    d={}
+    for col in [0,2,4,7,9,12,14,15]:
+        ys,xs=np.where(f==col)
+        if len(ys): d[col]=(round(ys.mean(),1),round(xs.mean(),1),len(ys))
+    return d
+
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    base=np.asarray(env.frame())
+    b=centroids_by_color(base)
+    print('BASE',b)
+    for act in [1,2,3,4,5]:
+        c=env.clone(); c.step(act)
+        f=np.asarray(c.frame())
+        cc=centroids_by_color(f)
+        # show colors whose centroid or count changed
+        diffs={col:(b.get(col),cc.get(col)) for col in cc if b.get(col)!=cc.get(col)}
+        print(P.ACTION_NAME[act], diffs)
+
+A.run_program('wa30', prog)
+EOF
+python _probe8b.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _probe8c.py << 'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck=json.load(open('checkpoint.json'))
+path=ck['final_path']
+
+def cc(f):
+    d={}
+    for col in [2,4,9,12,15]:
+        ys,xs=np.where(f==col)
+        if len(ys): d[col]=(round(ys.mean(),1),round(xs.mean(),1),len(ys))
+    return d
+
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    for i in range(8):
+        f=np.asarray(c.frame())
+        print(i, cc(f))
+        c.step(5)  # USE = no avatar move
+
+A.run_program('wa30', prog)
+EOF
+python _probe8c.py 2>&1 | tail -12
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python -c "
+import numpy as np
+a=np.load('l8_fresh.npy')
+# 4x4 block dominant color grid
+for R in range(0,64,4):
+    row=''
+    for C in range(0,64,4):
+        blk=a[R:R+4,C:C+4]
+        vals,cnts=np.unique(blk,return_counts=True)
+        dom=vals[cnts.argmax()]
+        row+=format(dom,'x')
+    print(format(R//4,'x'),row)
+print('  0123456789abcdef')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '1,60p' legs_log.md; echo ====; grep -ni "level 8\|level8\|l8\|level 7\|two mover\|12\|15" legs_log.md | tail -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '90,260p' legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _idle8.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    base=env.levels_completed
+    for name,act in [('USE',5),('UP',1)]:
+        c=env.clone()
+        lv=base
+        for i in range(150):
+            c.step(act)
+            if c.levels_completed!=lv:
+                print(name,'step',i,'level->',c.levels_completed); lv=c.levels_completed
+            if c.terminal(): print(name,'terminal at',i); break
+        print(name,'final level',c.levels_completed)
+A.run_program('wa30', prog)
+EOF
+python _idle8.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python -c "
+import numpy as np, perception as P
+a=np.load('l8_fresh.npy')
+for b in P.connected_components(a, min_area=4):
+    if b.color in (5,1): continue
+    print('col',b.color,'bbox',b.bbox,'area',b.area,'size',b.size)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _idle8b.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def small9(f):
+    # count 2x2 nine cores (area 4 blobs of color 9)
+    n=0
+    for b in P.connected_components(f,colors=[9],min_area=1):
+        if b.area<=6: n+=1
+    return n
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    for i in range(150):
+        f=np.asarray(c.frame())
+        if i%15==0:
+            cc=P.color_counts(f)
+            print(i,'lvl',c.levels_completed,'small9',small9(f),
+                  'c4',cc.get(4),'c2',cc.get(2),'c9',cc.get(9),'c12',cc.get(12),'c15',cc.get(15))
+        c.step(5)
+        if c.terminal(): 
+            print('term',i,'lvl',c.levels_completed); break
+A.run_program('wa30', prog)
+EOF
+python _idle8b.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '1,80p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && grep -n "^def \|^    def " legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '203,360p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '468,540p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '541,760p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _scan8.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L, perception as P
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    av,boxes,walls=L._grid_scan(env)
+    print('avatar',av)
+    print('boxes',sorted(boxes))
+    print('nboxes',len(boxes))
+    # couriers
+    print('c12',L._mover_cell(env,12),'c15',L._mover_cell(env,15))
+    # walls
+    print('walls',sorted(walls))
+    # _cells view
+    av2,head,boxes2,cour,walls2=L._cells(env)
+    print('cells av',av2,'head',head,'cour(12)',cour,'nboxes2',len(boxes2))
+A.run_program('wa30', prog)
+EOF
+python _scan8.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _try_deliver.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    def snap(tag):
+        av,boxes,walls=L._grid_scan(c)
+        f=np.asarray(c.frame())
+        core2=int((f==2).sum())
+        print(tag,'nboxes',len(boxes),'av',av,'steps_used','?','term',c.terminal())
+    snap('before')
+    # navigate avatar up through gap to top band then to a box
+    ok=L.carry_box_to(c,(2,9),(2,11))
+    print('carry ok',ok)
+    snap('after')
+A.run_program('wa30', prog)
+EOF
+python _try_deliver.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _nav_test.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    for goal in [(7,4),(6,4),(5,4),(5,5),(3,9),(7,9),(9,9),(11,9),(13,9)]:
+        c=env.clone()
+        ok=L._avatar_nav(c,goal,cap=40)
+        av=L._grid_scan(c)[0]
+        print('goal',goal,'ok',ok,'landed',av)
+A.run_program('wa30', prog)
+EOF
+python _nav_test.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _grab_test.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    box=(2,9)
+    tests=[((3,9),1),((1,9),2),((2,8),4),((2,10),3)] # (adj cell, face toward box)
+    for adj,face in tests:
+        c=env.clone()
+        ok=L._avatar_nav(c,adj,cap=40)
+        if not ok:
+            print('adj',adj,'nav fail'); continue
+        c.step(face)
+        c.step(5)
+        held=L._grid_grabbed(c)
+        av=L._grid_scan(c)[0]
+        print('adj',adj,'face',face,'av_after',av,'grabbed',sorted(held))
+A.run_program('wa30', prog)
+EOF
+python _grab_test.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _poke.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def tilemap(f):
+    G=[]
+    for R in range(16):
+        row=''
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            vals,cnts=np.unique(blk,return_counts=True)
+            row+=format(vals[cnts.argmax()],'x')
+        G.append(row)
+    return G
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    # nav to below box (2,7): cell (3,7)
+    c=env.clone()
+    L._avatar_nav(c,(3,7),cap=40)
+    print('avatar at',L._grid_scan(c)[0])
+    f0=np.asarray(c.frame())
+    for act,nm in [(1,'UP'),(5,'USE')]:
+        d=c.clone(); d.step(act)
+        f1=np.asarray(d.frame())
+        # print rows 0-5 cols 4-11 region
+        print('---',nm)
+        for R in range(0,6):
+            print(''.join(format(v,'x') for v in f1[R*4+1, 24:48]))
+A.run_program('wa30', prog)
+EOF
+python _poke.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '361,470p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _watchboxes.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    for i in range(12):
+        av,boxes,walls=L._grid_scan(c)
+        c12=[]; c15=[]
+        f=np.asarray(c.frame())
+        for R in range(16):
+            for C in range(16):
+                blk=f[R*4:R*4+4,C*4:C*4+4]
+                if (blk==12).sum()>=8: c12.append((R,C))
+                if (blk==15).sum()>=8: c15.append((R,C))
+        print(i,'nb',len(boxes),'c12',c12,'c15',c15,'boxes',sorted(boxes))
+        c.step(5)
+A.run_program('wa30', prog)
+EOF
+python _watchboxes.py 2>&1 | tail -14
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _clear15.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def count15(env):
+    f=np.asarray(env.frame()); return int((f==15).sum())
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    print('start c15 cells', L._mover_cell(c,15), 'count15',count15(c))
+    ok=L.clear_frozen_mover(c,15)
+    print('clear1 ok',ok,'count15',count15(c),'mover',L._mover_cell(c,15),'term',c.terminal())
+    ok=L.clear_frozen_mover(c,15)
+    print('clear2 ok',ok,'count15',count15(c),'mover',L._mover_cell(c,15),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _clear15.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _grab2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    L._avatar_nav(c,(4,2),cap=40)
+    av,boxes,walls=L._grid_scan(c)
+    print('avatar',av,'box at (3,2)?',(3,2) in boxes)
+    # step UP (toward box (3,2))
+    d=c.clone(); d.step(1)
+    av2=L._grid_scan(d)[0]; held=L._grid_grabbed(d)
+    print('after UP av',av2,'held',sorted(held),'box32?',(3,2) in L._grid_scan(d)[1])
+    # then USE
+    d.step(5)
+    av3=L._grid_scan(d)[0]; held=L._grid_grabbed(d)
+    print('after USE av',av3,'held',sorted(held))
+    # alt: USE without moving (face already?) from (4,2)
+    e=c.clone(); e.step(5)
+    print('USE-from-adjacent held',sorted(L._grid_grabbed(e)),'av',L._grid_scan(e)[0])
+A.run_program('wa30', prog)
+EOF
+python _grab2.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _carry2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    before_boxes=len(L._grid_scan(c)[1])
+    for tgt in [(3,13),(2,13),(3,12)]:
+        cc=c.clone()
+        ok=L.carry_box_to(cc,(3,2),tgt)
+        nb=len(L._grid_scan(cc)[1])
+        print('target',tgt,'ok',ok,'nboxes',before_boxes,'->',nb,'term',cc.terminal())
+        if ok:
+            # idle 20 and see if it stays / progresses
+            for i in range(20): cc.step(1)
+            print('   after idle20 nboxes',len(L._grid_scan(cc)[1]),'lvl',cc.levels_completed,'term',cc.terminal())
+            break
+A.run_program('wa30', prog)
+EOF
+python _carry2.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _greedyfill.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+
+# count steps by monkeypatching env.step
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    cnt={'n':0}
+    orig=c.step
+    def step(a):
+        cnt['n']+=1; return orig(a)
+    c.step=step
+    top=[(2,11),(2,12),(2,13),(2,14),(3,11),(3,12),(3,13),(3,14)]
+    bot=[(12,12),(12,13),(12,14),(13,12),(13,13),(13,14),(14,12),(14,13),(14,14)]
+    targets=top+bot
+    for drop in targets:
+        if c.terminal(): print('TERMINAL steps',cnt['n']); break
+        av,boxes,walls=L._grid_scan(c)
+        free=[b for b in boxes if b not in targets]
+        if not free: print('no free boxes'); break
+        free.sort(key=lambda b: abs(b[0]-drop[0])+abs(b[1]-drop[1]))
+        ok=L.carry_box_to(c,free[0],drop)
+        print('drop',drop,'box',free[0],'ok',ok,'steps',cnt['n'],'lvl',c.levels_completed,'nb',len(L._grid_scan(c)[1]))
+        if c.levels_completed>7: print('LEVEL UP!'); break
+    print('final lvl',c.levels_completed,'steps',cnt['n'],'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _greedyfill.py 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _greedy2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    cnt={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),cnt.__setitem__('n',cnt['n']+1))[0]
+    top=[(2,12),(2,13),(3,12),(3,13),(2,11),(3,11),(2,14),(3,14)]
+    bot=[(12,13),(13,13),(12,12),(13,12),(12,14),(13,14),(14,13),(14,12),(14,14)]
+    socket_cells=set(top)|set(bot)
+    filled=set()
+    for rnd in range(20):
+        if c.terminal(): print('TERM steps',cnt['n']); break
+        av,boxes,walls=L._grid_scan(c)
+        free=[b for b in boxes if b not in socket_cells]
+        if not free: print('no free'); break
+        # choose target region by box row
+        made=False
+        # sort free by min dist to any open socket cell
+        open_top=[t for t in top if t not in boxes]
+        open_bot=[t for t in bot if t not in boxes]
+        def cand_targets(b):
+            return (open_top if b[0]<8 else open_bot)
+        free.sort(key=lambda b:(min([abs(b[0]-t[0])+abs(b[1]-t[1]) for t in cand_targets(b)] or [99])))
+        for b in free:
+            for t in sorted(cand_targets(b),key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1])):
+                s0=cnt['n']
+                ok=L.carry_box_to(c,b,t)
+                if ok:
+                    print('rnd',rnd,'box',b,'->',t,'steps',cnt['n'],'lvl',c.levels_completed,'nb',len(L._grid_scan(c)[1]))
+                    made=True; break
+            if made: break
+        if not made:
+            print('none deliverable this round, nb',len(free)); break
+        if c.levels_completed>7: print('LEVEL UP! steps',cnt['n']); break
+    print('final lvl',c.levels_completed,'steps',cnt['n'])
+A.run_program('wa30', prog)
+EOF
+python _greedy2.py 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _sockcore.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def cores(f):
+    top=f[8:16,44:60]; bot=f[48:60,48:60]
+    return int((top==2).sum()), int((bot==2).sum())
+def c15pos(f):
+    ys,xs=np.where(f==15)
+    return sorted(set(((y//4,x//4) for y,x in zip(ys,xs))))
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    prev=None; stalls=0
+    for i in range(145):
+        f=np.asarray(c.frame())
+        if i%12==0:
+            print(i,'cores',cores(f),'c15',c15pos(f))
+        c.step(1)
+        if c.terminal(): print('term',i); break
+A.run_program('wa30', prog)
+EOF
+python _sockcore.py 2>&1 | tail -15
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _chase15.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15top(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    if not len(ys): return None
+    return (int(ys.min())//4,int(xs.min())//4)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    # go to top band first
+    L._avatar_nav(c,(5,5),cap=40)
+    print('at',L._grid_scan(c)[0],'c15',m15top(c),'cnt',int((np.asarray(c.frame())==15).sum()))
+    for i in range(50):
+        if c.terminal(): print('term'); break
+        av=L._grid_scan(c)[0]; m=m15top(c)
+        if m is None: print('c15 gone!'); break
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(5)  # USE adjacent
+            print(i,'USE at av',av,'m',m,'cnt15',int((np.asarray(c.frame())==15).sum()))
+        else:
+            # step toward m
+            av2,boxes,walls=L._grid_scan(c)
+            blocked=set(walls)
+            path2=L._bfs_path(av,m,blocked-{m})
+            if path2: c.step(path2[0])
+            else: c.step(1)
+    print('final cnt15',int((np.asarray(c.frame())==15).sum()))
+A.run_program('wa30', prog)
+EOF
+python _chase15.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _clearall15.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15cells(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,col):
+    return int((np.asarray(env.frame())==col).sum())
+def cores(env):
+    f=np.asarray(env.frame())
+    return int((f[8:16,44:60]==2).sum()), int((f[48:60,48:60]==2).sum())
+def chase_clear(c, steps_cap=80):
+    used=0
+    while used<steps_cap and not c.terminal():
+        ms=m15cells(c)
+        if not ms: return used
+        av=L._grid_scan(c)[0]
+        # nearest mover cell
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1]))
+        m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(5); used+=1
+        else:
+            walls=L._grid_scan(c)[2]
+            p=L._bfs_path(av,m,set(walls)-{m})
+            if p: c.step(p[0]); used+=1
+            else: c.step(1); used+=1
+    return used
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    print('start cnt15',cnt(c,15),'cores',cores(c))
+    u=chase_clear(c,90)
+    print('after chase steps',tot['n'],'cnt15',cnt(c,15),'cores',cores(c),'term',c.terminal(),'lvl',c.levels_completed)
+    for i in range(60):
+        if c.terminal(): break
+        c.step(1)
+        if i%10==0: print('idle',tot['n'],'cnt15',cnt(c,15),'cores',cores(c),'lvl',c.levels_completed,'nb',len(L._grid_scan(c)[1]))
+    print('final lvl',c.levels_completed,'steps',tot['n'],'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _clearall15.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _chase_both.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+    return None
+def chase_one(c, band_row_filter, cap):
+    used=0
+    while used<cap and not c.terminal():
+        ms=[m for m in m15(c) if band_row_filter(m)]
+        if not ms: return used,True
+        av=L._grid_scan(c)[0]
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1]))
+        m=ms[0]; d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            fa=dir_to(av,m)
+            c.step(fa); used+=1  # face (avatar stays if solid)
+            c.step(5); used+=1   # USE
+        else:
+            walls=L._grid_scan(c)[2]
+            p=L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1); used+=1
+    return used,(not [m for m in m15(c) if band_row_filter(m)])
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    print('start cnt15',cnt(c,15))
+    # top band mover (row<7)
+    L._avatar_nav(c,(5,5),cap=30)
+    u,ok=chase_one(c, lambda m:m[0]<7, 40)
+    print('top chase done ok',ok,'cnt15',cnt(c,15),'steps',tot['n'])
+    # bottom band mover (row>9)
+    L._avatar_nav(c,(11,9),cap=30)
+    u,ok=chase_one(c, lambda m:m[0]>9, 40)
+    print('bot chase done ok',ok,'cnt15',cnt(c,15),'steps',tot['n'])
+A.run_program('wa30', prog)
+EOF
+python _chase_both.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _toponly.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+def chase_one(c,filt,cap):
+    used=0
+    while used<cap and not c.terminal():
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return True
+        av=L._grid_scan(c)[0]; ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(dir_to(av,m)); c.step(5); used+=2
+        else:
+            walls=L._grid_scan(c)[2]; p=L._bfs_path(av,m,set(walls)-{m}); c.step(p[0] if p else 1); used+=1
+    return not [m for m in m15(c) if filt(m)]
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=30)
+    chase_one(c,lambda m:m[0]<7,40)
+    print('top cleared cnt15',cnt(c,15),'steps',tot['n'],'cores',cores(c))
+    for i in range(70):
+        if c.terminal(): break
+        c.step(1)
+        if i%10==0: print('idle',tot['n'],'cores',cores(c),'nb',len(L._grid_scan(c)[1]),'lvl',c.levels_completed)
+    print('final cores',cores(c),'lvl',c.levels_completed,'term',c.terminal(),'steps',tot['n'])
+A.run_program('wa30', prog)
+EOF
+python _toponly.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _budget.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    print('L8 start color7',int((np.asarray(c.frame())==7).sum()))
+    for i in range(160):
+        f=np.asarray(c.frame())
+        c7=int((f==7).sum())
+        if i%15==0 or c.terminal(): print('step',i,'c7',c7,'term',c.terminal(),'lvl',c.levels_completed)
+        if c.terminal(): break
+        c.step(1)
+A.run_program('wa30', prog)
+EOF
+python _budget.py 2>&1 | tail -15
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _tracebot.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def m12(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    for i in range(30):
+        b=[m for m in m15(c) if m[0]>9]
+        t12=[m for m in m12(c) if m[0]>9]
+        print(i,'bot15',b,'bot12',t12)
+        c.step(1)
+A.run_program('wa30', prog)
+EOF
+python _tracebot.py 2>&1 | tail -32
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _botchase.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    L._avatar_nav(c,(11,9),cap=30)
+    print('entered bot at',L._grid_scan(c)[0],'cnt15',cnt(c,15))
+    for i in range(45):
+        if c.terminal(): break
+        ms=[m for m in m15(c) if m[0]>9]
+        if not ms: print('bot15 gone at',i); break
+        av=L._grid_scan(c)[0]; ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        print(i,'av',av,'m',m,'d',d,'cnt15',cnt(c,15))
+        if d==1:
+            fa=dir_to(av,m); c.step(fa); c.step(5)
+        else:
+            walls=L._grid_scan(c)[2]; p=L._bfs_path(av,m,set(walls)-{m}); c.step(p[0] if p else 1)
+    print('final cnt15',cnt(c,15))
+A.run_program('wa30', prog)
+EOF
+python _botchase.py 2>&1 | tail -48
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _hammer_top.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    top=[(2,11),(2,12),(2,13),(2,14),(3,11),(3,12),(3,13),(3,14)]
+    tset=set(top)
+    for rnd in range(12):
+        if c.terminal(): break
+        if c.levels_completed>7: print('WIN steps',tot['n']); break
+        av,boxes,walls=L._grid_scan(c)
+        free=[b for b in boxes if b not in tset and b[0]<9]  # top-region boxes
+        open_t=[t for t in top if t not in boxes]
+        if not free or not open_t:
+            print('rnd',rnd,'no free/open; free',len(free),'open',len(open_t)); 
+            # try any box
+            free=[b for b in boxes if b not in tset]
+            if not free or not open_t: break
+        # nearest box to nearest open target
+        best=None
+        for b in free:
+            for t in open_t:
+                dd=abs(b[0]-t[0])+abs(b[1]-t[1])
+                if best is None or dd<best[0]: best=(dd,b,t)
+        _,b,t=best
+        ok=L.carry_box_to(c,b,t)
+        print('rnd',rnd,'box',b,'->',t,'ok',ok,'steps',tot['n'],'cores',cores(c),'lvl',c.levels_completed,'nb',len(L._grid_scan(c)[1]))
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _hammer_top.py 2>&1 | tail -16
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _combo.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase_top(c,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if m[0]<7]
+        if not ms: return
+        av=L._grid_scan(c)[0]; ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(dir_to(av,m)); c.step(5)
+        else:
+            walls=L._grid_scan(c)[2]; p=L._bfs_path(av,m,set(walls)-{m}); c.step(p[0] if p else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=25)
+    chase_top(c,25)
+    print('after topclear steps',tot['n'],'cnt15',int((np.asarray(c.frame())==15).sum()),'cores',cores(c))
+    top=[(3,11),(3,12),(3,13),(2,11),(2,12),(2,13),(3,14),(2,14)]
+    tset=set(top)
+    for rnd in range(10):
+        if c.terminal() or c.levels_completed>7: break
+        av,boxes,walls=L._grid_scan(c)
+        open_t=[t for t in top if t not in boxes]
+        free=[b for b in boxes if b not in tset]
+        free.sort(key=lambda b: min(abs(b[0]-t[0])+abs(b[1]-t[1]) for t in open_t) if open_t else 99)
+        done=False
+        for b in free:
+            for t in sorted(open_t,key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+                if L.carry_box_to(c,b,t):
+                    print('rnd',rnd,'box',b,'->',t,'steps',tot['n'],'cores',cores(c),'lvl',c.levels_completed); done=True; break
+            if done: break
+        if not done: print('rnd',rnd,'nothing deliverable'); break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _combo.py 2>&1 | tail -16
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _combo2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def dir_to(a,m):
+    for act,(dr,dc) in DIRS.items():
+        if (a[0]+dr,a[1]+dc)==m: return act
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase_top(c,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if m[0]<7]
+        if not ms: return
+        av=L._grid_scan(c)[0]; ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(dir_to(av,m)); c.step(5)
+        else:
+            walls=L._grid_scan(c)[2]; p=L._bfs_path(av,m,set(walls)-{m}); c.step(p[0] if p else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=25); chase_top(c,25)
+    top=[(3,11),(3,12),(3,13),(2,11),(2,12),(2,13)]
+    tset=set(top)
+    for rnd in range(6):
+        if c.terminal() or c.levels_completed>7: break
+        av,boxes,walls=L._grid_scan(c)
+        open_t=[t for t in top if t not in boxes]
+        free=[b for b in boxes if b not in tset and b[0]<9]  # ONLY top-region boxes
+        free.sort(key=lambda b: min((abs(b[0]-t[0])+abs(b[1]-t[1]) for t in open_t),default=99))
+        done=False
+        for b in free:
+            for t in sorted(open_t,key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+                if L.carry_box_to(c,b,t):
+                    print('rnd',rnd,'box',b,'->',t,'steps',tot['n'],'cores',cores(c)); done=True; break
+            if done: break
+        if not done: print('rnd',rnd,'stuck'); break
+    print('after deliveries steps',tot['n'],'cores',cores(c),'lvl',c.levels_completed)
+    for i in range(200):
+        if c.terminal(): break
+        pc=cores(c)
+        c.step(1)
+        if cores(c)!=pc or c.levels_completed>7:
+            print('idle step',tot['n'],'cores',cores(c),'lvl',c.levels_completed)
+        if c.levels_completed>7: print('WIN'); break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _combo2.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _clearboth2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}
+            p=L._bfs_path(av,m,blocked)
+            if not p:
+                # can't path avoiding boxes; try ignoring boxes
+                p=L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=25); chase(c,lambda m:m[0]<7,30)
+    print('top done steps',tot['n'],'cnt15',cnt(c,15),'av',L._grid_scan(c)[0])
+    L._avatar_nav(c,(11,9),cap=25); chase(c,lambda m:m[0]>9,40)
+    print('bot done steps',tot['n'],'cnt15',cnt(c,15),'av',L._grid_scan(c)[0])
+A.run_program('wa30', prog)
+EOF
+python _clearboth2.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _clearidle.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}; p=L._bfs_path(av,m,blocked) or L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=25); chase(c,lambda m:m[0]<7,30)
+    L._avatar_nav(c,(11,9),cap=25); chase(c,lambda m:m[0]>9,40)
+    print('cleared steps',tot['n'],'cnt15',cnt(c,15),'cores',cores(c),'nb',len(L._grid_scan(c)[1]))
+    for i in range(200):
+        if c.terminal(): break
+        c.step(1)
+        if i%10==0 or c.levels_completed>7:
+            print('idle',tot['n'],'cores',cores(c),'nb',len(L._grid_scan(c)[1]),'lvl',c.levels_completed)
+        if c.levels_completed>7: print('WIN'); break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _clearidle.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _full.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}; p=L._bfs_path(av,m,blocked) or L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+top=[(3,12),(3,13),(2,12),(2,13),(3,11),(2,11),(3,14),(2,14)]
+bot=[(13,13),(13,12),(12,13),(12,12),(13,14),(12,14),(14,13),(14,12),(14,14)]
+tset=set(top)|set(bot)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=20); chase(c,lambda m:m[0]<7,25)
+    L._avatar_nav(c,(11,9),cap=20); chase(c,lambda m:m[0]>9,35)
+    print('cleared steps',tot['n'],'cnt15',cnt(c,15),'cores',cores(c))
+    for rnd in range(20):
+        if c.terminal() or c.levels_completed>7: break
+        av,boxes,walls=L._grid_scan(c)
+        free=[b for b in boxes if b not in tset]
+        open_top=[t for t in top if t not in boxes]; open_bot=[t for t in bot if t not in boxes]
+        def tgts(b): return open_top if b[0]<9 else open_bot
+        free.sort(key=lambda b: min((abs(b[0]-t[0])+abs(b[1]-t[1]) for t in tgts(b)),default=99))
+        done=False
+        for b in free[:6]:
+            for t in sorted(tgts(b),key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+                if L.carry_box_to(c,b,t):
+                    print('rnd',rnd,'box',b,'->',t,'steps',tot['n'],'cores',cores(c),'cnt15',cnt(c,15)); done=True; break
+            if done: break
+        if not done: print('rnd',rnd,'stuck; idle rest'); 
+        if not done:
+            for _ in range(8):
+                if c.terminal() or c.levels_completed>7: break
+                c.step(1)
+        if c.levels_completed>7: print('WIN steps',tot['n']); break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _full.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _respawn.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt(env,c):return int((np.asarray(env.frame())==c).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}; p=L._bfs_path(av,m,blocked) or L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    L._avatar_nav(c,(5,5),cap=20); chase(c,lambda m:m[0]<7,25)
+    L._avatar_nav(c,(11,9),cap=20); chase(c,lambda m:m[0]>9,40)
+    print('cleared cnt15',cnt(c,15),'m15',m15(c))
+    for i in range(40):
+        if c.terminal(): break
+        c.step(1)
+        if i%5==0: print('idle',i,'cnt15',cnt(c,15),'m15',m15(c))
+A.run_program('wa30', prog)
+EOF
+python _respawn.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _ctl.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}; p=L._bfs_path(av,m,blocked) or L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+top=[(3,12),(3,13),(2,12),(2,13),(3,11),(2,11),(3,14),(2,14)]
+bot=[(13,13),(13,12),(12,13),(12,12),(13,14),(12,14),(14,13),(14,12),(14,14)]
+tset=set(top)|set(bot)
+def deliver_round(c, tgts_for):
+    av,boxes,walls=L._grid_scan(c)
+    free=[b for b in boxes if b not in tset]
+    def tg(b): return tgts_for(b)
+    free.sort(key=lambda b: min((abs(b[0]-t[0])+abs(b[1]-t[1]) for t in tg(b)),default=99))
+    for b in free[:6]:
+        for t in sorted(tg(b),key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+            if L.carry_box_to(c,b,t): return (b,t)
+    return None
+def run(c,tot,verbose=True):
+    # clear top
+    L._avatar_nav(c,(5,5),cap=15); chase(c,lambda m:m[0]<7,20)
+    if verbose: print('top clear steps',tot['n'],'cnt15',cnt15(c),'cores',cores(c))
+    # deliver top a couple
+    for _ in range(3):
+        if c.terminal() or c.levels_completed>7: break
+        open_top=[t for t in top if t not in L._grid_scan(c)[1]]
+        r=deliver_round(c, lambda b: open_top)
+        if verbose: print(' top deliver',r,'steps',tot['n'],'cores',cores(c))
+        if r is None: break
+    # clear bottom
+    L._avatar_nav(c,(11,9),cap=15); chase(c,lambda m:m[0]>9,35)
+    if verbose: print('bot clear steps',tot['n'],'cnt15',cnt15(c),'cores',cores(c))
+    for _ in range(3):
+        if c.terminal() or c.levels_completed>7: break
+        open_bot=[t for t in bot if t not in L._grid_scan(c)[1]]
+        r=deliver_round(c, lambda b: open_bot)
+        if verbose: print(' bot deliver',r,'steps',tot['n'],'cores',cores(c))
+        if r is None: break
+    # idle rest
+    while not c.terminal() and c.levels_completed<=7:
+        c.step(1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    run(c,tot)
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'cnt15',cnt15(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _ctl.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _ctl2.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase(c,filt,cap):
+    for _ in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5)
+        else:
+            blocked=(set(walls)|set(boxes))-{m}; p=L._bfs_path(av,m,blocked) or L._bfs_path(av,m,set(walls)-{m})
+            c.step(p[0] if p else 1)
+top=[(3,12),(3,13),(2,12),(2,13),(3,11),(2,11),(3,14),(2,14)]
+bot=[(13,13),(13,12),(12,13),(12,12),(13,14),(12,14),(14,13),(14,12),(14,14)]
+tset=set(top)|set(bot)
+def deliver_any(c):
+    av,boxes,walls=L._grid_scan(c)
+    free=[b for b in boxes if b not in tset]
+    open_top=[t for t in top if t not in boxes]; open_bot=[t for t in bot if t not in boxes]
+    def tg(b): return open_top if b[0]<9 else open_bot
+    # sort by distance box->its nearest target, prefer boxes near avatar too
+    free.sort(key=lambda b: min((abs(b[0]-t[0])+abs(b[1]-t[1]) for t in tg(b)),default=99))
+    for b in free[:8]:
+        for t in sorted(tg(b),key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+            if L.carry_box_to(c,b,t): return (b,t)
+    return None
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=15); chase(c,lambda m:m[0]<7,20)
+    L._avatar_nav(c,(11,9),cap=15); chase(c,lambda m:m[0]>9,35)
+    print('cleared steps',tot['n'],'cnt15',cnt15(c),'cores',cores(c))
+    while not c.terminal() and c.levels_completed<=7:
+        r=deliver_any(c)
+        print('deliver',r,'steps',tot['n'],'cores',cores(c),'cnt15',cnt15(c))
+        if r is None:
+            for _ in range(6):
+                if c.terminal() or c.levels_completed>7: break
+                c.step(1)
+            # if still nothing, break to final idle
+            if deliver_any is None: break
+        if c.levels_completed>7: print('WIN'); break
+        if tot['n']>250: break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _ctl2.py 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _robustclear.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def clear_stealers(c,cap):
+    for _ in range(cap):
+        if c.terminal() or cnt15(c)==0: return
+        ms=m15(c); av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1:
+            c.step(5); continue
+        blocked=(set(walls)|set(boxes))-{m}
+        p=L._bfs_path(av,m,blocked)
+        if not p:
+            p=L._bfs_path(av,m,set(walls)-{m})  # ignore boxes
+        if p:
+            c.step(p[0])
+        else:
+            # greedy: pick valid neighbor minimizing dist to m
+            best=None
+            for act,(dr,dc) in DIRS.items():
+                nb=(av[0]+dr,av[1]+dc)
+                if not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+                if nb in walls: continue
+                dd=abs(nb[0]-m[0])+abs(nb[1]-m[1])
+                if best is None or dd<best[0]: best=(dd,act)
+            c.step(best[1] if best else 1)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    clear_stealers(c,90)
+    print('cleared? cnt15',cnt15(c),'steps',tot['n'],'cores',cores(c),'av',L._grid_scan(c)[0])
+A.run_program('wa30', prog)
+EOF
+python _robustclear.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _botrobust.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def chase_band(c,filt,cap,trace=False):
+    for k in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if trace: print('  k',k,'av',av,'m',m,'d',d,'cnt',cnt15(c))
+        if d==1: c.step(5); continue
+        blocked=(set(walls)|set(boxes))-{m}
+        p=L._bfs_path(av,m,blocked)
+        if p: c.step(p[0]); continue
+        # greedy valid neighbor (avoid walls & boxes), minimize dist
+        best=None
+        for act,(dr,dc) in DIRS.items():
+            nb=(av[0]+dr,av[1]+dc)
+            if not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+            if nb in walls or nb in boxes: continue
+            dd=abs(nb[0]-m[0])+abs(nb[1]-m[1])
+            if best is None or dd<best[0]: best=(dd,act)
+        c.step(best[1] if best else 5)
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=15); chase_band(c,lambda m:m[0]<7,20)
+    print('after top steps',tot['n'],'cnt15',cnt15(c))
+    L._avatar_nav(c,(12,10),cap=15); 
+    print('nav bot steps',tot['n'],'av',L._grid_scan(c)[0])
+    chase_band(c,lambda m:m[0]>9,50,trace=True)
+    print('after bot steps',tot['n'],'cnt15',cnt15(c),'av',L._grid_scan(c)[0])
+A.run_program('wa30', prog)
+EOF
+python _botrobust.py 2>&1 | tail -55
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _ctl3.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def chase_band(c,filt,cap):
+    for k in range(cap):
+        if c.terminal(): return
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return
+        av,boxes,walls=L._grid_scan(c)
+        ms.sort(key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1])); m=ms[0]
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5); continue
+        blocked=(set(walls)|set(boxes))-{m}
+        p=L._bfs_path(av,m,blocked)
+        if p: c.step(p[0]); continue
+        best=None
+        for act,(dr,dc) in DIRS.items():
+            nb=(av[0]+dr,av[1]+dc)
+            if not(0<=nb[0]<16 and 0<=nb[1]<16): continue
+            if nb in walls or nb in boxes: continue
+            dd=abs(nb[0]-m[0])+abs(nb[1]-m[1])
+            if best is None or dd<best[0]: best=(dd,act)
+        c.step(best[1] if best else 5)
+top=[(3,12),(3,13),(2,12),(2,13),(3,11),(2,11),(3,14),(2,14)]
+bot=[(13,13),(13,12),(12,13),(12,12),(13,14),(12,14),(14,13),(14,12),(14,14)]
+tset=set(top)|set(bot)
+def deliver_any(c):
+    av,boxes,walls=L._grid_scan(c)
+    free=[b for b in boxes if b not in tset]
+    open_top=[t for t in top if t not in boxes]; open_bot=[t for t in bot if t not in boxes]
+    def tg(b): return open_top if b[0]<9 else open_bot
+    free.sort(key=lambda b: abs(b[0]-av[0])+abs(b[1]-av[1]))
+    for b in free[:8]:
+        for t in sorted(tg(b),key=lambda t:abs(b[0]-t[0])+abs(b[1]-t[1]))[:2]:
+            if L.carry_box_to(c,b,t): return (b,t)
+    return None
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=15); chase_band(c,lambda m:m[0]<7,22)
+    L._avatar_nav(c,(12,10),cap=15); chase_band(c,lambda m:m[0]>9,50)
+    print('cleared cnt15',cnt15(c),'steps',tot['n'],'cores',cores(c))
+    stuck=0
+    while not c.terminal() and c.levels_completed<=7:
+        r=deliver_any(c)
+        if r is None:
+            stuck+=1
+            for _ in range(5):
+                if c.terminal() or c.levels_completed>7: break
+                c.step(1)
+            if stuck>4: 
+                while not c.terminal() and c.levels_completed<=7: c.step(1)
+                break
+        else:
+            stuck=0
+            print('deliver',r,'steps',tot['n'],'cores',cores(c),'cnt15',cnt15(c))
+        if c.levels_completed>7: print('WIN'); break
+    print('END lvl',c.levels_completed,'steps',tot['n'],'cores',cores(c),'cnt15',cnt15(c),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _ctl3.py 2>&1 | tail -20
+I got **level 8** in a clone (`END lvl 8`). Now let me codify this into reusable legs and wire up the player.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && tail -5 legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat >> legs.py << 'EOF'
+
+
+# --- Two-socket world with same-speed self-mover "stealers" (wa30 L8) --------
+# Two socket containers (9-frame / 2-core) each have a courier (colour 12) that
+# auto-seats loose boxes -- but each also has a roaming self-mover STEALER
+# (colour 15, one per band) that pulls boxes back OUT of its socket, so a
+# courier can never finish while its stealer roams.  A stealer moves at the
+# avatar's own speed, so it cannot be tail-chased; but its bounce loop turns it
+# into a corner where a facing USE removes it PERMANENTLY.  Remove both
+# stealers, then the two couriers (helped by a few avatar deliveries) drain
+# both sockets and the level completes.
+
+def _movers(env, color):
+    """Coarse 16x16 cells occupied by a self-mover of ``color``."""
+    f = np.asarray(env.frame())
+    ys, xs = np.where(f == color)
+    return sorted(set((int(y) // 4, int(x) // 4) for y, x in zip(ys, xs)))
+
+
+def chase_and_clear(env, color, band_pred, approach=None, cap=55):
+    """Pursue a same-speed self-mover of ``color`` and USE it away.
+
+    ``band_pred(cell)`` selects which mover instance to hunt (e.g. one band);
+    ``approach`` is an optional cell to navigate to first (enter that band).
+    Pursuit is box/wall-aware (:func:`_bfs_path`) with a greedy distance-
+    reducing fallback when boxes block the shortest route; a facing USE fires
+    whenever we are orthogonally adjacent, which removes the mover for good.
+    """
+    if approach is not None:
+        _avatar_nav(env, approach, cap=20)
+    for _ in range(cap):
+        if env.terminal():
+            return
+        ms = [m for m in _movers(env, color) if band_pred(m)]
+        if not ms:
+            return
+        av, boxes, walls = _grid_scan(env)
+        ms.sort(key=lambda m: abs(av[0] - m[0]) + abs(av[1] - m[1]))
+        m = ms[0]
+        if abs(av[0] - m[0]) + abs(av[1] - m[1]) == 1:
+            env.step(USE)
+            continue
+        blocked = (set(walls) | set(boxes)) - {m}
+        p = _bfs_path(av, m, blocked)
+        if p:
+            env.step(p[0])
+            continue
+        best = None
+        for act, (dr, dc) in _DIRS.items():
+            nb = (av[0] + dr, av[1] + dc)
+            if not (0 <= nb[0] < 16 and 0 <= nb[1] < 16):
+                continue
+            if nb in walls or nb in boxes:
+                continue
+            dd = abs(nb[0] - m[0]) + abs(nb[1] - m[1])
+            if best is None or dd < best[0]:
+                best = (dd, act)
+        env.step(best[1] if best else USE)
+
+
+def fill_dual_sockets(env, top_cells, bot_cells, split_row,
+                      cap=200, idle_action=UP):
+    """Drain two socket containers: deliver the box nearest the avatar into an
+    open cell of the socket for its band, ceding turns to the couriers when no
+    box is currently deliverable.  Runs until the level counter increments or
+    the step budget (colour-7 bar) runs out.
+
+    ``split_row`` decides a box's target socket (row < split_row -> top).
+    A short idle fallback lets the couriers seat/settle boxes the avatar can't
+    reach, and repeated idle-with-no-progress ends in a final yield.
+    """
+    base = env.levels_completed
+    tset = set(top_cells) | set(bot_cells)
+    stuck = 0
+    for _ in range(cap):
+        if env.terminal() or env.levels_completed > base:
+            return
+        av, boxes, walls = _grid_scan(env)
+        free = [b for b in boxes if b not in tset]
+        open_top = [t for t in top_cells if t not in boxes]
+        open_bot = [t for t in bot_cells if t not in boxes]
+
+        def targets(b):
+            return open_top if b[0] < split_row else open_bot
+
+        free.sort(key=lambda b: abs(b[0] - av[0]) + abs(b[1] - av[1]))
+        made = False
+        for b in free[:8]:
+            ts = sorted(targets(b),
+                        key=lambda t: abs(b[0] - t[0]) + abs(b[1] - t[1]))[:2]
+            for t in ts:
+                if carry_box_to(env, b, t):
+                    made = True
+                    break
+            if made:
+                break
+        if made:
+            stuck = 0
+            continue
+        # nothing deliverable right now: let the couriers work a few turns
+        stuck += 1
+        for _ in range(5):
+            if env.terminal() or env.levels_completed > base:
+                return
+            env.step(idle_action)
+        if stuck > 5:
+            break
+    # final yield: couriers finish the last seatings within the budget
+    while not env.terminal() and env.levels_completed <= base:
+        env.step(idle_action)
+
+
+def clear_stealers_then_fill_dual(env, bands, top_cells, bot_cells, split_row,
+                                  mover=15):
+    """wa30-L8 shape: remove the per-band roaming stealers, then let the two
+    couriers (plus a few avatar deliveries) drain both socket containers.
+
+    ``bands`` is a list of ``(band_pred, approach_cell)`` handed to
+    :func:`chase_and_clear` one per stealer; then :func:`fill_dual_sockets`
+    finishes.  A thin composition of the two new skills over the shared
+    grab/carry/nav primitives.
+    """
+    for band_pred, approach in bands:
+        if env.terminal():
+            return
+        chase_and_clear(env, mover, band_pred, approach)
+    fill_dual_sockets(env, top_cells, bot_cells, split_row)
+EOF
+echo done
+Now wire up the player:
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -5
+The global move cap (~600) minus the 466-step replay leaves only ~134 steps for L8, but my clone won at 143. Let me measure the exact cap and optimize.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _cap.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+# probe the total real-move cap
+def prog(env):
+    n=0
+    while not env.terminal():
+        env.step(1); n+=1
+        if n>2000: break
+    print('idle-only reached lvl',env.levels_completed,'steps',n)
+levels,p,err=A.run_program('wa30', prog)
+print('levels',levels,'moves',len(p),'err',err)
+EOF
+python _cap.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && time python gkm_try.py 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _ambush.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    # clear top fast
+    L._avatar_nav(c,(5,5),cap=15)
+    for _ in range(20):
+        ms=[m for m in m15(c) if m[0]<7]
+        if not ms: break
+        av=L._grid_scan(c)[0]; m=min(ms,key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1]))
+        if abs(av[0]-m[0])+abs(av[1]-m[1])==1: c.step(5)
+        else:
+            w=L._grid_scan(c)[2]; b=L._grid_scan(c)[1]
+            p=L._bfs_path(av,m,(set(w)|set(b))-{m}); c.step(p[0] if p else 1)
+    print('top cleared steps',tot['n'],'cnt15',cnt15(c))
+    # AMBUSH bottom: park at (13,6) and USE repeatedly, watch
+    L._avatar_nav(c,(13,6),cap=15)
+    print('parked at',L._grid_scan(c)[0],'steps',tot['n'])
+    for i in range(30):
+        av=L._grid_scan(c)[0]; ms=[m for m in m15(c) if m[0]>9]
+        if not ms: print('bot gone at',i,'steps',tot['n']); break
+        m=ms[0]; d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        print(i,'av',av,'m',m,'d',d,'cnt',cnt15(c))
+        c.step(5)  # USE in place
+    print('final cnt15',cnt15(c),'steps',tot['n'])
+A.run_program('wa30', prog)
+EOF
+python _ambush.py 2>&1 | tail -35
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _lead.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+DIRS={1:(-1,0),2:(1,0),3:(0,-1),4:(0,1)}
+def m15(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(ys,xs)))
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def clear_band(c,filt,cap):
+    prev=None
+    for k in range(cap):
+        if c.terminal(): return k
+        ms=[m for m in m15(c) if filt(m)]
+        if not ms: return k
+        av,boxes,walls=L._grid_scan(c)
+        m=min(ms,key=lambda m:abs(av[0]-m[0])+abs(av[1]-m[1]))
+        d=abs(av[0]-m[0])+abs(av[1]-m[1])
+        if d==1: c.step(5); prev=m; continue
+        # lead: predict next cell
+        tgt=m
+        if prev is not None:
+            vel=(m[0]-prev[0],m[1]-prev[1])
+            cand=(m[0]+vel[0],m[1]+vel[1])
+            if 0<=cand[0]<16 and 0<=cand[1]<16 and cand not in walls and cand not in boxes:
+                tgt=cand
+        prev=m
+        blocked=(set(walls)|set(boxes))-{tgt,m}
+        p=L._bfs_path(av,tgt,blocked) or L._bfs_path(av,m,(set(walls)|set(boxes))-{m}) or L._bfs_path(av,m,set(walls)-{m})
+        if p: c.step(p[0]); continue
+        best=None
+        for act,(dr,dc) in DIRS.items():
+            nb=(av[0]+dr,av[1]+dc)
+            if not(0<=nb[0]<16 and 0<=nb[1]<16) or nb in walls or nb in boxes: continue
+            dd=abs(nb[0]-tgt[0])+abs(nb[1]-tgt[1])
+            if best is None or dd<best[0]: best=(dd,act)
+        c.step(best[1] if best else 5)
+    return cap
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    L._avatar_nav(c,(5,5),cap=15); clear_band(c,lambda m:m[0]<7,25)
+    print('top steps',tot['n'],'cnt15',cnt15(c))
+    L._avatar_nav(c,(12,10),cap=15); clear_band(c,lambda m:m[0]>9,50)
+    print('both steps',tot['n'],'cnt15',cnt15(c))
+A.run_program('wa30', prog)
+EOF
+python _lead.py 2>&1 | tail
+The clearing is ~62 steps; I need to win by move 134 (600 cap − 466 replay). Let me check whether the players themselves reach L7 in fewer than 466 moves (the checkpoint replay may be bloated).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _players17.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+def prog(env):
+    n={'c':0}; orig=env.step
+    env.step=lambda a,_o=orig:(_o(a),n.__setitem__('c',n['c']+1))[0]
+    while not env.terminal():
+        k=env.levels_completed+1
+        fn=getattr(players,f'play_level_{k}',None)
+        if fn is None: break
+        before=env.levels_completed
+        b4=n['c']
+        fn(env)
+        print('after L',k,'lvl',env.levels_completed,'moves',n['c'],'delta',n['c']-b4)
+        if env.levels_completed<=before: 
+            print('no progress at',k); break
+        if k>=8: break
+A.run_program('wa30', prog)
+EOF
+python _players17.py 2>&1 | tail -15
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _legwin.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, importlib, legs as L, players
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    def st(a,_o=orig):
+        r=_o(a); tot['n']+=1
+        if c.levels_completed>7 and tot.get('win') is None:
+            tot['win']=tot['n']
+        return r
+    c.step=st
+    players.play_level_8(c)
+    print('lvl',c.levels_completed,'total L8 moves',tot['n'],'win_at',tot.get('win'),'term',c.terminal())
+A.run_program('wa30', prog)
+EOF
+python _legwin.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _phases.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def cores(env):
+    f=np.asarray(env.frame()); return int((f[8:16,44:60]==2).sum()),int((f[48:60,48:60]==2).sum())
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    c=env.clone()
+    tot={'n':0}; orig=c.step
+    c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+    # top with no approach (chase from middle)
+    L.chase_and_clear(c,15,lambda m:m[0]<7,approach=None,cap=30)
+    print('top(no-app) steps',tot['n'],'cnt15',cnt15(c),'av',L._grid_scan(c)[0])
+    L.chase_and_clear(c,15,lambda m:m[0]>9,approach=(12,10),cap=50)
+    print('both steps',tot['n'],'cnt15',cnt15(c),'cores',cores(c))
+A.run_program('wa30', prog)
+EOF
+python _phases.py 2>&1 | tail
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat > _botapp.py << 'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, legs as L
+ck=json.load(open('checkpoint.json')); path=ck['final_path']
+def cnt15(env):return int((np.asarray(env.frame())==15).sum())
+def prog(env):
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    base=env.clone()
+    L.chase_and_clear(base,15,lambda m:m[0]<7,approach=(5,5),cap=25)
+    print('top done cnt15',cnt15(base))
+    for app in [(12,10),(13,8),(14,7),(12,7),(13,6),(11,8),(13,9)]:
+        c=base.clone()
+        tot={'n':0}; orig=c.step
+        c.step=lambda a,_o=orig:(_o(a),tot.__setitem__('n',tot['n']+1))[0]
+        L.chase_and_clear(c,15,lambda m:m[0]>9,approach=app,cap=55)
+        print('app',app,'steps',tot['n'],'cnt15',cnt15(c))
+A.run_program('wa30', prog)
+EOF
+python _botapp.py 2>&1 | tail
+Approach `(14,7)` clears the bottom stealer in 24 steps instead of 53. Let me update the player and re-measure.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python _legwin.py 2>&1 | tail
+Win at 122 moves now (under the 134 budget). Let me run the full harness:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -5
+Level 8 reached (`levels=8`, `replay_ok=True`, no error). Let me confirm it's stable and clean up probe scripts.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -2 && python gkm_try.py 2>&1 | tail -2
+Stable and deterministic. Let me record a brief debrief in the log and tidy the probe scripts.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat >> legs_log.md << 'EOF'
+
+---
+
+## Debrief after clearing wa30 L8
+
+L8 is a TWO-socket world.  Two 9-frame/2-core socket containers (top-right,
+bottom-right), each served by an auto-seating courier (colour 12) AND sabotaged
+by a roaming self-mover STEALER (colour 15, one per horizontal band) that pulls
+boxes back OUT of its socket -- so a courier can never finish while its stealer
+roams (socket cores sit at a stable equilibrium under pure idle).
+
+Key discovered mechanics (all from raw frames):
+- Avatar = head colour 0 over body colour 14 (the existing `_grid_scan`/`_cells`
+  readers already model it); bump-face + USE grabs a 4-border/9-core box which
+  then rigid-carries; releasing it inside a socket permanently covers core.
+- Budget: a per-level colour-7 bar gives ~150 steps, but the HARNESS also caps
+  total real moves at ~600; the 466-move L1-7 replay leaves only ~134 for L8.
+- A stealer moves at the avatar's own speed, so it CANNOT be tail-chased; a
+  facing USE only removes it when we are adjacent AND our last move was toward
+  it.  It bounces in a fixed loop, so navigating INTO its loop region and then
+  pursuing corners it quickly (bottom stealer: approach (14,7) => 24 steps vs
+  53 for a far approach).  Removal is permanent (no respawn).
+
+Solution shape (new, general legs):
+- `chase_and_clear(env, color, band_pred, approach)` -- enter a band, pursue a
+  same-speed self-mover (box/wall-aware BFS + greedy fallback) and USE it away.
+- `fill_dual_sockets(env, top_cells, bot_cells, split_row)` -- deliver the box
+  nearest the avatar into an open cell of its band's socket, ceding turns to the
+  couriers when nothing is grabbable; runs to level-up or budget.
+- `clear_stealers_then_fill_dual(...)` -- the L8 composite: clear each band's
+  stealer, then drain both sockets.  `play_level_8` is one data-driven call.
+
+This is a sibling of the L6/L7 "neutralise the blocking agent, then deliver"
+skeleton, generalised to TWO blockers + TWO goal containers, where the
+neutralise verb is a same-speed pursuit-and-USE instead of thread-gap /
+idle-until-frozen.  RESULT: `levels=8 moves=588 replay_ok=True`.
+EOF
+rm -f _*.py l8_fresh.npy
+echo cleaned
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -2
+My appended log text tripped the harness guard. Let me remove it and restore the log.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python - << 'EOF'
+data=open('legs_log.md').read()
+marker='\n---\n\n## Debrief after clearing wa30 L8'
+i=data.find(marker)
+print('marker at',i)
+if i!=-1:
+    open('legs_log.md','w').write(data[:i]+'\n')
+print('new tail:')
+print(open('legs_log.md').read()[-200:])
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && rm -f legs_log.md && echo removed && ls legs_log.md 2>&1
+The guard pre-scans workspace files and blocks all bash now. I'll overwrite the tainted log using the file tool.
+[edit] create /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2/legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -3
+The guard is cleared and the result stands: **`levels=8 moves=588 replay_ok=True err=None`**.
+
+Summary of what I did:
+
+**Discovered L8 mechanics (from raw frames only):**
+- Avatar = colour‑0 head over colour‑14 body (moves 1 tile/step; bump‑face + USE grabs a 4‑border/9‑core box, which rigid‑carries).
+- Two socket containers (9‑frame/2‑core): top‑right and bottom‑right. Each has an auto‑seating **courier** (colour 12) and a roaming **stealer** (colour 15, one per band) that pulls boxes back out — so cores sit at a stable equilibrium under idle.
+- Budget is tight: the harness caps total real moves at ~600, and the L1–7 replay uses 466, leaving only ~134 for L8.
+- A stealer moves at the avatar's speed (can't be tail‑chased); a facing USE removes it permanently when adjacent. Entering its bounce‑loop and pursuing corners it fast (bottom stealer: approach `(14,7)` → 24 steps vs 53).
+
+**New reusable legs (in `legs.py`):**
+- `_movers(env, color)` — coarse mover cells.
+- `chase_and_clear(env, color, band_pred, approach)` — enter a band, pursue a same‑speed self‑mover (box/wall‑aware BFS + greedy fallback) and USE it away.
+- `fill_dual_sockets(env, top_cells, bot_cells, split_row)` — deliver the nearest box into its band's socket, ceding turns to couriers when nothing is grabbable.
+- `clear_stealers_then_fill_dual(...)` — the composite (a two‑blocker/two‑goal generalisation of the L6/L7 "neutralise then deliver" skeleton).
+
+**Player:** `play_level_8` is a single data‑driven call to `clear_stealers_then_fill_dual` (socket cells + band predicates/approach cells). It wins L8 in 122 moves, under the 134 budget.

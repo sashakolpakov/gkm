@@ -1,0 +1,215 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat gkm_try.py && echo "---LOG---" && cat legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat solve.py checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=6 replay_ok=True`. Now let me analyze the repetition between the L5 and L6 machinery.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python - <<'EOF'
+import ast, inspect
+src = open('legs.py').read()
+tree = ast.parse(src)
+for node in tree.body:
+    if isinstance(node, ast.FunctionDef):
+        print(f"{node.lineno:4d}  {node.name}")
+EOF
+Let me compare the two families of BFS/nav/carry helpers to find exact duplicates.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python - <<'EOF'
+import ast
+src = open('legs.py').read()
+lines = src.splitlines(keepends=True)
+tree = ast.parse(src)
+funcs = {}
+for node in tree.body:
+    if isinstance(node, ast.FunctionDef):
+        funcs[node.name] = (node.lineno, node.end_lineno)
+
+def body(name):
+    a,b = funcs[name]
+    return ''.join(lines[a-1:b])
+
+# Compare bfs functions
+import difflib
+def show_diff(n1, n2):
+    print(f"=== {n1} vs {n2} ===")
+    d = difflib.unified_diff(body(n1).splitlines(), body(n2).splitlines(), n1, n2, lineterm='')
+    for l in d:
+        print(l)
+    print()
+
+show_diff('_bfs_path','_grid_bfs')
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python - <<'EOF'
+import ast, difflib
+src = open('legs.py').read()
+lines = src.splitlines(keepends=True)
+tree = ast.parse(src)
+funcs = {}
+for node in tree.body:
+    if isinstance(node, ast.FunctionDef):
+        funcs[node.name] = (node.lineno, node.end_lineno)
+def body(name):
+    a,b = funcs[name]
+    return ''.join(lines[a-1:b])
+def show_diff(n1, n2):
+    print(f"=== {n1} vs {n2} ===")
+    for l in difflib.unified_diff(body(n1).splitlines(), body(n2).splitlines(), n1, n2, lineterm=''):
+        print(l)
+    print()
+show_diff('_nav_to','_avatar_nav')
+show_diff('_carry_pair','_rigid_carry')
+EOF
+I now understand the structure. There are two parallel families of internal helpers — the L5 courier machinery (`_cells`, `_bfs_path`, `_bfs_pair`, `_nav_to`, `_carry_pair`) and the L6 fenced-goal machinery (`_grid_scan`, `_grid_grabbed`, `_grid_bfs`, `_avatar_nav`, `_rigid_carry`). The diffs show:
+
+- `_bfs_path` and `_grid_bfs` are **byte-identical** (only `act`/`ac` var name).
+- `_nav_to` and `_avatar_nav` are the same nav loop differing only in which perception adapter supplies obstacles.
+- `_rigid_carry` **re-inlines** the exact ok()-constrained BFS that already exists as `_bfs_pair` (which `_carry_pair` already calls).
+
+Let me verify the inline BFS in `_rigid_carry` matches `_bfs_pair` exactly before unifying.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '257,290p' legs.py
+Confirmed identical. Now I'll refactor step-by-step, verifying after each change.
+
+**Step 1: Unify the grid BFS** — delete `_grid_bfs`, point its caller at the existing `_bfs_path`.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -i 's/path = _grid_bfs(av, goal, blocked)/path = _bfs_path(av, goal, blocked)/' legs.py && grep -n "_grid_bfs\|_bfs_path(av" legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && grep -n "_grid_bfs" legs.py; echo "exit=$?"; python gkm_try.py 2>&1 | tail -3
+Step 1 verified: `levels=6 replay_ok=True`. 
+
+**Step 2: Unify the avatar-nav loop.** Both `_nav_to` and `_avatar_nav` are the same "walk empty-handed avatar to goal, replan each step" loop; they differ only in the perception adapter that yields obstacles. Let me look at both and extract one shared leg parameterized by an obstacle-reader.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && grep -n "def _nav_to\|def _avatar_nav\|def _cells\|def _grid_scan" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '289,335p' legs.py
+I'll create one shared `_walk_avatar_to` leg with pluggable obstacle-readers, then make `_nav_to`/`_avatar_nav` thin wrappers.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -3
+Step 2 verified. **Step 3: De-duplicate the pair-BFS inside `_rigid_carry`** — it re-inlines the exact ok()-constrained search that already exists as `_bfs_pair` (which `_carry_pair` uses). Route it through the shared leg.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && grep -n "def _rigid_carry" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '502,560p' legs.py
+`_rigid_carry`'s inline search is exactly `_bfs_pair` (same `_DIRS` order, same ok() constraint, same reconstruction). I'll replace the inline copy with a call to the shared leg, preserving the start-cell feasibility guard.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -3
+Step 3 verified. Now let me update the `_rigid_carry` docstring and the section comment to reflect the shared machinery.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '410,435p' legs.py
+Now let me update the section-header comment for the L6 family to note the shared machinery.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && grep -n "Robust grab-carry-release\|Self-contained coarse-cell\|carry_box_to`` tries" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '456,466p' legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -3
+All shared. Now let me verify the module is clean (no dangling references, imports intact) and confirm the players are thin composition.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python -c "import legs; print('import OK')" && python -m pyflakes legs.py players.py 2>&1 | grep -v "unable to detect undefined\|imported but unused\|import \*" | head; echo "pyflakes done"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python - <<'EOF'
+import ast
+src=open('legs.py').read()
+tree=ast.parse(src)
+defined={n.name for n in tree.body if isinstance(n,ast.FunctionDef)}
+called=set()
+for node in ast.walk(tree):
+    if isinstance(node,ast.Call) and isinstance(node.func,ast.Name):
+        called.add(node.func.id)
+# helper (underscore) legs that are defined but never called
+orphans=[d for d in defined if d.startswith('_') and d not in called]
+print("orphan private helpers:", orphans)
+# confirm the two removed names are gone
+for n in ('_grid_bfs',):
+    print(n, "present" if n in src else "removed")
+EOF
+The two "orphans" are passed by reference into `_walk_avatar_to` (not called directly), so they're used. Let me confirm.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && grep -n "_obstacles_courier\|_obstacles_grid" legs.py
+Both referenced. Now let me append the recurring composition pattern (candidate higher-order leg) I observed to `legs_log.md`.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && tail -5 legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat >> legs_log.md <<'EOF'
+
+## wa30 level 6 debrief: refactor into shared legs
+
+Comparing `play_level_6` against the earlier players, the player itself is
+already thin -- one line: `clear_agent_then_deliver(approach, [(box, drop), ...])`
+= a scripted `follow_plan` prep + `use` (thread the wall gap to the parked
+self-mover and clear it), then a data-driven batch of grab-carry-release
+deliveries. The real duplication was NOT in the players but INSIDE the leg
+library: `play_level_6` had spawned a whole second copy of the level-5
+perception/pathing machinery, so several core skills were written twice.
+
+De-duplicated this pass (each skill now written ONCE):
+
+- **Grid BFS shortest-path.** `_grid_bfs` was byte-for-byte identical to
+  `_bfs_path` (only an `act`/`ac` rename). Deleted `_grid_bfs`; `_avatar_nav`
+  now calls the single `_bfs_path`.
+- **Avatar navigation loop.** `_nav_to` (courier world) and `_avatar_nav`
+  (fenced-goal world) were the same "walk empty-handed avatar to goal,
+  replanning every step" loop, differing only in which perception supplied the
+  obstacles. Extracted `_walk_avatar_to(env, goal, read_obstacles, cap)` plus
+  two tiny adapters (`_obstacles_courier` adds the moving courier; `_obstacles_grid`
+  is walls+boxes). Both nav legs are now one-line wrappers.
+- **Rigid-pair carry search.** `_rigid_carry` had re-inlined the exact
+  ok()-constrained pair BFS that already existed as `_bfs_pair` (which
+  `_carry_pair` uses). Routed `_rigid_carry` through the shared `_bfs_pair`,
+  keeping the start-cell feasibility guard. The two carry LOOPS stay distinct
+  because their world policies differ (courier = extra obstacle + retry a
+  transient block; fenced-goal = a block means genuinely stuck), but the search
+  itself is now written once.
+
+The two intentionally-separate pieces that remain per-world are the two
+perception readers (`_cells` vs `_grid_scan` classify a "box" cell with
+different predicates -- `len(u)<=3` vs `2 not in u` -- and `_cells` also reads
+the head and courier), and the two grab-and-deliver verbs (`grab_and_deliver`
+= nearest reachable grab orientation, courier-aware; `carry_box_to` = try every
+orientation with clone look-ahead to confirm a gap-threading carry is routable
+before committing). These are different policies over the SAME shared
+primitives, not duplicated skills.
+
+Behaviour unchanged: `python gkm_try.py` still reports
+`RESULT levels=6 moves=401 replay_ok=True`.
+
+Candidate higher-order leg (the recurring composition pattern across ALL
+players so far, now including L6): **"prep, then batch grab-carry-release, then
+settle."** Every level is:
+
+    1. an optional scripted PREP (`follow_plan` + `use`) that positions the
+       avatar and/or arms the mechanism (L1 branch setup, L2 lane entry, L6
+       gap-thread-and-clear-the-self-mover);
+    2. a BATCH of the one core verb -- grab an object, move it (push, rigid
+       carry, or relay), release it into a goal/handoff cell -- iterated over a
+       list of objects; and
+    3. a SETTLE tail -- either yield turns so a helper finishes
+       (`yield_until_level_up`, `_park_and_wait`) or a final activating move.
+
+`clear_agent_then_deliver` (L6) and `ferry_all_then_yield` (L4) /
+`ferry_all_to_courier_then_yield` (L5) are all instances of this skeleton; they
+differ only in the prep, in which grab-carry verb the batch uses, and in the
+settle. The natural unification is a single higher-order leg
+
+    deliver_batch(env, prep, verb, items, settle)
+
+where `prep` and `settle` are small action plans (or callables) and `verb` is
+whichever grab-carry-release skill fits the world (push / rigid-carry-static /
+rigid-carry-live). Future levels should first try to express themselves as one
+`deliver_batch(...)` call before reaching for search.
+EOF
+echo "appended"; wc -l legs_log.md
+Final verification run:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -3
+Let me do a final review of the refactored sections to confirm they're clean and well-named.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '289,335p' legs.py && echo "..... rigid_carry ....." && sed -n '502,545p' legs.py
+The refactor is complete and verified. Here's the DEBRIEF summary.
+
+## What I found
+
+Comparing `play_level_6` to the earlier players: **the players are already thin composition** — `play_level_6` is a single `clear_agent_then_deliver(approach, [(box,drop),…])` call. The real duplication was **inside `legs.py`**: bringing up level 6 had spawned a *second, parallel copy* of level 5's perception + pathing machinery, so several core skills were written twice.
+
+## What I refactored (each skill now written ONCE)
+
+1. **Grid BFS shortest-path** — `_grid_bfs` was byte-for-byte identical to `_bfs_path` (only an `act`/`ac` rename). Deleted it; `_avatar_nav` now uses the single `_bfs_path`.
+2. **Avatar navigation loop** — `_nav_to` and `_avatar_nav` were the same "walk avatar to goal, replan each step" loop differing only in perception. Extracted `_walk_avatar_to(env, goal, read_obstacles, cap)` + two tiny adapters (`_obstacles_courier`, `_obstacles_grid`); both nav legs are now one-line wrappers.
+3. **Rigid-pair carry search** — `_rigid_carry` had re-inlined the exact ok()-constrained pair BFS that already existed as `_bfs_pair` (used by `_carry_pair`). Routed it through the shared `_bfs_pair`, keeping the start-cell feasibility guard.
+
+Intentionally left per-world (different *policies* over the same shared primitives, not duplicated skills): the two perception readers (`_cells` vs `_grid_scan` classify boxes differently and `_cells` also reads head/courier) and the two grab-and-deliver verbs (`grab_and_deliver` = nearest orientation, courier-aware; `carry_box_to` = all orientations + clone look-ahead for gap-threading).
+
+## Candidate higher-order leg logged
+
+Appended to `legs_log.md`: the recurring shape across **all** players is **"prep → batch grab-carry-release → settle"**, suggesting a single `deliver_batch(env, prep, verb, items, settle)` leg where `verb` is whichever grab-carry-release skill fits the world.
+
+## Behaviour unchanged
+Verified after every step and finally: `python gkm_try.py` → **`RESULT levels=6 moves=401 replay_ok=True err=None`** (identical to baseline).

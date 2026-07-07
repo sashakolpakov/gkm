@@ -1,0 +1,23 @@
+{
+  "game": "ls20",
+  "level": 6,
+  "phase": "debrief_credit_out",
+  "reached": 6,
+  "err": "api proposer reported no credits/quota (see /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/proposer_last.log)",
+  "attempt": "debrief_credit_out_d9d2449f6e3d",
+  "created_at": "2026-07-06T17:30:15.425286+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "drive6.py",
+    "exec6.py",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "lib6.py",
+    "nav6.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

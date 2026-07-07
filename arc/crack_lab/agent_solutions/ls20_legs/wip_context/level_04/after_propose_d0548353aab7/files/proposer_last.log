@@ -1,0 +1,10 @@
+Before continuing, I need to flag something: there's already a **live automated process** in this exact workspace working on the identical task right now.
+
+`gkm_legs.py` (pid 98318, running since 13:41) is an orchestrator that spawns `claude -p` subprocesses as proposers. One such subprocess (pid 3903) has been running since 14:16 with the *exact same prompt* I was given — read `legs.py`/`players.py`, learn level 4, write `play_level_4`, iterate via `gkm_try.py`, targeting this same `checkpoint.json`. It's mid-flight right now, editing (or about to edit) `legs.py`/`players.py`/`checkpoint.json` in this directory concurrently with me.
+
+My own probe (`find_winning_path` with 6000 states, masked/unmasked) on the post-level-3 state returned no path in 200s — level 4 likely needs the same `detect_noise_mask` treatment level 3 needed, or a larger budget.
+
+Given the collision risk (both of us writing to `legs.py`/`players.py`/`checkpoint.json` at once could corrupt or overwrite each other's work), how would you like me to proceed?
+1. **Wait** for the other process to finish this round, then check the result and only continue if it didn't reach level 4.
+2. **Take over now** — you kill/ignore the other process and I proceed immediately (accepting the risk that it's mid-write).
+3. Something else (e.g. you're aware of this and it's expected/fine).

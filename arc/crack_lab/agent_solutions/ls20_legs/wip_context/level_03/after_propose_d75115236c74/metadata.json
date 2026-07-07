@@ -1,0 +1,18 @@
+{
+  "game": "ls20",
+  "level": 3,
+  "phase": "after_propose",
+  "reached": 2,
+  "err": null,
+  "attempt": "after_propose_d75115236c74",
+  "created_at": "2026-07-05T12:04:01.483067+00:00",
+  "files": [
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

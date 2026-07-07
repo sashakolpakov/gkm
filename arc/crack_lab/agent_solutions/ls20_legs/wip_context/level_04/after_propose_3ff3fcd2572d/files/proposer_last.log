@@ -1,0 +1,7 @@
+players.py still contains our edit intact, and legs.py was untouched (no new legs needed). Task complete.
+
+## Summary
+
+`play_level_4` in `players.py` now reuses the existing `detect_noise_mask` + `solve_by_search` legs unchanged — level 4 turned out to be the same 5×5 sliding-tile-on-track mechanic as level 1 (verified by probing: a solid 5×5 block, colors 12/9, sliding one tile-length per move), just on a bigger maze, plus the same drifting HUD noise as level 3. Only the search budget needed raising (40000 → 50000 states).
+
+`gkm_try.py` now reports `RESULT levels=4 moves=140 replay_ok=True`. No new legs were added to `legs.py` — an analytic tile-graph shortcut I prototyped turned out to undercount reachable states (the real solution passes through hidden state, like level 1's switch) so I discarded it rather than commit unused code, and logged that lesson in `legs_log.md` for future levels.
