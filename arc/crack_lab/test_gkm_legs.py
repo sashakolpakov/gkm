@@ -8,6 +8,8 @@ no new legs have lower marginal novelty than early rule-learning levels.
 import os
 import re
 import shutil
+import subprocess
+import sys
 import gkm_legs as L
 
 
@@ -67,10 +69,51 @@ def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path, monkeypatch):
 
 def test_setup_workspace_builds_valid_dispatch():
     ws = L.setup_workspace("wa30")
-    for f in ("legs.py", "players.py", "solve.py", "gkm_try.py", "legs_log.md"):
+    for f in ("legs.py", "players.py", "solve.py", "gkm_try.py", "legs_log.md", "perception.py"):
         assert os.path.exists(os.path.join(ws, f))
     import ast
     ast.parse(open(os.path.join(ws, "solve.py")).read())   # solve.py is valid Python
+    ast.parse(open(os.path.join(ws, "perception.py")).read())
+
+
+def test_replay_harness_refuses_tainted_workspace():
+    ws = L.setup_workspace("wa30", tag="taintrepro")
+    with open(os.path.join(ws, "proposer_last.log"), "w") as f:
+        f.write("cat environment_files/wa30/wa30.py\n")
+
+    proc = subprocess.run(
+        [sys.executable, "gkm_try.py"],
+        cwd=ws,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    assert proc.returncode != 0
+    assert "TAINTED WORKSPACE" in proc.stderr
+
+
+def test_perception_seed_extracts_components_and_deltas(tmp_path):
+    ws = L.setup_workspace("perceptiontest")
+    import importlib.util
+    spec = importlib.util.spec_from_file_location("perception", os.path.join(ws, "perception.py"))
+    P = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(P)
+
+    import numpy as np
+    frame = np.zeros((6, 6), dtype=int)
+    frame[1:3, 1:3] = 4
+    frame[4, 4] = 9
+    blobs = P.connected_components(frame, colors=[4, 9])
+    assert [(b.color, b.bbox, b.area) for b in blobs] == [
+        (4, (1, 1, 2, 2), 4),
+        (9, (4, 4, 4, 4), 1),
+    ]
+    after = frame.copy()
+    after[2, 2] = 7
+    delta = P.frame_delta(frame, after)
+    assert delta["count"] == 1
+    assert delta["bbox"] == (2, 2, 2, 2)
 
 
 def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
@@ -102,6 +145,38 @@ def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
     seeded = L.seed_workspace_from_artifact("artifacttest", str(ws), verbose=False)
     assert seeded is not None and seeded.reached == 1
     assert "play_level_1" in (ws / "players.py").read_text()
+
+
+def test_tainted_workspace_cannot_promote_artifact(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    for name, body in {
+        "legs.py": "def leg(env):\n    pass\n",
+        "players.py": "from legs import *\n\ndef play_level_1(env):\n    leg(env)\n",
+        "solve.py": "def solve(env):\n    return None\n",
+        "legs_log.md": "# log\n",
+        "proposer_last.log": "sed -n '1,80p' environment_files/wa30/x/wa30.py\n",
+    }.items():
+        (ws / name).write_text(body)
+
+    rep = L.Report(
+        game="tainttest",
+        reached=1,
+        records=[L.LevelRecord(level=1, marginal_C=1, reached=True)],
+        total_marginal_C=1,
+        final_path=[1],
+        validated=True,
+    )
+    try:
+        L.promote_verified_artifact("tainttest", str(ws), rep, verbose=False)
+    except L.WorkspaceTainted as ex:
+        assert "forbidden source/history access" in str(ex)
+    else:
+        raise AssertionError("tainted workspace promoted")
+    assert not (artifact_root / "tainttest_legs" / "checkpoint.json").exists()
 
 
 def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):

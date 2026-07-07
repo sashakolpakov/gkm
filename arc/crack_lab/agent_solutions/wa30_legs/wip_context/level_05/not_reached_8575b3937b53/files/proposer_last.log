@@ -1,0 +1,263 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat gkm_try.py solve.py players.py legs.py helpers.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat legs_log.md checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && timeout 300 python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && python gkm_try.py 2>&1 | tail -5
+We reach level 4. Now let me explore level 5 on a clone.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat probe.py t1.py save_ck.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > probe5.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+ck = json.load(open("checkpoint.json"))
+PREFIX = ck["final_path"]
+
+def get_env(extra=()):
+    env = A.Arena('wa30')
+    for a in PREFIX:
+        env.step(a)
+    assert env.levels_completed == 4, env.levels_completed
+    for a in extra:
+        env.step(a)
+    return env
+
+CH = '.1234567890abcdef'
+def show(f):
+    f = np.array(f)
+    for r in f:
+        print(''.join(CH[int(v)] if int(v)<16 else '?' for v in r))
+
+def diff(f1, f2):
+    f1, f2 = np.array(f1), np.array(f2)
+    ys, xs = np.where(f1 != f2)
+    for y, x in zip(ys, xs):
+        print(f"({y},{x}): {f1[y,x]} -> {f2[y,x]}")
+
+if __name__ == '__main__':
+    env = get_env()
+    print("levels:", env.levels_completed, "terminal:", env.terminal())
+    show(env.frame())
+EOF
+python probe5.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5a.py <<'EOF'
+from probe5 import *
+env = get_env()
+f0 = np.array(env.frame())
+for a in [1,2,3,4,5]:
+    c = env.clone()
+    c.step(a)
+    f1 = np.array(c.frame())
+    ys, xs = np.where(f0 != f1)
+    print(f"action {a}: {len(ys)} diffs", end='')
+    if len(ys):
+        print(f" bbox rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()}")
+    else:
+        print()
+# watch courier over 8 idle steps (action 5 maybe not idle; use repeated up against wall?)
+c = env.clone()
+prev = np.array(c.frame())
+for i in range(8):
+    c.step(1)
+    cur = np.array(c.frame())
+    ys, xs = np.where(prev != cur)
+    print(f"idle step {i}: diffs {len(ys)}", f"rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()}" if len(ys) else "")
+    prev = cur
+EOF
+python p5a.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5b.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+for i in range(30):
+    c.step(1)
+show(c.frame())
+print("levels", c.levels_completed, "terminal", c.terminal())
+EOF
+python p5b.py
+The courier autonomously fetches boxes through the gap and deposits them in the big zone. Let me see if pure waiting wins, and watch the timer.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5c.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+for i in range(200):
+    c.step(1)
+    if c.terminal() or c.levels_completed > 4:
+        print("stopped at step", i+1, "levels", c.levels_completed, "terminal", c.terminal())
+        break
+f = np.array(c.frame())
+print("timer 7s:", (f[63]==7).sum())
+print("levels", c.levels_completed, "terminal", c.terminal())
+show(f)
+EOF
+python p5c.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5d.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+# avatar rows36-39 cols44-47. Box B6 at (56,44). Move down 16 to be adjacent above it.
+for i in range(16):
+    c.step(2)
+f = np.array(c.frame())
+ys,xs = np.where(f==14)
+print("avatar 14 cells rows", ys.min(), ys.max(), "cols", xs.min(), xs.max())
+c.step(5)  # grab
+f2 = np.array(c.frame())
+diff(f, f2)
+EOF
+python p5d.py
+Box grabbing works (border→0 when attached). The courier is even delivering inside the zone. Let me test carry mechanics: box is attached below; check how it follows when I move sideways.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5e.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+for i in range(16):
+    c.step(2)
+c.step(5)  # grab B6 below
+def av(f):
+    f=np.array(f); ys,xs=np.where(f==14); return (ys.min(),xs.min(),ys.max(),xs.max())
+def box0(f):
+    f=np.array(f); ys,xs=np.where(f==0)
+    # exclude row63
+    m = ys<63
+    ys,xs=ys[m],xs[m]
+    return (ys.min(),xs.min(),ys.max(),xs.max()) if len(ys) else None
+f=c.frame(); print("after grab: avatar",av(f),"attached0",box0(f))
+c.step(3)  # move left once
+f=c.frame(); print("after left: avatar",av(f),"attached0",box0(f))
+c.step(1)
+f=c.frame(); print("after up: avatar",av(f),"attached0",box0(f))
+EOF
+python p5e.py
+Box stays on grab side. Now test pushing the box into the zone from the corridor.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5f.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+for i in range(16): c.step(2)
+c.step(5)
+c.step(1); c.step(1)  # rows up: avatar 50-53? then carry
+# get avatar to rows 28-31 while box below rows 32-35
+# avatar currently? move up until avatar top row 28
+f=np.array(c.frame()); ys,xs=np.where(f==14); print("av rows",ys.min(),ys.max(),"cols",xs.min(),xs.max())
+while True:
+    f=np.array(c.frame()); ys,xs=np.where(f==14)
+    if ys.min()<=28: break
+    c.step(1)
+f=np.array(c.frame()); ys,xs=np.where(f==14); print("av now",ys.min(),ys.max(),xs.min(),xs.max())
+# now move left as far as possible
+for i in range(10):
+    prev=np.array(c.frame())
+    c.step(3)
+    cur=np.array(c.frame())
+    ys,xs=np.where(cur==14)
+    print("left",i,"av cols",xs.min(),xs.max(), "levels",c.levels_completed)
+    if (prev==cur).all():
+        print("blocked"); break
+show(c.frame())
+EOF
+python p5f.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5g.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+def av(c):
+    f=np.array(c.frame()); ys,xs=np.where(f==14); return (ys.min(),xs.min())
+seq = [4]*4 + [2]*20 + [3] + [5]  # right4, down20, bump left, grab
+for a in seq: c.step(a)
+print("av", av(c))
+for i in range(28): c.step(1)
+print("after up28 av", av(c))
+for i in range(22):
+    prev=np.array(c.frame()); c.step(3); cur=np.array(c.frame())
+    if (prev==cur).all():
+        print("blocked at left step",i, "av",av(c)); break
+print("av",av(c), "levels", c.levels_completed)
+show(c.frame())
+EOF
+python p5g.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5h.py <<'EOF'
+from probe5 import *
+env = get_env()
+def avbb(c):
+    f=np.array(c.frame()); ys,xs=np.where(f==14); return (int(ys.min()),int(ys.max()),int(xs.min()),int(xs.max()))
+for a,name in [(1,'up'),(2,'down'),(3,'left'),(4,'right')]:
+    c = env.clone()
+    pos=[avbb(c)]
+    for i in range(5):
+        c.step(a); pos.append(avbb(c))
+    print(name, pos)
+EOF
+python p5h.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5i.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+def state(c):
+    f=np.array(c.frame())
+    ys,xs=np.where(f==14); a=(int(ys.min())//4,int(xs.min())//4)
+    ys,xs=np.where(f==12); b=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    # boxes: 9-cores
+    ys,xs=np.where(f==9)
+    cores=set()
+    for y,x in zip(ys,xs):
+        cores.add((y//4,x//4))
+    return a,b,sorted(cores)
+seq = [4] + [2]*5 + [3] + [5] + [1]*7 + [3]*8
+for i,a in enumerate(seq):
+    c.step(a)
+av,co,cores = state(c)
+print("avatar",av,"courier",co)
+print("cores",cores)
+print("levels",c.levels_completed)
+show(c.frame())
+EOF
+python p5i.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5j.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+def state(c):
+    f=np.array(c.frame())
+    ys,xs=np.where(f==14); a=(int(ys.min())//4,int(xs.min())//4)
+    ys,xs=np.where(f==12); b=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    return a,b
+phase1 = [4] + [2]*5 + [3] + [5] + [1]*7 + [3]*8 + [5]
+phase2 = [4]*10 + [1]*5 + [3] + [5] + [2]*5 + [3]*9 + [5]
+phase3 = [4]*9 + [2]*5 + [2] + [5] + [1]*5 + [3]*10 + [5]
+n=0
+for name,seq in [("P1",phase1),("P2",phase2),("P3",phase3)]:
+    for a in seq:
+        c.step(a); n+=1
+        if c.levels_completed>4: break
+    print(name,"done at step",n,"state",state(c),"levels",c.levels_completed)
+# idle: retreat right and bump wall
+for a in [4]*3:
+    c.step(a); n+=1
+while n<130 and c.levels_completed==4 and not c.terminal():
+    c.step(2); n+=1
+print("end at step",n,"levels",c.levels_completed,"terminal",c.terminal())
+show(c.frame())
+EOF
+python p5j.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_clean && cat > p5k.py <<'EOF'
+from probe5 import *
+env = get_env()
+c = env.clone()
+def st(c):
+    f=np.array(c.frame())
+    ys,xs=np.where(f==12); b=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    # count boxes in zone: 9-core inside zone interior (rows 25-38, cols 9-14)
+    return b
+prev=None
+for i in range(126):
+    c.step(1)
+    b=st(c)
+    if b!=prev:
+        print(i+1, b)
+        prev=b
+    if c.terminal(): print("terminal at", i+1); break
+EOF
+python p5k.py
+[stopped: max_tokens]

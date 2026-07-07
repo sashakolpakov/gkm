@@ -1,0 +1,1493 @@
+I'll start by exploring the workspace and understanding the current state.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat gkm_try.py solve.py checkpoint.json auto_solve_attempts.json proposer_last.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat players.py perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python gkm_try.py 2>&1 | tail -20
+We're at level 7. Now I need to build play_level_8. Let me look at the arena API and set up a clone at level 8.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '1,80p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '80,200p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+Let me create a helper to get an env at the start of level 8 by replaying the checkpoint path.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat l8env.py mkstate.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+from l8env import l8
+import numpy as np
+env=l8()
+print('level',env.levels_completed)
+f=env.frame()
+print(f.shape, sorted(np.unique(f).tolist()))
+np.save('l8start.npy', f)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+f=np.load('l8start.npy')
+# print as compact grid using symbols
+for r in range(64):
+    print(''.join('{:2d}'.format(int(v)) for v in f[r]))
+" | head -70
+This is complex. Let me use perception to get structured blobs.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+f=np.load('l8start.npy')
+print('counts', P.color_counts(f))
+blobs=P.connected_components(f, min_area=1)
+for b in blobs:
+    print(b.color, b.bbox, b.area)
+"
+Let me discover the avatar by testing actions on a clone.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+d=P.action_deltas(env)
+for a,info in d.items():
+    print(a, P.ACTION_NAME[a], 'count',info['count'],'bbox',info['bbox'])
+    for s in info['samples'][:8]:
+        print('   ',s)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+base=env.frame().copy()
+frames={}
+for a in [1,2,3,4,5]:
+    c=env.clone(); c.step(a); frames[a]=c.frame().copy()
+# find cells that differ across actions (action-dependent), ignoring common auto changes
+# common change = cells that change identically in all actions
+allsame=np.ones(base.shape,bool)
+for a in [2,3,4,5]:
+    allsame &= (frames[a]==frames[1])
+# action-dependent cells:
+dep = ~allsame
+ys,xs=np.where(dep)
+print('action-dependent cells:', len(ys))
+for y,x in zip(ys,xs):
+    print((y,x),'base',base[y,x],'vals',[int(frames[a][y,x]) for a in [1,2,3,4,5]])
+"
+The avatar is the color-14 block (with a color-0 orientation marker). Let me watch the movers (color 15) over time by stepping USE.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+def mv(f):
+    return [b.bbox for b in P.connected_components(f,colors=[15])]
+c=env.clone()
+for t in range(12):
+    print(t, mv(c.frame()))
+    c.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+f=np.load('l8start.npy')
+def show(r0,r1,c0,c1):
+    for r in range(r0,r1):
+        print(''.join('{:2d}'.format(int(f[r,c])) for c in range(c0,c1)))
+    print()
+print('TOP-RIGHT container rows8-16 cols44-60')
+show(8,16,44,60)
+print('BOT-RIGHT container rows48-60 cols48-60')
+show(48,60,48,60)
+"
+This is complex. Let me read the existing legs to understand available skills.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '1,120p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && grep -n "^def " legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '203,360p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '360,540p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '540,780p' legs.py
+Let me check the legs log for insights into the wa30 family mechanics.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '1,80p' legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -n '80,260p' legs_log.md
+Let me observe how the movers interact with boxes over many idle steps (USE is a no-op when not facing a box).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+def stats(f):
+    boxes=[b.bbox for b in P.connected_components(f,colors=[9]) if 4 in set(int(v) for v in np.unique(f[max(0,b.bbox[0]-1):b.bbox[2]+2, max(0,b.bbox[1]-1):b.bbox[3]+2]))]
+    cc=P.color_counts(f)
+    mv=[b.bbox for b in P.connected_components(f,colors=[15])]
+    return cc.get(9),cc.get(4),cc.get(2),mv
+c=env.clone()
+for t in range(30):
+    if t%3==0:
+        print(t, 'c9=%d c4=%d c2=%d'%(stats(c.frame())[:3][0],stats(c.frame())[1],stats(c.frame())[2]), 'mv',stats(c.frame())[3])
+    c.step(5)
+"
+The movers act as autonomous couriers that fill the containers. Let me idle longer to see if they complete the level alone.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+c=env.clone()
+import sys
+for t in range(250):
+    c.step(5)
+    if t%25==0 or c.levels_completed>7:
+        cc=P.color_counts(c.frame())
+        print(t,'lvl',c.levels_completed,'c9',cc.get(9),'c4',cc.get(4),'c2',cc.get(2),'c15',cc.get(15))
+    if c.levels_completed>7:
+        print('LEVEL UP at',t); break
+"
+The couriers don't finish alone and the run terminates (~140 steps = budget). Let me measure the exact step budget and understand the bottom "budget bar".
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+c=env.clone()
+t=0
+while not c.terminal() and t<400:
+    c.step(5); t+=1
+print('terminal after', t, 'steps (idling USE)')
+"
+Let me measure each container's fill level over idle steps to determine if movers fill or empty them.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+c=env.clone()
+def fills(f):
+    # top-right container interior rows9-14 cols45-58 ; bottom-right rows49-58 cols49-58
+    top=f[9:15,45:59]; bot=f[49:59,49:59]
+    return (int((top==2).sum()),int((top==9).sum()),int((bot==2).sum()),int((bot==9).sum()))
+for t in range(60):
+    if t%5==0:
+        print(t, 'TOP 2/9',fills(c.frame())[:2],'BOT 2/9',fills(c.frame())[2:])
+    c.step(5)
+"
+Let me track the count of free boxes (via the leg's `_grid_scan` box detector) over idle steps.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P, legs
+from l8env import l8
+env=l8()
+c=env.clone()
+for t in range(60):
+    av,boxes,walls=legs._grid_scan(c)
+    if t%5==0:
+        print(t,'nboxes',len(boxes), sorted(boxes))
+    c.step(5)
+"
+Let me check whether the color-12 blocks move (they were couriers in earlier levels).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+c=env.clone()
+for t in range(30):
+    b12=[b.bbox for b in P.connected_components(c.frame(),colors=[12])]
+    if t%3==0: print(t,'c12',b12)
+    c.step(5)
+"
+Four autonomous agents (two color-12 couriers, two color-15 movers). Let me try existing legs on clones to see if any make progress.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, legs
+from l8env import l8
+# try L5 ferry leg
+env=l8(); c=env.clone()
+try:
+    legs.ferry_all_to_courier_then_yield(c)
+except Exception as e:
+    print('exc',e)
+print('ferry: lvl',c.levels_completed,'steps',len(c.path)-466,'term',c.terminal())
+" 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8()
+# watch a single 15 mover for a long time to detect stalling
+c=env.clone()
+def m15(f):
+    bs=[b.bbox for b in P.connected_components(f,colors=[15])]
+    return bs
+prev=None; stalls=0
+for t in range(120):
+    cur=m15(c.frame())
+    print(t, cur) if t<40 and t%2==0 else None
+    c.step(5)
+    if c.terminal(): print('term',t); break
+"
+Let me map avatar movement and solidity empirically. First, how far can the avatar move right/up from start?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+def av(f):
+    ys,xs=np.where(f==14); return (int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max())) if len(ys) else None
+env=l8()
+for name,acts in [('RIGHTx12',[4]*12),('then UPx8',[1]*8)]:
+    for a in acts: env.step(a)
+    print(name, av(env.frame()))
+"
+Good, mid-band is open horizontally. The gap to the top arena is at cols16-23. Let me verify the avatar can pass up through it.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from l8env import l8
+def av(f):
+    ys,xs=np.where(f==14); return (int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max())) if len(ys) else None
+# up through gap cols16-23
+env=l8()
+for a in [4,4,4]: env.step(a)
+print('after RIGHTx3', av(env.frame()))
+for i in range(16):
+    env.step(1)
+    print('UP',i, av(env.frame()))
+" 2>&1 | head -25
+The avatar can reach the top arena. Now let me determine the win condition by testing delivery. Let me try the L7 leg on a clone and observe fill/level.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, legs
+from l8env import l8
+env=l8(); c=env.clone()
+try:
+    legs.clear_frozen_mover_then_fill(c, targets=[(2,11),(2,12),(3,11),(3,12),(2,13),(3,13)])
+except Exception as e:
+    print('exc',repr(e))
+print('lvl',c.levels_completed,'steps',len(c.path)-466,'term',c.terminal())
+" 2>&1 | tail -5
+Let me test the hypothesis that the win = all free boxes consumed, by tracking per-arena box counts over idle (the 4 fixed top-left boxes may be the blocker).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, legs
+from l8env import l8
+env=l8(); c=env.clone()
+for t in range(140):
+    av,boxes,walls=legs._grid_scan(c)
+    top=[b for b in boxes if b[0]<6]; bot=[b for b in boxes if b[0]>=10]
+    if t%10==0:
+        print(t,'top',len(top),sorted(top),'bot',len(bot))
+    if c.terminal(): print('term',t);break
+    c.step(5)
+"
+Boxes churn but never clear. The 12-couriers likely seat boxes while 15-movers steal them back. Let me test whether USE can clear a 15 mover on contact. I'll write a reactive chaser probe in the top arena.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > probe_chase15.py <<'EOF'
+import numpy as np, perception as P, legs
+from l8env import l8
+
+def cellof(f,color):
+    ys,xs=np.where(f==color)
+    if not len(ys): return None
+    return (int(ys.min())//4,int(xs.min())//4)
+def avcell(f):
+    return cellof(f,14)
+def m15cells(f):
+    return [(int(b.bbox[0])//4,int(b.bbox[1])//4) for b in P.connected_components(f,colors=[15])]
+
+env=l8()
+# bring avatar into top arena near mover patrol: RIGHTx3 then UP into arena to row cell ~3
+for a in [4,4,4,1,1,1,1,1]:  # up through gap to ~row cell 3
+    env.step(a)
+print('avatar cell', avcell(env.frame()), 'm15', m15cells(env.frame()))
+# now reactive chase top mover (row<6)
+n15_start=len(m15cells(env.frame()))
+for t in range(60):
+    f=env.frame(); a=avcell(f); ms=[m for m in m15cells(f) if m[0]<6]
+    if not ms:
+        print('top mover gone at t',t); break
+    m=min(ms,key=lambda mm:abs(mm[0]-a[0])+abs(mm[1]-a[1]))
+    dr=m[0]-a[0]; dc=m[1]-a[1]
+    adj = abs(dr)+abs(dc)==1
+    if adj:
+        face={(-1,0):1,(1,0):2,(0,-1):3,(0,1):4}[(dr,dc)]
+        env.step(face); env.step(5)
+    else:
+        # move toward
+        if abs(dr)>=abs(dc): env.step(1 if dr<0 else 2)
+        else: env.step(3 if dc<0 else 4)
+    if env.terminal(): print('term',t); break
+print('final m15', m15cells(env.frame()), 'lvl', env.levels_completed)
+EOF
+python probe_chase15.py 2>&1 | tail -15
+USE doesn't clear a moving 15. Let me test the "avatar delivers all boxes into socket" win hypothesis directly on a clone (top arena).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > probe_fill_top.py <<'EOF'
+import numpy as np, legs
+from l8env import l8
+env=l8()
+for a in [4,4,4,1,1,1,1]:  # into top arena
+    env.step(a)
+targets=[(2,12),(3,12),(2,13),(3,13),(2,11),(3,11),(2,14),(3,14)]
+for drop in targets:
+    av,boxes,walls=legs._grid_scan(env)
+    free=[b for b in boxes if b not in targets and b[0]<7]
+    if not free: 
+        print('no free top boxes'); break
+    free.sort(key=lambda b: abs(b[0]-drop[0])+abs(b[1]-drop[1]))
+    before=len(boxes)
+    ok=legs.carry_box_to(env,free[0],drop,cap=40)
+    av,boxes,walls=legs._grid_scan(env)
+    print('drop',drop,'ok',ok,'nboxes',len(boxes),'lvl',env.levels_completed,'steps',len(env.path)-466,'term',env.terminal())
+    if env.terminal() or env.levels_completed>7: break
+EOF
+python probe_fill_top.py 2>&1 | tail -15
+Let me check if the step budget differs by action type (maybe USE depletes the bottom bar faster).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from l8env import l8
+# count row-63 color-7 bar over steps; and terminal step with moves
+env=l8(); c=env.clone()
+def bar(f): return int((f[63]==7).sum())
+print('bar0',bar(c.frame()))
+t=0
+while not c.terminal() and t<400:
+    c.step(1 if t%2==0 else 2)  # UP/DOWN wiggle
+    t+=1
+    if t%20==0: print(t,'bar',bar(c.frame()))
+print('term at',t)
+"
+Budget is a hard ~150 steps. Let me nail the seating mechanic: hand-deliver one top box into the top socket with a pixel-accurate probe and watch box-count/socket-fill/level.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > probe_seat.py <<'EOF'
+import numpy as np
+from collections import deque
+from l8env import l8
+SOLID={2,4,5,7,9,12,15}
+def avpos(f):
+    ys,xs=np.where(f==14)
+    return (int(ys.min()),int(xs.min()))  # top-left of body
+def freeat(f,r,c):
+    # a 4x4 block starting (r,c) all passable (1 or 0)?
+    if r<0 or c<0 or r+4>64 or c+4>64: return False
+    blk=f[r:r+4,c:c+4]
+    return bool(np.all((blk==1)|(blk==0)))
+def bfs(f,start,goal):
+    # move by 4px steps; body top-left positions on 4-grid
+    q=deque([start]); prev={start:None}
+    while q:
+        cur=q.popleft()
+        if cur==goal:
+            path=[]; n=cur
+            while prev[n]: p,a=prev[n]; path.append(a); n=p
+            return path[::-1]
+        r,c=cur
+        for a,(dr,dc) in {1:(-4,0),2:(4,0),3:(0,-4),4:(0,4)}.items():
+            nr,nc=r+dr,c+dc; nb=(nr,nc)
+            if nb in prev: continue
+            if not freeat(f,nr,nc): continue
+            prev[nb]=(cur,a); q.append(nb)
+    return None
+env=l8()
+f=env.frame()
+print('avatar',avpos(f))
+# box at rows8-11 cols36-39 (cell 2,9). left-adjacent avatar top-left = (8,32)
+goal=(8,32)
+path=bfs(f,avpos(f),goal)
+print('path len',len(path) if path else None)
+for a in path: env.step(a)
+print('now avatar',avpos(env.frame()))
+def boxcnt(f):
+    # count 9-cells that are box-cores (have a 4 or 0 in 4x4 around) -- approx total 9
+    return int((f==9).sum())
+def socket9(f): return int((f[9:15,45:59]==9).sum())
+print('before grab: total9',boxcnt(env.frame()),'socket9',socket9(env.frame()))
+env.step(4)  # face right toward box
+env.step(5)  # grab
+f=env.frame()
+# check box border near cols36-39
+print('after grab region rows8-11 cols34-40:')
+for r in range(8,12): print(''.join('%2d'%f[r,c] for c in range(32,42)))
+print('avatar',avpos(f))
+# carry right into socket
+for i in range(4):
+    env.step(4)
+    print('carry',i,'av',avpos(env.frame()),'socket9',socket9(env.frame()),'total9',boxcnt(env.frame()))
+env.step(5) # release
+print('after release socket9',socket9(env.frame()),'total9',boxcnt(env.frame()),'lvl',env.levels_completed)
+EOF
+python probe_seat.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && sed -i 's/    ys,xs=np.where(f==14)/    ys,xs=np.where((f==14)|(f==0))/' probe_seat.py && sed -i 's/    return bool(np.all((blk==1)|(blk==0)))/    return bool(np.all((blk==1)|(blk==0)|(blk==14)))/' probe_seat.py && python probe_seat.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python - <<'PY'
+import re
+s=open('probe_seat.py').read()
+s=s.replace("ys,xs=np.where(f==14)","ys,xs=np.where((f==14)|(f==0))")
+s=s.replace("return bool(np.all((blk==1)|(blk==0)))","return bool(np.all((blk==1)|(blk==0)))")
+open('probe_seat.py','w').write(s)
+print('done')
+PY
+python probe_seat.py 2>&1 | tail -30
+The mover stole my target box mid-approach. Let me confirm the grab/carry/release mechanic on a mover-proof fixed box (top-left cluster) and check seating semantics.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > probe_grab.py <<'EOF'
+import numpy as np
+from collections import deque
+from l8env import l8
+def avpos(f):
+    ys,xs=np.where((f==14)|(f==0)); return (int(ys.min()),int(xs.min()))
+def freeat(f,r,c):
+    if r<0 or c<0 or r+4>64 or c+4>64: return False
+    blk=f[r:r+4,c:c+4]; return bool(np.all((blk==1)|(blk==0)|(blk==14)))
+def bfs(f,start,goal):
+    q=deque([start]); prev={start:None}
+    while q:
+        cur=q.popleft()
+        if cur==goal:
+            path=[];n=cur
+            while prev[n]: p,a=prev[n];path.append(a);n=p
+            return path[::-1]
+        r,c=cur
+        for a,(dr,dc) in {1:(-4,0),2:(4,0),3:(0,-4),4:(0,4)}.items():
+            nb=(r+dr,c+dc)
+            if nb in prev or not freeat(f,r+dr,c+dc): continue
+            prev[nb]=(cur,a); q.append(nb)
+    return None
+env=l8()
+f=env.frame()
+# go to left-adjacent of box (2,1) rows8-11 cols4-7 => avatar at (8,0)
+path=bfs(f,avpos(f),(8,0)); print('nav',len(path))
+for a in path: env.step(a)
+f=env.frame(); print('avatar',avpos(f))
+print('region rows7-12 cols0-12 BEFORE grab:')
+for r in range(7,13): print(''.join('%2d'%f[r,c] for c in range(0,13)))
+env.step(4); env.step(5)  # face right, grab
+f=env.frame(); print('AFTER grab avatar',avpos(f))
+for r in range(7,13): print(''.join('%2d'%f[r,c] for c in range(0,13)))
+# carry UP a couple
+for i in range(2):
+    env.step(1)
+f=env.frame(); print('AFTER carry up avatar',avpos(f))
+for r in range(4,13): print(''.join('%2d'%f[r,c] for c in range(0,13)))
+env.step(5); f=env.frame(); print('AFTER release')
+for r in range(4,13): print(''.join('%2d'%f[r,c] for c in range(0,13)))
+print('lvl',env.levels_completed)
+EOF
+python probe_grab.py 2>&1 | tail -45
+Grab/carry/release works, but the released box seems to transform. Let me re-run with careful full tracking of the box region and color counts.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > probe_grab2.py <<'EOF'
+import numpy as np
+from collections import deque
+from l8env import l8
+def avpos(f):
+    ys,xs=np.where((f==14)|(f==0)); return (int(ys.min()),int(xs.min()))
+def freeat(f,r,c):
+    if r<0 or c<0 or r+4>64 or c+4>64: return False
+    blk=f[r:r+4,c:c+4]; return bool(np.all((blk==1)|(blk==0)|(blk==14)))
+def bfs(f,start,goal):
+    q=deque([start]); prev={start:None}
+    while q:
+        cur=q.popleft()
+        if cur==goal:
+            path=[];n=cur
+            while prev[n]: p,a=prev[n];path.append(a);n=p
+            return path[::-1]
+        r,c=cur
+        for a,(dr,dc) in {1:(-4,0),2:(4,0),3:(0,-4),4:(0,4)}.items():
+            nb=(r+dr,c+dc)
+            if nb in prev or not freeat(f,r+dr,c+dc): continue
+            prev[nb]=(cur,a); q.append(nb)
+    return None
+def show(f,tag):
+    print('==',tag,'cnt4',int((f==4).sum()),'cnt9',int((f==9).sum()),'cnt2',int((f==2).sum()))
+    for r in range(0,16): print(''.join('%2d'%f[r,c] for c in range(0,16)))
+env=l8()
+f=env.frame()
+path=bfs(f,avpos(f),(8,0))
+for a in path: env.step(a)
+show(env.frame(),'arrived left of box(2,1)')
+env.step(4)  # face right
+show(env.frame(),'faced right')
+env.step(5)  # grab
+show(env.frame(),'grabbed')
+env.step(3)  # carry LEFT (into open cols0-3)
+show(env.frame(),'carried left')
+env.step(5)  # release
+show(env.frame(),'released')
+print('lvl',env.levels_completed)
+EOF
+python probe_grab2.py 2>&1 | tail -90
+Grab/carry/release confirmed (boxes aren't consumed on release). Let me trace a courier's pickup/dropoff to find the handoff, watching bottom courier, bottom boxes, and bottom socket fill.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P, legs
+from l8env import l8
+env=l8(); c=env.clone()
+def cell(f,col):
+    ys,xs=np.where(f==col)
+    return None if not len(ys) else (int(ys.min())//4,int(xs.min())//4)
+def sock(f): 
+    return int((f[49:58,49:58]==9).sum()), int((f[9:14,45:58]==9).sum())  # bot, top interior9
+for t in range(60):
+    f=c.frame()
+    av,boxes,walls=legs._grid_scan(f)
+    bot=[b for b in boxes if b[0]>=10]
+    b12=[(int(bb.bbox[0])//4,int(bb.bbox[1])//4) for bb in P.connected_components(f,colors=[12])]
+    b15=[(int(bb.bbox[0])//4,int(bb.bbox[1])//4) for bb in P.connected_components(f,colors=[15])]
+    if t%3==0:
+        print(t,'sock(bot,top)',sock(f),'botboxes',sorted(bot),'c12',b12,'c15',b15)
+    c.step(5)
+" 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P, legs
+from l8env import l8
+env=l8(); c=env.clone()
+def sock(f): 
+    return int((f[49:58,49:58]==9).sum()), int((f[9:14,45:58]==9).sum())
+for t in range(60):
+    av,boxes,walls=legs._grid_scan(c)
+    f=c.frame()
+    bot=[b for b in boxes if b[0]>=10]
+    b12=[(int(bb.bbox[0])//4,int(bb.bbox[1])//4) for bb in P.connected_components(f,colors=[12])]
+    b15=[(int(bb.bbox[0])//4,int(bb.bbox[1])//4) for bb in P.connected_components(f,colors=[15])]
+    if t%3==0:
+        print(t,'sock(bot,top)',sock(f),'botbx',sorted(bot),'c12',b12,'c15',b15)
+    c.step(5)
+" 2>&1 | tail -25
+The bottom socket seating plateaus at 8. Let me build a pixel-accurate greedy controller (grab nearest box, carry toward nearest socket, release) and run it on a clone to discover the win threshold and test if aggressive avatar seating can win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > ctl.py <<'EOF'
+import numpy as np
+from collections import deque
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+FREE={0,1}
+def blk(f,R,C): return f[R*4:R*4+4,C*4:C*4+4]
+def cellfree(f,R,C):
+    if R<0 or C<0 or R>=16 or C>=16: return False
+    u=set(int(v) for v in np.unique(blk(f,R,C)))
+    return u<= {0,1}
+def av_cell(f):
+    ys,xs=np.where((f==14)|(f==0))
+    if not len(ys): return None
+    return (int(ys.min())//4,int(xs.min())//4)
+def grabbed_cell(f):
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(blk(f,R,C)))
+            if 0 in u and 9 in u and 2 not in u and 14 not in u:
+                return (R,C)
+    return None
+def boxes(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(blk(f,R,C)))
+            if 9 in u and (4 in u or 3 in u) and 2 not in u:
+                out.add((R,C))
+    return out
+def sockets_interior(f):
+    # cells with 9 and 2 (socket border/interior mix) -> approximate socket cells
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=set(int(v) for v in np.unique(blk(f,R,C)))
+            if 9 in u and 2 in u:
+                out.add((R,C))
+    return out
+def interior9(f):
+    return int((f[9:14,45:58]==9).sum())+int((f[49:58,49:58]==9).sum())
+def bfs(f,start,goals,extra_free=set()):
+    q=deque([start]); prev={start:None}
+    goals=set(goals)
+    while q:
+        cur=q.popleft()
+        if cur in goals:
+            path=[];n=cur
+            while prev[n]: p,a=prev[n];path.append(a);n=p
+            return path[::-1],cur
+        for a,(dr,dc) in DIRS.items():
+            nb=(cur[0]+dr,cur[1]+dc)
+            if nb in prev: continue
+            if nb!=cur and (cellfree(f,nb[0],nb[1]) or nb in extra_free):
+                prev[nb]=(cur,a); q.append(nb)
+    return None,None
+EOF
+echo built
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > run_ctl.py <<'EOF'
+import numpy as np, ctl
+from ctl import *
+from l8env import l8
+env=l8()
+def nearest_socket_cell(f, cell, socks):
+    if not socks: return None
+    return min(socks, key=lambda s: abs(s[0]-cell[0])+abs(s[1]-cell[1]))
+maxint=0
+for step in range(140):
+    if env.terminal() or env.levels_completed>7:
+        break
+    f=env.frame()
+    g=grabbed_cell(f)
+    av=av_cell(f)
+    socks=sockets_interior(f)
+    maxint=max(maxint,interior9(f))
+    if g is not None:
+        # carry toward nearest socket: move so grabbed cell is adjacent to a socket cell, then push+release
+        target=nearest_socket_cell(f,g,socks)
+        if target is None:
+            env.step(USE); continue
+        # if grabbed adjacent to a socket cell, push toward it and release
+        if abs(g[0]-target[0])+abs(g[1]-target[1])==1:
+            dr,dc=target[0]-g[0],target[1]-g[1]
+            face={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}[(dr,dc)]
+            env.step(face)  # push into socket
+            env.step(USE)   # release
+            continue
+        # else move avatar toward target (greedy), keeping simple
+        dr=np.sign(target[0]-av[0]); dc=np.sign(target[1]-av[1])
+        moved=False
+        for a in ([DOWN if dr>0 else UP] if dr!=0 else [])+([RIGHT if dc>0 else LEFT] if dc!=0 else []):
+            nb=(av[0]+DIRS[a][0],av[1]+DIRS[a][1])
+            gb=(g[0]+DIRS[a][0],g[1]+DIRS[a][1])
+            if cellfree(f,nb[0],nb[1]) and (cellfree(f,gb[0],gb[1]) or (gb in socks)):
+                b=env.frame(); env.step(a); moved=True; break
+        if not moved:
+            env.step(USE)  # drop if stuck
+    else:
+        bs=[b for b in boxes(f) if b not in socks]
+        if not bs:
+            env.step(USE); continue
+        # nearest box; find free adjacent cell to grab
+        bs.sort(key=lambda b: abs(b[0]-av[0])+abs(b[1]-av[1]))
+        target=bs[0]
+        adj=[(target[0]+dr,target[1]+dc,a) for a,(dr,dc) in {UP:(1,0),DOWN:(-1,0),LEFT:(0,1),RIGHT:(0,-1)}.items()]
+        goals={(r,c) for r,c,a in adj if cellfree(f,r,c)}
+        if not goals:
+            env.step(USE); continue
+        path,reached=bfs(f,av,goals)
+        if not path:
+            # box unreachable; try next
+            env.step(USE); continue
+        if path:
+            env.step(path[0])
+            # if now adjacent, face+grab
+            f2=env.frame(); av2=av_cell(f2)
+            for r,c,a in adj:
+                if av2==(r,c):
+                    env.step(a); env.step(USE); break
+    if step%10==0:
+        print('step',step,'lvl',env.levels_completed,'int9',interior9(env.frame()),'nboxes',len(boxes(env.frame())))
+print('DONE lvl',env.levels_completed,'maxint9',maxint,'steps',len(env.path)-466)
+EOF
+python run_ctl.py 2>&1 | tail -20
+The controller only shuffles (no permanent seating, no win). This matches L7: I must neutralize the thieving 15-movers, then couriers finish. Let me check if a 15-mover ever freezes over the full budget.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np, perception as P
+from l8env import l8
+env=l8(); c=env.clone()
+def cells(f): return [(int(b.bbox[0])//4,int(b.bbox[1])//4) for b in P.connected_components(f,colors=[15])]
+prev=None; runs=[0,0]; maxrun=[0,0]
+seq=[]
+for t in range(145):
+    cs=cells(c.frame())
+    seq.append(tuple(cs))
+    if prev is not None:
+        for i in range(min(len(cs),len(prev))):
+            if cs[i]==prev[i]: runs[i]+=1; maxrun[i]=max(maxrun[i],runs[i])
+            else: runs[i]=0
+    prev=cs
+    if c.terminal(): break
+    c.step(5)
+print('max consecutive-stationary run per 15-mover:',maxrun)
+"
+The 15-movers never freeze. Let me learn the win *pattern* for this family by replaying the checkpoint and capturing the frame right before/after level 7 completes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import sys, json, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+path=json.load(open('checkpoint.json'))['final_path']
+prev=0; frames={}
+before=None
+for i,a in enumerate(path):
+    before=env.frame().copy()
+    env.step(a)
+    if env.levels_completed>prev:
+        frames[env.levels_completed]=(i,before.copy(),env.frame().copy())
+        prev=env.levels_completed
+print('levels reached',prev,'at move indices', {k:v[0] for k,v in frames.items()})
+# show level 7 completion (key 7)
+i,bef,aft=frames[7]
+np.save('l7_win_before.npy',bef); np.save('l7_win_after.npy',aft)
+print('L7 win at move',i)
+print('BEFORE colors',{int(k):int(v) for k,v in zip(*np.unique(bef,return_counts=True))})
+print('AFTER  colors',{int(k):int(v) for k,v in zip(*np.unique(aft,return_counts=True))})
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+f=np.load('l7_win_before.npy')
+for r in range(64):
+    print(''.join('%2d'%int(f[r,c]) for c in range(64)))
+" | head -64
+The win frame is a transition (screen fills with 4). Let me capture the actual solved level-7 board a few moves before the transition.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import sys, json, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env=A.Arena('wa30', _budget=A._Budget(50000*400))
+path=json.load(open('checkpoint.json'))['final_path']
+for i,a in enumerate(path[:459]):
+    env.step(a)
+np.save('l7_solved.npy', env.frame().copy())
+f=env.frame()
+print('move459 lvl',env.levels_completed,'colors',{int(k):int(v) for k,v in zip(*np.unique(f,return_counts=True))})
+for r in range(64):
+    print(''.join('%2d'%int(f[r,c]) for c in range(64)))
+" 2>&1 | head -66
+This is the L7 endgame (fill a small 9-bordered goal container). For L8 I need to see HOW a box enters a socket. Let me capture the bottom socket at pixel level during a courier deposit.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from l8env import l8
+env=l8(); c=env.clone()
+def sn(f): return int((f[49:58,49:58]==9).sum())
+prev=sn(c.frame())
+for t in range(30):
+    c.step(5)
+    cur=sn(c.frame())
+    if cur>prev:
+        f=c.frame()
+        print('=== t',t,'bot int9',prev,'->',cur)
+        for r in range(47,60):
+            print(''.join('%2d'%int(f[r,cc]) for cc in range(44,62)))
+        prev=cur
+        if cur>=8: break
+    prev=cur
+"
+Key insight: seated boxes get a **color-5 border** (5-bordered 9-core), distinct from unseated 4-bordered boxes. Let me count seated boxes over idle to find the win target.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from l8env import l8
+def seated(f):
+    n=0
+    for R in range(16):
+        for C in range(16):
+            b=f[R*4:R*4+4,C*4:C*4+4]
+            u=set(int(v) for v in np.unique(b))
+            if 9 in u and 5 in u and 2 not in u and int((b==9).sum())>=4 and int((b==5).sum())>=8:
+                n+=1
+    return n
+env=l8(); c=env.clone()
+for t in range(145):
+    if t%10==0: print(t,'seated',seated(c.frame()),'lvl',c.levels_completed)
+    if c.terminal(): print('term',t);break
+    c.step(5)
+"
+Seated 5-border is transient. Let me run the definitive test: can the **avatar** create a *permanent* seat by delivering a box into a socket? I'll deliver one box into the bottom socket, move away, and check persistence.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > persist.py <<'EOF'
+import numpy as np
+from collections import deque
+from ctl import *
+from l8env import l8
+env=l8()
+# Navigate avatar to bottom arena: right to gap cols36-43, down, to near bottom socket
+f=env.frame()
+def nav(env,goalset):
+    for _ in range(60):
+        f=env.frame(); a=av_cell(f)
+        if a in goalset: return True
+        path,_=bfs(f,a,goalset)
+        if not path: return False
+        env.step(path[0])
+    return av_cell(env.frame()) in goalset
+# goal: cell just left of bottom socket. socket left border col48=cell12. left-adjacent cell11 (cols44-47). pick rows 49..58 -> cell rows 12..14
+goals={(r,11) for r in range(12,15)}
+ok=nav(env,goals)
+print('nav to socket-left ok',ok,'av',av_cell(env.frame()),'steps',len(env.path)-466)
+# find a box adjacent-ish; look for any box in bottom arena reachable, grab and push into socket
+def bot_boxes(f): return [b for b in boxes(f) if b[0]>=11]
+f=env.frame()
+print('bottom boxes',sorted(bot_boxes(f)))
+# region view
+for r in range(44,60):
+    print(''.join('%2d'%int(f[r,c]) for c in range(40,62)))
+EOF
+python persist.py 2>&1 | tail -25
+The socket has a left "loading column" (cols48-51) where boxes seat. The avatar is already facing box(12,12). Let me grab, push it into the interior, release, leave, and test persistence.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat >> persist.py <<'EOF'
+print('--- now grab & push ---')
+def viz(env,tag):
+    f=env.frame(); print(tag,'int9',int((f[49:58,49:58]==9).sum()),'lvl',env.levels_completed,'av',av_cell(f))
+    for r in range(44,60):
+        print(''.join('%2d'%int(f[r,c]) for c in range(40,62)))
+env.step(5)  # grab highlighted box(12,12)
+viz(env,'after grab')
+env.step(4)  # push right into interior
+viz(env,'after push right')
+env.step(5)  # release
+viz(env,'after release')
+# move avatar far away (left) and idle a bit, check persistence
+for a in [3,3,3,1,1]: env.step(a)
+for _ in range(8): env.step(5)
+viz(env,'after leave+idle')
+EOF
+python persist.py 2>&1 | tail -75
+I've mapped the mechanics: boxes push into socket interiors and can persist. Let me build a robust pixel-level "stuff boxes into sockets" controller as a leg and test several variants on clones to find any that reaches level 8.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > solver8.py <<'EOF'
+# Standalone experimental solver for wa30 L8 (pixel level). Will refactor into legs if it wins.
+import numpy as np
+from collections import deque
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+DIRS={UP:(-1,0),DOWN:(1,0),LEFT:(0,-1),RIGHT:(0,1)}
+def blk(f,R,C): return f[R*4:R*4+4,C*4:C*4+4]
+def uset(f,R,C): return set(int(v) for v in np.unique(blk(f,R,C)))
+def cell_empty(f,R,C):
+    if not(0<=R<16 and 0<=C<16): return False
+    return uset(f,R,C)<= {0,1}
+def av_cell(f):
+    ys,xs=np.where((f==14)|(f==0))
+    if not len(ys): return None
+    return (int(ys.min())//4,int(xs.min())//4)
+def grabbed_cell(f):
+    for R in range(16):
+        for C in range(16):
+            u=uset(f,R,C)
+            if 0 in u and 9 in u and 2 not in u and 14 not in u:
+                return (R,C)
+    return None
+def box_cells(f):
+    out=set()
+    for R in range(16):
+        for C in range(16):
+            u=uset(f,R,C)
+            if 9 in u and (4 in u or 3 in u) and 2 not in u:
+                out.add((R,C))
+    return out
+def socket_interior_cells(f):
+    # cells that are entirely inside a 9-container interior: block is all 2, and has 9-neighbors forming a border region
+    # approximate: block all-2 AND within bbox of a 9 component. We'll just detect all-2 cells adjacent (within 3) to 9.
+    out=set()
+    nine=np.argwhere(f==9)
+    if len(nine)==0: return out
+    for R in range(16):
+        for C in range(16):
+            u=uset(f,R,C)
+            if u=={2}:
+                out.add((R,C))
+    return out
+def bfs(f,start,goals,occ=cell_empty):
+    goals=set(goals)
+    if start in goals: return [],start
+    q=deque([start]); prev={start:None}
+    while q:
+        cur=q.popleft()
+        for a,(dr,dc) in DIRS.items():
+            nb=(cur[0]+dr,cur[1]+dc)
+            if nb in prev: continue
+            if nb in goals or occ(f,nb[0],nb[1]):
+                prev[nb]=(cur,a)
+                if nb in goals:
+                    path=[];n=nb
+                    while prev[n]: p,ac=prev[n];path.append(ac);n=p
+                    return path[::-1],nb
+                q.append(nb)
+    return None,None
+
+def try_solve(env, prefer='both', budget=140, verbose=False):
+    base=env.levels_completed
+    for step in range(budget):
+        if env.terminal() or env.levels_completed>base: break
+        f=env.frame(); av=av_cell(f); g=grabbed_cell(f)
+        socks=socket_interior_cells(f)
+        if g is not None:
+            # push toward nearest socket interior: if grabbed adjacent to a 2-socket cell, push into it and release
+            tgt=min(socks,key=lambda s:abs(s[0]-g[0])+abs(s[1]-g[1])) if socks else None
+            if tgt is None: env.step(USE); continue
+            if abs(g[0]-tgt[0])+abs(g[1]-tgt[1])==1:
+                dr,dc=tgt[0]-g[0],tgt[1]-g[1]
+                face={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}[(dr,dc)]
+                env.step(face); env.step(USE); continue
+            # move avatar so grabbed cell approaches socket: step avatar toward tgt if both cells traversable
+            order=[]
+            if tgt[0]!=g[0]: order.append(DOWN if tgt[0]>g[0] else UP)
+            if tgt[1]!=g[1]: order.append(RIGHT if tgt[1]>g[1] else LEFT)
+            done=False
+            for a in order:
+                dr,dc=DIRS[a]; nav=(av[0]+dr,av[1]+dc); ng=(g[0]+dr,g[1]+dc)
+                if cell_empty(f,nav[0],nav[1]) and (cell_empty(f,ng[0],ng[1]) or ng in socks):
+                    env.step(a); done=True; break
+            if not done: env.step(USE)
+            continue
+        # empty-handed: grab nearest reachable box
+        bs=list(box_cells(f))
+        if prefer=='top': bs=[b for b in bs if b[0]<8]
+        elif prefer=='bottom': bs=[b for b in bs if b[0]>=8]
+        if not bs: env.step(USE); continue
+        bs.sort(key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+        grabbed=False
+        for target in bs[:4]:
+            adj={}
+            for a,(dr,dc) in DIRS.items():
+                ac=(target[0]-dr,target[1]-dc)  # cell from which facing (dr,dc) points to target
+                if cell_empty(f,ac[0],ac[1]): adj[ac]=a
+            if not adj: continue
+            path,reached=bfs(f,av,set(adj.keys()))
+            if not path and av not in adj: continue
+            if path: env.step(path[0])
+            f2=env.frame(); av2=av_cell(f2)
+            if av2 in adj:
+                env.step(adj[av2]); env.step(USE)
+            grabbed=True; break
+        if not grabbed: env.step(USE)
+    return env.levels_completed
+
+if __name__=='__main__':
+    from l8env import l8
+    for pref in ['both','top','bottom']:
+        env=l8()
+        lvl=try_solve(env,prefer=pref,budget=140)
+        f=env.frame(); int9=int((f[9:14,45:58]==9).sum())+int((f[49:58,49:58]==9).sum())
+        print('prefer',pref,'-> lvl',lvl,'int9',int9,'steps',len(env.path)-466,'term',env.terminal())
+EOF
+python solver8.py 2>&1 | tail -10
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python - <<'PY'
+s=open('solver8.py').read()
+# wrap env.step usage with terminal guard by defining sstep and replacing
+s=s.replace("def try_solve(env, prefer='both', budget=140, verbose=False):\n    base=env.levels_completed",
+"""def try_solve(env, prefer='both', budget=140, verbose=False):
+    base=env.levels_completed
+    def S(a):
+        if env.terminal(): return False
+        env.step(a); return True""")
+# replace all 'env.step(' inside function with 'S(' except the def line; safest: targeted replaces
+s=s.replace("env.step(face); env.step(USE); continue","S(face); S(USE); continue")
+s=s.replace("env.step(USE); continue","S(USE); continue")
+s=s.replace("env.step(a); done=True; break","S(a); done=True; break")
+s=s.replace("if not done: env.step(USE)","if not done: S(USE)")
+s=s.replace("if path: env.step(path[0])","if path: S(path[0])")
+s=s.replace("env.step(adj[av2]); env.step(USE)","S(adj[av2]); S(USE)")
+s=s.replace("if not grabbed: env.step(USE)","if not grabbed: S(USE)")
+open('solver8.py','w').write(s)
+print('patched')
+PY
+python solver8.py 2>&1 | tail -10
+None reach L8 by socket-stuffing. The likely blocker is the 4 unreachable fixed top-left boxes (couriers can never seat them). Let me test: ferry those 4 into courier reach, then idle, and check for a win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > ferrytest.py <<'EOF'
+import numpy as np
+from collections import deque
+from solver8 import *  # helpers
+from l8env import l8
+
+def rigid_carry(env, goal_av, cap=40):
+    # carry currently-grabbed box; move avatar to goal_av keeping both cells clear
+    for _ in range(cap):
+        if env.terminal(): return False
+        f=env.frame(); av=av_cell(f); g=grabbed_cell(f)
+        if g is None: return False
+        if av==goal_av: return True
+        off=(g[0]-av[0],g[1]-av[1])
+        # BFS avatar to goal_av; a move ok if new av cell and new box cell both empty (box may be current)
+        def occ(ff,R,C):
+            return cell_empty(ff,R,C)
+        # custom: both av-target and box-target empty
+        q=deque([av]); prev={av:None}
+        found=None
+        while q:
+            cur=q.popleft()
+            if cur==goal_av: found=cur;break
+            for a,(dr,dc) in DIRS.items():
+                nb=(cur[0]+dr,cur[1]+dc); bx=(nb[0]+off[0],nb[1]+off[1])
+                if nb in prev: continue
+                if not(0<=nb[0]<16 and 0<=nb[1]<16 and 0<=bx[0]<16 and 0<=bx[1]<16): continue
+                okav = cell_empty(f,nb[0],nb[1]) or nb==g
+                okbx = cell_empty(f,bx[0],bx[1]) or bx==av
+                if okav and okbx:
+                    prev[nb]=(cur,a); q.append(nb)
+        if found is None: return False
+        # first action
+        path=[];n=found
+        while prev[n]: p,a=prev[n];path.append(a);n=p
+        path=path[::-1]
+        before=av
+        env.step(path[0])
+        if av_cell(env.frame())==before: return False
+    return av_cell(env.frame())==goal_av
+
+def grab_box(env, box, cap=40):
+    # nav to a cell adjacent to box and face+grab
+    f=env.frame(); av=av_cell(f)
+    adj={}
+    for a,(dr,dc) in DIRS.items():
+        ac=(box[0]-dr,box[1]-dc)
+        if cell_empty(f,ac[0],ac[1]): adj[ac]=a
+    if not adj: return False
+    path,reached=bfs(f,av,set(adj.keys()))
+    if path is None and av not in adj: return False
+    if path:
+        for a in path:
+            if env.terminal(): return False
+            env.step(a)
+    f2=env.frame(); av2=av_cell(f2)
+    if av2 in adj:
+        env.step(adj[av2]); env.step(USE)
+        return grabbed_cell(env.frame()) is not None
+    return False
+
+env=l8()
+# fixed top-left boxes = box cells with col<=2 and row<=3
+def fixed(f): return sorted([b for b in box_cells(f) if b[1]<=2 and b[0]<=3])
+drops=[(2,7),(2,8),(3,7),(3,8)]  # courier lane in top-mid arena
+for i in range(4):
+    f=env.frame(); fx=fixed(f)
+    if not fx: print('no more fixed');break
+    box=fx[0]
+    ok=grab_box(env,box)
+    if not ok: print('grab fail',box,'steps',len(env.path)-466);continue
+    # carry to a drop: bring box to drops[i]; goal_av so that box lands on drop
+    f=env.frame(); av=av_cell(f); g=grabbed_cell(f); off=(g[0]-av[0],g[1]-av[1])
+    drop=drops[i]; goal_av=(drop[0]-off[0],drop[1]-off[1])
+    okc=rigid_carry(env,goal_av)
+    env.step(USE)  # release
+    print('ferried',box,'->',drop,'carry',okc,'steps',len(env.path)-466,'nbox',len(box_cells(env.frame())))
+# idle remaining budget
+while not env.terminal() and env.levels_completed==7 and len(env.path)-466<140:
+    env.step(USE)
+print('FINAL lvl',env.levels_completed,'steps',len(env.path)-466,'fixed_left',len(fixed(env.frame())),'nbox',len(box_cells(env.frame())))
+EOF
+python ferrytest.py 2>&1 | tail -12
+Even ferrying fixed boxes + idle doesn't win. I may be missing a neutralization mechanic. Let me test avatar-vs-15 collision: can the avatar push/block/destroy a 15 mover?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > collide.py <<'EOF'
+import numpy as np, perception as P
+from collections import deque
+from solver8 import *
+from l8env import l8
+def m15(f): return [(int(b.bbox[0])//4,int(b.bbox[1])//4) for b in P.connected_components(f,colors=[15])]
+def m12(f): return [(int(b.bbox[0])//4,int(b.bbox[1])//4) for b in P.connected_components(f,colors=[12])]
+env=l8()
+# go up into top arena
+for a in [4,4,4,1,1,1,1]: env.step(a)
+print('av',av_cell(env.frame()),'m15',m15(env.frame()))
+# reactive: walk avatar onto/into nearest top 15, pressing toward it and USE, watch count
+n0=len(m15(env.frame()))
+for t in range(40):
+    if env.terminal(): break
+    f=env.frame(); a=av_cell(f); ms=[m for m in m15(f) if m[0]<6]
+    if not ms: print('top15 gone t',t); break
+    m=min(ms,key=lambda x:abs(x[0]-a[0])+abs(x[1]-a[1]))
+    dr=m[0]-a[0]; dc=m[1]-a[1]
+    if abs(dr)>=abs(dc) and dr!=0: mv=DOWN if dr>0 else UP
+    elif dc!=0: mv=RIGHT if dc>0 else LEFT
+    else: mv=USE
+    env.step(mv)
+    if abs(dr)+abs(dc)<=1:
+        # adjacent: try USE and also try stepping onto it
+        env.step(USE)
+    if t%5==0: print('t',t,'av',av_cell(env.frame()),'m15',m15(env.frame()))
+print('final m15',m15(env.frame()),'m12',m12(env.frame()),'lvl',env.levels_completed)
+EOF
+python collide.py 2>&1 | tail -15
+The avatar can't neutralize a 15. Let me check if aggressively supplying boxes to socket interiors makes *seated* boxes accumulate (vs idle's oscillation).
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from solver8 import try_solve, box_cells, av_cell
+from l8env import l8
+def seated(f):
+    n=0
+    for R in range(16):
+        for C in range(16):
+            b=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(b))
+            if 9 in u and 5 in u and 2 not in u and int((b==9).sum())>=4 and int((b==5).sum())>=8: n+=1
+    return n
+# run controller but sample seated every 10 steps by hooking: reimplement small loop
+from solver8 import *
+env=l8(); base=env.levels_completed
+def S(a):
+    if env.terminal(): return False
+    env.step(a); return True
+import solver8
+for step in range(140):
+    if env.terminal() or env.levels_completed>base: break
+    if step%10==0: print(step,'seated',seated(env.frame()),'nbox',len(box_cells(env.frame())),'lvl',env.levels_completed)
+    # one iteration of try_solve logic via calling try_solve for 1 step is awkward; just call full and break
+    break
+# simpler: just run full and check final seated over multiple short runs
+env=l8()
+lvl=try_solve(env,prefer='bottom',budget=140)
+print('final lvl',lvl,'seated',seated(env.frame()),'nbox',len(box_cells(env.frame())))
+"
+I've exhaustively probed L8: it's a 4-autonomous-agent box-sokoban with a hard ~150-step budget, no agent can be frozen/neutralized/destroyed, and seating never accumulates (couriers seat, thieves un-seat). None of the strategies (idle, socket-stuffing, ferrying fixed boxes, existing L5/L7 legs) win. Let me add a clean, general reusable leg for this box→socket family and wire a best-effort `play_level_8`, then document findings and verify no regression.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && tail -5 legs.py
+Let me test USE against other object types (courier-12, socket-9 border, solid-2) — maybe one is a switch.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "
+import numpy as np
+from solver8 import *
+from l8env import l8
+# Test USE facing socket-9 border (bottom socket left border col48). Avatar at (12,11) faces right onto socket border? col48 is border.
+env=l8()
+for a in [4,4,4,1]: env.step(a)  # into mid; navigate down to bottom arena near socket
+# reuse ferrytest nav
+from collections import deque
+def nav(env,goalset,cap=60):
+    for _ in range(cap):
+        f=env.frame(); a=av_cell(f)
+        if a in goalset: return True
+        path,_=bfs(f,a,goalset)
+        if not path: return False
+        env.step(path[0])
+    return av_cell(env.frame()) in goalset
+# stand left of socket interior far from any box: pick cell (13,11) (cols44-47 rows52-55) left of socket border col48
+env=l8()
+ok=nav(env,{(13,11)})
+f=env.frame(); print('at',av_cell(f),'right-neighbor block:',sorted(uset(f,13,12)))
+b4=env.levels_completed
+env.step(4); # face right toward socket border(9)
+env.step(5); # USE
+print('after face-right+USE on socket border: lvl',env.levels_completed,'changed?')
+# Test facing solid-2 block: navigate near bottom-left solid-2 (48-59,12-23) => cell (13,4) col16-19 rows52-55; stand left at (13,2)
+env=l8(); ok=nav(env,{(13,2)})
+f=env.frame(); print('at',av_cell(f),'right block',sorted(uset(f,13,3)))
+env.step(4); env.step(5)
+print('after USE on solid-2: lvl',env.levels_completed)
+"
+USE isn't a switch either. I've exhausted viable win-condition hypotheses; L8 is a 4-agent rate-battle sokoban I cannot crack within the 150-step budget. Let me add a clean, general reusable leg for this box→socket family and wire a non-regressive best-effort `play_level_8` (clone-probe, only commit if it wins), then document.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat >> legs.py <<'PYEOF'
+
+
+# --- Pixel-level box->socket sokoban controller (wa30 box family) -----------
+# A source-free, frame-only controller for the box-delivery world: the avatar
+# (colour 14 body + colour 0 head) grabs a 4x4 box (colour-4 border, 9 core) by
+# facing it and USE, carries it rigidly, and pushes it into a 9-bordered socket
+# interior (colour-2 fill), releasing with USE.  Works on the 16x16 grid of 4x4
+# cells; empty cells are colours {0,1}.  Re-perceives every step so autonomous
+# helpers/thieves (colours 12/15) are treated as live obstacles.  This is the
+# generic "grab-carry-release into the goal container" skill at pixel fidelity,
+# used when the coarse _grid_scan world model is insufficient (solid colour-2
+# blocks that are NOT walls in that model, sockets entered from a loading edge).
+
+def _blk(f, R, C):
+    return f[R * 4:R * 4 + 4, C * 4:C * 4 + 4]
+
+
+def _uset(f, R, C):
+    return set(int(v) for v in np.unique(_blk(f, R, C)))
+
+
+def _cell_empty(f, R, C):
+    if not (0 <= R < 16 and 0 <= C < 16):
+        return False
+    return _uset(f, R, C) <= {0, 1}
+
+
+def _px_avatar(f):
+    ys, xs = np.where((f == 14) | (f == 0))
+    if not len(ys):
+        return None
+    return (int(ys.min()) // 4, int(xs.min()) // 4)
+
+
+def _px_grabbed(f):
+    for R in range(16):
+        for C in range(16):
+            u = _uset(f, R, C)
+            if 0 in u and 9 in u and 2 not in u and 14 not in u:
+                return (R, C)
+    return None
+
+
+def _px_boxes(f):
+    out = set()
+    for R in range(16):
+        for C in range(16):
+            u = _uset(f, R, C)
+            if 9 in u and (4 in u or 3 in u) and 2 not in u:
+                out.add((R, C))
+    return out
+
+
+def _px_socket_cells(f):
+    out = set()
+    for R in range(16):
+        for C in range(16):
+            if _uset(f, R, C) == {2}:
+                out.add((R, C))
+    return out
+
+
+def _px_bfs(f, start, goals):
+    goals = set(goals)
+    if start in goals:
+        return []
+    q = deque([start])
+    prev = {start: None}
+    while q:
+        cur = q.popleft()
+        for a, (dr, dc) in _DIRS.items():
+            nb = (cur[0] + dr, cur[1] + dc)
+            if nb in prev:
+                continue
+            if nb in goals or _cell_empty(f, nb[0], nb[1]):
+                prev[nb] = (cur, a)
+                if nb in goals:
+                    path = []
+                    n = nb
+                    while prev[n]:
+                        p, ac = prev[n]
+                        path.append(ac)
+                        n = p
+                    return path[::-1]
+                q.append(nb)
+    return None
+
+
+def deliver_boxes_to_sockets(env, prefer='both', budget=140):
+    """Greedy pixel controller: repeatedly grab the nearest free box and push it
+    into the nearest 9-bordered socket interior, re-perceiving each step.
+
+    ``prefer`` restricts the box pool to the top ('top') / bottom ('bottom')
+    arena (row split at cell 8) or uses all boxes ('both').  Bounded by
+    ``budget`` real steps.  A general best-effort delivery skill for the wa30
+    box family; composes only frame reads + the five actions.
+    """
+    base = env.levels_completed
+
+    def S(a):
+        if env.terminal():
+            return False
+        env.step(a)
+        return True
+
+    for _ in range(budget):
+        if env.terminal() or env.levels_completed > base:
+            break
+        f = np.asarray(env.frame())
+        av = _px_avatar(f)
+        g = _px_grabbed(f)
+        socks = _px_socket_cells(f)
+        if g is not None:
+            if not socks:
+                S(USE)
+                continue
+            tgt = min(socks, key=lambda s: abs(s[0] - g[0]) + abs(s[1] - g[1]))
+            if abs(g[0] - tgt[0]) + abs(g[1] - tgt[1]) == 1:
+                dr, dc = tgt[0] - g[0], tgt[1] - g[1]
+                face = {(-1, 0): UP, (1, 0): DOWN, (0, -1): LEFT, (0, 1): RIGHT}[(dr, dc)]
+                S(face)
+                S(USE)
+                continue
+            order = []
+            if tgt[0] != g[0]:
+                order.append(DOWN if tgt[0] > g[0] else UP)
+            if tgt[1] != g[1]:
+                order.append(RIGHT if tgt[1] > g[1] else LEFT)
+            moved = False
+            for a in order:
+                dr, dc = _DIRS[a]
+                nav = (av[0] + dr, av[1] + dc)
+                ng = (g[0] + dr, g[1] + dc)
+                if _cell_empty(f, nav[0], nav[1]) and (_cell_empty(f, ng[0], ng[1]) or ng in socks):
+                    S(a)
+                    moved = True
+                    break
+            if not moved:
+                S(USE)
+            continue
+        bs = list(_px_boxes(f))
+        if prefer == 'top':
+            bs = [b for b in bs if b[0] < 8]
+        elif prefer == 'bottom':
+            bs = [b for b in bs if b[0] >= 8]
+        if not bs:
+            S(USE)
+            continue
+        bs.sort(key=lambda b: abs(b[0] - av[0]) + abs(b[1] - av[1]))
+        grabbed = False
+        for box in bs[:4]:
+            adj = {}
+            for a, (dr, dc) in _DIRS.items():
+                ac = (box[0] - dr, box[1] - dc)
+                if _cell_empty(f, ac[0], ac[1]):
+                    adj[ac] = a
+            if not adj:
+                continue
+            path = _px_bfs(f, av, set(adj.keys()))
+            if path is None and av not in adj:
+                continue
+            if path:
+                S(path[0])
+            av2 = _px_avatar(np.asarray(env.frame()))
+            if av2 in adj:
+                S(adj[av2])
+                S(USE)
+            grabbed = True
+            break
+        if not grabbed:
+            S(USE)
+    return env.levels_completed > base
+PYEOF
+python -c "import legs; print('leg import OK', hasattr(legs,'deliver_boxes_to_sockets'))"
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python gkm_try.py 2>&1 | tail -5
+No regression (levels=7, clean path). Let me make a final attempt: a bounded beam search maximizing socket-fill, checking for any level-up.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > beam8.py <<'EOF'
+import numpy as np, time
+from l8env import l8
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+def score(f):
+    int9=int((f[9:14,45:58]==9).sum())+int((f[49:58,49:58]==9).sum())
+    seated=0
+    for R in range(16):
+        for C in range(16):
+            b=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(b))
+            if 9 in u and 5 in u and 2 not in u and int((b==9).sum())>=4 and int((b==5).sum())>=8: seated+=1
+    return int9+4*seated
+start=l8()
+beam=[(score(start.frame()),start)]
+best=None; t0=time.time()
+for depth in range(140):
+    cand=[]
+    for sc,env in beam:
+        for a in (UP,DOWN,LEFT,RIGHT,USE):
+            c=env.clone()
+            if c.terminal(): continue
+            c.step(a)
+            if c.levels_completed>7:
+                best=c; break
+            cand.append((score(c.frame()),c))
+        if best: break
+    if best: print('WIN at depth',depth); break
+    if not cand: break
+    cand.sort(key=lambda x:-x[0])
+    beam=cand[:10]
+    if depth%20==0: print('depth',depth,'best score',beam[0][0],'t',round(time.time()-t0,1))
+    if time.time()-t0>120: print('timeout'); break
+print('best score reached', beam[0][0] if not best else 'WIN')
+if best:
+    import json
+    print('winning path len', len(best.path))
+EOF
+python beam8.py 2>&1 | tail -12
+The beam search maxes fill-score ~26 and never wins — confirming socket-fill/seating is not the tractable win metric within budget. I've exhaustively tested all viable strategies. Let me document the L8 findings for future iterations and do a final verification.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat >> legs_log.md <<'MDEOF'
+
+---
+
+## wa30 level 8 (INVESTIGATION — not yet cleared)
+
+L8 is the hardest wa30 box-family level so far and was NOT solved this pass.
+Documented here so the next attempt does not re-derive the whole world.
+
+Structure (frame-only findings, l8start.npy):
+- Background 1; walls colour 5 in two horizontal bands (rows24-27 with a gap at
+  cols16-23, rows36-39 with a gap at cols36-43) split the arena into a TOP
+  arena (rows0-23), a thin MID band (rows28-35, where the avatar starts at
+  cols4-7), and a BOTTOM arena (rows40-62).  Bottom border row63 is colour 7.
+- Avatar = colour-14 body + colour-0 head marker (marks facing); moves one 4px
+  cell per action; a direction bumped into a wall only re-faces.  Verified it
+  can thread the gaps between all three regions.
+- Boxes = 4x4, colour-4 border + colour-9 core (thirteen of them).  GRAB =
+  face an adjacent box (border 4->3 highlight) then USE (border 3->0, attaches
+  rigidly); carry with moves; USE releases (0->3).  Boxes are NOT consumed on
+  release.
+- Two big 9-bordered / 2-filled SOCKETS (top-right rows8-15 cols44-59; bottom-
+  right rows48-59 cols48-59).  A box pushed into a socket's interior stays as a
+  4-box; couriers convert a seated box's border 4->5 and stack it in the
+  socket's LOADING COLUMN (just inside the left edge).
+- FOUR autonomous agents act every turn: two colour-12 COURIERS (seat boxes,
+  border 4->5) and two colour-15 MOVERS (steal seated boxes back, 5->4, and
+  haul them off, often into the solid colour-2 dead-zone blocks on the left).
+
+Hard budget: ~150 total steps (row-63 colour-7 bar depletes ~1 cell/2.3 steps,
+independent of action; terminal at 150).
+
+Why the earlier legs do NOT apply (all verified failing on a level-8 clone):
+- Idle (any action) never levels up; free-box count churns 9-13, never ->0;
+  socket interior-9 oscillates ~4-18; seated(5-border) count oscillates 1-3.
+  So the helpers reach a THIEF-vs-COURIER equilibrium, not completion.
+- The colour-15 movers NEVER freeze (max stationary run = 1-2 steps over the
+  full budget), so L7's idle_until_mover_frozen + clear_frozen_mover cannot
+  neutralise them.  USE next to a MOVING 15 does nothing; the avatar cannot
+  step onto / destroy a 15; there is no L6 parked-in-gap clear.
+- ferry_all_to_courier_then_yield (L5) and clear_frozen_mover_then_fill (L7)
+  both run without a level-up.
+- carry_box_to's coarse _grid_scan world model is wrong here: the solid
+  colour-2 blocks are NOT walls in that model (only colour-5 is), so its nav
+  walks into them and aborts.
+- USE is inert against socket-9 borders, solid-2 blocks, and couriers (no
+  hidden switch found there).
+
+What was TRIED and still lost (all on clones):
+- A pixel-fidelity greedy "grab nearest box, push into nearest socket interior"
+  controller (added as the general leg `deliver_boxes_to_sockets`), prefer
+  top/bottom/both: max socket-fill ~14-18, no win.
+- Ferrying the four mover-UNREACHABLE fixed top-left boxes (cells (2,1),(2,2),
+  (3,1),(3,2), walled in by solid-2) out into courier reach, then idling: no
+  win (and the lower two are awkward to extract in-budget).
+- A beam search (width 10, depth 140) maximising interior-9 + 4*seated: score
+  plateaus ~20-26, never a level-up.
+
+Leading unresolved hypothesis / next ideas:
+- The likely win is "every box SEATED (5) and stable simultaneously" (or
+  equivalently 0 free boxes), which requires the two colour-15 thieves to be
+  neutralised — but no discovered mechanic neutralises a never-freezing mover.
+  The missing piece is probably a NEUTRALISATION mechanic not yet found:
+  candidates to probe next are (a) TRAPPING a 15 by occupying its only free
+  neighbour against walls/boxes so it is boxed in, then USE; (b) pushing a
+  carried BOX into a 15; (c) a specific tile/order (e.g. the two stationary
+  colour-12 blocks at (4,28)/(44,36) may be arm/disarm switches — probe USE
+  and box-delivery ONTO them).  Also worth confirming the exact win metric by
+  replaying a hypothetical full clear and watching which count hits its target.
+
+Deliverable this pass: `play_level_8` composes only legs — it clone-probes
+`deliver_boxes_to_sockets` and commits its actions ONLY if that clears the
+level, so it never pollutes the validated path when it fails.  `python
+gkm_try.py` still reports `RESULT levels=7 moves=466 replay_ok=True` (no
+regression).  `deliver_boxes_to_sockets` is retained as a general pixel-level
+grab-carry-release-into-socket skill for the wa30 box family.
+MDEOF
+echo "documented"
+Let me quickly test the leading untested neutralization idea: pushing a carried box into a 15-mover.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && cat > boxinto15.py <<'EOF'
+import numpy as np, perception as P
+from solver8 import *
+from l8env import l8
+def m15(f): return [(int(b.bbox[0])//4,int(b.bbox[1])//4) for b in P.connected_components(f,colors=[15])]
+env=l8()
+# grab the fixed box (2,1) (mover-proof, easy) then carry toward a 15
+for a in [4,4,4,1,1,1,1]: env.step(a)
+# nav to left of a top box in the open arena; simpler: grab box at (2,7)-ish if present
+f=env.frame()
+# just grab nearest box via solver8 grab logic
+from collections import deque
+def grab_nearest(env):
+    f=env.frame(); av=av_cell(f); bs=sorted(box_cells(f),key=lambda b:abs(b[0]-av[0])+abs(b[1]-av[1]))
+    for box in bs[:5]:
+        adj={}
+        for a,(dr,dc) in DIRS.items():
+            ac=(box[0]-dr,box[1]-dc)
+            if cell_empty(f,ac[0],ac[1]): adj[ac]=a
+        if not adj: continue
+        path,_=bfs(f,av,set(adj.keys()))
+        if path is None and av not in adj: continue
+        if path:
+            for a in path:
+                if env.terminal(): return False
+                env.step(a)
+        av2=av_cell(env.frame())
+        if av2 in adj:
+            env.step(adj[av2]); env.step(USE)
+            return grabbed_cell(env.frame()) is not None
+    return False
+ok=grab_nearest(env)
+print('grabbed?',ok,'g',grabbed_cell(env.frame()),'m15',m15(env.frame()))
+n0=len(m15(env.frame()))
+# now chase a 15 with the carried box: move so box cell approaches a 15, push into it
+for t in range(30):
+    if env.terminal(): break
+    f=env.frame(); av=av_cell(f); g=grabbed_cell(f)
+    if g is None: print('lost box t',t); break
+    ms=[m for m in m15(f) if m[0]<8]
+    if not ms: print('a top 15 GONE t',t,'->',len(m15(f))); break
+    m=min(ms,key=lambda x:abs(x[0]-g[0])+abs(x[1]-g[1]))
+    dr=m[0]-g[0]; dc=m[1]-g[1]
+    off=(g[0]-av[0],g[1]-av[1])
+    if abs(dr)>=abs(dc) and dr!=0: a=DOWN if dr>0 else UP
+    elif dc!=0: a=RIGHT if dc>0 else LEFT
+    else: a=USE
+    env.step(a)
+print('final m15 count',len(m15(env.frame())),'was',n0,'lvl',env.levels_completed)
+EOF
+python boxinto15.py 2>&1 | tail -8
+Pushing a box into a 15 doesn't neutralize it either (the box is immediately stolen). No neutralization mechanic exists among everything I could probe. Let me do a final verification.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_resume && python -c "import players, legs; print('imports OK; play_level_8:', hasattr(players,'play_level_8'), '; leg:', hasattr(legs,'deliver_boxes_to_sockets'))" && echo "--- final harness run ---" && python gkm_try.py 2>&1 | tail -3
+I've completed a thorough investigation of wa30 level 8. Here is my summary.
+
+## Outcome
+
+`python gkm_try.py` → `RESULT levels=7 moves=466 replay_ok=True` — **no regression**; the validated path to level 7 is intact and clean.
+
+**I was not able to clear level 8** this session. It is a genuinely hard frontier level (the automated proposer also failed it, per `proposer_last.log`).
+
+## What I discovered about L8 (frame-only, via clones)
+
+- **World:** Two arenas (top rows0-23, bottom rows40-62) split by colour-5 wall bands with gaps, plus a thin mid band where the avatar starts. The avatar is colour-14 body + colour-0 head (facing marker), moving one 4px cell/action.
+- **Mechanic:** 13 boxes (4-border/9-core). Grab = face+USE (border 4→3→0), carry rigidly, USE releases. Two big 9-bordered/2-filled sockets are the goals.
+- **Four autonomous agents act every turn:** two colour-12 couriers (seat boxes, border 4→5) and two colour-15 movers (steal seated boxes back, 5→4). They reach a thief-vs-courier **equilibrium**, so nothing ever completes on its own.
+- **Hard budget:** ~150 steps (row-63 colour-7 bar), independent of action.
+
+## Why existing legs don't fit (all verified failing on a L8 clone)
+- Colour-15 movers **never freeze** (max stationary run 1–2 steps) → L7's freeze-then-clear can't neutralize them. USE is inert on a moving 15; can't step onto/destroy one; pushing a box into one just loses the box.
+- USE is inert on socket borders, solid-2 blocks, and couriers (no hidden switch).
+- L5/L7 legs and `carry_box_to`'s coarse model (solid-2 isn't a wall there) both fail.
+- Greedy pixel controller, ferrying the mover-unreachable fixed boxes + idle, and a beam search (maximizing socket-fill + seated) all **plateau without a level-up**.
+
+## Deliverable
+- Added one **general, minimal leg** `deliver_boxes_to_sockets` (pixel-fidelity grab→carry→push-into-socket controller for the wa30 box family).
+- `play_level_8` composes only legs: it **clone-probes** that controller and commits its actions **only if it clears the level**, so it never pollutes the validated path when it fails.
+- Documented all findings and the leading unresolved hypothesis (the win almost certainly requires neutralizing the never-freezing colour-15 thieves — a mechanic I could not find; next probes to try are trapping a 15 in a true 3-wall dead-end and box-delivery onto the moving colour-12 blocks) in `legs_log.md` so the next iteration can build on this rather than re-deriving the world.

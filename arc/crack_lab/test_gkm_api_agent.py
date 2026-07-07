@@ -70,6 +70,29 @@ def test_editor_confined_to_workspace(tmp_path):
     assert err and "outside the workspace" in out
 
 
+def test_source_access_blocked_in_bash_and_editor(tmp_path):
+    out, err = G._run_bash(str(tmp_path), "sed -n '1,80p' /Users/sasha/gkm/environment_files/wa30/x/wa30.py")
+    assert err
+    assert "forbidden source/history access blocked" in out
+
+    out, err = G._run_editor(
+        str(tmp_path),
+        {"command": "view", "path": "/Users/sasha/gkm/environment_files/ls20/x/ls20.py"},
+    )
+    assert err
+    assert "forbidden source/history access blocked" in out
+
+
+def test_source_reference_in_probe_script_blocks_later_bash(tmp_path):
+    (tmp_path / "probe.py").write_text(
+        "open('/Users/sasha/gkm/environment_files/wa30/x/wa30.py').read()\n"
+    )
+    out, err = G._run_bash(str(tmp_path), "python3 probe.py")
+    assert err
+    assert "probe.py" in out
+    assert "forbidden source/history access blocked" in out
+
+
 def test_api_error_is_logged_not_raised(tmp_path):
     class _Boom:
         class messages:

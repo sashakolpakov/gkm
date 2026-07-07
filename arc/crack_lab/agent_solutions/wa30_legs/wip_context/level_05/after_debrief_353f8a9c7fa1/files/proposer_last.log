@@ -1,0 +1,81 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat gkm_try.py && echo "---CHECKPOINT---" && cat checkpoint.json && echo "---LOG---" && cat legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat solve.py && echo "---PERCEPTION---" && head -50 perception.py
+Let me run the baseline to confirm the current result before refactoring.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=5 replay_ok=True`. Now let me analyze the repetition between players.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && grep -n "ferry_box\|yield_until_level_up\|ferry_all\|park_and_wait" players.py legs.py
+The picture is clear. Both `play_level_4` (explicit 7× `ferry_box` + `yield_until_level_up`) and `play_level_5` (`ferry_all_to_courier_then_yield`) are instances of the same shape: **ferry a batch of boxes, then yield for the helper**. Level 4 open-codes that loop-and-yield in the player. Let me extract it into a shared leg.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean/legs.py
+Now make `play_level_4` a thin, data-driven call to the shared leg:
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean/players.py
+Now append the recurring composition pattern to `legs_log.md`:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && cat >> legs_log.md <<'EOF'
+
+## wa30 level 5 debrief: refactor into shared legs
+
+Comparing `play_level_5` against the earlier players confirms one dominant
+composition shape that now recurs across *every* courier/helper level (3, 4, 5):
+
+> **ferry a batch of boxes into a helper-reachable handoff zone, then yield turns
+> for the helper to finish.**
+
+- `play_level_3`: repositions to each west box, `relay_box_from_west`, then an
+  idle wait (`use(env, 33)`).
+- `play_level_4`: seven `ferry_box(...)` calls followed by `yield_until_level_up`.
+- `play_level_5`: a single `ferry_all_to_courier_then_yield(...)` -- a live-frame
+  self-pacing loop that ferries the nearest free box to a rotating handoff cell
+  and finally parks and yields.
+
+The repeated *code* was in `play_level_4`, which open-coded the batch loop and
+the trailing yield inline. That loop-and-yield is now written ONCE as the leg
+`ferry_all_then_yield(env, specs, idle_action)` (a `for spec in specs:
+ferry_box(...)` batch followed by `yield_until_level_up`). `play_level_4` is now
+thin, data-driven composition -- a list of `(approach, face, push, steps)`
+tuples handed to that one leg -- and reproduces the verified action sequence
+byte-for-byte (RESULT unchanged: `levels=5 replay_ok=True`).
+
+Candidate higher-order leg (now realised twice): **"ferry-batch-then-yield"** has
+two sibling forms sharing the same skeleton:
+- STATIC / pre-planned: `ferry_all_then_yield(specs, idle)` -- deterministic when
+  box positions and courier reach are known ahead of time (level 4).
+- DYNAMIC / live-frame: `ferry_all_to_courier_then_yield(drops=...)` -- re-reads
+  the frame each pass, picks the nearest free box and an empty rotating handoff
+  cell, and cedes turns when congested (level 5).
+
+The natural unification for future courier levels is a single
+`ferry_all_then_yield(env, plan, idle_action)` whose `plan` may be either a
+static list of ferry specs OR a live-frame policy (nearest-box -> rotating-drop),
+with the same "grab -> carry into helper reach -> release, repeat, then yield"
+core. Both current legs are instances of that shape; the static one is the new
+shared leg extracted this pass.
+EOF
+echo done
+Now verify behaviour is unchanged:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && python gkm_try.py 2>&1 | tail -5
+Identical result: `levels=5 moves=354 replay_ok=True`. Let me confirm the final state of the changed files:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_clean && echo "=== players.py ===" && cat players.py && echo && echo "=== new leg in legs.py ===" && sed -n '157,180p' legs.py
+Debrief complete. Here's what I did.
+
+## Comparison
+Comparing `play_level_5` against the earlier players surfaced one dominant composition shape recurring across every courier/helper level (3, 4, 5): **ferry a batch of boxes into a helper-reachable handoff zone, then yield turns for the helper to finish.**
+
+- **L3**: relay each box west→east, then idle-wait (`use(env, 33)`).
+- **L4**: seven inline `ferry_box(...)` calls + `yield_until_level_up(...)`.
+- **L5**: a single `ferry_all_to_courier_then_yield(...)` — a live-frame self-pacing version of the same skeleton.
+
+The only place the shape was **open-coded as repeated player code** was `play_level_4`, which spelled out the ferry-batch loop and the trailing yield inline.
+
+## Refactor (each skill written ONCE)
+- Added one shared leg to `legs.py`: `ferry_all_then_yield(env, specs, idle_action)` — loops `ferry_box` over a list of `(approach, face, push, steps)` specs, then calls `yield_until_level_up`. It's the static/pre-planned sibling of L5's live-frame `ferry_all_to_courier_then_yield`.
+- `play_level_4` is now thin, data-driven composition: a list of ferry specs handed to that one leg. No new primitive behaviour, no duplicated loop.
+- `play_level_5` already delegated to a single leg, so it stays thin.
+
+## Log
+Appended a debrief section to `legs_log.md` documenting the recurring **"ferry-batch-then-yield"** pattern, its two realised sibling forms (static list-of-specs vs. dynamic live-frame policy), and the natural unifying higher-order leg for future courier levels.
+
+## Behaviour preserved
+`python gkm_try.py` → `RESULT levels=5 moves=354 replay_ok=True err=None` — byte-for-byte identical to the pre-refactor baseline, with `levels >= 5`.

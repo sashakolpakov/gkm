@@ -1,0 +1,968 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat gkm_try.py solve.py players.py legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat checkpoint.json; echo ---; cat proposer_last.log; echo ---; timeout 600 python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && python gkm_try.py 2>&1 | tail -20 &
+sleep 400 && echo "---400s elapsed---"
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,220p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '220,320p' gkm_arena.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat > /tmp/getlvl5.py <<'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+env = A.Arena('ls20')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    if env.terminal(): break
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+f = env.frame()
+print("shape", f.shape, "colours", sorted(set(f.flatten().tolist())))
+np.save('/tmp/lvl5_frame.npy', f)
+EOF
+python /tmp/getlvl5.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && python3 -c "
+import numpy as np
+f=np.load('/tmp/lvl5_frame.npy')
+for r in range(64):
+    print(''.join('{:X}'.format(v) for v in f[r]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && python -c "
+import numpy as np
+f=np.load('/tmp/lvl5_frame.npy')
+for r in range(64):
+    print(''.join('{:X}'.format(v) for v in f[r]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh && cat > /tmp/lib5.py <<'EOF'
+import importlib.util, json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+def get_env5():
+    env = A.Arena('ls20')
+    ck = json.load(open('/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh/checkpoint.json'))
+    for a in ck['final_path']:
+        if env.terminal(): break
+        env.step(a)
+    return env
+def show(f):
+    for r in range(64):
+        print(''.join('{:X}'.format(v) for v in f[r]))
+def diff(f0,f1):
+    ys,xs=np.where(f0!=f1)
+    for y,x in zip(ys,xs):
+        print(f"({y},{x}): {f0[y,x]}->{f1[y,x]}")
+EOF
+cat > /tmp/p1.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+f0=env.frame()
+for a in (1,2,3,4):
+    c=env.clone()
+    f1=c.step(a)
+    print(f"=== action {a}: {int((f0!=f1).sum())} cells changed ===")
+    diff(f0,f1)
+EOF
+python /tmp/p1.py
+$ cd /tmp && cat > p2.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+# repeated action 2
+c=env.clone()
+f_prev=c.frame()
+for i in range(5):
+    f=c.step(2)
+    ch=int((f_prev!=f).sum())
+    ys,xs=np.where(f_prev!=f)
+    cells=[(int(y),int(x),int(f_prev[y,x]),int(f[y,x])) for y,x in zip(ys,xs)]
+    print(f"step {i} act2: {ch} changed", cells)
+    f_prev=f
+EOF
+python p2.py
+$ cd /tmp && python -c "
+import numpy as np
+f=np.load('/tmp/lvl5_frame.npy')
+for r in (61,62):
+    row=f[r]
+    bcols=[c for c in range(64) if row[c]==11]
+    print('row',r,'B cols',bcols[0] if bcols else None,'-',bcols[-1] if bcols else None,'count',len(bcols))
+"
+$ cd /tmp && cat > p3.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def block_pos(f):
+    # the moving block is 12(top2 rows) over 9(bottom3) 5x5; find 9 cluster near cols 49-58
+    ys,xs=np.where(f==9)
+    if len(ys)==0: return None
+    return (int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max()),len(ys))
+f=env.frame()
+print("start block9:",block_pos(f))
+for a in (1,2,3,4):
+    c=env.clone()
+    for i in range(6):
+        c.step(a)
+    print(f"after 6x act{a}: block9",block_pos(c.frame()))
+EOF
+python p3.py
+$ cd /tmp && cat > p4.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def c12(f):
+    ys,xs=np.where(f==12)
+    return sorted(zip(ys.tolist(),xs.tolist()))
+f0=env.frame()
+# the moving block's 12 cells are at rows40-41 cols49-53 initially. Track that cluster region.
+def block12(f):
+    ys,xs=np.where(f==12)
+    pts=[(y,x) for y,x in zip(ys,xs) if 30<=y<=60 and 40<=x<=63]
+    if not pts: return None
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2),max(ys2),max(xs2),len(pts))
+print("start",block12(f0))
+for a in (1,2,3,4):
+    c=env.clone(); c.step(a)
+    print(f"act{a}",block12(c.frame()))
+EOF
+python p4.py
+$ cd /tmp && cat > p5.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def block12(f):
+    ys,xs=np.where(f==12)
+    pts=[(int(y),int(x)) for y,x in zip(ys,xs) if 20<=y<=60 and 40<=x<=63]
+    if not pts: return None
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2),max(ys2),max(xs2),len(pts))
+def probe(seq):
+    c=env.clone()
+    for a in seq: c.step(a)
+    base=block12(c.frame())
+    res={}
+    for a in (1,2,3,4):
+        c2=c.clone(); c2.step(a)
+        res[a]=block12(c2.frame())
+    return base,res
+for seq in [(),(1,),(1,1),(3,),(4,)]:
+    base,res=probe(seq)
+    print("seq",seq,"base",base)
+    for a in (1,2,3,4):
+        print("   act",a,res[a])
+EOF
+python p5.py
+$ cd /tmp && cat > p6.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+c=env.clone()
+for i in range(40):
+    if c.terminal():
+        print("terminal at step",i); break
+    f=c.step(2)
+    nb=int((f==11).sum())
+    if i%3==0 or nb<8:
+        print(f"step{i} B-count={nb} lvl={c.levels_completed} term={c.terminal()}")
+print("final term",c.terminal(),"lvl",c.levels_completed)
+EOF
+python p6.py
+$ cd /tmp && cat > p7.py <<'EOF'
+import sys, time; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+print("mask cells",int(mask.sum()))
+t=time.time()
+path=legs.find_winning_path(env,max_states=8000,mask=mask)
+print("path",path,"time",time.time()-t)
+EOF
+python p7.py
+$ cd /tmp && cat > p8.py <<'EOF'
+import sys, time; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def blockpos(f):
+    # find 2x5 horizontal 12-bar with 9s below => moving block top-left
+    ys,xs=np.where(f==12)
+    from collections import defaultdict
+    s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        # candidate top-left of 2x5 of 12
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)):
+            # check 9s below
+            below9=all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5))
+            if below9:
+                return (y,x)
+    return None
+f0=env.frame()
+print("start blockpos",blockpos(f0))
+# BFS on block position
+from collections import deque
+start=env.clone()
+p0=blockpos(start.frame())
+seen={p0}
+q=deque([(start,[])])
+base=env.levels_completed
+t=time.time()
+steps=0
+win=None
+while q:
+    node,path=q.popleft()
+    for a in (1,2,3,4):
+        c=node.clone(); c.step(a); steps+=1
+        if c.levels_completed>base:
+            win=path+[a]; break
+        p=blockpos(c.frame())
+        if p is None:  # block vanished? treat as terminal-ish, skip
+            continue
+        if p not in seen:
+            seen.add(p); q.append((c,path+[a]))
+    if win: break
+    if len(seen)>=4000: break
+print("win",win,"positions",len(seen),"steps",steps,"time",round(time.time()-t,1))
+# print reachable positions extent
+ys=[p[0] for p in seen]; xs=[p[1] for p in seen]
+print("y range",min(ys),max(ys),"x range",min(xs),max(xs))
+EOF
+python p8.py
+$ cd /tmp && cat > p9.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+f0=env.frame()
+# find all cells of "rare" colors that likely form small objects/markers
+from collections import Counter
+cnt=Counter(f0.flatten().tolist())
+print("color counts",dict(cnt))
+# locate color 0,8,14 cells
+for col in (0,8,14,1):
+    ys,xs=np.where(f0==col)
+    pts=sorted(zip(ys.tolist(),xs.tolist()))
+    print(f"color {col}: {len(pts)} cells:",pts[:40])
+EOF
+python p9.py
+$ cd /tmp && cat > p10.py <<'EOF'
+import sys,time; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def blockpos(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def diapos(f):
+    # diamond: color0 cluster with a 1 nearby, small. Use centroid of the 0/1/8/14 sprite minus block.
+    # The diamond has color pattern: find the '0' at center with '1' left. Simpler: bounding box of 0-cells not in the BBB boxes.
+    ys,xs=np.where(f==0)
+    pts=[(int(y),int(x)) for y,x in zip(ys,xs)]
+    return tuple(sorted(pts))
+f0=env.frame()
+print("block",blockpos(f0))
+print("0cells",diapos(f0))
+EOF
+python p10.py
+$ cd /tmp && cat > p11.py <<'EOF'
+import sys,random; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+f0=env.frame()
+everchg=np.zeros_like(f0,dtype=bool)
+random.seed(1)
+c=env.clone()
+prev=c.frame()
+for i in range(200):
+    a=random.choice((1,2,3,4))
+    f=c.step(a)
+    everchg|=(f!=f0)
+ys,xs=np.where(everchg)
+# cluster changed cells into rough regions by rows
+byrow={}
+for y,x in zip(ys.tolist(),xs.tolist()):
+    byrow.setdefault(y,[]).append(x)
+for y in sorted(byrow): 
+    xs2=sorted(byrow[y]); 
+    print(y, f"{xs2[0]}-{xs2[-1]}", len(xs2))
+EOF
+python p11.py
+$ cd /tmp && cat > p11.py <<'EOF'
+import sys,random; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+f0=env.frame()
+everchg=np.zeros_like(f0,dtype=bool)
+random.seed(1)
+maxstep=0
+for trial in range(20):
+    c=env.clone()
+    for i in range(60):
+        if c.terminal(): break
+        a=random.choice((1,2,3,4))
+        f=c.step(a)
+        everchg|=(f!=f0)
+        maxstep=max(maxstep,i)
+ys,xs=np.where(everchg)
+byrow={}
+for y,x in zip(ys.tolist(),xs.tolist()):
+    byrow.setdefault(y,[]).append(x)
+for y in sorted(byrow): 
+    xs2=sorted(byrow[y]); 
+    print(y, f"{xs2[0]}-{xs2[-1]}", len(xs2))
+print("maxstep",maxstep)
+EOF
+python p11.py
+$ cd /tmp && cat > bfs5.py <<'EOF'
+import sys,time; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+from collections import deque
+import json
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+base=env.levels_completed
+start=env.clone()
+def key(f): 
+    g=f.copy(); g[mask]=-1; return g.tobytes()
+seen={key(start.frame())}
+q=deque([(start,[])])
+t0=time.time(); expanded=0; win=None
+while q:
+    node,path=q.popleft(); expanded+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        try: c.step(a)
+        except Exception: continue
+        if c.terminal():
+            # dead state, don't expand
+            if c.levels_completed>base:
+                win=path+[a]; break
+            continue
+        if c.levels_completed>base:
+            win=path+[a]; break
+        k=key(c.frame())
+        if k not in seen:
+            seen.add(k); q.append((c,path+[a]))
+    if win: break
+    if expanded%500==0:
+        print(f"expanded={expanded} seen={len(seen)} depth={len(path)} t={time.time()-t0:.0f}s",flush=True)
+    if len(seen)>40000 or time.time()-t0>1400: 
+        print("cap hit"); break
+if win:
+    print("WIN len",len(win),win)
+    json.dump(win,open('/tmp/win5.json','w'))
+else:
+    print("no win, seen",len(seen))
+EOF
+nohup python bfs5.py > /tmp/bfs5.log 2>&1 &
+echo "started pid $!"
+$ sleep 120 && cat /tmp/bfs5.log
+$ sleep 180 && cat /tmp/bfs5.log
+$ kill 58604 2>/dev/null; cd /tmp && cat > p12.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+f=env.frame()
+# render region rows 33-40 cols 12-26 to see the diamond sprite
+print("=== diamond region rows34-40 cols13-26 ===")
+for r in range(34,41):
+    print(r, ''.join('{:X}'.format(v) for v in f[r,13:27]))
+print("=== block region rows38-46 cols47-60 ===")
+for r in range(38,47):
+    print(r, ''.join('{:X}'.format(v) for v in f[r,47:61]))
+EOF
+python p12.py
+$ cd /tmp && cat > p13.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def diamond(f):
+    ys,xs=np.where(f==0)
+    pts=[(int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44]
+    if not pts: return None
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2),max(ys2),max(xs2))
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def probe(seq):
+    c=env.clone()
+    for a in seq:
+        if c.terminal(): break
+        c.step(a)
+    print("seq",seq,"block",block(c.frame()),"diamond",diamond(c.frame()))
+    for a in (1,2,3,4):
+        c2=c.clone()
+        if c2.terminal(): continue
+        c2.step(a)
+        print(f"   act{a}: block",block(c2.frame()),"diamond",diamond(c2.frame()),"term",c2.terminal(),"lvl",c2.levels_completed)
+for seq in [(),(1,),(3,),(4,),(1,3)]:
+    probe(seq)
+EOF
+python p13.py
+$ cd /tmp && cat > p14.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def diamond(f):
+    ys,xs=np.where(f==0); pts=[(int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44]
+    if not pts: return None
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2),max(ys2),max(xs2))
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+c=env.clone()
+prevb=block(c.frame())
+for i in range(30):
+    if c.terminal(): print("TERMINAL at",i); break
+    # pick an action that moves the block
+    moved=False
+    for a in (3,4,1,2):
+        t=c.clone(); 
+        if t.terminal(): continue
+        t.step(a)
+        if block(t.frame())!=prevb or t.terminal() or t.levels_completed>4:
+            c.step(a); moved=True; break
+    if not moved:
+        c.step(1)
+    b=block(c.frame()) if not c.terminal() else None
+    d=diamond(c.frame()) if not c.terminal() else None
+    print(f"i={i} a={a} block={b} diamond={d} term={c.terminal()} lvl={c.levels_completed}")
+    prevb=b
+EOF
+python p14.py
+$ cd /tmp && cat > p15.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+from collections import deque
+env=get_env5()
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+# BFS on block pos, record any state where block becomes None or level up or terminal
+start=env.clone()
+seen={block(start.frame())}
+q=deque([(start,[])]); base=4
+specials=[]
+cnt=0
+while q and cnt<3000:
+    node,path=q.popleft()
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a); cnt+=1
+        if c.levels_completed>base:
+            print("WIN via block move",path+[a]); specials.append(('win',path+[a])); q.clear(); break
+        if c.terminal():
+            specials.append(('term',path+[a])); continue
+        p=block(c.frame())
+        if p is None:
+            specials.append(('none',path+[a], c.frame()))
+            continue
+        if p not in seen:
+            seen.add(p); q.append((c,path+[a]))
+print("block positions explored",len(seen),"specials",len(specials))
+for s in specials[:5]:
+    print(s[0],s[1] if len(s)>1 else '')
+# show a 'none' frame
+for s in specials:
+    if s[0]=='none':
+        f=s[2]
+        print("NONE path",s[1])
+        # where are the 12 and 9 cells now
+        ys,xs=np.where(f==12); print("12 cells",sorted(zip(ys.tolist(),xs.tolist()))[:20])
+        break
+EOF
+python p15.py
+$ cd /tmp && cat > p16.py <<'EOF'
+import sys,random; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5()
+def diamond(f):
+    ys,xs=np.where(f==0); pts=[(int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44]
+    if not pts: return None
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2),max(ys2),max(xs2))
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+random.seed(3)
+for trial in range(6):
+    c=env.clone(); hist=[]
+    for i in range(80):
+        if c.terminal(): break
+        a=random.choice((1,2,3,4))
+        pb=block(c.frame())
+        c.step(a)
+        if c.terminal():
+            print(f"trial{trial} TERMINAL at step{i} act{a}; last few:",hist[-4:]); break
+        if c.levels_completed>4:
+            print(f"trial{trial} WIN at step{i}"); break
+        hist.append((a,block(c.frame()),diamond(c.frame())))
+    else:
+        print(f"trial{trial} no term, diamond end",diamond(c.frame()))
+EOF
+python p16.py
+$ cd /tmp && cat > p17.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def dia(f):
+    ys,xs=np.where(f==0); pts=[(int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44]
+    ys2=[p[0] for p in pts]; xs2=[p[1] for p in pts]
+    return (min(ys2),min(xs2)) if pts else None
+# two paths returning block to start-ish, compare masked frames
+c1=env.clone(); c1.step(3); c1.step(3)  # 40,49 -> 54 -> 49
+c2=env.clone()  # start 40,49
+for c,name in [(c1,'c1'),(c2,'c2')]:
+    f=c.frame(); g=f.copy(); g[mask]=-1
+    print(name,"block",block(f),"dia",dia(f))
+f1=c1.frame().copy(); f1[mask]=-1
+f2=c2.frame().copy(); f2[mask]=-1
+ys,xs=np.where(f1!=f2)
+print("masked diff cells:",list(zip(ys.tolist(),xs.tolist())))
+for y,x in zip(ys.tolist(),xs.tolist()):
+    print((y,x),int(c1.frame()[y,x]),int(c2.frame()[y,x]))
+EOF
+python p17.py
+$ cd /tmp && cat > p18.py <<'EOF'
+import sys,time; sys.path.insert(0,'/tmp')
+from lib5 import *
+from collections import deque
+env=get_env5()
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def dia(f):
+    ys,xs=np.where(f==0); pts=tuple(sorted((int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44))
+    return pts
+def key(f): return (block(f),dia(f))
+start=env.clone()
+seen={key(start.frame())}
+q=deque([(start,[])]); base=4; t=time.time(); win=None; exp=0
+diaset=set(); blockset=set()
+while q:
+    node,path=q.popleft(); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>base: win=path+[a]; break
+        if c.terminal(): continue
+        k=key(c.frame()); 
+        if k[0] is not None: blockset.add(k[0])
+        diaset.add(k[1])
+        if k not in seen: seen.add(k); q.append((c,path+[a]))
+    if win: break
+    if exp%1000==0: print("exp",exp,"seen",len(seen),"depth",len(path),"t",round(time.time()-t),flush=True)
+    if len(seen)>20000 or time.time()-t>500: print("cap"); break
+print("WIN",win)
+print("states",len(seen),"distinct block",len(blockset),"distinct dia",len(diaset))
+print("dia positions sample",sorted(diaset)[:20])
+EOF
+python p18.py
+$ cd /tmp && cat > p19.py <<'EOF'
+import sys,time; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+from collections import deque
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def dia(f):
+    ys,xs=np.where(f==0); return tuple(sorted((int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44))
+def mkey(f): g=f.copy(); g[mask]=-1; return g.tobytes()
+start=env.clone()
+seen={mkey(start.frame())}
+bdseen={(block(start.frame()),dia(start.frame())):start.frame()}
+q=deque([(start,[])]); exp=0
+found=False
+while q and exp<1500:
+    node,path=q.popleft(); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.terminal() or c.levels_completed>4: continue
+        f=c.frame(); k=mkey(f)
+        if k not in seen:
+            seen.add(k)
+            bd=(block(f),dia(f))
+            if bd in bdseen:
+                # hidden state! diff against prior frame with same bd
+                f0=bdseen[bd]; g0=f0.copy(); g0[mask]=-1; g1=f.copy(); g1[mask]=-1
+                ys,xs=np.where(g0!=g1)
+                print("HIDDEN STATE, same (block,dia)=",bd)
+                print("diff cells:",[(int(y),int(x),int(f0[y,x]),int(f[y,x])) for y,x in zip(ys.tolist(),xs.tolist())][:30])
+                found=True; q.clear(); break
+            else:
+                bdseen[bd]=f
+            q.append((c,path+[a]))
+    if found: break
+print("done exp",exp,"seen",len(seen))
+EOF
+python p19.py
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5(); f=env.frame()
+# find 3x3 BBB/B?B/BBB patterns of color 11 (exclude bottom bar rows>=60)
+import numpy as np
+found=[]
+for y in range(2,58):
+    for x in range(2,60):
+        blk=f[y:y+3,x:x+3]
+        if blk.shape!=(3,3): continue
+        b=(blk==11)
+        if b[0,0] and b[0,1] and b[0,2] and b[1,0] and b[1,2] and b[2,0] and b[2,1] and b[2,2] and not b[1,1]:
+            found.append((y,x,int(f[y+1,x+1])))
+print('B3B boxes (topleft, center color):',found)
+"
+$ cd /tmp && cat > p20.py <<'EOF'
+import sys,time,json; sys.path.insert(0,'/tmp')
+from lib5 import *
+from collections import deque
+env=get_env5()
+BOXES=[(6,45),(11,10),(46,15)]
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def boxsig(f):
+    return tuple(int((f[y:y+3,x:x+3]==11).sum()) for (y,x) in BOXES)
+def key(f): return (block(f),boxsig(f))
+start=env.clone()
+seen={key(start.frame())}
+q=deque([(start,[])]); base=4; t=time.time(); win=None; exp=0
+sigs=set()
+while q:
+    node,path=q.popleft(); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>base: win=path+[a]; break
+        if c.terminal(): continue
+        f=c.frame(); k=key(f); sigs.add(k[1])
+        if k not in seen: seen.add(k); q.append((c,path+[a]))
+    if win: break
+    if exp%1000==0: print("exp",exp,"seen",len(seen),"depth",len(path),"t",round(time.time()-t),flush=True)
+    if len(seen)>30000 or time.time()-t>500: print("cap"); break
+print("WIN",win)
+print("states",len(seen),"exp",exp)
+print("box sigs seen:",sorted(sigs))
+if win: json.dump(win,open('/tmp/win5.json','w'))
+EOF
+python p20.py
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+env=get_env5(); f=env.frame()
+for r in range(35,39):
+    print(r,''.join('{:X}'.format(v) for v in f[r]))
+"
+$ cd /tmp && cat > p21.py <<'EOF'
+import sys,time; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+from collections import deque
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+BOXES=[(6,45),(11,10),(46,15)]
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def dia(f):
+    ys,xs=np.where(f==0); return tuple(sorted((int(y),int(x)) for y,x in zip(ys,xs) if 32<=y<=44))
+def boxsig(f): return tuple(int((f[y:y+3,x:x+3]==11).sum()) for (y,x) in BOXES)
+def K(f): return (block(f),boxsig(f),dia(f))
+def mkey(f): g=f.copy(); g[mask]=-1; return g.tobytes()
+start=env.clone()
+seen={mkey(start.frame())}
+kseen={K(start.frame()):start.frame()}
+q=deque([(start,[])]); exp=0; found=0
+while q and exp<3000:
+    node,path=q.popleft(); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.terminal() or c.levels_completed>4: continue
+        f=c.frame(); k=mkey(f)
+        if k not in seen:
+            seen.add(k); kk=K(f)
+            if kk in kseen:
+                f0=kseen[kk]; g0=f0.copy(); g0[mask]=-1; g1=f.copy(); g1[mask]=-1
+                ys,xs=np.where(g0!=g1)
+                print("HIDDEN beyond (block,box,dia):",[(int(y),int(x),int(f0[y,x]),int(f[y,x])) for y,x in zip(ys.tolist(),xs.tolist())][:20])
+                found+=1
+                if found>=6: q.clear(); break
+            else: kseen[kk]=f
+            q.append((c,path+[a]))
+    if found>=6: break
+print("done exp",exp,"seen",len(seen),"hidden found",found)
+EOF
+python p21.py
+$ cd /tmp && cat > p22.py <<'EOF'
+import sys,time,json; sys.path.insert(0,'/tmp')
+from lib5 import *
+from collections import deque
+env=get_env5()
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def gauge(f): return f[53:61,1:11].tobytes()
+def K(f): return (block(f),gauge(f))
+start=env.clone()
+seen={K(start.frame())}
+q=deque([(start,[])]); base=4; t=time.time(); win=None; exp=0
+gset=set()
+while q:
+    node,path=q.popleft(); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>base: win=path+[a]; break
+        if c.terminal(): continue
+        f=c.frame(); k=K(f); gset.add(k[1])
+        if k not in seen: seen.add(k); q.append((c,path+[a]))
+    if win: break
+    if exp%2000==0: print("exp",exp,"seen",len(seen),"gauges",len(gset),"depth",len(path),"t",round(time.time()-t),flush=True)
+    if len(seen)>40000 or time.time()-t>500: print("cap"); break
+print("WIN",win,"states",len(seen),"distinct gauges",len(gset))
+if win: json.dump(win,open('/tmp/win5.json','w')); print("saved")
+EOF
+python p22.py
+$ cd /tmp && cat > p23.py <<'EOF'
+import sys; sys.path.insert(0,'/tmp')
+from lib5 import *
+from collections import deque
+env=get_env5()
+BOXES=[(6,45),(11,10),(46,15)]
+def block(f):
+    ys,xs=np.where(f==12); s=set(zip(ys.tolist(),xs.tolist()))
+    for (y,x) in sorted(s):
+        if all((y+dy,x+dx) in s for dy in range(2) for dx in range(5)) and all(f[y+2+dy,x+dx]==9 for dy in range(3) for dx in range(5)):
+            return (y,x)
+    return None
+def boxsig(f): return tuple(int((f[y:y+3,x:x+3]==11).sum()) for (y,x) in BOXES)
+def gaugecells(f): 
+    # nonbackground cells in gauge box
+    reg=f[53:61,1:11]
+    from collections import Counter
+    return dict(Counter(reg.flatten().tolist()))
+# BFS to first box collection
+start=env.clone()
+seen={block(start.frame())}
+q=deque([(start,[])]); 
+res=None
+while q and not res:
+    node,path=q.popleft()
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if boxsig(c.frame())!=(8,8,8):
+            res=(path+[a],c); break
+        p=block(c.frame())
+        if p and p not in seen: seen.add(p); q.append((c,path+[a]))
+path,c=res
+print("path to first box collect:",path)
+print("boxsig now",boxsig(c.frame()))
+print("gauge before:",gaugecells(start.frame()))
+print("gauge after :",gaugecells(c.frame()))
+# continue: collect all boxes, watch gauge
+cur=c
+for target in range(2):
+    seen={block(cur.frame())}; q=deque([(cur,[])]); r=None; bs0=boxsig(cur.frame())
+    while q and not r:
+        node,path=q.popleft()
+        for a in (1,2,3,4):
+            cc=node.clone()
+            if cc.terminal(): continue
+            cc.step(a)
+            if boxsig(cc.frame())!=bs0: r=(path+[a],cc); break
+            p=block(cc.frame())
+            if p and p not in seen: seen.add(p); q.append((cc,path+[a]))
+    if not r: print("cannot collect more"); break
+    path,cur=r
+    print("collected another, boxsig",boxsig(cur.frame()),"gauge",gaugecells(cur.frame()),"lvl",cur.levels_completed,"term",cur.terminal())
+EOF
+python p23.py
+$ cd /tmp && cat > gsearch.py <<'EOF'
+import sys,time,json,heapq; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+BOXES=[(6,45),(11,10),(46,15)]
+def boxes_left(f): return sum(1 for (y,x) in BOXES if (f[y:y+3,x:x+3]==11).sum()>=6)
+def gauge12(f): return int((f[53:61,1:11]==12).sum())
+def gauge14(f): return int((f[53:61,1:11]==14).sum())
+def gauge9(f): return int((f[53:61,1:11]==9).sum())
+def prog(f):
+    return (3-boxes_left(f))*1000 + gauge14(f)*10 + gauge12(f) + gauge9(f)*5
+def mkey(f): g=f.copy(); g[mask]=-1; return g.tobytes()
+start=env.clone()
+seen={mkey(start.frame())}
+h0=-prog(start.frame())
+cnt=0
+pq=[(h0,cnt,start,[])]
+t=time.time(); win=None; exp=0; bestprog=prog(start.frame())
+while pq:
+    hh,_,node,path=heapq.heappop(pq); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>4: win=path+[a]; break
+        if c.terminal(): continue
+        f=c.frame(); k=mkey(f)
+        if k not in seen:
+            seen.add(k); cnt+=1
+            p=prog(f)
+            if p>bestprog: bestprog=p; print("newbest prog",p,"depth",len(path)+1,"boxesleft",boxes_left(f),"g12",gauge12(f),"g9",gauge9(f),"g14",gauge14(f),"exp",exp,flush=True)
+            heapq.heappush(pq,(-p*1000 + (len(path)+1), cnt, c, path+[a]))
+    if win: break
+    if exp%2000==0: print("exp",exp,"seen",len(seen),"bestprog",bestprog,"t",round(time.time()-t),flush=True)
+    if len(seen)>50000 or time.time()-t>1200: print("cap"); break
+print("WIN",win)
+if win: json.dump(win,open('/tmp/win5.json','w')); print("saved len",len(win))
+EOF
+nohup python gsearch.py > /tmp/gsearch.log 2>&1 &
+echo "pid $!"
+$ sleep 60; cat /tmp/gsearch.log
+$ sleep 150; cat /tmp/gsearch.log
+$ cd /tmp && cat > verify.py <<'EOF'
+import sys,json; sys.path.insert(0,'/tmp')
+from lib5 import *
+win=json.load(open('/tmp/win5.json'))
+env=get_env5()
+print("start lvl",env.levels_completed)
+for i,a in enumerate(win):
+    if env.terminal(): print("terminal at",i); break
+    env.step(a)
+print("end lvl",env.levels_completed,"term",env.terminal(),"len",len(win))
+EOF
+python verify.py
+$ cd /tmp && cat > gtest2.py <<'EOF'
+import sys,time,json,heapq; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+f0=env.frame().copy()
+outmask=~mask
+def prog(f):
+    return int(((f!=f0)&outmask).sum())
+def mkey(f): g=f.copy(); g[mask]=-1; return g.tobytes()
+start=env.clone()
+seen={mkey(start.frame())}
+cnt=0; pq=[(0,cnt,start,[])]; t=time.time(); win=None; exp=0; best=0
+while pq:
+    hh,_,node,path=heapq.heappop(pq); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>4: win=path+[a]; break
+        if c.terminal(): continue
+        f=c.frame(); k=mkey(f)
+        if k not in seen:
+            seen.add(k); cnt+=1; p=prog(f)
+            if p>best: best=p
+            heapq.heappush(pq,(-p, cnt, c, path+[a]))
+    if win: break
+    if exp%2000==0: print("exp",exp,"seen",len(seen),"best",best,"t",round(time.time()-t),flush=True)
+    if len(seen)>40000 or time.time()-t>500: print("cap"); break
+print("WIN",win and len(win),"exp",exp,"t",round(time.time()-t))
+EOF
+python gtest2.py
+$ cd /tmp && cat > gtest3.py <<'EOF'
+import sys,time,json,heapq; sys.path.insert(0,'/tmp')
+sys.path.insert(0,'/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_sonnetfresh')
+from lib5 import *
+import legs
+env=get_env5()
+mask=legs.detect_noise_mask(env)
+om=~mask
+def prog(f):
+    c11=int(((f==11)&om).sum())
+    c14=int(((f==14)&om).sum())
+    c12=int(((f==12)&om).sum())
+    c9 =int(((f==9)&om).sum())
+    return -c11*1000 + c14*10 + c9*5 + c12
+def mkey(f): g=f.copy(); g[mask]=-1; return g.tobytes()
+start=env.clone()
+seen={mkey(start.frame())}
+cnt=0; pq=[(0,cnt,start,[])]; t=time.time(); win=None; exp=0; best=-10**9
+while pq:
+    hh,_,node,path=heapq.heappop(pq); exp+=1
+    for a in (1,2,3,4):
+        c=node.clone()
+        if c.terminal(): continue
+        c.step(a)
+        if c.levels_completed>4: win=path+[a]; break
+        if c.terminal(): continue
+        f=c.frame(); k=mkey(f)
+        if k not in seen:
+            seen.add(k); cnt+=1; p=prog(f)
+            if p>best: best=p
+            heapq.heappush(pq,(-p*1000+(len(path)+1), cnt, c, path+[a]))
+    if win: break
+    if exp%2000==0: print("exp",exp,"seen",len(seen),"best",best,"t",round(time.time()-t),flush=True)
+    if len(seen)>40000 or time.time()-t>420: print("cap"); break
+print("WIN",win and len(win),"exp",exp,"t",round(time.time()-t))
+if win: json.dump(win,open('/tmp/win5b.json','w'))
+EOF
+python gtest3.py
+[api proposer hit 50min budget; verifying partial work]

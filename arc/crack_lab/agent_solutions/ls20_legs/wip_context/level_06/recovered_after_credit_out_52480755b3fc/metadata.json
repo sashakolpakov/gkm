@@ -1,0 +1,23 @@
+{
+  "game": "ls20",
+  "level": 6,
+  "phase": "recovered_after_credit_out",
+  "reached": 6,
+  "err": null,
+  "attempt": "recovered_after_credit_out_52480755b3fc",
+  "created_at": "2026-07-06T17:30:14.387655+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "drive6.py",
+    "exec6.py",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "lib6.py",
+    "nav6.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

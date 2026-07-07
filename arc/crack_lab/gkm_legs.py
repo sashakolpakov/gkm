@@ -22,9 +22,12 @@ default proposer.
 """
 from __future__ import annotations
 import importlib.util
+import ast
+import glob
 import hashlib
 import json
 import os
+import re
 import shutil
 import signal
 import subprocess
@@ -45,13 +48,39 @@ def _loc(code: str) -> int:
                if ln.strip() and not ln.strip().startswith("#"))
 
 
+def _literal_cost(code: str) -> int:
+    """Extra description length for large literals hidden on one line.
+
+    LOC alone makes `execute_path(env, [60 actions...])` cost the same as
+    `solve_masked(env)`. Count literal list/tuple elements so replay plans and
+    other hard-coded tables carry MDL cost even when formatted on one line.
+    """
+    import ast
+    try:
+        tree = ast.parse(code or "")
+    except SyntaxError:
+        return 0
+    cost = 0
+    for node in ast.walk(tree):
+        if isinstance(node, (ast.List, ast.Tuple, ast.Set)):
+            cost += len(node.elts)
+        elif isinstance(node, ast.Dict):
+            cost += len(node.keys)
+    return cost
+
+
+def description_complexity(code: str) -> int:
+    """Coarse code-description proxy used for marginal-C accounting."""
+    return _loc(code) + _literal_cost(code)
+
+
 def marginal_complexity(legs_before: str, legs_after: str,
                         players_before: str, players_after: str) -> int:
     """C_marginal = NEW structure introduced this level. Growth of the shared library
     plus growth of the per-level players. A reused leg is already in legs_before, so
     it contributes 0 -- reuse is free, only novelty is paid for."""
-    return (max(0, _loc(legs_after) - _loc(legs_before))
-            + max(0, _loc(players_after) - _loc(players_before)))
+    return (max(0, description_complexity(legs_after) - description_complexity(legs_before))
+            + max(0, description_complexity(players_after) - description_complexity(players_before)))
 
 
 def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
@@ -66,11 +95,59 @@ AUTO_SOLVE_LOG = "auto_solve_attempts.json"
 """Per-level record of failed auto-solve attempts, keyed by (level, legs-hash), so a
 relaunch does not re-pay a long BFS that already failed against the same legs."""
 
+SOURCE_TAINT_MARKERS = (
+    "environment_files/wa30",
+    "environment_files/ls20",
+    "/environment_files/wa30",
+    "/environment_files/ls20",
+    "wa30.py",
+    "ls20.py",
+    "source reveals",
+    "actual game source",
+)
+"""Strings that make a proposer workspace inadmissible.
+
+The arena may execute the hidden game implementation internally, but the
+proposer must not inspect source files or earlier solution history. If any
+agent-authored workspace file records such an access, the harness refuses to
+verify or promote the attempt.
+"""
+
 PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT_FILE,
                   AUTO_SOLVE_LOG)
 """Files that define a verified leg-library state and should survive scratch loss."""
 
 SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache"}
+
+
+class WorkspaceTainted(RuntimeError):
+    """The proposer workspace contains evidence of forbidden source/history use."""
+
+
+def _workspace_taint_reason(ws: str) -> Optional[str]:
+    for root, dirs, files in os.walk(ws):
+        dirs[:] = [d for d in dirs if d not in SNAPSHOT_SKIP_DIRS]
+        for name in files:
+            path = os.path.join(root, name)
+            try:
+                if os.path.getsize(path) > 2_000_000:
+                    continue
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    text = f.read().lower()
+            except OSError:
+                continue
+            for marker in SOURCE_TAINT_MARKERS:
+                if marker in text:
+                    return f"{marker} in {os.path.relpath(path, ws)}"
+    return None
+
+
+def assert_workspace_not_tainted(ws: str) -> None:
+    reason = _workspace_taint_reason(ws)
+    if reason:
+        raise WorkspaceTainted(
+            f"forbidden source/history access tainted proposer workspace: {reason}"
+        )
 
 
 def _save_checkpoint(ws: str, rep: Report) -> None:
@@ -280,14 +357,16 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
     return restored
 
 
-def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: bool = True) -> Optional[Report]:
+def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: bool = True,
+                                 restore_wip: bool = True) -> Optional[Report]:
     """Overwrite scratch with the latest promoted verified state, if one exists.
 
     Scratch is treated as disposable and possibly contaminated by an unfinished next
     level. The repo artifact is the source of truth for resuming. Unverified probe
-    context for the NEXT level is restored alongside (fill-gaps-only), so an
+    context for the NEXT level can be restored alongside (fill-gaps-only), so an
     interrupted attempt's probes survive scratch loss without contaminating the
-    verified files.
+    verified files. Set restore_wip=False for a clean continuation that retains
+    only the verified Kolmogorov-Schmidhuber backbone.
     """
     art = artifact_dir(game, tag)
     rep = _load_checkpoint(art)
@@ -297,7 +376,8 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
         src = os.path.join(art, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(ws, name))
-    _restore_wip_probes(game, ws, rep.reached + 1, tag, verbose=verbose)
+    if restore_wip:
+        _restore_wip_probes(game, ws, rep.reached + 1, tag, verbose=verbose)
     if verbose:
         print(f"seeded workspace from artifact: {art} (reached={rep.reached})")
     return rep
@@ -311,24 +391,34 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
     """
     if not rep.validated or rep.reached <= 0:
         return False
+    assert_workspace_not_tainted(ws)
     art = artifact_dir(game, tag)
     old = _load_checkpoint(art)
     if old is not None and old.validated and old.reached > rep.reached:
         if verbose:
             print(f"kept artifact at level {old.reached}; current verified level {rep.reached} is older")
         return False
+    promote_files = old is None or not old.validated or old.reached < rep.reached
     os.makedirs(art, exist_ok=True)
     _save_checkpoint(ws, rep)
-    for name in PROMOTED_FILES:
-        src = os.path.join(ws, name)
+    if promote_files:
+        for name in PROMOTED_FILES:
+            src = os.path.join(ws, name)
+            if os.path.exists(src):
+                shutil.copy2(src, os.path.join(art, name))
+    else:
+        # Same verified level: refresh metadata only. Scratch may contain
+        # speculative next-level code, so do not overwrite clean solution files.
+        src = os.path.join(ws, CHECKPOINT_FILE)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(art, name))
+            shutil.copy2(src, os.path.join(art, CHECKPOINT_FILE))
     with open(os.path.join(art, "README.md"), "w") as f:
         f.write(_artifact_readme(game, rep))
     with open(os.path.join(art, "run.log"), "w") as f:
         f.write(_artifact_run_log(game, rep))
     if verbose:
-        print(f"promoted verified artifact: {art} (reached={rep.reached})")
+        action = "promoted verified artifact" if promote_files else "refreshed verified artifact metadata"
+        print(f"{action}: {art} (reached={rep.reached})")
     return True
 
 
@@ -337,7 +427,11 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
 # ---------------------------------------------------------------------------
 TESTER = '''import importlib.util, json, os, sys
 sys.path.insert(0, {labdir!r})
+import gkm_legs as G
 import gkm_arena as A
+taint_reason = G._workspace_taint_reason(os.getcwd())
+if taint_reason:
+    raise SystemExit(f"TAINTED WORKSPACE: {{taint_reason}}")
 spec = importlib.util.spec_from_file_location("solve", "solve.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 def resumed_solve(env):
@@ -384,6 +478,163 @@ def run_solve_file(game: str, solve_path: str):
     finally:
         if added and wsdir in sys.path:
             sys.path.remove(wsdir)
+
+
+def _candidate_path_files(ws: str, K: int) -> List[str]:
+    """Likely action-path artifacts a proposer may have left outside solve.py.
+
+    API/tool agents sometimes discover a winning path in a probe and write it to
+    /tmp (or print it) but time out before integrating it into players.py. The
+    harness owns verification, so it should harvest those candidate paths instead
+    of treating the level as unsolved.
+    """
+    patterns = [
+        os.path.join(ws, f"win{K}*.json"),
+        os.path.join(ws, f"*win*{K}*.json"),
+        os.path.join("/tmp", f"win{K}*.json"),
+        os.path.join("/tmp", f"*win*{K}*.json"),
+    ]
+    out = []
+    for pat in patterns:
+        out.extend(glob.glob(pat))
+    # Newer first, de-duped.
+    seen = set()
+    ordered = []
+    for path in sorted(out, key=lambda p: os.path.getmtime(p), reverse=True):
+        rp = os.path.realpath(path)
+        if rp not in seen:
+            seen.add(rp)
+            ordered.append(path)
+    return ordered
+
+
+def _load_action_path(value) -> Optional[List[int]]:
+    """Normalize JSON/log candidates into a list of integer actions."""
+    if isinstance(value, dict):
+        for key in ("path", "actions", "win", "solution"):
+            if key in value:
+                value = value[key]
+                break
+    if (isinstance(value, list) and value
+            and all(isinstance(a, int) and 1 <= a <= 9 for a in value)):
+        return list(value)
+    return None
+
+
+def _candidate_paths_from_log(ws: str) -> List[List[int]]:
+    txt = _read(os.path.join(ws, "proposer_last.log"))
+    paths = []
+    for m in re.finditer(r"(?:WIN|PATH)\s+(\[[^\]\n]{3,20000}\])", txt):
+        try:
+            path = _load_action_path(ast.literal_eval(m.group(1)))
+        except (SyntaxError, ValueError):
+            path = None
+        if path:
+            paths.append(path)
+    return paths
+
+
+def _candidate_paths_from_checkpoint(ws: str) -> List[List[int]]:
+    """Treat a proposer-mutated checkpoint only as an untrusted path artifact."""
+    try:
+        data = json.load(open(os.path.join(ws, CHECKPOINT_FILE)))
+    except (OSError, json.JSONDecodeError):
+        return []
+    path = _load_action_path(data.get("final_path") if isinstance(data, dict) else None)
+    return [path] if path else []
+
+
+def _verify_candidate_suffix(game: str, prefix: List[int], suffix: List[int], K: int):
+    """Return combined replay path if suffix advances from prefix to at least K."""
+    try:
+        env = A.Arena(game)
+        if hasattr(env, "reset"):
+            env.reset()
+        for a in prefix or []:
+            if env.terminal():
+                return None
+            env.step(a)
+        base = env.levels_completed
+        for a in suffix:
+            if env.terminal():
+                return None
+            env.step(a)
+        if base >= K:
+            return None
+        combined = list(prefix or []) + list(suffix)
+        if env.levels_completed >= K and A.validate(game, combined, env.levels_completed):
+            return combined, env.levels_completed
+    except Exception:
+        return None
+    return None
+
+
+def _verify_candidate_path(game: str, prefix: List[int], candidate: List[int], K: int):
+    """Verify either a level suffix or a full replay path from a proposer artifact."""
+    verified = _verify_candidate_suffix(game, prefix, candidate, K)
+    if verified is not None:
+        combined, reached = verified
+        return combined, reached, list(candidate)
+    if prefix and len(candidate) > len(prefix) and candidate[:len(prefix)] == list(prefix):
+        try:
+            if A.validate(game, candidate, K):
+                return list(candidate), K, list(candidate[len(prefix):])
+        except Exception:
+            return None
+    return None
+
+
+def _install_literal_player(ws: str, K: int, suffix: List[int], source: str) -> None:
+    """Install a verified discovered path as a thin player composition."""
+    players_p = os.path.join(ws, "players.py")
+    players = _read(players_p)
+    block = (
+        f"\n\ndef play_level_{K}(env):\n"
+        f"    # Recovered from verified proposer path artifact: {source}\n"
+        f"    execute_path(env, {suffix!r})\n"
+    )
+    pat = re.compile(rf"\n\ndef play_level_{K}\(env\):\n.*?(?=\n\ndef play_level_\d+\(env\):|\Z)", re.S)
+    if pat.search(players):
+        players = pat.sub(block, players, count=1)
+    else:
+        players = players.rstrip() + block
+    with open(players_p, "w") as f:
+        f.write(players.rstrip() + "\n")
+    with open(os.path.join(ws, "legs_log.md"), "a") as f:
+        f.write(
+            f"\n## Level {K}: recovered verified path artifact\n\n"
+            f"The proposer found a winning suffix but did not integrate it before "
+            f"the time budget ended. Harness recovery validated `{source}` and "
+            f"installed a thin player that composes the existing `execute_path` leg.\n"
+        )
+
+
+def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[int],
+                                     verbose: bool = True):
+    """Validate and install any proposer-discovered path artifact for level K."""
+    candidates = []
+    for path in _candidate_path_files(ws, K):
+        try:
+            value = json.load(open(path))
+        except (OSError, json.JSONDecodeError):
+            continue
+        suffix = _load_action_path(value)
+        if suffix:
+            candidates.append((suffix, path))
+    candidates.extend((p, "proposer_last.log") for p in _candidate_paths_from_log(ws))
+    candidates.extend((p, CHECKPOINT_FILE) for p in _candidate_paths_from_checkpoint(ws))
+
+    for candidate, source in candidates:
+        verified = _verify_candidate_path(game, prefix, candidate, K)
+        if verified is None:
+            continue
+        combined, reached, suffix = verified
+        _install_literal_player(ws, K, suffix, source)
+        if verbose:
+            print(f"level {K}: recovered verified path artifact from {source} "
+                  f"(suffix_len={len(suffix)} reached={reached})")
+        return reached, combined, None
+    return None
 
 
 def _read(path: str) -> str:
@@ -438,6 +689,199 @@ def _try_auto_solve(K: int, legs_code: str, players_code: str,
     return None
 
 
+PERCEPTION_SEED = '''"""Source-free frame perception helpers for cracking.
+
+This module is deliberately observational: it derives compact symbolic state
+from `env.frame()` and `env.clone()` only. It is a cofibration-style scaffold:
+raw pixels are embedded into a monotone tower of reusable observations
+(components -> objects -> action deltas -> replay states). Candidate level
+logic should be written against these quotients, then replay-validated by the
+harness. No game source or prior solution history is read here.
+"""
+from collections import deque
+from dataclasses import dataclass
+from typing import Dict, Iterable, List, Optional, Sequence, Tuple
+
+import numpy as np
+
+UP, DOWN, LEFT, RIGHT, USE = 1, 2, 3, 4, 5
+ACTIONS = (UP, DOWN, LEFT, RIGHT, USE)
+DIRS = {UP: (-1, 0), DOWN: (1, 0), LEFT: (0, -1), RIGHT: (0, 1)}
+ACTION_NAME = {UP: "UP", DOWN: "DOWN", LEFT: "LEFT", RIGHT: "RIGHT", USE: "USE"}
+
+
+@dataclass(frozen=True)
+class Blob:
+    color: int
+    bbox: Tuple[int, int, int, int]  # r0, c0, r1, c1 inclusive
+    area: int
+    centroid: Tuple[float, float]
+
+    @property
+    def top_left(self):
+        return self.bbox[0], self.bbox[1]
+
+    @property
+    def size(self):
+        r0, c0, r1, c1 = self.bbox
+        return r1 - r0 + 1, c1 - c0 + 1
+
+
+def arr(frame) -> np.ndarray:
+    return np.asarray(frame)
+
+
+def color_counts(frame) -> Dict[int, int]:
+    vals, cnts = np.unique(arr(frame), return_counts=True)
+    return {int(v): int(c) for v, c in zip(vals, cnts)}
+
+
+def connected_components(frame, colors: Optional[Iterable[int]] = None,
+                         min_area: int = 1) -> List[Blob]:
+    f = arr(frame)
+    wanted = None if colors is None else {int(c) for c in colors}
+    seen = np.zeros(f.shape, dtype=bool)
+    out: List[Blob] = []
+    rows, cols = f.shape[:2]
+    for r in range(rows):
+        for c in range(cols):
+            if seen[r, c]:
+                continue
+            color = int(f[r, c])
+            if wanted is not None and color not in wanted:
+                seen[r, c] = True
+                continue
+            q = [(r, c)]
+            seen[r, c] = True
+            pts = []
+            while q:
+                x, y = q.pop()
+                pts.append((x, y))
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    nx, ny = x + dx, y + dy
+                    if 0 <= nx < rows and 0 <= ny < cols and not seen[nx, ny] and int(f[nx, ny]) == color:
+                        seen[nx, ny] = True
+                        q.append((nx, ny))
+            if len(pts) >= min_area:
+                rs = [p[0] for p in pts]
+                cs = [p[1] for p in pts]
+                out.append(Blob(color, (min(rs), min(cs), max(rs), max(cs)),
+                                len(pts), (sum(rs) / len(pts), sum(cs) / len(pts))))
+    return sorted(out, key=lambda b: (b.color, b.bbox))
+
+
+def block_signatures(frame, cell: int = 4) -> Dict[Tuple[int, int], Tuple[int, ...]]:
+    """Partition a frame into fixed cells and return each cell's color signature."""
+    f = arr(frame)
+    out = {}
+    for r in range(0, f.shape[0], cell):
+        for c in range(0, f.shape[1], cell):
+            out[(r // cell, c // cell)] = tuple(int(v) for v in sorted(np.unique(f[r:r+cell, c:c+cell])))
+    return out
+
+
+def object_candidates(frame, cell: int = 4, min_area: int = 4) -> List[dict]:
+    """A compact, game-agnostic object list from color components and cell signatures."""
+    f = arr(frame)
+    blobs = connected_components(f, min_area=min_area)
+    sigs = block_signatures(f, cell)
+    objects = []
+    for b in blobs:
+        r0, c0, r1, c1 = b.bbox
+        objects.append({
+            "color": b.color,
+            "bbox": b.bbox,
+            "top_left": b.top_left,
+            "size": b.size,
+            "area": b.area,
+            "centroid": b.centroid,
+            "cell": (r0 // cell, c0 // cell),
+            "cell_sig": sigs.get((r0 // cell, c0 // cell)),
+        })
+    return objects
+
+
+def frame_delta(before, after) -> dict:
+    a, b = arr(before), arr(after)
+    ys, xs = np.where(a != b)
+    if len(ys) == 0:
+        return {"count": 0, "bbox": None, "samples": []}
+    samples = [(int(y), int(x), int(a[y, x]), int(b[y, x])) for y, x in zip(ys[:80], xs[:80])]
+    return {
+        "count": int(len(ys)),
+        "bbox": (int(ys.min()), int(xs.min()), int(ys.max()), int(xs.max())),
+        "samples": samples,
+    }
+
+
+def action_deltas(env, actions: Sequence[int] = ACTIONS) -> Dict[int, dict]:
+    base = arr(env.frame()).copy()
+    out = {}
+    for action in actions:
+        clone = env.clone()
+        clone.step(action)
+        out[int(action)] = frame_delta(base, clone.frame())
+    return out
+
+
+def replay(env, actions: Sequence[int]):
+    clone = env.clone()
+    for action in actions:
+        if clone.terminal():
+            break
+        clone.step(int(action))
+    return clone
+
+
+def path_result(env, actions: Sequence[int]) -> dict:
+    clone = replay(env, actions)
+    return {
+        "levels_completed": int(clone.levels_completed),
+        "terminal": bool(clone.terminal()),
+        "path_len": len(actions),
+        "colors": color_counts(clone.frame()),
+        "objects": object_candidates(clone.frame()),
+    }
+
+
+def changed_signature(env, actions: Sequence[int], cell: int = 4):
+    before = block_signatures(env.frame(), cell)
+    clone = replay(env, actions)
+    after = block_signatures(clone.frame(), cell)
+    return {k: (before.get(k), after.get(k)) for k in sorted(set(before) | set(after))
+            if before.get(k) != after.get(k)}
+
+
+def bounded_bfs(env, goal_fn, actions: Sequence[int] = (UP, DOWN, LEFT, RIGHT, USE),
+                key_fn=None, max_states: int = 20000, max_depth: int = 80):
+    """Generic clone BFS over observational keys. Use small max_states first."""
+    if key_fn is None:
+        key_fn = lambda e: arr(e.frame()).tobytes()
+    start_key = key_fn(env)
+    q = deque([(env.clone(), [])])
+    seen = {start_key}
+    while q and len(seen) <= max_states:
+        node, path = q.popleft()
+        if goal_fn(node, path):
+            return path
+        if len(path) >= max_depth:
+            continue
+        for action in actions:
+            child = node.clone()
+            child.step(int(action))
+            key = key_fn(child)
+            if key in seen:
+                continue
+            seen.add(key)
+            q.append((child, path + [int(action)]))
+    return None
+
+
+def level_goal(base_level: int):
+    return lambda env, path: env.levels_completed > base_level
+'''
+
+
 def setup_workspace(game: str, tag: str = "") -> str:
     suffix = f"_{tag}" if tag else ""
     ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}{suffix}")
@@ -463,9 +907,10 @@ def setup_workspace(game: str, tag: str = "") -> str:
                      "        if env.levels_completed <= before:\n"
                      "            return  # no progress -> stop\n"),
         ("legs_log.md", "# Leg-library debrief log\n\nRecurring composition patterns and repeated novelty.\n"),
+        ("perception.py", PERCEPTION_SEED),
     ):
         p = os.path.join(ws, name)
-        if not os.path.exists(p):
+        if name == "perception.py" or not os.path.exists(p):
             with open(p, "w") as fh:
                 fh.write(seed)
     return ws
@@ -496,6 +941,53 @@ _TRANSIENT_MARKERS = ("api error", "connection closed", "connection error", "con
 
 _TRANSIENT_RETRIES = 2
 """Extra proposer attempts per level when the failure looks infrastructural."""
+
+
+_SECRET_ENV_FILES = ("ANTHROPIC_API_KEY.env.local",)
+
+
+def _repo_root() -> str:
+    return os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def _load_secret_env_file(path: str) -> bool:
+    """Load KEY=value secrets without printing them; existing env wins."""
+    if not os.path.exists(path):
+        return False
+    loaded = False
+    with open(path) as fh:
+        for raw in fh:
+            line = raw.strip()
+            if not line or line.startswith("#"):
+                continue
+            if line.startswith("export "):
+                line = line[len("export "):].strip()
+            if "=" in line:
+                key, value = line.split("=", 1)
+                key = key.strip()
+                value = value.strip().strip("'\"")
+            else:
+                key, value = "ANTHROPIC_API_KEY", line.strip().strip("'\"")
+            if key and value and key not in os.environ:
+                os.environ[key] = value
+                loaded = True
+    return loaded
+
+
+def _ensure_anthropic_api_key() -> None:
+    if os.environ.get("ANTHROPIC_API_KEY"):
+        return
+    for name in _SECRET_ENV_FILES:
+        _load_secret_env_file(os.path.join(_repo_root(), name))
+
+
+def _redact_secrets(text: str) -> str:
+    out = text
+    for key, value in os.environ.items():
+        if value and ("KEY" in key or "TOKEN" in key or "SECRET" in key):
+            out = out.replace(value, "[REDACTED]")
+    out = re.sub(r"(ANTHROPIC_API_KEY\s*=\s*)\S+", r"\1[REDACTED]", out)
+    return out
 
 
 def _transient_proposer_failure(ws: str, code_changed: bool = True) -> bool:
@@ -616,11 +1108,12 @@ def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
     Bills against ANTHROPIC_API_KEY Console credits -- a separate pool from the
     Claude Code CLI subscription, so it works as a credit-out fallback."""
     import gkm_api_agent
+    _ensure_anthropic_api_key()
     try:
         gkm_api_agent.run_agent(ws, task, model=model, minutes=minutes)
     except Exception as ex:
         with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
-            fh.write(f"API Error: {type(ex).__name__}: {ex}\n")
+            fh.write(_redact_secrets(f"API Error: {type(ex).__name__}: {ex}\n"))
     blob = _read(os.path.join(ws, "proposer_last.log")).lower()
     if any(m in blob for m in _CREDIT_OUT_MARKERS):
         raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
@@ -632,7 +1125,11 @@ def _propose_task(game, K, context, legs_index):
             f"legs in legs.py: {legs_index or '(none yet)'}.\n"
             f"GOAL: make solve.py reach LEVEL {K}. First run `python gkm_try.py` to see "
             "where you are; solve.py dispatches to players.play_level_K. On a clone at "
-            f"level {K}, learn its structure. Then WRITE `play_level_{K}(env)` in "
+            f"level {K}, learn its structure. Use perception.py first: it is a "
+            "source-free scaffold that turns frames into blobs, object candidates, "
+            "action deltas, replay summaries, and bounded clone BFS keys. Build "
+            f"small symbolic probes on top of those observations instead of repeatedly "
+            f"dumping raw pixels. Then WRITE `play_level_{K}(env)` in "
             "players.py that ONLY COMPOSES legs imported from legs.py. REUSE existing "
             "legs wherever the level is an earlier one in a new configuration; add NEW "
             "legs to legs.py ONLY when nothing fits, and keep them minimal and general. "
@@ -675,6 +1172,7 @@ class Report:
 def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 proposer="claude", tag="",
                 seed_artifact: bool = True,
+                restore_wip: bool = True,
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
@@ -689,7 +1187,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     ws = setup_workspace(game, tag)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
     if seed_artifact:
-        seed_workspace_from_artifact(game, ws, tag, verbose=verbose)
+        seed_workspace_from_artifact(game, ws, tag, verbose=verbose, restore_wip=restore_wip)
     elif verbose:
         print("fresh run requested: skipping artifact seed")
     context = discovered_context(game) if propose_fn is None else ""
@@ -759,9 +1257,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     _record_auto_solve_failure(ws, K, legs_b)
             if auto_result is not None:
                 levels, path, err = auto_result
-                Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
                 if verbose:
-                    print(f"level {K}: auto-solved via existing legs (marginal_C={Cm})")
+                    print(f"level {K}: auto-solved via existing legs")
                 # still debrief: the auto-solve succeeded, but legs_log.md may need an entry
                 try:
                     debrief_fn(ws, K)
@@ -771,6 +1268,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     levels2, path2 = levels, path
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
+                Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
                 rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
                 rep.total_marginal_C += Cm
                 rep.reached = reached
@@ -790,13 +1288,38 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             # past the credit-out check) says nothing about the level, so it is retried;
             # only a real full-budget attempt that falls short stops the run.
             credit_out = False
-            for attempt in range(1 + _TRANSIENT_RETRIES):
+            pre_recovered = recover_discovered_path_artifact(
+                game, ws, K, rep.final_path, verbose=verbose)
+            if pre_recovered is not None:
+                levels, path, err = pre_recovered
+                snapshot_wip_context(game, ws, K, "recovered_existing_path_artifact",
+                                     levels, None, tag, verbose=verbose)
+            for attempt in range(0 if pre_recovered is not None else 1 + _TRANSIENT_RETRIES):
                 try:
                     propose_fn(ws, K)
+                    assert_workspace_not_tainted(ws)
                 except CreditOut as ex:
+                    assert_workspace_not_tainted(ws)
                     print(f"CREDIT-OUT at level {K}: {ex}; stopping (reached={rep.reached})")
+                    recovered = recover_discovered_path_artifact(
+                        game, ws, K, rep.final_path, verbose=verbose)
+                    _save_checkpoint(ws, rep)
+                    if recovered is not None:
+                        levels, path, err = recovered
+                        credit_out = False
+                        snapshot_wip_context(game, ws, K, "recovered_after_credit_out",
+                                             levels, None, tag, verbose=verbose)
+                        break
                     snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
                     credit_out = True
+                    break
+                recovered = recover_discovered_path_artifact(
+                    game, ws, K, rep.final_path, verbose=verbose)
+                _save_checkpoint(ws, rep)
+                if recovered is not None:
+                    levels, path, err = recovered
+                    snapshot_wip_context(game, ws, K, "recovered_path_artifact",
+                                         levels, None, tag, verbose=verbose)
                     break
                 snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
                 levels, path, err = verify_fn(game, solve_p)
@@ -813,8 +1336,11 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 break
             if credit_out or levels < K:
                 break
-            Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
             snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
+            files_before_debrief = {
+                name: _read(os.path.join(ws, name))
+                for name in ("legs.py", "players.py", "solve.py", "legs_log.md")
+            }
             try:
                 debrief_fn(ws, K)
                 levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
@@ -824,8 +1350,15 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
             else:
                 snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
+                if levels2 < levels:
+                    for name, text in files_before_debrief.items():
+                        with open(os.path.join(ws, name), "w") as f:
+                            f.write(text)
+                    if verbose:
+                        print(f"level {K}: debrief regressed solve ({levels2} < {levels}); restored pre-debrief files")
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
+            Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
             rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
             rep.total_marginal_C += Cm
             rep.reached = reached
@@ -869,7 +1402,8 @@ def _defs(code: str):
 
 if __name__ == "__main__":
     import sys
-    game, model, minutes, maxl, proposer, tag, fresh = "wa30", None, 40, 9, "opencode", "", False
+    game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
+    fresh, restore_wip = False, True
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
@@ -878,5 +1412,7 @@ if __name__ == "__main__":
         elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
         elif a.startswith("--tag="): tag = a.split("=", 1)[1]
         elif a == "--fresh": fresh = True
+        elif a == "--no-wip-restore": restore_wip = False
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
-                minutes_per=minutes, tag=tag, seed_artifact=not fresh)
+                minutes_per=minutes, tag=tag, seed_artifact=not fresh,
+                restore_wip=restore_wip)

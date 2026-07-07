@@ -1,0 +1,104 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && wc -l legs.py && sed -n '280,420p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '420,480p' legs.py
+Let me first confirm the current state passes before making changes.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat solve.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=7 moves=466 replay_ok=True`. Now let me study the two "clear/neutralize then deliver" legs (L6, L7) and the ferry legs (L4, L5) to spot repetition.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && sed -n '600,699p' legs.py
+Now let me review `legs_log.md` to match its style for the appended pattern.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && tail -60 legs_log.md
+I now understand the codebase fully. Let me identify the repetition between `play_level_7`'s leg (`clear_frozen_mover_then_fill`) and the earlier `play_level_6` leg (`clear_agent_then_deliver`):
+
+**Both share the shape "neutralize a blocking agent → deliver boxes onto goal cells via `carry_box_to`"**, but the delivery loop is written twice (explicit pairs in L6, an inline nearest-first assignment loop in L7). Let me extract those into shared legs and introduce the higher-order combinator.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+Now rewrite the L7 leg to be a thin composition reusing the same combinator and the extracted delivery verb:
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9/legs.py
+The players already call these legs as one-liners, so they remain thin and unchanged. Let me verify behaviour is preserved:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python -c "import legs" && python gkm_try.py 2>&1 | tail -5
+Identical result: `levels=7 moves=466 replay_ok=True`. Behaviour unchanged. Now append the debrief and the candidate higher-order leg to `legs_log.md`:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && cat >> legs_log.md << 'EOF'
+
+---
+
+## Debrief after clearing wa30 L7
+
+L7 gives an *uncatchable* self-mover (colour 15) that relentlessly hauls every
+loose box to its own store; USE has no effect while it patrols. The trick is to
+let it stall (it grabs a box it cannot seat), USE to clear the now-frozen mover,
+then rigid-carry every box into the west goal container. `play_level_7` was one
+line -- `clear_frozen_mover_then_fill(...)` -- but its leg had re-inlined the
+"deliver boxes onto goal cells" loop that `clear_agent_then_deliver` (L6)
+already expressed with `carry_box_to`. So, as with the L6 debrief, the real
+duplication lived INSIDE the leg library, not in the (already thin) players.
+
+De-duplicated this pass (each skill now written ONCE):
+
+- **Deliver-to-goals verbs.** The two levels' delivery loops both rigid-carry
+  boxes onto goal cells via `carry_box_to`; they differ only in how boxes are
+  matched to slots. Extracted them as two tiny, single-definition verbs:
+  `deliver_pairs(env, moves)` (explicit `(box, drop)` pairs -- L6) and
+  `fill_targets_nearest_first(env, targets)` (nearest still-free box per slot
+  -- L7, previously inlined in the leg).
+- **Neutralise-then-deliver combinator.** The L6/L7 skeleton "disable a blocking
+  autonomous agent, THEN deliver boxes into the goal container" is now the
+  higher-order leg `neutralize_then_deliver(env, neutralize, deliver)`. Both
+  `clear_agent_then_deliver` and `clear_frozen_mover_then_fill` are now thin
+  compositions of it: they supply only their own `neutralize` half (thread-gap +
+  USE vs idle-until-frozen + USE) and pick which delivery verb to hand it.
+
+The two `neutralize` bodies stay per-level because the mechanic differs (a
+*parked* mover is cleared by walking to it and USE-ing; an *uncatchable* mover
+must first be stalled with `idle_until_mover_frozen` before the same USE works).
+These are different policies over the SAME shared delivery primitives.
+
+Behaviour unchanged: `python gkm_try.py` still reports
+`RESULT levels=7 moves=466 replay_ok=True`.
+
+Candidate higher-order leg (refining the earlier `deliver_batch` skeleton).
+Across ALL players the shape is still **"PREP, then batch grab-carry-release,
+then SETTLE."** L6 and L7 reveal that for autonomous-agent levels the PREP is
+specifically **NEUTRALISE a blocking agent** and the SETTLE is empty (a filled
+container is itself the win, so no yield tail is needed). Thus:
+
+    neutralize_then_deliver(env, neutralize, deliver)
+        == deliver_batch(env, prep=neutralize, verb=carry_box_to,
+                         items=<goal cells>, settle=<none>)
+
+is the specialisation of `deliver_batch` for "there is an autonomous blocker;
+disable it, then just carry every box home." `neutralize` is the pluggable prep
+(clear-parked vs idle-then-clear), and `deliver` is `deliver_pairs` or
+`fill_targets_nearest_first` depending on whether the box->slot assignment is
+known. Future autonomous-agent levels should first try to express themselves as
+one `neutralize_then_deliver(...)` call, choosing a neutralise half and a
+delivery verb, before reaching for search.
+EOF
+echo done
+Let me do a final verification run to confirm everything is intact:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_scaffold_l9 && python gkm_try.py 2>&1 | tail -3
+Done. Here's the debrief summary.
+
+## What I found
+
+Comparing `play_level_7` to the earlier players: all players were already thin one-liners. The real duplication lived **inside the leg library**, between L7's `clear_frozen_mover_then_fill` and L6's `clear_agent_then_deliver`. Both implement the same skeleton — **neutralize a blocking autonomous self-mover, then rigid-carry every box onto the goal cells** — but the "deliver boxes to goals" loop was written twice (explicit `(box, drop)` pairs in L6; an inline nearest-first assignment loop in L7).
+
+## Refactor (each skill now written ONCE)
+
+In `legs.py`:
+- **`deliver_pairs(env, moves)`** — carry each box onto its explicitly-paired drop (extracted from L6).
+- **`fill_targets_nearest_first(env, targets)`** — fill each goal cell with the nearest still-free box (extracted from L7, previously inlined).
+- **`neutralize_then_deliver(env, neutralize, deliver)`** — the higher-order combinator capturing the shared shape.
+
+Both `clear_agent_then_deliver` and `clear_frozen_mover_then_fill` are now thin compositions of `neutralize_then_deliver`, each supplying only its own `neutralize` half (thread-gap + USE vs idle-until-frozen + USE) and picking a delivery verb. The two `neutralize` bodies legitimately differ because the clear mechanic differs (a parked mover clears immediately; an uncatchable one must first be stalled).
+
+## legs_log.md
+
+Appended the debrief and the candidate higher-order leg, noting that `neutralize_then_deliver` is the autonomous-agent specialisation of the earlier `deliver_batch` skeleton (PREP = neutralise a blocker, SETTLE = none, since a filled container is itself the win).
+
+## Behaviour
+
+Unchanged before and after: `RESULT levels=7 moves=466 replay_ok=True` (levels ≥ 7 confirmed).

@@ -18,6 +18,7 @@ unchanged. The `client` is injectable for offline unit tests.
 """
 from __future__ import annotations
 import os
+import re
 import subprocess
 import time
 from typing import Optional
@@ -32,6 +33,8 @@ MODEL_ALIASES = {
 MAX_TOKENS = 16000
 BASH_TIMEOUT_S = 600        # gkm_try.py BFS verifications can take minutes
 TOOL_OUTPUT_CAP = 20000     # chars per tool result kept in context
+API_TRANSIENT_RETRIES = 6
+API_TRANSIENT_BACKOFF_S = (20, 45, 90, 180, 300, 300)
 
 TOOLS = [
     {"type": "bash_20250124", "name": "bash"},
@@ -41,7 +44,57 @@ TOOLS = [
 SYSTEM = ("You are a coding agent working headlessly in the directory {ws}. "
           "Use the bash and text editor tools to complete the task; iterate until "
           "it is done. There are no background jobs or wakeups: finish the work "
-          "within this session.")
+          "within this session. Never read game implementation source: do not inspect "
+          "environment_files, game source .py files outside the workspace, or prior "
+          "solutions. Discover mechanics only by running the arena and observing frames.")
+
+FORBIDDEN_SOURCE_PATTERNS = (
+    "environment_files",
+    "/environment_files/",
+    "agent_solutions/",
+    "/agent_solutions/",
+    "wa30.py",
+    "ls20.py",
+)
+
+
+def _forbidden_source_reference(text: str) -> Optional[str]:
+    """Return the forbidden marker when a tool command tries to read source/history."""
+    lowered = text.lower()
+    for marker in FORBIDDEN_SOURCE_PATTERNS:
+        if marker.lower() in lowered:
+            return marker
+    if re.search(r"find\s+(?:/|\.{2}|~).*-(?:name|path)\s+['\"]?\*?(?:wa30|ls20)\*?", lowered):
+        return "filesystem search for game source"
+    if re.search(r"(?:cat|sed|grep|rg|head|tail|less|more|python\d*\s+-c).*?(?:wa30|ls20)\.py", lowered, re.S):
+        return "direct game source file access"
+    if re.search(r"(?:cat|sed|grep|rg|head|tail|less|more).*?(?:prior|previous).*solution", lowered, re.S):
+        return "prior solution history access"
+    return None
+
+
+def _workspace_forbidden_reference(ws: str) -> Optional[str]:
+    """Scan agent-authored workspace text before running shell commands.
+
+    The model can write a probe script and then execute it, so checking only the
+    shell command is not enough. This scan is intentionally conservative: any
+    workspace file containing source/history markers taints the attempt before
+    it can be run.
+    """
+    for root, dirs, files in os.walk(ws):
+        dirs[:] = [d for d in dirs if d not in {"__pycache__", ".pytest_cache"}]
+        for name in files:
+            path = os.path.join(root, name)
+            try:
+                if os.path.getsize(path) > 2_000_000:
+                    continue
+                with open(path, "r", encoding="utf-8", errors="ignore") as f:
+                    marker = _forbidden_source_reference(f.read())
+            except OSError:
+                continue
+            if marker:
+                return f"{marker} in workspace file {os.path.relpath(path, ws)}"
+    return None
 
 
 def _cap(text: str) -> str:
@@ -50,20 +103,71 @@ def _cap(text: str) -> str:
     return text[:TOOL_OUTPUT_CAP // 2] + "\n...[output truncated]...\n" + text[-TOOL_OUTPUT_CAP // 2:]
 
 
+def _tool_env() -> dict:
+    """Pass normal process env to tools, minus credentials they do not need."""
+    secret_markers = ("KEY", "TOKEN", "SECRET", "PASSWORD", "AUTH")
+    return {
+        key: value for key, value in os.environ.items()
+        if not any(marker in key.upper() for marker in secret_markers)
+    }
+
+
+def _redact_secrets(text: str) -> str:
+    out = text
+    for key, value in os.environ.items():
+        if value and key not in _tool_env():
+            out = out.replace(value, "[REDACTED]")
+    out = re.sub(r"(ANTHROPIC_API_KEY\s*=\s*)\S+", r"\1[REDACTED]", out)
+    return out
+
+
+def _transient_api_failure(ex: Exception) -> bool:
+    text = f"{type(ex).__name__}: {ex}".lower()
+    markers = (
+        "credit balance",
+        "credits",
+        "quota",
+        "rate limit",
+        "overloaded",
+        "temporarily unavailable",
+        "timeout",
+        "timed out",
+        "connection",
+        "server error",
+        "529",
+        "500",
+        "502",
+        "503",
+        "504",
+    )
+    return any(marker in text for marker in markers)
+
+
 def _run_bash(ws: str, command: str) -> tuple[str, bool]:
+    forbidden = _forbidden_source_reference(command)
+    if forbidden:
+        return (f"forbidden source/history access blocked: {forbidden}. "
+                "Use arena clones and frame observations only."), True
+    forbidden = _workspace_forbidden_reference(ws)
+    if forbidden:
+        return (f"forbidden source/history access blocked: {forbidden}. "
+                "Remove the tainted workspace content and use arena observations only."), True
     try:
         r = subprocess.run(["bash", "-lc", command], cwd=ws, capture_output=True,
-                           text=True, timeout=BASH_TIMEOUT_S)
+                           text=True, timeout=BASH_TIMEOUT_S, env=_tool_env())
     except subprocess.TimeoutExpired:
         return f"command timed out after {BASH_TIMEOUT_S}s", True
     out = (r.stdout or "") + (("\n--- STDERR ---\n" + r.stderr) if r.stderr else "")
     if r.returncode != 0:
         out += f"\n[exit code {r.returncode}]"
-    return _cap(out) or "(no output)", r.returncode != 0
+    return _cap(_redact_secrets(out)) or "(no output)", r.returncode != 0
 
 
 def _safe_path(ws: str, path: str) -> str:
     """Resolve an editor path and confine it to the workspace."""
+    forbidden = _forbidden_source_reference(path)
+    if forbidden:
+        raise ValueError(f"forbidden source/history access blocked: {forbidden}")
     p = os.path.realpath(os.path.join(ws, path) if not os.path.isabs(path) else path)
     root = os.path.realpath(ws)
     if p != root and not p.startswith(root + os.sep):
@@ -138,17 +242,38 @@ def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40
             if time.monotonic() > deadline:
                 emit(f"[api proposer hit {minutes}min budget; verifying partial work]")
                 break
-            try:
-                response = client.messages.create(
-                    model=model_id,
-                    max_tokens=MAX_TOKENS,
-                    thinking={"type": "adaptive"},
-                    system=SYSTEM.format(ws=ws),
-                    tools=TOOLS,
-                    messages=messages,
-                )
-            except Exception as ex:  # typed errors stringify with their cause
-                emit(f"API Error: {type(ex).__name__}: {ex}")
+            for attempt in range(API_TRANSIENT_RETRIES + 1):
+                try:
+                    response = client.messages.create(
+                        model=model_id,
+                        max_tokens=MAX_TOKENS,
+                        thinking={"type": "adaptive"},
+                        system=SYSTEM.format(ws=ws),
+                        tools=TOOLS,
+                        messages=messages,
+                    )
+                    break
+                except Exception as ex:  # typed errors stringify with their cause
+                    if attempt < API_TRANSIENT_RETRIES and _transient_api_failure(ex):
+                        delay = API_TRANSIENT_BACKOFF_S[
+                            min(attempt, len(API_TRANSIENT_BACKOFF_S) - 1)
+                        ]
+                        emit(_redact_secrets(
+                            f"API transient error; retry {attempt + 1}/"
+                            f"{API_TRANSIENT_RETRIES} after {delay}s: "
+                            f"{type(ex).__name__}: {ex}"
+                        ))
+                        if time.monotonic() + delay > deadline:
+                            emit("[api retry skipped: proposer time budget exhausted]")
+                            emit(_redact_secrets(f"API Error: {type(ex).__name__}: {ex}"))
+                            response = None
+                            break
+                        time.sleep(delay)
+                        continue
+                    emit(_redact_secrets(f"API Error: {type(ex).__name__}: {ex}"))
+                    response = None
+                    break
+            if response is None:
                 break
             tool_uses = []
             for block in response.content:

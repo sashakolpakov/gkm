@@ -1,0 +1,37 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat legs_log.md && echo "---GKM_TRY---" && cat gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && cat solve.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && wc -l legs.py && echo "---" && cat legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '300,600p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '600,680p' legs.py
+Now let me run the current test to establish the baseline.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && timeout 600 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=8`. Now let me analyze the structure. Let me look closely at the three "clear...then..." legs to understand the shared pattern.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && grep -n "def clear_agent_then_deliver\|def clear_frozen_mover_then_fill\|def clear_stealers_then_fill_dual\|def neutralize_then_deliver" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && sed -n '861,875p' legs.py
+The pattern is now clear. All three end-game levels (L6, L7, L8) share one shape: **neutralize the blocking autonomous agent(s), then deliver boxes into the goal container.** L6 and L7 already route through the `neutralize_then_deliver` combinator, but L8's `clear_stealers_then_fill_dual` reimplements that shape inline (a clear-loop followed by a fill call). Let me refactor L8 to route through the same combinator so the shape is written once.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2/legs.py
+Now let me verify behavior is preserved by running the test.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python gkm_try.py 2>&1 | tail -5
+Identical result (`levels=8 moves=588 replay_ok=True`), so behaviour is preserved. Now let me append the recurring composition pattern to `legs_log.md`.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2/legs_log.md
+Let me do a final confirmation run and verify the refactored leg is syntactically sound.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l8_l9_retry2 && python -c "import ast; ast.parse(open('legs.py').read()); ast.parse(open('players.py').read()); print('parse OK')" && python gkm_try.py 2>&1 | tail -3
+Done. Here's the debrief summary.
+
+## DEBRIEF — wa30 level 8
+
+**Comparison finding.** Comparing `play_level_8` to the earlier players, all three end-game players are already one-line compositions calling a single `clear_*_then_*` leg. The real duplication was *inside* legs.py: every end-game level (L6, L7, L8) is the same two-phase shape —
+
+1. **neutralise** the autonomous agent that keeps the goal from staying filled, then
+2. **deliver** every box into the goal container via the shared rigid `carry_box_to`.
+
+L6 (`clear_agent_then_deliver`) and L7 (`clear_frozen_mover_then_fill`) already routed through the `neutralize_then_deliver(env, neutralize, deliver)` combinator. But **L8's `clear_stealers_then_fill_dual` reimplemented that shape inline** — a hand-rolled clear-loop followed by a separate `fill_dual_sockets` call — so the "clear the blocker, then fill the container" skeleton was written twice.
+
+**Refactor.** I rewrote `clear_stealers_then_fill_dual` to bind its two level-specific halves (neutralise = `chase_and_clear` per band; deliver = `fill_dual_sockets`) onto the existing `neutralize_then_deliver` combinator. Now the shape lives in exactly one place, and each `clear_*_then_*` leg is a thin binding. Players remain thin (unchanged).
+
+**Behaviour preserved.** The refactor is a no-op behaviourally: `neutralize_then_deliver` just calls `neutralize(env)` then `deliver(env)`, and on a terminal env `fill_dual_sockets` returns immediately, matching the old early-`return`. Verified: `RESULT levels=8 moves=588 replay_ok=True err=None` — identical before and after.
+
+**legs_log.md.** Appended the recurring composition pattern — the candidate higher-order leg `neutralize_then_deliver` — with the per-level table showing how L6/L7/L8 vary only in their two halves, plus a next-step candidate (a retry/fixpoint variant for respawning blockers).

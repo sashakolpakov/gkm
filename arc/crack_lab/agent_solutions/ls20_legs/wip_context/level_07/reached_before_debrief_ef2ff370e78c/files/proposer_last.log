@@ -1,0 +1,1032 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat gkm_try.py solve.py players.py legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat legs_log.md checkpoint.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat lib6.py nav6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat exec6.py && head -100 drive6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && sed -n 100,260p drive6.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python -c "
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ls20')
+for a in ck['final_path']:
+    env.step(a)
+print('levels', env.levels_completed, 'terminal', env.terminal())
+f = np.array(env.frame())
+np.save('/tmp/l7_frame.npy', f)
+print(np.unique(f))
+" 
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python -c "
+import numpy as np
+f = np.load('/tmp/l7_frame.npy')
+chars = {1:'1',3:'.',4:'#',5:' ',8:'8',9:'9',11:'B',12:'A'}
+for r in range(64):
+    print(''.join(chars.get(int(v), '?') for v in f[r]))
+"
+The level-7 board looks quite different. Let me probe mechanics on clones.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat > /tmp/mk7.py <<'EOF'
+import json, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def make7():
+    ck = json.load(open('/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/checkpoint.json'))
+    env = A.Arena('ls20')
+    for a in ck['final_path']:
+        env.step(a)
+    return env
+
+CH = {1:'1',3:'.',4:'#',5:' ',8:'8',9:'9',11:'B',12:'A',0:'0',14:'E',2:'2'}
+def show(f, r0=0, r1=64):
+    f = np.asarray(f)
+    for r in range(r0, r1):
+        print(''.join(CH.get(int(v), '?') for v in f[r]))
+EOF
+python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+f0 = np.array(c.frame())
+for a in [1,2,3,4]:
+    cc = c.clone()
+    f = np.array(cc.step(a))
+    d = np.argwhere(f != f0)
+    print('action', a, 'ndiff', len(d), 'bbox', (d.min(0), d.max(0)) if len(d) else None)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+f = np.array(c.step(1))
+show(f, 0, 40)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+f0 = np.array(c.frame())
+f = np.array(c.step(1))
+d = np.argwhere(f != f0)
+# summarize by value transitions
+from collections import Counter
+cnt = Counter((int(f0[r,cc]), int(f[r,cc])) for r,cc in d)
+print(cnt)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+import numpy as np
+env = make7()
+c = env.clone()
+f0 = np.array(c.frame())
+f = np.array(c.step(1))
+for r in range(64):
+    line = ''
+    for cc in range(64):
+        if f0[r,cc]==f[r,cc]: line+=' '
+        else: line += '*'
+    if line.strip(): print(f'{r:2d} {line}')
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+# repeat action 1 (up) several times
+for i in range(6):
+    f = np.array(c.step(1))
+print('levels', c.levels_completed)
+show(f)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+seqs = {'right': [4]*8, 'down':[2]*8, 'left':[3]*8, 'downright':[2,4]*6}
+# first find why 4 was blocked initially: wall at cols 24-28 rows 10-18. Try down first.
+f = np.array(c.step(2))
+show(f, 0, 40)
+print('---')
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+import numpy as np
+env = make7()
+c = env.clone()
+f0 = np.array(c.frame())
+for i in range(5):
+    f = np.array(c.step(2))  # blocked
+d = np.argwhere(f != f0)
+print('blocked x5 diff bbox', d.min(0), d.max(0), len(d))
+c2 = env.clone()
+f1 = np.array(c2.step(3))  # left, should succeed
+d = np.argwhere(f1 != f0)
+from collections import Counter
+print('left move transitions', Counter((int(f0[r,cc]), int(f1[r,cc])) for r,cc in d))
+print('avatar rows', np.where((f1==12).any(1))[0], 'cols', np.where((f1==12).any(0))[0])
+"
+$ cd /tmp && timeout 900 python -c "
+import sys, time; sys.path.insert(0,'/tmp')
+sys.path.insert(0, '/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean')
+from mk7 import make7
+from legs import find_winning_path
+env = make7()
+t0 = time.time()
+p = find_winning_path(env, max_states=30000)
+print('path', p, 'time', time.time()-t0)
+" 2>&1 | tail -3
+$ cd /tmp && python -c "
+import sys, time; sys.path.insert(0,'/tmp')
+sys.path.insert(0, '/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean')
+from mk7 import make7
+from legs import find_winning_path
+env = make7()
+t0 = time.time()
+p = find_winning_path(env, max_states=30000)
+print('path', p, 'time', time.time()-t0)
+" 2>&1 | tail -3 &
+BGPID=$!
+sleep 240 && kill $BGPID 2>/dev/null; wait $BGPID 2>/dev/null; echo done
+$ cd /tmp && cat > /tmp/search7.py <<'EOF'
+import sys, time
+sys.path.insert(0,'/tmp')
+sys.path.insert(0, '/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean')
+from mk7 import make7
+from legs import find_winning_path
+env = make7()
+t0 = time.time()
+p = find_winning_path(env, max_states=60000)
+print('path', p, 'time', time.time()-t0, flush=True)
+EOF
+nohup python /tmp/search7.py > /tmp/search7.log 2>&1 &
+echo started $!
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7, show
+import numpy as np
+env = make7()
+c = env.clone()
+# go left twice then down along the left corridor
+for a in [3,3,2,2]:
+    f = np.array(c.step(a))
+show(f, 0, 45)
+print('bar cols', np.where((np.array(c.frame())[61]==11))[0])
+"
+$ cat /tmp/search7.log; echo ---
+$ cd /tmp && cat > /tmp/map7.py <<'EOF'
+import sys
+sys.path.insert(0,'/tmp')
+from mk7 import make7, CH
+import numpy as np
+
+class Mapper:
+    def __init__(self):
+        self.known = np.full((64,64), -1, dtype=int)
+
+    def feed(self, f):
+        f = np.asarray(f)
+        # avatar
+        av = None
+        rs, cs = np.where(f == 12)
+        for r, c in zip(rs, cs):
+            if r < 54 and c+4 < 64 and (f[r, c:c+5] == 12).all() and r+4<64 and (f[r+2,c:c+5]==9).all():
+                av = (int(r), int(c)); break
+        for r in range(54):
+            for c in range(64):
+                v = int(f[r,c])
+                if v == 5: continue
+                if av and av[0]<=r<av[0]+5 and av[1]<=c<av[1]+5: continue
+                if v == 4:
+                    if av is None: continue
+                    d = abs(r-(av[0]+2)) + abs(c-(av[1]+2))
+                    if d > 9: continue
+                self.known[r,c] = v
+        return av
+
+    def show(self):
+        for r in range(54):
+            print(''.join('?' if self.known[r,c]<0 else CH.get(int(self.known[r,c]),'x') for c in range(64)))
+EOF
+echo ok
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+# tour 1: left corridor down, then along bottom right
+seq = [3,3] + [2]*6 + [4]*8
+for a in seq:
+    f = c.step(a)
+    av = M.feed(f)
+f=np.array(c.frame())
+print('bar width', int((f[61]==11).sum()), 'av', av, 'levels', c.levels_completed)
+M.show()
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+# from start (15,19): up to (10,19)? then right along top corridor rows 10-14 to reach box2 (20,29)? 
+# simpler: test box refuel at ring (6-8,10-12) tile (5,9): path 3,3 (15,9) then 1,1 (5,9)
+for a in [3,3,1,1]:
+    f = c.step(a)
+    av = M.feed(f)
+    fa = np.array(f)
+    print(a, 'av', av, 'bar', int((fa[61]==11).sum()))
+"
+Box refuel confirmed (+8). Continuing to map the right side.
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+seq = [3,3,1,1] + [4]*5 + [2]*3 + [4]*3
+for a in seq:
+    f = c.step(a)
+    av = M.feed(f)
+fa = np.array(c.frame())
+print('av', av, 'bar', int((fa[61]==11).sum()))
+M.show()
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+seq = [3,3,1,1] + [4]*5 + [2]*3 + [4]*3 + [1,4,4,1]
+for a in seq:
+    f = c.step(a)
+    av = M.feed(f)
+    print(a, av, int(np.array(f)[61].tolist().count(11)))
+" 2>&1 | tail -6
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+seq = [3,3,1,1] + [4]*5 + [2]*3 + [4,4,4]
+for a in seq:
+    f = c.step(a)
+    av = M.feed(f)
+print('pos', av)
+# now at (10,39) hopefully; test stepping down onto pip tile
+f = c.step(2); av = M.feed(f); print('after 2:', av)
+f = c.step(2); av = M.feed(f); print('after 2:', av)
+f = c.step(2); av = M.feed(f); print('after 2:', av)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+env = make7()
+c = env.clone()
+M = Mapper()
+M.feed(c.frame())
+seq = [3,3,1,1] + [4]*5 + [2]*3 + [4,4,4]
+for a in seq:
+    av = M.feed(c.step(a))
+k = M.known
+def rowstr(r):
+    from mk7 import CH
+    return ''.join('?' if k[r,cc]<0 else CH.get(int(k[r,cc]),'x') for cc in range(64))
+print('    ' + ''.join(str(cc%10) for cc in range(64)))
+for r in list(range(4,36)):
+    print(f'{r:2d}  ' + rowstr(r))
+"
+$ cd /tmp && cat > /tmp/tour7.py <<'EOF'
+import sys
+sys.path.insert(0,'/tmp')
+from mk7 import make7
+from map7 import Mapper
+import numpy as np
+
+def run(seq, verbose=False):
+    env = make7()
+    c = env.clone()
+    M = Mapper()
+    M.feed(c.frame())
+    trace = []
+    for a in seq:
+        f = c.step(a)
+        av = M.feed(f)
+        bar = int((np.array(f)[61]==11).sum())
+        trace.append((a, av, bar))
+        if verbose: print(a, av, bar)
+    return c, M, trace
+EOF
+python -c "
+import sys; sys.path.insert(0,'/tmp')
+from tour7 import run
+c, M, tr = run([3,3,1,1] + [4]*5 + [2]*3 + [4,4,4], verbose=True)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from tour7 import run
+c, M, tr = run([3,3,1,1] + [4]*5 + [2,2] + [4,2,2,4], verbose=True)
+print()
+import numpy as np
+k = M.known
+from mk7 import CH
+print('    ' + ''.join(str(cc%10) for cc in range(64)))
+for r in range(15,54):
+    print(f'{r:2d}  ' + ''.join('?' if k[r,cc]<0 else CH.get(int(k[r,cc]),'x') for cc in range(64)))
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from tour7 import run
+from mk7 import show
+import numpy as np
+c, M, tr = run([3,3,1,1] + [4]*5 + [2,2] + [4,2,2,4])
+f = np.array(c.frame())
+show(f, 15, 60)
+print('avatar 12 cells:', np.argwhere(f==12)[:8])
+"
+$ cd /tmp && cat > /tmp/drv7.py <<'EOF'
+import sys
+sys.path.insert(0,'/tmp')
+from mk7 import make7, CH
+import numpy as np
+from collections import deque
+
+ROWS = list(range(5, 51, 5))
+COLS = list(range(9, 60, 5))
+
+def obs(f):
+    f = np.asarray(f)
+    o = {}
+    o['av'] = None
+    rs, cs = np.where(f == 12)
+    for r, c in zip(rs, cs):
+        if r < 50 and c+4 < 64 and (f[r, c:c+5] == 12).all() and (f[r+2, c:c+5] == 9).all():
+            o['av'] = (int(r), int(c)); break
+    o['bar'] = int((f[61] == 11).sum())
+    o['lives'] = int((f[60:63, 57:] == 8).sum())
+    # display bottom-left: 3x3 at rows 54,56,58 cols 3,5,7
+    o['bl'] = ''.join(str(int(f[r, c] != 5)) for r in (54,56,58) for c in (3,5,7))
+    blc = [int(v) for v in np.unique(f[54:60, 3:9]) if v != 5]
+    o['blc'] = blc
+    return o
+
+class Mapper:
+    def __init__(self):
+        self.known = np.full((64,64), -1, dtype=int)
+    def feed(self, f, av):
+        f = np.asarray(f)
+        for r in range(54):
+            for c in range(64):
+                v = int(f[r,c])
+                if v == 5: continue
+                if av and av[0]<=r<av[0]+5 and av[1]<=c<av[1]+5: continue
+                if v == 4:
+                    if av is None: continue
+                    if abs(r-(av[0]+2)) + abs(c-(av[1]+2)) > 9: continue
+                self.known[r,c] = v
+    def show(self, r0=0, r1=54):
+        print('    ' + ''.join(str(cc%10) for cc in range(64)))
+        for r in range(r0, r1):
+            print(f'{r:2d}  ' + ''.join('?' if self.known[r,c]<0 else CH.get(int(self.known[r,c]),'x') for c in range(64)))
+
+class D:
+    def __init__(self, env, mapper=None):
+        self.c = env
+        self.M = mapper or Mapper()
+        self.o = obs(env.frame())
+        self.M.feed(env.frame(), self.o['av'])
+        self.trace = []
+    def step(self, a):
+        f = self.c.step(a)
+        self.o = obs(f)
+        self.M.feed(f, self.o['av'])
+        self.trace.append((a, self.o['av'], self.o['bar'], self.o['lives']))
+        return self.o
+    def run(self, seq):
+        for a in seq:
+            self.step(a)
+        return self.o
+EOF
+python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+env = make7()
+d = D(env.clone())
+d.run([3,3,1,1] + [4]*5 + [2,2] + [4,2,2,4])  # ends (40,39) bar 20
+d.run([4,4,4])  # right along bottom?
+for t in d.trace[-4:]: print(t)
+d.M.show(30, 54)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+env = make7()
+d = D(env.clone())
+d.run([3,3,1,1] + [4]*5 + [2,2] + [4,2,2,4])
+d.run([4,4,4] + [1,1,1,1])
+for t in d.trace[-4:]: print(t)
+d.M.show(15, 54)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+env = make7()
+d = D(env.clone())
+d.run([3,3] + [2]*5 + [4,2] )  # to (40,14)? then 2 to (45,14) box
+for t in d.trace[-3:]: print(t)
+d.run([2,4,4])  # try down / right
+for t in d.trace[-3:]: print(t)
+d.M.show(35, 54)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+env = make7()
+d = D(env.clone())
+d.run([3,3] + [2]*5 + [4]*4)   # along bottom corridor to (40,29)
+for t in d.trace[-5:]: print(t)
+d.run([2])
+print(d.trace[-1])
+d.M.show(40, 54)
+print('display', d.o['bl'], d.o['blc'])
+"
+Display ops confirmed (overlaps mutate it). Need a cleaner mapper (fog-edge gating by energy) and full map. Rebuilding:
+$ cd /tmp && python - <<'EOF'
+import re
+s = open('/tmp/drv7.py').read()
+s = s.replace("""class Mapper:
+    def __init__(self):
+        self.known = np.full((64,64), -1, dtype=int)
+    def feed(self, f, av):
+        f = np.asarray(f)
+        for r in range(54):
+            for c in range(64):
+                v = int(f[r,c])
+                if v == 5: continue
+                if av and av[0]<=r<av[0]+5 and av[1]<=c<av[1]+5: continue
+                if v == 4:
+                    if av is None: continue
+                    if abs(r-(av[0]+2)) + abs(c-(av[1]+2)) > 9: continue
+                self.known[r,c] = v
+""", """class Mapper:
+    def __init__(self):
+        self.known = np.full((64,64), -1, dtype=int)
+    def feed(self, f, av, bar=None):
+        f = np.asarray(f)
+        if bar is None:
+            bar = int((f[61] == 11).sum())
+        lim = bar//2 - 2
+        for r in range(54):
+            for c in range(64):
+                v = int(f[r,c])
+                if v == 5: continue
+                if av and av[0]<=r<av[0]+5 and av[1]<=c<av[1]+5: continue
+                if v == 4:
+                    if av is None: continue
+                    if abs(r-(av[0]+2)) + abs(c-(av[1]+2)) > lim: continue
+                self.known[r,c] = v
+""")
+open('/tmp/drv7.py','w').write(s)
+EOF
+python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+env = make7()
+M = Mapper()
+tours = [
+ [3,3,1,1]+[4]*5+[2]+[4,2,2,4]+[4,4,4]+[1]*7,          # right side
+ [3,3]+[2]*5+[4,2]+[1,4]+[4]*2,                          # bottom-left + sprite band
+ [3,3]+[2]*4+[4]*4+[2]*2,                                # to (40,29)->(45,29)?
+ [1,1]+[4]*2+[2]*5,                                      # via top to middle? 
+]
+for t in tours:
+    d = D(env.clone(), M)
+    d.run(t)
+    print('end', d.trace[-1])
+M.show()
+" 
+Map structure is clear. Now let me study the sprites' patrols and the room pattern precisely.
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def sprites(f):
+    f = np.asarray(f)
+    out = {}
+    # creature: multicolour incl 14
+    rs, cs = np.where(f==14)
+    out['cr'] = (int(rs.min()), int(cs.min())) if len(rs) else None
+    # digit sprites: colors 0
+    rs, cs = np.where(f==0)
+    pts = [(int(r),int(c)) for r,c in zip(rs,cs)]
+    left = [p for p in pts if p[1] < 30]
+    right = [p for p in pts if p[1] >= 44]
+    out['sl'] = min(left) if left else None
+    out['sr'] = min(right) if right else None
+    return out
+# bounce in top-left room between (15,9) and (10,9): far from all sprites
+c.step(3); c.step(3)
+for i in range(14):
+    a = 1 if i%2==0 else 2
+    f = c.step(a)
+    print(i, a, sprites(f))
+"
+Sprites are hidden by fog; must observe from nearby. Watching the bottom-left band:
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def sprites(f):
+    f = np.asarray(f)
+    out = {}
+    rs, cs = np.where(f==14)
+    out['cr'] = (int(rs.min()), int(cs.min())) if len(rs) else None
+    rs, cs = np.where(f==0)
+    pts = [(int(r),int(c)) for r,c in zip(rs,cs)]
+    left = [p for p in pts if p[1] < 30]
+    right = [p for p in pts if p[1] >= 44]
+    out['sl'] = min(left) if left else None
+    out['sr'] = min(right) if right else None
+    return out
+# go to (30,9)/(35,9) area and bounce; creature near rows 36-44 cols 9-23
+seq = [3,3]+[2]*3
+for a in seq: f = c.step(a)
+print('pos ok, bar', int(np.array(f)[61].tolist().count(11)))
+for i in range(16):
+    a = 2 if i%2==0 else 1
+    f = c.step(a)
+    o = sprites(f)
+    print(i, a, o)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def disp(f):
+    f = np.asarray(f)
+    s = ''.join(str(int(f[r,cc] != 5)) for r in (54,56,58) for cc in (3,5,7))
+    col = [int(v) for v in np.unique(f[54:60, 3:9]) if v != 5]
+    return s, col
+print('start', disp(c.frame()))
+seq = [3,3]+[2]*4
+for a in seq: f = c.step(a)
+print('at (35,9)', disp(f), obs(f)['av'])
+f = c.step(2)  # onto creature tile (40,9)
+print('overlap cr', disp(f), obs(f)['av'])
+f = c.step(1)
+print('back up   ', disp(f))
+f = c.step(2)
+print('overlap cr', disp(f))
+f = c.step(1)
+print('back up   ', disp(f))
+f = c.step(2); f = c.step(4)
+print('overlap sl', disp(f), obs(f)['av'])
+f = c.step(3)
+print('back left ', disp(f))
+f = c.step(4)
+print('overlap sl', disp(f))
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+f = np.array(env.frame())
+print(f[52:62, 0:12])
+"
+$ cd /tmp && python - <<'EOF'
+import re
+s = open('/tmp/drv7.py').read()
+s = s.replace("o['bl'] = ''.join(str(int(f[r, c] != 5)) for r in (54,56,58) for c in (3,5,7))\n    blc = [int(v) for v in np.unique(f[54:60, 3:9]) if v != 5]",
+              "o['bl'] = ''.join(str(int(f[r, c] != 5)) for r in (55,57,59) for c in (3,5,7))\n    blc = [int(v) for v in np.unique(f[55:61, 3:9]) if v != 5]")
+open('/tmp/drv7.py','w').write(s)
+EOF
+python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def dd(f):
+    o = obs(f)
+    return o['bl'], o['blc'], o['av'], o['bar']
+# clean test of sl: go to (40,19) directly avoiding creature: 3,3,2,2,2,2 (35,9)? that passes creature? (40,9) only if we step there. Route to (40,19): (15,19)->(20,19)? blocked (wall rows20-24 cols14-28). Route: 3,3, 2x4 -> (35,9), 2 -> (40,9) creature unavoidable? Corridor rows 35-39 cols 9-23 open: (35,9)->(35,14)->(35,19)->(40,19).
+for a in [3,3,2,2,2,2]: f=c.step(a)
+print('at', dd(f))
+f=c.step(4); print('35,14', dd(f))
+f=c.step(4); print('35,19', dd(f))
+f=c.step(2); print('40,19 overlap sl', dd(f))
+f=c.step(1); print('back', dd(f))
+f=c.step(2); print('overlap sl again', dd(f))
+f=c.step(1); print('back', dd(f))
+"
+sl = the 6-cycle op "A". Now checking the right sprite and reading the room pattern:
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def dd(f):
+    o = obs(f)
+    return o['bl'], o['blc'], o['av'], o['bar']
+# to (15,54): 1,1,4*5? (5,29) wait via (10,29),(10,34),(15,34),(20,34),(20,39)spring,(40,39),4x3,(40,54),1x5
+seq = [3,3,1,1]+[4]*5+[2]+[4,2,2]
+for a in seq: f=c.step(a)
+print(dd(f))
+f=c.step(4); print('spring', dd(f))
+for a in [4,4,4]: f=c.step(a)
+print(dd(f))
+for a in [1,1,1,1]: f=c.step(a)
+print(dd(f))
+f=c.step(1); print('overlap sr', dd(f))
+f=c.step(2); print('back', dd(f))
+f=c.step(1); print('overlap sr', dd(f))
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def dd(f):
+    o = obs(f)
+    return o['bl'], o['blc'], o['av'], o['bar']
+seq = [3,3,1,1]+[4]*5+[2]+[4,2,2,3]
+for a in seq: f=c.step(a)
+print('after box', dd(f))
+for a in [4,4,4,4,4]: f=c.step(a)
+print(dd(f))
+for a in [1,1,1,1]: f=c.step(a)
+print(dd(f))
+for i in range(8):
+    a = 1 if i%2==0 else 2
+    f=c.step(a)
+    print(a, dd(f))
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+# route to (45,29): (15,19)->(15,9)->(25,9)? rows 25-29 corridor -> (25,29) -> (30,29),(35,29),(40,29),(45,29)
+seq = [3,3,2,2]+[4]*4+[2,2,2,2]
+for a in seq: f=c.step(a)
+o = obs(f); print(o['av'], o['bar'], o['bl'], o['blc'])
+f = np.array(f)
+from mk7 import CH
+for r in range(44,54):
+    print(f'{r:2d} ' + ''.join(CH.get(int(v),'?') for v in f[r, 20:45]))
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+seq = [3,3,2,2]+[4]*4+[2,2,2,2]
+for a in seq: f=c.step(a)
+o=obs(f); print(o['av'], o['bar'], 'levels', c.levels_completed)
+f=c.step(2)
+o=obs(f); print('press wrong:', o['av'], o['bar'], 'levels', c.levels_completed)
+"
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+def sr(f):
+    f=np.asarray(f)
+    pts = [(int(r),int(cc)) for r,cc in zip(*np.where((f==0))) if cc>=44 and r<54]
+    return min(pts) if pts else None
+def dsp(f):
+    o=obs(f); return o['bl']
+seq=[1,1,4,4,2,4,2,2,4]+[4,4,4]+[3,2,2,4]+[3,1,1,4]
+for a in seq: f=c.step(a)
+o=obs(f); print(o['av'], o['bar'])
+for a in [1,1,1,1]:
+    f=c.step(a); print('up', obs(f)['av'], sr(f), dsp(f))
+for i in range(14):
+    a = 1 if i%2==0 else 2
+    f=c.step(a)
+    print(i, obs(f)['av'], sr(f), dsp(f), obs(f)['bar'])
+"
+Everything is deterministic (world ticks only on successful moves). Verifying the remaining springs before writing the controller:
+$ cd /tmp && python -c "
+import sys; sys.path.insert(0,'/tmp')
+from drv7 import *
+import numpy as np
+env = make7()
+c = env.clone()
+for a in [1,1,4,4,2,4,2,2,4]: f=c.step(a)
+print('spring1 ->', obs(f)['av'])
+f=c.step(1); print(obs(f)['av'])
+f=c.step(1); print('spring (30,39) ->', obs(f)['av'], obs(f)['bar'])
+# also test (30,34) spring: from (30,29): 4? -> (30,34) flings up?
+f=c.step(4); print('to (30,34)? ->', obs(f)['av'])
+"
+Springs verified. Writing the full controller to derive a winning path:
+$ cd /tmp && cat > /tmp/crack7.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/tmp')
+from drv7 import make7, obs
+import numpy as np
+
+INTER = '111010010'   # R^2 A^1 S0  (after R-dial, before A-dial)
+FINAL = '101110011'   # room pattern R^2 A^0 S0
+class Ctl:
+    def __init__(self, c):
+        self.c = c
+        self.acts = []
+        self.o = obs(c.frame())
+    def step(self, a):
+        f = self.c.step(a)
+        self.acts.append(a)
+        self.o = obs(f)
+        return self.o
+    def run(self, seq):
+        for a in seq:
+            self.step(a)
+    def st(self):
+        return self.o['av'], self.o['bar'], self.o['bl'], self.o['blc']
+
+def main():
+    env = make7()
+    c = env.clone()
+    C = Ctl(c)
+    # --- to right region via spring
+    C.run([1,1,4,4,2,4,2,2,4])
+    assert C.o['av'] == (40,39), C.st()
+    C.run([4,4,4])
+    assert C.o['av'] == (40,54), C.st()
+    # refuel (50,54)
+    C.run([3,2,2,4]); assert C.o['bar'] >= 40, C.st()
+    C.run([3,1,1,4]); assert C.o['av'] == (40,54), C.st()
+    # up to bounce zone
+    C.run([1,1,1,1]); assert C.o['av'] == (20,54), C.st()
+    # dial R until INTER, then exit cleanly
+    for attempt in range(6):
+        guard = 0
+        while C.o['bl'] != INTER:
+            guard += 1; assert guard < 30
+            a = 1 if C.o['av'] == (20,54) else 2
+            C.step(a)
+            if C.o['bar'] <= 10:
+                # refuel top-right box (5,49)
+                while C.o['av'] != (15,54):
+                    C.step(1 if C.o['av'][0] > 15 else 2)
+                C.run([1,1,3])   # (5,49) box
+                assert C.o['bar'] >= 38, C.st()
+                C.run([4,2,2])   # back to (15,54)
+        # exit down to (40,54)
+        while C.o['av'] != (40,54) and C.o['bl'] == INTER:
+            C.step(2)
+        if C.o['av'] == (40,54) and C.o['bl'] == INTER:
+            break
+        # broken by a crossing: go back up and re-dial
+        while C.o['av'] != (20,54):
+            C.step(1)
+    assert C.o['av'] == (40,54) and C.o['bl'] == INTER, C.st()
+    # --- return west via spring (30,39)
+    C.run([3,3,3]); assert C.o['av'] == (40,39), C.st()
+    C.run([1,1]);  assert C.o['av'] == (30,29), C.st()
+    C.run([1,3,3,3,3]); assert C.o['av'] == (25,9), C.st()
+    C.run([2,2]); assert C.o['av'] == (35,9), C.st()
+    # --- C presses x3: color 12->9->14->8
+    C.run([2,1,2,1,2])
+    assert C.o['blc'] == [8], C.st()
+    assert C.o['av'] == (40,9), C.st()
+    # refuel (45,14)
+    C.run([4,2]); assert C.o['bar'] >= 40, C.st()
+    C.run([1])
+    # --- A presses x5
+    C.run([4]); assert C.o['av'] == (40,19), C.st()
+    C.run([1,2,1,2,1,2,1,2])
+    assert C.o['bl'] == FINAL and C.o['blc'] == [8], C.st()
+    # --- to the room
+    C.run([1,3,3,1,1]); assert C.o['av'] == (25,9), C.st()
+    C.run([4,4,4,4]); assert C.o['av'] == (25,29), C.st()
+    C.run([1,2])  # box (20,29) and back
+    assert C.o['bar'] >= 38, C.st()
+    C.run([2,2,2,2]); assert C.o['av'] == (45,29), C.st()
+    C.step(2)
+    print('levels:', c.levels_completed, 'pos', C.o['av'], 'bar', C.o['bar'])
+    if c.levels_completed >= 7:
+        json.dump(C.acts, open('/tmp/win7.json','w'))
+        print('WIN, moves', len(C.acts))
+    else:
+        print('no win yet', C.st())
+
+main()
+EOF
+python /tmp/crack7.py
+$ cd /tmp && cat > /tmp/crack7.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/tmp')
+from drv7 import make7, obs
+import numpy as np
+
+S0A5 = '110011101'    # after C x3 + A x5: shape S0, color 8
+FINAL = '101110011'   # room pattern = R^2(S0)
+
+class Ctl:
+    def __init__(self, c):
+        self.c = c
+        self.acts = []
+        self.o = obs(c.frame())
+    def step(self, a):
+        f = self.c.step(a)
+        self.acts.append(a)
+        self.o = obs(f)
+        assert not (self.o['av'] == (15,19) and len(self.acts) > 3 and self.o['bar'] >= 40), ('DEATH', len(self.acts))
+        return self.o
+    def run(self, seq):
+        for a in seq: self.step(a)
+    def st(self):
+        return self.o['av'], self.o['bar'], self.o['bl'], self.o['blc']
+
+def main():
+    env = make7()
+    c = env.clone()
+    C = Ctl(c)
+    # --- phase 1: C x3 (color 12->8), A x5 (shape -> S0)
+    C.run([3,3,2,2,2,2]); assert C.o['av'] == (35,9), C.st()
+    C.run([2,1,2,1,2]);   assert C.o['av'] == (40,9) and C.o['blc'] == [8], C.st()
+    C.run([4,2]);         assert C.o['bar'] >= 40, C.st()   # box (45,14)
+    C.run([1,4]);         assert C.o['av'] == (40,19), C.st()
+    C.run([1,2,1,2,1,2,1,2])
+    assert C.o['bl'] == S0A5 and C.o['blc'] == [8], C.st()
+    # --- phase 2: travel right, refuel (20,29), spring, dial R^2
+    C.run([1,3,3,1,1]);   assert C.o['av'] == (25,9), C.st()
+    C.run([4,4,4,4,1]);   assert C.o['bar'] >= 40, C.st()   # box (20,29)
+    C.run([2,4,4,1]);     assert C.o['av'] == (40,39), C.st()  # spring
+    C.run([4,4,4,1,1,1,1]); assert C.o['av'] == (20,54), C.st()
+    for attempt in range(8):
+        guard = 0
+        while C.o['bl'] != FINAL:
+            guard += 1; assert guard < 40, C.st()
+            if C.o['bar'] <= 12:
+                while C.o['av'] != (15,54):
+                    C.step(1 if C.o['av'][0] > 15 else 2)
+                C.run([1,1,3])          # box (5,49)
+                assert C.o['bar'] >= 36, C.st()
+                C.run([4,2,2])          # back to (15,54)
+                continue
+            C.step(1 if C.o['av'] == (20,54) else 2)
+        # exit down while intact
+        while C.o['av'] != (40,54) and C.o['bl'] == FINAL:
+            C.step(2)
+        if C.o['av'] == (40,54) and C.o['bl'] == FINAL:
+            break
+        while C.o['av'][0] < 20:
+            C.step(2)
+        while C.o['av'][0] > 20:
+            C.step(1)
+    assert C.o['av'] == (40,54) and C.o['bl'] == FINAL and C.o['blc'] == [8], C.st()
+    # --- phase 3: refuel (50,54), spring back, press into room
+    C.run([3,2,2,4]);     assert C.o['bar'] >= 40, C.st()   # box (50,54)
+    C.run([3,1,1,3,3]);   assert C.o['av'] == (40,39), C.st()
+    C.run([1,1]);         assert C.o['av'] == (30,29), C.st()
+    C.run([2,2,2]);       assert C.o['av'] == (45,29), C.st()
+    assert C.o['bl'] == FINAL and C.o['blc'] == [8], C.st()
+    C.step(2)
+    print('levels:', c.levels_completed, 'pos', C.o['av'], 'bar', C.o['bar'], 'moves', len(C.acts))
+    if c.levels_completed >= 7:
+        json.dump(C.acts, open('/tmp/win7.json','w'))
+        print('WIN')
+
+main()
+EOF
+python /tmp/crack7.py
+Win found in 65 moves. Verifying by pure replay on a fresh env:
+$ cd /tmp && python -c "
+import sys, json; sys.path.insert(0,'/tmp')
+from mk7 import make7
+env = make7()
+path = json.load(open('/tmp/win7.json'))
+print(path)
+for a in path:
+    env.step(a)
+print('levels', env.levels_completed)
+"
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python gkm_try.py
+Level 7 reached. Updating the checkpoint and logging the debrief:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python - <<'EOF'
+import json
+ck = json.load(open('checkpoint.json'))
+p7 = json.load(open('/tmp/win7.json'))
+ck['final_path'] = ck['final_path'] + p7
+ck['reached'] = 7
+ck['records'].append({"level": 7, "marginal_C": 0, "reached": True})
+ck['validated'] = True
+json.dump(ck, open('checkpoint.json','w'))
+print('checkpoint updated, path len', len(ck['final_path']))
+EOF
+python gkm_try.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && cat >> legs_log.md <<'EOF'
+
+## Level 7: fog-of-war diamond + static-button combination lock
+
+Level 7 is the level-6 combination-lock family remixed with a fog-of-war:
+the frame is masked by a diamond of visibility CENTERED ON THE AVATAR whose
+radius tracks the energy bar (bar 44 -> radius ~22), so most of the maze --
+including all three "buttons" and the single lock room -- is invisible from
+the start position, and blind masked BFS is hopeless (every successful move
+shrinks/moves the fog so raw frames rarely repeat, and the win is ~65 moves
+deep behind two one-way springs). Cracked it by mapping, not searching:
+
+- Stitched a full map from clone tours with a Mapper that only trusts wall
+  pixels within (bar/2 - 2) Manhattan of the avatar centre, because the fog
+  EDGE is drawn in the wall colour and poisons naive stitching.
+- Mechanics found: same 5x5 tile slide (blocked move = no world tick, still
+  drains bar); boxes SET the bar to 42 (one-shot 3x3 colour-11 rings);
+  springs marked by colour-1 pips fling away-from-pips over walls
+  ((20,39)->(40,39) down, (30,39)->(30,29) left, (30,34)->(10,34) up); bar
+  at 0 = death: avatar/display/bar reset, one life lost.
+- The level-6 display group recurs EXACTLY (same S0, same A 6-cycle chain,
+  same CW rotation R, same colour cycle 14->8->12->9), but the "input
+  devices" are now STATIC button tiles you re-enter to fire: creature tile
+  (40,9) = colour+1, digit-sprite tile (40,19) = A. Only the right-corridor
+  digit sprite still patrols (col 56, tile rows 5..30, 1 tile/tick) and
+  fires R each time it CROSSES the avatar -- so R is dialled by bouncing in
+  its corridor watching the display, and exits can add unwanted R (handle
+  with feedback + re-dial loop).
+- Single lock room: pattern R^2(S0) in colour 8 at tile (50,29), pressed
+  from (45,29); pressing with a wrong display is a free no-op. Winning word:
+  C^3 A^5 R^2, ordered C,A first (bottom-left) then R (right side) so the
+  spring (30,39)->(30,29) drops straight onto the room approach; four box
+  refuels en route. Offline controller (/tmp/crack7.py) derived and verified
+  a deterministic 65-move path; play_level_7 commits it with the existing
+  `solve_by_replay` leg -- same composition shape as levels 5-6, no new leg
+  needed (the game is fully deterministic: world ticks only on successful
+  moves, so a verified literal path is the natural artifact).
+
+## Debrief: play_level_7 vs. earlier players
+
+`play_level_7` is a single `solve_by_replay(env, [...])` call, identical in
+shape to levels 5-6, so players.py stays thin and no legs.py refactor was
+needed. The "plan-then-execute" higher-order candidate now has a 5th
+instance but still only 3 distinct plan sources; still not promoted. New
+reusable lesson: when a level's frame seems mostly background and objects
+"pop in" as you move, suspect avatar-centred fog whose radius tracks a
+resource; map on clones with edge-distrusting stitching before searching.
+EOF
+echo logged
+$ pkill -f search7.py 2>/dev/null; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_ls20_fable5_clean && python gkm_try.py && head -20 players.py
+**RESULT levels=7 moves=393 replay_ok=True** — goal reached.
+
+## What level 7 turned out to be
+
+A remix of the level-6 combination-lock family, hidden behind a **fog-of-war diamond** centered on the avatar (radius ≈ energy bar / 2), which makes blind BFS hopeless — the map, buttons and lock room are all invisible from the start.
+
+Discovered by clone experiments:
+- **Fog + energy**: every move drains the bar 2; boxes (3×3 colour-11 rings) set it to 42; bar 0 = death/reset. Vision shrinks with energy.
+- **Mapping**: stitched the full maze from clone tours, distrusting wall pixels near the fog edge (the edge is drawn in wall colour).
+- **Buttons are static now**: creature tile (40,9) = colour+1 per entry; digit-sprite tile (40,19) = the level-6 "A" 6-cycle per entry. Only the right-corridor sprite patrols (col 56, 1 tile/tick) and fires the rotation **R** each time it crosses the avatar.
+- **Springs** (pip-marked, one-way, verified): (20,39)→(40,39), (30,39)→(30,29), (30,34)→(10,34).
+- **The lock**: single room at tile (50,29) with pattern R²(S0) in colour 8; pressing from (45,29) succeeds only on display match (wrong press = free no-op).
+
+Winning word: **C³ A⁵ R²**, ordered C,A first (bottom-left buttons), then R by bouncing in the patroller's corridor with display feedback, then spring back straight onto the room approach — with four box refuels. An offline adaptive controller derived a deterministic 65-move path, verified by pure replay.
+
+`play_level_7` composes the existing `solve_by_replay` leg (same shape as levels 5–6; no new leg needed since the game is deterministic), the checkpoint was extended to the validated 393-move path, and the debrief was logged in `legs_log.md`.

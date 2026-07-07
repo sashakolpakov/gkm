@@ -1,0 +1,5 @@
+Level 3 is cleared and verified. Summary:
+
+- **Verification**: `python gkm_try.py` → `RESULT levels=3 moves=97 replay_ok=True err=None`.
+- **Refactor check**: no duplication found. `play_level_3` is already thin — it calls two existing legs (`detect_noise_mask`, `solve_by_search`), and `legs.py` doesn't repeat the masking logic anywhere (`_masked_bytes`/`find_winning_path`/`solve_by_search` all share the one `mask` parameter). No code changes to `legs.py`/`players.py` were needed.
+- **Debrief + pattern** appended to `legs_log.md`: noted that all three players are now just "`solve_by_search` plus optional config," and flagged a candidate `solve_adaptively(env)` leg that would auto-escalate (try small-budget plain search, fall back to `detect_noise_mask` + larger budget on failure) — not implemented since that would change search behavior, which was out of scope.

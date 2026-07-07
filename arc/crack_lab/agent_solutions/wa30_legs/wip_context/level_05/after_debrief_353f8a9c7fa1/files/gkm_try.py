@@ -1,0 +1,17 @@
+import importlib.util, json, os, sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+spec = importlib.util.spec_from_file_location("solve", "solve.py")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def resumed_solve(env):
+    ck = None
+    if os.path.exists("checkpoint.json"):
+        with open("checkpoint.json") as f:
+            ck = json.load(f)
+    if ck and ck.get("game") == 'wa30' and ck.get("validated") and ck.get("final_path"):
+        for act in ck["final_path"]:
+            env.step(act)
+    m.solve(env)
+levels, path, err = A.run_program('wa30', resumed_solve)
+ok = A.validate('wa30', path, levels) if path else False
+print(f"RESULT levels={levels} moves={len(path)} replay_ok={ok} err={err}")

@@ -1,0 +1,17 @@
+{
+  "game": "ls20",
+  "level": 1,
+  "phase": "not_reached",
+  "reached": 0,
+  "err": null,
+  "attempt": "not_reached_289e1aa90014",
+  "created_at": "2026-07-04T21:10:18.127354+00:00",
+  "files": [
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}
