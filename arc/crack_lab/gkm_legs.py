@@ -182,6 +182,24 @@ def _load_checkpoint(ws: str) -> Optional[Report]:
     )
 
 
+def _adopt_workspace_checkpoint(game: str, ws: str, rep: Report,
+                                verbose: bool = True) -> Report:
+    """Accept a proposer-updated checkpoint only after independent replay validation."""
+    ws_rep = _load_checkpoint(ws)
+    if ws_rep is None or ws_rep.game != game:
+        return rep
+    if ws_rep.reached < rep.reached or not ws_rep.final_path:
+        return rep
+    if not A.validate(game, ws_rep.final_path, ws_rep.reached):
+        return rep
+    if (ws_rep.reached, len(ws_rep.final_path)) == (rep.reached, len(rep.final_path)):
+        return rep
+    if verbose:
+        print(f"adopted proposer checkpoint: reached={ws_rep.reached} "
+              f"path_len={len(ws_rep.final_path)}")
+    return ws_rep
+
+
 def artifact_dir(game: str, tag: str = "") -> str:
     """Stable, repo-visible storage for the latest verified leg-library artifact."""
     labdir = os.path.dirname(os.path.abspath(__file__))
@@ -327,11 +345,13 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
                         verbose: bool = True) -> int:
     """Copy the latest WIP snapshot's probe context for `level` into the workspace.
 
-    Restores ONLY files missing from scratch (scratch, when present, is newer) and
-    NEVER the promoted names (those are unverified candidates in a snapshot; the
-    artifact root is the verified source of truth). This puts earlier probe scripts
-    and the prior proposer transcript back on disk where the next proposer can find
-    them itself -- context lives in the filesystem, never stitched into the prompt.
+    Restores the latest snapshot's non-promoted files and NEVER the promoted names
+    (those are unverified candidates in a snapshot; the artifact root is the
+    verified source of truth). Scratch is disposable at run start, so stale probe
+    files from an older attempt must not mask the coherent latest WIP context.
+    This puts earlier probe scripts and the prior proposer transcript back on disk
+    where the next proposer can find them itself -- context lives in the filesystem,
+    never stitched into the prompt.
     """
     level_dir = _wip_level_dir(artifact_dir(game, tag), level)
     latest_path = os.path.join(level_dir, "latest.json")
@@ -339,21 +359,44 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
         return 0
     try:
         with open(latest_path) as f:
-            attempt = json.load(f).get("attempt")
+            latest_attempt = json.load(f).get("attempt")
     except Exception:
         return 0
-    files_dir = os.path.join(level_dir, attempt or "", "files")
-    if not attempt or not os.path.isdir(files_dir):
+
+    attempts = []
+    for attempt in sorted(os.listdir(level_dir)):
+        attempt_dir = os.path.join(level_dir, attempt)
+        files_dir = os.path.join(attempt_dir, "files")
+        meta_path = os.path.join(attempt_dir, "metadata.json")
+        if not os.path.isdir(files_dir):
+            continue
+        created = ""
+        try:
+            with open(meta_path) as f:
+                created = json.load(f).get("created_at", "")
+        except Exception:
+            pass
+        attempts.append((attempt == latest_attempt, created, attempt, files_dir))
+    if not attempts:
         return 0
+    attempts.sort(key=lambda t: t[1], reverse=True)
+    attempts.sort(key=lambda t: not t[0])
     skip = set(PROMOTED_FILES) | {"gkm_try.py"}
     restored = 0
-    for name in sorted(os.listdir(files_dir)):
-        if name in skip or os.path.exists(os.path.join(ws, name)):
-            continue
-        shutil.copy2(os.path.join(files_dir, name), os.path.join(ws, name))
-        restored += 1
+    latest_done = False
+    for is_latest, _, attempt, files_dir in attempts:
+        for name in sorted(os.listdir(files_dir)):
+            if name in skip:
+                continue
+            dst = os.path.join(ws, name)
+            if latest_done and os.path.exists(dst):
+                continue
+            shutil.copy2(os.path.join(files_dir, name), dst)
+            restored += 1
+        latest_done = True
     if verbose and restored:
-        print(f"restored {restored} WIP probe file(s) for level {level} from {attempt}")
+        print(f"restored {restored} WIP probe file(s) for level {level} "
+              f"from latest/backfill snapshots")
     return restored
 
 
@@ -489,6 +532,10 @@ def _candidate_path_files(ws: str, K: int) -> List[str]:
     of treating the level as unsolved.
     """
     patterns = [
+        os.path.join(ws, "base*.json"),
+        os.path.join(ws, f"seg_L{K}.json"),
+        os.path.join(ws, f"seg_{K}.json"),
+        os.path.join(ws, f"*path*.json"),
         os.path.join(ws, f"win{K}*.json"),
         os.path.join(ws, f"*win*{K}*.json"),
         os.path.join("/tmp", f"win{K}*.json"),
@@ -562,11 +609,42 @@ def _verify_candidate_suffix(game: str, prefix: List[int], suffix: List[int], K:
         if base >= K:
             return None
         combined = list(prefix or []) + list(suffix)
-        if env.levels_completed >= K and A.validate(game, combined, env.levels_completed):
-            return combined, env.levels_completed
+        if env.levels_completed >= K:
+            levels, path, err = A.run_program(game, lambda e: [e.step(a) for a in combined])
+            if levels >= K and not err and A.validate(game, path, levels):
+                return path, levels
     except Exception:
         return None
     return None
+
+
+def _run_candidate_replay(game: str, path: List[int]):
+    try:
+        return A.run_program(game, lambda e: [e.step(a) for a in path])
+    except Exception as ex:
+        return 0, [], f"{type(ex).__name__}: {ex}"
+
+
+def _validated_prefix_floor(game: str, path: List[int], floor: int) -> bool:
+    levels, replay_path, err = _run_candidate_replay(game, path)
+    return levels >= floor and not err and A.validate(game, replay_path, levels)
+
+
+def _record_failed_glue_context(ws: str, K: int, prefix_source: str, suffix_source: str,
+                                prefix_len: int, suffix_len: int,
+                                levels: int, moves: int, err) -> None:
+    note = os.path.join(ws, "wip_glue_notes.md")
+    line = (
+        f"- L{K}: direct replay of `{prefix_source}` + `{suffix_source}` failed: "
+        f"prefix_len={prefix_len}, suffix_len={suffix_len}, "
+        f"observed_levels={levels}, observed_moves={moves}, err={err}. "
+        "Treat these as potentially cofibrant pieces, not as a proven composition; "
+        "a bridge/morphism may be needed or the suffix may need rederivation.\n"
+    )
+    old = _read(note)
+    if line not in old:
+        with open(note, "a") as f:
+            f.write(line)
 
 
 def _verify_candidate_path(game: str, prefix: List[int], candidate: List[int], K: int):
@@ -577,8 +655,9 @@ def _verify_candidate_path(game: str, prefix: List[int], candidate: List[int], K
         return combined, reached, list(candidate)
     if prefix and len(candidate) > len(prefix) and candidate[:len(prefix)] == list(prefix):
         try:
-            if A.validate(game, candidate, K):
-                return list(candidate), K, list(candidate[len(prefix):])
+            levels, path, err = _run_candidate_replay(game, candidate)
+            if levels >= K and not err and A.validate(game, path, levels):
+                return list(path), levels, list(candidate[len(prefix):])
         except Exception:
             return None
     return None
@@ -591,7 +670,8 @@ def _install_literal_player(ws: str, K: int, suffix: List[int], source: str) -> 
     block = (
         f"\n\ndef play_level_{K}(env):\n"
         f"    # Recovered from verified proposer path artifact: {source}\n"
-        f"    execute_path(env, {suffix!r})\n"
+        f"    for action in {suffix!r}:\n"
+        f"        env.step(action)\n"
     )
     pat = re.compile(rf"\n\ndef play_level_{K}\(env\):\n.*?(?=\n\ndef play_level_\d+\(env\):|\Z)", re.S)
     if pat.search(players):
@@ -605,7 +685,7 @@ def _install_literal_player(ws: str, K: int, suffix: List[int], source: str) -> 
             f"\n## Level {K}: recovered verified path artifact\n\n"
             f"The proposer found a winning suffix but did not integrate it before "
             f"the time budget ended. Harness recovery validated `{source}` and "
-            f"installed a thin player that composes the existing `execute_path` leg.\n"
+            f"installed a thin replay player for the recovered suffix.\n"
         )
 
 
@@ -623,6 +703,44 @@ def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[in
             candidates.append((suffix, path))
     candidates.extend((p, "proposer_last.log") for p in _candidate_paths_from_log(ws))
     candidates.extend((p, CHECKPOINT_FILE) for p in _candidate_paths_from_checkpoint(ws))
+
+    # Some successful WIP states naturally factor the replay into a compressed
+    # verified prefix plus a next-level suffix. Harvest both halves without
+    # forcing the proposer to remember to rewrite checkpoint.json before timeout.
+    failed_glues = 0
+    prefix_ok = {}
+    for prefix_path, prefix_source in candidates:
+        key = tuple(prefix_path)
+        if key not in prefix_ok:
+            prefix_ok[key] = _validated_prefix_floor(game, prefix_path, K - 1)
+        if not prefix_ok[key]:
+            continue
+        for suffix_path, suffix_source in candidates:
+            if suffix_path is prefix_path:
+                continue
+            verified = _verify_candidate_suffix(game, prefix_path, suffix_path, K)
+            if verified is None:
+                direct = list(prefix_path) + list(suffix_path)
+                levels, path, err = _run_candidate_replay(game, direct)
+                if levels < K or err:
+                    _record_failed_glue_context(
+                        ws, K, prefix_source, suffix_source,
+                        len(prefix_path), len(suffix_path),
+                        levels, len(path or []), err)
+                    failed_glues += 1
+                continue
+            combined, reached = verified
+            suffix = list(suffix_path)
+            _install_literal_player(ws, K, suffix, f"{prefix_source}+{suffix_source}")
+            if verbose:
+                print(f"level {K}: recovered verified joined path artifacts from "
+                      f"{prefix_source}+{suffix_source} "
+                      f"(prefix_len={len(prefix_path)} suffix_len={len(suffix)} "
+                      f"reached={reached})")
+            return reached, combined, None
+    if verbose and failed_glues:
+        print(f"level {K}: recorded {failed_glues} failed direct WIP glue attempt(s) "
+              "for proposer context")
 
     for candidate, source in candidates:
         verified = _verify_candidate_path(game, prefix, candidate, K)
@@ -1313,6 +1431,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
                     credit_out = True
                     break
+                rep = _adopt_workspace_checkpoint(game, ws, rep, verbose=verbose)
                 recovered = recover_discovered_path_artifact(
                     game, ws, K, rep.final_path, verbose=verbose)
                 _save_checkpoint(ws, rep)

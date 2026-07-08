@@ -1,0 +1,92 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && ls
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat gkm_try.py 2>/dev/null | head -50
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat solve.py && cat players.py | head -100
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat checkpoint.json | python3 -c "import json,sys; d=json.load(sys.stdin); print({k:(len(v) if isinstance(v,list) else v) for k,v in d.items()})"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && grep -n "play_level_9\|play_level" players.py | head; echo ---; cat legs_log.md | tail -60
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && head -80 perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && timeout 600 python gkm_try.py 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -5 &
+wait
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat l9env.py; echo ===; cat l9lib.py 2>/dev/null | head -50
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && for f in best_l9_final.json best_l9_path.json l9_result_path.json; do echo == $f; python3 -c "import json; d=json.load(open('$f')); print(type(d), (len(d) if isinstance(d,(list,dict)) else d)); print(str(d)[:300])"; done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python3 -c "
+import l9lib, json
+for f in ['best_l9_final.json','best_l9_path.json','l9_result_path.json']:
+    p=json.load(open(f))
+    e=l9lib.fresh()
+    for a in p:
+        e.step(a)
+        if e.levels_completed>=9: break
+    print(f, e.levels_completed, len(e.path)-l9lib._baselen, e.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import l9lib, json
+for f in ['best_l9_final.json','best_l9_path.json','l9_result_path.json']:
+    p=json.load(open(f))
+    e=l9lib.fresh()
+    for a in p:
+        e.step(a)
+        if e.levels_completed>=9: break
+    print(f, e.levels_completed, len(e.path)-l9lib._baselen, e.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import l9lib, numpy as np
+e=l9lib.fresh()
+f=np.asarray(e.frame())
+print(f.shape)
+import perception as P
+print(P.color_counts(f))
+# print downsampled? print raw compact
+for r in range(0,64):
+    row=''.join('%x'%f[r,c] for c in range(64))
+    print(row)
+" 2>&1 | head -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import l9lib, numpy as np
+e=l9lib.fresh()
+f=np.asarray(e.frame())
+# 16x16 grid of 4x4 tiles; print majority color per tile
+g=np.zeros((16,16),dtype=int)
+for r in range(16):
+    for c in range(16):
+        t=f[4*r:4*r+4,4*c:4*c+4]
+        vals,cnts=np.unique(t,return_counts=True)
+        g[r,c]=vals[np.argmax(cnts)]
+for r in range(16):
+    print(' '.join('%2d'%v for v in g[r]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import l9lib, numpy as np
+def cells(f,color):
+    out=[]
+    for r in range(16):
+        for c in range(16):
+            t=f[4*r:4*r+4,4*c:4*c+4]
+            if (t==color).sum()>=8: out.append((r,c))
+    return out
+e=l9lib.fresh()
+for i in range(24):
+    f=np.asarray(e.frame())
+    print(i,'av',cells(f,14),'cour',cells(f,12),'steal',cells(f,15))
+    e.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import l9lib, numpy as np
+def cells(f,color,th=8):
+    out=[]
+    for r in range(16):
+        for c in range(16):
+            t=f[4*r:4*r+4,4*c:4*c+4]
+            if (t==color).sum()>=th: out.append((r,c))
+    return out
+e=l9lib.fresh()
+prev2=None
+for i in range(120):
+    f=np.asarray(e.frame())
+    n2=(f==2).sum()
+    if i%10==0 or (prev2 is not None and n2!=prev2):
+        print(i,'c2=',n2,'boxes',len(cells(f,9,4)),'cour',cells(f,12),'steal',cells(f,15))
+    prev2=n2
+    e.step(5)
+print('levels',e.levels_completed)
+"

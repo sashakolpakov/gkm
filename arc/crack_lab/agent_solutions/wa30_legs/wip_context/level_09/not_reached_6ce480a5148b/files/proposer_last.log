@@ -1,0 +1,400 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && ls
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat gkm_try.py 2>/dev/null | head -50
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat solve.py && cat players.py | head -100
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat checkpoint.json | python3 -c "import json,sys; d=json.load(sys.stdin); print({k:(len(v) if isinstance(v,list) else v) for k,v in d.items()})"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat legs_log.md | tail -80
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python3 -c "
+import json
+for f in ['best_l9_path.json','l9_result_path.json','best_l9_final.json','seg_L9.json']:
+    try:
+        d=json.load(open(f))
+        print(f, type(d), (len(d) if hasattr(d,'__len__') else d))
+        if isinstance(d,dict): print(' keys:', {k:(len(v) if isinstance(v,list) else v) for k,v in d.items()})
+    except Exception as e:
+        print(f,'ERR',e)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat l9env.py 2>/dev/null; echo ---; cat l9lib.py 2>/dev/null | head -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python3 -c "
+import json
+from l9lib import fresh, _baselen
+for f in ['best_l9_path.json','l9_result_path.json','best_l9_final.json','seg_L9.json']:
+    p=json.load(open(f))
+    e=fresh()
+    for a in p:
+        e.step(a)
+        if e.levels_completed>=9: break
+    print(f, 'levels=',e.levels_completed, 'used=',len(e.path)-_baselen)
+"
+$ which python3; python3 -c "import numpy" 2>&1; cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && head -5 gkm_try.py && python -c "import numpy; print('ok')"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import json
+from l9lib import fresh, _baselen
+for f in ['best_l9_path.json','l9_result_path.json','best_l9_final.json','seg_L9.json']:
+    p=json.load(open(f))
+    e=fresh()
+    for a in p:
+        e.step(a)
+        if e.levels_completed>=9: break
+    print(f, 'levels=',e.levels_completed, 'used=',len(e.path)-_baselen)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import json; print(json.load(open('seg_L9.json')))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 1,80p perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && wc -l legs.py && grep -n "^def \|^LEFT\|^UP\|^DOWN\|^RIGHT\|^USE" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 203,300p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+import legs
+e=fresh()
+av,head,boxes,cour,walls=legs._cells(e)
+print('avatar',av,'head',head,'courier',cour)
+print('boxes',sorted(boxes))
+f=np.asarray(e.frame())
+import collections
+print(collections.Counter(f.flatten()))
+# render 16x16 cell map
+G=16
+for R in range(G):
+    row=''
+    for C in range(G):
+        if (R,C)==av: row+='A'
+        elif (R,C) in boxes: row+='B'
+        elif (R,C) in walls: row+='#'
+        else:
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            u=set(int(v) for v in np.unique(blk))
+            if u=={1}: row+='.'
+            else: row+='?'
+    print(row)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+e=fresh()
+f=np.asarray(e.frame())
+G=16
+for R in range(G):
+    row=[]
+    for C in range(G):
+        blk=f[R*4:R*4+4,C*4:C*4+4]
+        u=sorted(set(int(v) for v in np.unique(blk)))
+        if u==[1]: row.append('  .  ')
+        elif u==[5]: row.append('  #  ')
+        else: row.append(''.join(str(x) for x in u if x!=1).ljust(5))
+    print(f'{R:2d} '+ '|'.join(row))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np, json
+from l9lib import fresh
+import legs
+names={1:'UP',2:'DN',3:'LF',4:'RT',5:'USE'}
+p=json.load(open('seg_L9.json'))
+e=fresh()
+def snap(e):
+    f=np.asarray(e.frame())
+    av,head,boxes,cour,walls=legs._cells(e)
+    ys,xs=np.where(f==15)
+    mv=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    cy,cx=np.where(f==12)
+    cours=set()
+    for y,x in zip(cy,cx): cours.add((y//4,x//4))
+    return av,sorted(boxes),sorted(cours),mv
+av,b,c,mv=snap(e)
+print('start av',av,'mv',mv,'cours',c)
+prev=(av,b,c,mv)
+for i,a in enumerate(p):
+    e.step(a)
+    cur=snap(e)
+    msg=f'{i:2d} {names[a]:3s} av={cur[0]}'
+    if cur[1]!=prev[1]:
+        gone=[x for x in prev[1] if x not in cur[1]]; new=[x for x in cur[1] if x not in prev[1]]
+        msg+=f' boxes {gone}->{new}'
+    if cur[2]!=prev[2]: msg+=f' cour {prev[2]}->{cur[2]}'
+    if cur[3]!=prev[3]: msg+=f' mv {prev[3]}->{cur[3]}'
+    print(msg, 'LV',e.levels_completed)
+    prev=cur
+"
+The stored path works. Now let me understand it semantically so I can express it as legs. Let me inspect socket cells at pixel level, start vs end.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np, json
+from l9lib import fresh
+p=json.load(open('seg_L9.json'))
+e=fresh()
+f0=np.asarray(e.frame()).copy()
+for a in p: e.step(a)
+f1=np.asarray(e.frame())
+def blk(f,R,C): return f[R*4:R*4+4,C*4:C*4+4]
+cells=[(3,5),(3,6),(3,7),(4,5),(4,6),(4,7),(5,5),(5,6),(5,7),(2,13),(2,14),(6,13),(6,14),(3,10),(3,12)]
+for cell in cells:
+    b0=blk(f0,*cell); b1=blk(f1,*cell)
+    print(cell,'start:',b0.tolist(),' end:',b1.tolist())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 441,660p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 660,881p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+# probe: pure idle (UP against wall? avatar at (8,8), wall at col9 right, UP free). Use USE as idle to not move? try action 5 repeatedly
+e=fresh()
+import collections
+for i in range(120):
+    if e.terminal(): break
+    e.step(5)
+    f=np.asarray(e.frame())
+    c7=int((f==7).sum())
+    if i%10==0 or e.levels_completed>8:
+        av=np.where(f==14)
+        print(i, 'c7',c7, 'lv',e.levels_completed,'terminal',e.terminal())
+print('final lv',e.levels_completed,'terminal',e.terminal(), 'steps',i)
+"
+Budget is ~71 steps — tight (seg path uses 61). Let me see what couriers accomplish alone during idle.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+def seated(f):
+    # filled socket = 4-border 9-core cell that was socket; just count cells with pattern border4
+    n=0
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]
+            u=set(int(v) for v in np.unique(blk))
+            if u=={4,9}: n+=1
+    return n
+e=fresh()
+prev=None
+for i in range(72):
+    if e.terminal(): break
+    e.step(5)
+    f=np.asarray(e.frame())
+    s=seated(f)
+    if s!=prev: print(i,'seated',s,'lv',e.levels_completed)
+    prev=s
+print('end lv',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+RING=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+RIGHT=[(2,13),(2,14),(6,13),(6,14)]
+def stat(f):
+    def filled(cell):
+        R,C=cell; blk=f[R*4:R*4+4,C*4:C*4+4]
+        return 4 in blk
+    return sum(filled(c) for c in RING), sum(filled(c) for c in RIGHT)
+e=fresh()
+prev=None
+for i in range(72):
+    if e.terminal(): break
+    e.step(5)
+    f=np.asarray(e.frame())
+    s=stat(f)
+    if s!=prev: print(i,'ring/right filled',s,'lv',e.levels_completed)
+    prev=s
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import numpy as np
+from l9lib import fresh
+RING=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def stat(f):
+    return tuple(c for c in RING if 4 in f[c[0]*4:c[0]*4+4, c[1]*4:c[1]*4+4])
+def mv(f):
+    ys,xs=np.where(f==15)
+    return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def cours(f):
+    cy,cx=np.where(f==12)
+    return sorted(set((int(y)//4,int(x)//4) for y,x in zip(cy,cx)))
+e=fresh()
+prev=None
+for i in range(72):
+    if e.terminal(): break
+    e.step(5)
+    f=np.asarray(e.frame())
+    s=stat(f)
+    if s!=prev:
+        print(i,'filled',s,'mover',mv(f),'cours',cours(f))
+    prev=s
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 157,166p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat > /tmp/test_l9.py <<'EOF'
+import numpy as np
+from l9lib import fresh, _baselen
+import legs
+from legs import deliver_pairs, yield_until_level_up, _avatar_nav, _mover_cell, _DIRS, USE, DOWN
+
+def ambush_mover(env, cell, face_action, mover=15, idle_action=USE, cap=45):
+    if not _avatar_nav(env, cell, cap=cap):
+        return False
+    dr, dc = _DIRS[face_action]
+    tgt = (cell[0] + dr, cell[1] + dc)
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        mc = _mover_cell(env, mover)
+        if mc is None:
+            return True
+        if mc == tgt:
+            env.step(face_action)
+            env.step(USE)
+            if _mover_cell(env, mover) is None:
+                return True
+        else:
+            env.step(idle_action)
+    return _mover_cell(env, mover) is None
+
+def play(env):
+    deliver_pairs(env, [((8,14),(6,14)), ((7,12),(6,13)), ((5,11),(3,11))])
+    print('after right phase: steps', len(env.path)-_baselen, 'lv', env.levels_completed)
+    ok = ambush_mover(env, (9,3), DOWN)
+    print('ambush ok', ok, 'steps', len(env.path)-_baselen)
+    deliver_pairs(env, [((8,1),(5,7))])
+    print('after left carry: steps', len(env.path)-_baselen)
+    yield_until_level_up(env, USE)
+    print('final steps', len(env.path)-_baselen, 'lv', env.levels_completed, 'terminal', env.terminal())
+
+e = fresh()
+play(e)
+EOF
+python /tmp/test_l9.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cp /tmp/test_l9.py ./test_l9.py && python test_l9.py
+Works first try — 61 steps, level 9. Now add the leg to legs.py and the player.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat >> legs.py <<'EOF'
+
+
+# --- Track-exit ambush for a patrolling self-mover (wa30 L9) -----------------
+# Some self-movers circulate a fixed one-wide track (a maze lap) and only
+# threaten the goal once they exit it.  Chasing them on the track is hopeless
+# (same speed), but the exit cell is a chokepoint: an avatar parked ON the
+# exit blocks the lap, so the mover queues in the adjacent track cell where a
+# facing USE removes it for good.
+
+def ambush_mover(env, cell, face_action, mover=15, idle_action=USE, cap=45):
+    """Park on the track-exit ``cell`` and USE the self-mover when it queues.
+
+    Navigates to ``cell``, idles (harmless ``idle_action``) until the mover
+    occupies the cell in the ``face_action`` direction (it stalls there while
+    we block its exit), then turns to face it and clears it with USE.
+    Returns True once the mover colour is gone."""
+    if not _avatar_nav(env, cell, cap=cap):
+        return False
+    dr, dc = _DIRS[face_action]
+    tgt = (cell[0] + dr, cell[1] + dc)
+    for _ in range(cap):
+        if env.terminal():
+            return False
+        mc = _mover_cell(env, mover)
+        if mc is None:
+            return True
+        if mc == tgt:
+            env.step(face_action)
+            env.step(USE)
+            if _mover_cell(env, mover) is None:
+                return True
+        else:
+            env.step(idle_action)
+    return _mover_cell(env, mover) is None
+EOF
+cat >> players.py <<'EOF'
+
+
+def play_level_9(env):
+    # Split-world socket level: a wall splits the arena; each half has a
+    # courier (colour 12) seating boxes onto its sockets, and a colour-15
+    # mover laps the bottom maze, exiting at (9,3) to steal seated boxes.
+    # Seat the two avatar-reachable right sockets, hand the third right box
+    # to the right courier on its shelf row, ambush the mover at its exit,
+    # help the left courier with the farthest box, then yield.
+    deliver_pairs(env, [((8, 14), (6, 14)),   # seat right socket
+                        ((7, 12), (6, 13)),   # seat right socket
+                        ((5, 11), (3, 11))])  # handoff to right courier
+    ambush_mover(env, (9, 3), DOWN)           # clear the stealer at its exit
+    deliver_pairs(env, [((8, 1), (5, 7))])    # help the left courier
+    yield_until_level_up(env, USE)            # courier seats the last box
+EOF
+python gkm_try.py 2>&1 | tail -3
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import json
+tot=0
+for k in range(1,10):
+    p=json.load(open(f'seg_L{k}.json'))
+    print(k, len(p))
+    tot+=len(p)
+print('total', tot)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+e=A.Arena('wa30')
+for k in range(1,10):
+    p=json.load(open(f'seg_L{k}.json'))
+    for a in p: e.step(a)
+    print('after seg',k,'lv',e.levels_completed,'moves',len(e.path))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import json
+ck=json.load(open('checkpoint.json'))
+path=[]
+for k in range(1,9):
+    path+=json.load(open(f'seg_L{k}.json'))
+ck['final_path']=path
+ck['reached']=8
+ck['validated']=True
+json.dump(ck, open('checkpoint.json','w'))
+print('new base len', len(path))
+" && python -c "
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+ck=json.load(open('checkpoint.json'))
+e=A.Arena('wa30')
+for a in ck['final_path']: e.step(a)
+print('base lv', e.levels_completed, 'moves', len(e.path))
+players.play_level_9(e)
+print('final lv', e.levels_completed, 'moves', len(e.path), 'terminal', e.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -3
+`RESULT levels=9 moves=590 replay_ok=True`. Let me clean up and log the new leg.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && rm -f test_l9.py && cat >> legs_log.md <<'EOF'
+
+## wa30 L9 debrief -- split-world sockets + track-exit ambush
+
+L9 is again neutralise-then-deliver, but the world is split by a wall: each
+half has its own courier (12) and sockets, and the colour-15 stealer laps a
+bottom maze, only emerging at the fixed exit cell (9,3) around turn ~40 to
+raid the left ring.  Win = all 9 boxes seated; budget (colour-7 bar) ~70.
+
+New leg: **`ambush_mover(env, cell, face_action)`** -- park ON a patroller's
+track-exit chokepoint; the same-speed mover (unchaseable on its lap) queues in
+the adjacent track cell, where a facing USE clears it.  Complements
+`chase_and_clear` (corners a roamer) and `clear_frozen_mover` (stalled
+hauler): this one exploits track topology instead of behaviour.
+
+Everything else reused as-is: `deliver_pairs`/`carry_box_to` seat the two
+avatar-reachable right sockets AND do the courier handoff (dropping a box on
+the shelf row the courier serves -- delivery-to-an-agent needs no new verb),
+then help the left courier with its farthest box, then `yield_until_level_up`.
+Also rebased checkpoint.json onto the per-level seg files (529 moves for
+L1-L8 vs 588) to fit the 600 real-move cap with L9's 61 moves.
+EOF
+python gkm_try.py 2>&1 | tail -2
+Done. **RESULT levels=9 moves=590 replay_ok=True**.
+
+Summary of what I did:
+
+**Discovery (on clones, via the existing `l9lib` base + `legs._cells`/`_grid_scan` coarse views):**
+- Level 9 is a split-world socket level: a colour-5 wall (col 9, gap at (8,9)) divides the arena. Left half: 6 boxes, a courier (12), and a 3×3 ring of 8 sockets; right half: 3 boxes, a second courier confined above an impassable shelf row (row 3), and 4 sockets (2 avatar-reachable, 2 courier-only).
+- Win = all 9 boxes seated on sockets (verified pixel-level: empty socket = 2-body/9-edge, seated = 4-border/9-core; level flipped exactly when the 9th box seated, with 3 sockets still empty).
+- The colour-7 bar is a ~70-step level budget (idle probe terminates at 70).
+- The colour-15 mover laps the bottom maze and exits at (9,3) around turn ~40, then raids seated boxes out of the left ring (idle probe showed filled ring cells emptying as it passed) — it must be neutralised, but it's same-speed and unchaseable on its one-wide track.
+
+**Solution (`play_level_9`, composing legs only):**
+1. `deliver_pairs` — seat the two reachable right sockets and drop the third right box on the shelf row where the right courier fetches and seats it (reuses `carry_box_to`'s clone-probed grab orientations, which automatically reject the impassable shelf row).
+2. `ambush_mover(env, (9,3), DOWN)` — the one **new leg**: park on a patroller's track-exit chokepoint; the mover queues in the adjacent track cell where a facing USE removes it. Minimal and general (complements `chase_and_clear` / `clear_frozen_mover`).
+3. `deliver_pairs` — help the left courier by carrying its farthest box (8,1) onto ring cell (5,7).
+4. `yield_until_level_up` — the left courier seats the last box. Total: 61 moves.
+
+**Budget fix:** the run hit the 600 real-move cap (old checkpoint used 588 moves for L1–L8), so I rebased `checkpoint.json` onto the existing per-level `seg_L*.json` paths (529 moves for L1–L8), leaving room for L9's 61 → 590 total, replay-validated.

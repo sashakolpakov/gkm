@@ -1,0 +1,204 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat gkm_try.py legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat solve.py && grep -n "def " legs.py | head -60
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && grep -n "execute_path\|def execute" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "import legs; print(hasattr(legs,'execute_path'))"; grep -rn "execute_path" --include="*.py" . | grep -v pycache | head
+`execute_path` doesn't exist in legs.py yet — the checkpoint replay probably masks it. Let me run the baseline first.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && timeout 600 python gkm_try.py 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -5
+Baseline fails at L9 with a NameError — `execute_path` was never added to legs.py. Let me check the checkpoint and the path artifacts.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python -c "
+import json
+ck=json.load(open('checkpoint.json')); print({k:(len(v) if isinstance(v,list) else v) for k,v in ck.items()})
+print(json.load(open('base2.json')).keys() if 0 else '')
+" ; head -c 400 base2.json; echo; cat seg_L9.json
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 1,70p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 70,205p legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python3 - <<'EOF'
+# Decode the L9 path into (approach, USE, carry, USE, depart) ferry segments
+P=[4, 4, 4, 4, 4, 1, 4, 2, 5, 1, 1, 5, 3, 2, 3, 2, 5, 4, 1, 5, 3, 2, 3, 1, 5, 1, 1, 5, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 2, 5, 3, 3, 1, 5, 4, 1, 1, 4, 4, 4, 4, 4, 1, 5, 4, 5, 3, 2]
+names={1:'U',2:'D',3:'L',4:'R',5:'USE'}
+segs=[]; cur=[]
+for a in P:
+    cur.append(names[a])
+    if a==5 and sum(1 for x in cur if x=='USE')==2:
+        segs.append(cur); cur=[]
+segs.append(cur)
+for s in segs: print(' '.join(s))
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && sed -n 128,182p legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip/legs.py
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python3 - <<'EOF'
+import json
+import players, legs
+
+class Rec:
+    levels_completed = 0
+    def __init__(self): self.log = []
+    def terminal(self): return False
+    def step(self, a): self.log.append(a)
+    def frame(self): raise RuntimeError("scripted only")
+
+# 1) L9 player emits exactly the verified seg_L9 path
+want = json.load(open('seg_L9.json'))
+r = Rec(); players.play_level_9(r)
+assert r.log == want, (r.log, want)
+print("L9 sequence identical:", len(r.log), "moves")
+
+# 2) grab_push_release wrapper emits the same sequences as the old inline code
+def old_gpr(env, face_action, push_action, push_steps=1, *, face_steps=1,
+            depart_action=None, depart_steps=1):
+    legs.repeat(env, face_action, face_steps); legs.use(env)
+    legs.repeat(env, push_action, push_steps); legs.use(env)
+    if depart_action is not None and depart_steps > 0:
+        legs.repeat(env, depart_action, depart_steps)
+
+import itertools
+cases = [
+    dict(face_action=legs.RIGHT, push_action=legs.RIGHT, push_steps=3),
+    dict(face_action=legs.UP, push_action=legs.DOWN, push_steps=2, face_steps=0),
+    dict(face_action=legs.LEFT, push_action=legs.LEFT, push_steps=1,
+         depart_action=legs.LEFT, depart_steps=2),
+    dict(face_action=legs.DOWN, push_action=legs.DOWN, push_steps=1,
+         face_steps=0, depart_action=legs.UP, depart_steps=0),
+]
+for kw in cases:
+    a, b = Rec(), Rec()
+    legs.grab_push_release(a, **kw); old_gpr(b, **kw)
+    assert a.log == b.log, (kw, a.log, b.log)
+print("grab_push_release wrapper: identical on", len(cases), "cases")
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && which python python3; python3 -c "import sys; print(sys.executable)"; python -c "import numpy" 2>&1
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python - <<'EOF'
+import json
+import players, legs
+
+class Rec:
+    levels_completed = 0
+    def __init__(self): self.log = []
+    def terminal(self): return False
+    def step(self, a): self.log.append(a)
+    def frame(self): raise RuntimeError("scripted only")
+
+# 1) L9 player emits exactly the verified seg_L9 path
+want = json.load(open('seg_L9.json'))
+r = Rec(); players.play_level_9(r)
+assert r.log == want, (r.log, want)
+print("L9 sequence identical:", len(r.log), "moves")
+
+# 2) grab_push_release wrapper emits the same sequences as the old inline code
+def old_gpr(env, face_action, push_action, push_steps=1, *, face_steps=1,
+            depart_action=None, depart_steps=1):
+    legs.repeat(env, face_action, face_steps); legs.use(env)
+    legs.repeat(env, push_action, push_steps); legs.use(env)
+    if depart_action is not None and depart_steps > 0:
+        legs.repeat(env, depart_action, depart_steps)
+
+cases = [
+    dict(face_action=legs.RIGHT, push_action=legs.RIGHT, push_steps=3),
+    dict(face_action=legs.UP, push_action=legs.DOWN, push_steps=2, face_steps=0),
+    dict(face_action=legs.LEFT, push_action=legs.LEFT, push_steps=1,
+         depart_action=legs.LEFT, depart_steps=2),
+    dict(face_action=legs.DOWN, push_action=legs.DOWN, push_steps=1,
+         face_steps=0, depart_action=legs.UP, depart_steps=0),
+]
+for kw in cases:
+    a, b = Rec(), Rec()
+    legs.grab_push_release(a, **kw); old_gpr(b, **kw)
+    assert a.log == b.log, (kw, a.log, b.log)
+print("grab_push_release wrapper: identical on", len(cases), "cases")
+
+# 3) scripted players 1-4 emit fixed sequences -> smoke: they still run
+for k in (1, 2, 3, 4):
+    r = Rec(); getattr(players, f"play_level_{k}")(r)
+    print(f"play_level_{k}: {len(r.log)} scripted moves")
+EOF
+Scripted sequences are byte-identical. Now the full arena run:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -3
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python - <<'EOF'
+import json
+tot=0
+for k in range(1,10):
+    seg=json.load(open(f'seg_L{k}.json')); tot+=len(seg); print(k, len(seg))
+print("total", tot)
+base2=json.load(open('base2.json')); print("base2 len", len(base2))
+seg=sum([json.load(open(f'seg_L{k}.json')) for k in range(1,9)],[])
+print("segs L1-8 == base2?", seg==base2)
+EOF
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cp checkpoint.json checkpoint.json.bak-588 && python - <<'EOF'
+import json
+ck = json.load(open('checkpoint.json'))
+base2 = json.load(open('base2.json'))
+ck['final_path'] = base2
+ck['reached'] = 8
+json.dump(ck, open('checkpoint.json','w'))
+print("checkpoint final_path ->", len(base2), "moves")
+EOF
+python gkm_try.py 2>&1 | tail -3
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && cat >> legs_log.md <<'EOF'
+
+## wa30 L9 debrief -- the ferry-batch shape (`ferry_each`)
+
+The previous L9 entry installed a raw 61-action `execute_path` replay.
+Decoding that verified path against the earlier players shows it is NOT an
+opaque blob: it splits exactly into five repetitions of the ferry skill the
+library already had in straight-line form --
+
+    approach (walk to a box) -> USE (grab) -> carry (walk rigidly) -> USE
+    (release) -> optional depart step clear
+
+which is `grab_push_release` / `ferry_box` from L3/L4, except that on L9 both
+the approach and the carry turn corners.  Refactor (behaviour-identical,
+checked action-by-action against seg_L9.json):
+
+* **`grab_carry_release(env, approach, carry, depart=())`** -- the one
+  scripted box-ferry skill, now written ONCE with plan-step lists for every
+  phase.  `grab_push_release` (and hence `ferry_box`, `relay_box_from_west`)
+  became thin straight-line bindings of it.
+* **`ferry_each(env, specs)`** -- the batch combinator: for each box spec,
+  `grab_carry_release`.  `play_level_9` is now a five-line spec table.
+
+**Recurring composition pattern / candidate higher-order leg:** almost every
+box level is `ferry_each` plus an optional epilogue:
+
+| Level | composition                                              |
+|-------|----------------------------------------------------------|
+| L3    | per-box approach+relay (ferry_each shape) + final `use`  |
+| L4    | `ferry_all_then_yield` = ferry batch + yield-for-helper  |
+| L5    | live-frame ferry batch + yield (`ferry_all_to_courier_then_yield`) |
+| L9    | `ferry_each` alone -- no helper, the avatar seats boxes itself |
+
+So the candidate higher-order leg is
+**`ferry_batch_then(env, specs, epilogue=None)`**: run the per-box
+grab-carry-release batch, then an arbitrary epilogue (`yield_until_level_up`
+for courier levels, a switch-`use` for L3, nothing for L9).
+`ferry_all_then_yield` is that combinator with `epilogue=yield`; L9 is it
+with `epilogue=None`.  If a third epilogue flavour appears, fold the three
+`ferry_*` entry points into this one combinator.
+
+Bookkeeping: the resume checkpoint now carries the shorter validated L1-8
+base (base2.json, 535 moves) so the 61-move L9 player fits the 600
+real-move cap: full run = 596 moves, RESULT levels=9 replay_ok=True.
+EOF
+echo done
+Final verification pass:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_fable5_l9_wip && python gkm_try.py 2>&1 | tail -1 && sed -n 86,100p players.py && python -c "import legs, players; print('imports OK')"
+Debrief complete. Summary of what was done:
+
+**Comparison finding.** `play_level_9` was a raw 61-action `execute_path` blob (and `execute_path` didn't even exist in legs.py — the baseline run actually failed L9 with a NameError, masked as `levels=8`). Decoding the verified path showed it is five exact repetitions of the ferry skill the library already had in straight-line form from L3/L4: *approach → USE(grab) → carry → USE(release) → optional depart* — just with corner-turning approach/carry plans.
+
+**Refactor (each skill written ONCE):**
+- `legs.grab_carry_release(env, approach, carry, depart=())` — the single scripted box-ferry skill, with plan-step lists for every phase.
+- `legs.grab_push_release` is now a thin straight-line binding of it (so `ferry_box`, `relay_box_from_west`, `ferry_all_then_yield` all route through the one skill).
+- `legs.ferry_each(env, specs)` — the per-box batch combinator.
+- `play_level_9` is now a thin five-row spec table calling `ferry_each` — same shape as the other players.
+
+**Behaviour preservation, verified two ways:**
+- Recorder-env test: the new `play_level_9` emits an action sequence byte-identical to `seg_L9.json`, and the `grab_push_release` wrapper matches the old inline code on all argument shapes used by players.
+- The resume checkpoint was carrying a stale 588-move L1–8 path that blew the 600 real-move cap; swapped in the shorter validated base (`base2.json`, 535 moves, backed up as `checkpoint.json.bak-588`).
+
+**Result:** `python gkm_try.py` → `RESULT levels=9 moves=596 replay_ok=True err=None`.
+
+**Log:** appended the recurring composition pattern to `legs_log.md` — candidate higher-order leg **`ferry_batch_then(env, specs, epilogue)`**: L3 = ferry batch + switch-USE, L4/L5 = ferry batch + yield-for-helper, L9 = ferry batch alone; fold the `ferry_*` entry points into it if a third epilogue flavour appears.
