@@ -25,17 +25,6 @@
       "model": "sonnet",
       "attempts": 2,
       "escalated": true
-    },
-    {
-      "opaque_id": "problem_02",
-      "solved": false,
-      "heldout_accuracy": 0.6111111111111112,
-      "rule": "p_arc_defect_score_217<=18.78 AND p_arc_defect_score_217>=11.89",
-      "rule_cost": 3.0,
-      "marginal_C": 0,
-      "model": "opus",
-      "attempts": 3,
-      "escalated": true
     }
   ]
 }

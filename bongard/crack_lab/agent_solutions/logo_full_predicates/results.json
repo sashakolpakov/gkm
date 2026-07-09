@@ -12,5 +12,12 @@
     "concept": "arc_three_lines1",
     "solved": true,
     "rule": "p_arc_defect_score_217<=4.097"
+  },
+  "problem_02": {
+    "problem_id": "bd_bird3_0339",
+    "category": "basic",
+    "concept": "bird3",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=18.78 AND p_arc_defect_score_217>=11.89"
   }
 }
