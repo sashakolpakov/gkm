@@ -68,5 +68,12 @@
     "concept": "self_transposed",
     "solved": false,
     "rule": "p_arc_defect_score_217<=33.96"
+  },
+  "problem_10": {
+    "problem_id": "bd_thin_sym_nail5_0487",
+    "category": "basic",
+    "concept": "thin_sym_nail5",
+    "solved": false,
+    "rule": "p_arc_defect_score_arc120<=15.18"
   }
 }
