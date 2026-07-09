@@ -47,5 +47,12 @@
     "concept": "symmetric_fish",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.1246"
+  },
+  "problem_07": {
+    "problem_id": "bd_mismatch_sector_rec1_0390",
+    "category": "basic",
+    "concept": "mismatch_sector_rec1",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=13.2"
   }
 }
