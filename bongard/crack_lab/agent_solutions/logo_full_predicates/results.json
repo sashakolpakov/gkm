@@ -306,5 +306,12 @@
     "concept": "thin_irregular_x",
     "solved": false,
     "rule": "p_arc_defect_score_arc120<=16.02"
+  },
+  "problem_44": {
+    "problem_id": "hd_has_five_straight_lines_0007",
+    "category": "abstract",
+    "concept": "has_five_straight_lines",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1059"
   }
 }
