@@ -15,6 +15,7 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import tempfile
 import time
 
 import gkm_arena as A
@@ -100,7 +101,7 @@ def build_task(game: str, context: str) -> str:
 
 
 def run(game="wa30", model=None, minutes=40, verbose=True):
-    ws = f"/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_ws_{game}"
+    ws = os.environ.get("GKM_WS") or os.path.join(tempfile.gettempdir(), f"gkm_ws_{game}")
     os.makedirs(ws, exist_ok=True)
     labdir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(ws, "gkm_try.py"), "w") as fh:
