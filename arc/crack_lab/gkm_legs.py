@@ -347,11 +347,14 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
 
     Restores the latest snapshot's non-promoted files and NEVER the promoted names
     (those are unverified candidates in a snapshot; the artifact root is the
-    verified source of truth). Scratch is disposable at run start, so stale probe
-    files from an older attempt must not mask the coherent latest WIP context.
-    This puts earlier probe scripts and the prior proposer transcript back on disk
-    where the next proposer can find them itself -- context lives in the filesystem,
-    never stitched into the prompt.
+    verified source of truth). Stale scratch from an older attempt must not mask
+    the coherent latest WIP context, so the latest snapshot overwrites scratch
+    files that are older than its copies (snapshots preserve mtimes via copy2) --
+    but scratch modified AFTER the latest snapshot is live WIP from a run that
+    died before snapshotting, and is never clobbered. Backfill snapshots only
+    fill gaps. This puts earlier probe scripts and the prior proposer transcript
+    back on disk where the next proposer can find them itself -- context lives in
+    the filesystem, never stitched into the prompt.
     """
     level_dir = _wip_level_dir(artifact_dir(game, tag), level)
     latest_path = os.path.join(level_dir, "latest.json")
@@ -388,10 +391,14 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
         for name in sorted(os.listdir(files_dir)):
             if name in skip:
                 continue
+            src = os.path.join(files_dir, name)
             dst = os.path.join(ws, name)
-            if latest_done and os.path.exists(dst):
-                continue
-            shutil.copy2(os.path.join(files_dir, name), dst)
+            if os.path.exists(dst):
+                if latest_done:
+                    continue
+                if os.path.getmtime(dst) >= os.path.getmtime(src):
+                    continue
+            shutil.copy2(src, dst)
             restored += 1
         latest_done = True
     if verbose and restored:

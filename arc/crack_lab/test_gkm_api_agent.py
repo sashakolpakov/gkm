@@ -5,7 +5,13 @@ execution, transcript writing, workspace confinement, and loop termination can
 be checked without credits or network.
 """
 import os
+from pathlib import Path
+
 import gkm_api_agent as G
+
+# repo-relative path to environment_files: the guard blocks on the
+# "environment_files" substring, so any real prefix works
+ENVFILES = Path(__file__).resolve().parents[2] / "environment_files"
 
 
 class _Block:
@@ -71,13 +77,13 @@ def test_editor_confined_to_workspace(tmp_path):
 
 
 def test_source_access_blocked_in_bash_and_editor(tmp_path):
-    out, err = G._run_bash(str(tmp_path), "sed -n '1,80p' /Users/sasha/gkm/environment_files/wa30/x/wa30.py")
+    out, err = G._run_bash(str(tmp_path), f"sed -n '1,80p' {ENVFILES}/wa30/x/wa30.py")
     assert err
     assert "forbidden source/history access blocked" in out
 
     out, err = G._run_editor(
         str(tmp_path),
-        {"command": "view", "path": "/Users/sasha/gkm/environment_files/ls20/x/ls20.py"},
+        {"command": "view", "path": f"{ENVFILES}/ls20/x/ls20.py"},
     )
     assert err
     assert "forbidden source/history access blocked" in out
@@ -85,7 +91,7 @@ def test_source_access_blocked_in_bash_and_editor(tmp_path):
 
 def test_source_reference_in_probe_script_blocks_later_bash(tmp_path):
     (tmp_path / "probe.py").write_text(
-        "open('/Users/sasha/gkm/environment_files/wa30/x/wa30.py').read()\n"
+        f"open('{ENVFILES}/wa30/x/wa30.py').read()\n"
     )
     out, err = G._run_bash(str(tmp_path), "python3 probe.py")
     assert err

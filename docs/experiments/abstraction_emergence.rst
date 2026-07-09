@@ -3,18 +3,18 @@ Abstraction Emergence Experiment
 
 Source files:
 
-* ``experiments/run_abstraction_emergence.py``
-* ``experiments/abstraction_emergence_report.md``
-* ``tests/test_abstraction_emergence.py``
+* ``bongard/run_abstraction_emergence.py``
+* ``bongard/abstraction_emergence_report.md``
+* ``bongard/test_abstraction_emergence.py``
 
 Reproduce
 ---------
 
 .. code-block:: bash
 
-   python3 experiments/run_abstraction_emergence.py
-   python3 experiments/run_abstraction_emergence.py --scenario multi --show-rules
-   python3 experiments/run_abstraction_emergence.py --scenario or_factor --show-rules
+   python3 bongard/run_abstraction_emergence.py
+   python3 bongard/run_abstraction_emergence.py --scenario multi --show-rules
+   python3 bongard/run_abstraction_emergence.py --scenario or_factor --show-rules
    python3 -m unittest tests.test_abstraction_emergence
 
 Conditions

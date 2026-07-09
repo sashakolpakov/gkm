@@ -5,9 +5,9 @@ This is the first internal predicate-library experiment. It is deliberately not 
 ## Reproduction
 
 ```bash
-python3 experiments/run_abstraction_emergence.py
-python3 experiments/run_abstraction_emergence.py --scenario multi --show-rules
-python3 experiments/run_abstraction_emergence.py --scenario or_factor --show-rules
+python3 bongard/run_abstraction_emergence.py
+python3 bongard/run_abstraction_emergence.py --scenario multi --show-rules
+python3 bongard/run_abstraction_emergence.py --scenario or_factor --show-rules
 python3 -m unittest tests.test_abstraction_emergence
 ```
 

@@ -28,8 +28,10 @@ from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import cone_foraging as cf  # noqa: E402
 import cone_foraging_bound as cb  # noqa: E402

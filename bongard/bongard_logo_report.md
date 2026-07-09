@@ -9,7 +9,7 @@ From the repository root:
 ```bash
 git clone https://github.com/NVlabs/Bongard-LOGO.git downloads/Bongard-LOGO
 .venv/bin/python -m pip install pillow pandas
-.venv/bin/python experiments/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source both --feature-set both --limit 40 --support-count 10 --validation-count 3 --hidden-count 3 --summary-only
+.venv/bin/python bongard/run_bongard_logo_adapter.py --dataset-dir downloads/Bongard-LOGO --source both --feature-set both --limit 40 --support-count 10 --validation-count 3 --hidden-count 3 --summary-only
 ```
 
 The adapter calls the Bongard-LOGO Basic and Abstract samplers directly and extracts action programs without rendering images. Each generated problem is split into support/train, validation, and hidden examples. Candidate deterministic rules are sparse conjunctions of symbolic scene features, selected by:

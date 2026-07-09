@@ -13,7 +13,7 @@ task uses distinct behaviors that are not reused?
 ## Reproduction
 
 ```bash
-python3 experiments/run_cone_bound.py --evolved --binding-free-ablation --show-rules
+python3 cone/run_cone_bound.py --evolved --binding-free-ablation --show-rules
 python3 -m unittest tests.test_cone_foraging_bound
 ```
 

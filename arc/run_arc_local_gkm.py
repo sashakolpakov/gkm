@@ -33,8 +33,8 @@ sliding / Sokoban-like) whose win condition is not "reach a coloured cell", so
 the minimal greedy leg steers the avatar correctly but does not complete a
 level — which this script reports rather than hides.
 
-    python3 experiments/run_arc_local_gkm.py --game wa30
-    python3 experiments/run_arc_local_gkm.py --game ls20 --steps 120
+    python3 arc/run_arc_local_gkm.py --game wa30
+    python3 arc/run_arc_local_gkm.py --game ls20 --steps 120
 """
 
 from __future__ import annotations
@@ -47,8 +47,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 ENVIRONMENTS_DIR = str(REPO_ROOT / "environment_files")
 

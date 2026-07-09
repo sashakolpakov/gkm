@@ -7,7 +7,7 @@ Requires ARC_API_KEY (get one at https://three.arcprize.org). With no key it
 prints instructions and exits 0, so the offline test suite stays hermetic. It
 commits no frames (the repo does not vendor datasets).
 
-    ARC_API_KEY=... python3 experiments/run_arc_live_probe.py --game ls20
+    ARC_API_KEY=... python3 arc/run_arc_live_probe.py --game ls20
 
 What it does on a real game: RESET, run the connected-component scene functor
 on the real frame (colours, objects), then attempt avatar discovery by action
@@ -24,8 +24,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 
 def _load_dotenv() -> None:
@@ -66,7 +68,7 @@ def main() -> None:
     args = parse_args()
     if not os.environ.get("ARC_API_KEY"):
         print("No ARC_API_KEY set. Get one at https://three.arcprize.org and run:")
-        print("  ARC_API_KEY=... python3 experiments/run_arc_live_probe.py --game ls20")
+        print("  ARC_API_KEY=... python3 arc/run_arc_live_probe.py --game ls20")
         return
 
     games = arc.ArcEnv.list_games()

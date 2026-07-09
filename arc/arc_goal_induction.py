@@ -70,7 +70,7 @@ class GoalGame:
     vanish when the avatar steps on them; `hazard`/distractor colours persist;
     the hidden objective is a subset of colour atoms and the score is their mean
     satisfaction. For real ARC frames use arc_agi3_adapter.ArcEnv (live) — see
-    experiments/arc_live_report.md."""
+    arc/arc_live_report.md."""
 
     width: int
     height: int

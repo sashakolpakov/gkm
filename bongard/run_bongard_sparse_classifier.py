@@ -7,7 +7,7 @@ hidden examples from a disjoint object pool.
 
 Run from the repository root:
 
-    python3 experiments/run_bongard_sparse_classifier.py
+    python3 bongard/run_bongard_sparse_classifier.py
 """
 
 from __future__ import annotations

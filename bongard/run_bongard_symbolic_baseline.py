@@ -8,7 +8,7 @@ and selects a compact deterministic hypothesis by validation loss/complexity.
 
 Run from the repository root:
 
-    python3 experiments/run_bongard_symbolic_baseline.py
+    python3 bongard/run_bongard_symbolic_baseline.py
 """
 
 from __future__ import annotations

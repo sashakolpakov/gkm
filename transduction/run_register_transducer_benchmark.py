@@ -3,7 +3,7 @@
 
 Run from the repository root:
 
-    python3 experiments/run_register_transducer_benchmark.py
+    python3 transduction/run_register_transducer_benchmark.py
 """
 
 from __future__ import annotations

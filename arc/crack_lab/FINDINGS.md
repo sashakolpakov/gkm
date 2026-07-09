@@ -101,7 +101,7 @@ run end-to-end, **no Claude API in the cracking loop**:
 (non-move actions whose effect is a replicable non-avatar scene change — the
 ACTION5 that wins wa30), with the move-actions as the control floor; push
 candidates are exposed via `DiscoveryResult.cooccurring`. Hermetic test added
-(`tests/test_cone_leg_discovery.py`), 6/6 pass.
+(`arc/test_cone_leg_discovery.py`), 6/6 pass.
 
 ## Update 2 — the universal propose() seam (the missing universality)
 

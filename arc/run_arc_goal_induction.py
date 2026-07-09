@@ -2,13 +2,13 @@
 """Goal induction lifted onto the ARC connector: infer a hidden game objective
 from the scalar score, compile it to a cone over colour slots, verify.
 
-The foraging goal-induction loop (experiments/run_cone_goal_induction.py) runs
+The foraging goal-induction loop (cone/run_cone_goal_induction.py) runs
 unchanged in form here; only the substrate changed: features are now
 predicate@colour atoms over scene objects, the reward is a hidden game score,
 and the compiled cone issues seek/flee phases bound to colour slots.
 
-    python3 experiments/run_arc_goal_induction.py
-    python3 experiments/run_arc_goal_induction.py --lambda-value 0.05
+    python3 arc/run_arc_goal_induction.py
+    python3 arc/run_arc_goal_induction.py --lambda-value 0.05
 
 See COLIMIT_CONE_APPROACH.md Section 13.4.
 """
@@ -23,8 +23,10 @@ from pathlib import Path
 from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import arc_goal_induction as ag  # noqa: E402
 import arc_scene_atoms as sa  # noqa: E402

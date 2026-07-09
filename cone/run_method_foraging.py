@@ -6,7 +6,7 @@ selection (the GKM), with foraging behind the same Environment contract the ARC
 connector implements. No hand-coded policy: the GKM loop induces the hidden goal
 from reward and selects the cone that achieves it. Scope: foraging connector.
 
-    python3 experiments/run_method_foraging.py
+    python3 cone/run_method_foraging.py
 
 See COLIMIT_CONE_APPROACH.md Section 14 (General Method, Specific Connectors).
 """
@@ -17,8 +17,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import cone_foraging as cf  # noqa: E402
 import cone_method as cm  # noqa: E402

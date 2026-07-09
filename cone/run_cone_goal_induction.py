@@ -8,8 +8,8 @@ library), induces which feature subset the reward tracks by free-energy model
 selection, compiles the inferred goal into a bound cone (priced bindings, v3),
 and is scored on held-out levels of the hidden task.
 
-    python3 experiments/run_cone_goal_induction.py
-    python3 experiments/run_cone_goal_induction.py --lambda-values 0.005,0.02,0.05
+    python3 cone/run_cone_goal_induction.py
+    python3 cone/run_cone_goal_induction.py --lambda-values 0.005,0.02,0.05
 
 See COLIMIT_CONE_APPROACH.md Section 13.
 """
@@ -24,8 +24,10 @@ from pathlib import Path
 from typing import List
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 import cone_foraging as cf  # noqa: E402
 import cone_goal_induction as gi  # noqa: E402

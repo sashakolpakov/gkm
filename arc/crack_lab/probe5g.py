@@ -1,5 +1,6 @@
 import sys, json
-sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from pathlib import Path
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gkm_arena as A
 import numpy as np
 def setup():

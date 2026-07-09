@@ -11,7 +11,7 @@ Concentrate on three tracks only:
 
 1. **Internal generated Bongard rules**
    - Purpose: controlled science.
-   - Data source: generated locally by `experiments/run_bongard_symbolic_baseline.py`.
+   - Data source: generated locally by `bongard/run_bongard_symbolic_baseline.py`.
    - Why: we know the true rule, can generate hard negatives, can separate positive/negative panel design, and can run exact overcapacity ablations.
    - Current output: sparse deterministic automata with train/validation/hidden/exhaustive-probe evaluation.
 
@@ -73,7 +73,7 @@ our free-energy protocol before writing a dataset adapter.
 
 ### Stage 1: Symbolic Bongard Harness
 
-File: `experiments/run_bongard_symbolic_baseline.py`
+File: `bongard/run_bongard_symbolic_baseline.py`
 
 - Generate positive and negative opaque-object sequences from concept rules.
 - Use disjoint train/validation/hidden-test object pools.
@@ -87,8 +87,8 @@ hypotheses fit a small training panel.
 
 ### Stage 2: Evolved Bongard Classifiers
 
-File: `experiments/run_bongard_sparse_classifier.py`
-Report: `experiments/bongard_sparse_classifier_report.md`
+File: `bongard/run_bongard_sparse_classifier.py`
+Report: `bongard/bongard_sparse_classifier_report.md`
 
 Replace the hand-coded hypothesis library with sparse deterministic classifiers:
 
@@ -155,7 +155,7 @@ containment / intersection / symmetry flags when recoverable
 
 The first adapter does not solve all Bongard-LOGO categories. It starts with
 Basic Shape and Abstract Shape problems generated from the local checkout. The
-initial report is `experiments/bongard_logo_report.md`: one-shape Basic is mostly
+initial report is `bongard/bongard_logo_report.md`: one-shape Basic is mostly
 recoverable from action skeletons, while Abstract Shape exposes the expected
 representation bottleneck unless privileged metadata attributes are supplied. A
 first predicate-macro mode now derives reusable geometric predicates from action

@@ -20,9 +20,9 @@ The key lives in a gitignored `.env` (`ARC_API_KEY=...`), auto-loaded by the
 probe; no need to inline it.
 
 ```bash
-python3 experiments/run_arc_live_probe.py --game ls20
-python3 experiments/run_arc_live_probe.py --game wa30 --actions 5
-python3 experiments/run_arc_live_probe.py --list
+python3 arc/run_arc_live_probe.py --game ls20
+python3 arc/run_arc_live_probe.py --game wa30 --actions 5
+python3 arc/run_arc_live_probe.py --list
 ```
 
 No key → the script prints instructions and exits cleanly (the test suite is

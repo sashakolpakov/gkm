@@ -9,8 +9,10 @@ import logging, os, sys
 from pathlib import Path
 
 GKM = Path(__file__).resolve().parents[2]
-if str(GKM) not in sys.path:
-    sys.path.insert(0, str(GKM))
+for _domain in ("cone", "arc"):
+    _p = GKM / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 ENVDIR = str(GKM / "environment_files")
 
 # load key (only needed to DOWNLOAD a game once; offline play needs none)

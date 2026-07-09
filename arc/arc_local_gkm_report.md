@@ -58,13 +58,13 @@ as `ArcEnv`, so every connector below it is unchanged.
 the mapping is faithful. Verified on `ls20` (directional, `win_levels=7`) and
 `wa30`: the same directional actions move the world locally as online.
 `arc_agi`/`arcengine` are imported lazily, so the test suite stays hermetic;
-`tests/test_arc_agi3_adapter.py::LocalArcEnvTests` skips when they are absent.
+`arc/test_arc_agi3_adapter.py::LocalArcEnvTests` skips when they are absent.
 
 ## 3. Cracking a game with GKM — honest attempt
 
 ```bash
-python3 experiments/run_arc_local_gkm.py --game wa30 --mode offline
-python3 experiments/run_arc_local_gkm.py --game ls20 --steps 120
+python3 arc/run_arc_local_gkm.py --game wa30 --mode offline
+python3 arc/run_arc_local_gkm.py --game ls20 --steps 120
 ```
 
 The pipeline: `LocalArcEnv` → scene functor → `cone_foraging.witness_seek_leg`

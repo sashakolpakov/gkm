@@ -16,9 +16,9 @@ superseded; the qualitative pattern reproduced.
 ## Reproduction
 
 ```bash
-python3 experiments/run_colimit_cone_foraging.py --population 120 --generations 60 --joint --show-rules
-python3 experiments/run_colimit_cone_foraging.py --scenario single --growth --population 120 --generations 60 --show-rules
-python3 experiments/run_cone_leg_robustness.py
+python3 cone/run_colimit_cone_foraging.py --population 120 --generations 60 --joint --show-rules
+python3 cone/run_colimit_cone_foraging.py --scenario single --growth --population 120 --generations 60 --show-rules
+python3 cone/run_cone_leg_robustness.py
 python3 -m unittest tests.test_cone_foraging
 ```
 
@@ -143,7 +143,7 @@ cones win on reachability before accounting even matters.
 
 ## Leg Robustness: Naturality Predicts Everything
 
-`experiments/run_cone_leg_robustness.py`, six seeds. Three leg sources per
+`cone/run_cone_leg_robustness.py`, six seeds. Three leg sources per
 seed — lifted from the inline forage champion (vetted by 1 task), cold joint
 on `{forage, homing}` (2 tasks), cold joint on the `multi_seq` set (3 tasks,
 including a sequencing consumer; this source has seen the transfer task

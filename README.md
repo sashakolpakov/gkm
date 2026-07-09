@@ -30,10 +30,17 @@ same lens to a different substrate:
   opaque-object sequences, and the question of when free-energy accounting drives the
   **emergence of reusable abstraction** (encapsulated predicate macros) over duplicated
   rule bodies.
-- **[arc/](arc/ARC.md)** — a **self-improving agent** that cracks live ARC-AGI-3
-  keyboard games from the rawest interface, carrying only human preconceptions, with a
-  single free-energy rule deciding what structure (a growing *leg library*) is kept.
-  Code lives in [`arc/crack_lab/`](arc/crack_lab/).
+- **[cone/](cone/CONE.md)** — the substrate-agnostic core of the **colimit-cone
+  program**: learn a compiled, verifiable *cone* over goal atoms rather than a
+  monolithic policy; cone-leg discovery, goal induction from scalar reward, and the
+  free-energy bound. The program document is
+  [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md).
+- **[arc/](arc/ARC.md)** — the ARC-AGI-3 lift of the cone machinery (the offline
+  connector, scene atoms, cone-leg discovery on games), plus a **self-improving
+  agent** that cracks live ARC-AGI-3 keyboard games from the rawest interface,
+  carrying only human preconceptions, with a single free-energy rule deciding what
+  structure (a growing *leg library*) is kept. The agent lives in
+  [`arc/crack_lab/`](arc/crack_lab/).
 
 Each domain directory has its own one-page guide (linked above), its runnable
 experiments, its tests, and — for foraging, transduction, and bongard — a
@@ -47,7 +54,9 @@ domain directory on the path):
 
 ```bash
 python -m pytest foraging/test_evo_game.py transduction/test_pattern_fsa.py \
-    bongard/test_bongard_sparse_classifier.py bongard/test_abstraction_emergence.py -q
+    bongard/test_bongard_sparse_classifier.py bongard/test_abstraction_emergence.py \
+    cone/ arc/test_arc_agi3_adapter.py arc/test_arc_goal_induction.py \
+    arc/test_arc_scene_atoms.py arc/test_cone_leg_discovery.py -q
 ```
 
 ## Documentation

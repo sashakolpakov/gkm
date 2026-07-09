@@ -9,9 +9,9 @@ adds the missing piece: learn legs from interaction with an **intrinsic** signal
 then compose the **cone over the learned legs**.
 
 ```bash
-python3 experiments/run_arc_leg_discovery.py --game ls20 --mode offline
-python3 experiments/run_arc_leg_discovery.py --game wa30
-python3 -m pytest tests/test_cone_leg_discovery.py -q
+python3 arc/run_arc_leg_discovery.py --game ls20 --mode offline
+python3 arc/run_arc_leg_discovery.py --game wa30
+python3 -m pytest arc/test_cone_leg_discovery.py -q
 ```
 
 ## Method
@@ -36,7 +36,7 @@ python3 -m pytest tests/test_cone_leg_discovery.py -q
 four cardinal legs (consistency 1.0 each; random floor ≈ 0.4), and the cone
 composed *purely from the learned legs* reaches **WIN**, matching the hand-built
 `witness_seek_leg`. This is the end-to-end proof: legs learned from interaction,
-cone formed over them, goal solved. (`tests/test_cone_leg_discovery.py`.)
+cone formed over them, goal solved. (`arc/test_cone_leg_discovery.py`.)
 
 **ls20 (real local frames) — learns the one real primitive.** Avatar = colour 12.
 

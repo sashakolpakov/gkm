@@ -10,11 +10,11 @@ and free-energy notion used, at the level of a colleague with a PhD in a
 neighboring field — comfortable with mathematical definitions, not assumed to
 know category theory or MDL.
 
-First results: `experiments/colimit_cone_foraging_report.md` (v1/v2 substrate
+First results: `cone/colimit_cone_foraging_report.md` (v1/v2 substrate
 `cone_foraging.py`). All four falsification criteria of Section 8 were faced
 and none fired. v3 (priced bindings, Section 11) lives in the sibling
 substrate `cone_foraging_bound.py` with report
-`experiments/cone_bound_report.md`.
+`cone/cone_bound_report.md`.
 
 ## 0. The General Principle (Architect's Framing)
 
@@ -99,7 +99,7 @@ Concretely: the hidden solution of a task is a "functor" — a complete,
 structure-respecting mapping from situations to actions. Direct search in
 solver space is search in a rigid, badly connected landscape; the
 developmental-overcapacity results in this repository
-(`experiments/bongard_sparse_classifier_report.md`) show that cold search
+(`bongard/bongard_sparse_classifier_report.md`) show that cold search
 often cannot enter the minimal basin at all. The colimit-cone proposal is to
 search instead in the space of *diagrams plus gluings*:
 
@@ -119,7 +119,7 @@ selection builds cones only when they pay. The accounting tested here is:
 
 > Cone complexity = sum over legs with shared-leg discounting — the natural
 > extension of the existing no-share accounting in
-> `experiments/run_abstraction_emergence.py`.
+> `bongard/run_abstraction_emergence.py`.
 
 ## 2. Mathematical Background
 
@@ -226,7 +226,7 @@ drive the experimental design:
    failure of the colimit formula. (This repository already met this
    empirically: Bongard-LOGO Abstract concepts were unreachable from action
    skeletons because `convex`, `symmetric`, `thin` were not in the morphism
-   vocabulary; see `experiments/bongard_logo_report.md`.)
+   vocabulary; see `bongard/bongard_logo_report.md`.)
 2. **Foreign-alphabet generalization is naturality.** A solver whose rule
    key cannot see token identity is a functor on a category where tokens are
    objects only distinguishable through relations (equality, position). Its
@@ -577,7 +577,7 @@ The cone accounting is wrong, or the substrate inadequate, if:
 ## 9. v2 Extensions: Compositional Pressure, Leg Vetting, Library Growth
 
 Three extensions, motivated by the v1 results
-(`experiments/colimit_cone_foraging_report.md`).
+(`cone/colimit_cone_foraging_report.md`).
 
 ### 9.1 Compositional pressure (resolving R10, option 2)
 
@@ -600,7 +600,7 @@ when interfaces are selected, not a bug.
 ### 9.2 Leg vetting (leg quality gates the cone)
 
 The v1 replicate sweep showed discovery rates collapse when the lifted leg is
-overfit. `experiments/run_cone_leg_robustness.py` compares, per seed, legs
+overfit. `cone/run_cone_leg_robustness.py` compares, per seed, legs
 vetted by one task (lifted from the inline forage champion), two tasks (cold
 joint on `multi`), and three tasks including a sequencing consumer
 (`multi_seq`), on (i) a naturality probe — the same leg called under FOOD and
@@ -862,7 +862,7 @@ environment-agnostic. Importing the module never touches the network; a
 request happens only when `reset()/step()` is called on an `ArcEnv`, which
 requires `ARC_API_KEY`.
 
-**Verified live with a real key (2026-06-14; report `experiments/arc_live_report.md`).**
+**Verified live with a real key (2026-06-14; report `arc/arc_live_report.md`).**
 Auth header is `X-API-Key`; `GET /api/games` lists 25 games;
 `POST /api/scorecard/open` returns a `card_id`; `POST /api/cmd/RESET` (game_id =
 lowercase SHORT code, e.g. `ls20`, not the full listing id) returns a real
@@ -900,7 +900,7 @@ that — and ARC-AGI-3 forbids it, exposing only a scalar score. Goal induction
 is the agent inferring *what the reward rewards* and then building a cone that
 achieves it. Per the user's sequencing, it is built first in foraging (the
 familiar context) and designed to lift to any substrate; report
-`experiments/cone_goal_induction_report.md`, module `cone_goal_induction.py`.
+`cone/cone_goal_induction_report.md`, module `cone_goal_induction.py`.
 
 ### 13.1 The general statement
 
@@ -965,7 +965,7 @@ just where candidate *solvers* disagree.
 ### 13.4 Lifting to ARC (done)
 
 The lift is built and demonstrated: `arc_goal_induction.py`, report
-`experiments/arc_goal_induction_report.md`. The same free-energy induction
+`arc/arc_goal_induction_report.md`. The same free-energy induction
 core runs over the ARC connector's scene features and a hidden game score:
 
 ```text
@@ -991,7 +991,7 @@ hand-holding for the colour-atom vocabulary.
 ### 13.5 Discovering the atom vocabulary from raw frames (done)
 
 The atoms are no longer handed to the agent. `arc_scene_atoms.py` (report
-`experiments/arc_scene_atom_discovery_report.md`) discovers them from raw
+`arc/arc_scene_atom_discovery_report.md`) discovers them from raw
 frames in three acts:
 
 ```text
@@ -1205,7 +1205,7 @@ SPECIFIC (connector):
   (colour, relation) pairs are live.
 - **R17 (Engineer -> Architect, real ARC connected; synthetic relabelled):**
   with a real key, the live API was exercised (Section 12, report
-  `experiments/arc_live_report.md`): X-API-Key auth, GET /api/games (25),
+  `arc/arc_live_report.md`): X-API-Key auth, GET /api/games (25),
   scorecard open/close, RESET (short game_id, ~5-retry provisioning window)
   returning real 64x64 frames, and the scene functor extracting colours/objects
   from real `ls20`/`wa30` frames. Real-ARC PERCEPTION is verified. The action

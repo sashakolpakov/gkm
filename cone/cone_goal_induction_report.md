@@ -10,7 +10,7 @@ to the ARC connector.
 ## Reproduction
 
 ```bash
-python3 experiments/run_cone_goal_induction.py
+python3 cone/run_cone_goal_induction.py
 python3 -m unittest tests.test_cone_goal_induction
 ```
 

@@ -19,8 +19,8 @@ navigation stub this composed cone WINS (see tests); on the 2026 puzzle games it
 learns the genuinely-reliable primitives and steers with them, reporting honestly
 where the game needs primitives (push/slide) beyond a directional library.
 
-    python3 experiments/run_arc_leg_discovery.py --game wa30
-    python3 experiments/run_arc_leg_discovery.py --game ls20 --mode offline
+    python3 arc/run_arc_leg_discovery.py --game wa30
+    python3 arc/run_arc_leg_discovery.py --game ls20 --mode offline
 """
 
 from __future__ import annotations
@@ -33,8 +33,10 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
-if str(REPO_ROOT) not in sys.path:
-    sys.path.insert(0, str(REPO_ROOT))
+for _domain in ("cone", "arc"):
+    _p = REPO_ROOT / _domain
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
 
 ENVIRONMENTS_DIR = str(REPO_ROOT / "environment_files")
 

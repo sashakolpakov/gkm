@@ -5,13 +5,13 @@ This experiment is Stage 2 of the Bongard-first plan. It evolves sparse determin
 Run from the repository root:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py
+python3 bongard/run_bongard_sparse_classifier.py
 ```
 
 Larger panels can be requested without editing code:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --train-count 12 --validation-count 8 --hidden-count 24 --replicates 3
+python3 bongard/run_bongard_sparse_classifier.py --train-count 12 --validation-count 8 --hidden-count 24 --replicates 3
 ```
 
 ## Protocol
@@ -47,9 +47,9 @@ So `first_equals_last` is not an impossible task for the substrate. Failure to d
 The runner now treats each concept as a separate experiment with its own search parameters. Use `--concept` to run a single category:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --concept length_even
-python3 experiments/run_bongard_sparse_classifier.py --concept has_adjacent_duplicate
-python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_last
+python3 bongard/run_bongard_sparse_classifier.py --concept length_even
+python3 bongard/run_bongard_sparse_classifier.py --concept has_adjacent_duplicate
+python3 bongard/run_bongard_sparse_classifier.py --concept first_equals_last
 ```
 
 The default `first_equals_last` configuration is intentionally larger than the easy categories: more states/search budget, more replicates, larger panels, and single-action rules because the known representable exact solution only needs single-action transitions. This reduces irrelevant macro-action search without inserting any target rule.
@@ -59,7 +59,7 @@ The default `first_equals_last` configuration is intentionally larger than the e
 Command:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --concept length_even
+python3 bongard/run_bongard_sparse_classifier.py --concept length_even
 ```
 
 Result: `8/8` exact discoveries.
@@ -74,7 +74,7 @@ length_even,stream,8,8,1.000,1.000,1.000,1.000,6.2
 Command:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --concept has_adjacent_duplicate
+python3 bongard/run_bongard_sparse_classifier.py --concept has_adjacent_duplicate
 ```
 
 Result: `8/8` exact discoveries.
@@ -89,7 +89,7 @@ has_adjacent_duplicate,compare,8,8,1.000,1.000,1.000,1.000,5.5
 Negative control: larger clean genetic search without archive pressure still found sampled near misses rather than the exact rule.
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_last --replicates 4 --population 700 --generations 450 --states 3 --initial-rules 6 --max-rules 12 --max-rule-length 1 --lambda-points 1 --train-count 16 --validation-count 12 --hidden-count 32 --mutation-rate 0.12 --no-archive-training --stop-after-discovery
+python3 bongard/run_bongard_sparse_classifier.py --concept first_equals_last --replicates 4 --population 700 --generations 450 --states 3 --initial-rules 6 --max-rules 12 --max-rule-length 1 --lambda-points 1 --train-count 16 --validation-count 12 --hidden-count 32 --mutation-rate 0.12 --no-archive-training --stop-after-discovery
 ```
 
 ```text
@@ -100,7 +100,7 @@ first_equals_last,bidirectional_compare,4,0,1.000,0.979,0.953,0.621,20.0
 Counterexample-archive search with late lambda warmup and loss-frontier preservation:
 
 ```bash
-python3 experiments/run_bongard_sparse_classifier.py --concept first_equals_last --replicates 1 --population 700 --generations 450 --states 3 --initial-rules 6 --max-rules 12 --max-rule-length 1 --lambda-min 0.0001 --lambda-max 0.0001 --lambda-points 1 --train-count 16 --validation-count 12 --hidden-count 32 --mutation-rate 0.12 --lambda-warmup-fraction 0.9 --archive-training --archive-interval 40 --archive-add-per-interval 32 --stop-after-discovery
+python3 bongard/run_bongard_sparse_classifier.py --concept first_equals_last --replicates 1 --population 700 --generations 450 --states 3 --initial-rules 6 --max-rules 12 --max-rule-length 1 --lambda-min 0.0001 --lambda-max 0.0001 --lambda-points 1 --train-count 16 --validation-count 12 --hidden-count 32 --mutation-rate 0.12 --lambda-warmup-fraction 0.9 --archive-training --archive-interval 40 --archive-add-per-interval 32 --stop-after-discovery
 ```
 
 Result: `1/1` exact discovery. The selected classifier is evaluated in its naturally evolved form; there is no separate simplification step after evolution.
@@ -145,7 +145,7 @@ The important result is that the six-rule final solution is not found when the g
 A broader one-replicate streaming ablation was run over several Bongard-style rules. The point is not that every task must show the overcapacity pattern. The honest question is how often limited capacity works, how often overcapacity helps, and where both fail under the current budget.
 
 ```bash
-python3 -u experiments/run_bongard_overcapacity_ablation.py --replicates 1
+python3 -u bongard/run_bongard_overcapacity_ablation.py --replicates 1
 ```
 
 Completed fast-matrix rows:

@@ -4,11 +4,11 @@
 > frames, not real ARC frames. This validates the discovery *machinery*
 > (avatar/colour/atom discovery, variance pruning) deterministically and
 > offline. The real-ARC counterpart — the scene functor run on genuine live
-> frames — is in `experiments/arc_live_report.md`, where the connected-component
+> frames — is in `arc/arc_live_report.md`, where the connected-component
 > object decomposition is confirmed to run on real ls20/wa30 frames. The avatar
 > discovery primitive's transfer to real frames awaits the live action loop.
 
-The previous goal-induction step (experiments/arc_goal_induction_report.md)
+The previous goal-induction step (arc/arc_goal_induction_report.md)
 was handed its atom vocabulary: the candidate colours and the clear/avoid
 evaluators were supplied. This step removes that hand-holding. The agent
 discovers the avatar, the object colours, and the live atoms from frames,
@@ -17,8 +17,8 @@ then runs goal induction over the DISCOVERED vocabulary.
 ## Reproduction
 
 ```bash
-python3 experiments/run_arc_goal_induction.py                     # discovered vocabulary (default)
-python3 experiments/run_arc_goal_induction.py --oracle-vocabulary  # hand-given atoms, for comparison
+python3 arc/run_arc_goal_induction.py                     # discovered vocabulary (default)
+python3 arc/run_arc_goal_induction.py --oracle-vocabulary  # hand-given atoms, for comparison
 python3 -m unittest tests.test_arc_scene_atoms
 ```
 
