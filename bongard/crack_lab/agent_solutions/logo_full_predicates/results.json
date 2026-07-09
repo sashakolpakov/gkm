@@ -222,5 +222,12 @@
     "concept": "bala_three_intersect_circles2",
     "solved": false,
     "rule": "p_arc_defect_score_217<=9.355"
+  },
+  "problem_32": {
+    "problem_id": "bd_asymmetric_unbala_x_0158",
+    "category": "basic",
+    "concept": "asymmetric_unbala_x",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=30.41"
   }
 }
