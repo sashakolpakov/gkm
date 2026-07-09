@@ -453,5 +453,12 @@
     "concept": "has_four_straight_lines",
     "solved": false,
     "rule": "p_arc_defect_score_217<=32.44 AND p_circle_fit_residual>=0.0936"
+  },
+  "problem_65": {
+    "problem_id": "bd_large_intersect_circle_0035",
+    "category": "basic",
+    "concept": "large_intersect_circle",
+    "solved": true,
+    "rule": "p_arc_defect_score_217>=27.09"
   }
 }

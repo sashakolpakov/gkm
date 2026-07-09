@@ -1,8 +1,8 @@
 {
   "tag": "logo_full",
-  "solved": 12,
+  "solved": 13,
   "total_marginal_C": 116,
-  "free_energy": -9.68,
+  "free_energy": -10.68,
   "records": [
     {
       "opaque_id": "problem_00",
@@ -718,6 +718,17 @@
       "model": "opus",
       "attempts": 3,
       "escalated": true
+    },
+    {
+      "opaque_id": "problem_65",
+      "solved": true,
+      "heldout_accuracy": 1.0,
+      "rule": "p_arc_defect_score_217>=27.09",
+      "rule_cost": 1.5,
+      "marginal_C": 0,
+      "model": "sonnet",
+      "attempts": 1,
+      "escalated": false
     }
   ]
 }
