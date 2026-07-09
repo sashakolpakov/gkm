@@ -159,5 +159,12 @@
     "concept": "inverse_quasi_sector_arc",
     "solved": false,
     "rule": "p_arc_defect_score_217<=10.62"
+  },
+  "problem_23": {
+    "problem_id": "bd_open_right_equi_triangle_0236",
+    "category": "basic",
+    "concept": "open_right_equi_triangle",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=14.89"
   }
 }
