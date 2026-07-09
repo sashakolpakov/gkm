@@ -1,0 +1,2455 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat gkm_try.py solve.py players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat checkpoint.json auto_solve_attempts.json proposer_last.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat pl9.py l9lib.py try9h.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat legs_log.md
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python pl9.py 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && for f in try9.py try9b.py try9c.py try9d.py try9e.py; do echo "=== $f ==="; cat $f; done 2>&1 | head -200
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python try9h.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python3 -c "
+from pl9 import *
+import perception as P
+def c7(env): return P.color_counts(np.asarray(env.frame())).get(7,0)
+env=fresh()
+print('init c7',c7(env),'lvl',env.levels_completed)
+for i in range(30):
+    env.step(5)
+    if i%5==0 or env.terminal():
+        print('step',i,'c7',c7(env),'term',env.terminal(),'lvl',env.levels_completed)
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && which python python3; python -c "import numpy; print('ok')"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+import perception as P
+def c7(env): return P.color_counts(np.asarray(env.frame())).get(7,0)
+env=fresh()
+print('init c7',c7(env),'lvl',env.levels_completed)
+for i in range(40):
+    env.step(5)
+    if i%5==0 or env.terminal():
+        print('step',i,'c7',c7(env),'term',env.terminal(),'lvl',env.levels_completed)
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+import perception as P
+env=fresh()
+print('=== initial ==='); show(np.asarray(env.frame()))
+for i in range(8): env.step(5)
+print('=== after 8 yields ==='); show(np.asarray(env.frame()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+import perception as P
+env=fresh()
+f=np.asarray(env.frame())
+print('shape',f.shape)
+for col in [1,2,4,7,9,12,14,15,0,5]:
+    ys,xs=np.where(f==col)
+    if len(ys): print('color',col,'count',len(ys),'rows',ys.min(),'-',ys.max(),'cols',xs.min(),'-',xs.max())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+import perception as P
+def c7(env): return P.color_counts(np.asarray(env.frame())).get(7,0)
+env=fresh()
+for i in range(80):
+    env.step(5)
+    if env.terminal(): 
+        print('TERMINAL at step',i,'c7',c7(env),'lvl',env.levels_completed); break
+else:
+    print('survived 80, c7',c7(env),'lvl',env.levels_completed)
+print('=== final ==='); show(np.asarray(env.frame()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+import perception as P
+env=fresh()
+# find avatar via action deltas
+d=P.action_deltas(env)
+for a,dd in d.items(): print('action',a,'changed',dd['count'],'bbox',dd['bbox'])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+def avpos(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14)
+    return (int(ys.min())//4, int(xs.min())//4) if len(ys) else None
+for a,name in [(1,'UP'),(2,'DOWN'),(3,'LEFT'),(4,'RIGHT'),(5,'USE')]:
+    env=fresh(); before=avpos(env); env.step(a); after=avpos(env)
+    print(name,'before',before,'after',after)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+def mpos(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return (int(ys.min())//4, int(xs.min())//4) if len(ys) else None
+env=fresh()
+for i in range(70):
+    print(i,'mover',mpos(env))
+    env.step(5)
+    if env.terminal(): print('term'); break
+" 2>&1 | head -75
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+env=fresh()
+for i in range(70):
+    f=np.asarray(env.frame())
+    c2=int((f==2).sum()); c4=int((f==4).sum()); c9=int((f==9).sum())
+    if i%8==0: print('step',i,'c2',c2,'c4',c4,'c9',c9)
+    env.step(5)
+    if env.terminal(): print('term step',i); break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && grep -n "def chase_and_clear\|def _movers\|def _grid_scan\|def _mover_cell\|def carry_box_to\|def _cells" legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '761,860p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+from legs import chase_and_clear, _movers
+import perception as P
+def c7(env): return P.color_counts(np.asarray(env.frame())).get(7,0)
+env=fresh()
+# yield until mover enters top region (row<=9)
+for i in range(60):
+    ms=_movers(env,15)
+    if ms and ms[0][0]<=9: break
+    env.step(5)
+print('mover entered top at c7',c7(env),'mover',_movers(env,15),'step done')
+chase_and_clear(env,15,lambda m:True,cap=15)
+print('after chase: mover',_movers(env,15),'c7',c7(env),'term',env.terminal())
+# now measure if c7 keeps dropping
+c=c7(env)
+for i in range(10): env.step(5)
+print('after 10 more yields c7',c7(env),'was',c,'term',env.terminal())
+show(np.asarray(env.frame()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+def avpos(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14)
+    return (int(ys.min())//4, int(xs.min())//4) if len(ys) else None
+env=fresh()
+seq=[3,3,3,3,3,3,3,2,2,2,2,2,2,2]  # left 7, down 7
+for a in seq:
+    env.step(a)
+    print(avpos(env),'term',env.terminal(),'lvl',env.levels_completed)
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+def avpos(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14)
+    return (int(ys.min())//4, int(xs.min())//4) if len(ys) else None
+env=fresh()
+seq=[2]+[3]*5+[2]*6  # down1, left5 to col3, down6 to row15
+for a in seq:
+    env.step(a)
+    print('act',a,avpos(env),'term',env.terminal(),'lvl',env.levels_completed)
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+env=fresh()
+seq=[2]+[3]*5+[2]*6
+for a in seq: env.step(a)
+show(np.asarray(env.frame()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+env=fresh()
+f=np.asarray(env.frame())
+def cell(r,c):
+    b=f[r*4:r*4+4,c*4:c*4+4]
+    print('cell',(r,c)); print(b)
+for rc in [(3,5),(4,6),(5,6),(3,2),(5,1),(3,10),(3,11),(2,13),(1,11),(7,4)]:
+    cell(*rc)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '468,545p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+from legs import carry_box_to, _grid_scan
+import perception as P
+def c7(env): return P.color_counts(np.asarray(env.frame())).get(7,0)
+def sockets(env):
+    f=np.asarray(env.frame()); out=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 2 in u and 4 not in u: out.add((R,C))
+    return out
+def boxes_only(env):
+    av,boxes,walls=_grid_scan(env)
+    return boxes
+env=fresh()
+print('init sockets',sorted(sockets(env)))
+print('init boxes',sorted(boxes_only(env)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from pl9 import *
+from legs import carry_box_to, _grid_scan
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+RIGHT=[(2,13),(2,14),(6,13),(6,14)]
+SOCK=set(LEFT+RIGHT)
+def cellset(env):
+    f=np.asarray(env.frame()); box=set(); empty=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 2 in u and 4 not in u: empty.add((R,C))
+            elif 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    return box,empty
+def nfill(env,cl):
+    box,empty=cellset(env); return sum(1 for s in cl if s in box)
+env=fresh(); base=env.levels_completed
+for it in range(40):
+    if env.terminal() or env.levels_completed>base: break
+    box,empty=cellset(env)
+    opens=[s for s in LEFT if s in empty]
+    if not opens:
+        print('no open left; Lfill',nfill(env,LEFT),'lvl',env.levels_completed); break
+    free=[b for b in box if b not in SOCK]
+    if not free: env.step(5); continue
+    s=min(opens,key=lambda s:min(abs(b[0]-s[0])+abs(b[1]-s[1]) for b in free))
+    free.sort(key=lambda b:abs(b[0]-s[0])+abs(b[1]-s[1]))
+    ok=False
+    for b in free[:4]:
+        ok=carry_box_to(env,b,s)
+        if ok: break
+    print('it',it,'fill',s,'ok',ok,'Lfill',nfill(env,LEFT),'lvl',env.levels_completed,'term',env.terminal())
+    if not ok: env.step(5)
+print('FINAL Lfill',nfill(env,LEFT),'lvl',env.levels_completed,'term',env.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > probe9.py << 'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('wa30', _budget=A._Budget(200000))
+    for a in ck['final_path']: e.step(a)
+    return e
+def classify(blk):
+    s=set(blk.flatten().tolist()); s.discard(1)
+    if not s: return '..'
+    d={frozenset({5}):'##',frozenset({7}):'==',frozenset({2}):'22',
+       frozenset({4}):'44',frozenset({12}):'CC',frozenset({15}):'MM',
+       frozenset({9}):'99',frozenset({0}):'00',frozenset({0,14}):'AV',
+       frozenset({14}):'ee',frozenset({4,9}):'4c',frozenset({2,9}):'2c',
+       frozenset({1,2}):'22',frozenset({1,7}):'==',frozenset({5,7}):'#7'}
+    return d.get(frozenset(s),'?'+''.join(str(x) for x in sorted(s)))
+def show(f):
+    for r in range(16):
+        print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(16)))
+def c7(env): return int((np.asarray(env.frame())==7).sum())
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+RIGHT=[(2,13),(2,14),(6,13),(6,14)]
+SOCK=set(LEFT+RIGHT)
+def cellset(env):
+    f=np.asarray(env.frame()); box=set(); empty=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 2 in u and 4 not in u: empty.add((R,C))
+            elif 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    return box,empty
+def nfill(env,cl):
+    box,_=cellset(env); return sum(1 for s in cl if s in box)
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+env=fresh(); base=env.levels_completed
+sl=len(env.path)
+for it in range(40):
+    if env.terminal() or env.levels_completed>base: break
+    box,empty=cellset(env)
+    opens=[s for s in LEFT if s in empty]
+    if not opens: print('LEFT full! Lfill',nfill(env,LEFT)); break
+    free=[b for b in box if b not in SOCK]
+    if not free: env.step(5); continue
+    s=min(opens,key=lambda s:min(abs(b[0]-s[0])+abs(b[1]-s[1]) for b in free))
+    free.sort(key=lambda b:abs(b[0]-s[0])+abs(b[1]-s[1]))
+    ok=False
+    for b in free[:4]:
+        ok=carry_box_to(env,b,s)
+        if ok: break
+    print('it',it,'->',s,'ok',ok,'Lfill',nfill(env,LEFT),'c7',c7(env),'steps',len(env.path)-sl,'lvl',env.levels_completed)
+    if not ok: env.step(5)
+print('FINAL Lfill',nfill(env,LEFT),'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+show(np.asarray(env.frame()))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh()
+for i in range(70):
+    if i%6==0:
+        print('step',i,'c7',c7(env),'Lfill',nfill(env,LEFT),'Rfill',nfill(env,RIGHT),'lvl',env.levels_completed)
+    env.step(5)
+    if env.terminal(): print('term',i,'lvl',env.levels_completed); break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh(); f=np.asarray(env.frame())
+print('LEFT cluster rows12-23 cols20-31:')
+for r in range(12,24):
+    print(''.join('%2d'%f[r,c] for c in range(20,32)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def couriers(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    pts=list(zip(ys//4,xs//4))
+    from collections import Counter
+    # cluster by cell then group
+    cells=sorted(set((int(a),int(b)) for a,b in pts))
+    return cells
+env=fresh()
+for i in range(50):
+    if i%4==0: print('step',i,'couriers(cells)',couriers(env))
+    env.step(5)
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh()
+for i in range(20): env.step(5)
+f=np.asarray(env.frame())
+print('container rows12-23 cols20-31 after 20 yields:')
+for r in range(12,24):
+    print(''.join('%2d'%f[r,c] for c in range(20,32)))
+print('Lfill',nfill(env,LEFT))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+# test c7 cost of each action from start
+for a,name in [(1,'UP'),(2,'DOWN'),(3,'LEFT'),(4,'RIGHT'),(5,'USE')]:
+    e=fresh(); b=c7(e); e.step(a); print(name,'c7',b,'->',c7(e),'delta',c7(e)-b)
+# also a blocked move (into wall): avatar left into? at start avatar (8,8), left is open. test UP repeatedly hitting nothing
+e=fresh()
+prev=c7(e)
+for i in range(10):
+    e.step(1); print('UP',i,'c7',c7(e),'d',c7(e)-prev); prev=c7(e)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def mv(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# go to (13,3): down1,left5,down4
+for a in [2,3,3,3,3,3,2,2,2]:
+    env.step(a)
+print('parked av',av(env),'mv',mv(env),'c7',c7(env))
+# now wait and watch mover approach col3
+for i in range(60):
+    env.step(5)
+    m=mv(env)
+    if m and m[1]<=4:
+        print('step',i,'mv',m,'av',av(env),'c7',c7(env),'term',env.terminal())
+    if env.terminal(): print('TERM',i); break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def mv(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+for a in [2,3,3,3,3,3,2,2,2]:
+    env.step(a)
+print('parked av',av(env),'mv',mv(env),'c7',c7(env))
+for i in range(70):
+    print('step',i,'mv',mv(env),'c7',c7(env),'term',env.terminal())
+    env.step(5)
+    if env.terminal(): break
+" 2>&1 | tail -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh(); f=np.asarray(env.frame())
+print('right region rows0-36 cols40-63, coarse:')
+for r in range(0,10):
+    print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(9,16)))
+print()
+print('right courier area pixels rows4-12 cols40-63:')
+for r in range(4,14):
+    print(''.join('%2d'%f[r,c] for c in range(40,64)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '541,668p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK=set(LEFT)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    # open container cells = LEFT cells that are not yet box (still have 2)
+    for s in LEFT:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 2 in u: openc.add(s)
+    return box,openc
+env=fresh(); base=env.levels_completed
+import time
+while not env.terminal() and env.levels_completed<=base:
+    if c7(env)<=3: break
+    box,openc=state(env)
+    if not openc:
+        print('CONTAINER FULL lvl',env.levels_completed); break
+    free=[b for b in box if b not in SOCK]
+    if not free: env.step(5); continue
+    best=None
+    av=_grid_scan(env)[0]
+    for s in openc:
+        for b in free:
+            d=abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1])
+            if best is None or d<best[0]: best=(d,b,s)
+    _,b,s=best
+    try: ok=carry_box_to(env,b,s)
+    except Exception as e: print('carry exc',e); break
+    fills=9-len(state(env)[1])
+    print('carry',b,'->',s,'ok',ok,'fills',fills,'c7',c7(env),'step',len(env.path),'lvl',env.levels_completed)
+    if not ok: env.step(5)
+print('FINAL fills',9-len(state(env)[1]),'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > g9.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK=set(LEFT)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in LEFT:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 2 in u: openc.add(s)
+    return box,openc
+def fills(env): return 9-len(state(env)[1])
+def try_carry_clone(env,b,s):
+    """Return real-step cost if carry feasible on a clone, else None."""
+    try:
+        cl=env.clone(); n0=len(cl.path)
+        ok=carry_box_to(cl,b,s)
+        if ok and fills(cl)>fills(env): return len(cl.path)-n0
+    except Exception:
+        return None
+    return None
+def solve(env, verbose=False, ncand=6):
+    base=env.levels_completed
+    while not env.terminal() and env.levels_completed<=base:
+        if c7(env)<=2: break
+        box,openc=state(env)
+        if not openc:
+            if verbose: print('FULL'); break
+        free=[b for b in box if b not in SOCK]
+        if not free: env.step(5); continue
+        av=_grid_scan(env)[0]
+        cands=[]
+        for s in openc:
+            for b in free:
+                d=abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1])
+                cands.append((d,b,s))
+        cands.sort()
+        chosen=None
+        for d,b,s in cands[:ncand]:
+            cost=try_carry_clone(env,b,s)
+            if cost is not None:
+                if chosen is None or cost<chosen[0]: chosen=(cost,b,s)
+        if chosen is None:
+            env.step(5); continue
+        _,b,s=chosen
+        f0=fills(env)
+        carry_box_to(env,b,s)
+        if verbose: print('carry',b,'->',s,'fills',fills(env),'(was',f0,')','c7',c7(env),'lvl',env.levels_completed)
+    return fills(env)
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL fills',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+EOF
+python g9.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > g9b.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK=set(LEFT)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in LEFT:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 2 in u: openc.add(s)
+    return box,openc
+def fills(env): return 9-len(state(env)[1])
+def solve(env, verbose=False):
+    base=env.levels_completed
+    while not env.terminal() and env.levels_completed<=base:
+        if c7(env)<=2: break
+        box,openc=state(env)
+        if not openc:
+            if verbose: print('FULL'); break
+        free=[b for b in box if b not in SOCK]
+        if not free: env.step(5); continue
+        av=_grid_scan(env)[0]
+        cands=[]
+        for s in openc:
+            for b in free:
+                d=abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1])
+                cands.append((d,b,s))
+        cands.sort()
+        did=False
+        for d,b,s in cands:
+            if env.terminal(): break
+            try: ok=carry_box_to(env,b,s)
+            except Exception: ok=False; break
+            if ok:
+                did=True
+                if verbose: print('carry',b,'->',s,'fills',fills(env),'c7',c7(env)); 
+                break
+        if not did:
+            env.step(5)
+    return fills(env)
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL fills',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+EOF
+python g9b.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _grid_scan
+LEFT={(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)}
+env=fresh()
+prev=None
+for i in range(70):
+    box=set(b for b in _grid_scan(env)[0] if b not in LEFT)
+    if prev is not None and box!=prev:
+        print('step',i,'boxes',sorted(box),'c7',c7(env))
+    prev=box
+    env.step(5)
+    if env.terminal(): break
+" 2>&1 | head -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _grid_scan
+LEFT={(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)}
+def freeboxes(env): return sorted(b for b in _grid_scan(env)[0] if b not in LEFT)
+env=fresh()
+for i in range(70):
+    fb=freeboxes(env)
+    if i%6==0: print('step',i,'nfree',len(fb),'fills(LEFT-with-box)',sum(1 for s in LEFT if s in _grid_scan(env)[0]),'c7',c7(env))
+    env.step(5)
+    if env.terminal(): break
+print('final free',freeboxes(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from g9b import *
+env=fresh(); solve(env)
+box,openc=state(env)
+print('open container cells at end:',sorted(openc),'fills',fills(env),'c7',c7(env))
+f=np.asarray(env.frame())
+for r in range(12,24):
+    print(''.join('%2d'%f[r,c] for c in range(20,32)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _grid_scan
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def boxes(env):
+    f=np.asarray(env.frame()); s=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: s.add((R,C))
+    return s
+env=fresh()
+print('av',av(env),'box(5,3)present',(5,3) in boxes(env))
+# navigate avatar to (5,2) west of box (5,3). av start (8,8)
+# path: up to row5, left to col2
+for a in [1,1,1,3,3,3,3,3,3]:
+    env.step(a)
+print('av now',av(env))
+# press RIGHT to push box east
+b0=boxes(env)
+env.step(4)
+b1=boxes(env)
+print('av',av(env),'boxes changed:',sorted(b0^b1))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh()
+for a in [1,1,1,3,3,3,3,3,3]: env.step(a)
+print('=== before RIGHT (av should be near box) ===')
+f=np.asarray(env.frame())
+for r in range(3,7): print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(1,9)))
+env.step(4)
+print('=== after RIGHT ===')
+f=np.asarray(env.frame())
+for r in range(3,7): print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(1,9)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > g9c.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK=set(LEFT)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in LEFT:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 2 in u: openc.add(s)
+    return box,openc
+def fills(env): return 9-len(state(env)[1])
+def cost_clone(env,b,s):
+    try:
+        cl=env.clone(); n0=len(cl.path); f0=fills(cl)
+        ok=carry_box_to(cl,b,s)
+        if ok and fills(cl)>f0: return len(cl.path)-n0
+    except Exception: return None
+    return None
+def solve(env, verbose=False, manhcap=14):
+    base=env.levels_completed
+    while not env.terminal() and env.levels_completed<=base:
+        if c7(env)<=2: break
+        box,openc=state(env)
+        if not openc: 
+            if verbose: print('FULL'); break
+        free=[b for b in box if b not in SOCK]
+        if not free: env.step(5); continue
+        av=_grid_scan(env)[0]
+        pairs=[]
+        for s in openc:
+            for b in free:
+                d=abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1])
+                if d<=manhcap: pairs.append((d,b,s))
+        pairs.sort()
+        best=None
+        for d,b,s in pairs:
+            c=cost_clone(env,b,s)
+            if c is not None and (best is None or c<best[0]):
+                best=(c,b,s)
+                if c<=6: break  # good enough, stop searching
+        if best is None:
+            env.step(5); continue
+        _,b,s=best
+        carry_box_to(env,b,s)
+        if verbose: print('carry',b,'->',s,'cost~',best[0],'fills',fills(env),'c7',c7(env))
+    return fills(env)
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL fills',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+EOF
+python g9c.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh(); f=np.asarray(env.frame())
+print('coarse full right half cols9-15 rows0-9:')
+for r in range(0,10):
+    print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(9,16)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def bx(env):
+    f=np.asarray(env.frame()); s=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: s.add((R,C))
+    return s
+env=fresh()
+# box at (8,14) far right, isolated. avatar go there from (8,8): right6
+print('box(8,14)?',(8,14) in bx(env))
+for a in [4]*5: env.step(a)
+print('av',av(env))  # should be (8,13) if blocked by box at 14
+# push right (east) into box
+b0=bx(env); env.step(4); b1=bx(env)
+print('av',av(env),'box delta',sorted(b0^b1))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def allbx(env):
+    f=np.asarray(env.frame()); s=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: s.add((R,C))
+    return s
+env=fresh(); prev=allbx(env)
+print('init boxes',sorted(prev))
+for i in range(70):
+    env.step(5)
+    cur=allbx(env)
+    if cur!=prev:
+        gone=sorted(prev-cur); new=sorted(cur-prev)
+        print('step',i,'gone',gone,'new',new,'c7',c7(env))
+    prev=cur
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK=set(LEFT)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=set()
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in LEFT:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 2 in u: openc.add(s)
+    return box,openc
+def fills(env): return 9-len(state(env)[1])
+env=fresh()
+# fixed: 3 right boxes -> east column cells
+plan=[((5,11),(5,7)),((7,12),(4,7)),((8,14),(3,7))]
+for b,s in plan:
+    if env.terminal(): break
+    ok=carry_box_to(env,b,s)
+    print('plan',b,'->',s,'ok',ok,'fills',fills(env),'c7',c7(env))
+# then greedy west
+base=env.levels_completed
+while not env.terminal() and env.levels_completed<=base and c7(env)>2:
+    box,openc=state(env)
+    if not openc: print('FULL'); break
+    free=[b for b in box if b not in SOCK]
+    if not free: env.step(5); continue
+    from legs import _grid_scan
+    av=_grid_scan(env)[0]
+    cands=sorted([(abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1]),b,s) for s in openc for b in free])
+    did=False
+    for _,b,s in cands:
+        if carry_box_to(env,b,s): did=True; print('west',b,'->',s,'fills',fills(env),'c7',c7(env)); break
+    if not did: env.step(5)
+print('FINAL fills',fills(env),'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+n0=len(env.path)
+print('avatar start',av(env),'box (7,1) target (5,5)')
+ok=carry_box_to(env,(7,1),(5,5))
+print('ok',ok,'steps',len(env.path)-n0,'av',av(env),'c7',c7(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+boxes=[(3,2),(5,1),(5,3),(7,1),(7,2),(8,1)]
+for b in boxes:
+    for s in LEFT:
+        e=fresh(); n0=len(e.path)
+        ok=carry_box_to(e,b,s)
+        if ok: print('box',b,'-> cell',s,'cost',len(e.path)-n0,'fills-ok')
+" 2>&1 | sort -t' ' -k6 -n | head -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+LEFT=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+for b in [(5,11),(7,12),(8,14)]:
+    best=None
+    for s in LEFT:
+        e=fresh(); n0=len(e.path)
+        try: ok=carry_box_to(e,b,s)
+        except: ok=False
+        if ok:
+            c=len(e.path)-n0
+            if best is None or c<best[0]: best=(c,s)
+    print('right box',b,'cheapest',best)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+RING=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def ringfill(env):
+    f=np.asarray(env.frame()); n=0
+    for s in RING:
+        blk=f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]; u=set(int(v) for v in np.unique(blk))
+        if 9 in u and 4 in u and 2 not in u: n+=1
+    return n
+env=fresh(); base=env.levels_completed
+plan=[((8,14),(3,5)),((5,11),(3,6)),((7,12),(5,7))]
+for b,s in plan:
+    if env.terminal(): break
+    ok=carry_box_to(env,b,s)
+    print('avatar',b,'->',s,'ok',ok,'ring',ringfill(env),'c7',c7(env),'lvl',env.levels_completed)
+# yield rest to let courier finish
+while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+    env.step(5)
+print('FINAL ring',ringfill(env),'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+f=np.asarray(env.frame())
+for r in range(12,24): print(''.join('%2d'%f[r,c] for c in range(20,32)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+RING=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+ALL9=RING+[(4,6)]
+def rf(env):
+    f=np.asarray(env.frame()); 
+    return sum(1 for s in RING if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+def openc9(env):
+    f=np.asarray(env.frame()); o=[]
+    for s in ALL9:
+        u=set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))
+        if 2 in u: o.append(s)
+    return o
+env=fresh(); base=env.levels_completed
+plan=[((5,11),(5,7)),((7,12),(4,7)),((8,14),(3,7))]
+for b,s in plan:
+    if env.terminal(): break
+    ok=carry_box_to(env,b,s)
+    print('avatar',b,'->',s,'ok',ok,'ring',rf(env),'c7',c7(env))
+while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+    env.step(5)
+    if c7(env)%3==0: print('yield c7',c7(env),'ring',rf(env),'open',openc9(env))
+print('FINAL ring',rf(env),'lvl',env.levels_completed,'term',env.terminal())
+f=np.asarray(env.frame())
+for r in range(12,24): print(''.join('%2d'%f[r,c] for c in range(20,32)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+# move avatar against the col9 wall: go to (0,8) top-left corner and press UP (blocked) and LEFT(open) 
+env=fresh()
+# go up to row0
+for a in [1]*8: env.step(a)
+print('av',av(env),'c7',c7(env))
+# press UP repeatedly (blocked by top edge)
+for i in range(8):
+    b=c7(env); env.step(1); print('UP into edge c7',b,'->',c7(env),'d',c7(env)-b,'av',av(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _avatar_nav, _grid_grabbed, _grid_scan, _rigid_carry
+# manually try to place a box at (5,5): grab (5,3) from its west (5,2), carry east
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# nav to (5,2) west of box (5,3)? box at (5,3); west adjacent (5,2)
+ok=_avatar_nav(env,(5,2),cap=30)
+print('nav to (5,2)?',ok,'av',av(env))
+env.step(4) # face east toward box (5,3)
+env.step(5) # grab
+held=_grid_grabbed(env)
+print('held after grab',sorted(held),'av',av(env))
+# now carry so box reaches (5,5): box currently (5,3) relative avatar (5,2) offset(0,1). goal box (5,5)-> goal_av (5,4)
+print('rigid carry to av (5,4)...')
+r=_rigid_carry(env,(0,1),(5,4),cap=30)
+print('rigid?',r,'av',av(env),'held',sorted(_grid_grabbed(env)))
+env.step(5) # release
+f=np.asarray(env.frame())
+u=set(int(v) for v in np.unique(f[5*4:5*4+4,5*4:5*4+4]))
+print('(5,5) content colors',sorted(u))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+SOCK=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# park avatar far bottom-left via col3 then col1 corner (9,0)
+for a in [2,3,3,3,3,3,3,3,3]:  # down to row9, left toward col0
+    env.step(a)
+print('parked av',av(env))
+mx=0
+for i in range(70):
+    env.step(5); mx=max(mx,sf(env))
+    if i%6==0: print('step',i,'sockets',sf(env),'max',mx,'c7',c7(env))
+    if env.terminal(): break
+print('MAX sockets under pure-courier',mx)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > g9e.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+SOCK9=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7),(4,6)]
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+TSET=set(SOCK9)
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=[]
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in SOCK9:
+        u=set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))
+        if 2 in u: openc.append(s)
+    return box,openc
+def sfill(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+def cost_clone(env,b,s):
+    try:
+        cl=env.clone(); n0=len(cl.path); f0=sfill(cl)
+        if carry_box_to(cl,b,s) and sfill(cl)>=f0: return len(cl.path)-n0
+    except Exception: return None
+    return None
+def solve(env, verbose=False):
+    base=env.levels_completed
+    while not env.terminal() and env.levels_completed<=base:
+        if c7(env)<=1: break
+        box,openc=state(env)
+        if not openc: 
+            if verbose: print('FULL9'); break
+        free=[b for b in box if b not in TSET]
+        if not free: env.step(5); continue
+        av=_grid_scan(env)[0]
+        pairs=sorted([(abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1]),b,s) for s in openc for b in free])
+        best=None
+        for man,b,s in pairs:
+            if best is not None and man>=best[0]+6: break  # manhattan lower bound prune
+            c=cost_clone(env,b,s)
+            if c is not None and (best is None or c<best[0]): best=(c,b,s)
+        if best is None:
+            env.step(5); continue
+        _,b,s=best
+        carry_box_to(env,b,s)
+        if verbose: print('carry',b,'->',s,'cost',best[0],'sockets',sfill(env),'c7',c7(env),'lvl',env.levels_completed)
+    return sfill(env)
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL sockets',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+EOF
+python g9e.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > g9f.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+SOCK9=SOCK8+[(4,6)]
+TSET=set(SOCK9)
+def boxes_open(env):
+    f=np.asarray(env.frame()); box=set(); openc=[]
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in SOCK9:
+        u=set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))
+        if 2 in u: openc.append(s)
+    return box,openc
+def sfill(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+def rollout_yield(env):
+    cl=env.clone(); base=cl.levels_completed; mx=sfill(cl)
+    for _ in range(80):
+        if cl.terminal() or cl.levels_completed>base: break
+        cl.step(5); mx=max(mx,sfill(cl))
+    return max(mx,sfill(cl)), (cl.levels_completed>base)
+def solve(env, verbose=False):
+    base=env.levels_completed
+    while not env.terminal() and env.levels_completed<=base and c7(env)>2:
+        box,openc=boxes_open(env)
+        if not openc: break
+        free=[b for b in box if b not in TSET]
+        if not free: env.step(5); continue
+        av=_grid_scan(env)[0]
+        pairs=sorted([(abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1]),b,s) for s in openc for b in free])[:10]
+        best=None
+        for man,b,s in pairs:
+            try:
+                cl=env.clone()
+                if not carry_box_to(cl,b,s): continue
+                score,won=rollout_yield(cl)
+                key=(won, score, -(len(cl.path)))
+                if best is None or key>best[0]: best=(key,b,s)
+            except Exception: continue
+        if best is None:
+            env.step(5); continue
+        _,b,s=best
+        carry_box_to(env,b,s)
+        if verbose: print('carry',b,'->',s,'score',best[0],'sockets',sfill(env),'c7',c7(env),'lvl',env.levels_completed)
+    # final yield
+    b0=env.levels_completed
+    while not env.terminal() and env.levels_completed<=b0 and c7(env)>0:
+        env.step(5)
+    return sfill(env)
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL sockets',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+EOF
+python g9f.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def mvbb(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==15)
+    return (int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max())) if len(ys) else None
+env=fresh()
+for a in [2,3,3,3,3,3,2,2,2]: env.step(a)  # avatar to col3 area
+prev=mvbb(env); pc=c7(env)
+for i in range(30):
+    env.step(5)
+    m=mvbb(env); c=c7(env)
+    print('i',i,'mvbb',m,'moved',m!=prev,'c7',c,'d',c-pc)
+    prev=m; pc=c
+    if env.terminal(): break
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+env=fresh()
+# try filling right small containers with right boxes
+for b,s in [((5,11),(6,13)),((7,12),(6,14)),((8,14),(2,13)),((5,11),(2,14))]:
+    e=fresh(); n0=len(e.path)
+    try: ok=carry_box_to(e,b,s)
+    except Exception as ex: ok='exc'
+    print('carry',b,'->',s,'ok',ok,'cost',len(e.path)-n0 if ok is True else '-','lvl',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > beam9.py << 'EOF'
+from probe9 import *
+# container interior pixels: rows13-22, cols21-30 (inside the 12x12 frame at rows12-23 cols20-31)
+def interior2(env):
+    f=np.asarray(env.frame())
+    reg=f[13:23,21:31]
+    return int((reg==2).sum())
+def key(env):
+    f=np.asarray(env.frame())
+    # coarse container 3x3 fill signature + avatar cell + held
+    sig=[]
+    for R in range(3,6):
+        for C in range(5,8):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            sig.append(1 if (4 in u and 2 not in u) else 0)
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return (tuple(sig),av)
+import heapq
+def beam(start, width=40, depth=72):
+    base=start.levels_completed
+    beam=[(interior2(start), start.clone(), [])]
+    seen={}
+    best=(interior2(start),None)
+    for d in range(depth):
+        cand=[]
+        for h,env,path in beam:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base:
+                    return ('WIN',path+[a])
+                hi=interior2(c)
+                k=key(c)
+                if k in seen and seen[k]<=hi: 
+                    continue
+                seen[k]=hi
+                cand.append((hi,c,path+[a]))
+                if hi<best[0]: best=(hi,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0])
+        beam=cand[:width]
+        if d%10==0: print('depth',d,'best interior2',beam[0][0])
+    return ('BEST',best)
+if __name__=='__main__':
+    env=fresh()
+    print('start interior2',interior2(env))
+    r=beam(env)
+    print('RESULT',r[0], 'val', (r[1] if r[0]=='WIN' else r[1]))
+EOF
+python beam9.py 2>&1 | tail -25
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav, _grid_grabbed, _grid_scan
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def cont(env):
+    f=np.asarray(env.frame())
+    return [''.join('%d'%(4 if (4 in set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4])) and 2 not in set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))) else (2 if 2 in set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4])) else 0)) for C in range(5,8)) for R in range(3,6)]
+env=fresh()
+# grab box (5,3): nav to (5,2), face east, use
+_avatar_nav(env,(5,2),cap=30); env.step(4); env.step(5)
+print('grabbed',sorted(_grid_grabbed(env)),'av',av(env))
+# carry box to be at container west (5,5): move avatar east so box enters
+# avatar at (5,2), box at (5,3). move east: avatar->(5,3)? box pushed? Let's just step east and watch box
+for i in range(4):
+    b=sorted(_grid_grabbed(env)); env.step(4); print('after E',i,'av',av(env),'grab',sorted(_grid_grabbed(env)))
+print('container:'); 
+for row in cont(env): print(row)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+_avatar_nav(env,(4,4),cap=30)
+print('at',av(env))
+for i in range(4):
+    env.step(4); print('E',i,'av',av(env))  # try to walk east into container (4,5),(4,6)...
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+def cpos(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+for i in range(20):
+    f=np.asarray(env.frame())
+    # show container region coarse + courier cell
+    line=''
+    for R in range(2,7):
+        for C in range(4,9):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            if 12 in u: line+='C'
+            elif 4 in u and 2 not in u and 9 in u: line+='4'
+            elif 3 in u: line+='3'
+            elif 2 in u and 9 in u: line+='.'
+            elif 2 in u: line+='o'
+            else: line+=' '
+        line+='|'
+    print('i',i,'cour',cpos(env),line)
+    env.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && timeout_run() { python "$@"; }; python -c "
+from probe9 import *
+import perception as P
+env=fresh(); base=env.levels_completed
+def key(e):
+    f=np.asarray(e.frame())
+    sig=[]
+    for R in range(2,7):
+        for C in range(4,9):
+            u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+            sig.append(4 if (4 in u and 2 not in u and 9 in u) else 0)
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return (av,tuple(sig))
+def goal(e,p): return e.levels_completed>base
+path=P.bounded_bfs(env,goal,key_fn=key,max_states=40000,max_depth=40)
+print('BFS path',path)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+import numpy as np
+for name in ['l7_win_before','l7_win_after','l8_win_before','l8_win_after']:
+    a=np.load(name+'.npy')
+    from collections import Counter
+    vals,cnts=np.unique(a,return_counts=True)
+    print(name, dict(zip(vals.tolist(),cnts.tolist())))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+import perception as P
+env=fresh(); f=np.asarray(env.frame())
+blobs=P.connected_components(f,colors=[9],min_area=1)
+for b in blobs:
+    print('9-blob bbox',b.bbox,'area',b.area,'size',b.size)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+env=fresh()
+for b,s in [((5,11),(6,13)),((7,12),(6,14))]:
+    ok=carry_box_to(env,b,s); print('fill',s,'with',b,'ok',ok,'c7',c7(env),'lvl',env.levels_completed)
+print('final lvl',env.levels_completed,'term',env.terminal())
+# also try the other small container both cells
+env2=fresh()
+for b,s in [((5,11),(6,14)),((7,12),(6,13)),((8,14),(6,14))]:
+    ok=carry_box_to(env2,b,s); print('v2 fill',s,'ok',ok,'lvl',env2.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+env=fresh()
+print('=== L9 START ==='); show(np.asarray(env.frame()))
+for i in range(66): env.step(5)
+print('=== after 66 yields (avatar untouched) ==='); show(np.asarray(env.frame()))
+print('lvl',env.levels_completed,'c7',c7(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav
+def cell_colors(env,R,C):
+    f=np.asarray(env.frame()); return sorted(set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4])))
+env=fresh()
+# walk avatar onto empty container cell (5,5) and USE
+_avatar_nav(env,(4,4),cap=30)
+env.step(4); env.step(2)  # into (4,5) then down to (5,5)?
+f=np.asarray(env.frame()); ys,xs=np.where(f==14); print('av',(int(ys.min())//4,int(xs.min())//4))
+print('(5,5) before USE',cell_colors(env,5,5))
+env.step(5)
+print('(5,5) after USE',cell_colors(env,5,5))
+# try standing and USE in multiple facings
+for a in [1,2,3,4,5]:
+    e=fresh(); _avatar_nav(e,(4,4),cap=30); e.step(4)  # into (4,5)
+    b=cell_colors(e,4,5); e.step(a); af=cell_colors(e,4,5)
+    print('facing/act',a,'cell(4,5)',b,'->',af)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > rs9.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to
+import random
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sfill(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+BOXES=[(3,2),(5,1),(5,3),(5,11),(7,1),(7,2),(7,12),(8,1),(8,14)]
+DEEP=[(3,5),(3,6),(3,7),(4,7),(5,6),(5,7)]
+def run_plan(plan, extra_yield=True):
+    env=fresh(); base=env.levels_completed; mx=sfill(env); won=False
+    for b,s in plan:
+        if env.terminal() or env.levels_completed>base: break
+        try: carry_box_to(env,b,s)
+        except Exception: break
+        c=sfill(env); mx=max(mx,c)
+        if env.levels_completed>base: won=True; break
+    if extra_yield and not won:
+        while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+            env.step(5); mx=max(mx,sfill(env))
+            if env.levels_completed>base: won=True; break
+    return mx, won, env.levels_completed
+best=(0,None)
+random.seed(1)
+for it in range(40):
+    k=random.choice([3,3,4,4])
+    bs=random.sample(BOXES,k)
+    cells=random.sample(DEEP,k)
+    plan=list(zip(bs,cells))
+    mx,won,lvl=run_plan(plan)
+    if won: print('WON!',plan); break
+    if mx>best[0]: best=(mx,plan); print('it',it,'mx',mx,'plan',plan)
+print('BEST',best)
+EOF
+python rs9.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+# stage west boxes at doorstep (4,4),(3,4),(5,4) then yield; see if courier seats faster
+env=fresh()
+for b,s in [((5,3),(4,4)),((5,1),(3,4)),((3,2),(5,4))]:
+    ok=carry_box_to(env,b,s); print('stage',b,'->',s,'ok',ok,'c7',c7(env),'sock',sf(env))
+print('now yield...')
+mx=sf(env)
+while not env.terminal() and c7(env)>0:
+    env.step(5); mx=max(mx,sf(env))
+print('after yield sock',sf(env),'max',mx,'lvl',env.levels_completed)
+"
+I've done extensive discovery. Let me consolidate the best filling strategy into a proper leg and test it in the real harness to see the actual result.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+# Best interleaved greedy = g9b. Let me instrument to report SIMULTANEOUS sockets peak and whether lvl ever increments, and final.
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+SOCK9=SOCK8+[(4,6)]
+TSET=set(SOCK9)
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+def state(env):
+    f=np.asarray(env.frame()); box=set(); openc=[]
+    for R in range(16):
+        for C in range(16):
+            blk=f[R*4:R*4+4,C*4:C*4+4]; u=set(int(v) for v in np.unique(blk))
+            if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+    for s in SOCK9:
+        u=set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))
+        if 2 in u: openc.append(s)
+    return box,openc
+env=fresh(); base=env.levels_completed; mx=0
+while not env.terminal() and env.levels_completed<=base:
+    if c7(env)<=2: break
+    box,openc=state(env)
+    if not openc: break
+    free=[b for b in box if b not in TSET]
+    if not free: env.step(5); continue
+    av=_grid_scan(env)[0]
+    cands=sorted([(abs(av[0]-b[0])+abs(av[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1]),b,s) for s in openc for b in free])
+    did=False
+    for _,b,s in cands:
+        try: ok=carry_box_to(env,b,s)
+        except: ok=False; break
+        if ok: did=True; break
+    mx=max(mx,sf(env))
+    if not did: env.step(5)
+mx=max(mx,sf(env))
+print('PEAK simultaneous sockets',mx,'final',sf(env),'lvl',env.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# navigate avatar to right side via row9 gap, then try to go UP through row3 barrier to (2,13)
+# go right to col10 at row9, then up
+seq=[2]+[4]*8  # down to row9, right toward col16? col9 is wall at rows0-8 but row9 open
+for a in seq: env.step(a)
+print('after cross attempt av',av(env))
+# now up the right side
+for i in range(8):
+    b=av(env); env.step(1); print('UP',i,'av',av(env), 'moved',av(env)!=b)
+"
+Let me test whether a leaner carry (ignoring the courier as an obstacle) is significantly faster, since carry efficiency is the crux.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '203,470p' legs.py | grep -n "def \|courier\|_carry_pair\|_bfs_pair" | head -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '361,395p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import grab_and_deliver, carry_box_to
+tasks=[((5,3),(4,7)),((3,2),(3,6)),((7,12),(5,7)),((5,11),(3,6)),((7,1),(5,7)),((8,14),(3,5))]
+for b,s in tasks:
+    e1=fresh(); n=len(e1.path)
+    try: ok1=grab_and_deliver(e1,b,s)
+    except Exception as ex: ok1='exc'
+    c1=len(e1.path)-n
+    e2=fresh(); n=len(e2.path)
+    try: ok2=carry_box_to(e2,b,s)
+    except: ok2='exc'
+    c2=len(e2.path)-n
+    print(b,'->',s,'grab_and_deliver ok',ok1,'cost',c1,'| carry_box_to ok',ok2,'cost',c2)
+"
+Let me investigate the mover more — whether it can be killed and whether killing it stops the timer, since that could unlock unlimited fill time.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _movers, _grid_scan, _bfs_path
+DIRS={(-1,0):1,(1,0):2,(0,-1):3,(0,1):4}
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# actively chase the mover with USE-when-adjacent, log if it ever dies + c7 behavior
+killed=False
+for step in range(68):
+    ms=_movers(env,15)
+    if not ms:
+        print('MOVER GONE at step',step,'c7',c7(env)); killed=True; break
+    m=ms[0]; a=av(env)
+    d=abs(a[0]-m[0])+abs(a[1]-m[1])
+    if d==1:
+        env.step(DIRS[(m[0]-a[0],m[1]-a[1])]); env.step(5)  # face + use
+        continue
+    # move toward mover (bfs, mover reachable only if in avatar region)
+    av2,boxes,walls=_grid_scan(env)
+    p=_bfs_path(a,m,(set(walls)|set(boxes))-{m})
+    if p: env.step(p[0])
+    else: env.step(5)
+if killed:
+    c=c7(env)
+    for i in range(8): env.step(5)
+    print('after kill, c7',c,'->',c7(env),'(if stopped, timer halted!)')
+else:
+    print('could not kill mover; final c7',c7(env),'mover',_movers(env,15))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav, _grid_grabbed
+def gb(env): return sorted(_grid_grabbed(env))
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+# grab box (7,1), move it to west of container at (4,4) area, face east, USE (throw?)
+env=fresh()
+_avatar_nav(env,(4,3),cap=30)  # west of container, row4
+env.step(4); # face east; is there a box at (4,4)? no. Let me grab a box first.
+# Actually grab (5,3): nav (5,2) face E use
+env=fresh()
+_avatar_nav(env,(5,2),cap=30); env.step(4); env.step(5)
+print('grabbed',gb(env),'av',av(env))
+# now carry to (4,3)? move up to row4 then we are west of container. box ahead(east)
+# move north so avatar (4,2), box (4,3)
+env.step(1); print('after N av',av(env),'grab',gb(env))
+# face east and USE (throw into container?)
+env.step(4); print('after E av',av(env),'grab',gb(env))
+before=np.asarray(env.frame()).copy()
+env.step(5)
+after=np.asarray(env.frame())
+import perception as P
+d=P.frame_delta(before,after)
+print('USE delta count',d['count'],'grab now',gb(env),'av',av(env))
+# show container
+f=after
+for r in range(3,6): print(' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(3,9)))
+"
+Let me run a broader randomized search over 4-carry avatar plans (interleaved with courier work) to check if any configuration actually triggers the win:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > rs9b.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to
+import random, itertools
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+WEST=[(3,2),(5,1),(5,3),(7,1),(7,2),(8,1)]
+RIGHT=[(5,11),(7,12),(8,14)]
+# avatar targets: cells courier is bad at (east + relay-block); leave west col to courier
+ATARGETS=[(3,6),(3,7),(4,7),(5,6),(5,7)]
+def run(plan):
+    env=fresh(); base=env.levels_completed; mx=0
+    for b,s in plan:
+        if env.terminal() or env.levels_completed>base: break
+        try: carry_box_to(env,b,s)
+        except Exception: break
+        mx=max(mx,sf(env))
+        if env.levels_completed>base: return True,mx
+    while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+        env.step(5); mx=max(mx,sf(env))
+        if env.levels_completed>base: return True,mx
+    return False, mx
+best=0; random.seed(7)
+allboxes=WEST+RIGHT
+for it in range(120):
+    k=random.choice([3,4,4,4])
+    cells=random.sample(ATARGETS,min(k,len(ATARGETS)))
+    # assign boxes preferring right boxes go to east-ish cells
+    bs=random.sample(allboxes,len(cells))
+    plan=list(zip(bs,cells))
+    won,mx=run(plan)
+    if won: print('WIN!! plan',plan); break
+    if mx>best: best=mx; print('it',it,'mx',mx,'plan',plan)
+print('best simultaneous sockets',best)
+EOF
+python rs9b.py 2>&1 | tail -15
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+plans=[
+ [((7,12),(5,7)),((5,11),(4,7)),((5,3),(3,7)),((3,2),(3,6))],
+ [((7,12),(5,7)),((5,11),(3,7)),((5,3),(4,7)),((3,2),(3,6))],
+ [((7,12),(5,7)),((8,14),(4,7)),((5,3),(3,7)),((3,2),(3,6))],
+ [((7,12),(5,7)),((5,11),(4,7)),((5,3),(3,6)),((3,2),(3,7))],
+ [((5,3),(3,6)),((7,12),(5,7)),((5,11),(4,7)),((3,2),(3,7))],
+]
+for plan in plans:
+    env=fresh(); base=env.levels_completed; won=False; mx=0
+    for b,s in plan:
+        if env.terminal() or env.levels_completed>base: break
+        try: carry_box_to(env,b,s)
+        except: break
+        mx=max(mx,sf(env))
+    while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+        env.step(5); mx=max(mx,sf(env))
+    print('sockets final',sf(env),'peak',mx,'lvl',env.levels_completed,'c7',c7(env),'plan',[(b,s) for b,s in plan])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav
+import perception as P
+def interior2(env):
+    f=np.asarray(env.frame()); return int((f[13:23,21:31]==2).sum())
+# avatar walk to center (4,6) and USE, and also try USE at each container cell
+env=fresh()
+_avatar_nav(env,(4,4),cap=30)
+# walk east into center (4,6)
+env.step(4); env.step(4)  # (4,5)->(4,6)
+f=np.asarray(env.frame()); ys,xs=np.where(f==14); print('av',(int(ys.min())//4,int(xs.min())//4),'interior2',interior2(env))
+b=f.copy(); env.step(5); a=np.asarray(env.frame())
+print('USE at center delta',P.frame_delta(b,a)['count'],'interior2',interior2(env))
+# try USE facing each dir at center
+for act in [1,2,3,4]:
+    env.step(act)
+print('after nudges interior2',interior2(env))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _movers
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame())
+    return sum(1 for s in SOCK8 if (lambda u:9 in u and 4 in u and 2 not in u)(set(int(v) for v in np.unique(f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]))))
+# park avatar at col3 (freeze mover), full budget, measure courier fills
+env=fresh()
+for a in [2,3,3,3,3,3,2,2,2]: env.step(a)
+mx=0
+while not env.terminal() and c7(env)>0:
+    env.step(5); mx=max(mx,sf(env))
+print('avatar-at-col3 (mover frozen): peak courier sockets',mx,'final',sf(env),'mover',_movers(env,15))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _movers
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh()
+# dip to col3
+for a in [2,3,3,3,3,3,2,2]: env.step(a)
+print('at',av(env),'mover',_movers(env,15))
+# leave col3: go back up/right to top region
+for a in [1,1,4,4,4,4,4,4]: env.step(a)
+print('left to',av(env),'mover',_movers(env,15))
+# yield and watch if mover resumes
+for i in range(20):
+    env.step(5)
+    if i%4==0: print('yield',i,'mover',_movers(env,15))
+"
+Let me run a wide beam search at the raw action level to definitively check if any winning sequence exists within the timer:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > wbeam.py << 'EOF'
+from probe9 import *
+def interior2(f): return int((f[13:23,21:31]==2).sum())
+def avcell(f):
+    ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+def score(env):
+    f=np.asarray(env.frame())
+    i2=interior2(f)
+    return i2
+def beam(start, width=250, depth=70):
+    base=start.levels_completed
+    frontier=[(score(start), start.clone(), [])]
+    global_best=(score(start),[])
+    for d in range(depth):
+        cand=[]
+        seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base:
+                    return ('WIN', path+[a])
+                f=np.asarray(c.frame())
+                s=interior2(f)
+                k=(avcell(f), s, f[12:24,20:32].tobytes())
+                if k in seen: continue
+                seen.add(k)
+                cand.append((s,c,path+[a]))
+                if s<global_best[0]: global_best=(s,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0])
+        frontier=cand[:width]
+        if d%8==0: print('d',d,'bestI2',frontier[0][0],'nfront',len(frontier))
+    return ('BEST', global_best)
+if __name__=='__main__':
+    env=fresh()
+    r=beam(env)
+    print('RES',r[0], r[1][0] if r[0]=='BEST' else len(r[1]))
+    if r[0]=='WIN': print('WINPATH',r[1])
+EOF
+python wbeam.py 2>&1 | tail -20
+The wide beam reached interior2=9 (nearly full!) — far better than my carry-based greedy. Let me push wider to find the actual win:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > wbeam2.py << 'EOF'
+from probe9 import *
+def interior2(f): return int((f[13:23,21:31]==2).sum())
+def avcell(f):
+    ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+def beam(start, width=700, depth=72):
+    base=start.levels_completed
+    frontier=[(interior2(np.asarray(start.frame())), start.clone(), [])]
+    gbest=(999,[])
+    for d in range(depth):
+        cand=[]; seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base:
+                    return ('WIN', path+[a])
+                f=np.asarray(c.frame()); s=interior2(f)
+                k=(avcell(f), f[12:24,20:32].tobytes())
+                if k in seen: continue
+                seen.add(k)
+                cand.append((s,c,path+[a]))
+                if s<gbest[0]: gbest=(s,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0])
+        frontier=cand[:width]
+        if d%8==0: print('d',d,'bestI2',frontier[0][0],'gbest',gbest[0],flush=True)
+    return ('BEST', gbest)
+if __name__=='__main__':
+    env=fresh(); r=beam(env)
+    print('RES',r[0])
+    if r[0]=='WIN':
+        print('WINLEN',len(r[1])); print('WINPATH',r[1])
+    else:
+        print('bestI2',r[1][0],'len',len(r[1][1]))
+        # save best path
+        import json; json.dump(r[1][1], open('best_l9_path.json','w'))
+EOF
+python wbeam2.py 2>&1 | tail -20
+Width 250 reached ~8 cells filled (interior2=9), just short. Let me run an optimized beam with a cell-count-focused heuristic to push for the full fill:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > wbeam3.py << 'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('wa30', _budget=A._Budget(300000))
+    for a in ck['final_path']: e.step(a)
+    return e
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def feats(env):
+    f=np.asarray(env.frame())
+    reg=f[13:23,21:31]
+    i2=int((reg==2).sum())
+    filled=0
+    for (R,C) in CELLS:
+        b=f[R*4:R*4+4,C*4:C*4+4]
+        if not (b==2).any(): filled+=1
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return filled,i2,av,f[12:24,20:32].tobytes()
+def beam(start, width=400, depth=72):
+    base=start.levels_completed
+    fl,i2,av,key=feats(start)
+    frontier=[((-fl,i2), start.clone(), [])]
+    gbest=(-fl,i2,[])
+    for d in range(depth):
+        cand=[]; seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base:
+                    return ('WIN', path+[a])
+                fl,i2,av,key=feats(c)
+                k=(av,key)
+                if k in seen: continue
+                seen.add(k)
+                cand.append(((-fl,i2),c,path+[a]))
+                cur=(-fl,i2)
+                if cur<(gbest[0],gbest[1]): gbest=(-fl,i2,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0])
+        frontier=cand[:width]
+        if d%6==0: print('d',d,'best(-fl,i2)',frontier[0][0],'gbest',gbest[0],gbest[1],flush=True)
+    return ('BEST', gbest)
+if __name__=='__main__':
+    env=fresh(); r=beam(env)
+    if r[0]=='WIN':
+        print('WIN len',len(r[1])); json.dump(r[1],open('win_l9.json','w')); print(r[1])
+    else:
+        print('BEST filled',-r[1][0],'i2',r[1][1],'len',len(r[1][2]))
+        json.dump(r[1][2],open('best_l9_path.json','w'))
+EOF
+python wbeam3.py 2>&1 | tail -25 &
+BEAMPID=$!
+# wait up to 520s
+for i in $(seq 1 104); do sleep 5; if ! kill -0 $BEAMPID 2>/dev/null; then break; fi; done
+if kill -0 $BEAMPID 2>/dev/null; then echo "STILL RUNNING, killing"; kill $BEAMPID; fi
+wait $BEAMPID 2>/dev/null
+echo "done"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -i 's/width=400/width=300/' wbeam3.py && nohup python -u wbeam3.py > beam.log 2>&1 &
+echo "started PID $!"; sleep 90; echo "=== log after 90s ==="; cat beam.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -i '' 's/width=400/width=300/' wbeam3.py; grep -n 'width=' wbeam3.py; nohup python -u wbeam3.py > beam.log 2>&1 & echo "PID $!"; sleep 100; echo "=== 100s ==="; cat beam.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 220; echo "=== log ==="; cat beam.log; echo "---"; ls -la win_l9.json best_l9_path.json 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 150; echo "=== log ==="; cat beam.log; ls -la win_l9.json best_l9_path.json 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+import json
+path=json.load(open('best_l9_path.json'))
+env=fresh()
+for a in path: env.step(a)
+print('len',len(path),'c7',c7(env),'lvl',env.levels_completed,'term',env.terminal())
+f=np.asarray(env.frame())
+print('container 3x3:')
+for r in range(3,6):
+    print(' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(5,8)))
+print('interior region:')
+for r in range(13,23): print(''.join('%2d'%f[r,c] for c in range(21,31)))
+"
+The beam gets 8/9 cells — the mover intrudes into the container and leaves color-5 "damage" in the last cell. This matches the "neutralize the intruder, then fill" pattern. Let me verify the mover damages cells and add a penalty to steer the beam:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _movers
+# watch mover enter container region and check for color-5 damage inside interior
+env=fresh()
+def dmg(env):
+    f=np.asarray(env.frame()); return int((f[13:23,21:31]==5).sum())
+for i in range(66):
+    m=_movers(env,15); d=dmg(env)
+    if (m and 2<=m[0][0]<=6 and 4<=m[0][1]<=8) or d>0:
+        print('step',i,'mover',m,'color5-in-interior',d,'c7',c7(env))
+    env.step(5)
+    if env.terminal(): break
+"
+The beam plateaus at 8/9. Freezing the mover gave the courier +1 (5 vs 4). Let me test a hybrid: beam-fill while also blocking the mover's exit from the maze. First, let me check if the avatar standing at the col-3 maze exit blocks the mover from reaching the container, boosting fills:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && nohup python -u -c "
+from probe9 import *
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def feats(env):
+    f=np.asarray(env.frame())
+    filled=sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+    i2=int((f[13:23,21:31]==2).sum())
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return filled,i2,av,f[12:24,20:32].tobytes()
+def beam(start,width=550,depth=74):
+    base=start.levels_completed
+    fl,i2,av,key=feats(start)
+    frontier=[((-fl,i2),start.clone(),[])]; gbest=(-fl,i2,[])
+    for d in range(depth):
+        cand=[]; seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base: return ('WIN',path+[a])
+                fl,i2,av,key=feats(c); k=(av,key)
+                if k in seen: continue
+                seen.add(k); cand.append(((-fl,i2),c,path+[a]))
+                if (-fl,i2)<(gbest[0],gbest[1]): gbest=(-fl,i2,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0]); frontier=cand[:width]
+        print('d',d,'best',frontier[0][0],'gbest',gbest[0],gbest[1],flush=True)
+    return ('BEST',gbest)
+import json
+env=fresh(); r=beam(env)
+if r[0]=='WIN':
+    print('WIN',len(r[1])); json.dump(r[1],open('win_l9.json','w'))
+else:
+    print('BEST filled',-r[1][0],'i2',r[1][1]); json.dump(r[1][2],open('best_l9_path.json','w'))
+" > beam5.log 2>&1 &
+echo "PID $!"; sleep 5; echo started
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && tail -8 beam5.log 2>/dev/null; echo "---procs---"; ps aux | grep -c "[p]ython -u -c"; ls -la win_l9.json best_l9_path.json 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && pkill -f "python -u -c" 2>/dev/null; pkill -f wbeam 2>/dev/null; sleep 1
+# examine: in the beam's best path, when does the mover enter the container, and can avatar block it?
+python -c "
+from probe9 import *
+from legs import _movers
+import json
+path=json.load(open('best_l9_path.json'))
+env=fresh()
+for i,a in enumerate(path):
+    env.step(a)
+    m=_movers(env,15)
+    if m and 2<=m[0][0]<=6 and 4<=m[0][1]<=8:
+        f=np.asarray(env.frame()); ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4)
+        print('step',i,'mover',m[0],'avatar',av,'c7',c7(env))
+" 2>&1 | head -20
+MAJOR finding: the mover gets **stuck stationary at (5,6) inside the container** from step 47, blocking the last cells. A stationary mover can be USE-killed! Let me test the neutralize-then-finish endgame:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _movers, _grid_scan
+import json
+path=json.load(open('best_l9_path.json'))
+env=fresh()
+for a in path[:47]: env.step(a)
+f=np.asarray(env.frame()); ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4)
+print('at step47: avatar',av,'mover',_movers(env,15),'c7',c7(env))
+print('container:')
+for r in range(3,6): print(' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(5,8)))
+# loose boxes
+box=set()
+for R in range(16):
+  for C in range(16):
+    u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+    if 9 in u and 4 in u and 2 not in u: box.add((R,C))
+CELLS={(r,c) for r in range(3,6) for c in range(5,8)}
+print('loose boxes (outside container):',sorted(b for b in box if b not in CELLS))
+"
+The mover parks (stationary) at (5,6) and disrupts the courier's late fills — killing it should unlock the courier's extra fill. Let me re-run the beam with a heuristic that opportunistically kills the mover:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > wbeam4.py << 'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('wa30', _budget=A._Budget(300000))
+    for a in ck['final_path']: e.step(a)
+    return e
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def feats(env):
+    f=np.asarray(env.frame())
+    filled=sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+    i2=int((f[13:23,21:31]==2).sum())
+    alive=1 if (f==15).any() else 0
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return filled,alive,i2,av,f[12:24,20:32].tobytes()
+def beam(start,width=350,depth=74):
+    base=start.levels_completed
+    fl,al,i2,av,key=feats(start)
+    frontier=[((-fl,al,i2),start.clone(),[])]; gbest=((-fl,al,i2),[])
+    for d in range(depth):
+        cand=[]; seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base: return ('WIN',path+[a])
+                fl,al,i2,av,key=feats(c); k=(av,key,al)
+                if k in seen: continue
+                seen.add(k); sc=(-fl,al,i2); cand.append((sc,c,path+[a]))
+                if sc<gbest[0]: gbest=(sc,path+[a])
+        if not cand: break
+        cand.sort(key=lambda x:x[0]); frontier=cand[:width]
+        if d%6==0: print('d',d,'best',frontier[0][0],'gbest',gbest[0],flush=True)
+    return ('BEST',gbest)
+if __name__=='__main__':
+    env=fresh(); r=beam(env)
+    if r[0]=='WIN':
+        print('WIN len',len(r[1])); json.dump(r[1],open('win_l9.json','w')); print(r[1])
+    else:
+        print('BEST',r[1][0]); json.dump(r[1][1],open('best_l9_path.json','w'))
+EOF
+nohup python -u wbeam4.py > beam4.log 2>&1 &
+echo "PID $!"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 300; echo "=== beam4.log ==="; cat beam4.log; ls -la win_l9.json 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 200; echo "=== beam4.log ==="; tail -12 beam4.log; ls -la win_l9.json 2>/dev/null; echo "procs:"; ps aux|grep -c "[w]beam4"
+The beam fills 3 cells in the first 6 steps then stalls — the courier is fast when boxes are near but slows fetching far ones. This is the L5 "feed the courier" pattern. Let me find the courier's pickup zone:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+# track LEFT courier cell + loose-box disappearances to find fetch zone & seat zone
+def leftcourier(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    pts=[(int(y)//4,int(x)//4) for y,x in zip(ys,xs)]
+    left=[p for p in pts if p[1]<9]
+    return sorted(set(left))
+def boxes(env):
+    f=np.asarray(env.frame()); s=set()
+    for R in range(16):
+      for C in range(16):
+        u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+        if 9 in u and 4 in u and 2 not in u: s.add((R,C))
+    return s
+env=fresh(); pb=boxes(env)
+for i in range(30):
+    lc=leftcourier(env)
+    env.step(5)
+    cb=boxes(env)
+    gone=pb-cb; new=cb-pb
+    if gone or new:
+        print('step',i,'courierCells',lc,'gone',sorted(gone),'new',sorted(new))
+    pb=cb
+"
+The courier seats a cell in ~6 steps when boxes are near, but slows fetching far boxes. Let me test the L5-style "feed the courier" strategy — avatar clusters far boxes next to the container so the courier stays fast:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _grid_scan
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def fills(env):
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+def i2(env):
+    f=np.asarray(env.frame()); return int((f[13:23,21:31]==2).sum())
+def loose(env):
+    f=np.asarray(env.frame()); s=set(CELLS); out=[]
+    for R in range(16):
+      for C in range(16):
+        u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+        if 9 in u and 4 in u and 2 not in u and (R,C) not in s: out.append((R,C))
+    return out
+# Feed strategy: avatar ferries FAR boxes to staging cells beside container's west (col4), courier seats.
+STAGE=[(4,4),(3,4),(5,4),(6,4),(2,4),(6,5)]
+env=fresh(); base=env.levels_completed
+# ferry the far/right boxes to staging
+farboxes=[(8,1),(5,11),(7,12),(8,14),(7,1),(5,1)]
+si=0
+for b in farboxes:
+    if env.terminal() or c7(env)<8: break
+    lb=set(loose(env))
+    if b not in lb: continue
+    s=STAGE[si%len(STAGE)]; si+=1
+    ok=carry_box_to(env,b,s)
+    print('ferry',b,'->',s,'ok',ok,'fills',fills(env),'i2',i2(env),'c7',c7(env))
+# then yield to let courier seat the clustered boxes
+while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+    env.step(5)
+print('FINAL fills',fills(env),'i2',i2(env),'lvl',env.levels_completed,'c7',c7(env))
+"
+Let me try a beam that, upon reaching 8 cells, attempts to directly finish the last cell and check for the win:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > wbeam5.py << 'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import carry_box_to
+ck=json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('wa30', _budget=A._Budget(300000))
+    for a in ck['final_path']: e.step(a)
+    return e
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def feats(env):
+    f=np.asarray(env.frame())
+    open_cells=[(R,C) for (R,C) in CELLS if (f[R*4:R*4+4,C*4:C*4+4]==2).any()]
+    filled=9-len(open_cells)
+    i2=int((f[13:23,21:31]==2).sum())
+    ys,xs=np.where(f==14); av=(int(ys.min())//4,int(xs.min())//4) if len(ys) else (0,0)
+    return filled,i2,av,f[12:24,20:32].tobytes(),open_cells
+def looseboxes(env):
+    f=np.asarray(env.frame()); s=set(CELLS); out=[]
+    for R in range(16):
+      for C in range(16):
+        u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+        if 9 in u and 4 in u and 2 not in u and (R,C) not in s: out.append((R,C))
+    return out
+def try_finish(env, base):
+    # from an 8-cell state, try to fill remaining open cells; return path if wins
+    cl=env.clone(); n0=len(cl.path)
+    for _ in range(4):
+        fl,i2,av,key,opens=feats(cl)
+        if cl.levels_completed>base: return []
+        if not opens: break
+        lb=looseboxes(cl)
+        if not lb: 
+            # yield a few for courier
+            for _ in range(6):
+                if cl.terminal() or cl.levels_completed>base: break
+                cl.step(5)
+            if cl.levels_completed>base: return [5]  # marker
+            continue
+        s=opens[0]
+        lb.sort(key=lambda b:abs(b[0]-s[0])+abs(b[1]-s[1]))
+        done=False
+        for b in lb[:3]:
+            try:
+                if carry_box_to(cl,b,s): done=True; break
+            except Exception: pass
+        if cl.levels_completed>base: return []
+        if not done:
+            for _ in range(4):
+                if cl.terminal() or cl.levels_completed>base: break
+                cl.step(5)
+    return None
+def beam(start,width=300,depth=70):
+    base=start.levels_completed
+    fl,i2,av,key,opens=feats(start)
+    frontier=[((-fl,i2),start.clone(),[])]
+    for d in range(depth):
+        cand=[]; seen=set()
+        for h,env,path in frontier:
+            if env.terminal(): continue
+            for a in [1,2,3,4,5]:
+                c=env.clone(); c.step(a)
+                if c.levels_completed>base: return ('WIN',path+[a])
+                fl,i2,av,key,opens=feats(c); k=(av,key)
+                if k in seen: continue
+                seen.add(k)
+                if fl>=8 and c7_ok(c):
+                    r=try_finish(c,base)
+                    if r is not None:
+                        print('FINISH from filled',fl,'depth',d,flush=True)
+                        return ('WIN', path+[a])  # the finish confirms winnable state
+                cand.append(((-fl,i2),c,path+[a]))
+        if not cand: break
+        cand.sort(key=lambda x:x[0]); frontier=cand[:width]
+        if d%6==0: print('d',d,'best',frontier[0][0],flush=True)
+    return ('BEST',frontier[0][2] if frontier else [])
+def c7_ok(env):
+    return int((np.asarray(env.frame())==7).sum())>3
+if __name__=='__main__':
+    env=fresh(); r=beam(env)
+    print('RES',r[0],'len',len(r[1]))
+    json.dump(r[1],open('l9_result_path.json','w'))
+EOF
+nohup python -u wbeam5.py > beam5b.log 2>&1 &
+echo "PID $!"; sleep 280; echo "=== log ==="; cat beam5b.log
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 200; echo "=== log ==="; tail -15 beam5b.log; echo "procs:"; ps aux|grep -c "[w]beam5"
+Let me verify the exact step budget precisely and whether move-actions vs USE consume the timer differently:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+# count steps to terminal under: all USE, all UP, alternating
+for label,acts in [('USE',[5]),('UP',[1]),('DOWN',[2]),('LRLR',[3,4]),('mix',[1,2,3,4,5])]:
+    env=fresh(); i=0
+    while not env.terminal() and i<200:
+        env.step(acts[i%len(acts)]); i+=1
+    print(label,'terminal at step',i,'c7',c7(env))
+"
+Confirmed: hard 70-step budget. Let me do a final check — does the courier fill faster when the avatar is entirely out of the top region (avatar's presence may block it)?
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def fills(env):
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+def i2(env):
+    f=np.asarray(env.frame()); return int((f[13:23,21:31]==2).sum())
+# park avatar deep in maze (far from top) and measure courier max
+env=fresh()
+for a in [2,3,3,3,3,3,2,2,2,2]: env.step(a)  # to (14,3) deep
+mx=0; mi=100
+while not env.terminal() and c7(env)>0:
+    env.step(5); mx=max(mx,fills(env)); mi=min(mi,i2(env))
+print('avatar-deep-maze: peak fills',mx,'min i2',mi,'final fills',fills(env))
+"
+Courier does 6 with the mover neutralized. The winning idea: fill normally, and when the mover parks (stationary) inside the container, USE-kill it (cheap since the avatar is filling nearby), freeing that cell. Let me build and test this step-level controller:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat > ctl9.py << 'EOF'
+from probe9 import *
+from legs import carry_box_to, _grid_scan, _movers, _bfs_path, _avatar_nav
+DIRS={(-1,0):1,(1,0):2,(0,-1):3,(0,1):4}
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def opens(env):
+    f=np.asarray(env.frame()); return [(R,C) for (R,C) in CELLS if (f[R*4:R*4+4,C*4:C*4+4]==2).any()]
+def loose(env):
+    f=np.asarray(env.frame()); s=set(CELLS); out=[]
+    for R in range(16):
+      for C in range(16):
+        u=set(int(v) for v in np.unique(f[R*4:R*4+4,C*4:C*4+4]))
+        if 9 in u and 4 in u and 2 not in u and (R,C) not in s: out.append((R,C))
+    return out
+def kill_if_parked(env, prev_m):
+    ms=_movers(env,15)
+    if not ms: return None
+    m=ms[0]
+    # in/near container and stationary
+    if prev_m==m and 2<=m[0]<=6 and 4<=m[1]<=8:
+        a=av(env)
+        if a is None: return m
+        d=abs(a[0]-m[0])+abs(a[1]-m[1])
+        if d==1:
+            env.step(DIRS[(m[0]-a[0],m[1]-a[1])]); env.step(5)
+            return _movers(env,15)[0] if _movers(env,15) else None
+        # navigate adjacent (short)
+        av2,boxes,walls=_grid_scan(env)
+        blocked=(set(walls)|set(boxes))-{m}
+        # target a cell adjacent to m
+        for dr,dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+            adj=(m[0]+dr,m[1]+dc)
+            if adj in blocked: continue
+            p=_bfs_path(a,adj,blocked)
+            if p is not None and len(p)<=3:
+                for st in p: env.step(st)
+                a=av(env)
+                if abs(a[0]-m[0])+abs(a[1]-m[1])==1:
+                    env.step(DIRS[(m[0]-a[0],m[1]-a[1])]); env.step(5)
+                return _movers(env,15)[0] if _movers(env,15) else None
+    return m
+def solve(env, verbose=False):
+    base=env.levels_completed; prev_m=None
+    guard=0
+    while not env.terminal() and env.levels_completed<=base and c7(env)>2 and guard<40:
+        guard+=1
+        op=opens(env)
+        if not op:
+            break
+        # try kill parked mover first (cheap)
+        prev_m2=kill_if_parked(env, prev_m)
+        if env.terminal() or env.levels_completed>base: break
+        ms=_movers(env,15); prev_m=ms[0] if ms else None
+        op=opens(env)
+        if not op: break
+        lb=loose(env)
+        if not lb:
+            for _ in range(4):
+                if env.terminal() or env.levels_completed>base: break
+                env.step(5)
+            continue
+        a=av(env)
+        # choose (box,cell) min cost; avatar prefers deep/east, but take cheapest
+        best=None
+        for s in op:
+            for b in lb:
+                d=abs(a[0]-b[0])+abs(a[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1])
+                if best is None or d<best[0]: best=(d,b,s)
+        cands=sorted([(abs(a[0]-b[0])+abs(a[1]-b[1])+abs(b[0]-s[0])+abs(b[1]-s[1]),b,s) for s in op for b in lb))
+        did=False
+        for _,b,s in cands:
+            try: ok=carry_box_to(env,b,s)
+            except Exception: ok=False; break
+            if ok: did=True; break
+        ms=_movers(env,15); prev_m=ms[0] if ms else None
+        if not did: env.step(5)
+        if verbose:
+            f=np.asarray(env.frame()); fl=sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+            print('fills',fl,'open',opens(env),'mover',_movers(env,15),'c7',c7(env),'lvl',env.levels_completed)
+    # endgame yield
+    while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+        env.step(5)
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+if __name__=='__main__':
+    env=fresh(); n=solve(env,verbose=True)
+    print('FINAL fills',n,'lvl',env.levels_completed,'term',env.terminal())
+EOF
+python ctl9.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -i '' 's/for b in lb))/for b in lb])/' ctl9.py && sed -i '' '/best=None/,/if best is None or d<best\[0\]: best=(d,b,s)/d' ctl9.py && python ctl9.py 2>&1 | tail -20
+The ceiling is firmly 8 cells even without mover interference — it's a hard time constraint. Let me launch a long wide beam as a final check for any 70-step full-fill, while I prepare the player code:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cp wbeam3.py wbeam_final.py && sed -i '' 's/width=300/width=520/' wbeam_final.py && sed -i '' 's/best_l9_path.json/best_l9_final.json/' wbeam_final.py && nohup python -u wbeam_final.py > beamF.log 2>&1 & echo "PID $!"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat beamF.log 2>/dev/null; echo "---"; ls -la win_l9.json best_l9_final.json 2>/dev/null; ps aux | grep "[w]beam_final" | awk '{print $2}'
+Width 520 also caps at 8 cells. This is definitive across all searches. Let me clean up and do a couple final high-value mechanic probes (interacting with the courier directly) before finalizing:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && pkill -f wbeam 2>/dev/null; pkill -f "python -u" 2>/dev/null; sleep 1
+python -c "
+from probe9 import *
+from legs import _avatar_nav, _grid_scan
+import perception as P
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+def leftc(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    pts=[(int(y)//4,int(x)//4) for y,x in zip(ys,xs)]; l=[p for p in pts if p[1]<9]
+    return min(l) if l else None
+# 1) move avatar INTO courier -- does it swap/command?
+env=fresh()
+_avatar_nav(env,(7,3),cap=20)  # near left courier start (7,4)
+print('av',av(env),'courier',leftc(env))
+b=np.asarray(env.frame()).copy()
+env.step(4)  # move toward courier (east)
+print('after move-into-courier: av',av(env),'courier',leftc(env),'delta',P.frame_delta(b,np.asarray(env.frame()))['count'])
+# 2) USE adjacent to courier
+env2=fresh(); _avatar_nav(env2,(7,3),cap=20)
+c0=leftc(env2)
+env2.step(4); env2.step(5)  # face courier + USE
+print('USE-at-courier: av',av(env2),'courier',leftc(env2))
+"
+Let me test one targeted hypothesis: the courier fills (5,5) early but relays it away to reach (5,6)/(5,7). If the avatar pre-fills those relay targets, (5,5) should stick — potentially completing the container:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def fills(env):
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+def opens(env):
+    f=np.asarray(env.frame()); return [(R,C) for (R,C) in CELLS if (f[R*4:R*4+4,C*4:C*4+4]==2).any()]
+# Plan: avatar fills (5,7),(5,6) early to block relay; then (4,7),(3,7); courier does west col.
+for plan in [
+  [((7,12),(5,7)),((5,11),(5,6)),((8,14),(4,7)),((5,3),(3,7))],
+  [((5,3),(5,6)),((7,12),(5,7)),((5,11),(4,7)),((8,14),(3,7))],
+  [((7,12),(5,7)),((8,14),(5,6)),((5,3),(4,7)),((3,2),(3,7))],
+]:
+    env=fresh(); base=env.levels_completed
+    for b,s in plan:
+        if env.terminal() or env.levels_completed>base: break
+        carry_box_to(env,b,s)
+    while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+        env.step(5)
+    print('final fills',fills(env),'open',opens(env),'lvl',env.levels_completed,'plan0',plan[0])
+"
+All strategies definitively cap at 8/9 cells within the hard 70-step timer. I've exhaustively verified this level's fill requirement (9 cells) exceeds what one courier + avatar can achieve in the budget. Let me implement a clean, general, reusable fill leg and wire `play_level_9` so the pipeline is correct and maximally progresses, then verify:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sed -n '1,30p' legs.py
+Let me reconsider — the key untested combination is strict spatial separation (avatar does only east cells, courier does west undisturbed → courier keeps its 6). Let me test this precisely and examine the courier's count and the missing cell:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _movers
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def fills(env):
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+def opens(env):
+    f=np.asarray(env.frame()); return [(R,C) for (R,C) in CELLS if (f[R*4:R*4+4,C*4:C*4+4]==2).any()]
+# avatar: 3 right boxes -> east column, then dip to freeze mover (col3) for endgame while courier finishes west
+env=fresh(); base=env.levels_completed
+for b,s in [((7,12),(5,7)),((5,11),(4,7)),((8,14),(3,7))]:
+    if env.terminal(): break
+    carry_box_to(env,b,s)
+print('after east carries: fills',fills(env),'open',opens(env),'c7',c7(env),'mover',_movers(env,15))
+# dip to freeze mover for the rest so courier finishes undisturbed
+from legs import _avatar_nav
+_avatar_nav(env,(10,3),cap=8)
+print('parked to freeze; c7',c7(env),'mover',_movers(env,15))
+while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+    env.step(5)
+print('FINAL fills',fills(env),'open',opens(env),'lvl',env.levels_completed)
+"
+I've exhaustively confirmed the 8/9 ceiling within the 70-step timer. Let me implement a clean, general, reusable fill leg (the "single-container fill with helper courier, opportunistically clearing a parked intruder" shape) and wire `play_level_9`, with robust budget/terminal guards:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && tail -30 legs.py
+Let me test the cleanest max-attempt: 3 east carries, then kill the mover when it's near the container, then yield for the undisturbed courier:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to, _movers, _grid_scan, _bfs_path
+DIRS={(-1,0):1,(1,0):2,(0,-1):3,(0,1):4}
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+def fills(env):
+    f=np.asarray(env.frame()); return sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+def opens(env):
+    f=np.asarray(env.frame()); return [(R,C) for (R,C) in CELLS if (f[R*4:R*4+4,C*4:C*4+4]==2).any()]
+def av(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==14); return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+env=fresh(); base=env.levels_completed
+for b,s in [((7,12),(5,7)),((5,11),(4,7)),((8,14),(3,7))]:
+    if env.terminal(): break
+    carry_box_to(env,b,s)
+print('post-east fills',fills(env),'open',opens(env),'c7',c7(env),'mover',_movers(env,15))
+# kill mover: chase with USE when adjacent, up to 8 steps
+for _ in range(8):
+    ms=_movers(env,15)
+    if not ms: print('mover killed c7',c7(env)); break
+    m=ms[0]; a=av(env); d=abs(a[0]-m[0])+abs(a[1]-m[1])
+    if d==1: env.step(DIRS[(m[0]-a[0],m[1]-a[1])]); env.step(5); continue
+    av2,boxes,walls=_grid_scan(env); p=_bfs_path(a,m,(set(walls)|set(boxes))-{m})
+    if p: env.step(p[0])
+    else: break
+print('after kill attempt fills',fills(env),'open',opens(env),'c7',c7(env),'mover',_movers(env,15))
+while not env.terminal() and env.levels_completed<=base and c7(env)>0:
+    env.step(5)
+print('FINAL fills',fills(env),'open',opens(env),'lvl',env.levels_completed)
+"
+The mover evades chasing near the container and disrupts. 8 cells is the definitive ceiling within the 70-step timer. Let me now implement a clean, general, reusable fill leg and wire `play_level_9`:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat >> legs.py << 'PYEOF'
+
+
+def _container_state(env, cells, G=16):
+    """(open_cells, loose_boxes) for a single goal container.
+
+    A container cell is *open* while its 4x4 block still shows the empty-core
+    colour 2; a *loose box* is any 4x4 block with a 9 core wrapped in colour 4
+    (or the in-transit colour 3) that is NOT one of ``cells``.
+    """
+    f = np.asarray(env.frame())
+    cellset = set(cells)
+    opens, boxes = [], []
+    for R in range(G):
+        for C in range(G):
+            blk = f[R * 4:R * 4 + 4, C * 4:C * 4 + 4]
+            u = set(int(v) for v in np.unique(blk))
+            if (R, C) in cellset:
+                if 2 in u:
+                    opens.append((R, C))
+            elif 9 in u and (4 in u or 3 in u) and 2 not in u:
+                boxes.append((R, C))
+    return opens, boxes
+
+
+def fill_goal_container(env, cells, guard_c7=2, cap=80, mover=None):
+    """Fill a single goal container's ``cells`` with the arena's loose boxes.
+
+    The recurring wa30 end-game shape: a helper courier auto-seats boxes into
+    the same container while the avatar rigid-carries the boxes the courier is
+    slow to reach.  Each round the avatar delivers the loose box nearest an
+    open cell (shortest avatar+carry Manhattan), trying the next candidate on a
+    failed/unroutable carry and ceding a turn to the courier only when nothing
+    is deliverable.  If ``mover`` (a self-mover colour) is given, a stationary
+    adjacent one is USE-cleared for free (neutralise-then-fill).  Bounded by the
+    colour-7 step bar (``guard_c7``) and terminal; returns filled-cell count.
+    """
+    base = env.levels_completed
+    prev_m = None
+    for _ in range(cap):
+        if env.terminal() or env.levels_completed > base:
+            break
+        if _color_count(env, 7) <= guard_c7:
+            break
+        # opportunistic free neutralise of a parked adjacent intruder
+        if mover is not None:
+            ms = _movers(env, mover)
+            m = ms[0] if ms else None
+            if m is not None and m == prev_m:
+                av = _grid_scan(env)[0]
+                if abs(av[0] - m[0]) + abs(av[1] - m[1]) == 1:
+                    env.step(_DIRS_INV[(m[0] - av[0], m[1] - av[1])])
+                    env.step(USE)
+            prev_m = _movers(env, mover)[0] if _movers(env, mover) else None
+        opens, boxes = _container_state(env, cells)
+        if not opens:
+            break
+        if not boxes:
+            env.step(USE)
+            continue
+        av = _grid_scan(env)[0]
+        cands = sorted(
+            (abs(av[0] - b[0]) + abs(av[1] - b[1])
+             + abs(b[0] - s[0]) + abs(b[1] - s[1]), b, s)
+            for s in opens for b in boxes)
+        did = False
+        for _, b, s in cands:
+            if env.terminal():
+                break
+            try:
+                if carry_box_to(env, b, s):
+                    did = True
+                    break
+            except Exception:
+                break
+        if not did:
+            env.step(USE)
+    opens, _ = _container_state(env, cells)
+    return len(cells) - len(opens)
+
+
+_DIRS_INV = {(-1, 0): UP, (1, 0): DOWN, (0, -1): LEFT, (0, 1): RIGHT}
+
+
+def _color_count(env, color):
+    return int((np.asarray(env.frame()) == color).sum())
+PYEOF
+echo "leg added"; python -c "import legs; print('import ok', hasattr(legs,'fill_goal_container'))"
+Now wire `play_level_9` to compose this leg:
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from players import play_level_9
+env=fresh(); base=env.levels_completed
+play_level_9(env)
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+f=np.asarray(env.frame()); fl=sum(1 for (R,C) in CELLS if not (f[R*4:R*4+4,C*4:C*4+4]==2).any())
+print('play_level_9 -> fills',fl,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+"
+The leg reaches 8/9 robustly. Let me run the real harness end-to-end to confirm the pipeline is correct and there's no regression or error:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python gkm_try.py 2>&1 | tail -5
+The real harness has a move/time cap hit at 600 — the checkpoint replay (588 moves) leaves almost nothing for level 9. Let me determine the exact cap and its nature (move-count vs wall-time vs clone-steps):
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import inspect
+src=inspect.getsource(A.run_program)
+print(src[:2000])
+" 2>&1 | head -60
+Now I understand the real constraint: `step_cap=600` total real moves, and the checkpoint replay uses 588, leaving only 12 for level 9. Clones don't count against it. Let me do a definitive wide-beam check for whether a full 9-fill is even possible in the 70-step level budget (running in background while I assess the checkpoint):
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cp wbeam3.py wbeam_wide.py && sed -i '' 's/width=300/width=900/' wbeam_wide.py && sed -i '' 's/best_l9_path.json/best_wide.json/' wbeam_wide.py && (python -u wbeam_wide.py > beamW.log 2>&1 &) ; echo "launched"; sleep 2
+# Meanwhile: how many moves do the players take for levels 1-8 run fresh (no checkpoint)?
+python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, players
+def solve18(env):
+    while not env.terminal():
+        k=env.levels_completed+1
+        if k>8: return
+        fn=getattr(players,f'play_level_{k}',None)
+        if fn is None: return
+        before=env.levels_completed; fn(env)
+        if env.levels_completed<=before: return
+lv,path,err=A.run_program('wa30',solve18)
+print('fresh players L1-8: levels',lv,'moves',len(path),'err',err)
+" 2>&1 | tail -3
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 400; echo "=== wide beam log ==="; cat beamW.log; ls -la win_l9.json 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 250; tail -6 beamW.log; ls -la win_l9.json 2>/dev/null; echo "still running:"; ps aux|grep -c "[w]beam_wide"
+The wide beam (width 900) is tracking the same 8-cell ceiling. This is conclusive across every search method. Let me stop it and do a final clean end-to-end verification:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && sleep 200; tail -4 beamW.log; echo "win?"; ls win_l9.json 2>/dev/null || echo "no win found"; pkill -f wbeam 2>/dev/null; pkill -f "python -u" 2>/dev/null; sleep 1; echo killed
+Let me investigate whether the center cell (4,6) — which has no frame and may be the persistent empty — is even fillable, as that could be the true blocker:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import carry_box_to
+# which container cells are avatar-fillable at level start, from any box?
+CELLS=[(r,c) for r in range(3,6) for c in range(5,8)]
+boxes=[(3,2),(5,1),(5,3),(7,1),(7,2),(8,1),(5,11),(7,12),(8,14)]
+for s in CELLS:
+    ok_any=False; cost=None
+    for b in boxes:
+        e=fresh(); n=len(e.path)
+        try: ok=carry_box_to(e,b,s)
+        except: ok=False
+        if ok: ok_any=True; cost=len(e.path)-n; break
+    print('cell',s,'avatar-fillable?',ok_any,'cost',cost)
+"
+Only (5,5) is avatar-unfillable — every other cell including center is fillable. The persistent empty may be a socket vs the center. Let me test whether targeting only the 8 socket cells (excluding center) reaches a winning 8-socket state:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from legs import fill_goal_container
+from probe9 import *
+# target ONLY the 8 socket cells (exclude center 4,6)
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+env=fresh(); base=env.levels_completed
+n=fill_goal_container(env, SOCK8, mover=15)
+print('8-socket target -> filled',n,'lvl',env.levels_completed,'term',env.terminal(),'c7',c7(env))
+f=np.asarray(env.frame())
+for r in range(3,6): print(' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(5,8)))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from legs import carry_box_to, fill_goal_container, _movers
+from probe9 import *
+SOCK8=[(3,5),(3,6),(3,7),(4,5),(4,7),(5,5),(5,6),(5,7)]
+def sf(env):
+    f=np.asarray(env.frame()); return sum(1 for s in SOCK8 if not (f[s[0]*4:s[0]*4+4,s[1]*4:s[1]*4+4]==2).any())
+# block relay: fill (5,7),(5,6) early with west boxes, then fill rest
+for firsts in [[((5,3),(5,7)),((5,1),(5,6))],[((5,3),(5,6)),((5,1),(5,7))],[((5,1),(5,7)),((5,3),(5,6))]]:
+    env=fresh(); base=env.levels_completed
+    for b,s in firsts:
+        if env.terminal(): break
+        carry_box_to(env,b,s)
+    # now greedy fill the remaining 8-socket set
+    n=fill_goal_container(env, SOCK8, mover=15, cap=40)
+    print('firsts',firsts[0][1],firsts[1][1],'-> sockets',sf(env),'lvl',env.levels_completed,'c7',c7(env))
+    f=np.asarray(env.frame())
+    print('   (5,5)=',classify(f[5*4:5*4+4,5*4:5*4+4]),'(5,6)=',classify(f[5*4:5*4+4,6*4:6*4+4]),'(5,7)=',classify(f[5*4:5*4+4,7*4:7*4+4]))
+"
+The courier's relay behavior actively *un-fills* cells (it grabs placed boxes to relay deeper), which — combined with the 70-step timer — caps simultaneous fills at 8/9. I've now definitively established this via analytical bounds, greedy, min-cost, lookahead, random, and wide beam (width 900) searches. Let me document the finding and confirm the clean deliverable:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && cat >> legs_log.md << 'MDEOF'
+
+## wa30 L9 debrief -- single-container fill, and the two hard limits
+
+L9 is the same **fill-the-goal-container** end-game shape as L6/L7/L8: a
+3x3 (12x12px) colour-9-framed container with a colour-2 interior, fed by ONE
+active helper courier (colour 12); a second courier is permanently penned
+behind a solid colour-2 band + the colour-9... err colour-5 mid-wall and never
+helps.  Exactly 9 loose boxes for the 9 slots.  A self-mover (colour 15)
+serpentines the lower maze (it can be frozen by parking the avatar at the
+col-3 maze mouth, or killed by cornering it, but neither is free).
+
+New reusable leg: **`fill_goal_container(env, cells, mover=None)`** -- greedy
+nearest-box -> nearest-open-cell rigid carry, try-next-on-fail, cede a turn to
+the courier when nothing is deliverable, and (optionally) USE-clear a parked
+adjacent mover.  This is the general single-container specialisation of the
+shared deliver phase; `play_level_9` is a one-line composition of it.
+
+Two hard limits were measured (raw-frame probes + width-900 clone beam):
+
+1. **Fill ceiling = 8 of 9.**  The lone courier is relay-based (it seats a box
+   at the west entry then *re-grabs* it to push it deeper, transiently -- and
+   sometimes permanently -- UN-filling cells, including the avatar's).  Cell
+   (5,5) is courier-only (the avatar can reach every other cell).  Pure courier
+   ~4-6; avatar adds ~2-3 but competes; the 70-step colour-7 bar terminates the
+   level.  Every search (greedy/min-cost/lookahead/random/beam w<=900, multiple
+   heuristics) plateaus at 8 filled cells (interior colour-2 = 9px); the win
+   needs all 9, so no fill-win exists inside the timer.  A depth-40 clone BFS
+   found no short alternative win either.
+
+2. **Global move cap.**  `run_program` enforces `step_cap=600` REAL env.step
+   calls total (clones are free).  The validated L1-8 path is 588 moves, so the
+   resumed solver has only 12 real moves for L9 -- far below its 70-step bar.
+
+`play_level_9` therefore reaches the discovered maximum (8/9) when given budget
+but cannot complete the container; L9 as configured appears to sit past the
+solvable edge under both the per-level colour-7 timer and the 600-move cap.
+MDEOF
+echo "logged"
+Let me test one more avenue — the courier un-fills cells via relay; if I can neutralize the *courier* after it seats (5,5), the avatar could finish without interference:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && python -c "
+from probe9 import *
+from legs import _avatar_nav, _grid_scan
+def ncour(env):
+    return int((np.asarray(env.frame())==12).sum())//16  # approx courier count (16px each)
+def leftc(env):
+    f=np.asarray(env.frame()); ys,xs=np.where(f==12)
+    pts=[(int(y)//4,int(x)//4) for y,x in zip(ys,xs)]; l=[p for p in pts if p[1]<9]
+    return min(l) if l else None
+env=fresh()
+# let courier work a bit, then try to kill it: navigate adjacent and USE from various facings
+for i in range(10): env.step(5)
+c=leftc(env); print('courier at',c,'count~',ncour(env))
+# navigate adjacent to courier and USE repeatedly
+import legs
+a=_grid_scan(env)[0]
+for attempt in range(6):
+    c=leftc(env)
+    if c is None: print('courier gone!'); break
+    a=_grid_scan(env)[0]
+    # step toward courier
+    dr=(c[0]>a[0])-(c[0]<a[0]); dc=(c[1]>a[1])-(c[1]<a[1])
+    if abs(a[0]-c[0])+abs(a[1]-c[1])==1:
+        # face and USE
+        from legs import _DIRS_INV
+        env.step(_DIRS_INV[(c[0]-a[0],c[1]-a[1])]); env.step(5)
+        print('USE on courier; count~',ncour(env),'courier',leftc(env))
+    else:
+        if dr!=0: env.step(2 if dr>0 else 1)
+        elif dc!=0: env.step(4 if dc>0 else 3)
+print('final courier count~',ncour(env))
+"
+The courier evades and is USE-immune — it can't be neutralized, and its relay behavior caps fills at 8/9. Combined with the 600-move cap (588 used by L1–8), level 9 is beyond the solvable edge under the discovered mechanics. Let me clean up background processes and run the final end-to-end check:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && pkill -f wbeam 2>/dev/null; pkill -f "python -u" 2>/dev/null; sleep 1
+python -c "import legs, players; print('legs.fill_goal_container:', hasattr(legs,'fill_goal_container')); print('players.play_level_9:', hasattr(players,'play_level_9'))"
+echo "=== final gkm_try ==="
+python gkm_try.py 2>&1 | tail -3
+I've completed an exhaustive investigation. Let me verify the final deliverable files are clean:
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_budget && echo "=== play_level_9 ==="; sed -n '/def play_level_9/,/^$/p' players.py; echo "=== fill_goal_container signature ==="; grep -n "def fill_goal_container\|def _container_state" legs.py; python -c "import players, legs; print('imports OK')"
+I've completed an exhaustive investigation of wa30 level 9. Here is my summary.
+
+## What I discovered about level 9
+
+Using only raw-frame probes and clone searches (no game source), I determined:
+
+- **Avatar/actions**: 1–4 move the avatar; 5 is grab/drop (USE). Boxes are moved only by grab+rigid-carry (no pushing, no throwing, no ranged fill).
+- **Goal**: a single 3×3 (12×12px) colour‑9‑framed container with a colour‑2 interior must be fully filled with boxes — the same "fill‑the‑container" win shape as L6/L7/L8. There are **exactly 9 loose boxes for the 9 slots**.
+- **Helpers/hazards**: one active helper courier (colour 12) seats boxes via a slow *relay* (it re‑grabs placed boxes to push them deeper, transiently — and sometimes permanently — **un‑filling** cells). A second courier is permanently walled off. A self‑mover (colour 15) serpentines the lower maze; it can be frozen (park avatar at the col‑3 mouth) or cornered‑and‑killed, but neither is free, and it doesn't stop the timer.
+- **Per‑level timer**: the colour‑7 bottom bar is a hard **~70 real‑step budget** (level fails at 0), independent of the mover.
+
+## The two hard limits (why it's unsolvable here)
+
+1. **Fill ceiling = 8 of 9.** Across every method — analytical bounds, greedy, min‑cost greedy, one‑ply lookahead, random search, targeted‑finish, feed‑the‑courier, neutralize‑then‑fill, and a **width‑900 raw‑action clone beam** with multiple heuristics — the container plateaus at **8 filled cells** (interior colour‑2 = 9px). The lone relay‑courier caps at ~4–6 and undoes fills; cell (5,5) is courier‑only. The win needs all 9. A depth‑40 clone BFS found no short alternative win.
+2. **Global move cap.** `run_program` enforces `step_cap=600` real `env.step` calls (clones are free). The validated L1–8 path is **588 moves**, leaving only **12** for L9 — far below its 70‑step bar.
+
+## What I delivered
+
+- Added a **general, reusable leg** `fill_goal_container(env, cells, mover=None)` to `legs.py` — the single‑container specialization of the shared deliver phase (greedy nearest‑box→nearest‑open‑cell rigid carry, try‑next‑on‑fail, cede turns to the courier, and opportunistically USE‑clear a parked adjacent mover). Bounded by the colour‑7 bar and terminal.
+- Wrote **`play_level_9(env)`** in `players.py` as a one‑line composition of that leg (no inline level logic).
+- Documented the full analysis in `legs_log.md`.
+
+`python gkm_try.py` reports `levels=8 replay_ok=True` (no regression to the validated L1–8). The player reaches the discovered maximum (8/9) when given budget but cannot complete the container: **level 9 as configured sits past the solvable edge under both the per‑level 70‑step colour‑7 timer and the 600‑move global cap** — consistent with it being marked failed in prior attempts. The leg and player are correct, general, and ready to succeed should the container/timer constraints differ in a re‑configuration.

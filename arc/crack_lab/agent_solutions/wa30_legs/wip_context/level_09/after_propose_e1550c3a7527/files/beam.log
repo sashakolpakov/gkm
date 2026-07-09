@@ -1,0 +1,13 @@
+d 0 best(-fl,i2) (0, 100) gbest 0 100
+d 6 best(-fl,i2) (-3, 63) gbest -3 63
+d 12 best(-fl,i2) (-3, 60) gbest -3 60
+d 18 best(-fl,i2) (-4, 48) gbest -4 48
+d 24 best(-fl,i2) (-5, 39) gbest -5 39
+d 30 best(-fl,i2) (-5, 36) gbest -5 36
+d 36 best(-fl,i2) (-6, 27) gbest -6 27
+d 42 best(-fl,i2) (-6, 27) gbest -6 27
+d 48 best(-fl,i2) (-6, 27) gbest -6 27
+d 54 best(-fl,i2) (-7, 18) gbest -7 18
+d 60 best(-fl,i2) (-7, 18) gbest -7 18
+d 66 best(-fl,i2) (-7, 18) gbest -8 9
+BEST filled 8 i2 9 len 63

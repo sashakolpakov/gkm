@@ -4,6 +4,7 @@
 \usepackage{hyperref}
 \usepackage{enumitem}
 \usepackage{booktabs}
+\usepackage{graphicx}
 \hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
 
 \title{Cracking ARC-AGI-3 Games with a Self-Improving Agent\\
@@ -29,20 +30,19 @@ incumbent under a free energy $\F = R + \lambda C$ that trades reward against
 description length. We connect this to Kolmogorov complexity and Solomonoff induction
 (the $C$ term), to Schmidhuber's G\"odel machine and PowerPlay (self-rewriting under an
 empirical proof of improvement, driven by compression-progress novelty), and to a
-colimit-cone view of skills (``legs'') composed into solutions. Empirically, on
-\texttt{wa30} the agent wrote a solver clearing levels~1--6 (replay-validated),
-finding level tactics beyond its priors --- though we identify, and retire, a bias:
-those runs' priors named the carry mechanic and hinted the relay, distilled from
-earlier human play; the same
-game-agnostic agent transferred to a second game, \texttt{ls20}, clearing levels~1--4.
-When the harness enforces a growing \emph{leg library}, the marginal description length
-of each new level collapses ($55\to18\to2\to2$ on \texttt{ls20}), i.e.\ later levels are
-solved by \emph{composing} existing legs with almost no new structure --- transfer,
-priced by the same free energy; on \texttt{wa30}, whose levels introduce genuinely new
-mechanics, marginal novelty instead tracks the novelty the game demands
-($112\to78\to95$), as a novelty-priced free energy should. We report the honest
-negatives alongside: which levels remain unsolved, and that a prompt-only local model
-is currently too weak to drive the same loop.
+colimit-cone view of skills (``legs'') composed into solutions. Empirically, the
+promoted GKM artifacts solve \texttt{wa30} through level~9 and \texttt{ls20} through
+level~7, replay-validated from their recorded action paths. The \texttt{wa30}
+artifact reaches level~9 in 596 moves with total marginal complexity 1243; the
+\texttt{ls20} artifact reaches level~7 in 393 moves with total marginal complexity
+362. The preserved WIP snapshots show how these solvers were obtained: early levels
+were searched or written directly by the proposer, later levels were refactored into
+thin players over a shared leg library, and recovered verified paths were admitted only
+after independent replay. The result is not ``one monolithic script got lucky'' but a
+priced growth trace: reuse is free, literal replay plans are charged, and new
+mechanics appear as marginal novelty. We report the honest negatives alongside: the
+result is on two local preview games, not the full ARC-AGI-3 distribution, and a
+prompt-only local model is currently too weak to drive the same loop.
 \end{abstract}
 
 \section{Introduction}
@@ -53,6 +53,16 @@ labelled --- not the avatar, not the objects, not the goal. Solving such a game 
 scratch requires \emph{discovering} the perception, the manipulation mechanics, the
 objective, and a plan, and then \emph{transferring} what was learned to later levels
 and other games.
+This is a deliberately hard regime: the ARC-AGI-3 report describes human test-takers
+solving all environments while frontier AI systems scored below 1\% as of March
+2026~\cite{arcagi3}. The immediately preceding ARC Prize 2025 report identifies
+per-task refinement loops --- iterative program improvement guided by feedback --- as
+the defining successful pattern on ARC-AGI-2~\cite{arcprize2025}. Our work brings that
+pattern to the interactive ARC-AGI-3 setting, but with an explicit MDL/free-energy
+price on new program structure. Contemporary ARC-AGI-3 baselines also point toward
+explicit state tracking, exploration graphs, and executable world models rather than
+pure prompt-only reasoning~\cite{arcagi3graph,arcagi3worldmodels}; GKM differs by
+making the growth of those structures itself the priced object.
 
 Our thesis is that an agent equipped with a rich stock of \emph{human preconceptions}
 about the world, and disciplined by a single \emph{free-energy} selection rule, can do
@@ -136,9 +146,10 @@ All reported results use the strong proposer; the small local model is presently
 weak to drive the loop (Section~\ref{sec:discussion}).
 
 \subsection{Admission by free energy; the leg library}
-A written program is admitted only if it verifiably lowers Eq.~\eqref{eq:fe} on the real
-game: $R=-(\text{levels reached})$ and $C$ its description length, with $\lambda$ small so
-parsimony breaks ties without stifling a larger program that clears more levels;
+A written program is admitted only if replay lowers Eq.~\eqref{eq:fe} on the real
+game. We take $R$ to be minus the number of levels reached and $C$ to be the
+program's description length, with $\lambda$ small so parsimony breaks ties without
+stifling a larger program that clears more levels;
 compression-progress/disagreement add an intrinsic novelty term that only \emph{steers}
 exploration; earlier behaviour is preserved against regression; and the simulator is the
 ground-truth verifier (a candidate is replayed on a fresh environment and kept only if
@@ -160,40 +171,61 @@ scoring, produces the intended behaviour.
 
 \section{Results}
 All results are replay-validated: the recorded action sequence is re-run on a fresh
-environment and must reach the claimed level.
+environment and must reach the claimed level. The ground truth for the claims below is
+the promoted GKM code/artifacts under \texttt{arc/crack\_lab/agent\_solutions/*\_legs}
+plus their preserved WIP snapshots.
 
-\paragraph{Discovery and depth (\texttt{wa30}).} Handed only the raw substrate and the
-priors, the strong proposer wrote a single adaptive \texttt{solve(env)} that cleared
-\texttt{wa30} levels~1--3, and a continued run reached level~6 (a $458$-move sequence,
-$\F=-3.903$). Levels~7--9 remain unsolved. An honest audit of \emph{what was given}
-is owed here. The priors used in these runs were not fully neutral: distilled from
-earlier human play of this same game, they contained an attach$\to$carry$\to$release
-experiment recipe and a relay-at-a-shared-boundary hint, and the interaction probe
-handed the proposer a mechanic \emph{name} (``pick-up-and-carry'') from a hand-coded
-verb vocabulary. So the mechanic family and the relay \emph{concept} were pre-told.
-What the agent demonstrably found on its own, beyond the priors: it froze the target
-region at level start (delivered objects take on the container colour and vanish from
-a naive detector); it \emph{complemented} the autonomous helper by taking the objects
-\emph{farthest} from the goal rather than competing; and it discovered the
-\emph{asymmetric} carry collision --- a carried object can enter a wall cell the
-avatar cannot --- that makes the relay geometrically possible at all. We have since
-\emph{neutralized} the priors (generic world-priors only: no mechanic recipes, no
-verb names, no relay hint); re-cracking \texttt{wa30} from scratch under the neutral
-priors is the discriminating experiment.
+\paragraph{Discovery and depth (\texttt{wa30}).} The current promoted \texttt{wa30}
+leg-library artifact is verified through level~9: \texttt{checkpoint.json} records
+\texttt{reached=9}, \texttt{validated=true}, a 596-action final path, and total
+marginal complexity 1243. Its run log reports
+$\F=-9+0.02\cdot1243=15.86$. The artifact is not a single opaque replay. The promoted
+\texttt{players.py} is a thin set of per-level compositions over shared legs:
+early levels use named movement/use and relay skills; levels~5--8 compose ferry,
+neutralise, courier-yield, and dual-socket filling legs; level~9 is a five-entry
+\texttt{ferry\_each} specification. The WIP snapshots preserve the search history:
+failed and interrupted proposals, reached-before-debrief states, recovered verified
+path artifacts, and after-debrief refactors. In particular, the level-9 WIP debrief
+shows that an initially recovered 61-action suffix was decoded into five repeated
+grab--carry--release ferries and refactored into \texttt{grab\_carry\_release} and
+\texttt{ferry\_each}, rather than left as an undifferentiated action string.
 
-\paragraph{Transfer across game type (\texttt{ls20}).} The \emph{same} game-agnostic
-agent, pointed at \texttt{ls20} --- a slide-to-match game with a different mechanic --- and
-with \emph{no code change}, discovered \texttt{ls20}'s own perception, mechanic, and goal
-and cleared levels~1--4. This is the transfer the rawest substrate is designed for.
+The current artifact also supersedes the older level~6 claim. The important qualitative
+discoveries remain the same but now occur inside a longer growth trace: freezing target
+regions whose cells are overwritten by delivered objects; complementing autonomous
+helpers rather than competing with them; exploiting asymmetric carry collision at a
+wall boundary; neutralising autonomous agents that undo progress; and recognising a
+recurring ``neutralise, then deliver'' shape across later levels. The honest caveat is
+also preserved: some early runs used priors and probes that were later judged too
+informative about the carry family and relay concept. The promoted leg-library result is
+therefore best read as a replay-validated GKM growth artifact on \texttt{wa30}, not as a
+claim that every semantic hint was absent from every historical run.
 
-\paragraph{Leg reuse and marginal novelty.} Running \texttt{ls20} under the enforced leg
-library (capped at level~4) yields the signature predicted by Eq.~\eqref{eq:fe} with a
-marginal complexity term (Table~\ref{tab:marg}). Level~1 invents the library; levels~3
-and~4 add essentially nothing and are one call to the level-advancing leg; level~2 reuses
-the same leg with a single knob (a fuller state key, because its goal depends on carried
-objects), threaded in by the debrief so both players share one generic search. Total
-marginal novelty for four levels is $77$, almost all front-loaded --- transfer, not
-re-derivation, and priced as such.
+\paragraph{Transfer across game type (\texttt{ls20}).} The same enforced leg-library
+harness also promotes a \texttt{ls20} artifact verified through level~7:
+\texttt{reached=7}, \texttt{validated=true}, a 393-action final path, and total
+marginal complexity 362. This is a different game family: the early \texttt{ls20}
+levels are sliding-tile track puzzles rather than pick-up-and-carry logistics. The
+preserved debriefs show the agent first relying on full-frame BFS, then adding a
+generic noise-mask leg when a drifting HUD broke raw-frame deduplication, then using
+recovered verified paths for deeper levels where understanding combination-lock,
+energy, spring, patrol, and fog-of-war mechanics was cheaper than blind search. The
+same external interface and admission rule handle both games; what changes is the
+library the proposer grows.
+
+\paragraph{Leg reuse and marginal novelty.} The \texttt{ls20} promoted checkpoint gives
+the cleanest marginal-complexity trace (Table~\ref{tab:marg}). Levels~1--2 are cheap
+full-frame search; levels~3--4 add and reuse the noise-mask/search composition; levels
+5--7 use \texttt{solve\_by\_replay} for verified paths recovered from proposer WIP. The
+trace is sawtoothed rather than monotonically decreasing. Its drops
+($43\to2$, then $45\to3$) are direct evidence of transfer: once a leg exists, the
+next compatible level needs only glue. Its spikes ($45$, $72$, $130$) mark mechanic
+transitions: a drifting HUD/noise process, then recovered plan artifacts, then the
+combination-lock/display family. Level~7 drops again relative to level~6 because it
+reuses part of that lock/display understanding, while adding fog-of-war mapping and a
+new verified plan. This is exactly what the marginal free-energy accounting is meant
+to expose: reuse is cheap when the level admits reuse, and novelty is paid for when the
+game introduces new structure.
 
 \begin{table}[h]
 \centering
@@ -201,44 +233,79 @@ re-derivation, and priced as such.
 \toprule
 level & marginal $C$ (new structure) & cumulative $C$ & $\F$ \\
 \midrule
-1 & 55 \; (invents the legs) & 55 & $+0.10$ \\
-2 & 18 \; (reuse $+$ one knob) & 73 & $-0.54$ \\
-3 & \phantom{0}2 \; (pure composition) & 75 & $-1.50$ \\
-4 & \phantom{0}2 \; (pure composition) & 77 & $-2.46$ \\
+1 & 43 \; (full-frame search) & 43 & $-0.14$ \\
+2 & \phantom{0}2 \; (same search leg) & 45 & $-1.10$ \\
+3 & 45 \; (noise-mask search) & 90 & $-1.20$ \\
+4 & \phantom{0}3 \; (masked-search reuse) & 93 & $-2.14$ \\
+5 & 72 \; (verified replay path) & 165 & $-1.70$ \\
+6 & 130 \; (combination-lock path) & 295 & $-0.10$ \\
+7 & 67 \; (fog/lock path) & 362 & $+0.24$ \\
 \bottomrule
 \end{tabular}
-\caption{Enforced leg library on \texttt{ls20}: marginal description length per level
-collapses as legs are reused ($\lambda=0.02$, $R=-\text{level}$).}
+\caption{Promoted enforced leg-library artifact on \texttt{ls20}
+(\(\lambda=0.02\), \(R=-\text{level}\)): the sawtooth marginal trace drops under
+leg reuse and rises at mechanic transitions or literal verified plans.}
 \label{tab:marg}
 \end{table}
 
-\paragraph{The complement on \texttt{wa30}: novelty tracks the game's novelty.} Running
-\texttt{wa30} under the same enforced library (levels 1--3, replay-validated) shows the
-honest counterpart: marginal novelty does \emph{not} collapse ($112 \to 78 \to 95$),
-because each \texttt{wa30} level introduces a genuinely new mechanic --- level~2 an
-autonomous helper agent, level~3 a dividing wall crossed only by an asymmetric carry
-collision --- and the agent captured each as new named legs (\texttt{yield\_to\_helper},
-\texttt{wall\_col}, \texttt{relay\_to\_helper}). Reuse-collapse is therefore a property
-of the \emph{game's} level structure, not an artifact of the harness: the marginal price
-in Eq.~\eqref{eq:fe} is paid exactly when the game demands new structure and drops to
-composition cost when it does not, which is the intended behaviour of a novelty-priced
-free energy. The library discipline still holds --- players remain thin composers
-(25 lines over a 24-leg library), and the level-3 wall relay was discovered \emph{inside}
-the enforced loop and persists as a reusable skill.
+\begin{figure}[h]
+\centering
+\includegraphics[width=0.92\linewidth]{figures/ls20_sawtooth.png}
+\begingroup
+\scriptsize
+\begin{verbatim}
+ls20 gives the cleanest “sawtooth” story:
 
-\section{Discussion and honest limitations}\label{sec:discussion}
+  L1  43   invent full-frame search
+  L2   2   reuse same search leg
+  L3  45   new issue: drifting HUD/noise breaks raw-frame dedup
+  L4   3   reuse masked-search leg
+  L5  72   recovered verified replay path / new plan artifact
+  L6 130   new mechanic: combination lock, energy, springs, patrol timing
+  L7  67   reuse parts of L6 lock/display understanding, but add fog/mapping
+
+  The consequence is not “complexity always goes down.” The consequence is stronger:
+
+  > Marginal complexity behaves like a novelty detector. It drops when a later level is expressible in existing legs,
+  > and spikes when the game introduces a genuinely new mechanic.
+\end{verbatim}
+\endgroup
+\label{fig:ls20-sawtooth}
+\end{figure}
+
+\paragraph{The complement on \texttt{wa30}: novelty tracks the game's novelty.} Running
+\texttt{wa30} under the same enforced library shows the honest counterpart. The
+promoted checkpoint records marginal novelty for levels~2 and~4--9 as
+$30,87,405,225,145,204,147$, with total marginal complexity 1243. The omitted early
+levels are already present in the promoted base state; the checkpoint records the
+resume history it can audit. The qualitative pattern is still clear from the code and
+WIP snapshots: \texttt{wa30} keeps introducing new logistics structure, so marginal
+complexity does \emph{not} collapse. Level~4 adds a larger ferry/yield composition;
+level~5 adds live-frame courier pacing; levels~6--8 share a higher-order
+\texttt{neutralize\_then\_deliver} pattern over different neutralisation and delivery
+subroutines; level~9 refactors a recovered path into the reusable \texttt{ferry\_each}
+batch leg. Reuse-collapse is therefore a property of the \emph{game's} level structure,
+not an artifact of the harness: the marginal price in Eq.~\eqref{eq:fe} is paid when
+the game demands new structure and drops when a new level can be expressed as a
+composition of existing legs.
+
+\section{Discussion and current scope}\label{sec:discussion}
 The architecture --- rawest substrate, preconception priors, free-energy admission,
 simulator-as-verifier, marginally-priced leg library --- is general and is the
-contribution. Two honest bounds apply. (1) The claim is levels~1--6 of \texttt{wa30}
-and~1--4 of \texttt{ls20}, not all levels and not all games. (2) The loop currently needs
-a strong proposer: a prompt-only local model mis-reasoned two-sided reachability under
-barriers even with the priors spelled out, so the interesting open question is how weak a
-proposer the same harness --- priors, simulator-as-verifier, free-energy admission ---
-can lift to competence.
+contribution. Three current bounds apply. (1) The claim is the promoted artifact result:
+\texttt{wa30} through level~9 and \texttt{ls20} through level~7 on the local preview
+games, not all ARC-AGI-3 games and not a private benchmark score. (2) The loop currently
+needs a strong proposer: a prompt-only local model mis-reasoned two-sided reachability
+under barriers even with the priors spelled out, so the interesting open question is how
+weak a proposer the same harness --- priors, simulator-as-verifier, free-energy
+admission --- can lift to competence. (3) Recovered verified paths are admissible under
+the artifact discipline only because they are independently replay-validated and charged
+as literal description length; they should not be confused with discovering a compact
+mechanistic leg until a debrief refactors them, as happened for \texttt{wa30} level~9.
 Relative to the classical colimit-cone experiments, where reusable structure is enumerated
 and priced, here it is \emph{invented} and priced by the same free energy; the two are
-ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that on the invented
-end, transfer is the parsimonious choice.
+ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that the artifact
+records transfer and novelty in the same currency.
 
 \bibliographystyle{plain}
 \bibliography{references}

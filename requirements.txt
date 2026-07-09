@@ -1,3 +1,6 @@
 # Optional optimizer used by `python agent.py --optimizer hyperopt`.
 setuptools<81
 hyperopt>=0.2.7
+
+# Official ARC-AGI-3 local/offline runtime; provides `arc_agi` and `arcengine`.
+arc-agi>=0.9.9

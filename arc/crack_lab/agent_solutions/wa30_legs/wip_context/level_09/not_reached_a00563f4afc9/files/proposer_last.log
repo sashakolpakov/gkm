@@ -1,0 +1,2005 @@
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && ls -la
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat gkm_try.py solve.py players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat checkpoint.json auto_solve_attempts.json proposer_last.log 2>/dev/null
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python gkm_try.py 2>&1 | tail -20
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat perception.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat legs_log.md pl9.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python pl9.py 2>&1 | tail -30
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python3 -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+print('shape',f.shape)
+vals,cnts=np.unique(f,return_counts=True)
+print(dict(zip(vals.tolist(),cnts.tolist())))
+print('levels_completed',env.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && which python; python --version
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+print('shape',f.shape)
+vals,cnts=np.unique(f,return_counts=True)
+print(dict(zip(vals.tolist(),cnts.tolist())))
+print('levels_completed',env.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+# print raw with color chars for full 64x64
+chars={0:'.',1:' ',2:'2',4:'4',5:'#',7:'=',9:'9',12:'C',14:'A',15:'M'}
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in f[r]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+d=P.action_deltas(env)
+for a in [1,2,3,4,5]:
+    print(a, P.ACTION_NAME[a], d[a]['count'], d[a]['bbox'])
+    for s in d[a]['samples'][:8]:
+        print('   ',s)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+def fresh():
+    env=A.Arena('wa30', _budget=A._Budget(600*400))
+    for a in ck['final_path']:
+        env.step(a)
+    return env
+def avpos(f):
+    ys,xs=np.where(f==14)
+    if len(ys)==0: return None
+    return (ys.min(),xs.min(),ys.max(),xs.max())
+env=fresh(); f0=np.asarray(env.frame())
+print('avatar0',avpos(f0))
+for a in [1,2,3,4,5]:
+    e=env.clone(); e.step(a); f=np.asarray(e.frame())
+    print(a,'avatar->',avpos(f))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+def fresh():
+    env=A.Arena('wa30', _budget=A._Budget(600*400))
+    for a in ck['final_path']:
+        env.step(a)
+    return env
+def poss(f,color):
+    from scipy import ndimage
+    lab,n=ndimage.label(f==color)
+    out=[]
+    for i in range(1,n+1):
+        ys,xs=np.where(lab==i)
+        out.append((int(ys.min()),int(xs.min())))
+    return sorted(out)
+env=fresh()
+for t in range(6):
+    f=np.asarray(env.frame())
+    print('t',t,'C(12):',poss(f,12))
+    print('   M(15):',poss(f,15))
+    env.step(5)
+" 2>&1 | head -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && sed -n '1,80p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && grep -n "^def \|^    def " legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && sed -n '203,400p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+G=16
+for R in range(G):
+    row=[]
+    for C in range(G):
+        blk=f[R*4:R*4+4,C*4:C*4+4]
+        u={int(v):int((blk==v).sum()) for v in np.unique(blk)}
+        # classify
+        keys=set(u)-{1}
+        if not keys: s='  .  '
+        elif keys=={5}: s=' ### '
+        elif keys=={7}: s=' === '
+        elif keys=={14} or keys=={0,14}: s=' AV  '
+        elif keys=={12}: s=' CC  '
+        elif keys=={15}: s=' MM  '
+        elif keys=={2}: s=' 2sol'  # solid 2 box
+        elif keys=={4,9}: s=' 4bx '  # 4-frame 9-core box
+        elif keys=={9} and 2 not in u: s=' 9emp'
+        elif 9 in keys and 2 in keys: s=' 9f2 '  # socket filled with 2
+        else: s=str(sorted(keys))
+        row.append(s)
+    print(f'{R:2d} '+''.join(row))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f0=np.asarray(env.frame()).copy()
+lc0=env.levels_completed
+for t in range(120):
+    env.step(5)
+f1=np.asarray(env.frame())
+print('lc',lc0,'->',env.levels_completed,'terminal',env.terminal())
+print('changed pixels',(f0!=f1).sum())
+# count colors
+for c in [2,4,9,12,15]:
+    print(c,(f0==c).sum(),'->',(f1==c).sum())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+lc0=env.levels_completed
+for t in range(200):
+    if env.terminal():
+        print('terminal at t',t); break
+    env.step(5)
+print('lc',lc0,'->',env.levels_completed,'terminal',env.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import json
+ck=json.load(open('checkpoint.json'))
+print('final_path len',len(ck['final_path']))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+def run(seq_fn):
+    env=A.Arena('wa30', _budget=A._Budget(600*400))
+    for a in ck['final_path']:
+        env.step(a)
+    for t in range(300):
+        if env.terminal():
+            return t, env.levels_completed
+        env.step(seq_fn(t))
+    return 300, env.levels_completed
+for name,fn in [('USE',lambda t:5),('UP',lambda t:1),('DOWN',lambda t:2),('RIGHT',lambda t:4),('cyc',lambda t:[1,2,3,4][t%4])]:
+    print(name, run(fn))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+ck=json.load(open('checkpoint.json'))
+cnt=[0]
+def prog(env):
+    for a in ck['final_path']:
+        if env.terminal(): break
+        env.step(a); cnt[0]+=1
+    while not env.terminal():
+        env.step(5); cnt[0]+=1
+levels,path,err=A.run_program('wa30',prog)
+print('levels',levels,'steps',cnt[0],'pathlen',len(path),'err',err)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import solve
+cnt=[0]
+class W:
+    def __init__(s,e): s.e=e
+    def __getattr__(s,n): return getattr(s.e,n)
+def prog(env):
+    solve.solve(env)
+levels,path,err=A.run_program('wa30',prog)
+print('levels',levels,'pathlen',len(path),'err',err)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+counts={}
+def prog(env):
+    while not env.terminal():
+        k=env.levels_completed+1
+        fn=getattr(players,f'play_level_{k}',None)
+        if fn is None: return
+        before=env.levels_completed
+        c0=env._budget.used if hasattr(env,'_budget') else None
+        fn(env)
+        counts[k]=(before,env.levels_completed)
+        if env.levels_completed<=before: return
+levels,path,err=A.run_program('wa30',prog)
+print('levels',levels,'err',err)
+print(counts)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+seg=[]
+def prog(env):
+    last=[0]; total=[0]
+    orig=env.step
+    def step(a):
+        total[0]+=1
+        return orig(a)
+    env.step=step
+    while not env.terminal():
+        k=env.levels_completed+1
+        fn=getattr(players,f'play_level_{k}',None)
+        if fn is None: return
+        before=env.levels_completed
+        fn(env)
+        seg.append((k, total[0]-last[0], env.levels_completed))
+        last[0]=total[0]
+        if env.levels_completed<=before: return
+levels,path,err=A.run_program('wa30',prog)
+print('levels',levels,'err',err,'total',sum(s[1] for s in seg))
+for s in seg: print('level',s[0],'moves',s[1],'->lc',s[2])
+"
+$ sed -n '1,130p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ grep -n "run_program\|def validate\|real-move\|cap\|600\|_Budget(" /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -40
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+for t in range(70):
+    if env.terminal(): print('term',t); break
+    f=np.asarray(env.frame())
+    if t%7==0:
+        cc={c:int((f==c).sum()) for c in [0,2,4,9,12,14,15]}
+        print(t,cc)
+    env.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+def prog(env):
+    total=[0]; comp={}
+    orig=env.step
+    def step(a):
+        before=env.levels_completed
+        r=orig(a); total[0]+=1
+        if env.levels_completed>before:
+            comp[env.levels_completed]=total[0]
+        return r
+    env.step=step
+    seg=[]; last=0
+    while not env.terminal():
+        k=env.levels_completed+1
+        fn=getattr(players,f'play_level_{k}',None)
+        if fn is None: break
+        before=env.levels_completed
+        fn(env)
+        seg.append((k,total[0]-last)); last=total[0]
+        if env.levels_completed<=before: break
+    prog.comp=comp; prog.seg=seg; prog.total=total[0]
+A.run_program('wa30',prog)
+print('completion move index per level:',prog.comp)
+print('player move spans:',prog.seg)
+# overshoot = span end - completion index
+import itertools
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from scipy import ndimage
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+for t in range(70):
+    if env.terminal(): break
+    f=np.asarray(env.frame())
+    ys,xs=np.where(f==15)
+    m=(int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+    # couriers
+    lab,n=ndimage.label(f==12)
+    cs=sorted((int(np.where(lab==i)[0].min())//4,int(np.where(lab==i)[1].min())//4) for i in range(1,n+1))
+    if t%5==0: print(t,'M',m,'C',cs)
+    env.step(5)
+"
+$ sed -n '216,320p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && sed -n '600,900p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && sed -n '408,600p' legs.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from scipy import ndimage
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+# find 9-frame containers: components of 9
+lab,n=ndimage.label(f==9)
+print('num 9-components',n)
+for i in range(1,n+1):
+    ys,xs=np.where(lab==i)
+    r0,r1,c0,c1=ys.min(),ys.max(),xs.min(),xs.max()
+    # interior
+    inr=f[r0:r1+1,c0:c1+1]
+    bg=(inr==1).sum(); two=(inr==2).sum(); nine=(inr==9).sum()
+    print(f'comp{i} bbox r{r0}-{r1} c{c0}-{c1} size={len(ys)} interior bg={bg} 2={two} 9={nine}')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck = json.load(open('checkpoint.json'))
+env=A.Arena('wa30', _budget=A._Budget(600*400))
+for a in ck['final_path']:
+    env.step(a)
+def socks(f):
+    # fixed bboxes of the 3 big sockets
+    b1=f[8:12,52:60]; b2=f[12:24,20:32]; b7=f[24:28,52:60]
+    return ((b1==2).sum(),(b2==2).sum(),(b7==2).sum())
+def nboxes(f):
+    from scipy import ndimage
+    lab,n=ndimage.label(f==9)
+    c=0
+    for i in range(1,n+1):
+        if (lab==i).sum()==4: c+=1
+    return c
+for t in range(70):
+    if env.terminal(): break
+    f=np.asarray(env.frame())
+    if t%7==0: print(t,'socket2:',socks(f),'nboxes(4):',nboxes(f))
+    env.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat > l9lib.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json'))
+_base=None
+def base():
+    global _base
+    if _base is None:
+        e=A.Arena('wa30', _budget=A._Budget(600*400))
+        for a in ck['final_path']:
+            e.step(a)
+        _base=e
+    return _base
+def fresh():
+    return base().clone()
+def run(strategy, verbose=False):
+    e=fresh(); moves=0
+    def step(a):
+        nonlocal moves; moves+=1; return e.step(a)
+    won=False
+    try:
+        strategy(e, step)
+    except Exception as ex:
+        if verbose: print('exc',ex)
+    return e.levels_completed, moves, e.terminal()
+EOF
+echo done
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat > l9lib.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+ck=json.load(open('checkpoint.json'))
+_baselen=len(ck['final_path'])
+_base=None
+def base():
+    global _base
+    if _base is None:
+        e=A.Arena('wa30', _budget=A._Budget(600*400))
+        for a in ck['final_path']:
+            e.step(a)
+        _base=e
+    return _base
+def fresh():
+    return base().clone()
+def run(strategy, verbose=False):
+    e=fresh()
+    try:
+        strategy(e)
+    except Exception as ex:
+        if verbose:
+            import traceback; traceback.print_exc()
+    moves=len(e.path)-_baselen
+    return e.levels_completed, moves, e.terminal()
+EOF
+echo ok
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import *
+# strategy: idle to see baseline
+def s_idle(e):
+    for _ in range(70):
+        if e.terminal() or e.levels_completed>8: return
+        e.step(5)
+print('idle', l9lib.run(s_idle))
+# try chase left roaming 12 then idle
+def s_chase12(e):
+    chase_and_clear(e,12, lambda m: m[1]<9, cap=40)
+    for _ in range(40):
+        if e.terminal() or e.levels_completed>8: return
+        e.step(5)
+print('chase12L', l9lib.run(s_chase12, True))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+def classify(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u=={5}: return '##'
+    if u=={7}: return '=='
+    if u<= {5,7}: return '#='
+    if u=={14} or u=={0,14}: return 'AV'
+    if u=={0,9}: return 'gb'  # grabbed box
+    if u=={12}: return 'CC'
+    if u=={15}: return 'MM'
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if 9 in u and 2 in u: return 's2'
+    if u=={9}: return '9.'
+    return '?'+''.join(map(str,sorted(u)))
+def show(e,rmax=9):
+    f=np.asarray(e.frame())
+    for r in range(rmax):
+        print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(9)))
+print('=== t0 (left region cols0-8) ===')
+show(e)
+for _ in range(10): e.step(5)
+print('=== t10 ===')
+show(e)
+for _ in range(10): e.step(5)
+print('=== t20 ===')
+show(e)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+# watch the RIGHT region too and the wall gap
+def classify(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u<= {5,7} and (5 in u or 7 in u): return '##' if u=={5} else ('==' if u=={7} else '#=')
+    if u=={14} or u=={0,14}: return 'AV'
+    if u=={0,9}: return 'gb'
+    if u=={12}: return 'CC'
+    if u=={15}: return 'MM'
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if 9 in u and 2 in u: return 's2'
+    if u=={9}: return '9.'
+    return '?'+''.join(map(str,sorted(u)))
+f=np.asarray(e.frame())
+print('RIGHT region cols9-15:')
+for r in range(9):
+    print(f'{r:2d} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(9,16)))
+print('is wall col9 full? check rows0-9 col36-39 unique:', np.unique(f[0:36,36:40]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to, _mover_cell, _movers, _avatar_nav
+import numpy as np
+def socket_open_cells(f):
+    boxes_bboxes=[(2,3,5,7),(3,5,7),(6,7,13,14)]  # not used
+    # big socket bboxes in cell coords
+    bbs=[(2,3,13,14),(3,5,5,7),(6,7,13,14)]
+    out=[]
+    for (r0,r1,c0,c1) in bbs:
+        for R in range(r0,r1+1):
+            for C in range(c0,c1+1):
+                blk=f[R*4:R*4+4,C*4:C*4+4]
+                u=set(int(v) for v in np.unique(blk))
+                if u=={1}: out.append((R,C))
+    return out
+def strat(e):
+    from legs import USE,_DIRS,_bfs_path
+    for t in range(70):
+        if e.terminal() or e.levels_completed>8: return
+        f=np.asarray(e.frame())
+        av,boxes,walls=_grid_scan(e)
+        opens=socket_open_cells(f)
+        free=[b for b in boxes]
+        if opens and free:
+            opens.sort(key=lambda o: abs(o[0]-av[0])+abs(o[1]-av[1]))
+            free.sort(key=lambda b: abs(b[0]-opens[0][0])+abs(b[1]-opens[0][1]))
+            if carry_box_to(e, free[0], opens[0]): continue
+        e.step(USE)
+print('greedy-fill', l9lib.run(strat, True))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+def classify(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u=={5}: return '##'
+    if u=={7}: return '=='
+    if u=={14} or u=={0,14}: return 'AV'
+    if u=={12}: return 'CC'
+    if u=={5,9}: return 'Cb'  # courier carrying box
+    if u=={15}: return 'MM'
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if 9 in u and 2 in u: return 's2'
+    if u=={9}: return '9.'
+    return '?'+''.join(map(str,sorted(u)))
+for t in range(14):
+    f=np.asarray(e.frame())
+    row=''
+    for r in range(3,9):
+        row+=f'\n {r} '+' '.join(classify(f[r*4:r*4+4,c*4:c*4+4]) for c in range(0,9))
+    print(f'--- t{t} ---'+row)
+    e.step(5)
+" 2>&1 | head -70
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+f=np.asarray(e.frame())
+# vertical wall at cols 36-39; find rows where it's NOT wall (gap)
+col=f[:,36:40]
+for r in range(64):
+    seg=col[r]
+    if not (seg==5).any():
+        print('open row',r, [int(x) for x in seg])
+" 
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+f0=np.asarray(e.frame()).copy()
+for _ in range(69):
+    if e.terminal(): break
+    e.step(5)
+f1=np.asarray(e.frame())
+def cellmap(f):
+    def cl(blk):
+        u=set(int(v) for v in np.unique(blk)); u.discard(1)
+        if not u: return '..'
+        if u=={5}: return '##'
+        if u=={7}: return '=='
+        if u=={14} or u=={0,14}: return 'AV'
+        if u=={12}: return 'CC'
+        if u=={5,9}: return 'Cb'
+        if u=={15}: return 'MM'
+        if u=={2}: return '22'
+        if u=={4,9}: return '4b'
+        if 9 in u and 2 in u: return 's2'
+        if u=={9}: return '9.'
+        return '?'+''.join(map(str,sorted(u)))
+    return [[cl(f[r*4:r*4+4,c*4:c*4+4]) for c in range(16)] for r in range(16)]
+m0=cellmap(f0); m1=cellmap(f1)
+print('changed cells start->end:')
+for r in range(16):
+    for c in range(16):
+        if m0[r][c]!=m1[r][c]:
+            print(f'  ({r},{c}) {m0[r][c]} -> {m1[r][c]}')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+e=l9lib.fresh()
+av,boxes,walls=_grid_scan(e)
+print('boxes',sorted(boxes))
+print('av',av)
+# nearest right box
+rb=[b for b in boxes if b[1]>=10]
+print('right boxes',rb)
+# try carry one right box to a left drop
+ok=carry_box_to(e,(5,11),(6,8))
+print('carry (5,11)->(6,8):',ok,'moves',len(e.path)-l9lib._baselen)
+av2,boxes2,_=_grid_scan(e)
+print('boxes after',sorted(boxes2))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to, USE
+import numpy as np
+def barfill(f):
+    # count color4 pixels in bottom bar row 60-63
+    return int((f[60:64,:]==4).sum())
+def strat(e):
+    for src,dst in [((5,11),(6,3)),((7,12),(8,3)),((8,14),(6,4))]:
+        if e.terminal() or e.levels_completed>8: return
+        carry_box_to(e,src,dst)
+    while not e.terminal() and e.levels_completed<=8:
+        e.step(USE)
+lc,mv,term=l9lib.run(strat,True)
+print('result',lc,mv,term)
+# check bar fill at end via a re-run capturing final frame
+e=l9lib.fresh()
+try:
+    strat(e)
+except: pass
+f=np.asarray(e.frame())
+print('bar4px',barfill(f),'boxesleft',sorted(_grid_scan(e)[1]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+for t in range(70):
+    if e.terminal(): break
+    f=np.asarray(e.frame())
+    bar4=int((f[60:64,:]==4).sum()); bar7=int((f[60:64,:]==7).sum())
+    from scipy import ndimage
+    n4=sum(1 for i in range(1,ndimage.label(f==9)[1]+1) if (ndimage.label(f==9)[0]==i).sum()==4)
+    if t%5==0: print(f't{t} bar4={bar4} bar7={bar7} nboxes={n4}')
+    e.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+last=None
+for t in range(70):
+    if e.terminal():
+        print('terminal at',t); break
+    f=np.asarray(e.frame())
+    bar7=int((f[60:64,:]==7).sum())
+    print(f't{t} bar7={bar7} lc={e.levels_completed}') if t>=60 else None
+    last=f
+    e.step(5)
+f=np.asarray(e.frame()) if not e.terminal() else last
+# show bottom bar columns still 7
+row=f[60:64,:]
+cols7=[c for c in range(64) if (row[:,c]==7).any()]
+print('cols still containing 7:',cols7)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+def cl(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u=={5}: return '##'
+    if u=={7}: return '=='
+    if u=={4}: return '44'
+    if u=={4,7}: return '47'
+    if u=={5,7}: return '#='
+    if u=={4,5}: return '45'
+    if u=={15}: return 'MM'
+    if u=={5,15}: return 'M#'
+    if u=={4,9}: return '4b'
+    return '?'+''.join(map(str,sorted(u)))
+def show(e):
+    f=np.asarray(e.frame())
+    for r in range(10,16):
+        print(f'{r:2d} '+' '.join(cl(f[r*4:r*4+4,c*4:c*4+4]) for c in range(16)))
+for t in [0,3,6,9,12]:
+    print(f'=== t{t} ==='); show(e)
+    for _ in range(3):
+        if not e.terminal(): e.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+e=l9lib.fresh()
+# navigate avatar into bottom-left chamber
+def barcols(f):
+    row=f[60:64,:]
+    return [c for c in range(64) if (row[:,c]==7).any()]
+# try to walk to (14,0)
+ok=_avatar_nav(e,(14,0),cap=30)
+print('nav to (14,0):',ok,'av',_grid_scan(e)[0],'moves',len(e.path)-l9lib._baselen)
+f=np.asarray(e.frame())
+print('bar cols with 7 (sample near left):',[c for c in barcols(f) if c<12])
+print('bottom-left region rows13-15 cols0-3:')
+for r in range(13,16):
+    print(r,[int(f[r*4+1,c]) for c in range(0,16)])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+e=l9lib.fresh()
+_avatar_nav(e,(14,0),cap=30)
+def bar7(f): return int((f[60:64,:]==7).sum())
+f=np.asarray(e.frame()); print('before DOWN bar7',bar7(f),'av',_grid_scan(e)[0])
+for a,nm in [(2,'DOWN'),(4,'RIGHT'),(3,'LEFT'),(2,'DOWN'),(5,'USE')]:
+    e.step(a); f=np.asarray(e.frame())
+    print(nm,'av',_grid_scan(e)[0],'bar7',bar7(f))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+def bar7(f): return int((f[60:64,:]==7).sum())
+def run(nav_and_paint):
+    e=l9lib.fresh()
+    nav_and_paint(e)
+    while not e.terminal() and e.levels_completed<=8:
+        e.step(5)
+    return e.levels_completed, len(e.path)-l9lib._baselen, e.terminal()
+def strat(e):
+    _avatar_nav(e,(14,0),cap=20)
+    e.step(2)  # into bar (15,0)
+    for _ in range(7): e.step(4)  # sweep right along left segment
+print(run(strat))
+# also observe timing of completion
+e=l9lib.fresh()
+_avatar_nav(e,(14,0),cap=20)
+e.step(2)
+for _ in range(7): e.step(4)
+t=len(e.path)-l9lib._baselen
+while not e.terminal() and e.levels_completed<=8:
+    e.step(5); 
+f=np.asarray(e.frame())
+print('final bar7',bar7(f),'lc',e.levels_completed,'moves',len(e.path)-l9lib._baselen,'term',e.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+e=l9lib.fresh()
+_avatar_nav(e,(14,0),cap=20)
+e.step(2)
+for _ in range(7): e.step(4)
+def rem7cols(f):
+    row=f[60:64,:]
+    return [c for c in range(64) if (row[:,c]==7).any()]
+while not e.terminal() and e.levels_completed<=8:
+    f=np.asarray(e.frame())
+    r=rem7cols(f); t=len(e.path)-l9lib._baselen
+    if t%4==0 or len(r)<8: print('t',t,'n7',len(r),'cols',r[:20])
+    e.step(5)
+f=np.asarray(e.frame())
+print('END n7',len(rem7cols(f)),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+def cl(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if u=={5,9}: return 'Cb'
+    if 9 in u and 2 in u: return 's2'
+    if u=={9}: return '9.'
+    if u=={12}: return 'CC'
+    if u=={4,5,9}:return 'C4'
+    return '?'+''.join(map(str,sorted(u)))
+# comp2 is cells rows3-5 cols5-7
+for t in [0,10,20,30,40,50,60,69]:
+    # advance to t
+    e2=l9lib.fresh()
+    for _ in range(t):
+        if not e2.terminal(): e2.step(5)
+    f=np.asarray(e2.frame())
+    grid=[[cl(f[r*4:r*4+4,c*4:c*4+4]) for c in range(4,9)] for r in range(2,7)]
+    print(f'--- t{t} comp2 area rows2-6 cols4-8 ---')
+    for r,row in enumerate(grid): print('  ',row)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+def cl(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if 9 in u and 2 in u: return 's2'
+    if u=={9}: return '9.'
+    if not u:return '..'
+    return '?'+''.join(map(str,sorted(u)))
+e=l9lib.fresh()
+av,boxes,walls=_grid_scan(e)
+print('boxes',sorted(boxes))
+# deliver a loose 4-box to comp2 cell (5,7)
+ok=carry_box_to(e,(8,1),(5,7))
+print('carry (8,1)->(5,7):',ok,'moves',len(e.path)-l9lib._baselen)
+f=np.asarray(e.frame())
+print('cell(5,7)=',cl(f[5*4:5*4+4,7*4:7*4+4]))
+print('boxes now',sorted(_grid_scan(e)[1]))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk))
+    return (3 in u or 4 in u) and 9 in u
+e=l9lib.fresh()
+delivered=0
+while not e.terminal() and e.levels_completed<=8:
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    empt=[c for c in comp2 if not isbox(f,c)]
+    if loose and empt:
+        empt.sort(key=lambda c:abs(c[0]-av[0])+abs(c[1]-av[1]))
+        tgt=empt[0]
+        loose.sort(key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+        if not carry_box_to(e,loose[0],tgt):
+            e.step(5)
+    else:
+        e.step(5)
+    nb=sum(1 for c in comp2 if isbox(f,c))
+print('final lc',e.levels_completed,'moves',len(e.path)-l9lib._baselen,'term',e.terminal())
+f=np.asarray(e.frame())
+print('comp2 boxes',sum(1 for c in comp2 if isbox(f,c)),'/9')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk))
+    return (3 in u or 4 in u) and 9 in u
+e=l9lib.fresh()
+for it in range(9):
+    if e.terminal() or e.levels_completed>8: break
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    empt=[c for c in comp2 if not isbox(f,c)]
+    if not (loose and empt): break
+    empt.sort(key=lambda c:abs(c[0]-av[0])+abs(c[1]-av[1]))
+    tgt=empt[0]; loose.sort(key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+    try:
+        ok=carry_box_to(e,loose[0],tgt)
+    except Exception as ex:
+        print('exc',ex); break
+    f=np.asarray(e.frame())
+    filled=sum(1 for c in comp2 if isbox(f,c))
+    print(f'iter{it} tgt{tgt} ok={ok} moves={len(e.path)-l9lib._baselen} comp2fill={filled} lc={e.levels_completed}')
+print('END lc',e.levels_completed,'term',e.terminal())
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk))
+    return (3 in u or 4 in u) and 9 in u
+e=l9lib.fresh()
+for it in range(20):
+    if e.terminal() or e.levels_completed>8: break
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    empt=[c for c in comp2 if not isbox(f,c)]
+    if not (loose and empt): 
+        print('no more loose/empt', 'loose',loose,'empt',empt); break
+    done=False
+    empt.sort(key=lambda c:abs(c[0]-av[0])+abs(c[1]-av[1]))
+    for tgt in empt:
+        cand=sorted(loose,key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+        for b in cand[:3]:
+            try:
+                if carry_box_to(e,b,tgt): done=True; break
+            except Exception as ex: 
+                done=False;break
+        if done: break
+    f=np.asarray(e.frame())
+    filled=sum(1 for c in comp2 if isbox(f,c))
+    print(f'iter{it} ok={done} moves={len(e.path)-l9lib._baselen} comp2fill={filled} lc={e.levels_completed} loose={len(loose)}')
+    if not done: 
+        e.step(5)
+print('END lc',e.levels_completed,'term',e.terminal(),'moves',len(e.path)-l9lib._baselen)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk))
+    return (3 in u or 4 in u) and 9 in u
+e=l9lib.fresh()
+maxfill=0
+for it in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>66: break
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    empt=[c for c in comp2 if not isbox(f,c)]
+    if not (loose and empt): e.step(5); continue
+    # prefer far cells (cols7 then 6 then 5)
+    empt.sort(key=lambda c:(-c[1], abs(c[0]-av[0])))
+    done=False
+    for tgt in empt:
+        cand=sorted(loose,key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+        for b in cand[:2]:
+            try:
+                if carry_box_to(e,b,tgt): done=True;break
+            except Exception: done=False;break
+        if done:break
+    if not done: e.step(5)
+    f=np.asarray(e.frame()); fill=sum(1 for c in comp2 if isbox(f,c))
+    maxfill=max(maxfill,fill)
+    print(f'it{it} fill={fill} loose={len(loose)} moves={len(e.path)-l9lib._baselen} lc={e.levels_completed}')
+print('MAXFILL',maxfill,'END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return (3 in u or 4 in u) and 9 in u
+# right sockets cells
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+def try_fill(cells, srcs, label):
+    e=l9lib.fresh()
+    for tgt,src in zip(cells,srcs):
+        if e.terminal(): break
+        try: carry_box_to(e,src,tgt)
+        except Exception: pass
+    lc=e.levels_completed
+    print(label,'lc',lc,'moves',len(e.path)-l9lib._baselen)
+# right boxes into comp1 bottom cells
+try_fill([(3,13),(3,14),(2,13)], [(5,11),(7,12),(8,14)], 'rightboxes->comp1')
+try_fill([(7,13),(7,14),(6,13)], [(8,14),(7,12),(5,11)], 'rightboxes->comp7')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+e=l9lib.fresh()
+for t in range(70):
+    if e.terminal(): break
+    f=np.asarray(e.frame())
+    c3=int((f==3).sum()); c4=int((f==4).sum()); c7=int((f==7).sum())
+    c2=int((f==2).sum()); c9=int((f==9).sum()); c5=int((f==5).sum())
+    if t%7==0 or t>=66: print(f't{t} c2={c2} c3={c3} c4={c4} c5={c5} c7={c7} c9={c9}')
+    e.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to, _cells
+import numpy as np
+def rc(e):
+    f=np.asarray(e.frame())
+    from scipy import ndimage
+    lab,n=ndimage.label(f==12)
+    return sorted((int(np.where(lab==i)[0].min())//4,int(np.where(lab==i)[1].min())//4) for i in range(1,n+1))
+e=l9lib.fresh()
+print('couriers t0',rc(e))
+# relay a left box into right region near right courier (1,11) -> drop (3,11)
+try: print('carry (5,3)->(3,11):',carry_box_to(e,(5,3),(3,11)))
+except Exception as ex: print('exc',ex)
+print('couriers now',rc(e),'moves',len(e.path)-l9lib._baselen)
+# idle and watch right courier + right region
+def cl(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u:return '..'
+    if u=={12}:return 'CC'
+    if u=={5,9}:return 'Cb'
+    if u=={2}:return '22'
+    if u=={4,9}:return '4b'
+    if u=={3,9}:return 'b3'
+    if 9 in u and 2 in u:return 's2'
+    return '?'+''.join(map(str,sorted(u)))
+for t in range(12):
+    e.step(5)
+f=np.asarray(e.frame())
+print('right region rows1-8 cols10-15 after 12 idle:')
+for r in range(1,9):
+    print(r,[cl(f[r*4:r*4+4,c*4:c*4+4]) for c in range(10,16)])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+goals=comp2+comp1+comp7
+def isbox(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return (3 in u or 4 in u) and 9 in u
+def b3(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return 3 in set(int(v) for v in np.unique(blk))
+e=l9lib.fresh()
+for it in range(25):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>66: break
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in goals]
+    empt=[c for c in goals if not isbox(f,c)]
+    # choose cheapest (box,goal) pair by manhattan
+    best=None
+    for b in loose:
+        for c in empt:
+            d=abs(b[0]-c[0])+abs(b[1]-c[1])
+            if best is None or d<best[0]: best=(d,b,c)
+    if best is None: e.step(5); continue
+    _,b,c=best
+    ok=False
+    try: ok=carry_box_to(e,b,c)
+    except Exception: pass
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    settled=sum(1 for c in goals if b3(f,c))
+    print(f'it{it} pair d={best[0]} ok={ok} settled(b3)={settled} lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import chase_and_clear, _grid_scan
+import numpy as np
+e=l9lib.fresh()
+print('c12 before',int((np.asarray(e.frame())==12).sum()))
+chase_and_clear(e,12, lambda m: m[1]<9, cap=30)
+print('c12 after chase left',int((np.asarray(e.frame())==12).sum()),'moves',len(e.path)-l9lib._baselen)
+# also try USE adjacent manually: navigate to courier and face+USE
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+def cellsig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return tuple(sorted(set(int(v) for v in np.unique(blk))))
+e=l9lib.fresh()
+carry_box_to(e,(8,1),(3,7))  # deliver to top-right corner of comp2
+tgt=(3,7)
+f=np.asarray(e.frame()); print('after deliver cell(3,7)=',cellsig(f,tgt))
+for t in range(15):
+    e.step(5)
+    f=np.asarray(e.frame())
+    print(t, 'cell(3,7)=',cellsig(f,tgt))
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def seated(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return (9 in u) and (2 not in u)
+e=l9lib.fresh()
+for it in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>67: break
+    f=np.asarray(e.frame())
+    av,boxes,walls=_grid_scan(e)
+    empt=[c for c in comp2 if not seated(f,c)]
+    if not empt: 
+        print('comp2 FULL at mv',len(e.path)-l9lib._baselen); break
+    loose=[b for b in boxes if b not in comp2]
+    if not loose: e.step(5); continue
+    # cheapest pair
+    best=None
+    for c in empt:
+        for b in loose:
+            d=abs(b[0]-c[0])+abs(b[1]-c[1])
+            if best is None or d<best[0]: best=(d,b,c)
+    _,b,c=best
+    try: ok=carry_box_to(e,b,c)
+    except Exception: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    s=sum(1 for c in comp2 if seated(f,c))
+    print(f'it{it} ok={ok} seated={s}/9 lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+def sig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return tuple(sorted(set(int(v) for v in np.unique(blk))))
+for tgt,src in [((7,13),(8,14)),((6,14),(7,12)),((2,13),(5,11))]:
+    e=l9lib.fresh()
+    ok=carry_box_to(e,src,tgt)
+    f=np.asarray(e.frame())
+    print(f'deliver {src}->{tgt} ok={ok} sig={sig(f,tgt)} lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+goals=comp2+comp1+comp7
+def usig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return set(int(v) for v in np.unique(blk))
+def loose_boxes(f):
+    out=[]
+    for r in range(16):
+        for c in range(16):
+            u=usig(f,(r,c))
+            if 9 in u and 4 in u and 2 not in u and 5 not in u:
+                out.append((r,c))
+    return out
+def seated(f,cell):
+    u=usig(f,cell); return 9 in u and 2 not in u and 4 not in u
+e=l9lib.fresh()
+for it in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>68: break
+    f=np.asarray(e.frame())
+    lb=loose_boxes(f)
+    empt=[c for c in goals if not seated(f,c)]
+    if not lb: print('NO LOOSE at mv',len(e.path)-l9lib._baselen); break
+    if not empt: e.step(5); continue
+    best=None
+    for b in lb:
+        for c in empt:
+            d=abs(b[0]-c[0])+abs(b[1]-c[1])
+            if best is None or d<best[0]: best=(d,b,c)
+    _,b,c=best
+    try: ok=carry_box_to(e,b,c)
+    except Exception: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print(f'it{it} d={best[0]} ok={ok} loose={len(loose_boxes(f))} lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+e=l9lib.fresh()
+for t in range(70):
+    if e.terminal(): break
+    f=np.asarray(e.frame())
+    s=sum(1 for c in comp2 if boxed(f,c))
+    if t%7==0 or t>=66: print(f't{t} comp2boxed={s}/9')
+    e.step(5)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def usig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return set(int(v) for v in np.unique(blk))
+def boxed(f,cell):
+    u=usig(f,cell); return 9 in u and 2 not in u
+def loose_boxes(f):
+    out=[]
+    for r in range(16):
+        for c in range(16):
+            u=usig(f,(r,c))
+            if 9 in u and 4 in u and 2 not in u and 5 not in u and (r,c) not in comp2:
+                out.append((r,c))
+    return out
+e=l9lib.fresh()
+for it in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>68: break
+    f=np.asarray(e.frame())
+    empt=[c for c in comp2 if not boxed(f,c)]
+    lb=loose_boxes(f)
+    if not empt: print('comp2 FULL mv',len(e.path)-l9lib._baselen); break
+    if not lb: e.step(5); continue
+    best=None
+    for c in empt:
+        for b in lb:
+            d=abs(b[0]-c[0])+abs(b[1]-c[1])
+            if best is None or d<best[0]: best=(d,b,c)
+    _,b,c=best
+    try: ok=carry_box_to(e,b,c)
+    except Exception: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print(f'it{it} d={best[0]} ok={ok} comp2boxed={sum(1 for x in comp2 if boxed(f,x))}/9 lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+e=l9lib.fresh()
+# relay 3 right boxes into comp2 right column cells early
+plan=[((8,14),(5,7)),((7,12),(4,7)),((5,11),(3,7))]
+for src,dst in plan:
+    if e.terminal(): break
+    try: print(src,'->',dst, carry_box_to(e,src,dst),'mv',len(e.path)-l9lib._baselen)
+    except Exception as ex: print('exc',ex)
+# now idle, let courier fill left, watch
+while not e.terminal() and e.levels_completed<=8:
+    f=np.asarray(e.frame())
+    s=sum(1 for c in comp2 if boxed(f,c))
+    if (len(e.path)-l9lib._baselen)%5==0: print('mv',len(e.path)-l9lib._baselen,'comp2',s,'lc',e.levels_completed)
+    e.step(5)
+f=np.asarray(e.frame())
+print('END comp2',sum(1 for c in comp2 if boxed(f,c)),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+e=l9lib.fresh()
+fd=e._fd
+print('fd attrs:',[a for a in dir(fd) if not a.startswith('__')])
+print('state',fd.state)
+for a in dir(fd):
+    if a.startswith('__'): continue
+    try:
+        v=getattr(fd,a)
+        if not callable(v): print(a,'=',repr(v)[:100])
+    except Exception as ex: print(a,'err',ex)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+# fresh game, spam USE, count steps to terminal
+e=A.Arena('wa30', _budget=A._Budget(10**7))
+n=0
+while not e.terminal() and n<5000:
+    e.step(5); n+=1
+print('fresh spam USE terminal at',n,'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import players
+# play level1 then idle to terminal, count total steps
+e=A.Arena('wa30', _budget=A._Budget(10**7))
+players.play_level_1(e)
+n1=len(e.path); lc1=e.levels_completed
+print('after L1: moves',n1,'lc',lc1)
+n=0
+while not e.terminal():
+    e.step(5); n+=1
+print('idle after L1 terminal at +',n,'total',len(e.path),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+def fill(cells,label):
+    e=l9lib.fresh()
+    import legs
+    for it in range(20):
+        if e.terminal() or e.levels_completed>8: break
+        if len(e.path)-l9lib._baselen>68: break
+        f=np.asarray(e.frame())
+        av,boxes,walls=legs._grid_scan(e)
+        empt=[c for c in cells if not boxed(f,c)]
+        if not empt: print(label,'FULL mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed); return
+        loose=[b for b in boxes if b not in cells]
+        if not loose: e.step(5); continue
+        best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+        try: ok=carry_box_to(e,best[1],best[2])
+        except Exception: ok=False
+        if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print(label,'filled',sum(1 for c in cells if boxed(f,c)),'/',len(cells),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+fill([(6,13),(6,14),(7,13),(7,14)],'comp7')
+fill([(2,13),(2,14),(3,13),(3,14)],'comp1')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+goals=set(comp2+comp1+comp7)
+def usig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return set(int(v) for v in np.unique(blk))
+def box_cells(f):
+    out=[]
+    for r in range(16):
+        for c in range(16):
+            u=usig(f,(r,c))
+            if 9 in u and 2 not in u and 5 not in u and 12 not in u:
+                out.append((r,c))
+    return out
+def boxed(f,cell):
+    u=usig(f,cell); return 9 in u and 2 not in u
+e=l9lib.fresh()
+for it in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    if len(e.path)-l9lib._baselen>68: break
+    f=np.asarray(e.frame())
+    bc=box_cells(f)
+    offgoal=[b for b in bc if b not in goals]
+    empt=[c for c in goals if not boxed(f,c)]
+    if not offgoal: print('ALL ON GOAL mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed); break
+    if not empt: e.step(5); continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in offgoal for c in empt),key=lambda x:x[0])
+    try: ok=carry_box_to(e,best[1],best[2])
+    except Exception: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print(f'it{it} off={len(offgoal)} d={best[0]} ok={ok} lc={e.levels_completed} mv={len(e.path)-l9lib._baselen}')
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+comp7=[(7,13),(7,14),(6,13),(6,14)]
+e=l9lib.fresh()
+# explicit: 3 right boxes then relay a left box
+plan=[((8,14),(7,13)),((7,12),(7,14)),((5,11),(6,13)),((5,3),(6,14))]
+for src,dst in plan:
+    if e.terminal() or e.levels_completed>8: break
+    try: 
+        ok=carry_box_to(e,src,dst)
+        f=np.asarray(e.frame())
+        print(src,'->',dst,ok,'comp7',sum(1 for c in comp7 if boxed(f,c)),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+    except Exception as ex: print('exc',ex);break
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+comp7=[(7,13),(7,14),(6,13),(6,14)]
+e=l9lib.fresh()
+for src,dst in [((8,14),(7,13)),((7,12),(7,14)),((5,11),(6,13))]:
+    try: carry_box_to(e,src,dst)
+    except: pass
+# now fill (6,14) with any left box, retrying
+for it in range(8):
+    f=np.asarray(e.frame())
+    if boxed(f,(6,14)): break
+    if e.terminal(): break
+    av,boxes,walls=_grid_scan(e)
+    left=[b for b in boxes if b[1]<9 and b not in comp7]
+    if not left: e.step(5); continue
+    left.sort(key=lambda b: b[1])  # nearest to gap
+    try: ok=carry_box_to(e,left[-1],(6,14))
+    except: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print('it',it,'comp7',sum(1 for c in comp7 if boxed(f,c)),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+print('END comp7',sum(1 for c in comp7 if boxed(np.asarray(e.frame()),c)),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav
+import numpy as np
+e=l9lib.fresh()
+# navigate avatar adjacent to a box and walk into it (push test)
+# box at (8,1); approach from right (8,2)? (8,2) is 22. Approach (7,1) above, push down? or (8,0) left push right
+_avatar_nav(e,(8,2),cap=20)
+av,boxes,_=_grid_scan(e); print('av',av,'box(8,1) present?',(8,1) in boxes)
+# face left toward box and step LEFT (push)
+before=sorted(_grid_scan(e)[1])
+e.step(3) # LEFT into box
+after=sorted(_grid_scan(e)[1])
+print('after LEFT: av',_grid_scan(e)[0])
+print('box moved?', (8,1) in after, 'boxes',after[:6])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+e=l9lib.fresh()
+for src,dst in [((8,14),(7,13)),((7,12),(7,14)),((5,11),(6,13))]:
+    try: carry_box_to(e,src,dst)
+    except: pass
+av,boxes,walls=_grid_scan(e)
+print('av',av,'boxes',sorted(boxes),'comp7 (6,14) boxed?',boxed(np.asarray(e.frame()),(6,14)))
+# try relay (5,3)->(6,14) and see what happens; approach cells of (6,14)
+tgt=(6,14)
+for (dr,dc) in [(-1,0),(1,0),(0,-1),(0,1)]:
+    ac=(tgt[0]+dr,tgt[1]+dc)
+    blkd = ac in walls or ac in (boxes-{ (5,3)})
+    print('approach',ac,'wall?',ac in walls,'box?',ac in boxes)
+# just attempt and see grabbed
+ok=carry_box_to(e,(5,3),(6,14))
+print('carry ok',ok,'grabbed',_grid_grabbed(e),'av',_grid_scan(e)[0])
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+comp7=[(7,13),(7,14),(6,13),(6,14)]
+e=l9lib.fresh()
+for src,dst in [((8,14),(7,13)),((7,12),(7,14)),((5,11),(6,13))]:
+    try: carry_box_to(e,src,dst)
+    except: pass
+# relay a live left box to (6,14)
+for it in range(6):
+    f=np.asarray(e.frame())
+    if boxed(f,(6,14)): break
+    av,boxes,walls=_grid_scan(e)
+    left=sorted([b for b in boxes if b[1]<9],key=lambda b:-b[1])
+    if not left: e.step(5); continue
+    try: ok=carry_box_to(e,left[0],(6,14))
+    except: ok=False
+    if not ok: e.step(5)
+    print('it',it,'ok',ok,'comp7',sum(1 for c in comp7 if boxed(np.asarray(e.frame()),c)),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+print('END comp7',sum(1 for c in comp7 if boxed(np.asarray(e.frame()),c)),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import numpy as np
+for name in ['l8_win_before','l8_win_after','l7_win_before','l7_win_after']:
+    try:
+        f=np.load(name+'.npy')
+        vals,cnts=np.unique(f,return_counts=True)
+        print(name,dict(zip(vals.tolist(),cnts.tolist())))
+    except Exception as ex: print(name,'err',ex)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+def fillcont(cells,label,maxmv=68):
+    e=l9lib.fresh()
+    while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<maxmv:
+        f=np.asarray(e.frame())
+        empt=[c for c in cells if not boxed(f,c)]
+        if not empt: 
+            print(label,'FULL! lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen); return e.levels_completed
+        av,boxes,walls=_grid_scan(e)
+        loose=[b for b in boxes if b not in cells]
+        if not loose: e.step(5); continue
+        # try each empt cell with nearest box until a carry succeeds
+        done=False
+        empt.sort(key=lambda c:min(abs(b[0]-c[0])+abs(b[1]-c[1]) for b in loose))
+        for c in empt:
+            for b in sorted(loose,key=lambda b:abs(b[0]-c[0])+abs(b[1]-c[1]))[:3]:
+                try:
+                    if carry_box_to(e,b,c): done=True;break
+                except: pass
+            if done: break
+        if not done: e.step(5)
+    f=np.asarray(e.frame())
+    print(label,'end',sum(1 for c in cells if boxed(f,c)),'/',len(cells),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+    return e.levels_completed
+fillcont([(2,13),(2,14),(3,13),(3,14)],'comp1')
+fillcont([(7,13),(7,14),(6,13),(6,14)],'comp7')
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+e=l9lib.fresh()
+# Phase 1: relay right boxes (col>=10) into comp2 cells, prioritizing
+def rightboxes(f):
+    av,boxes,walls=_grid_scan(e); return [b for b in boxes if b[1]>=10 and b not in comp2]
+for it in range(4):
+    f=np.asarray(e.frame())
+    rb=rightboxes(f)
+    empt=[c for c in comp2 if not boxed(f,c)]
+    if not rb or not empt: break
+    # nearest empt to a right box (prefer col7 side)
+    empt.sort(key=lambda c:-c[1])
+    tgt=empt[0]; b=min(rb,key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+    try: ok=carry_box_to(e,b,tgt)
+    except: ok=False
+    print('relay',b,'->',tgt,ok,'comp2',sum(1 for c in comp2 if boxed(np.asarray(e.frame()),c)),'mv',len(e.path)-l9lib._baselen)
+    if not ok: break
+# Phase 2: fill remaining with left boxes
+while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<69:
+    f=np.asarray(e.frame())
+    empt=[c for c in comp2 if not boxed(f,c)]
+    if not empt: print('COMP2 FULL mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed); break
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    if not loose: e.step(5); continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+    try: ok=carry_box_to(e,best[1],best[2])
+    except: ok=False
+    if not ok: e.step(5)
+f=np.asarray(e.frame())
+print('END comp2',sum(1 for c in comp2 if boxed(f,c)),'/9 lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && timeout_run() { python "$@"; }; python -c "
+import l9lib, legs, random
+from legs import carry_box_to, _grid_scan
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+goals=comp2+comp1+comp7
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+best=8
+for ep in range(30):
+    random.seed(ep)
+    e=l9lib.fresh()
+    while not e.terminal() and e.levels_completed<=8:
+        f=np.asarray(e.frame())
+        av,boxes,walls=_grid_scan(e)
+        loose=[b for b in boxes if b not in goals]
+        empt=[c for c in goals if not boxed(f,c)]
+        if not loose or not empt: 
+            e.step(5); continue
+        b=random.choice(loose); c=random.choice(empt)
+        try: ok=carry_box_to(e,b,c)
+        except: ok=False
+        if not ok: e.step(5)
+        if e.levels_completed>8: break
+    if e.levels_completed>best: best=e.levels_completed
+    if e.levels_completed>8: print('EP',ep,'WON lc',e.levels_completed); 
+print('best lc over episodes',best)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _avatar_nav, _grid_scan
+import numpy as np
+from scipy import ndimage
+def cs(e,col):
+    return int((np.asarray(e.frame())==col).sum())
+# reach various spots, USE, check lc
+spots=[(0,0),(0,15),(8,0),(8,15),(2,11),(1,15)]
+for sp in spots:
+    e=l9lib.fresh()
+    ok=_avatar_nav(e,sp,cap=25)
+    lc1=e.levels_completed
+    e.step(5)
+    print('spot',sp,'nav',ok,'lc after nav+use',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+comp7=[(6,13),(6,14),(7,13),(7,14)]
+goals=comp2+comp1+comp7
+def usig(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    return set(int(v) for v in np.unique(blk))
+def boxed(f,cell):
+    u=usig(f,cell); return 9 in u and 2 not in u
+def blinking_count(f):
+    n=0
+    for c in goals:
+        u=usig(f,c)
+        if 9 in u and (0 in u or 3 in u): n+=1
+    return n
+e=l9lib.fresh()
+while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<69:
+    f=np.asarray(e.frame())
+    empt=[c for c in goals if not boxed(f,c)]
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in goals]
+    if not loose or not empt: e.step(5); continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+    try: ok=carry_box_to(e,best[1],best[2])
+    except: ok=False
+    if not ok: e.step(5)
+    f=np.asarray(e.frame())
+    print('blink',blinking_count(f),'boxedgoals',sum(1 for c in goals if boxed(f,c)),'lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+print('END lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _avatar_nav, _grid_scan
+import numpy as np
+def bar7(f): return int((f[60:64,:]==7).sum())
+def mpos(f):
+    ys,xs=np.where(f==15)
+    return (int(ys.min())//4,int(xs.min())//4) if len(ys) else None
+e=l9lib.fresh()
+# block maze exit at (9,3)
+_avatar_nav(e,(9,3),cap=15)
+print('at exit mv',len(e.path)-l9lib._baselen,'av',_grid_scan(e)[0])
+for t in range(60):
+    if e.terminal(): print('term'); break
+    f=np.asarray(e.frame())
+    if t%5==0: print('t',t,'bar7',bar7(f),'mover',mpos(f),'lc',e.levels_completed)
+    # hold position: step toward (9,3) if drifted, else USE
+    av=_grid_scan(e)[0]
+    if av!=(9,3): _avatar_nav(e,(9,3),cap=3)
+    else: e.step(5)
+f=np.asarray(e.frame())
+print('END bar7',bar7(f),'lc',e.levels_completed)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib
+import numpy as np
+def cl(blk):
+    u=set(int(v) for v in np.unique(blk)); u.discard(1)
+    if not u: return '..'
+    if u=={5}: return '##'
+    if u=={7}: return '=='
+    if u<= {4,5,7}: return '4~'
+    if u=={14} or u=={0,14}: return 'AV'
+    if u=={12}: return 'CC'
+    if u=={5,9} or u=={5,4,9}: return 'Cb'
+    if u=={15}: return 'MM'
+    if u=={9,15}: return 'Mb'
+    if u=={2}: return '22'
+    if u=={4,9}: return '4b'
+    if 9 in u and 2 in u: return 's2'
+    if 9 in u and (0 in u or 3 in u): return 'bx'
+    return '?'+''.join(map(str,sorted(u)))
+e=l9lib.fresh()
+for _ in range(46): e.step(5)  # advance to t46 when mover in top
+for t in range(46,66,3):
+    f=np.asarray(e.frame())
+    print(f'--- t{t} top-left rows0-9 cols0-9 ---')
+    for r in range(9):
+        print(f'{r} '+' '.join(cl(f[r*4:r*4+4,c*4:c*4+4]) for c in range(9)))
+    for _ in range(3): e.step(5)
+" 2>&1 | head -80
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import chase_and_clear, _movers, _mover_cell
+import numpy as np
+def c15(e): return int((np.asarray(e.frame())==15).sum())
+e=l9lib.fresh()
+# idle until mover(15) enters top region
+for _ in range(50):
+    if e.terminal(): break
+    m=_mover_cell(e,15)
+    if m and m[0]<9: break
+    e.step(5)
+print('mover entered top at mv',len(e.path)-l9lib._baselen,'cell',_mover_cell(e,15),'c15',c15(e))
+chase_and_clear(e,15, lambda m: True, cap=15)
+print('after chase15 c15',c15(e),'mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed)
+while not e.terminal() and e.levels_completed<=8:
+    e.step(5)
+print('END lc',e.levels_completed)
+"
+I've done extensive discovery. Let me consolidate what I've learned and check one more critical hypothesis about the win condition before finalizing. Let me verify my understanding of the timer bar and test whether trapping the mover lets the courier complete comp2.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan, _mover_cell
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+# Strategy: block maze exit (9,3) so mover stays trapped, and just let LEFT courier fill comp2, watch full ceiling
+from legs import _avatar_nav
+e=l9lib.fresh()
+_avatar_nav(e,(9,3),cap=12)
+best=0
+for t in range(58):
+    if e.terminal(): break
+    av=_grid_scan(e)[0]
+    if av!=(9,3): _avatar_nav(e,(9,3),cap=2)
+    else: e.step(5)
+    f=np.asarray(e.frame())
+    fill=sum(1 for c in comp2 if boxed(f,c)); best=max(best,fill)
+print('comp2 ceiling with mover trapped + courier only:',best,'lc',e.levels_completed)
+"
+I've thoroughly established that comp2 (the only box-count-matching container, 9 cells) cannot be filled to 9 within the level's 70-move budget: the courier fills only ~5 (left boxes), and relaying the 3 stranded right boxes across the wall costs ~24 moves each (~72 total). Let me document findings and verify the actual budget situation under gkm_try, which is the binding constraint.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan, _mover_cell, _avatar_nav
+import numpy as np
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+# BEST combined: relay 2 right boxes early, fill left, trap-ignore, maximize comp2
+e=l9lib.fresh()
+# relay right boxes first (they are essential for comp2>6)
+for src in [(5,11),(7,12),(8,14)]:
+    f=np.asarray(e.frame())
+    empt=[c for c in comp2 if not boxed(f,c)]
+    empt.sort(key=lambda c:-c[1])
+    if not empt: break
+    if len(e.path)-l9lib._baselen>44: break  # stop relaying if too late
+    try: carry_box_to(e,src,empt[0])
+    except: pass
+# fill rest with left boxes
+while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<69:
+    f=np.asarray(e.frame())
+    empt=[c for c in comp2 if not boxed(f,c)]
+    if not empt: print('COMP2 FULL lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen); break
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    if not loose: e.step(5); continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+    try: ok=carry_box_to(e,best[1],best[2])
+    except: ok=False
+    if not ok: e.step(5)
+f=np.asarray(e.frame())
+print('FINAL comp2',sum(1 for c in comp2 if boxed(f,c)),'/9 lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+I've done extensive, systematic discovery on level 9. Let me record my findings and the current state honestly, then write the best-effort player. Let me first document what I learned.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan, _mover_cell, _avatar_nav
+import numpy as np
+# Re-examine: are comp2's 2-fill INTERIOR the thing? Check comp2 interior-2 count as boxes fill
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+# Try: does filling comp2 to 6 and then the win check need the mover GONE from comp2 area? 
+# Test placing boxes AND keeping avatar clearing near comp2. Already tried.
+# NEW: check if win = fill comp1 (top-right 8x8) fully - it's rows8-11 cols52-59 = cells (2,13)(2,14)(3,13)(3,14)
+# but (3,13)(3,14) overlap the 2sol row. Let me verify comp1 cells accept boxes and fill fully.
+comp1=[(2,13),(2,14),(3,13),(3,14)]
+e=l9lib.fresh()
+while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<69:
+    f=np.asarray(e.frame())
+    empt=[c for c in comp1 if not boxed(f,c)]
+    if not empt: print('COMP1 FULL lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen);break
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp1]
+    if not loose: e.step(5);continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+    try: ok=carry_box_to(e,best[1],best[2])
+    except: ok=False
+    if not ok: e.step(5)
+f=np.asarray(e.frame())
+print('comp1',sum(1 for c in comp1 if boxed(f,c)),'/4 lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+I've exhaustively tested every fillable-container interpretation (comp2 partial→6, comp7 full→4, comp1→3, all-boxes-on-goals→9) and none trigger the win, nor does neutralizing agents (USE doesn't remove couriers or the mover). The bottom bar is a countdown timer (depletes ~1px/turn independent of agents), not a goal. Let me record these findings and write a best-effort player composing existing legs.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && cat >> legs_log.md <<'EOF'
+
+## wa30 L9 investigation (session notes)
+
+Structure (16x16 cell view): vertical wall at cell-col 9 splitting the board;
+gap at cell rows 8-9 lets the avatar cross. Bottom rows 10-15 are a comb maze.
+Agents: two couriers (colour 12; left one roams+fills the big container, right
+one activates only when a box is dropped in its region), one self-mover
+(colour 15) that starts in the maze and reaches the top ~turn 45, then trails
+the left courier and steals the box it carries. Avatar = colour 14, actions
+1..5 = UP/DOWN/LEFT/RIGHT/USE (1 cell/step). Boxes = 4-frame/9-core (loose
+border 4; the most-recently avatar-placed one blinks border 0<->3 = a mere
+selection highlight, NOT a "seated" marker). Goal-looking 9-frame/2-core
+containers: comp2 (big 3x3-cell, left), comp1 & comp7 (2x2-cell, right).
+
+Level has a per-level budget of exactly 70 engine-moves; the bottom colour-7
+bar is that COUNTDOWN TIMER (depletes ~1px/turn regardless of any agent -- I
+proved this by trapping the mover, the bar kept draining). Bar-full != win
+(reached bar7=0, no level-up).
+
+Win condition NOT found. Ruled out empirically (all lc stayed 8):
+ - bar fully painted to colour 4;
+ - all 9 boxes placed on goal cells (reached 0 off-goal at ~mv64);
+ - comp7 completely full (4/4);  comp1 3/4;  comp2 max 6/9;
+ - neutralising agents: USE does NOT remove couriers(12) NOR the mover(15)
+   (chase_and_clear left colour counts unchanged), unlike L6/L7/L8.
+comp2 is the only container whose capacity (9) matches the 9 boxes, but filling
+it to 9 is infeasible in 70 moves: the courier seats only ~5 (left boxes) even
+undisturbed, and relaying each of the 3 stranded right boxes across the wall
+costs ~24 moves (>70 total).
+
+BUDGET BLOCKER: run_program caps TOTAL real moves at 600. Players 1-8 already
+consume 588 (L1=27,L2=54,L3=80,L4=69,L5=124,L6=47,L7=65,L8=122), leaving only
+12 for L9 under gkm_try. Reaching L9 would require BOTH cracking the (still
+unknown) L9 win AND reclaiming ~58 moves from L1-8 (fattest: L5,L8).
+EOF
+echo done
+Let me make a final, genuinely different test of the win condition — testing contextual USE on special tiles and whether the RIGHT courier (helper) seating relayed boxes completes a right-side goal, since I haven't let the helper do the seating itself.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to, _grid_scan, _avatar_nav
+import numpy as np
+# Relay LEFT boxes into RIGHT region near right courier, let RIGHT courier seat them, watch lc
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+e=l9lib.fresh()
+# drop a few left boxes into right region open cells so right courier activates
+drops=[(4,11),(5,12),(4,13)]
+for i,src in enumerate([(5,3),(5,1),(7,1)]):
+    f=np.asarray(e.frame()); av,boxes,walls=_grid_scan(e)
+    if src not in boxes:
+        # pick any left box
+        lb=[b for b in boxes if b[1]<9]
+        if not lb: break
+        src=lb[0]
+    try: carry_box_to(e,src,drops[i])
+    except: pass
+    print('dropped ->',drops[i],'mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed)
+# now idle, let right courier work
+for _ in range(30):
+    if e.terminal() or e.levels_completed>8: break
+    e.step(5)
+print('after idle lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+I've exhaustively investigated level 9 without finding a win-triggering condition, and confirmed the budget blocker. Let me write a best-effort `play_level_9` that composes existing legs to fill the central container (the most-likely goal), and verify it doesn't regress the working L1–8.
+[edit] str_replace /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit/players.py
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python gkm_try.py 2>&1 | tail -5
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import numpy as np
+f=np.load('l7_win_before.npy')
+chars={0:'.',1:' ',2:'2',3:'3',4:'4',5:'#',7:'=',9:'9',12:'C',14:'A',15:'M'}
+print('l7_win_before (winning config of L7):')
+for r in range(0,64,2):
+    print(''.join(chars.get(int(v),'?') for v in f[r,::2]))
+"
+The L7 winning config (top/bottom thirds SOLID color-4) reveals the real mechanic: a goal container **flood-fills to solid color-4** when completed — and L7 only needed 2 target cells filled. Let me test whether placing a box on a specific "activation" cell of a L9 container triggers a flood-fill.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import carry_box_to
+import numpy as np
+# comp2 pixel region rows12-23 cols20-31; count color4 there
+def c4comp2(f): return int((f[12:24,20:32]==4).sum())
+def c4comp7(f): return int((f[24:28,52:60]==4).sum())
+tests=[(5,6),(4,6),(3,6),(5,5),(3,5),(4,5),(5,7),(3,7)]
+for tgt in tests:
+    e=l9lib.fresh()
+    # nearest loose box
+    from legs import _grid_scan
+    av,boxes,walls=_grid_scan(e)
+    b=min(boxes,key=lambda b:abs(b[0]-tgt[0])+abs(b[1]-tgt[1]))
+    try: ok=carry_box_to(e,b,tgt)
+    except: ok=False
+    f=np.asarray(e.frame()); pre=c4comp2(f)
+    for _ in range(3): 
+        if not e.terminal(): e.step(5)
+    f=np.asarray(e.frame())
+    print(f'tgt{tgt} ok={ok} c4comp2 {pre}->{c4comp2(f)} lc={e.levels_completed}')
+"
+The flood-fill hypothesis is disproven — placing a box adds exactly one box's worth of color-4 (~12px) linearly, no flood. This confirms comp2 must be filled cell-by-cell to all 9, which is infeasible within the level's 70-move budget (courier seats only ~5 of the left boxes; relaying each of the 3 stranded right boxes across the wall costs ~24 moves).
+
+Let me verify the final state is clean and L1–8 still validate without regression.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import solve
+# Run players 1-8 fresh (no checkpoint) to confirm no regression
+lv,path,err=A.run_program('wa30', solve.solve)
+print('players fresh: levels',lv,'moves',len(path),'err',err)
+ok=A.validate('wa30',path,lv)
+print('validate',ok)
+"
+Let me make one decisive all-out attempt: bypass the lookahead-heavy `carry_box_to` with a minimal scripted grab-carry (no clone lookahead, so it works even near the deadline) to test whether comp2=9 is physically reachable in ≤70 moves and whether that triggers the win.
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python -c "
+import l9lib, legs
+from legs import _grid_scan, _avatar_nav, _grid_grabbed
+import numpy as np
+UP,DOWN,LEFT,RIGHT,USE=1,2,3,4,5
+comp2=[(r,c) for r in range(3,6) for c in range(5,8)]
+def boxed(f,cell):
+    blk=f[cell[0]*4:cell[0]*4+4,cell[1]*4:cell[1]*4+4]
+    u=set(int(v) for v in np.unique(blk)); return 9 in u and 2 not in u
+FACE={(-1,0):UP,(1,0):DOWN,(0,-1):LEFT,(0,1):RIGHT}
+def direct_carry(e,box,drop):
+    av,boxes,walls=_grid_scan(e)
+    # choose adjacent approach cell that's free
+    for (dr,dc) in [(0,1),(0,-1),(-1,0),(1,0)]:
+        ac=(box[0]+dr,box[1]+dc)
+        if 0<=ac[0]<16 and 0<=ac[1]<16 and ac not in walls and ac not in boxes:
+            if _avatar_nav(e,ac,cap=25):
+                face=FACE[(box[0]-ac[0],box[1]-ac[1])]
+                e.step(face); e.step(USE)
+                if not _grid_grabbed(e): return False
+                # carry: move avatar so box reaches drop
+                av=_grid_scan(e)[0]; off=(box[0]-av[0],box[1]-av[1])
+                gav=(drop[0]-off[0],drop[1]-off[1])
+                for _ in range(30):
+                    av=_grid_scan(e)[0]
+                    if av==gav: break
+                    if e.terminal(): return False
+                    if av[0]<gav[0]: a=DOWN
+                    elif av[0]>gav[0]: a=UP
+                    elif av[1]<gav[1]: a=RIGHT
+                    else: a=LEFT
+                    before=av; e.step(a)
+                    if _grid_scan(e)[0]==before:
+                        # blocked, try perpendicular
+                        alt=RIGHT if a in (UP,DOWN) else DOWN
+                        e.step(alt)
+                e.step(USE)
+                return True
+    return False
+e=l9lib.fresh()
+plan=[((5,11),(3,7)),((7,12),(4,7)),((8,14),(5,7))]
+for src,dst in plan:
+    if e.terminal():break
+    ok=direct_carry(e,src,dst)
+    f=np.asarray(e.frame())
+    print('relay',src,'->',dst,ok,'comp2',sum(1 for c in comp2 if boxed(f,c)),'mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed)
+# fill remaining with left boxes
+while not e.terminal() and e.levels_completed<=8 and len(e.path)-l9lib._baselen<69:
+    f=np.asarray(e.frame())
+    empt=[c for c in comp2 if not boxed(f,c)]
+    if not empt: print('COMP2 FULL mv',len(e.path)-l9lib._baselen,'lc',e.levels_completed);break
+    av,boxes,walls=_grid_scan(e)
+    loose=[b for b in boxes if b not in comp2]
+    if not loose: e.step(5);continue
+    best=min(((abs(b[0]-c[0])+abs(b[1]-c[1]),b,c) for b in loose for c in empt),key=lambda x:x[0])
+    if not direct_carry(e,best[1],best[2]): e.step(5)
+f=np.asarray(e.frame())
+print('FINAL comp2',sum(1 for c in comp2 if boxed(f,c)),'/9 lc',e.levels_completed,'mv',len(e.path)-l9lib._baselen)
+"
+$ cd /private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_legs_ws_wa30_opus_l9_resume_after_credit && python gkm_try.py 2>&1 | tail -3
+I've completed an exhaustive investigation of level 9 but must report honestly: **I was unable to reach level 9 this session.** Here is a complete account.
+
+## What I discovered about level 9 (all by experiment on clones)
+
+**Structure:** A vertical wall splits the board (avatar can cross via a gap at cell rows 8–9). Avatar = colour 14 (actions 1‑5 = UP/DOWN/LEFT/RIGHT/USE, 1 cell/step). Boxes are 4‑frame/9‑core; the avatar grabs them (face + USE) and rigid‑carries them. There are **9 loose boxes** (6 left of the wall, 3 stranded on the right) and three 9‑frame containers: **comp2** (big, 3×3 cells, left) and comp1/comp7 (2×2, right).
+
+**Agents:** two couriers (colour 12 — the left one slowly seats boxes into comp2; the right one activates when a box is dropped near it) and a self‑mover (colour 15) that starts in the bottom maze, reaches the top ~turn 45, then trails the left courier and **steals** its carried box.
+
+**Key facts established:**
+- The level has a hard **70‑move budget**; the bottom colour‑7 bar is that **countdown timer** (I proved it drains ~1px/turn even with the mover trapped), *not* a goal.
+- USE does **not** remove the couriers or the mover (unlike L6/L7/L8), so the neutralise‑then‑deliver pattern doesn't apply.
+- The win is **not** triggered by: bar fully painted, all 9 boxes placed on goal cells, comp7 completely full, comp1 3/4, comp2 up to 6/9, or dropping boxes for the right courier.
+- comp2 (9 cells) is the only container whose capacity matches the 9 boxes, and the L7 win frame confirms containers complete to solid colour‑4 — but there is **no flood‑fill** (each box adds ~12px linearly), so comp2 must be filled cell‑by‑cell to 9. The courier seats only ~5 (left boxes) even undisturbed, and relaying each of the 3 right boxes across the wall costs ~24 moves → **>70 total, infeasible.**
+
+## The binding blocker
+`run_program` caps **total** real moves at **600**. Players 1‑8 already consume **588** (L1=27, L2=54, L3=80, L4=69, L5=124, L6=47, L7=65, L8=122), leaving only **12** for level 9. Reaching L9 would require *both* cracking the (unresolved) win *and* reclaiming ~58 moves from L1‑8.
+
+## What I left in place
+- `play_level_9(env)` composing the existing `fill_targets_nearest_first` leg on comp2's cells (best‑effort toward the most‑likely goal; no new level logic inline).
+- **No regression:** L1‑8 still validate (`validate=True`); `gkm_try` reports `levels=8`.
+- Findings recorded in `legs_log.md`.
+
+I did not fabricate a win. The honest result remains `levels=8`, and I've documented exactly why L9 resisted the discovered mechanics and the budget so a follow‑up can target the two concrete gaps (an efficient cross‑wall relay skill, and trimming L5/L8's idle‑yield tails to free budget).
