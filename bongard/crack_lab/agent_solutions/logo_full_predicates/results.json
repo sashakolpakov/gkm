@@ -404,5 +404,12 @@
     "concept": "inverse_quasi_sector73",
     "solved": false,
     "rule": "p_arc_defect_score_217>=26.17"
+  },
+  "problem_58": {
+    "problem_id": "bd_open_band_three_arcs1_0302",
+    "category": "basic",
+    "concept": "open_band_three_arcs1",
+    "solved": false,
+    "rule": "p_circle_fit_residual<=0.01981"
   }
 }
