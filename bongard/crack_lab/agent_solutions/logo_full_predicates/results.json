@@ -418,5 +418,12 @@
     "concept": "has_obtuse_angle",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.06915"
+  },
+  "problem_60": {
+    "problem_id": "bd_open_arc_line_arc4_0290",
+    "category": "basic",
+    "concept": "open_arc_line_arc4",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=12.28"
   }
 }
