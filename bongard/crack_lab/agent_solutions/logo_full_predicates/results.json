@@ -1,0 +1,9 @@
+{
+  "problem_00": {
+    "problem_id": "bd_open_s5_0279",
+    "category": "basic",
+    "concept": "open_s5",
+    "solved": true,
+    "rule": "p_arc_defect_score<=1.634"
+  }
+}
