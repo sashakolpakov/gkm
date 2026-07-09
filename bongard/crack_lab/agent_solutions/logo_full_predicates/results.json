@@ -523,5 +523,12 @@
     "concept": "has_six_straight_lines",
     "solved": false,
     "rule": "p_arc_defect_score_217>=30.68"
+  },
+  "problem_75": {
+    "problem_id": "bd_thin_rec_right_triangle_0138",
+    "category": "basic",
+    "concept": "thin_rec_right_triangle",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1287"
   }
 }
