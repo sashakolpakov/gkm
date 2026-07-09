@@ -551,5 +551,12 @@
     "concept": "unbala_three_intersect_circles3",
     "solved": false,
     "rule": "p_arc_defect_score_217<=30.41"
+  },
+  "problem_79": {
+    "problem_id": "hd_closed_shape_0012",
+    "category": "abstract",
+    "concept": "closed_shape",
+    "solved": false,
+    "rule": "p_arc_defect_score_arc120>=10.21"
   }
 }
