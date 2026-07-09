@@ -460,5 +460,12 @@
     "concept": "large_intersect_circle",
     "solved": true,
     "rule": "p_arc_defect_score_217>=27.09"
+  },
+  "problem_66": {
+    "problem_id": "bd_asymm_arc_lamp_0260",
+    "category": "basic",
+    "concept": "asymm_arc_lamp",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1128"
   }
 }
