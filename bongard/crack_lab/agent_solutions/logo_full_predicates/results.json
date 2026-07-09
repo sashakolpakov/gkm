@@ -236,5 +236,12 @@
     "concept": "asymmetric_house",
     "solved": true,
     "rule": "p_arc_defect_score_217>=34.61"
+  },
+  "problem_34": {
+    "problem_id": "hd_has_curve_0001",
+    "category": "abstract",
+    "concept": "has_curve",
+    "solved": false,
+    "rule": "p_circle_fit_residual<=0.1082"
   }
 }
