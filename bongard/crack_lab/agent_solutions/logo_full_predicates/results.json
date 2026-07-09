@@ -215,5 +215,12 @@
     "concept": "exist_triangle_eight_lines3",
     "solved": false,
     "rule": "p_circle_fit_residual<=0.07977"
+  },
+  "problem_31": {
+    "problem_id": "bd_bala_three_intersect_circles2_0324",
+    "category": "basic",
+    "concept": "bala_three_intersect_circles2",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=9.355"
   }
 }
