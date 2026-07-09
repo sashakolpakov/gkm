@@ -446,5 +446,12 @@
     "concept": "necked_six_lines6",
     "solved": false,
     "rule": "p_arc_defect_score_217>=31.88"
+  },
+  "problem_64": {
+    "problem_id": "hd_has_four_straight_lines_0006",
+    "category": "abstract",
+    "concept": "has_four_straight_lines",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=32.44 AND p_circle_fit_residual>=0.0936"
   }
 }
