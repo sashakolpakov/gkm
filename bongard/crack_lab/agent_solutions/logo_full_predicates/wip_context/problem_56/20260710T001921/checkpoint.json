@@ -619,17 +619,6 @@
       "model": "sonnet",
       "attempts": 1,
       "escalated": false
-    },
-    {
-      "opaque_id": "problem_56",
-      "solved": false,
-      "heldout_accuracy": 0.8472222222222222,
-      "rule": "p_arc_defect_score_217<=25.65 AND p_arc_defect_score_217>=18.69",
-      "rule_cost": 3.0,
-      "marginal_C": 0,
-      "model": "opus",
-      "attempts": 3,
-      "escalated": true
     }
   ]
 }

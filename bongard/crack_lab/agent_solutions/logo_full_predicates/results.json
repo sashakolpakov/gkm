@@ -390,5 +390,12 @@
     "concept": "two_mismatch_triangles2",
     "solved": true,
     "rule": "p_arc_defect_score_217<=19.5"
+  },
+  "problem_56": {
+    "problem_id": "bd_trapezoid_triangle3_0416",
+    "category": "basic",
+    "concept": "trapezoid_triangle3",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=25.65 AND p_arc_defect_score_217>=18.69"
   }
 }
