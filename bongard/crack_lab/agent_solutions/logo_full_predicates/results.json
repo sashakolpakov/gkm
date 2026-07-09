@@ -481,5 +481,12 @@
     "concept": "no_obtuse_angle_six_lines6",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.1136"
+  },
+  "problem_69": {
+    "problem_id": "hd_exist_sector_0024",
+    "category": "abstract",
+    "concept": "exist_sector",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.08114 AND p_arc_defect_score_217>=16.43"
   }
 }
