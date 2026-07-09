@@ -5,5 +5,12 @@
     "concept": "open_s5",
     "solved": true,
     "rule": "p_arc_defect_score<=1.634"
+  },
+  "problem_01": {
+    "problem_id": "bd_arc_three_lines1_0512",
+    "category": "basic",
+    "concept": "arc_three_lines1",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=4.097"
   }
 }

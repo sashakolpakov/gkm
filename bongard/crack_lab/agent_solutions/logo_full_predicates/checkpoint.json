@@ -1,8 +1,8 @@
 {
   "tag": "logo_full",
-  "solved": 1,
-  "total_marginal_C": 74,
-  "free_energy": 0.48,
+  "solved": 2,
+  "total_marginal_C": 116,
+  "free_energy": 0.31999999999999984,
   "records": [
     {
       "opaque_id": "problem_00",
@@ -14,6 +14,17 @@
       "model": "sonnet",
       "attempts": 1,
       "escalated": false
+    },
+    {
+      "opaque_id": "problem_01",
+      "solved": true,
+      "heldout_accuracy": 1.0,
+      "rule": "p_arc_defect_score_217<=4.097",
+      "rule_cost": 1.5,
+      "marginal_C": 42,
+      "model": "sonnet",
+      "attempts": 2,
+      "escalated": true
     }
   ]
 }
