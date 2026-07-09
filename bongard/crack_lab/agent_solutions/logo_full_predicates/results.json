@@ -348,5 +348,12 @@
     "concept": "necked",
     "solved": false,
     "rule": "p_arc_defect_score_217>=11.69"
+  },
+  "problem_50": {
+    "problem_id": "bd_open_triangle7_0496",
+    "category": "basic",
+    "concept": "open_triangle7",
+    "solved": true,
+    "rule": "p_arc_defect_score_217>=20.86"
   }
 }
