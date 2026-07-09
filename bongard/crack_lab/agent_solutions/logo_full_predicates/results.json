@@ -285,5 +285,12 @@
     "concept": "hat_sector2",
     "solved": true,
     "rule": "p_arc_defect_score_217<=29.52"
+  },
+  "problem_41": {
+    "problem_id": "bd_open_s_new1_0507",
+    "category": "basic",
+    "concept": "open_s_new1",
+    "solved": true,
+    "rule": "p_arc_defect_score_217>=34.89"
   }
 }
