@@ -411,5 +411,12 @@
     "concept": "open_band_three_arcs1",
     "solved": false,
     "rule": "p_circle_fit_residual<=0.01981"
+  },
+  "problem_59": {
+    "problem_id": "hd_has_obtuse_angle_0014",
+    "category": "abstract",
+    "concept": "has_obtuse_angle",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.06915"
   }
 }
