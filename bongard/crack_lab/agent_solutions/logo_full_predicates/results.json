@@ -369,5 +369,12 @@
     "concept": "no_obtuse_angle_six_lines3",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.08998 AND p_arc_defect_score_217>=31.8"
+  },
+  "problem_53": {
+    "problem_id": "bd_exist_triangle_eight_lines12_0607",
+    "category": "basic",
+    "concept": "exist_triangle_eight_lines12",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=29.37 AND p_arc_defect_score_217>=22.74"
   }
 }
