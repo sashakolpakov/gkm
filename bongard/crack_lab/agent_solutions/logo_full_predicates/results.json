@@ -278,5 +278,12 @@
     "concept": "has_line_crossing",
     "solved": false,
     "rule": "p_arc_defect_score_217<=28.93 AND p_circle_fit_residual>=0.05258"
+  },
+  "problem_40": {
+    "problem_id": "bd_hat_sector2_0439",
+    "category": "basic",
+    "concept": "hat_sector2",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=29.52"
   }
 }
