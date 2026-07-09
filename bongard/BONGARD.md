@@ -10,6 +10,14 @@ bodies.
 - **Manuscript:** [`manuscript/free_energy_abstraction.tex`](manuscript/free_energy_abstraction.tex)
   — free-energy selection for predicate encapsulation in sparse deterministic
   solvers (build with `make -C manuscript`).
+- **The crack lab (real Bongard from raw panels):**
+  [`bongard_crack_plan.md`](bongard_crack_plan.md) — the Architect/Engineer
+  plan for rule deduction from raw pixels with the ARC-style crack harness;
+  [`crack_lab/`](crack_lab/) — the raw substrate + enforced predicate-library
+  loop; first live result in
+  [`bongard_crack_smoke_report.md`](bongard_crack_smoke_report.md)
+  (Sonnet proposer, 2/2 fresh-seed rendered LOGO problems, reuse collapse
+  visible at n=2).
 - **Reports:** [`bongard_sparse_classifier_report.md`](bongard_sparse_classifier_report.md),
   [`abstraction_emergence_report.md`](abstraction_emergence_report.md),
   [`bongard_logo_report.md`](bongard_logo_report.md),

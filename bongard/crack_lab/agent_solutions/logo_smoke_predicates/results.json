@@ -1,0 +1,16 @@
+{
+  "problem_00": {
+    "problem_id": "bd_open_s5_0279",
+    "category": "basic",
+    "concept": "open_s5",
+    "solved": true,
+    "rule": "p_is_regular_circular_arc>=0.5"
+  },
+  "problem_01": {
+    "problem_id": "bd_arc_three_lines1_0512",
+    "category": "basic",
+    "concept": "arc_three_lines1",
+    "solved": true,
+    "rule": "p_is_wide_hand_drawn_arc>=0.5"
+  }
+}

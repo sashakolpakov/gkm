@@ -299,6 +299,16 @@ is the overfit guard.
   official painter renders differently — our panels are *a* faithful visual
   realization of the action programs, not pixel-identical to the published
   dataset; stated in reports.
+- **R4 (proposer -> Engineer, from the first smoke run, open):** the Sonnet
+  proposer reported that it deliberately folded an AND of two raw
+  measurements into ONE composite predicate because the rule search prices
+  atoms flatly and LOO rotations could tie-break toward a cheaper-but-wrong
+  single-threshold rule when the measurements were exposed separately. Total
+  accounting holds (composite internals are charged in `marginal_C`), but
+  `rule_cost` understates rule complexity and the incentive moves
+  conjunction logic out of the transparent rule layer into opaque
+  predicates. Candidate fix: price an atom partly by its predicate's
+  definition share. See `bongard_crack_smoke_report.md`.
 - **R3 (Engineer -> Architect, resolved):** the adapter's selector is bound to
   `LogoSceneObject` scenes; the crack selector is a fresh minimal MDL
   conjunction search whose atoms are thresholded outputs of proposer-authored
