@@ -167,3 +167,45 @@ def test_interleave_corpus_stable_prefix():
     assert full[4] == "a0" and full[9] == "a1" and full[14] == "a2"
     # stable prefix: truncating the corpus never reorders earlier slots
     assert L.interleave_corpus(basic, abstract)[:8] == full[:8]
+
+
+def test_infra_failure_waits_then_stops_resumably(sandbox):
+    """Session-limit/credit-out guardrail: an infra failure must not consume
+    ladder attempts; after max waits the run stops with no verdict recorded,
+    library unchanged, so a relaunch resumes at the same problem."""
+    calls = []
+
+    def propose(task, ws, model, minutes):
+        calls.append(model)
+        with open(os.path.join(ws, L.LIBRARY_FILE), "a") as f:
+            f.write("def p_junk(panel):\n    return 0.0\n")
+        return "You've hit your session limit - resets 12:50am"
+
+    rep = L.run(_two_problems(), tag="t7", ws=str(sandbox / "ws7"),
+                propose_fn=propose, verbose=False,
+                infra_wait_seconds=0, max_infra_waits=2)
+    # 1 first try + 2 retries after waits, all on rung 0, then stop
+    assert calls == ["sonnet"] * 3
+    assert rep.records == []  # no verdict recorded: not a solving failure
+    lib = open(os.path.join(str(sandbox / "ws7"), L.LIBRARY_FILE)).read()
+    assert "p_junk" not in lib
+
+
+def test_infra_recovery_consumes_no_attempt(sandbox):
+    """One infra failure, then a working proposer: the ladder still has all
+    its rungs and the problem solves on attempt 1."""
+    state = {"n": 0}
+
+    def propose(task, ws, model, minutes):
+        state["n"] += 1
+        if state["n"] == 1:
+            return "rate limit exceeded"
+        with open(os.path.join(ws, L.LIBRARY_FILE), "a") as f:
+            f.write(WITNESS)
+        return "done"
+
+    rep = L.run([two_vs_one_problem()], tag="t8", ws=str(sandbox / "ws8"),
+                propose_fn=propose, verbose=False, infra_wait_seconds=0)
+    assert rep.solved == 1
+    assert rep.records[0].attempts == 1
+    assert not rep.records[0].escalated

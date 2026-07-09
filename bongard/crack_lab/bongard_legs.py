@@ -53,6 +53,14 @@ PROMOTED_FILES = (LIBRARY_FILE, LOG_FILE, CHECKPOINT_FILE)
 DEFAULT_LADDER = ("sonnet", "sonnet", "opus")
 """Proposer escalation ladder: model per attempt round."""
 
+INFRA_FAILURE_MARKERS = ("session limit", "rate limit", "credit balance",
+                         "overloaded", "usage limit", "quota")
+"""Proposer transcript markers meaning the INFRASTRUCTURE failed (limits,
+credits), not the proposer's reasoning. Such a round must not consume a
+ladder attempt: the run waits and retries, or stops resumably. Learned the
+hard way: the first logo_full sweep hit a session limit after problem_01 and
+burned 78 problems against a frozen library."""
+
 SOURCE_TAINT_MARKERS = (
     "downloads/bongard-logo",
     "get_action_string_list",
@@ -394,8 +402,9 @@ def build_task(opaque_id: str, tester_cmd: str) -> str:
 
 
 def claude_propose(task: str, ws: str, model: str, minutes: int = 15,
-                   verbose: bool = True) -> None:
-    """Default proposer: the real headless Claude Code agent with tools."""
+                   verbose: bool = True) -> Optional[str]:
+    """Default proposer: the real headless Claude Code agent with tools.
+    Returns the transcript so the loop can detect infrastructure failures."""
     cmd = ["claude", "-p", task,
            "--allowedTools", "Bash", "Read", "Write", "Edit",
            "--dangerously-skip-permissions",
@@ -409,8 +418,10 @@ def claude_propose(task: str, ws: str, model: str, minutes: int = 15,
         if verbose:
             print("=== proposer transcript (tail) ===")
             print((proc.stdout or "")[-1500:])
+        return (proc.stdout or "") + "\n" + (proc.stderr or "")
     except subprocess.TimeoutExpired:
         print(f"proposer timed out after {minutes} min")
+        return None
 
 
 # ---------------------------------------------------------------------------
@@ -430,10 +441,12 @@ def _verify_workspace(ws: str, problem: A.Problem) -> A.VerifyResult:
 
 def run(problems: Sequence[A.Problem], tag: str = "logo",
         ws: Optional[str] = None,
-        propose_fn: Callable[[str, str, str, int], None] = None,
+        propose_fn: Callable[[str, str, str, int], Optional[str]] = None,
         ladder: Sequence[str] = DEFAULT_LADDER,
         minutes: int = 15, verbose: bool = True,
-        git_checkpoints: bool = False) -> Report:
+        git_checkpoints: bool = False,
+        infra_wait_seconds: int = 1200,
+        max_infra_waits: int = 12) -> Report:
     """PROPOSE -> VERIFY -> DEBRIEF over a problem sequence, with structural
     admission and Sonnet-first escalation. Resumable: solved problems in the
     promoted artifact are not re-run."""
@@ -470,16 +483,41 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
         result = None
         model_used = ladder[0]
         attempts = 0
-        for model in ladder:
+        rung = 0
+        infra_waits = 0
+        infra_stop = False
+        while rung < len(ladder):
+            model = ladder[rung]
+            transcript = propose(build_task(oid, tester_cmd), ws, model, minutes)
+            if transcript and any(m in transcript.lower()
+                                  for m in INFRA_FAILURE_MARKERS):
+                infra_waits += 1
+                if infra_waits > max_infra_waits:
+                    print(f"{oid}: proposer infrastructure still failing after "
+                          f"{max_infra_waits} waits; stopping run (resumable)")
+                    infra_stop = True
+                    break
+                if verbose:
+                    print(f"{oid}: proposer infra failure "
+                          f"({infra_waits}/{max_infra_waits}); retrying same "
+                          f"rung in {infra_wait_seconds}s")
+                time.sleep(infra_wait_seconds)
+                continue
             attempts += 1
             model_used = model
-            propose(build_task(oid, tester_cmd), ws, model, minutes)
+            rung += 1
             assert_workspace_not_tainted(ws)
             result = _verify_workspace(ws, problem)
             if verbose:
                 print(f"{oid} attempt {attempts} ({model}): {result.result_line()}")
             if result.solved:
                 break
+        if infra_stop:
+            # No verdict on this problem: revert the library and stop; the
+            # promoted artifact is intact and a relaunch resumes right here.
+            with open(lib_path, "w") as f:
+                f.write(lib_before)
+            break
 
         lib_after = _read(lib_path)
         if result is not None and result.solved:
