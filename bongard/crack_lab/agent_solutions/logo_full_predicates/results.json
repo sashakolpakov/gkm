@@ -75,5 +75,12 @@
     "concept": "thin_sym_nail5",
     "solved": false,
     "rule": "p_arc_defect_score_arc120<=15.18"
+  },
+  "problem_11": {
+    "problem_id": "bd_advanced_lamp2_0477",
+    "category": "basic",
+    "concept": "advanced_lamp2",
+    "solved": false,
+    "rule": "p_circle_fit_residual<=0.1097 AND p_arc_defect_score_217<=30.51"
   }
 }
