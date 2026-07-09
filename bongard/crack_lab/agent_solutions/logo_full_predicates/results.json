@@ -376,5 +376,12 @@
     "concept": "exist_triangle_eight_lines12",
     "solved": false,
     "rule": "p_arc_defect_score_217<=29.37 AND p_arc_defect_score_217>=22.74"
+  },
+  "problem_54": {
+    "problem_id": "hd_balanced_two_0018",
+    "category": "abstract",
+    "concept": "balanced_two",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=22.71"
   }
 }
