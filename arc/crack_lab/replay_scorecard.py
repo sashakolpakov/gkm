@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 LAB = Path(__file__).resolve().parent
@@ -50,19 +51,71 @@ def checkpoint(game: str) -> dict:
         return json.load(f)
 
 
-def replay(env, actions, engine_action_cls, label: str, verbose: bool = True) -> int:
-    fd = env.reset()
-    if fd is None:
-        raise RuntimeError(f"{label}: RESET failed")
-    levels = int(fd.levels_completed or 0)
+def level_segments(game: str, actions) -> list:
+    """Split the flat recorded path into per-level action segments by replaying
+    it on the LOCAL engine (offline, ~2000 fps). Level boundaries let the remote
+    replay recover from transient API failures: in competition mode RESET is a
+    LEVEL reset, so a failed level can be restarted and its segment replayed
+    without double-applying actions."""
+    sys.path[:0] = [str(GKM / "arc"), str(GKM / "cone")]
+    import arc_agi3_adapter as arc
+
+    env = arc.LocalArcEnv(game, operation_mode="offline",
+                          environments_dir=str(GKM / "environment_files"))
+    snap = env.reset()
+    levels = snap.levels_completed
+    segments, start = [], 0
     for i, a in enumerate(actions):
-        fd = env.step(engine_action_cls[f"ACTION{a}"])
-        if fd is None:
-            raise RuntimeError(f"{label}: step {i} (ACTION{a}) failed")
-        new = int(fd.levels_completed or 0)
-        if verbose and new != levels:
-            print(f"  {label}: level {new} after {i + 1} moves")
-        levels = new
+        snap = env.step(arc.GameAction(a))
+        if snap.levels_completed > levels:
+            segments.append(list(actions[start:i + 1]))
+            start, levels = i + 1, snap.levels_completed
+    if start < len(actions):  # trailing moves that close no level (not expected)
+        segments.append(list(actions[start:]))
+    return segments
+
+
+def _reset_with_retry(env, label: str, tries: int = 5):
+    for t in range(tries):
+        fd = env.reset()
+        if fd is not None:
+            return fd
+        print(f"  {label}: RESET failed (attempt {t + 1}/{tries}); retrying")
+        time.sleep(3 * (t + 1))
+    raise RuntimeError(f"{label}: RESET failed after {tries} attempts")
+
+
+def replay(env, segments, engine_action_cls, label: str,
+           level_retries: int = 4, verbose: bool = True) -> int:
+    fd = _reset_with_retry(env, label)
+    levels = int(fd.levels_completed or 0)
+    moves = 0
+    for k, seg in enumerate(segments, start=1):
+        if levels >= k:
+            continue
+        for attempt in range(1, level_retries + 1):
+            failed_at = None
+            for i, a in enumerate(seg):
+                fd = env.step(engine_action_cls[f"ACTION{a}"])
+                if fd is None:  # transient API failure; the level is now dirty
+                    failed_at = i
+                    break
+                moves += 1
+            now = int(fd.levels_completed or 0) if fd is not None else levels
+            if failed_at is None and now >= k:
+                levels = now
+                if verbose:
+                    print(f"  {label}: level {now} after {moves} moves")
+                break
+            why = (f"step {failed_at} failed" if failed_at is not None
+                   else f"segment ended at levels={now}")
+            print(f"  {label}: level {k} attempt {attempt}/{level_retries}: {why}; "
+                  f"level-reset and retry")
+            time.sleep(3 * attempt)
+            fd = _reset_with_retry(env, label)  # competition: level reset
+            levels = int(fd.levels_completed or 0)
+        else:
+            raise RuntimeError(f"{label}: level {k} failed {level_retries} attempts")
         state = getattr(fd.state, "name", str(fd.state))
         if state == "WIN":
             break
@@ -88,9 +141,11 @@ def main() -> int:
 
     games = [g.strip() for g in args.games.split(",") if g.strip()]
     plan = {g: checkpoint(g) for g in games}
+    segs = {}
     for g, ck in plan.items():
-        print(f"{g}: replaying {len(ck['final_path'])} recorded actions "
-              f"(locally validated reached={ck['reached']})")
+        segs[g] = level_segments(g, ck["final_path"])
+        print(f"{g}: replaying {len(ck['final_path'])} recorded actions in "
+              f"{len(segs[g])} level segments (locally validated reached={ck['reached']})")
 
     arcade = Arcade(arc_api_key=os.environ["ARC_API_KEY"],
                     operation_mode=OperationMode(args.mode))
@@ -105,7 +160,7 @@ def main() -> int:
             print(f"{g}: make() failed"); ok = False
             continue
         try:
-            reached = replay(env, ck["final_path"], EngineAction, g)
+            reached = replay(env, segs[g], EngineAction, g)
         except Exception as ex:
             print(f"{g}: replay aborted: {type(ex).__name__}: {ex}")
             reached, ok = -1, False
