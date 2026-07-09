@@ -425,5 +425,12 @@
     "concept": "open_arc_line_arc4",
     "solved": false,
     "rule": "p_arc_defect_score_217<=12.28"
+  },
+  "problem_61": {
+    "problem_id": "bd_two_parts_three_lines5_0518",
+    "category": "basic",
+    "concept": "two_parts_three_lines5",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=23.58"
   }
 }
