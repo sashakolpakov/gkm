@@ -267,17 +267,6 @@
       "model": "opus",
       "attempts": 3,
       "escalated": true
-    },
-    {
-      "opaque_id": "problem_24",
-      "solved": false,
-      "heldout_accuracy": 0.3888888888888889,
-      "rule": "p_arc_defect_score_217<=32.89",
-      "rule_cost": 1.5,
-      "marginal_C": 0,
-      "model": "opus",
-      "attempts": 3,
-      "escalated": true
     }
   ]
 }

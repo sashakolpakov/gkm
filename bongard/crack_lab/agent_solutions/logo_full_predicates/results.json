@@ -166,5 +166,12 @@
     "concept": "open_right_equi_triangle",
     "solved": false,
     "rule": "p_arc_defect_score_217<=14.89"
+  },
+  "problem_24": {
+    "problem_id": "hd_thin_shape_0011",
+    "category": "abstract",
+    "concept": "thin_shape",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=32.89"
   }
 }
