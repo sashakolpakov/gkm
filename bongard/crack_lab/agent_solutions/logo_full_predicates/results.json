@@ -117,5 +117,12 @@
     "concept": "advanced_lamp1",
     "solved": false,
     "rule": "p_arc_defect_score_217>=31.68"
+  },
+  "problem_17": {
+    "problem_id": "bd_necked_six_lines17_0573",
+    "category": "basic",
+    "concept": "necked_six_lines17",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1105"
   }
 }
