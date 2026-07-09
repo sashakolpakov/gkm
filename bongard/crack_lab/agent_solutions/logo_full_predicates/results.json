@@ -194,5 +194,12 @@
     "concept": "bala_two_intersect_circles_new4",
     "solved": false,
     "rule": "p_arc_defect_score_217<=9.094"
+  },
+  "problem_28": {
+    "problem_id": "bd_necked_six_lines2_0558",
+    "category": "basic",
+    "concept": "necked_six_lines2",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=34.1"
   }
 }
