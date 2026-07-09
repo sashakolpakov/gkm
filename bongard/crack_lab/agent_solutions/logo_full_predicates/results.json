@@ -145,5 +145,12 @@
     "concept": "jar_triangle3",
     "solved": false,
     "rule": "p_arc_defect_score_217<=24.12 AND p_arc_defect_score_217>=20.57"
+  },
+  "problem_21": {
+    "problem_id": "bd_open_line_s3_0284",
+    "category": "basic",
+    "concept": "open_line_s3",
+    "solved": false,
+    "rule": "p_arc_defect_score_arc120<=13.01"
   }
 }
