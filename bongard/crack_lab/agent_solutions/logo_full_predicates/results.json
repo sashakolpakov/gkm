@@ -201,5 +201,12 @@
     "concept": "necked_six_lines2",
     "solved": false,
     "rule": "p_arc_defect_score_217>=34.1"
+  },
+  "problem_29": {
+    "problem_id": "hd_unbalanced_two_0019",
+    "category": "abstract",
+    "concept": "unbalanced_two",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=29.52 AND p_arc_defect_score_217<=34.26"
   }
 }
