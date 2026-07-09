@@ -89,5 +89,12 @@
     "concept": "three_mismatch_triangles2",
     "solved": false,
     "rule": "p_arc_defect_score_217<=30.44"
+  },
+  "problem_13": {
+    "problem_id": "bd_closed_threequarter_circle_0030",
+    "category": "basic",
+    "concept": "closed_threequarter_circle",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=34.9"
   }
 }
