@@ -26,5 +26,12 @@
     "concept": "necked_six_lines4",
     "solved": false,
     "rule": "p_arc_defect_score_217>=31.62"
+  },
+  "problem_04": {
+    "problem_id": "hd_has_eight_straight_lines_0010",
+    "category": "abstract",
+    "concept": "has_eight_straight_lines",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1212"
   }
 }
