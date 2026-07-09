@@ -530,5 +530,12 @@
     "concept": "thin_rec_right_triangle",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.1287"
+  },
+  "problem_76": {
+    "problem_id": "bd_parallel_arc180_0185",
+    "category": "basic",
+    "concept": "parallel_arc180",
+    "solved": false,
+    "rule": "p_circle_fit_residual<=0.07275 AND p_circle_fit_residual>=0.04043"
   }
 }
