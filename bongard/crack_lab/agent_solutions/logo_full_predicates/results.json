@@ -355,5 +355,12 @@
     "concept": "open_triangle7",
     "solved": true,
     "rule": "p_arc_defect_score_217>=20.86"
+  },
+  "problem_51": {
+    "problem_id": "bd_thin_sym_nail6_0488",
+    "category": "basic",
+    "concept": "thin_sym_nail6",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1265"
   }
 }

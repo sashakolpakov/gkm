@@ -564,17 +564,6 @@
       "model": "sonnet",
       "attempts": 1,
       "escalated": false
-    },
-    {
-      "opaque_id": "problem_51",
-      "solved": false,
-      "heldout_accuracy": 0.7222222222222222,
-      "rule": "p_circle_fit_residual>=0.1265",
-      "rule_cost": 1.5,
-      "marginal_C": 0,
-      "model": "opus",
-      "attempts": 3,
-      "escalated": true
     }
   ]
 }
