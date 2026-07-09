@@ -250,5 +250,12 @@
     "concept": "uneven_band_four_arcs",
     "solved": true,
     "rule": "p_arc_defect_score_217>=25.47"
+  },
+  "problem_36": {
+    "problem_id": "bd_unbala_asymm_lamp_0180",
+    "category": "basic",
+    "concept": "unbala_asymm_lamp",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=32.97"
   }
 }
