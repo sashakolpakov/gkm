@@ -250,15 +250,58 @@ Dataset policy (unchanged house rule): nothing vendored; Bongard-LOGO cloned
 under `downloads/`, Foundalis GIFs downloaded outside version control; only
 small derived metadata cached.
 
+## 8. Engineer plan (reconciled, July 2026)
+
+The build lives in `bongard/crack_lab/` as a **sibling** of `arc/crack_lab/`
+(house convention: siblings, not modifications). Two modules plus tests:
+
+```text
+bongard/crack_lab/
+  bongard_arena.py    the raw substrate: fresh-seed LOGO sampler bridge,
+                      deterministic pure-numpy rasterizer (action strings ->
+                      panels), Problem = 12 bitmaps, the MDL conjunction
+                      selector over proposer predicates, rotated-LOO verify,
+                      free energy
+  bongard_legs.py     enforced predicate-library orchestration: workspace
+                      (predicates.py is the ONLY place logic accumulates),
+                      tester, Sonnet-first headless Claude proposer with Opus
+                      escalation (escalations logged), marginal-C accounting,
+                      checkpoint.json, promotion to agent_solutions/,
+                      taint check, WIP context
+  test_bongard_arena.py / test_bongard_legs.py
+                      offline tests: injectable propose_fn; witness predicates
+                      live ONLY in tests (representability floors, never
+                      shipped to the proposer)
+```
+
+Protocol detail fixed by the Engineer: the proposer sees all 12 panels (as a
+human does) and writes only `predicates.py`. The harness selector then runs the
+rotated leave-one-out: for each of the 36 (pos_i, neg_j) holdouts it selects
+the min-F conjunction over library atoms **using only the other 10 panels**
+and classifies the held-out pair. `R = held-out error over all 72 predictions`;
+solved requires all 72 correct plus a full-panel separating rule. This keeps
+the articulated rule well-defined (the full-panel selection) while the rotation
+is the overfit guard.
+
 ## Reconciliation Log
 
-- (open) Engineer pass pending: verify the gkm_legs orchestration separates
-  cleanly from its ARC env assumptions (step/clone/levels_completed) — the
-  Bongard env has no actions, so VERIFY is a pure function of (rule source,
-  panels) and the WIP-recovery machinery may simplify.
-- (open) Engineer pass pending: decide the rendering path for Bongard-LOGO
-  images (sampler-side rendering vs local turtle re-render of action
-  programs) and pin resolution/anti-aliasing so replays are bit-exact.
-- (open) Engineer pass pending: confirm the sparse-conjunction selector can
-  consume proposer-written predicates as atoms without modification
-  (`--max-candidate-atoms` ranking currently assumes scalarizable features).
+- **R1 (Engineer -> Architect, resolved):** `gkm_legs` does not separate
+  cleanly — its Report/levels/paths/replay types are ARC-shaped throughout.
+  Decision: sibling module reusing the *idioms* (LOC+literal-cost complexity
+  proxy, validated-checkpoint promotion gating, WIP snapshots, workspace taint
+  markers) rather than the code. Bongard's verify is a pure function of
+  (predicates source, panels); no step budget, no clone, simpler WIP story.
+- **R2 (Engineer -> Architect, resolved):** rendering goes through our own
+  deterministic pure-numpy rasterizer of LOGO action strings (turn/arc
+  denormalization conventions copied from `run_bongard_logo_adapter.py`),
+  with per-panel seeded placement (rotation/scale/translation). No
+  turtle/Tk dependency; bit-exact replays follow from determinism. The
+  official painter renders differently — our panels are *a* faithful visual
+  realization of the action programs, not pixel-identical to the published
+  dataset; stated in reports.
+- **R3 (Engineer -> Architect, resolved):** the adapter's selector is bound to
+  `LogoSceneObject` scenes; the crack selector is a fresh minimal MDL
+  conjunction search whose atoms are thresholded outputs of proposer-authored
+  predicate callables (`p_*(panel) -> float|bool`), thresholds taken from
+  train-panel value midpoints, atom cost = call + binding (threshold/op).
+  Candidate-atom ranking by train separation is kept as a search-budget cap.
