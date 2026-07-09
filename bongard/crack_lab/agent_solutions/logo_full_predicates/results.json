@@ -264,5 +264,12 @@
     "concept": "right_trap_arc180",
     "solved": false,
     "rule": "p_arc_defect_score_217>=31.99"
+  },
+  "problem_38": {
+    "problem_id": "bd_hat_sector12_0449",
+    "category": "basic",
+    "concept": "hat_sector12",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=28.29 AND p_circle_fit_residual>=0.08943"
   }
 }
