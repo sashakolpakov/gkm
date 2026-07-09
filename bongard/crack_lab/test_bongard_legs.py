@@ -134,3 +134,36 @@ def test_literal_cost_charges_lookup_tables():
     table = "def p_a(panel):\n    return T[hash(panel.tobytes()) % 12]\nT = [" \
             + ", ".join(["1.0"] * 12) + "]\n"
     assert L.description_complexity(table) > L.description_complexity(honest)
+
+
+def test_interrupted_workspace_is_snapshotted_before_seed(sandbox):
+    """Power-out fallback: an in-flight library edit that differs from the
+    promoted artifact must be preserved as WIP, not silently overwritten."""
+    ws = str(sandbox / "ws6")
+    rep1 = L.run([two_vs_one_problem()], tag="t6", ws=ws,
+                 propose_fn=writing_proposer(), verbose=False)
+    assert rep1.solved == 1
+    # simulate an interrupted next attempt: live edits + current problem marker
+    with open(os.path.join(ws, L.LIBRARY_FILE), "a") as f:
+        f.write("def p_inflight(panel):\n    return 1.0\n")
+    with open(os.path.join(ws, "current_problem.txt"), "w") as f:
+        f.write("problem_01")
+    L.seed_workspace_from_artifact("t6", ws, verbose=False)
+    # workspace was restored to the verified artifact...
+    assert "p_inflight" not in open(os.path.join(ws, L.LIBRARY_FILE)).read()
+    # ...and the in-flight state survives as a WIP snapshot
+    wip = os.path.join(L.artifact_dir("t6"), "wip_context",
+                       "interrupted_problem_01")
+    snaps = [os.path.join(wip, d) for d in os.listdir(wip)]
+    assert any("p_inflight" in open(os.path.join(s, L.LIBRARY_FILE)).read()
+               for s in snaps)
+
+
+def test_interleave_corpus_stable_prefix():
+    basic = [f"b{i}" for i in range(12)]
+    abstract = [f"a{i}" for i in range(3)]
+    full = L.interleave_corpus(basic, abstract)
+    assert len(full) == 15
+    assert full[4] == "a0" and full[9] == "a1" and full[14] == "a2"
+    # stable prefix: truncating the corpus never reorders earlier slots
+    assert L.interleave_corpus(basic, abstract)[:8] == full[:8]

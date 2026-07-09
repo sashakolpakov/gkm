@@ -240,11 +240,19 @@ def _load_checkpoint(directory: str) -> Optional[Report]:
 
 
 def seed_workspace_from_artifact(tag: str, ws: str, verbose: bool = True) -> Optional[Report]:
-    """Scratch is disposable; the promoted artifact is the source of truth."""
+    """Scratch is disposable; the promoted artifact is the source of truth.
+
+    Before overwriting, any in-flight scratch state that differs from the
+    artifact (an attempt interrupted by power/credit loss) is preserved as a
+    WIP snapshot -- the same never-lose-live-context discipline as gkm_legs."""
     art = artifact_dir(tag)
     rep = _load_checkpoint(art)
     if rep is None:
         return None
+    ws_lib = os.path.join(ws, LIBRARY_FILE)
+    if os.path.exists(ws_lib) and _read(ws_lib) != _read(os.path.join(art, LIBRARY_FILE)):
+        oid = _read(os.path.join(ws, "current_problem.txt")).strip() or "preseed"
+        snapshot_wip(tag, ws, f"interrupted_{oid}", verbose=verbose)
     for name in PROMOTED_FILES:
         src = os.path.join(art, name)
         if os.path.exists(src):
@@ -304,6 +312,47 @@ def snapshot_wip(tag: str, ws: str, opaque_id: str, verbose: bool = True) -> str
     if verbose:
         print(f"saved WIP context: {dst}")
     return dst
+
+
+def git_checkpoint(tag: str, rep: Report, verbose: bool = True) -> None:
+    """Best-effort commit+push of the promoted artifact after each problem,
+    so a power/credit interruption never loses more than the in-flight
+    attempt even if the machine is lost. Failures (offline, races) are
+    logged and ignored -- the run must not die on git."""
+    art = artifact_dir(tag)
+    repo = os.path.abspath(os.path.join(LAB_DIR, "..", ".."))
+    msg = (f"[auto] bongard crack {tag}: solved={rep.solved}/"
+           f"{len(rep.records)} C={rep.total_marginal_C}\n\n"
+           "Co-Authored-By: Claude Fable 5 <noreply@anthropic.com>")
+    try:
+        subprocess.run(["git", "-C", repo, "add", art], check=True,
+                       capture_output=True, timeout=60)
+        commit = subprocess.run(["git", "-C", repo, "commit", "-m", msg],
+                                capture_output=True, timeout=60)
+        if commit.returncode == 0:
+            subprocess.run(["git", "-C", repo, "push", "origin", "master"],
+                           capture_output=True, timeout=120)
+            if verbose:
+                print(f"git checkpoint pushed: solved={rep.solved}")
+    except Exception as exc:  # never let git kill the run
+        if verbose:
+            print(f"git checkpoint skipped: {exc}")
+
+
+def interleave_corpus(basic: List[A.Problem], abstract: List[A.Problem],
+                      period: int = 5) -> List[A.Problem]:
+    """Deterministic curriculum order: one abstract problem every `period`
+    slots until abstract is exhausted, then the remaining basic. Stable
+    under raising --max-problems: the first N slots never change, so resume
+    by opaque index stays aligned as the corpus prefix grows."""
+    out: List[A.Problem] = []
+    b, a = list(basic), list(abstract)
+    while b or a:
+        if a and (len(out) % period == period - 1 or not b):
+            out.append(a.pop(0))
+        elif b:
+            out.append(b.pop(0))
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -383,7 +432,8 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
         ws: Optional[str] = None,
         propose_fn: Callable[[str, str, str, int], None] = None,
         ladder: Sequence[str] = DEFAULT_LADDER,
-        minutes: int = 15, verbose: bool = True) -> Report:
+        minutes: int = 15, verbose: bool = True,
+        git_checkpoints: bool = False) -> Report:
     """PROPOSE -> VERIFY -> DEBRIEF over a problem sequence, with structural
     admission and Sonnet-first escalation. Resumable: solved problems in the
     promoted artifact are not re-run."""
@@ -461,6 +511,8 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
                         "rule": record.rule}
         _save_checkpoint(ws, rep)
         promote_verified_artifact(tag, ws, rep, results, verbose=verbose)
+        if git_checkpoints:
+            git_checkpoint(tag, rep, verbose=verbose)
 
     if verbose:
         print(f"=== {tag}: solved {rep.solved}/{len(rep.records)} | "
@@ -474,6 +526,7 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
 if __name__ == "__main__":
     dataset = os.path.join(LAB_DIR, "..", "..", "downloads", "Bongard-LOGO")
     limit, seed, source, tag, minutes = 3, 20260709, "basic", "logo", 15
+    max_problems, git_checkpoints = 0, False
     ladder: Sequence[str] = DEFAULT_LADDER
     for a in sys.argv[1:]:
         if a.startswith("--limit="):
@@ -488,5 +541,19 @@ if __name__ == "__main__":
             minutes = int(a.split("=", 1)[1])
         elif a.startswith("--ladder="):
             ladder = a.split("=", 1)[1].split(",")
+        elif a.startswith("--max-problems="):
+            max_problems = int(a.split("=", 1)[1])
+        elif a == "--git-checkpoint":
+            git_checkpoints = True
     problems = A.sample_problems(dataset, limit=limit, seed=seed, source=source)
-    run(problems, tag=tag, ladder=ladder, minutes=minutes)
+    if source == "both":
+        problems = interleave_corpus(
+            [p for p in problems if p.category == "basic"],
+            [p for p in problems if p.category == "abstract"])
+    if max_problems:
+        problems = problems[:max_problems]
+    print(f"corpus: {len(problems)} problems "
+          f"({sum(1 for p in problems if p.category == 'basic')} basic, "
+          f"{sum(1 for p in problems if p.category == 'abstract')} abstract)")
+    run(problems, tag=tag, ladder=ladder, minutes=minutes,
+        git_checkpoints=git_checkpoints)
