@@ -229,5 +229,12 @@
     "concept": "asymmetric_unbala_x",
     "solved": false,
     "rule": "p_arc_defect_score_217>=30.41"
+  },
+  "problem_33": {
+    "problem_id": "bd_asymmetric_house_0075",
+    "category": "basic",
+    "concept": "asymmetric_house",
+    "solved": true,
+    "rule": "p_arc_defect_score_217>=34.61"
   }
 }
