@@ -19,5 +19,12 @@
     "concept": "bird3",
     "solved": false,
     "rule": "p_arc_defect_score_217<=18.78 AND p_arc_defect_score_217>=11.89"
+  },
+  "problem_03": {
+    "problem_id": "bd_necked_six_lines4_0560",
+    "category": "basic",
+    "concept": "necked_six_lines4",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=31.62"
   }
 }
