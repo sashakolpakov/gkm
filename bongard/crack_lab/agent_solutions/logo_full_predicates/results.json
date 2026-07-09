@@ -299,5 +299,12 @@
     "concept": "acute_hexagon",
     "solved": false,
     "rule": "p_arc_defect_score_217>=34.63"
+  },
+  "problem_43": {
+    "problem_id": "bd_thin_irregular_x_0161",
+    "category": "basic",
+    "concept": "thin_irregular_x",
+    "solved": false,
+    "rule": "p_arc_defect_score_arc120<=16.02"
   }
 }
