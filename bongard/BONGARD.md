@@ -52,15 +52,19 @@ sharing a macro is cheaper than duplicating it — parsimony pays for abstractio
 
 ## Key modules
 
-- `run_bongard_symbolic_baseline.py` — symbolic Bongard-style baseline (concepts,
-  problem construction, labeled iteration).
-- `run_bongard_sparse_classifier.py` — evolved sparse deterministic classifier
-  (imports the baseline + the transduction `pattern_fsa` primitives).
-- `run_bongard_overcapacity_ablation.py` — paired overcapacity ablations over a fast
-  rule matrix.
-- `run_bongard_logo_adapter.py` — local Bongard-LOGO symbolic adapter (no vendored
-  data).
-- `run_abstraction_emergence.py` — the internal predicate-library abstraction scaffold.
+- [`run_bongard_symbolic_baseline.py`](run_bongard_symbolic_baseline.py) — symbolic
+  Bongard-style baseline (concepts, problem construction, labeled iteration).
+- [`run_bongard_sparse_classifier.py`](run_bongard_sparse_classifier.py) — evolved
+  sparse deterministic classifier (imports the baseline + the transduction
+  `pattern_fsa` primitives).
+- [`run_bongard_overcapacity_ablation.py`](run_bongard_overcapacity_ablation.py) —
+  paired overcapacity ablations over a fast rule matrix.
+- [`run_bongard_logo_adapter.py`](run_bongard_logo_adapter.py) — local Bongard-LOGO
+  symbolic adapter (no vendored data).
+- [`run_abstraction_emergence.py`](run_abstraction_emergence.py) — the internal
+  predicate-library abstraction scaffold.
+- [`test_bongard_sparse_classifier.py`](test_bongard_sparse_classifier.py) /
+  [`test_abstraction_emergence.py`](test_abstraction_emergence.py) — the domain tests.
 
 ## Run
 

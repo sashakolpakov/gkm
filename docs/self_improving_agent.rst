@@ -150,16 +150,32 @@ prompt to grow a reusable *leg library* (see below), the agent ignored the reque
 and instead grew a single monolithic solver -- the leg-library discipline has to be
 enforced by the harness, not merely requested.
 
+The **current promoted artifact** supersedes those runs: under the enforced
+leg-library harness, ``wa30`` is replay-validated through **level 9 of 9**
+(``reached=9``, ``validated=true``, a 596-action final path, total marginal
+complexity 1243, ``F = -9 + 0.02 * 1243 = 15.86``). The promoted ``players.py``
+is a thin set of per-level compositions over shared legs: levels 5--8 compose
+ferry, neutralise, courier-yield, and dual-socket filling legs, and level 9 is a
+five-entry ``ferry_each`` specification obtained by debriefing a recovered
+verified 61-action suffix into ``grab_carry_release`` ferries. The preserved WIP
+snapshots keep the full search history auditable: failed and interrupted
+proposals, recovered verified path artifacts (charged as literals), and
+after-debrief refactors.
+
 Honest Caveats
 --------------
 
 The result is bounded in two ways:
 
-- The claim is precisely levels 1 through 6 of ``wa30`` and, for the same agent
-  pointed at a **second** game (``ls20``, a slide-to-match mechanic), levels 1
-  through 4 -- all replay-validated. It is not all levels and not all games:
-  ``wa30`` levels 7-9 are unsolved. The ``ls20`` transfer is the intended evidence
-  that the rawest substrate carries across game *types*.
+- The claim is precisely the promoted artifacts: ``wa30`` through level 9 of 9
+  (596 actions, total marginal complexity 1243) and, for the same harness pointed
+  at a **second** game type (``ls20``, sliding-tile track puzzles), level 7 of 7
+  (393 actions, total marginal complexity 362) -- both replay-validated on the
+  local preview games. It is not the full ARC-AGI-3 distribution and not a
+  private benchmark score. The ``ls20`` transfer is the intended evidence that
+  the rawest substrate carries across game *types*; recovered verified paths
+  inside the artifacts are charged as literals and are not compact mechanistic
+  legs until a debrief refactors them.
 - The loop currently needs a **strong** proposer. A system-prompt-only local
   model mis-reasoned two-sided reachability under barriers even with the priors
   spelled out, asserting feasibility where the interaction verifier proved boxes
@@ -193,15 +209,27 @@ invented rather than enumerated structure.
 Merely *requesting* this in the prompt was not enough (the agent grew a monolithic
 solver instead), so the discipline is **enforced by the harness**: each level's player
 is restricted to composition over a shared ``legs.py``, a separate refactor pass runs
-after each level, and free energy is scored on marginal new-leg size. Run that way on
-``ls20`` (capped at level 4), the enforced orchestration produced exactly the predicted
-signature. Level 1 invents the library (marginal cost 55; a clone-BFS skill that
-self-discovers which tiles to visit); levels 3 and 4 add essentially nothing (marginal
-cost 2 each) and are literally one call to the level-advancing leg; level 2 reuses the
-same leg with a single knob (a fuller state key, because its goal depends on carried
-sprites), threaded in by the debrief so both players share one generic search. Cracking
-ls20 levels 1-4 (replay-validated) cost total marginal novelty 77, front-loaded into
-level 1 -- transfer, not re-derivation, and priced as such.
+after each level, and free energy is scored on marginal new-leg size. The promoted
+``ls20`` artifact (level 7 of 7, replay-validated, total marginal complexity 362)
+gives the cleanest trace, and it is a **sawtooth**, not a monotone decline:
+
+.. code-block:: text
+
+   L1  43   invent full-frame search
+   L2   2   reuse the same search leg
+   L3  45   new issue: drifting HUD/noise breaks raw-frame dedup
+   L4   3   reuse the masked-search leg
+   L5  72   recovered verified replay path / new plan artifact
+   L6 130   new mechanics: combination lock, energy, springs, patrol timing
+   L7  67   reuse parts of the L6 lock/display understanding + fog-of-war mapping
+
+The drops (``43 -> 2``, ``45 -> 3``) are leg reuse: once a leg exists, the next
+compatible level needs only glue. The spikes (``45``, ``72``, ``130``) mark genuine
+mechanic transitions. Marginal complexity behaves like a **novelty detector** --
+transfer is recorded when the level admits it, and novelty is paid for when the game
+introduces new structure. The same accounting on ``wa30`` shows the honest
+complement: its marginal trace does *not* collapse, because ``wa30`` keeps
+introducing new logistics structure level after level.
 
 Relation to the Colimit-Cone Program
 -------------------------------------

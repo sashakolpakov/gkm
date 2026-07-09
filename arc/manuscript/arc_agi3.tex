@@ -302,6 +302,26 @@ admission --- can lift to competence. (3) Recovered verified paths are admissibl
 the artifact discipline only because they are independently replay-validated and charged
 as literal description length; they should not be confused with discovering a compact
 mechanistic leg until a debrief refactors them, as happened for \texttt{wa30} level~9.
+The same discipline governs interruption: WIP context is snapshotted on interrupt,
+restore never overwrites scratch state newer than the latest snapshot, and a
+proposer-mutated checkpoint is adopted only after independent replay validation ---
+so the preserved growth trace stays auditable across crashes and resumes.
+
+\paragraph{Comparison to contemporary baselines.} The ARC-AGI-3 report lists
+public-environment harnesses solving \texttt{ls20}, \texttt{ft09}, and \texttt{vc33};
+its paper source does not mention \texttt{wa30}~\cite{arcagi3}. The graph-exploration
+baseline evaluates \texttt{ls20} but not \texttt{wa30}; at its 4{,}000-interaction
+comparison point it solves 2 levels on \texttt{ls20} and reports that levels~3+ become
+intractable for exhaustive exploration~\cite{arcagi3graph}. The closest comparator is
+the executable-world-model baseline, which reports \texttt{ls20} 7/7 with both of its
+models and \texttt{wa30} 7/9 versus 4/9 depending on the
+model~\cite{arcagi3worldmodels}. GKM is therefore not unique on \texttt{ls20}; its
+competitive point is \texttt{wa30} 9/9 replay-validated, together with the audit
+ledger behind the promoted solver --- preserved WIP snapshots, replay validation,
+marginal-complexity charges, charged literals, and leg-library refactors. This is a
+qualitative comparison, not a compute-matched one; a matched head-to-head is the next
+evaluation step.
+
 Relative to the classical colimit-cone experiments, where reusable structure is enumerated
 and priced, here it is \emph{invented} and priced by the same free energy; the two are
 ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that the artifact

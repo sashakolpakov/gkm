@@ -34,15 +34,15 @@ by the same free energy.
 
 ## Current Promoted Artifacts
 
-As of the 2026-07-04 cleanup, replay-validated leg-library states are promoted
-automatically into `crack_lab/agent_solutions/`. Other game notes remain lab/WIP
-context until represented by one of these promoted artifacts.
+Replay-validated leg-library states are promoted automatically into
+`crack_lab/agent_solutions/`. Other game notes remain lab/WIP context until
+represented by one of these promoted artifacts.
 
-| game | status | artifact |
-|---|---|---|
-| `ls20` | L1-L4 replay-validated | `crack_lab/agent_solutions/ls20_legs/` |
-| `wa30` | L1-L3 replay-validated; WIP for L4+ | `crack_lab/agent_solutions/wa30_legs/` |
-| `sp80` | WIP / separate concurrent run | not currently promoted |
+| game | status | actions | total marginal C | artifact |
+|---|---|---|---|---|
+| `wa30` | **9/9** replay-validated | 596 | 1243 | `crack_lab/agent_solutions/wa30_legs/` |
+| `ls20` | **7/7** replay-validated | 393 | 362 | `crack_lab/agent_solutions/ls20_legs/` |
+| `sp80` | WIP / separate concurrent run | — | — | not currently promoted |
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
@@ -61,31 +61,75 @@ context until represented by one of these promoted artifacts.
   transform-tile mechanic — yet the agent discovered the real mechanic itself (a generic
   clone-BFS over game state). So ls20 succeeded **despite** misleading priors: robustness,
   not leakage. The `sp80` liquid-pour result (below) is the same story on a third game.
-- Under the enforced leg library, per-level **marginal novelty collapses** as legs are
-  reused — on the current promoted `ls20` artifact: `70 → 2 → 2 → 0`. Later levels are
-  near-pure composition.
-- The same enforced library on `wa30` (L1–L3 validated) shows the honest complement:
-  marginal novelty does **not** collapse (`112 → 78 → 95`) because each `wa30` level
-  introduces a genuinely new mechanic (autonomous helper at L2; dividing wall +
-  asymmetric-carry relay at L3), and the agent captured each as new named legs
-  (`yield_to_helper`, `wall_col`, `relay_to_helper`, …). Reuse-collapse is a property
-  of the *game's* level structure; the method pays for novelty exactly when the game
-  demands it — which is what `F = R + λ·C_marginal` is for.
+- Under the enforced leg library, the promoted `ls20` marginal-complexity trace is a
+  **sawtooth**, not monotone: `43 → 2` and `45 → 3` are leg-reuse drops, while `45`,
+  `72`, `130` are novelty spikes at mechanic transitions (drifting-HUD noise mask,
+  recovered plan artifacts, the combination-lock/display family); L7 drops back to
+  `67` by reusing part of the L6 lock/display understanding while adding fog-of-war
+  mapping. Marginal free energy acts as a **novelty detector**.
+- The same enforced library on `wa30` (now 9/9) shows the honest complement: marginal
+  novelty does **not** collapse (`30, 87, 405, 225, 145, 204, 147` for the levels the
+  checkpoint audits) because each `wa30` level keeps introducing new logistics
+  structure — ferry/yield composition at L4, live-frame courier pacing at L5, a shared
+  higher-order `neutralize_then_deliver` pattern across L6–L8, and at L9 a recovered
+  61-action suffix debriefed into the reusable `grab_carry_release` / `ferry_each`
+  legs. Reuse-collapse is a property of the *game's* level structure; the method pays
+  for novelty exactly when the game demands it — which is what `F = R + λ·C_marginal`
+  is for.
 
 ## Honest limitations
 
-- The current promoted repo artifacts are `ls20` L1-L4 and `wa30` L1-L3. Higher
-  `wa30` levels and `sp80` remain WIP unless represented by promoted artifacts.
+- The current promoted repo artifacts are `wa30` 9/9 and `ls20` 7/7 on the local
+  preview games — not the full ARC-AGI-3 distribution and not a private benchmark
+  score. `sp80` remains WIP unless represented by a promoted artifact. Recovered
+  verified paths in the artifacts are charged as literals and are not compact
+  mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
 - The loop currently needs a **strong** proposer: a prompt-only local model mis-reasoned
   two-sided reachability under barriers even with the priors spelled out. The open
   question is how weak a proposer the same harness (priors, simulator-as-verifier,
   free-energy admission) can lift to competence.
 
-## Code
+## Index of this domain
 
-The cracking code lives in [`crack_lab/`](crack_lab/) within this domain.
-Key modules: `gkm_arena.py` (the rawest substrate + free-energy admission),
-`gkm_solve_agent.py` (proposer = Claude with discovered context + tools + tester),
-`gkm_legs.py` (enforced leg-library orchestration + marginal-C accounting),
-`gkm_crack.py` (the earlier discovered-connector cone), `gkm_discovery.py` (interaction
-probe). Agent-written solvers are archived under `agent_solutions/`.
+**Documents**
+
+- [`manuscript/arc_agi3.tex`](manuscript/arc_agi3.tex) — the self-contained
+  manuscript (build with `make -C manuscript`).
+- [`manuscript/gkm_one_page_summary.md`](manuscript/gkm_one_page_summary.md) /
+  [`.tex`](manuscript/gkm_one_page_summary.tex) — the outreach one-pager
+  (claim, artifacts, baseline comparison, collaboration request).
+- Reports: [`arc_local_gkm_report.md`](arc_local_gkm_report.md),
+  [`arc_scene_atom_discovery_report.md`](arc_scene_atom_discovery_report.md),
+  [`arc_goal_induction_report.md`](arc_goal_induction_report.md),
+  [`arc_leg_discovery_report.md`](arc_leg_discovery_report.md),
+  [`arc_live_report.md`](arc_live_report.md).
+- Full chronological lab log with the honest negatives:
+  [`crack_lab/FINDINGS.md`](crack_lab/FINDINGS.md).
+
+**Library modules** (in this directory)
+
+- [`arc_agi3_adapter.py`](arc_agi3_adapter.py) — the offline (`LocalArcEnv`) and
+  live (`ArcEnv`, scorecard-capable) connectors behind the rawest interface.
+- [`arc_scene_atoms.py`](arc_scene_atoms.py) — predicate@colour scene atoms.
+- [`arc_goal_induction.py`](arc_goal_induction.py) — goal induction lifted onto ARC.
+- [`cone_leg_discovery.py`](cone_leg_discovery.py) /
+  [`cone_leg_composition.py`](cone_leg_composition.py) — cone-leg discovery and
+  composition over the ARC connector (built on [`../cone/`](../cone/CONE.md)).
+
+**Runnable experiments** — `run_arc_local_gkm.py`, `run_arc_live_probe.py`,
+`run_arc_goal_induction.py`, `run_arc_leg_discovery.py` (each `python3 arc/run_...`).
+
+**Tests** — `test_arc_*.py`, `test_cone_leg_discovery.py`, plus the crack-lab unit
+tests `test_object_mdl.py`, `test_powerplay.py`, `test_universal_crack_boundary.py`;
+run `python -m pytest arc/ -q` from the repo root (heavier crack-lab loop tests live
+in `crack_lab/test_gkm_*.py`).
+
+**The cracking lab** — [`crack_lab/`](crack_lab/): `gkm_arena.py` (the rawest
+substrate + free-energy admission), `gkm_solve_agent.py` (proposer = Claude with
+discovered context + tools + tester), `gkm_api_agent.py` (Messages-API proposer),
+`gkm_legs.py` (enforced leg-library orchestration + marginal-C accounting +
+interruption-proof WIP recovery), `gkm_crack.py` (the earlier discovered-connector
+cone), `gkm_discovery.py` (interaction probe). Promoted replay-validated artifacts
+live under [`crack_lab/agent_solutions/`](crack_lab/agent_solutions/)
+(`wa30_legs/`, `ls20_legs/` — each with `checkpoint.json`, `players.py`, `legs.py`,
+and preserved WIP snapshots).

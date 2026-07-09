@@ -42,10 +42,17 @@ same lens to a different substrate:
   structure (a growing *leg library*) is kept. The agent lives in
   [`arc/crack_lab/`](arc/crack_lab/).
 
-Each domain directory has its own one-page guide (linked above), its runnable
-experiments, its tests, and — for foraging, transduction, and bongard — a
-self-contained LaTeX manuscript under `<domain>/manuscript/` (`make -C <domain>/manuscript`);
-the ARC manuscript is [`arc/manuscript/arc_agi3.tex`](arc/manuscript/arc_agi3.tex).
+Each domain guide is that domain's **hub**: it indexes the modules, runnable
+experiments, tests, and reports that live alongside it, and links the domain's
+self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
+
+| domain hub | manuscript | extras |
+|---|---|---|
+| [`foraging/FORAGING.md`](foraging/FORAGING.md) | [`foraging.tex`](foraging/manuscript/foraging.tex) | [open-ended-evolution thesis](foraging/OPEN_ENDED_EVOLUTION_THESIS.md) |
+| [`transduction/TRANSDUCTION.md`](transduction/TRANSDUCTION.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
+| [`bongard/BONGARD.md`](bongard/BONGARD.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | 5 reports linked in the hub |
+| [`cone/CONE.md`](cone/CONE.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
+| [`arc/ARC.md`](arc/ARC.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
 
 ## Tests
 

@@ -59,9 +59,10 @@ applied after the fact.
 
 ## Key modules
 
-- `pattern_fsa.py` — the sparse register-transducer substrate and CLI.
-- `run_register_transducer_benchmark.py` — reproduces the benchmark matrix over
-  tasks × primitive sets.
+- [`pattern_fsa.py`](pattern_fsa.py) — the sparse register-transducer substrate and CLI.
+- [`run_register_transducer_benchmark.py`](run_register_transducer_benchmark.py) —
+  reproduces the benchmark matrix over tasks × primitive sets.
+- [`test_pattern_fsa.py`](test_pattern_fsa.py) — the domain tests.
 
 ## Run
 

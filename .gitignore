@@ -72,3 +72,4 @@ recordings/
 
 # scratch lab logs (keep the code + docs tracked)
 arc/crack_lab/*.log
+**/manuscript/*.synctex.gz
