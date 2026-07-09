@@ -509,5 +509,12 @@
     "concept": "open_band_three_arcs4",
     "solved": false,
     "rule": "p_circle_fit_residual<=0.01673"
+  },
+  "problem_73": {
+    "problem_id": "bd_open_line_arc1_0269",
+    "category": "basic",
+    "concept": "open_line_arc1",
+    "solved": true,
+    "rule": "p_arc_defect_score_arc120<=11.06"
   }
 }
