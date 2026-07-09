@@ -257,5 +257,12 @@
     "concept": "unbala_asymm_lamp",
     "solved": false,
     "rule": "p_arc_defect_score_217>=32.97"
+  },
+  "problem_37": {
+    "problem_id": "bd_right_trap_arc180_0183",
+    "category": "basic",
+    "concept": "right_trap_arc180",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=31.99"
   }
 }
