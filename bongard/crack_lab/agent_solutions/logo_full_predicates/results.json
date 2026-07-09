@@ -243,5 +243,12 @@
     "concept": "has_curve",
     "solved": false,
     "rule": "p_circle_fit_residual<=0.1082"
+  },
+  "problem_35": {
+    "problem_id": "bd_uneven_band_four_arcs_0297",
+    "category": "basic",
+    "concept": "uneven_band_four_arcs",
+    "solved": true,
+    "rule": "p_arc_defect_score_217>=25.47"
   }
 }
