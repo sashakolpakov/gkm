@@ -54,5 +54,12 @@
     "concept": "mismatch_sector_rec1",
     "solved": false,
     "rule": "p_arc_defect_score_217<=13.2"
+  },
+  "problem_08": {
+    "problem_id": "bd_two_symm_arcs_0195",
+    "category": "basic",
+    "concept": "two_symm_arcs",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=13.79"
   }
 }
