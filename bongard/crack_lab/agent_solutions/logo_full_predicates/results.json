@@ -362,5 +362,12 @@
     "concept": "thin_sym_nail6",
     "solved": false,
     "rule": "p_circle_fit_residual>=0.1265"
+  },
+  "problem_52": {
+    "problem_id": "bd_no_obtuse_angle_six_lines3_0552",
+    "category": "basic",
+    "concept": "no_obtuse_angle_six_lines3",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.08998 AND p_arc_defect_score_217>=31.8"
   }
 }
