@@ -96,5 +96,12 @@
     "concept": "closed_threequarter_circle",
     "solved": false,
     "rule": "p_arc_defect_score_217>=34.9"
+  },
+  "problem_14": {
+    "problem_id": "hd_has_three_straight_lines_0005",
+    "category": "abstract",
+    "concept": "has_three_straight_lines",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=30.88"
   }
 }
