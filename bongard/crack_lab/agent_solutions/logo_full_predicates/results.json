@@ -439,5 +439,12 @@
     "concept": "two_intersect_sectors1",
     "solved": true,
     "rule": "p_arc_defect_score_217<=17.9"
+  },
+  "problem_63": {
+    "problem_id": "bd_necked_six_lines6_0562",
+    "category": "basic",
+    "concept": "necked_six_lines6",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=31.88"
   }
 }
