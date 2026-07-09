@@ -152,5 +152,12 @@
     "concept": "open_line_s3",
     "solved": false,
     "rule": "p_arc_defect_score_arc120<=13.01"
+  },
+  "problem_22": {
+    "problem_id": "bd_inverse_quasi_sector_arc_0199",
+    "category": "basic",
+    "concept": "inverse_quasi_sector_arc",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=10.62"
   }
 }
