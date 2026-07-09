@@ -61,5 +61,12 @@
     "concept": "two_symm_arcs",
     "solved": true,
     "rule": "p_arc_defect_score_217<=13.79"
+  },
+  "problem_09": {
+    "problem_id": "hd_self_transposed_0004",
+    "category": "abstract",
+    "concept": "self_transposed",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=33.96"
   }
 }
