@@ -432,5 +432,12 @@
     "concept": "two_parts_three_lines5",
     "solved": true,
     "rule": "p_arc_defect_score_217<=23.58"
+  },
+  "problem_62": {
+    "problem_id": "bd_two_intersect_sectors1_0396",
+    "category": "basic",
+    "concept": "two_intersect_sectors1",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=17.9"
   }
 }
