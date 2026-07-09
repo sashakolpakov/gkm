@@ -327,5 +327,12 @@
     "concept": "jar_triangle4",
     "solved": false,
     "rule": "p_arc_defect_score_217>=33.63"
+  },
+  "problem_47": {
+    "problem_id": "bd_scissor_0319",
+    "category": "basic",
+    "concept": "scissor",
+    "solved": false,
+    "rule": "p_circle_fit_residual>=0.1146"
   }
 }
