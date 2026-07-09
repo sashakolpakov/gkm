@@ -180,5 +180,12 @@
     "concept": "two_mismatch_triangles11",
     "solved": false,
     "rule": "p_arc_defect_score_217>=31.34 AND p_circle_fit_residual>=0.08615"
+  },
+  "problem_26": {
+    "problem_id": "bd_asymmetric_dagger_0057",
+    "category": "basic",
+    "concept": "asymmetric_dagger",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=34.22 AND p_circle_fit_residual<=0.1077"
   }
 }
