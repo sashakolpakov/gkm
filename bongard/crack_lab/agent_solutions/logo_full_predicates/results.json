@@ -383,5 +383,12 @@
     "concept": "balanced_two",
     "solved": false,
     "rule": "p_arc_defect_score_217<=22.71"
+  },
+  "problem_55": {
+    "problem_id": "bd_two_mismatch_triangles2_0362",
+    "category": "basic",
+    "concept": "two_mismatch_triangles2",
+    "solved": true,
+    "rule": "p_arc_defect_score_217<=19.5"
   }
 }
