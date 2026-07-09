@@ -187,5 +187,12 @@
     "concept": "asymmetric_dagger",
     "solved": false,
     "rule": "p_arc_defect_score_217<=34.22 AND p_circle_fit_residual<=0.1077"
+  },
+  "problem_27": {
+    "problem_id": "bd_bala_two_intersect_circles_new4_0503",
+    "category": "basic",
+    "concept": "bala_two_intersect_circles_new4",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=9.094"
   }
 }
