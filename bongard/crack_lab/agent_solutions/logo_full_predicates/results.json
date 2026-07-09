@@ -138,5 +138,12 @@
     "concept": "exist_regular",
     "solved": false,
     "rule": "p_arc_defect_score_217>=30.54"
+  },
+  "problem_20": {
+    "problem_id": "bd_jar_triangle3_0452",
+    "category": "basic",
+    "concept": "jar_triangle3",
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=24.12 AND p_arc_defect_score_217>=20.57"
   }
 }
