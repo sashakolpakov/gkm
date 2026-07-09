@@ -516,5 +516,12 @@
     "concept": "open_line_arc1",
     "solved": true,
     "rule": "p_arc_defect_score_arc120<=11.06"
+  },
+  "problem_74": {
+    "problem_id": "hd_has_six_straight_lines_0008",
+    "category": "abstract",
+    "concept": "has_six_straight_lines",
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=30.68"
   }
 }
