@@ -39,3 +39,60 @@ negative is a scaling-fragile outlier relative to the "next closest"
 negative. Check this numerically (recompute per-fold thresholds) rather
 than just eyeballing overall separation, since global separation looking
 "fine" (e.g. 3x margin) can still fail LOO if the gap structure is uneven.
+
+## problem_02: two-circular-arc "wave" curves vs. single arcs / closed loops / other multi-arc curves
+Rule: positives are single-stroke curves made of exactly two circular arcs
+joined at one corner (a "wave": either same-direction double bump like an M,
+or opposite-direction like an S), regardless of orientation or which way the
+bumps point. Negatives fail differently: a single clean arc (no corner), a
+closed loop (lens/leaf shape with real enclosed area), or — the genuinely
+hard near-miss — another two-arc corner curve that looks topologically
+identical to the eye (same S-shape gestalt, one corner, two open arcs) but
+has much less total turning across its two arcs.
+
+Per-pixel curvature (`np.diff` of tangent angle along the traced path) was
+too noisy at this resolution to count corners/arcs reliably — pixelation
+jaggies create spurious sign changes and spurious "corner" spikes both at
+the true corner and elsewhere, so naive corner-counting or max-turn-angle
+thresholds did not separate the hard near-miss from the positives.
+
+What worked: fit the curve as *two* circular arcs by trying every split
+point along the traced path and picking the split that minimizes total
+circle-fit RMS residual (this robustly locates the true corner even under
+pixel noise, since it's a whole-curve optimization rather than a local
+derivative). Then sum the two arcs' angular spans. Clean two-arc wave
+curves in this problem all land within ~5 degrees of 297 total degrees of
+turning, regardless of scale/orientation/bump direction. The hard near-miss
+negative had ~64 degrees less total turning — one of its two "arcs" was
+much flatter than a true bump, which a single-circle-residual check on the
+whole curve doesn't detect but the two-arc split's span sum does. Other
+negative types (single arc, closed loop, messy multi-corner shape) deviate
+from 297 by >100 degrees, or in one case (a near-closed crescent) by ~15-18
+degrees — still comfortably outside the ~5-degree positive band.
+
+Added generic reusable predicates:
+- `_order_curve` (helper): greedy nearest-neighbor trace of a single-stroke
+  curve's ink pixels into a spatially ordered polyline, starting from a
+  low-neighbor-count pixel (likely tip). Reusable any time a predicate needs
+  to walk along a curve rather than treat it as an unordered point cloud.
+  Assumes one connected stroke without heavy branching.
+- `_best_two_arc_split` (helper): tries every split of the ordered curve
+  into two pieces, circle-fits each piece, and returns the split minimizing
+  total residual. Locates the corner of a two-arc curve without relying on
+  noisy per-pixel curvature. Reusable for any "is this made of (about) two
+  arcs" question — e.g. measuring each arc's own radius/span separately.
+- `p_two_arc_span_sum_deviation`: |sum of the two split arcs' angular spans
+  - 297|. This is the predicate the solved rule uses
+  (`p_two_arc_span_sum_deviation<=9.825`). The 297 target is specific to
+  this problem's curve family; the reusable pattern — split into two arcs,
+  sum their spans, compare to a target — mirrors `_arc_defect_score`'s
+  target_deg parameter for single arcs and can be copied with a different
+  constant.
+
+### Lesson: near-identical topology can still separate on a continuous measurement
+When two shapes share the same qualitative structure (same stroke topology,
+same number of corners, same gestalt), don't assume the differentiating
+rule must be a different topological feature. Try summing a continuous,
+scale-invariant quantity (here: total angular turning) across the shape's
+parts — near-miss negatives are often quantitatively, not structurally,
+different from the positives.

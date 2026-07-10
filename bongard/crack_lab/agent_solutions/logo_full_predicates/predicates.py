@@ -1,10 +1,43 @@
 # Shared predicate library. p_<name>(panel) -> float | bool
 import numpy as np
+from scipy.spatial import cKDTree
 
 
 def _xy(panel):
     ys, xs = np.nonzero(panel)
     return xs.astype(float), ys.astype(float)
+
+
+def _order_curve(panel):
+    """Trace the ink pixels of a single-stroke curve into a spatially ordered
+    polyline via greedy nearest-neighbor walk, starting from a pixel with few
+    close neighbors (a likely endpoint/tip). Reusable whenever a predicate
+    needs to walk along a drawn curve (e.g. to split it into sub-arcs) rather
+    than treat it as an unordered point cloud. Assumes a single connected
+    stroke without heavy branching; not meaningful for scattered/multi-blob
+    panels."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1)
+    n = len(pts)
+    if n < 3:
+        return pts
+    tree = cKDTree(pts)
+    counts = np.array([len(c) for c in tree.query_ball_point(pts, r=3.0)])
+    start = int(np.argmin(counts))
+    used = np.zeros(n, dtype=bool)
+    order = [start]
+    used[start] = True
+    cur = start
+    for _ in range(n - 1):
+        d = np.linalg.norm(pts - pts[cur], axis=1)
+        d[used] = np.inf
+        nxt = int(np.argmin(d))
+        if not np.isfinite(d[nxt]):
+            break
+        order.append(nxt)
+        used[nxt] = True
+        cur = nxt
+    return pts[order]
 
 
 def _fit_circle(xs, ys):
@@ -95,6 +128,66 @@ def p_arc_defect_score_arc120(panel):
     of naming -- see predicates_log.md for the concrete collision this
     fixed."""
     return _arc_defect_score(panel, 120.0)
+
+
+def _arc_span_from_points(xs, ys, cx, cy):
+    ang = np.sort(np.arctan2(ys - cy, xs - cx))
+    gaps = np.diff(ang)
+    gaps = np.append(gaps, ang[0] + 2 * np.pi - ang[-1])
+    return float(np.degrees(2 * np.pi - gaps.max()))
+
+
+def _best_two_arc_split(panel):
+    """Walk the curve (see `_order_curve`) and find the single split point
+    that, when the curve is cut into a first and second piece and each piece
+    is independently circle-fit, minimizes the summed circle-fit RMS
+    residual. Returns (split_index, n_points, (cx1,cy1,r1), (cx2,cy2,r2)).
+    This locates the true corner/inflection of a two-circular-arc curve
+    (e.g. a wave/S-shape) without relying on noisy per-pixel curvature,
+    which is fragile at 1px scale. Not meaningful for curves that aren't
+    reasonably close to two arcs (chaotic shapes still return *a* split, just
+    a meaningless one -- pair with a residual-quality check if that
+    distinction matters)."""
+    pts = _order_curve(panel)
+    n = len(pts)
+    if n < 25:
+        return None
+    best = None
+    for split in range(10, n - 10):
+        xs1, ys1 = pts[:split, 0], pts[:split, 1]
+        xs2, ys2 = pts[split:, 0], pts[split:, 1]
+        cx1, cy1, r1 = _fit_circle(xs1, ys1)
+        cx2, cy2, r2 = _fit_circle(xs2, ys2)
+        resid1 = np.sqrt(np.mean((np.hypot(xs1 - cx1, ys1 - cy1) - r1) ** 2))
+        resid2 = np.sqrt(np.mean((np.hypot(xs2 - cx2, ys2 - cy2) - r2) ** 2))
+        total = resid1 + resid2
+        if best is None or total < best[0]:
+            best = (total, split, (cx1, cy1, r1), (cx2, cy2, r2))
+    _, split, c1, c2 = best
+    return split, n, c1, c2
+
+
+def p_two_arc_span_sum_deviation(panel):
+    """|sum of the two arcs' angular spans (degrees), from the best
+    two-circular-arc split of the curve (see `_best_two_arc_split`) - 297|.
+    A clean two-arc "wave" curve (two roughly semicircle-ish bumps joined at
+    a corner) has a fairly fixed total turning of ~297 degrees regardless of
+    scale or which way the arcs bend; this is near zero for that shape and
+    large for a single clean arc (much less total span), a closed loop/lens
+    (also much less, since each "half" is a short tip-to-tip arc), or a
+    messy multi-corner shape (usually much more). Target of 297 and the
+    two-sided deviation (rather than a one-sided span threshold) were tuned
+    against problem_02's near-miss curves -- see predicates_log.md."""
+    res = _best_two_arc_split(panel)
+    if res is None:
+        return 297.0
+    split, n, c1, c2 = res
+    pts = _order_curve(panel)
+    xs1, ys1 = pts[:split, 0], pts[:split, 1]
+    xs2, ys2 = pts[split:, 0], pts[split:, 1]
+    s1 = _arc_span_from_points(xs1, ys1, c1[0], c1[1])
+    s2 = _arc_span_from_points(xs2, ys2, c2[0], c2[1])
+    return float(abs((s1 + s2) - 297.0))
 
 
 def p_arc_defect_score_217(panel):
