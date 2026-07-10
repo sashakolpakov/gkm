@@ -702,3 +702,43 @@ drift past it; always check the LOO-fold-by-fold breakdown (not just train
 accuracy) before accepting a near-zero margin, and prefer pushing the
 threshold as close as safely possible to the tightest *positive* rather
 than leaving headroom on the negative side.
+
+## problem_18: self-crossing zigzag stroke (lightning bolt) vs closed polygon outline
+Positives are all lightning-bolt-shaped zigzag strokes: a single open path
+that crosses over itself once or twice, enclosing one small pocket. Negatives
+are closed polygon outlines (triangles/quadrilaterals, some with an extra
+zigzag notch) or a simple open non-crossing sliver -- same rough "angular
+zigzag line drawing" gestalt, but either no self-crossing at all, or a
+self-crossing/closed loop whose enclosed area is large relative to how much
+ink forms it.
+
+Added `_enclosed_hole_areas` (reused as-is from problem_15) to find the
+pocket enclosed by the self-crossing, and a new
+`p_00_hole_area_to_ink_ratio_defect`: ratio of that pocket's area to total
+ink pixel count, transformed by `f(ratio) = 1 - 1/ratio` before
+thresholding (no hole at all treated as maximally bad, `f=1.0`).
+
+### Lesson: a raw ratio's LOO fragility can be fixed by a monotonic reshaping, not just picking a different threshold
+Initial version thresholded the raw ratio directly (well, `ratio - const`
+clamped at 0): all positives clamped to exactly 0, and the closest negative
+sat at a value less than 2x the farthest positive but more than 2x below
+the *next*-closest negative. That asymmetric gap structure means
+leave-one-out failed specifically on the closest negative's own fold (train
+accuracy 1.0, heldout 0.917, wrong on exactly the 6 folds holding out that
+one negative) -- textbook case of the fragile-margin lesson from
+problem_17, except here no simple threshold retune can fix it: the atom
+search always picks the midpoint between the two nearest surviving training
+values, so if `2*x1 > x2` (x1=closest negative, x2=next-closest, after
+excluding x1) the retuned threshold necessarily overshoots the excluded
+x1's true value regardless of where the constant is set, since shifting a
+*linear* transform by a constant does not change any pairwise ratio/gap
+relationship between points. Solved by reshaping the feature itself with a
+concave monotonic transform (`1 - 1/ratio`, bounded above by 1) before
+thresholding: this compresses the far negatives together while leaving the
+near-positive-cluster region comparatively more spread out, flipping the
+`2*x1` vs `x2` inequality the right way. General technique: when a raw
+ratio feature has train=1.0 but a specific negative's own LOO fold fails,
+before hunting for a whole new feature, check whether `2*f(x1) > f(x2) +
+f(pos_max)` holds under candidate reshapings (log, sqrt, `1-1/x`, etc.) of
+the same underlying quantity -- much cheaper than finding a different
+measurement from scratch.

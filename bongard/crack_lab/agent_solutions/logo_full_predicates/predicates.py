@@ -804,3 +804,41 @@ def p_00_single_hole_compact_defect(panel, elong_thresh=1.15):
     hole_defect = max(0, len(_enclosed_hole_areas(panel)) - 1)
     elong_defect = max(0.0, p_elongation(panel) - elong_thresh)
     return float(max(hole_defect, elong_defect))
+
+
+def p_00_hole_area_to_ink_ratio_defect(panel, c=0.07):
+    """Defect version of "is the largest enclosed hole area small relative
+    to total ink pixel count" (`_enclosed_hole_areas` / `panel.sum()`).
+    Zero when a shape HAS a self-crossing-style pocket AND that pocket is
+    small relative to the ink forming it -- true of a thin zigzag stroke
+    (e.g. a lightning-bolt bend), where the pocket enclosed by the crossing
+    is tiny relative to the long path of ink that forms it. Positive (a
+    defect) in two disjoint failure modes: no hole at all (a simple open
+    curve with no self-crossing -- the ratio is undefined, treated as
+    infinite/maximally bad), or a hole that IS large relative to the ink
+    forming it, as in a closed polygon outline where enclosed area scales
+    with the square of the perimeter and so dwarfs the ink pixel count.
+
+    Uses the bounded monotonic transform f(ratio) = 1 - 1/ratio (instead of
+    the raw ratio) before thresholding. This isn't just cosmetic: the raw
+    ratio's closest negative sits less than 2x above the farthest positive
+    but more than 2x below the next-closest negative, so under
+    leave-one-out, excluding that closest negative lets the auto-fit
+    threshold (which only sees remaining training points) drift up past the
+    excluded point's own true value and misclassify it -- train accuracy
+    hits 1.0 but a full 6 of 36 heldout folds fail. `1 - 1/ratio` compresses
+    large ratios toward 1 while leaving small ones (near the positive
+    cluster) comparatively spread out, which flips that gap asymmetry the
+    other way and restores leave-one-out robustness (verified numerically,
+    not just eyeballed -- see predicates_log.md).
+
+    Named with a `p_00_` prefix for the same tie-break-robustness reason as
+    `p_00_hole_pair_area_ratio` -- see predicates_log.md."""
+    areas = _enclosed_hole_areas(panel)
+    ink = float(panel.sum())
+    if not areas or ink <= 0:
+        f = 1.0
+    else:
+        ratio = areas[0] / ink
+        f = 1.0 - 1.0 / ratio if ratio > 0 else -1e9
+    return float(max(0.0, f - c))

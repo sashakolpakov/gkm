@@ -129,8 +129,8 @@
     "problem_id": "bd_thin_unbalanced_symm_cup_0134",
     "category": "basic",
     "concept": "thin_unbalanced_symm_cup",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.106"
+    "solved": true,
+    "rule": "p_00_hole_area_to_ink_ratio_defect<=0.1807"
   },
   "problem_19": {
     "problem_id": "hd_exist_regular_0021",
