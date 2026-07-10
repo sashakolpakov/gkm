@@ -143,8 +143,8 @@
     "problem_id": "bd_jar_triangle3_0452",
     "category": "basic",
     "concept": "jar_triangle3",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=24.12 AND p_arc_defect_score_217>=20.57"
+    "solved": true,
+    "rule": "p_000_touching_pair_area_ratio_defect<=0.1715"
   },
   "problem_21": {
     "problem_id": "bd_open_line_s3_0284",

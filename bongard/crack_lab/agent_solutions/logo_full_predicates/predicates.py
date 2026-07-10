@@ -786,6 +786,32 @@ def p_00_hole_pair_area_ratio(panel):
     return float(areas[0] / areas[1])
 
 
+def p_000_touching_pair_area_ratio_defect(panel, target=1.485):
+    """'Is this a pair of closed loops joined at a point/edge whose two
+    enclosed areas stand in the SAME fixed ratio as an untouched, undistorted
+    pair of template shapes' defect: `abs(p_00_hole_pair_area_ratio(panel) -
+    target)`. When two loops merely TOUCH (share a vertex or a short edge,
+    with no interior overlap), each loop's enclosed area is exactly its own
+    true shape's area, so the ratio between the two loops is a stable
+    invariant close to `target` across rotations/reflections of the same
+    pair. When the two loops instead CROSS/overlap (edges cut through each
+    other's interior), the enclosed-region boundaries no longer match either
+    original shape -- the drawing still has exactly two background loops
+    (see `_enclosed_hole_areas`), but their areas are arbitrary slices,
+    landing the ratio far from `target` in either direction (much closer to
+    1, if the crossing carves two similarly-sized slivers, or much larger,
+    if it carves one sliver and one near-full remainder). A single
+    two-sided defect (rather than a min()/max() combination of two
+    one-sided thresholds) keeps this a single rule atom instead of two,
+    which matters at this problem's small N -- see predicates_log.md's
+    mistakes-vs-cost note. `target` is this problem's own observed true
+    ratio (mean over the touching-pair side); reusable for any future
+    problem built from the same fixed pair of template shapes joined at a
+    point vs. crossing."""
+    ratio = p_00_hole_pair_area_ratio(panel)
+    return float(abs(ratio - target))
+
+
 def p_00_single_hole_compact_defect(panel, elong_thresh=1.15):
     """'Is this shape a SINGLE enclosed loop (one connected hole, via
     `_enclosed_hole_areas`) AND is it compact/non-elongated (PCA major/minor

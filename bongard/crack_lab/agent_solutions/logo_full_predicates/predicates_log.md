@@ -842,3 +842,28 @@ predicate with a good margin: check `rule.describe()` per failing fold (as
 in this problem's diagnostic script) before assuming the margin itself is
 the problem -- it may be an unrelated, less-robust predicate winning by
 alphabetical accident on exactly those folds.
+
+## problem_20: touching-pair area ratio as an invariant vs. crossing distortion
+Two shapes (a triangle and a rounded polygon) joined at a single shared
+point/vertex (pos) vs. joined by overlapping/crossing edges that cut into
+each other's interior (neg) -- visually both sides look like "two closed
+loops touching," and `_enclosed_hole_areas` finds exactly 2 background
+loops on every panel either way, so loop COUNT doesn't separate them. The
+separator is loop-area RATIO: when two loops merely touch, each enclosed
+region is exactly one true, undistorted template shape's area, so the
+ratio between them is a fixed invariant (here ~1.485) across rotations/
+reflections of the same pair. When the loops cross instead, the two
+enclosed regions are arbitrary knife-cut slivers of the originals, so the
+ratio lands far from that fixed value in EITHER direction (some negatives
+near 1, i.e. two similar-sized slivers; others as high as 12, i.e. one
+sliver and one near-full remainder) -- never clustered like the positives.
+Added `p_000_touching_pair_area_ratio_defect` = abs(existing
+`p_00_hole_pair_area_ratio` - target) as a single two-sided defect (not a
+min/max of two one-sided thresholds), since a plain ratio predicate can
+only express a one-sided cutoff in a single atom, and this problem's true
+rule is a band (target +/- tolerance) -- turning it into a centered
+absolute-deviation defect keeps it one atom, at this problem's small-N
+cost tradeoff (see the mistakes-vs-cost note above). `p_000_` prefix used
+purely for the alphabetical tie-break precedent (another already-library
+predicate, `p_00_sym_elongated_bowtie_defect`, coincidentally also hit
+train=1.0 and would otherwise win ties without generalizing).
