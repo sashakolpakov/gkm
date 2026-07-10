@@ -742,3 +742,103 @@ before hunting for a whole new feature, check whether `2*f(x1) > f(x2) +
 f(pos_max)` holds under candidate reshapings (log, sqrt, `1-1/x`, etc.) of
 the same underlying quantity -- much cheaper than finding a different
 measurement from scratch.
+
+## problem_19: small-appendage two-loop shapes vs balanced/sliver/single-loop near-misses
+Every panel (pos and most neg) is two closed polygon/curve loops joined at a
+single shared point. Positives: the two loops differ clearly in size (area
+ratio from ~1.25 up to ~14x -- a small triangle/diamond/leaf perched on a
+bigger shape, OR two moderately-different-sized rounded/straight shapes
+fused spiral-style) AND the smaller loop is itself a compact shape, not a
+thin sliver. Negatives fail three different ways: a single simple polygon
+with no second loop at all (`neg_0,1,3`) or a single wavy/pinched loop
+(`neg_2`); two loops of near-*equal* size, i.e. ratio too close to 1 (a
+symmetric triangle-triangle bowtie, `neg_5`); or two loops with a
+plausible-looking size ratio (~3.8x) where the smaller loop is a thin
+sliver-shaped leaf rather than a compact one (`neg_4`).
+
+Investigated and ruled out as the distinguishing feature (all coincided
+across pos AND the two hardest negatives, `neg_4`/`neg_5`, so none of these
+separate this problem's shapes): whether the two loops' shared point is a
+straight-line crossing vs a polygon-vertex touch (`p_line_crossing_defect`,
+built for problem_06, gave inconsistent values here since it measures a
+different property than expected); the angle between the two loops'
+hole-centroids as seen from the joint (both "opposite" ~170 degree cases
+and "adjacent" ~110 degree cases occur on the positive side); 180-degree
+rotational self-symmetry (`p_180_rotational_self_iou`, heavily overlapping
+ranges on both sides). Lesson: when a shape family visually resembles a
+past problem's near-miss pattern (crossing vs touching, bowtie symmetry),
+check the actual numbers on the new panels before assuming the same
+predicate/feature will transfer -- superficial gestalt similarity does not
+imply the same discriminating measurement applies.
+
+Added:
+- `_enclosed_hole_regions` (helper): like the existing `_enclosed_hole_
+  areas` but returns each enclosed background region's own pixel
+  coordinates (largest first), dropping regions smaller than `min_size`
+  (15px) to filter the 1-2px corner-sealing artifacts that a single simple
+  polygon can spuriously produce as a fake "second hole". Reusable whenever
+  a predicate needs to inspect a sub-shape's own hole geometry (not just
+  its area) individually.
+- `p_00_second_hole_elongation`: PCA major/minor axis ratio of the
+  *smaller* of a two-loop shape's two enclosed regions. Near 1 for a
+  compact appendage (triangle, diamond, small leaf); much higher for a
+  sliver-shaped one. Sentinel 99.0 when there aren't two real enclosed
+  regions.
+- `p_000_two_loop_appendage_defect`: the actual solved-with predicate.
+  AND-via-max of two shortfalls: `p_00_hole_pair_area_ratio` staying above
+  a size-ratio threshold (1.15), and `p_00_second_hole_elongation` staying
+  below a compactness threshold (2.5) -- with the ratio shortfall multiplied
+  by a 20x scale factor before the max(). Solves all three negative failure
+  modes as a single scalar.
+
+### Lesson: MDL atom-count cost can make a 2-atom perfect rule score worse than a 1-atom rule with one mistake
+With only 12 training panels, `select_rule`'s F = train_error_rate +
+lambda*cost makes each extra atom cost `lambda*(CALL_COST+BINDING_COST) =
+0.15` in F-units, i.e. equivalent to ~1.8 training mistakes (0.15 / (1/12)).
+So a 2-atom conjunction that reaches 0 training error (F = 0 + 0.1*3 = 0.3)
+loses to *any* 1-atom rule that accepts a single mistake (F = 1/12 + 0.1*1.5
+= 0.233), even though the 2-atom rule is the "correct" full rule. Two
+predicates that would jointly separate the data perfectly as two atoms
+never get selected together in a small-N problem like this -- they must be
+pre-combined (via the existing AND-via-max / OR-via-min patterns) into a
+single predicate so the rule search only pays for one atom. Check this
+arithmetic (mistakes-vs-cost tradeoff at the problem's actual N) whenever a
+promising 2-predicate combination reaches train=1.0 but a competing 1-atom
+rule with 1 training mistake is what the harness actually reports.
+
+### Lesson (recurrence of problem_00/07/17): rescale sub-defects to comparable magnitude before combining with max()
+The first version of `p_000_two_loop_appendage_defect` combined the raw
+ratio-shortfall and elongation-shortfall via max() with no rescaling: it
+achieved train=1.0 and a huge apparent margin (0 for all positives, >=0.14
+for all negatives), yet heldout was only 0.917. Diagnosis: `neg_5`'s only
+failure was a small ratio shortfall (~0.14), while `neg_4`'s failure was a
+much larger elongation shortfall (~3.1) -- a >20x gap between the two
+negatives' defect values. Under leave-one-out, excluding `neg_5` leaves
+`neg_4` (defect 3.1) as the closest remaining negative, and the auto-fit
+threshold lands near its midpoint with 0 (~1.5) -- comfortably above
+`neg_5`'s own true value of 0.14, so the held-out `neg_5` gets misclassified
+as positive. Multiplying the smaller-scale sub-defect (ratio shortfall) by a
+fixed constant (20x) so its typical failure magnitude matches the other
+sub-defect's typical failure magnitude fixed this with heldout=1.0. General
+pattern: whenever combining two *different* underlying measurements into
+one defect via max()/min(), don't assume their raw units are comparable --
+check each candidate negative's defect value individually and rescale so no
+negative's failure is an order of magnitude smaller than another's, or LOO
+will drift a threshold past it exactly as in the single-feature uneven-gap
+lesson from problem_00/07/17.
+
+### Naming tie-break (recurrence of problem_05/03/15)
+Even after the composite predicate reached train=1.0, an *existing*
+component predicate (`p_00_second_hole_elongation`) alone coincidentally
+also reached 0 training error on every LOO fold that excluded `pos_2` (its
+own outlier), and won those folds' ties by sorting alphabetically before
+`p_00_two_loop_appendage_defect` (`s` < `t`) -- it doesn't generalize to
+predicting `pos_2`/`neg_5` correctly, though, so heldout stayed below 1.0
+even with a correct, robust composite predicate already in the library.
+Renamed to `p_000_...` (triple-zero prefix, sorts before every existing
+`p_00_*` name) to win all ties. Recognize this pattern whenever heldout is
+stubbornly below 1.0 on specific folds despite a train=1.0 composite
+predicate with a good margin: check `rule.describe()` per failing fold (as
+in this problem's diagnostic script) before assuming the margin itself is
+the problem -- it may be an unrelated, less-robust predicate winning by
+alphabetical accident on exactly those folds.

@@ -842,3 +842,96 @@ def p_00_hole_area_to_ink_ratio_defect(panel, c=0.07):
         ratio = areas[0] / ink
         f = 1.0 - 1.0 / ratio if ratio > 0 else -1e9
     return float(max(0.0, f - c))
+
+
+def _enclosed_hole_regions(panel, min_size=15):
+    """Like `_enclosed_hole_areas`, but returns the actual pixel coordinates
+    (xs, ys) of each enclosed background region (largest first), dropping
+    any region smaller than `min_size` -- this filters out the 1-2px noise
+    pockets that a single simple polygon's corners sometimes produce after
+    the 1px dilation used to seal joins, which otherwise masquerade as a
+    spurious 'second hole'. Reusable whenever a predicate needs to inspect
+    each sub-shape's own hole (shape, elongation, ...) rather than just its
+    area."""
+    dilated = binary_dilation(panel.astype(bool), iterations=1)
+    bg = ~dilated
+    lab, n = ndimage.label(bg, structure=np.ones((3, 3)))
+    h, w = panel.shape
+    regions = []
+    for i in range(1, n + 1):
+        ys, xs = np.nonzero(lab == i)
+        if len(ys) < min_size:
+            continue
+        if ys.min() == 0 or xs.min() == 0 or ys.max() == h - 1 or xs.max() == w - 1:
+            continue
+        regions.append((xs.astype(float), ys.astype(float)))
+    regions.sort(key=lambda r: -len(r[0]))
+    return regions
+
+
+def p_00_second_hole_elongation(panel):
+    """PCA elongation (major/minor axis ratio, see `p_elongation`) of the
+    SMALLER of a two-holes shape's two enclosed regions (`_enclosed_hole_
+    regions`) -- e.g. the small triangle/leaf/diamond appended to a bigger
+    shape at a shared point. Near 1 (compact) when that smaller sub-shape is
+    itself a plain, roughly-as-wide-as-tall loop (triangle, diamond, small
+    leaf); much higher for a thin sliver-shaped hole. Returns a large
+    sentinel (99.0) when there aren't two real (>=`min_size`) enclosed
+    regions, so shapes that are a single loop (or one loop plus noise) fail
+    a 'compact' threshold on this predicate by default rather than passing
+    it vacuously.
+
+    Named with a `p_00_` prefix for the tie-break-robustness reason
+    documented at `p_00_hole_pair_area_ratio` -- see predicates_log.md."""
+    regions = _enclosed_hole_regions(panel)
+    if len(regions) < 2:
+        return 99.0
+    xs, ys = regions[1]
+    major, minor = _pca_extents(xs, ys)
+    return float(major / minor) if minor > 1e-6 else 1e9
+
+
+def p_000_two_loop_appendage_defect(panel, ratio_thresh=1.15, elong_thresh=2.5, ratio_scale=20.0):
+    """'Is this shape made of exactly two closed loops joined at a point,
+    where one loop is clearly bigger than the other (`p_00_hole_pair_area_
+    ratio`) AND the smaller loop is itself compact rather than a sliver
+    (`p_00_second_hole_elongation`)' defect: AND-via-max of the two
+    features' shortfalls below their own fixed thresholds (same pattern as
+    `p_00_single_hole_compact_defect`). Zero only when BOTH hold. Combining
+    both checks into a single scalar (rather than leaving them as two
+    separate atoms) matters here: with only 12 training panels the MDL
+    rule search's per-atom cost makes a 2-atom conjunction that reaches 0
+    training error score WORSE than a 1-atom rule that accepts a single
+    mistake (see predicates_log.md problem_19), so the two conditions must
+    be pre-combined into one predicate to be selected as a single atom.
+    Distinguishes: two comparably-sized loops (ratio too close to 1, e.g. a
+    bowtie of two same-size triangles) and a single loop alone (ratio
+    undefined -- `p_00_hole_pair_area_ratio` sentinel of 1.0, and
+    `p_00_second_hole_elongation` sentinel of 99.0) from a genuine
+    small-appendage-on-a-bigger-shape configuration; also catches the
+    near-miss where the ratio looks right but the smaller loop is a thin
+    sliver rather than a compact shape (e.g. a narrow leaf/petal).
+
+    Named with a `p_000_` prefix (sorts before every `p_00_*` name,
+    including `p_00_second_hole_elongation` itself) because that predicate
+    alone coincidentally reaches 0 training error on several leave-one-out
+    folds where `pos_2` (its own outlier, elong~1.87) is the excluded
+    panel, and would otherwise win the naming tie-break on those folds
+    despite not generalizing back to `pos_2`/`neg_5` -- see
+    predicates_log.md problem_19 and the tie-break lesson in problem_15.
+
+    `ratio_defect` is multiplied by `ratio_scale` (20x) before the max():
+    without it, a shape that barely fails the ratio condition (e.g. two
+    loops of near-equal size, ratio~1.0 against a 1.15 threshold) produces a
+    much smaller raw defect than a shape that badly fails the elongation
+    condition -- so under leave-one-out, excluding the near-equal-size
+    negative lets the auto-fit threshold drift up past its small true value
+    (same failure mode as problem_00/problem_07's uneven-gap lesson).
+    Rescaling the ratio shortfall onto the same order of magnitude as a
+    typical elongation-condition failure keeps every negative's defect in a
+    comparable range, so no single negative is a scaling-fragile outlier."""
+    ratio = p_00_hole_pair_area_ratio(panel)
+    elong = p_00_second_hole_elongation(panel)
+    ratio_defect = max(0.0, ratio_thresh - ratio) * ratio_scale
+    elong_defect = max(0.0, elong - elong_thresh)
+    return float(max(ratio_defect, elong_defect))
