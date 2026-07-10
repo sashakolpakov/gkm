@@ -91,11 +91,11 @@
     "rule": "p_arc_defect_score_217<=30.44"
   },
   "problem_13": {
-    "problem_id": "bd_closed_threequarter_circle_0030",
     "category": "basic",
     "concept": "closed_threequarter_circle",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=34.9"
+    "problem_id": "bd_closed_threequarter_circle_0030",
+    "rule": "p_180_rotational_self_iou>=0.7636",
+    "solved": true
   },
   "problem_14": {
     "problem_id": "hd_has_three_straight_lines_0005",
@@ -161,11 +161,11 @@
     "rule": "p_arc_defect_score_217<=10.62"
   },
   "problem_23": {
-    "problem_id": "bd_open_right_equi_triangle_0236",
     "category": "basic",
     "concept": "open_right_equi_triangle",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=14.89"
+    "problem_id": "bd_open_right_equi_triangle_0236",
+    "rule": "p_0_blunt_tip_defect>=0.7257",
+    "solved": true
   },
   "problem_24": {
     "problem_id": "hd_thin_shape_0011",
