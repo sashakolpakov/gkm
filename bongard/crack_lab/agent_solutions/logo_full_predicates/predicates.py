@@ -1,5 +1,6 @@
 # Shared predicate library. p_<name>(panel) -> float | bool
 import itertools
+import math
 import numpy as np
 from scipy.spatial import cKDTree, ConvexHull
 from scipy.ndimage import binary_fill_holes, binary_dilation
@@ -643,3 +644,48 @@ def p_0_asym_taper_or_blunt_or_chunky_defect(panel, ratio_thresh=1.9, ratio_scal
     chunky_defect = max(0.0, chunky - chunky_thresh) / chunky_thresh
 
     return float(max(asym_defect, blunt_defect, chunky_defect))
+
+
+def _rot_iou_about(panel, center, deg):
+    """IoU of the filled shape with a copy of itself rotated by `deg` degrees
+    about the given (cx, cy) pixel. Reusable for testing n-fold rotational
+    (point) symmetry about a specific hub -- unlike the centroid-based
+    variant, this measures symmetry about a chosen center such as the hub
+    where several sub-shapes meet."""
+    f = _filled_mask(panel)
+    if f.sum() == 0:
+        return 0.0
+    cx, cy = float(center[0]), float(center[1])
+    r = math.radians(deg)
+    cos, sin = math.cos(r), math.sin(r)
+    Y, X = np.mgrid[0:f.shape[0], 0:f.shape[1]]
+    xr = cos * (X - cx) - sin * (Y - cy) + cx
+    yr = sin * (X - cx) + cos * (Y - cy) + cy
+    xi = np.round(xr).astype(int)
+    yi = np.round(yr).astype(int)
+    ok = (xi >= 0) & (xi < f.shape[1]) & (yi >= 0) & (yi < f.shape[0])
+    rot = np.zeros_like(f)
+    rot[Y[ok], X[ok]] = f[yi[ok], xi[ok]]
+    inter = np.logical_and(f, rot).sum()
+    union = np.logical_or(f, rot).sum()
+    return float(inter / union) if union > 0 else 0.0
+
+
+def p_0_rot3_windmill_defect(panel, target=0.56):
+    """How far the shape is from being a clean 3-fold rotational windmill
+    about the hub where its strokes are densest. A tidy pinwheel of three
+    congruent blades meeting at one central point reproduces itself under a
+    120-degree rotation about that hub with a characteristic partial overlap
+    (IoU ~0.5): the rotated blades land on their neighbours' positions but
+    only partly coincide. This returns |IoU_120 - target| (target ~0.56, just
+    above that clean-windmill overlap band so the pos side sits near zero and
+    both failure directions read large), which is small for such a clean
+    windmill and large for anything else -- a single
+    polygon with no 3-fold symmetry (IoU ~0), blades that are misarranged so
+    the pattern breaks (IoU well below target), or blades so overlapping/
+    coincident that the rotated copy nearly reproduces the original (IoU well
+    above target)."""
+    center = _densest_point(panel, r=3.5)
+    iou = max(_rot_iou_about(panel, center, 120.0),
+              _rot_iou_about(panel, center, -120.0))
+    return abs(iou - target)

@@ -87,8 +87,8 @@
     "problem_id": "bd_three_mismatch_triangles2_0358",
     "category": "basic",
     "concept": "three_mismatch_triangles2",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=30.44"
+    "solved": true,
+    "rule": "p_0_rot3_windmill_defect<=0.1464"
   },
   "problem_13": {
     "problem_id": "bd_closed_threequarter_circle_0030",

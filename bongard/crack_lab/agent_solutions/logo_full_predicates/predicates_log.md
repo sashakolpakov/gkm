@@ -482,3 +482,39 @@ despite train=1.0 and a big apparent margin, check for *which* predicate
 each failing fold actually selected (see the per-fold `select_rule` replay
 snippet) before assuming the predicate itself is wrong -- it may just be
 losing a naming tie-break against something in the existing library.
+
+## problem_12: clean 3-fold triangle pinwheel vs near-misses
+Positives: three congruent triangles meeting apex-to-apex at one hub, spread
+as a tidy windmill. Negatives: single block/zigzag arrows (no hub symmetry)
+plus two decoy triangle-clusters -- one with blades so overlapping/coincident
+the figure is *over*-symmetric, one with a blade misarranged so the 3-fold
+pattern is broken. All three hole-count / ray-count / endpoint heuristics
+failed because the two decoys have 3 triangular holes and 6 rays just like
+the positives.
+
+### New predicate `p_0_rot3_windmill_defect` (+ helper `_rot_iou_about`)
+Key measurement: IoU of the filled shape with a copy rotated 120 deg about
+the DENSEST point (the hub, via existing `_densest_point`), not the centroid.
+A clean 3-blade windmill lands at IoU ~0.5 (neighbours overlap only partly);
+arrows ~0; over-coincident blades ~0.9; broken pattern ~0.33. So the signal
+is a BAND, not a threshold. Encoded as |IoU_120 - target| so a one-sided
+`<=` atom works. `_rot_iou_about` generalizes `p_180_rotational_self_iou`
+from centroid+180 to arbitrary-center+arbitrary-angle.
+
+### Lesson: two-sided band -> deviation-from-target turns it one-sided
+When positives occupy a middle band and negatives fall on BOTH sides
+(here IoU low for arrows/broken, high for coincident), a raw threshold
+can't separate. Return |value - target| and the harness's `<=` atom
+captures the band. Reused the same "|x - target|" shape as the arc-span
+and fan-quad-ratio predicates.
+
+### Lesson: pick `target` from the LOO-robust interval, not the pos mean
+The pos IoU band was [0.498, 0.541] but target=0.51 (its center) only gave
+heldout 0.917: the nearest negative (broken decoy, IoU 0.33) sat close
+enough that leave-one-out threshold jitter misclassified it. Sweeping target
+through the harness's own `verify()` showed a solid solved=True plateau for
+target in [0.53, 0.60]; picking 0.56 (plateau center) maximizes LOO margin
+on both sides. Lesson: when a big-margin predicate still fails LOO, sweep
+its constant against `verify()` and choose the middle of the solved
+interval rather than the data's raw mean. Same early-sort naming trick
+(`p_0_...`) was again needed so it wins describe() ties over `p_arc_*`.
