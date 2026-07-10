@@ -1,6 +1,7 @@
 # Shared predicate library. p_<name>(panel) -> float | bool
 import numpy as np
 from scipy.spatial import cKDTree
+from scipy.ndimage import binary_fill_holes, binary_dilation
 
 
 def _xy(panel):
@@ -198,3 +199,43 @@ def p_arc_defect_score_217(panel):
     more weight to stay robustly above the positives under leave-one-out
     (see predicates_log.md)."""
     return _arc_defect_score(panel, 217.0, span_scale=4.0)
+
+
+def _filled_mask(panel):
+    """Fill the interior enclosed by a (possibly self-crossing) closed
+    curve's ink pixels: dilate by 1px to seal 1-pixel gaps at self-crossings
+    then flood-fill. Reusable whenever a predicate needs the enclosed area
+    of a curve rather than just its outline pixels."""
+    return binary_fill_holes(binary_dilation(panel.astype(bool), iterations=1))
+
+
+def p_180_rotational_self_iou(panel):
+    """IoU of a shape's filled interior with itself rotated 180 degrees
+    about its own centroid. Shapes with 2-fold rotational (point) symmetry
+    -- e.g. an S/pinwheel curve made of two similar bumps on opposite sides
+    of a center -- score high (~0.6+) since the rotated copy nearly
+    reproduces the original. Shapes lacking that symmetry -- a single open
+    arc, or several lens/petal lobes all meeting at one shared hub point
+    rather than arranged around a center -- score much lower (~0.3 or
+    below), since the rotated copy lands on mostly empty space instead.
+    Named with a leading digit (`p_180_...`) so its describe() string sorts
+    lexically before other predicates' names (`p_arc_...`, `p_circle_...`):
+    several existing predicates happen to also reach 0 training error on a
+    given problem's 12 panels by coincidence, and the harness's rule
+    selector breaks ties between equally-good (error, cost) rules by
+    picking the lexically smallest description, independent of which one
+    is actually robust under leave-one-out. See predicates_log.md
+    problem_03 for the concrete case this mattered."""
+    f = _filled_mask(panel)
+    if f.sum() == 0:
+        return 0.0
+    f180 = np.rot90(f, 2)
+    ys, xs = np.nonzero(f)
+    cy, cx = ys.mean(), xs.mean()
+    ys2, xs2 = np.nonzero(f180)
+    cy2, cx2 = ys2.mean(), xs2.mean()
+    dy, dx = int(round(cy - cy2)), int(round(cx - cx2))
+    f180s = np.roll(np.roll(f180, dy, axis=0), dx, axis=1)
+    inter = np.logical_and(f, f180s).sum()
+    union = np.logical_or(f, f180s).sum()
+    return float(inter / union) if union > 0 else 0.0

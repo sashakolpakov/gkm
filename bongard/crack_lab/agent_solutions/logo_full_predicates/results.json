@@ -24,8 +24,8 @@
     "problem_id": "bd_necked_six_lines4_0560",
     "category": "basic",
     "concept": "necked_six_lines4",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=31.62"
+    "solved": true,
+    "rule": "p_180_rotational_self_iou>=0.5246"
   },
   "problem_04": {
     "problem_id": "hd_has_eight_straight_lines_0010",

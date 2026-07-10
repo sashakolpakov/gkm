@@ -96,3 +96,41 @@ rule must be a different topological feature. Try summing a continuous,
 scale-invariant quantity (here: total angular turning) across the shape's
 parts — near-miss negatives are often quantitatively, not structurally,
 different from the positives.
+
+## problem_03: 2-fold rotationally symmetric "pinwheel" curves vs. petal/leaf/single-arc curves
+Rule: positives are closed self-crossing curves shaped like a pinwheel/S
+(two similar bumps arranged 180 degrees apart around a center, giving the
+whole filled shape approximate point symmetry). Negatives are a single open
+arc, or closed multi-lobe "petal"/"leaf" curves where 2-3 lens-shaped lobes
+all meet at one shared hub point (mirror-ish symmetry at best, no 2-fold
+rotational symmetry about the shape's centroid).
+
+Added:
+- `_filled_mask` (helper): dilate ink by 1px then flood-fill interior.
+  Reusable whenever a predicate needs the enclosed area of a closed (or
+  self-crossing, gap-at-crossing) curve rather than just outline pixels.
+- `p_180_rotational_self_iou`: IoU of the filled mask with itself rotated
+  180 degrees about its own centroid. High (~0.6+) for shapes with 2-fold
+  point symmetry; low (~0.3-0.4) for hub-petal shapes; near 0 for a single
+  open arc. This is the predicate the solved rule uses
+  (`p_180_rotational_self_iou>=0.5246`), with a large, LOO-safe margin.
+
+### Lesson: the rule selector's tie-break is by predicate NAME, not robustness
+Multiple existing predicates from other problems (`p_arc_defect_score_217`,
+`p_arc_defect_score_arc120`, `p_circle_fit_residual`) happened to also
+reach 0 training error on this problem's 12 panels by coincidence, each
+with a much thinner margin than the true rule. `select_rule` breaks ties
+between equal (train_error, cost) rules by picking the lexically smallest
+`describe()` string -- it does NOT prefer whichever rule generalizes best
+under leave-one-out. Since `"p_arc_defect_score_217..." < "p_rot180_..."`
+alphabetically, the harness kept picking the fragile arc-defect rule
+(heldout 0.917) even after a robust, wide-margin predicate was added under
+the name `p_rot180_self_iou`. Fix: renamed to `p_180_rotational_self_iou`
+so its name starts with a digit, sorting before any `p_<letter>...` name
+and winning the tie-break deterministically. When a new predicate has a
+much better margin than an accidental same-training-accuracy competitor,
+check whether the competitor is actually being selected (read the `rule=`
+field, not just train/heldout numbers) before concluding the new
+predicate isn't working -- and if a naming tie-break is the blocker,
+prefer a lexically-early name over walking away from an otherwise-correct
+predicate.
