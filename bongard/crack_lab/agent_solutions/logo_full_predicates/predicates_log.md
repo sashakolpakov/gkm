@@ -1225,3 +1225,85 @@ current problem's rule, differing only in the target's specific size ratio
 resolving any lexical tie-break collision with other coincidentally-zero-
 error predicates already in the file, via the same leading-zero-prefix
 renaming trick -- not new geometry.
+
+## problem_30: pentagon+triangle touching pair (fixed shape identities) vs. any other loop-pair/self-crossing shape
+Positives are always the SAME two convex polygons (a pentagon and a
+triangle) joined at a single shared vertex, rotated/placed arbitrarily.
+Negatives swap which polygons are used (triangle+pentagon reversed,
+square+triangle, three fused triangles) or replace the clean vertex-touch
+with a self-crossing stroke (arrow/zigzag/bowtie shapes).
+
+First attempt: the two enclosed hole areas' ratio (`_enclosed_hole_areas`,
+1px-dilated) is tight for positives in isolation (~7.65-7.95 via an
+undilated fill-holes variant) but the existing dilated version
+(`p_00_hole_pair_area_ratio`) already blurs that gap enough for the
+hardest negative (a bowtie/zigzag, dilated ratio 9.392) to fall inside the
+positive band (9.3-10.6) -- the fixed 1px dilation erodes a small loop's
+area proportionally more than a big loop's, distorting a *precise* target
+ratio. Built a new undilated variant + target-ratio defect predicate; it
+had a wide raw margin (max positive defect 0.15 vs. min negative defect
+0.626) but FAILED heldout (0.917): whenever the single closest negative
+(the bowtie) was the held-out point, the MDL search's threshold -- fit as
+the midpoint between the largest remaining value on one side and the
+smallest on the other -- jumped from 0.39 to 2.0, since the next-closest
+negative was much farther away once the closest one dropped out of view.
+Removed that predicate entirely rather than keep it: a wide margin on
+full data does NOT imply LOO robustness when the predicate's closest
+negative is much closer than its second-closest -- the auto-fit threshold
+overshoots exactly that gap once the anchor point is excluded (same
+structural risk noted for `p_0000_solidity_band_defect` in the
+problem_29 entry above, now confirmed to bite a *newly written*
+predicate too, not just a fixed-target one).
+
+Existing `p_0000_convexity_solidity` (filled-area / hull-area, already in
+the library) turned out to separate this problem by itself, with a much
+safer margin structure: positives 0.806-0.818 (tight cluster), negatives
+0.598-0.779 (max 0.779), and critically the closest negative (0.779) is
+*not* dramatically closer than the rest (next is 0.754), so excluding it
+doesn't cause a big threshold jump. Verified LOO-robust alone (0/36 fold
+failures in isolation) -- but running the full library still gave
+heldout=0.806, because `p_00000_total_hole_to_ink_ratio` (5 leading
+zeros, sorts before `p_0000_convexity_solidity`'s 4) has one true
+train-set overlap point (pos_4 vs. neg_0) that vanishes in several LOO
+folds, making it spuriously zero-error and letting its earlier name win
+the tie -- then it fails on the very held-out panel whose exclusion
+created that spurious zero-error window. Exact same tie-break-collision
+shape as the `p_00000_total_hole_to_ink_ratio` vs. `p_0000_convexity_
+solidity` collision documented earlier in this log for a different
+problem, just with the winner/loser roles reversed by which predicate
+happens to be the true separator this time.
+
+### Fix: same leading-zero re-export trick, applied per-problem rather than by renaming the shared original
+Did NOT rename `p_0000_convexity_solidity` itself (that name's current
+4-zero rank was deliberately set to lose to `p_00000_total_hole_to_ink_
+ratio` for a DIFFERENT earlier problem where hole-to-ink was the true LOO-
+robust separator and solidity was the fold-specific hijacker -- flipping
+that global order could resurrect the older problem's failure, and its
+panels are no longer available in this workspace to re-verify). Instead
+added `p_000000_solidity_raw`, a thin re-export of `p_0000_convexity_
+solidity` under a 6-zero prefix, so it outranks both `p_00000_total_hole_
+to_ink_ratio` and `p_00001_exactly_two_equal_holes_defect` for tie-breaks
+involving THIS problem's data without touching the original name's global
+rank. Confirmed solved=True, heldout=1.000, zero new geometric logic.
+
+### Lesson: tie-break priority is directional and problem-specific, not a total order to optimize once
+When two existing predicates' relative naming priority was set to fix an
+earlier problem (A beats B there), a later problem where B is actually the
+robust separator and A is the fold-specific hijacker should NOT be fixed
+by renaming A or B directly -- that risks silently un-fixing the earlier
+problem (which usually can't be re-verified once its panels are gone from
+the workspace). Add a thin re-export of the current winner (B) under a
+new, even-higher-priority name instead. This makes per-problem tie-break
+fixes additive/local rather than a shared global ranking that different
+problems keep fighting over.
+
+### Lesson: a wide margin on full (non-held-out) data does not imply LOO robustness
+Before trusting a brand-new predicate's clean full-data separation, check
+whether its closest wrong-side point is much closer than its second-
+closest -- if so, the auto-fit threshold (midpoint between adjacent
+achievable values) will overshoot past the closest point's true location
+whenever that closest point is the one held out, regardless of how wide
+the margin looked with all points in view. Prefer an existing predicate
+whose margin is more evenly spread (checked via the isolated 36-fold
+self-simulation) over a new one with a superficially wider but unevenly-
+spread margin.

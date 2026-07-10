@@ -213,8 +213,8 @@
     "problem_id": "bd_exist_triangle_eight_lines3_0598",
     "category": "basic",
     "concept": "exist_triangle_eight_lines3",
-    "solved": false,
-    "rule": "p_circle_fit_residual<=0.07977"
+    "solved": true,
+    "rule": "p_000000_solidity_raw>=0.7926"
   },
   "problem_31": {
     "problem_id": "bd_bala_three_intersect_circles2_0324",

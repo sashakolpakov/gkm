@@ -1221,6 +1221,23 @@ def p_0000_convexity_solidity(panel):
     return _solidity(panel)
 
 
+def p_000000_solidity_raw(panel):
+    """Raw `p_0000_convexity_solidity` value, re-exposed under a 6-zero
+    prefix so it sorts (and thus wins ties) before `p_00000_total_hole_to_
+    ink_ratio` (5 zeros) and `p_00001_exactly_two_equal_holes_defect`.
+    Needed for the pentagon+triangle touching-pair problem: solidity alone
+    is a fully LOO-robust separator there (0.806-0.818 for the touching
+    pair vs. <=0.779 for every negative, including the self-crossing
+    near-miss whose hole-area ratio coincidentally lands inside the
+    positives' range), but in several leave-one-out folds `p_00000_total_
+    hole_to_ink_ratio` also happens to reach zero training error (its one
+    true overlap point, pos-vs-neg, drops out of view) and, sorting first,
+    wins the tie -- then fails on the very held-out panel that broke its
+    overlap. Same thin-re-export-for-tie-break-priority pattern as
+    `p_0000_hole_pair_ratio_raw` -- see predicates_log.md."""
+    return p_0000_convexity_solidity(panel)
+
+
 def p_00001_exactly_two_equal_holes_defect(panel):
     """'Is this drawing exactly a two-petal shape -- two closed loops of
     near-EQUAL size sharing a single point' defect, using `_enclosed_hole_
