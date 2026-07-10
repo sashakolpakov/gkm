@@ -1003,3 +1003,21 @@ negative's margin over the positive cluster -- explicitly compute
 `(positive_max + next_nearest_negative_min) / 2` (the threshold LOO will
 actually fit once that negative is excluded) and make sure the near-miss
 negative's own fixed value clears *that*, not just the raw train-time gap.
+
+## problem_24: thin/elongated shapes (blade, petal-pair, zigzag) vs. chunkier closed/crossed shapes
+Rule: `p_0000_total_hole_to_ink_ratio<=2.75` (already in the library from an
+earlier problem). Positives are visually diverse -- a single elongated
+lens/blade, a two-petal "<" or bowtie shape, and even an open zigzag
+polyline (ratio 0, no enclosed hole at all) -- but they share a low ratio
+of enclosed area to ink-pixel count. Negatives (parallelogram, jagged
+closed polygon, multi-triangle clusters, martini-glass crossing) are all
+chunkier/fatter, enclosing much more area per unit of ink. Positive values
+0.0-2.44, negative values 3.06-6.48: a wide, LOO-robust gap.
+
+No new predicates needed -- straight reuse. Confirms the hole-to-ink ratio
+is a good general proxy for "thin/elongated" that generalizes across quite
+different-looking shape families, without needing a PCA/min-rect aspect
+ratio measurement (which was also tried ad hoc here and gave a much
+thinner, LOO-fragile margin: ~1.98 vs ~1.96 for elongation, or ~2.0 vs
+~1.975 for a min-area-bounding-rect ratio -- both far too close for
+leave-one-out safety compared to the hole-ratio's wide gap).

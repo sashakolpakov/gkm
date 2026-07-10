@@ -171,8 +171,8 @@
     "problem_id": "hd_thin_shape_0011",
     "category": "abstract",
     "concept": "thin_shape",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=32.89"
+    "solved": true,
+    "rule": "p_0000_total_hole_to_ink_ratio<=2.75"
   },
   "problem_25": {
     "problem_id": "bd_two_mismatch_triangles11_0371",
