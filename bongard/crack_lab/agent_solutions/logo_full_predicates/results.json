@@ -32,7 +32,7 @@
     "category": "abstract",
     "concept": "has_eight_straight_lines",
     "solved": false,
-    "rule": "p_circle_fit_residual>=0.1212"
+    "rule": "p_notch_severity>=3.66"
   },
   "problem_05": {
     "problem_id": "bd_thin_sym_nail7_0489",
