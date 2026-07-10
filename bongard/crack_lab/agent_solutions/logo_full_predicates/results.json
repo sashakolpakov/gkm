@@ -73,8 +73,8 @@
     "problem_id": "bd_thin_sym_nail5_0487",
     "category": "basic",
     "concept": "thin_sym_nail5",
-    "solved": false,
-    "rule": "p_arc_defect_score_arc120<=15.18"
+    "solved": true,
+    "rule": "p_0_asym_taper_or_blunt_or_chunky_defect<=0.4866"
   },
   "problem_11": {
     "problem_id": "bd_advanced_lamp2_0477",

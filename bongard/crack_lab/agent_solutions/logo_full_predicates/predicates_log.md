@@ -400,3 +400,45 @@ count as "symmetric enough") pushed that same negative's defect up to
 either branch by a wide margin), restoring a safe LOO gap -- worth
 rechecking the *target/threshold constant* inside a composite predicate,
 not just which raw signals to combine, when the initial margin is thin.
+
+## problem_10
+
+Positives: thin symmetric "leaf"/lens outlines -- two smoothly bulging
+arcs of comparable curvature meeting at a sharp point at BOTH ends.
+Negatives were three qualitatively different near-misses of that same
+lens silhouette: (a) a lopsided lens whose two sides bulge by very
+different amounts (one side almost straight), (b) a pencil/wedge shape
+that tapers to a point at one end but is cut flat (blunt) at the other,
+and (c) chunkier straight-edged polygons (zigzag, pentagon, chevron)
+that aren't a thin sliver at all.
+
+No single existing scalar covered all three failure modes (each is a
+near-miss of "clean symmetric lens" along a different axis), so
+`p_0_asym_taper_or_blunt_or_chunky_defect` composes three defects via
+max() (OR of failure modes, same pattern as `p_open_or_symmetric_defect`
+and `p_pinch_notch_defect`):
+- reused `_best_two_arc_split` (already existed for wave-curve problems)
+  to get each side's fitted-circle radius, then flagged a big radius
+  ratio between the two sides (asymmetric taper) -- new helper is just
+  the ratio, no new curve-tracing code;
+- reused `p_0_blunt_tip_defect` directly (near-0 flags a blunt/flat end);
+- added one new helper `_hull_area_over_diag2` (convex hull area of the
+  raw ink pixels / bbox-diagonal^2) as a scale-invariant chunkiness
+  measurement to flag the polygon negatives.
+
+### Recurrence of the LOO-thin-margin lesson, this time for a *composite*
+The first attempt (`ratio_scale=0.3`) gave the lopsided-lens negative an
+asym-defect of only 0.45, close enough to the positive band (0) that
+once that single negative was excluded from a leave-one-out round, the
+next-closest negative sat at 0.97 and the fitted threshold landed at
+their midpoint (~0.49) -- just above the excluded negative's own true
+value (0.45), so it was misclassified once tested alone. Shrinking
+`ratio_scale` to 0.1 (steepening how fast the defect grows past
+`ratio_thresh`) pushed that same negative's defect to ~1.35, comfortably
+above where any LOO-refit threshold could land, while leaving every
+positive and every other negative's defect unchanged. Lesson generalizes
+problem_08's "recheck the threshold constant" note: when a composite
+defect combines several branches via max(), check each branch's OWN
+margin against the *next-closest* example on its own side once its
+nearest neighbor is hypothetically removed -- not just the margin in the
+full dataset -- since that's exactly what leave-one-out exposes.

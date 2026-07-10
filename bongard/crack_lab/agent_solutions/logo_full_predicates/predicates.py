@@ -584,3 +584,62 @@ def p_0_fan_quad_ratio_defect(panel, target=1.191):
         return 5.0
     ratio = fan_long / quad_long
     return float(abs(ratio - target))
+
+
+def _hull_area_over_diag2(panel):
+    """Convex hull area of the raw ink pixels, normalized by the bbox
+    diagonal squared. A scale-invariant 'chunkiness' measurement: near
+    0.10-0.12 for a thin lens/leaf outline (its hull is a narrow sliver
+    relative to its own diagonal), much higher (0.3+) for a blunter closed
+    polygon (zigzag, pentagon, chevron) whose hull fills a bigger fraction
+    of its own bounding diagonal."""
+    xs, ys = _xy(panel)
+    if len(xs) < 3:
+        return 0.0
+    pts = np.stack([xs, ys], axis=1)
+    diag2 = (xs.max() - xs.min()) ** 2 + (ys.max() - ys.min()) ** 2
+    if diag2 < 1e-6:
+        return 0.0
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return 0.0
+    return float(hull.volume / diag2)
+
+
+def p_0_asym_taper_or_blunt_or_chunky_defect(panel, ratio_thresh=1.9, ratio_scale=0.1,
+                                              blunt_thresh=0.2, chunky_thresh=0.15):
+    """'Is this a clean symmetric lens/leaf -- two similarly-curved arcs
+    tapering to a point at BOTH ends, with a hull that stays a thin sliver
+    of its own bbox diagonal' defect score, as the max (OR of failure modes)
+    of three independent checks:
+    (a) asymmetric taper -- the two arcs from `_best_two_arc_split` have very
+    different fitted radii (one side noticeably flatter/straighter than the
+    other), unlike a lens's two comparably-bulged sides;
+    (b) blunt tip -- `p_0_blunt_tip_defect` near 0, meaning one end is a flat
+    cut rather than a taper to a point (a wedge/pencil shape);
+    (c) chunky hull -- `_hull_area_over_diag2` well above a thin-sliver
+    band, meaning the shape isn't a thin sliver at all (a chunkier polygon).
+    Each check alone has a near-miss that lands inside the lens band on this
+    problem's negatives (a pencil's flat end is itself made of two nearly-
+    straight sides, so its own two-arc radius ratio is unremarkable; a
+    lopsided lens's radius ratio is the only signal that catches it, since
+    it's neither blunt nor chunky) -- combining via max() covers all three
+    failure modes with one scalar, same OR-via-min/max pattern as
+    `p_open_or_symmetric_defect` and `p_pinch_notch_defect`."""
+    res = _best_two_arc_split(panel)
+    if res is None:
+        return 5.0
+    split, n, c1, c2 = res
+    r1, r2 = c1[2], c2[2]
+    lo, hi = min(r1, r2), max(r1, r2)
+    ratio = hi / lo if lo > 1e-6 else 1e9
+    asym_defect = max(0.0, ratio - ratio_thresh) / ratio_scale
+
+    blunt = p_0_blunt_tip_defect(panel)
+    blunt_defect = max(0.0, blunt_thresh - blunt) / blunt_thresh
+
+    chunky = _hull_area_over_diag2(panel)
+    chunky_defect = max(0.0, chunky - chunky_thresh) / chunky_thresh
+
+    return float(max(asym_defect, blunt_defect, chunky_defect))
