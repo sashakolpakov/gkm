@@ -209,3 +209,41 @@ def test_infra_recovery_consumes_no_attempt(sandbox):
     assert rep.solved == 1
     assert rep.records[0].attempts == 1
     assert not rep.records[0].escalated
+
+
+def test_stale_problem_dirs_pruned(sandbox):
+    ws = str(sandbox / "ws9")
+    rep = L.run(_two_problems(), tag="t9", ws=ws,
+                propose_fn=writing_proposer(), verbose=False)
+    assert rep.solved == 2
+    dirs = [n for n in os.listdir(ws) if n.startswith("problem_")]
+    assert dirs == ["problem_01"]  # only the last attempted problem remains
+
+
+def test_wip_restore_vs_clean_resume(sandbox):
+    """ARC-parity resume modes: default restores a retried problem's earlier
+    failed-attempt notes; clean resume keeps only the verified backbone."""
+    def failing(task, ws, model, minutes):
+        with open(os.path.join(ws, "probe_notes.md"), "w") as f:
+            f.write("tried arc span, dead end")
+
+    L.run([two_vs_one_problem()], tag="t10", ws=str(sandbox / "ws10a"),
+          propose_fn=failing, verbose=False)
+
+    seen = {}
+
+    def probing(task, ws, model, minutes):
+        seen["notes"] = os.path.exists(os.path.join(ws, "probe_notes.md"))
+        with open(os.path.join(ws, L.LIBRARY_FILE), "a") as f:
+            f.write(WITNESS)
+
+    L.run([two_vs_one_problem()], tag="t10", ws=str(sandbox / "ws10b"),
+          propose_fn=probing, verbose=False)
+    assert seen["notes"] is True  # default: WIP context restored
+
+    seen.clear()
+    L.run([two_vs_one_problem()], tag="t11", ws=str(sandbox / "ws11a"),
+          propose_fn=failing, verbose=False)
+    L.run([two_vs_one_problem()], tag="t11", ws=str(sandbox / "ws11b"),
+          propose_fn=probing, verbose=False, restore_wip=False)
+    assert seen["notes"] is False  # clean resume: backbone only

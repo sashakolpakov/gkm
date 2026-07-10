@@ -307,6 +307,47 @@ def promote_verified_artifact(tag: str, ws: str, rep: Report,
     return True
 
 
+def _restore_wip_context(tag: str, ws: str, opaque_id: str,
+                         verbose: bool = True) -> int:
+    """Copy the newest WIP snapshot's proposer files (notes, probe scripts)
+    for this problem back into the workspace -- the ARC restore-WIP idiom.
+    Promoted files and panels are never restored (the artifact is the
+    verified source of truth); newer scratch files are never clobbered."""
+    restored = 0
+    skip = set(PROMOTED_FILES) | {"bongard_try.py", "current_problem.txt"}
+    for kind in (opaque_id, f"interrupted_{opaque_id}"):
+        base = os.path.join(artifact_dir(tag), "wip_context", kind)
+        if not os.path.isdir(base):
+            continue
+        snaps = sorted(os.listdir(base))
+        if not snaps:
+            continue
+        src = os.path.join(base, snaps[-1])
+        for name in sorted(os.listdir(src)):
+            if name in skip or name.startswith("problem_"):
+                continue
+            s, d = os.path.join(src, name), os.path.join(ws, name)
+            if not os.path.isfile(s):
+                continue
+            if os.path.exists(d) and os.path.getmtime(d) >= os.path.getmtime(s):
+                continue
+            shutil.copy2(s, d)
+            restored += 1
+    if verbose and restored:
+        print(f"restored {restored} WIP file(s) for {opaque_id}")
+    return restored
+
+
+def _prune_stale_problem_dirs(ws: str, keep_oid: str) -> None:
+    """Only the current problem's panels are visible to the proposer; stale
+    panel dirs from earlier problems waste its budget and blur the
+    information boundary. Panels are regenerated on demand."""
+    for name in os.listdir(ws):
+        path = os.path.join(ws, name)
+        if os.path.isdir(path) and name.startswith("problem_") and name != keep_oid:
+            shutil.rmtree(path, ignore_errors=True)
+
+
 def snapshot_wip(tag: str, ws: str, opaque_id: str, verbose: bool = True) -> str:
     """Preserve a failed attempt's workspace files (including the reverted
     library candidate) without admitting them."""
@@ -446,7 +487,8 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
         minutes: int = 15, verbose: bool = True,
         git_checkpoints: bool = False,
         infra_wait_seconds: int = 1200,
-        max_infra_waits: int = 12) -> Report:
+        max_infra_waits: int = 12,
+        restore_wip: bool = True) -> Report:
     """PROPOSE -> VERIFY -> DEBRIEF over a problem sequence, with structural
     admission and Sonnet-first escalation. Resumable: solved problems in the
     promoted artifact are not re-run."""
@@ -475,6 +517,9 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
         oid = f"problem_{k:02d}"
         if oid in done:
             continue
+        _prune_stale_problem_dirs(ws, oid)
+        if restore_wip:
+            _restore_wip_context(tag, ws, oid, verbose=verbose)
         A.write_panels(ws, problem, oid)
         with open(os.path.join(ws, "current_problem.txt"), "w") as f:
             f.write(oid)
@@ -564,7 +609,7 @@ def run(problems: Sequence[A.Problem], tag: str = "logo",
 if __name__ == "__main__":
     dataset = os.path.join(LAB_DIR, "..", "..", "downloads", "Bongard-LOGO")
     limit, seed, source, tag, minutes = 3, 20260709, "basic", "logo", 15
-    max_problems, git_checkpoints = 0, False
+    max_problems, git_checkpoints, clean_resume = 0, False, False
     ladder: Sequence[str] = DEFAULT_LADDER
     for a in sys.argv[1:]:
         if a.startswith("--limit="):
@@ -583,6 +628,8 @@ if __name__ == "__main__":
             max_problems = int(a.split("=", 1)[1])
         elif a == "--git-checkpoint":
             git_checkpoints = True
+        elif a == "--clean-resume":
+            clean_resume = True
     problems = A.sample_problems(dataset, limit=limit, seed=seed, source=source)
     if source == "both":
         problems = interleave_corpus(
@@ -594,4 +641,4 @@ if __name__ == "__main__":
           f"({sum(1 for p in problems if p.category == 'basic')} basic, "
           f"{sum(1 for p in problems if p.category == 'abstract')} abstract)")
     run(problems, tag=tag, ladder=ladder, minutes=minutes,
-        git_checkpoints=git_checkpoints)
+        git_checkpoints=git_checkpoints, restore_wip=not clean_resume)
