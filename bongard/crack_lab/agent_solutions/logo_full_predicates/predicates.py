@@ -1216,3 +1216,36 @@ def p_0000_convexity_solidity(panel):
     convex outline). Distinguishes convex quads (trapezoid, kite, rhombus)
     from concave dart/arrow quads with a wide, LOO-robust gap."""
     return _solidity(panel)
+
+
+def p_00001_exactly_two_equal_holes_defect(panel):
+    """'Is this drawing exactly a two-petal shape -- two closed loops of
+    near-EQUAL size sharing a single point' defect, using `_enclosed_hole_
+    regions` directly (unlike `p_00_hole_pair_area_ratio`, which silently
+    returns a neutral 1.0 when there are fewer than two holes and so cannot
+    tell 'no loops at all' apart from 'two same-size loops'). Returns a
+    moderate sentinel (5.0) whenever the hole count is not exactly 2 --
+    covering open curves and single-loop shapes (0 or 1 hole) as well as
+    three-or-more-petal shapes or a loop-plus-small-tab shape (3+ holes,
+    since the tab itself becomes an extra small hole) -- and otherwise
+    returns |bigger_hole_area / smaller_hole_area - 1|, which stays near 0
+    for two similarly-sized petals and blows up (far past the sentinel)
+    whenever the 'second hole' is actually a small stray sliver (e.g. a big
+    loop plus one unrelated small attached shape) rather than a true
+    same-size sibling petal. The sentinel is kept deliberately modest
+    (rather than an extreme value like 99.0): under leave-one-out, if every
+    *other* wrong-hole-count negative collapses onto the same sentinel, an
+    overly extreme sentinel drags the fitted threshold's midpoint far above
+    a genuine two-holes-but-very-unequal negative's own (finite, merely
+    large) ratio defect, letting that negative slip under the threshold and
+    get misclassified as positive once it's the only held-out example left
+    to test against. Keeping the sentinel just modestly above the true
+    positive range (and below any real unequal-pair ratio defect) avoids
+    that failure mode -- see predicates_log.md."""
+    regions = _enclosed_hole_regions(panel)
+    if len(regions) != 2:
+        return 5.0
+    a0, a1 = len(regions[0][0]), len(regions[1][0])
+    if a1 <= 0:
+        return 5.0
+    return float(abs(a0 / a1 - 1.0))

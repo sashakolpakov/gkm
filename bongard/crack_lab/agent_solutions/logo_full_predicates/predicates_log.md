@@ -1074,3 +1074,39 @@ General pattern: `_solidity` is the generic "is this outline convex"
 measurement -- worth trying bare (not just inside `p_pinch_notch_defect`'s
 max-combination) whenever a problem's near-miss axis looks like
 "convex vs. has-a-notch/reflex-vertex" for closed polygonal shapes.
+
+## problem_27: two-equal-size-petal shape vs. wrong hole count / unequal pair
+Rule: positives are all a single-stroke "two petals" shape -- two closed
+leaf/lens loops of near-equal size sharing one common point (like a
+two-lobed flower or a check mark drawn as two touching arcs). Negatives
+fail in different ways: an open curve with no closed loop at all (0
+holes), a single closed loop / single petal (1 hole), a three-petal or
+loop-plus-small-tab shape (3 holes, since a small attached tab creates its
+own tiny extra enclosed region), or -- the hard near-miss -- exactly two
+enclosed loops but wildly unequal in size (one big loop plus one small
+stray triangle/tab, ratio far from 1).
+
+Added `p_00001_exactly_two_equal_holes_defect`, built directly on the
+existing `_enclosed_hole_regions` helper (reused unchanged from
+problem_25/26's touching-pair predicates): sentinel when hole count != 2,
+else |bigger_hole_pixel_count / smaller_hole_pixel_count - 1|.
+
+### Lesson: sentinel magnitude matters for leave-one-out, not just its sign
+First attempt used a large sentinel (99.0) for the "wrong hole count" case,
+by analogy with other predicates in the file (`p_00_second_hole_elongation`,
+etc.) that use 99.0 as a generic "doesn't apply" value. This passed on the
+full training set (heldout margin 0.014 vs 31.66 looks huge) but failed
+6/36 leave-one-out folds: whenever the one genuinely-hard negative
+(two holes, ratio 31.66) was the held-out test point, every *other*
+negative in that fold was a same-valued 99.0 sentinel, so the fitted
+threshold's candidate midpoint landed around (max_pos + 99.0)/2 ~= 49.5 --
+comfortably above the held-out negative's own finite value of 31.66,
+misclassifying it as positive. Lowering the sentinel to 5.0 (still clearly
+above the positive range ~0-0.014, but well below the hard negative's true
+31.66) fixed all folds. General takeaway: a "doesn't apply" sentinel must
+not just be "large" -- it must stay below any real finite defect value
+that a *different* negative in the same family can produce, or a
+leave-one-out fold where all the *other* negatives happen to be sentinel
+-valued will drag the decision threshold past that real value. Check this
+by simulating each held-out (pos, neg) pair directly (see `bongard_arena.
+verify`'s rotation loop) rather than trusting the full-sample margin.

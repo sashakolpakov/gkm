@@ -2,9 +2,9 @@
 
 Latest verified predicate-library state promoted by `bongard_legs.py`. Re-running `bongard_arena.verify` on the recorded problems with this `predicates.py` reproduces every solved verdict (deterministic substrate = replay).
 
-- Problems solved: 38/80
-- Total marginal C: 1383
-- F = -10.340
+- Problems solved: 39/80
+- Total marginal C: 1418
+- F = -10.640
 
 Per-problem novelty:
 
@@ -35,7 +35,7 @@ Per-problem novelty:
 - problem_24: solved=True marginal_C=0 model=sonnet
 - problem_25: solved=True marginal_C=41 model=sonnet
 - problem_26: solved=True marginal_C=8 model=sonnet
-- problem_27: solved=False marginal_C=0 model=opus
+- problem_27: solved=True marginal_C=35 model=sonnet
 - problem_28: solved=False marginal_C=0 model=opus
 - problem_29: solved=False marginal_C=0 model=opus
 - problem_30: solved=False marginal_C=0 model=opus

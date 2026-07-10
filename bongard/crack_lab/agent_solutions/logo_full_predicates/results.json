@@ -192,8 +192,8 @@
     "problem_id": "bd_bala_two_intersect_circles_new4_0503",
     "category": "basic",
     "concept": "bala_two_intersect_circles_new4",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=9.094"
+    "solved": true,
+    "rule": "p_00001_exactly_two_equal_holes_defect<=2.507"
   },
   "problem_28": {
     "problem_id": "bd_necked_six_lines2_0558",
