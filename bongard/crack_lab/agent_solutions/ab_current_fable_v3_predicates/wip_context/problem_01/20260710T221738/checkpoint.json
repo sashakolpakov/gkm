@@ -14,17 +14,6 @@
       "model": "claude-fable-5",
       "attempts": 1,
       "escalated": false
-    },
-    {
-      "opaque_id": "problem_01",
-      "solved": false,
-      "heldout_accuracy": 0.9166666666666666,
-      "rule": "p_arc_coverage_dev_from_half<=35",
-      "rule_cost": 1.5,
-      "marginal_C": 0,
-      "model": "claude-fable-5",
-      "attempts": 1,
-      "escalated": false
     }
   ]
 }

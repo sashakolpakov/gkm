@@ -5,5 +5,12 @@
     "concept": "open_s5",
     "solved": false,
     "rule": "p_circle_fit_residual<=0.002773"
+  },
+  "problem_01": {
+    "problem_id": "bd_arc_three_lines1_0512",
+    "category": "basic",
+    "concept": "arc_three_lines1",
+    "solved": false,
+    "rule": "p_arc_coverage_dev_from_half<=35"
   }
 }
