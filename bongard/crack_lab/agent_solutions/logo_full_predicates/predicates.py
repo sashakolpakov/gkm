@@ -1,4 +1,5 @@
 # Shared predicate library. p_<name>(panel) -> float | bool
+import itertools
 import numpy as np
 from scipy.spatial import cKDTree, ConvexHull
 from scipy.ndimage import binary_fill_holes, binary_dilation
@@ -372,3 +373,91 @@ def p_0_blunt_tip_defect(panel):
     the selector's naming tie-break otherwise picks the fragile predicate."""
     w_start, w_end, w_mid = _end_widths(panel)
     return float(abs(max(w_start, w_end) / w_mid - 1.0))
+
+
+def _densest_point(panel, r=3.0):
+    """The ink pixel with the most other ink pixels within radius r --
+    a local-density peak. Reusable as a cheap locator for a drawing's
+    single busiest spot, e.g. the point where two sub-shapes meet (either
+    a shared vertex or a line-on-line crossing)."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1)
+    tree = cKDTree(pts)
+    counts = np.array([len(c) for c in tree.query_ball_point(pts, r=r)])
+    idx = int(np.argmax(counts))
+    return pts[idx]
+
+
+def _branch_angles(panel, center, r1, r2, gap_deg=14.0):
+    """Directions (degrees) of the distinct rays of ink radiating from
+    `center`, measured from the pixels in the annulus [r1, r2] around it,
+    found by sorting those pixels' angles and splitting wherever there is a
+    gap of more than gap_deg. Reusable whenever a predicate needs to know
+    how many strokes meet at a point, and in which directions, e.g. to
+    distinguish a true polygon vertex from a straight-through line crossing."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1)
+    d = np.linalg.norm(pts - center, axis=1)
+    sel = pts[(d >= r1) & (d <= r2)]
+    if len(sel) == 0:
+        return []
+    vecs = sel - center
+    angs = np.sort(np.degrees(np.arctan2(vecs[:, 1], vecs[:, 0])))
+    clusters = []
+    cur = [angs[0]]
+    for a in angs[1:]:
+        if a - cur[-1] <= gap_deg:
+            cur.append(a)
+        else:
+            clusters.append(cur)
+            cur = [a]
+    clusters.append(cur)
+    if len(clusters) > 1 and (clusters[0][0] + 360 - clusters[-1][-1]) <= gap_deg:
+        clusters[0] = clusters[-1] + clusters[0]
+        clusters.pop()
+    return [float(np.mean(c)) for c in clusters]
+
+
+def _four_ray_crossing_defect(angles):
+    """Given exactly 4 ray directions (degrees) radiating from a point,
+    the best pairing into two pairs of opposite (180-degree-apart) rays,
+    scored as the summed deviation from 180 of each pair. Near zero when
+    the 4 rays form two straight lines passing through the point (a true
+    line-on-line crossing); large when the 4 rays are a genuine polygon
+    vertex (no two rays continue straight through each other). Returns 90.0
+    (a large sentinel) if not given exactly 4 angles, since the "crossing"
+    question isn't meaningful for any other ray count."""
+    if len(angles) != 4:
+        return 90.0
+    best = 1e9
+    for a, b, c, d in itertools.permutations(range(4)):
+        if a > b or c > d or a > c:
+            continue
+        diff1 = abs(abs(angles[a] - angles[b]) % 360 - 180)
+        diff1 = min(diff1, 360 - diff1)
+        diff2 = abs(abs(angles[c] - angles[d]) % 360 - 180)
+        diff2 = min(diff2, 360 - diff2)
+        best = min(best, diff1 + diff2)
+    return best
+
+
+def p_line_crossing_defect(panel):
+    """How cleanly two sub-shapes joined at a single point are joined by an
+    actual line-on-line CROSSING (two straight lines passing through each
+    other, X-style) rather than merely touching corner-to-corner at a
+    shared polygon vertex. Locates the join (`_densest_point`) and, over a
+    range of small measurement radii around it, takes the best (smallest)
+    `_four_ray_crossing_defect` score across those radii -- using the best
+    rather than e.g. the average is deliberate: pixelation makes any single
+    radius's ray-clustering noisy, but a true crossing has SOME radius where
+    the two straight lines read out cleanly, whereas a true shared-vertex
+    join never presents two opposite ray pairs at any radius. Near zero for
+    a true crossing; large (order 40+) for a shared-vertex touch."""
+    p = np.asarray(panel)
+    center = _densest_point(p)
+    best = 90.0
+    for r1 in range(3, 12):
+        for r2 in range(r1 + 4, r1 + 12):
+            angles = _branch_angles(p, center, r1, r2)
+            best = min(best, _four_ray_crossing_defect(angles))
+    return float(best)

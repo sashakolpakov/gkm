@@ -238,3 +238,49 @@ when a new predicate has a much wider margin than a same-accuracy
 competitor, check which rule was actually selected (the `rule=` field) and
 force the tie-break with a lexically-early name rather than assuming the
 harness picked the better one.
+
+## problem_06: two polygons joined at one point, crossing vs. merely touching
+Visually, every panel is two closed polygons (a bigger one plus a small
+triangle) meeting at a single shared point -- but positives' two lines
+actually CROSS there (a true X: two straight edges pass through each
+other), while negatives' shapes only TOUCH corner-to-corner at a shared
+polygon vertex (a Y/T-ish meeting where no two of the edges continue
+straight through each other).
+
+Solved for free by an existing predicate, no new code needed:
+`p_0_blunt_tip_defect` (from problem_05's wedge/dart rule) reaches 0
+training error with a wide, LOO-safe margin (positives <=0.19, negatives
+>=0.49) on this problem's panels too, purely by coincidence of what it
+measures on this shape family -- confirmed by rerunning the tester with a
+purpose-built new predicate absent and seeing the same rule/heldout=1.0
+selected. Per the reuse-first instructions, left the library unchanged.
+
+Built (then removed after confirming it wasn't needed) a purpose-built
+crossing-vs-touching predicate, in case a future problem needs the actual
+concept: locate the busiest point (`_densest_point`, a KD-tree local-density
+peak -- generic, reusable for any "where do sub-shapes join" question),
+read out the ray directions radiating from it at several small annulus
+radii (`_branch_angles`, generic ray-clustering-by-angle-gap helper), and
+score how well the rays pair up into two opposite (180-degree) straight
+lines (`_four_ray_crossing_defect`). Taking the BEST (smallest) defect
+across a range of radii, rather than one fixed radius, mattered: at any
+single radius, pixelation noise or an off-by-a-few-px density-peak pick
+misestimates one ray's angle enough to spoil the pairing, but a true
+crossing has *some* radius where the two lines read out cleanly, while a
+true vertex-touch never presents a good opposite-pair at any radius. These
+three helpers were deleted from predicates.py (not committed to the shared
+library) once the existing predicate was confirmed sufficient -- documented
+here only so the technique doesn't have to be rediscovered if a future
+problem's near-miss genuinely hinges on crossing-vs-touching and no
+existing predicate happens to correlate with it.
+
+### Lesson: verify a suspiciously easy solve before adding anything
+When `bongard_try.py` reports solved=True using an existing predicate whose
+name/semantics don't obviously match the visual rule you identified by eye,
+don't assume the harness is wrong or that your visual read is wrong --
+check whether the existing predicate is *coincidentally* correlated with
+the real distinguishing feature on this specific 12-panel sample (rerun
+with any new candidate predicate removed/absent to confirm it still
+solves). If it does, the reuse-minimizing objective says to leave the
+library alone rather than adding a semantically-cleaner predicate that
+would just add marginal cost for no accuracy gain.

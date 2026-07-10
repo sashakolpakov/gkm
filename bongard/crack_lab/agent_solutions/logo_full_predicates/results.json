@@ -45,8 +45,8 @@
     "problem_id": "bd_symmetric_fish_0085",
     "category": "basic",
     "concept": "symmetric_fish",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1246"
+    "solved": true,
+    "rule": "p_0_blunt_tip_defect<=0.3405"
   },
   "problem_07": {
     "problem_id": "bd_mismatch_sector_rec1_0390",
