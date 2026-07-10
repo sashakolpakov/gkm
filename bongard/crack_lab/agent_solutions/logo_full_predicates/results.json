@@ -94,8 +94,8 @@
     "problem_id": "bd_closed_threequarter_circle_0030",
     "category": "basic",
     "concept": "closed_threequarter_circle",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=34.9"
+    "solved": true,
+    "rule": "p_180_rotational_self_iou>=0.7636"
   },
   "problem_14": {
     "problem_id": "hd_has_three_straight_lines_0005",

@@ -518,3 +518,17 @@ on both sides. Lesson: when a big-margin predicate still fails LOO, sweep
 its constant against `verify()` and choose the middle of the solved
 interval rather than the data's raw mean. Same early-sort naming trick
 (`p_0_...`) was again needed so it wins describe() ties over `p_arc_*`.
+
+## problem_13: circle-with-one-flat-chord blob vs open arcs / lens+tail / fish
+Positives: a near-circular closed shape where one small arc has been
+replaced by a straight chord (looks like a circle with a single flat
+side, or a "D"). Negatives: plain open arcs (no closure at all), a
+lens/leaf with an extra tail or triangle sticking out, and a fish curve
+(multiple crossings). No new predicate needed -- `p_180_rotational_self_iou`
+(from problem_02) already separates perfectly: a blobby near-circle is
+close to its own 180-degree rotation even with one flat chord, while the
+open arcs and tailed/crossing shapes are not. Good reminder to run the
+full existing library against new panels before reaching for a new
+measurement -- `_solidity` alone would also have worked (pos ~1.013-1.015
+vs neg ~<=0.939) but was redundant once the search found a zero-new-cost
+solve.
