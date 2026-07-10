@@ -1,6 +1,6 @@
 # Shared predicate library. p_<name>(panel) -> float | bool
 import numpy as np
-from scipy.spatial import cKDTree
+from scipy.spatial import cKDTree, ConvexHull
 from scipy.ndimage import binary_fill_holes, binary_dilation
 
 
@@ -207,6 +207,84 @@ def _filled_mask(panel):
     then flood-fill. Reusable whenever a predicate needs the enclosed area
     of a curve rather than just its outline pixels."""
     return binary_fill_holes(binary_dilation(panel.astype(bool), iterations=1))
+
+
+def p_self_proximity_ratio(panel, min_gap_frac=0.15):
+    """Minimum spatial distance between two points of the traced curve (see
+    `_order_curve`) that are far apart in curve-parameter (cyclic index
+    separation >= min_gap_frac of the curve length), normalized by the
+    ink's bbox diagonal. Near zero when the outline comes close to touching
+    or crossing itself somewhere away from a simple local corner (a true
+    self-intersection, or a deep concave notch whose two sides nearly meet) --
+    both read the same way here: the curve's far-apart-in-parameter points
+    get spatially close. Stays large (no pinch) for shapes where every
+    widely-separated pair of curve points stays well apart, e.g. convex or
+    mildly concave polygons with no near-self-touching feature."""
+    pts = _order_curve(panel)
+    n = len(pts)
+    if n < 10:
+        return 1.0
+    diag = np.hypot(*(pts.max(axis=0) - pts.min(axis=0)))
+    if diag < 1e-6:
+        return 1.0
+    min_gap = max(int(n * min_gap_frac), 5)
+    idx = np.arange(n)
+    best = np.inf
+    for i in range(0, n, 2):
+        d = np.linalg.norm(pts - pts[i], axis=1)
+        sep = np.minimum(np.abs(idx - i), n - np.abs(idx - i))
+        mask = sep >= min_gap
+        if mask.any():
+            m = d[mask].min()
+            if m < best:
+                best = m
+    return float(best / diag)
+
+
+def _solidity(panel):
+    """Ratio of the curve's enclosed (filled) area (see `_filled_mask`) to
+    the area of the convex hull of the SAME filled mask's pixels (not the
+    raw outline pixels -- using the filled mask for both keeps the ratio
+    <=1; the 1px dilation `_filled_mask` applies to seal self-crossing gaps
+    would otherwise inflate the filled area past the raw-outline hull for
+    small/thin shapes). Near 1 for convex or near-convex blobs (circle,
+    triangle, hexagon); well below 1 for shapes with deep concave notches,
+    narrow necks, or self-crossing loops, since those give up interior area
+    relative to their convex hull without shrinking the hull itself."""
+    f = _filled_mask(panel)
+    area = float(f.sum())
+    ys, xs = np.nonzero(f)
+    pts = np.stack([xs, ys], axis=1)
+    if len(pts) < 3:
+        return 1.0
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return 1.0
+    hull_area = hull.volume
+    if hull_area < 1e-6:
+        return 1.0
+    return float(area / hull_area)
+
+
+def p_pinch_notch_defect(panel, pinch_scale=0.015, solidity_scale=0.85):
+    """Composite 'does this shape have a self-touching pinch AND give up
+    hull area to a notch/neck' defect score: max of (a) `p_self_proximity_ratio`
+    normalized by pinch_scale, and (b) `_solidity` normalized by
+    solidity_scale. Combining via max() implements an AND of "has a pinch"
+    and "is non-convex enough to matter" in a single scalar (same pattern as
+    `_arc_defect_score`), which is needed here because either signal alone
+    has a near-miss: a thin convex sliver can have as small a pinch distance
+    as a true self-crossing (its opposite edges taper close together without
+    ever touching), and a smooth concave crescent can have as low solidity
+    as a pinched shape without ever coming close to touching itself. Small
+    (<1) only when a shape has both a near-self-touching feature AND
+    meaningful concavity -- i.e. a self-crossing loop, or a deep notch whose
+    two sides nearly meet; large otherwise (convex blobs, thin convex
+    slivers, smooth concave curves with no pinch, open curves)."""
+    pinch = p_self_proximity_ratio(panel) / pinch_scale
+    sol = _solidity(panel) / solidity_scale
+    return float(max(pinch, sol))
 
 
 def p_180_rotational_self_iou(panel):

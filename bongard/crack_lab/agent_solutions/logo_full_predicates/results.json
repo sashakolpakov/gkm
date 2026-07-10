@@ -31,8 +31,8 @@
     "problem_id": "hd_has_eight_straight_lines_0010",
     "category": "abstract",
     "concept": "has_eight_straight_lines",
-    "solved": false,
-    "rule": "p_notch_severity>=3.66"
+    "solved": true,
+    "rule": "p_pinch_notch_defect<=1.065"
   },
   "problem_05": {
     "problem_id": "bd_thin_sym_nail7_0489",
