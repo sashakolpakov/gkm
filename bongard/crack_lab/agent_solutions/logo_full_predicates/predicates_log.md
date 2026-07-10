@@ -867,3 +867,36 @@ cost tradeoff (see the mistakes-vs-cost note above). `p_000_` prefix used
 purely for the alphabetical tie-break precedent (another already-library
 predicate, `p_00_sym_elongated_bowtie_defect`, coincidentally also hit
 train=1.0 and would otherwise win ties without generalizing).
+
+## problem_21: forked twig vs. closed loop / plain curve, via per-pixel ray-count topology
+Positives are a single open stroke with a short side branch splitting off
+partway along it (a Y-shaped 'twig'); negatives are either a closed loop
+(leaf/half-moon/bowtie-ish shapes with no true endpoint) or a plain open
+curve/S-curve with no branch at all. Visual near-miss: several negatives
+(closed loops with sharp corners) have local curvature sharp enough that a
+naive "does some point have >=3 ink directions around it" test also fires
+on them (a corner's two edges plus its own curvature can look like 3 rays),
+so branch-point count alone doesn't separate the sides.
+
+Fix: added `_pixel_ray_counts` (generalizing the existing `_branch_angles`
+helper from a single fixed center to *every* ink pixel as its own query
+center) and combined two per-point classifications into one predicate,
+`p_000_open_stroke_with_side_branch` = min(#pixels classified as tips
+[ray-count==1], #pixels classified as branch points [ray-count>=3]). A
+closed loop has zero true tips (ray-count==1 never happens on a cycle) even
+though it may have spurious branch-point pixels from corner curvature, so
+the min collapses to 0. A plain 2-endpoint curve has tips but zero branch
+points, so the min again collapses to 0. Only the genuine forked-twig case
+has both nonzero, giving a huge train margin (10-14 vs 12-19 for every
+positive, exactly 0 for every one of the six negatives) -- solved on the
+first predicate with heldout=1.0, no threshold tuning needed
+(`p_000_open_stroke_with_side_branch>=5`).
+
+General pattern: when a single local-topology test (branch/junction
+detection) is contaminated by an unrelated source of false positives
+(corner curvature on closed shapes), check whether a *different* local
+classification (endpoint detection) is immune to that same contamination,
+and combine both via min() rather than trying to make the one test more
+selective -- the two failure modes (closed loop, plain curve) are disjoint
+in which classification they trip, so an AND-via-min separates both at
+once.

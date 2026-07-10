@@ -961,3 +961,43 @@ def p_000_two_loop_appendage_defect(panel, ratio_thresh=1.15, elong_thresh=2.5, 
     ratio_defect = max(0.0, ratio_thresh - ratio) * ratio_scale
     elong_defect = max(0.0, elong - elong_thresh)
     return float(max(ratio_defect, elong_defect))
+
+
+def _pixel_ray_counts(panel, r1=3.0, r2=9.0, gap_deg=25.0):
+    """For every ink pixel, the number of distinct angular clusters of
+    other ink pixels in the annulus [r1, r2] around it (via `_branch_
+    angles`, treating the pixel itself as the query center). A tip/endpoint
+    of an open stroke has exactly 1 cluster (ink extends one way only); a
+    plain point along a smooth curve has 2 (ink extends both ways); a true
+    Y-junction where a side branch splits off has 3. Reusable whenever a
+    predicate needs per-point topology of a stroke (endpoint vs. mid-curve
+    vs. branch point) rather than a single global center. O(n^2) via a
+    fresh KD-tree query per pixel -- fine at this problem family's pixel
+    counts (a few hundred), not meant for dense fills."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1)
+    counts = np.empty(len(pts), dtype=int)
+    for i, p in enumerate(pts):
+        counts[i] = len(_branch_angles(panel, p, r1, r2, gap_deg=gap_deg))
+    return counts
+
+
+def p_000_open_stroke_with_side_branch(panel):
+    """Whether the drawing is a single open stroke that has a genuine
+    Y-junction where a short side branch splits off (a 'forked twig'), as
+    opposed to either a closed loop (no true endpoints at all) or a plain
+    open curve/S-curve with no branch (two endpoints, no junction).
+    Measured as min(# pixels that are stroke tips, # pixels that are
+    3-way branch points) via `_pixel_ray_counts` -- both counts must be
+    nonzero, i.e. the shape needs at least one endpoint AND at least one
+    junction. Zero (no) for a closed loop, whose curvature-driven ray
+    splits can spuriously register as 'branch points' but which has zero
+    true endpoints; also zero for a plain 2-endpoint curve, which has
+    endpoints but zero junctions. Strongly positive (double digits) only
+    for the forked-twig case, giving a huge train margin (endpoints_px in
+    10-14 and branch_px in 12-19 for every positive vs. one of the two
+    counts being exactly 0 for every negative in this problem's panels)."""
+    counts = _pixel_ray_counts(panel)
+    n_endpoints = int(np.sum(counts == 1))
+    n_branch = int(np.sum(counts >= 3))
+    return float(min(n_endpoints, n_branch))
