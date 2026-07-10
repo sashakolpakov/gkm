@@ -198,15 +198,25 @@ modest, heterogeneous gains; support-set shuffling drops Basic accuracy only
 our shuffled-sides control demands admission FAILURE, a strictly stronger
 protocol).
 
-Three convergences with this repository: (1) their Abstract-split ceiling
-(59-61%) matches our deterministic MDL selector on action skeletons (58.3%),
-i.e. frontier reasoning adds nothing over exhaustive threshold search once
-the morphism vocabulary is fixed -- consequence 1 of the cone principle as an
-experiment; (2) on Basic, our sparse selector (99.6-100% exact; caveats:
+Three convergences with this repository: (1) their Abstract-split symbolic
+ceiling (59-61%) is in the same band as our local Bongard-LOGO symbolic
+adapter's one-attribute Abstract action-only run: 26 generated concepts,
+10/3/3 train/validation/hidden positives and negatives, sparse free-energy
+conjunction selector over action skeleton atoms, mean hidden accuracy 0.583
+with 3/26 exact hidden solves (`bongard_logo_report.md`, command:
+`run_bongard_logo_adapter.py --source abstract --feature-set action --limit 26
+--support-count 10 --validation-count 3 --hidden-count 3 --max-rule-atoms 2
+--summary-only`; originally added in 129c289 and reproduced locally on
+2026-07-10). This is a protocol comparison, not an identical benchmark: their
+number is from 500 Human-designed/Abstract AP/AD problems and LLM in-context
+classification, while ours is a deterministic local selector on a smaller
+generated action-program sample. The conservative inference is that action
+programs without the right derived predicates land near the same bottleneck
+range; (2) on Basic, our sparse selector (99.6-100% exact; same caveat about
 different sample and support protocol) far exceeds their LLM in-context
-induction (~72%) over the same substrate -- rule SEARCH was never the hard
-part; (3) their AD ~= AP near-tie says symbolic CONTENT matters, not surface
-form (morphisms, not syntax).
+induction (~72%) over action-program inputs -- rule search was not the hard
+part in our adapter; (3) their AD ~= AP near-tie says symbolic CONTENT matters,
+not surface form (morphisms, not syntax).
 
 Positioning: their acknowledged limitation -- "diagnostic rather than
 prescriptive: shows what models can do with suitable structure but not how
