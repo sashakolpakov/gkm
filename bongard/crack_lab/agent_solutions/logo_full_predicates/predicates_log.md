@@ -1021,3 +1021,30 @@ ratio measurement (which was also tried ad hoc here and gave a much
 thinner, LOO-fragile margin: ~1.98 vs ~1.96 for elongation, or ~2.0 vs
 ~1.975 for a min-area-bounding-rect ratio -- both far too close for
 leave-one-out safety compared to the hole-ratio's wide gap).
+
+## problem_25: big-triangle-plus-similar-small-triangle (joined at one
+vertex, same shape scaled down) vs. quad+triangle pairs, overlapping/
+crossing triangle pairs, and mismatched-scale pairs
+Rule: `p_000_hole_pair_hull_perimeter_ratio_defect<=1.246` (new). Positives
+are all a big triangle and a small triangle sharing exactly one vertex, the
+small one a scaled-down copy of the big one, at a consistent scale. Hard
+negatives: two loops of the WRONG polygon class (triangle+quadrilateral,
+still touching at a point -- `neg_0`, `neg_2`, `neg_3`), the two loops
+CROSSING instead of touching (bowtie/hourglass overlap -- `neg_1`, `neg_4`),
+and a same-scale-class pair at the wrong ratio (`neg_5`).
+
+Added `_hole_convex_hull_perimeter` + `p_000_hole_pair_hull_perimeter_ratio_
+defect`, a LINEAR-size sibling of the existing `p_00_hole_pair_area_ratio` /
+`p_000_touching_pair_area_ratio_defect` (which use enclosed-hole AREA
+ratio). Tried area ratio first here: it clusters positives at 7.05-7.40 but
+the closest wrong-polygon-class negative lands at 6.8 -- inside the
+positive band's neighborhood, a fragile ~3.5% margin. Switching to convex-
+hull PERIMETER ratio of the same two hole regions (`_enclosed_hole_
+regions`) widens the relative gap (positives 3.09-3.27, closest negative
+3.46) because area is the linear ratio *squared*, which amplifies the same
+underlying pixel/boundary noise. Lesson: when a "same shape at two scales"
+invariant is the hypothesis, prefer a LINEAR measurement (perimeter, hull
+diameter) over an AREA one for the size-ratio comparison -- squaring a
+noisy quantity roughly doubles its relative noise, so it costs LOO margin
+for no benefit when both loops are already known to be simple convex
+polygons.

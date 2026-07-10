@@ -178,8 +178,8 @@
     "problem_id": "bd_two_mismatch_triangles11_0371",
     "category": "basic",
     "concept": "two_mismatch_triangles11",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=31.34 AND p_circle_fit_residual>=0.08615"
+    "solved": true,
+    "rule": "p_000_hole_pair_hull_perimeter_ratio_defect<=1.246"
   },
   "problem_26": {
     "problem_id": "bd_asymmetric_dagger_0057",

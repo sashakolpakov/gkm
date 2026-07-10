@@ -1165,3 +1165,44 @@ def p_000_isoceles_right_chevron_defect(panel, angle_scale=15.0, ratio_scale=0.2
     ratio_defect = (ratio - 1.0) / ratio_scale
     size_defect = max(0.0, size_thresh - avg_len) / size_scale
     return float(max(hole_defect, angle_defect, ratio_defect, size_defect))
+
+
+def _hole_convex_hull_perimeter(xs, ys):
+    """Convex-hull perimeter of a hole region's pixel coordinates. For a
+    convex polygonal hole (triangle, quad, ...) this closely tracks the
+    hole's true boundary perimeter while being far less sensitive to
+    boundary-pixel jaggedness than tracing the raw pixel outline. Returns
+    0.0 for a degenerate (<3 point) region."""
+    pts = np.column_stack([xs, ys])
+    if len(pts) < 3:
+        return 0.0
+    hull = ConvexHull(pts)
+    verts = pts[hull.vertices]
+    d = np.diff(np.vstack([verts, verts[:1]]), axis=0)
+    return float(np.sum(np.linalg.norm(d, axis=1)))
+
+
+def p_000_hole_pair_hull_perimeter_ratio_defect(panel, target=3.18, scale=0.15):
+    """'Do the two loops of a two-loop touching shape (`_enclosed_hole_
+    regions`) stand in the SAME fixed LINEAR-size (perimeter) ratio as an
+    undistorted template pair, e.g. a big triangle and a small similar
+    triangle sharing one vertex' defect: |hull-perimeter-ratio - target| /
+    scale. Companion to `p_000_touching_pair_area_ratio_defect` (which uses
+    the AREA ratio instead) -- for two loops that are similar shapes joined
+    only at a point/edge (no interior overlap), the linear (perimeter) ratio
+    is a tighter, more leave-one-out-robust invariant than the area ratio
+    (which is the linear ratio squared, and so amplifies noise), and is
+    unaffected by whether the two loops are the same polygon class (a
+    triangle+triangle pair) or not. When the two loops instead CROSS/overlap,
+    or are a different shape pair (e.g. triangle+quad) at a different scale
+    ratio, the hull-perimeter ratio lands far from `target`. Returns a large
+    sentinel defect when fewer than two real holes are found."""
+    regions = _enclosed_hole_regions(panel)
+    if len(regions) < 2:
+        return 99.0
+    p0 = _hole_convex_hull_perimeter(*regions[0])
+    p1 = _hole_convex_hull_perimeter(*regions[1])
+    if p1 <= 1e-6:
+        return 99.0
+    ratio = p0 / p1
+    return float(abs(ratio - target) / scale)
