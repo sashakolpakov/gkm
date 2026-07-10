@@ -188,13 +188,37 @@ the same epistemic role as our privileged `metadata` mode
 (`bongard_logo_report.md`), and matches colimit-cone consequence 1
 (generalization failure = representation poverty = a missing morphism).
 
-Positioning: their paper stops at the diagnosis (the symbolic layer is handed
-over by the experimenter); the crack lab (`bongard_crack_plan.md`) is the
-treatment -- the agent constructs the missing symbolic layer itself from raw
-panels as priced predicate code, verified by rotated leave-one-out and
-selected by free energy. Two of their observations bear on the stage-1.5
-describe-first A/B: weak VLM perception and the small effect of concept
-prompts both cut against the describe-first arm's prediction; our design
-differs in that descriptions only generate hypotheses while verification
-runs on model-written deterministic code with RESULT feedback. Either A/B
-outcome is now interpretable against their result.
+Key numbers (12 LLMs, 500 problems/split; symbolic input = ground-truth
+action programs "AP" or their English renderings "AD" -- oracle perception,
+acknowledged): VLM on raw pixels ~50% (chance) on every split; LLMs on AP/AD
+reach 78-79% Free-form, 69-72% Basic, 59-61% Human-designed/Abstract; best
+single model Phi-4-Reasoning 96.2% Free-form; concept-conditioning adds only
+modest, heterogeneous gains; support-set shuffling drops Basic accuracy only
+68.8% -> 60.1% (much of their accuracy survives destroying panel structure --
+our shuffled-sides control demands admission FAILURE, a strictly stronger
+protocol).
+
+Three convergences with this repository: (1) their Abstract-split ceiling
+(59-61%) matches our deterministic MDL selector on action skeletons (58.3%),
+i.e. frontier reasoning adds nothing over exhaustive threshold search once
+the morphism vocabulary is fixed -- consequence 1 of the cone principle as an
+experiment; (2) on Basic, our sparse selector (99.6-100% exact; caveats:
+different sample and support protocol) far exceeds their LLM in-context
+induction (~72%) over the same substrate -- rule SEARCH was never the hard
+part; (3) their AD ~= AP near-tie says symbolic CONTENT matters, not surface
+form (morphisms, not syntax).
+
+Positioning: their acknowledged limitation -- "diagnostic rather than
+prescriptive: shows what models can do with suitable structure but not how
+to learn representations" -- is the crack lab's job description
+(`bongard_crack_plan.md`): the agent constructs the missing symbolic layer
+itself from raw panels as priced predicate code, verified by rotated
+leave-one-out and selected by free energy. The same VLM class that scores
+~50% as an end-to-end pixel classifier solves verified problems from pixels
+when its job is writing measurement code (stage-1 live results):
+perception-as-classification fails where perception-as-constructed-program
+works. For the stage-1.5 describe-first A/B: their weak-VLM-perception and
+small concept-prompt effects cut against arm B's prediction, but their
+descriptions were oracle-derived INPUTS while ours are self-generated
+hypothesis channels compiled into verified code with RESULT feedback --
+either A/B outcome is interpretable against their baseline.
