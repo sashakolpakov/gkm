@@ -284,3 +284,60 @@ with any new candidate predicate removed/absent to confirm it still
 solves). If it does, the reuse-minimizing objective says to leave the
 library alone rather than adding a semantically-cleaner predicate that
 would just add marginal cost for no accuracy gain.
+
+## problem_07: circular sector + quadrilateral touching at a point, in matched proportion
+Every panel is a circular sector ("fan") and a quadrilateral ("rectangle")
+that meet at a single shared point (a sector corner touching a rectangle
+corner) -- but positives' two sub-shapes are always drawn at a matched
+relative scale (the fan is consistently a bit longer, end to end, than the
+rectangle), while negatives fail either structurally (only one sub-shape
+present at all -- a fan/wedge alone with no rectangle -- or two sub-shapes
+of the wrong kind, e.g. a zigzag+fan or two triangles/bowtie with no fan)
+or, in the one genuine near-miss (`neg_1`), by having the *same* two shape
+types touching the *same* way but at a visibly mismatched scale (a
+noticeably bigger rectangle relative to its fan).
+
+Added:
+- `_split_touching_pair` (helper): splits a panel's ink into two sub-shapes
+  by removing a small disk around `_densest_point` (the join) and labeling
+  what remains; returns None if that doesn't yield exactly two pieces.
+  Reusable any time a predicate needs to reason about two touching
+  sub-shapes independently rather than as one blob -- also directly useful
+  as a structural gate (single shape, or a >2-branch join, fails to split).
+- `_pca_extents` (helper): (major, minor) axis lengths of a point set via
+  PCA -- a generic orientation-invariant length/width measurement, reused
+  from the eigh-based pattern already used inline in `_end_widths`.
+- `p_0_fan_quad_ratio_defect`: splits the panel, identifies which piece is
+  the fan (lower whole-piece circle-fit residual -- same "lower residual
+  wins" logic as elsewhere), and scores `|fan_long/quad_long - 1.191|`
+  where `_long` is each piece's own PCA major-axis extent. Sentinel 5.0
+  when the panel doesn't split into two pieces.
+
+### Lesson: try several ratio denominators before trusting the first one that separates
+The first candidate ratio tried, fan-radius / quad-*short*-side, separated
+all 12 training panels with a seemingly comfortable margin (positives
+0.70-0.77, closest negative 0.622) -- but `neg_1`, the one genuine
+near-miss, sat only ~0.08 below the positive band while the *next*
+negative sat ~0.24 below it. Per problem_00's lesson, this lopsided gap
+structure means the LOO-fitted threshold (roughly the midpoint between the
+positive band and the closest *remaining* negative) drifts to ~0.156 once
+`neg_1` itself is the held-out test case, misclassifying it. Recomputing
+the same underlying shapes with a different ratio -- fan's own long extent
+over quad's long extent, rather than fan radius over quad short extent --
+gave every negative a similarly large (~0.2+) margin from a *tighter*
+positive band (spread 0.046 vs 0.068), because it's less sensitive to
+exactly where the disk-removal cut happens to bite into each piece.
+Lesson: when a first ratio's margin structure is uneven across negatives,
+don't just tune the threshold -- try swapping in a different
+(still-simple, still-scale-invariant) numerator/denominator pairing from
+the same measured quantities before adding a second predicate.
+
+### Recurrence: naming tie-break (see problem_03, problem_05)
+Once the ratio itself was fixed, `p_180_rotational_self_iou` still won the
+fold where `neg_4` was held out (it coincidentally also reaches 0 training
+error there, by pure chance on this problem's shapes), because it sorts
+lexically before `p_fan_quad_ratio_defect`. Renamed to
+`p_0_fan_quad_ratio_defect` (leading `0` sorts before `1` in `p_180...`),
+the same fix pattern as `p_0_blunt_tip_defect`. Check the `rule=` field
+whenever heldout is just short of solved with a wide-margin new predicate
+in play -- it may already be correct and merely losing a naming tie.

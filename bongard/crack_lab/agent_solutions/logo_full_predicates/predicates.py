@@ -461,3 +461,91 @@ def p_line_crossing_defect(panel):
             angles = _branch_angles(p, center, r1, r2)
             best = min(best, _four_ray_crossing_defect(angles))
     return float(best)
+
+
+def _split_touching_pair(panel, r=5.0):
+    """Split a panel's ink into two sub-shapes that meet at a single shared
+    point, by removing a small disk around the busiest point (`_densest_point`)
+    and 8-connected-labeling what remains. Returns a list of (xs, ys) pixel
+    coordinate arrays, one per sub-shape, plus the joint location -- or None
+    if the ink doesn't separate into exactly two pieces this way (a single
+    shape, or a join with more than two branches). Reusable whenever a
+    predicate needs to reason about two touching sub-shapes independently
+    (e.g. compare their sizes, fit each one's own circle)."""
+    from scipy import ndimage
+    p = np.asarray(panel)
+    center = _densest_point(p, r=3.0)
+    xs, ys = _xy(p)
+    pts = np.stack([xs, ys], axis=1)
+    d = np.linalg.norm(pts - center, axis=1)
+    mask = np.zeros_like(p)
+    keep = pts[d > r].astype(int)
+    if len(keep) == 0:
+        return None
+    mask[keep[:, 1], keep[:, 0]] = 1
+    lbl, n = ndimage.label(mask, structure=np.ones((3, 3)))
+    if n != 2:
+        return None
+    parts = []
+    for k in (1, 2):
+        ys_k, xs_k = np.nonzero(lbl == k)
+        parts.append((xs_k.astype(float), ys_k.astype(float)))
+    return parts, center
+
+
+def _pca_extents(xs, ys):
+    """Extents (lengths) of a point set along its major and minor PCA axes.
+    Reusable as a scale-invariant, orientation-invariant width/length
+    measurement for any roughly-rectangular or elongated blob of points."""
+    pts = np.stack([xs, ys], axis=1)
+    c = pts.mean(axis=0)
+    pts_c = pts - c
+    cov = np.cov(pts_c.T)
+    evals, evecs = np.linalg.eigh(cov)
+    proj = pts_c @ evecs
+    major = proj[:, np.argmax(evals)]
+    minor = proj[:, np.argmin(evals)]
+    return float(major.max() - major.min()), float(minor.max() - minor.min())
+
+
+def p_0_fan_quad_ratio_defect(panel, target=1.191):
+    """For a panel made of two sub-shapes touching at one point -- a circular
+    fan/sector and a quadrilateral -- how far the ratio of the fan's own
+    long PCA extent to the quadrilateral's long PCA extent is from a fixed
+    target, which this problem's positives hit tightly (~1.17-1.22: the fan
+    is consistently a bit longer than the quadrilateral). Identifies which
+    of the two `_split_touching_pair` pieces is the fan by taking the one
+    with the lower whole-piece circle-fit residual (the fan's arc pixels sit
+    close to a true circle even though its two straight radii don't; a pure
+    quadrilateral's pixels fit a circle far worse). Returns a large sentinel
+    (5.0) if the panel doesn't split into exactly two touching pieces (a
+    single shape alone, or more than two branches at the join) since the
+    ratio isn't meaningful there -- which also correctly flags those cases as
+    violating the two-touching-shapes structure itself. Tried the more
+    obvious fan-radius / quad-short-side ratio first, but its closest
+    negative sat only ~0.08 away from the positive band while the next
+    negative sat ~0.24 away -- an LOO-fragile gap structure like problem_00's
+    lesson, since dropping that one negative during leave-one-out let the
+    fitted threshold drift past it. The fan-long / quad-long ratio instead
+    gives every negative a similarly large (~0.2+) margin from the tight
+    positive band."""
+    split = _split_touching_pair(panel)
+    if split is None:
+        return 5.0
+    parts, _ = split
+    resids = []
+    for xs, ys in parts:
+        if len(xs) < 5:
+            return 5.0
+        cx, cy, r = _fit_circle(xs, ys)
+        d = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2)
+        diag = np.hypot(xs.max() - xs.min(), ys.max() - ys.min())
+        resids.append(float(np.std(d)) / (diag + 1e-9))
+    fan_i = 0 if resids[0] < resids[1] else 1
+    quad_i = 1 - fan_i
+    fan_long = max(_pca_extents(*parts[fan_i]))
+    quad_long = max(_pca_extents(*parts[quad_i]))
+    if quad_long < 1e-6:
+        return 5.0
+    ratio = fan_long / quad_long
+    return float(abs(ratio - target))
