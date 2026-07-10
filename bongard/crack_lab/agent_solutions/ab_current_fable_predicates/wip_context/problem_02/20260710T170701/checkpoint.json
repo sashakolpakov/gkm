@@ -25,17 +25,6 @@
       "model": "claude-fable-5",
       "attempts": 1,
       "escalated": false
-    },
-    {
-      "opaque_id": "problem_02",
-      "solved": false,
-      "heldout_accuracy": 0.5,
-      "rule": "LOAD_ERROR",
-      "rule_cost": 0.0,
-      "marginal_C": 0,
-      "model": "claude-fable-5",
-      "attempts": 1,
-      "escalated": false
     }
   ]
 }

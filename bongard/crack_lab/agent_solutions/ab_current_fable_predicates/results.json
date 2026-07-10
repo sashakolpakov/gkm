@@ -12,5 +12,12 @@
     "concept": "arc_three_lines1",
     "solved": true,
     "rule": "p_arc_dev_from_half<=49.29"
+  },
+  "problem_02": {
+    "problem_id": "bd_bird3_0339",
+    "category": "basic",
+    "concept": "bird3",
+    "solved": false,
+    "rule": "LOAD_ERROR"
   }
 }
