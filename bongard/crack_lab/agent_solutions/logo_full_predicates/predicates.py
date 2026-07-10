@@ -317,3 +317,58 @@ def p_180_rotational_self_iou(panel):
     inter = np.logical_and(f, f180s).sum()
     union = np.logical_or(f, f180s).sum()
     return float(inter / union) if union > 0 else 0.0
+
+
+def _end_widths(panel, tip_frac=0.05):
+    """Width (perpendicular extent) of the filled shape near each end of its
+    major (PCA) axis, and near its middle. Reusable whenever a predicate
+    needs to characterize how a shape tapers along its long axis (e.g. a
+    wedge/dart that narrows to a point at one end but stays full-width at
+    the other, vs a lens that narrows at both ends, vs a blob that narrows
+    at neither)."""
+    f = _filled_mask(panel)
+    ys, xs = np.nonzero(f)
+    pts = np.stack([xs, ys], axis=1).astype(float)
+    c = pts.mean(axis=0)
+    pts_c = pts - c
+    cov = np.cov(pts_c.T)
+    evals, evecs = np.linalg.eigh(cov)
+    major = evecs[:, np.argmax(evals)]
+    minor = evecs[:, np.argmin(evals)]
+    t = pts_c @ major
+    u = pts_c @ minor
+    tmin, tmax = t.min(), t.max()
+    length = tmax - tmin
+    if length < 1e-6:
+        return 0.0, 0.0, 1e-6
+
+    def width_at(lo, hi):
+        mask = (t >= lo) & (t <= hi)
+        if mask.sum() == 0:
+            return 0.0
+        return float(u[mask].max() - u[mask].min())
+
+    w_start = width_at(tmin, tmin + tip_frac * length)
+    w_end = width_at(tmax - tip_frac * length, tmax)
+    w_mid = width_at(tmin + 0.45 * length, tmin + 0.55 * length)
+    return w_start, w_end, max(w_mid, 1e-6)
+
+
+def p_0_blunt_tip_defect(panel):
+    """How far the WIDER of the shape's two long-axis ends is from being as
+    wide as the shape's middle, normalized by that middle width. Near zero
+    for a wedge/dart/blade: one end tapers to a point, but the other end is
+    a flat cut that stays essentially the full body width right up to its
+    tip. Large for a lens/eye shape (both ends taper, so even the 'wider'
+    end is much narrower than the middle), a blunt chunky polygon (neither
+    end reaches the middle's full width, since the widest cross-section
+    sits in the interior rather than at an end), or a concave arrow/notched
+    shape (the notch makes the middle narrower than the ends, so the ratio
+    overshoots past 1 instead of approaching it). Named with a leading
+    `0` (`p_0_...`) so it sorts lexically before `p_180_rotational_self_iou`,
+    which also happens to reach 0 training error on this problem by
+    coincidence but with a much thinner margin (~0.07 vs ~0.4 here) --
+    see predicates_log.md problem_05 and the `p_180_...` docstring for why
+    the selector's naming tie-break otherwise picks the fragile predicate."""
+    w_start, w_end, w_mid = _end_widths(panel)
+    return float(abs(max(w_start, w_end) / w_mid - 1.0))

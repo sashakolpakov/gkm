@@ -200,3 +200,41 @@ field, not just train/heldout numbers) before concluding the new
 predicate isn't working -- and if a naming tie-break is the blocker,
 prefer a lexically-early name over walking away from an otherwise-correct
 predicate.
+
+## problem_05: wedge/dart (one pointed tip, one blunt flat end) vs lens/blunt-blob/notched shapes
+All six positives are elongated quadrilateral wedges: two long edges taper
+to a sharp point at one end, while the other end is a flat cut nearly as
+wide as the shape's body. Negatives near-miss this three ways: a lens/eye
+shape pointed at BOTH ends (`neg_1`), a chunky blunt polygon pointed at
+NEITHER end (`neg_0`), and concave arrow/notched/banner shapes (`neg_2..5`)
+whose *middle* is narrower than either end (a notch pinch), not wider.
+Plain solidity (`_solidity`) alone caught the concave ones but left
+`neg_0`/`neg_1` inside the positive range -- convexity doesn't distinguish
+"pointed at one end" from "pointed at both/neither ends".
+
+Added:
+- `_end_widths` (helper): PCA-projects the filled shape onto its major
+  axis, measuring perpendicular width in a small window at each end and at
+  the middle. Reusable for any "how does this shape taper along its long
+  axis" question.
+- `p_0_blunt_tip_defect`: `abs(max(w_start,w_end)/w_mid - 1)`. Near 0 only
+  when one end is exactly as wide as the body (a true blunt cut) while the
+  other end is free to taper away; large for lens (both ends narrow, so
+  even the wider one is well under the mid width), blunt blobs (neither end
+  reaches the mid width -- the widest cross-section is interior), and
+  notched shapes (mid width is narrower than the ends, ratio overshoots
+  past 1 instead of approaching it from below).
+
+### Lesson (recurrence of problem_03's tie-break pitfall): naming beats an unrelated coincidental fit
+`p_180_rotational_self_iou` (from problem_03, meant for point-symmetric
+S-curves) also reached 0 training error here by coincidence, with margin
+~0.07 between the closest classes vs `p_0_blunt_tip_defect`'s margin ~0.4.
+Because the selector tie-breaks equal-(error,cost) rules by lexically
+smallest `describe()` string, and `"p_180..." < "p_blunt..."` alphabetically,
+it silently picked the fragile coincidental rule until the new predicate
+was renamed `p_0_blunt_tip_defect` (leading `0` sorts before `180`). Same
+fix pattern as problem_03's `p_180_rotational_self_iou` naming itself --
+when a new predicate has a much wider margin than a same-accuracy
+competitor, check which rule was actually selected (the `rule=` field) and
+force the tie-break with a lexically-early name rather than assuming the
+harness picked the better one.

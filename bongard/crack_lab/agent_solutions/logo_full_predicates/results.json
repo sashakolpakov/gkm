@@ -38,8 +38,8 @@
     "problem_id": "bd_thin_sym_nail7_0489",
     "category": "basic",
     "concept": "thin_sym_nail7",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1255"
+    "solved": true,
+    "rule": "p_0_blunt_tip_defect<=0.2448"
   },
   "problem_06": {
     "problem_id": "bd_symmetric_fish_0085",
