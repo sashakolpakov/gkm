@@ -689,3 +689,29 @@ def p_0_rot3_windmill_defect(panel, target=0.56):
     iou = max(_rot_iou_about(panel, center, 120.0),
               _rot_iou_about(panel, center, -120.0))
     return abs(iou - target)
+
+
+def p_elongation(panel):
+    """Ratio of a shape's major to minor PCA extent (`_pca_extents`) over
+    its raw ink pixels. Near 1 for a compact/round shape; large for a thin
+    sliver or elongated wedge, regardless of orientation."""
+    xs, ys = _xy(panel)
+    major, minor = _pca_extents(xs, ys)
+    return float(major / minor) if minor > 1e-6 else 1e9
+
+
+def p_elongated_or_unpinched_defect(panel, elong_thresh=1.7756, selfprox_thresh=0.0485):
+    """'Is this shape EITHER notably elongated (major/minor PCA extent ratio,
+    `p_elongation`) OR does its outline never come close to pinching/
+    self-touching (`p_self_proximity_ratio`)' defect: min() of the two
+    features' shortfalls below their own fixed thresholds (the same
+    OR-via-min pattern as `p_open_or_symmetric_defect`). Zero if EITHER
+    holds; positive only when a shape is both compact/round-ish AND has a
+    self-touching pinch or deep near-touching notch somewhere on its
+    boundary. Reusable whenever a problem's positive side splits into two
+    non-overlapping groups -- elongated shapes (regardless of pinching) and
+    non-pinched shapes (regardless of elongation) -- each covering the
+    other's failure case."""
+    elong_defect = max(0.0, elong_thresh - p_elongation(panel))
+    pinch_defect = max(0.0, selfprox_thresh - p_self_proximity_ratio(panel))
+    return float(min(elong_defect, pinch_defect))

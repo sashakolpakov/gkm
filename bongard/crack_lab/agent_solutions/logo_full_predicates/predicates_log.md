@@ -532,3 +532,73 @@ full existing library against new panels before reaching for a new
 measurement -- `_solidity` alone would also have worked (pos ~1.013-1.015
 vs neg ~<=0.939) but was redundant once the search found a zero-new-cost
 solve.
+
+## problem_14: elongated shapes OR non-pinching shapes vs. compact-and-pinched shapes
+Visually the two sides are wildly heterogeneous by topology -- both sides mix
+single closed polygons, single shapes with a concave notch, open (unclosed)
+paths, and pairs of sub-shapes touching at a shared vertex. Extensive manual
+inspection of topology (open/closed, convex/concave, number of touching
+sub-shapes, self-crossing-vs-touching, arc-vs-line content) found NO clean
+separator: every topological category present on the positive side had a
+near-identical counterpart on the negative side (e.g. pos_4 and neg_0 are
+both a single closed "pac-man with a deep notch" shape, differing only in
+degree; pos_2 and pos_5 are both pure straight-line polygons, matching
+several negatives' pure-polygon construction). This is the clearest instance
+yet of the recurring lesson (see problem_02's log entry): near-identical
+gestalt/topology across the two sides means the rule is a continuous
+measurement, not a structural/topological one.
+
+The actual separator turned out to be a disjunction of two continuous
+measurements, each covering the panels the other misses:
+- `p_elongation` (new: major/minor PCA-extent ratio of the raw ink) is high
+  (>=1.87) for pos_0, pos_2, pos_4, pos_5 -- shapes that are visually
+  stretched/wedge-like regardless of their notch/touch/convexity details --
+  and stays <=1.68 for every negative.
+- `p_self_proximity_ratio` (existing, from problem_04) is high (>=0.084) for
+  the two positives elongation misses (pos_1, pos_3 -- both compact/round-ish
+  shapes whose outline never comes close to touching itself), and low
+  (<=0.013) for every negative.
+No single positive needs both signals, and no negative satisfies either one:
+elongation and non-pinching cover two disjoint subsets of the positive side,
+so `min()` of the two features' shortfalls-below-fixed-threshold (0 if either
+condition holds, positive only if a shape is both compact AND pinched) is a
+clean single-scalar OR, same pattern as `p_open_or_symmetric_defect` and
+`p_pinch_notch_defect`.
+
+Added:
+- `p_elongation`: major/minor PCA-extent ratio (`_pca_extents`) of a panel's
+  raw ink pixels. Simple, generic, reusable anytime "how stretched/thin is
+  this shape, independent of rotation" comes up -- surprisingly wasn't
+  already in the library despite `_pca_extents` existing since problem_00.
+- `p_elongated_or_unpinched_defect`: the OR-via-min combinator described
+  above. The specific thresholds (elong>=1.7756, selfprox>=0.0485) are
+  fixed constants picked from this problem's own gap structure (neg-max to
+  pos-min midpoint on each feature) -- baking them into the predicate
+  function (rather than leaving them for the harness to fit) is what makes
+  the OR expressible as a single atom at all, and keeps the rule LOO-robust
+  since removing any one held-out panel doesn't change these constants.
+
+Explored and discarded (added no value once elongation+self-proximity was
+found, so removed from the library to keep marginal cost down): an RDP
+(Ramer-Douglas-Peucker) polyline simplifier to split a traced curve into
+corner-to-corner edges, a per-edge straight-vs-arc classifier from that
+split, and a sliding-window max-corner-turn-angle measurement. All three
+were built while testing (and ultimately rejecting) the hypothesis "positive
+shapes contain a curved/arc segment" -- disproved by pos_2/pos_5 (pure
+straight-line polygons, positive) and neg_0 (majority-arc pac-man, negative).
+The RDP splitter is a generically useful technique (cleaner than
+`_order_curve` + fixed-window turning angle for corner-finding, since it
+looks at whole-run deviation rather than a single window straddling a
+corner) and may be worth re-adding if a future problem's near-miss actually
+hinges on per-edge straight-vs-arc classification.
+
+### Lesson: when every topological category on one side has a near-twin on the other, stop looking for structure and start looking for a disjunction of two continuous cuts
+Plotting several candidate continuous features side by side (not just one at
+a time) revealed that the positive side split cleanly into two non-
+overlapping groups under two different existing/simple measurements, each
+group failing the OTHER measurement. Single-feature threshold search (what
+`bongard_try.py`'s own atom search does) can't find this because no single
+feature separates all 12 -- it required manually noticing the complementary
+gap structure across two feature columns at once, then hand-writing the
+OR-combinator predicate so the harness's single-atom-threshold search could
+use it as one atom.

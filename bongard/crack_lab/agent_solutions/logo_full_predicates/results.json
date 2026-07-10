@@ -101,8 +101,8 @@
     "problem_id": "hd_has_three_straight_lines_0005",
     "category": "abstract",
     "concept": "has_three_straight_lines",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=30.88"
+    "solved": true,
+    "rule": "p_elongated_or_unpinched_defect<=0.01755"
   },
   "problem_15": {
     "problem_id": "bd_mismatch_triangle_square6_0377",
