@@ -283,6 +283,47 @@ solved requires all 72 correct plus a full-panel separating rule. This keeps
 the articulated rule well-defined (the full-panel selection) while the rotation
 is the overfit guard.
 
+## 9. Stage 1.5: describe-first A/B on the cracked-25 corpus (planned)
+
+Stage 1 stops at 25 solved problems (auto-stop armed on the checkpoint).
+The 25 cracked problems then become a **solvability-controlled A/B corpus**:
+every problem in it is known crackable by the agentic Sonnet proposer, so
+arm differences measure the intervention, not problem difficulty.
+
+**The question** (raised by the user, July 2026): does an explicit
+DESCRIBE stage — write a human-like description of each panel and a
+candidate one-sentence rule *before* implementing predicates — change what
+gets discovered? Language as an inductive-bias channel: verbal priors may
+pull predicates toward the generator's vocabulary (fewer proxy solves like
+`p_pinch_notch_defect` cracking `has_eight_straight_lines`).
+
+**Design:**
+
+```text
+proposer       lean Messages-API loop (bongard_api_agent, the gkm_api_agent
+               pattern) -- NOT the Claude Code agent; this doubles as the
+               planned next-proposer-experiment rung below headless Sonnet
+arm A          current prompt (implicit description, straight to predicates)
+arm B          describe-first prompt (mandatory panel descriptions + candidate
+               one-sentence rule logged to notes, then predicates)
+corpus         the 25 stage-1-cracked problems, same seeds/rendering
+libraries      each arm starts from an EMPTY predicates.py under its own tag
+               (no contamination from the stage-1 library or across arms)
+scoring        (1) solve rate under identical budgets;
+               (2) articulation name-match vs the generator concept in
+                   normalized language (results.json ground truth);
+               (3) marginal-C trace shape (does describe-first change reuse?)
+boundary       descriptions are hypothesis generation and articulation ONLY;
+               the verified object remains deterministic p_*(panel) code.
+               A VLM call inside a predicate is forbidden (non-deterministic,
+               unpriceable, smuggles pretrained vision into verification).
+```
+
+**Prediction (stated before running):** arm B's solves name-match the
+generator concept more often, at equal-or-slightly-lower solve rate (the
+describe stage spends budget); arm B predicates are more reused (closer to
+the human vocabulary => more shareable axes).
+
 ## Reconciliation Log
 
 - **R1 (Engineer -> Architect, resolved):** `gkm_legs` does not separate
