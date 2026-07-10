@@ -1307,3 +1307,50 @@ the margin looked with all points in view. Prefer an existing predicate
 whose margin is more evenly spread (checked via the isolated 36-fold
 self-simulation) over a new one with a superficially wider but unevenly-
 spread margin.
+
+## problem_31: two-petal "flower" (both petals slender) vs one-petal-blunter near-miss
+Rule: positives are a single continuous curve forming two lens/petal shapes
+that share one common vertex (a "two-petal flower" -- like `<` or `^`
+depending on orientation), where BOTH petals are slender (elongated)
+leaf shapes of comparable size. Negatives fail differently: a bare open
+curve (no petal at all), a plain circle (one loop, no shared vertex), two
+petals of clearly unequal size, or -- the hard near-miss -- two petals of
+*equal* size and good mirror symmetry, but visibly rounder/blunter rather
+than slender (elongation ~2.9-3.1 instead of ~3.9-4.0).
+
+Hole-count and hole-area-ratio predicates (already in the library) cleanly
+handle the open-curve/circle/unequal-size negatives, but the hard near-miss
+(`neg_1`) has near-equal hole areas (ratio ~1.003, same as positives) and
+high full-shape mirror symmetry (via a from-scratch Chamfer mirror-defect
+check), so neither area-ratio nor whole-shape symmetry separates it. What
+did separate it: shape of each hole considered individually, not just its
+area. PCA elongation (major/minor axis ratio) of each hole, taking the
+**min** across the two largest holes, cleanly separates: all positives
+land at 3.9-4.0 (both petals are consistently slender), while every
+negative's min is <=3.1 (the near-miss's rounder holes, or -- for the
+unequal-size negatives -- the smaller/side hole tends to be a stubby
+appendage, not a matching slender petal).
+
+Added:
+- `p_0000000_hole_pair_min_elongation`: min PCA elongation of the two
+  largest enclosed regions (reuses `_enclosed_hole_regions` and
+  `_pca_extents`, both already in the library from `p_00_second_hole_
+  elongation`/`p_000_two_loop_appendage_defect`). Generalizes `p_00_
+  second_hole_elongation` (which only checks the *smaller* hole's
+  elongation) to a min-over-both-holes check -- useful whenever the rule
+  cares that *every* petal/loop in a multi-loop shape is slender, not just
+  that the small one isn't a sliver.
+
+### Lesson: full-data tie-break by name is not enough -- check EVERY LOO fold
+Renaming a new predicate to sort before its immediate full-data rival (by
+adding a couple of leading zeros) is not sufficient: with only 10 training
+examples per leave-one-out fold (one pos + one neg held out), *other*
+existing zero-prefixed predicates in the library can independently reach 0
+training error by overfitting that smaller fold, and whichever of those
+sorts earliest wins the tie-break for that fold specifically -- not
+necessarily the same predicate that won on the full 12-example set. Debug
+by explicitly running `select_rule` for all 36 held-out pairs (not just
+looking at the single full-data `rule=` line in the RESULT output) and
+printing which rule won each fold; then count leading zeros across every
+rule name that shows up as a fold-specific winner, and pick a leading-zero
+count that beats all of them, not just the one obvious full-data rival.

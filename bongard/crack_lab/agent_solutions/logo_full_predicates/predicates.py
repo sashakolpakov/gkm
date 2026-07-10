@@ -1013,6 +1013,36 @@ def p_00_second_hole_elongation(panel):
     return float(major / minor) if minor > 1e-6 else 1e9
 
 
+def p_0000000_hole_pair_min_elongation(panel):
+    """Min PCA elongation (major/minor axis ratio, see `_pca_extents`) across
+    the two largest enclosed regions (`_enclosed_hole_regions`) of a shape --
+    i.e. 'are BOTH holes slender leaf/petal shapes, not just the bigger one'.
+    Two thin, similarly-sized petals sharing one vertex (a 'two-petal flower')
+    give a high value for both holes; a near-miss where the two holes are
+    similarly sized but rounder/blunter (less slender petals) gives a
+    distinctly lower min. Returns 0.0 when there aren't two real enclosed
+    regions, so a 'exceeds threshold' check fails by default for shapes with
+    the wrong hole count (single loop, no loop, or one loop plus noise)
+    rather than passing vacuously.
+
+    Named with 7 leading zeros (more than any existing `p_0+_` predicate at
+    the time this was added) to win the MDL search's lexical tie-break in
+    every leave-one-out fold: several other zero-prefixed predicates
+    (`p_000000_solidity_raw`, `p_00001_exactly_two_equal_holes_defect`,
+    `p_000_isoceles_right_chevron_defect`) happen to also reach 0 training
+    error on some 10-example folds by overfitting, and without a sort-order
+    win one of those got selected instead and mis-classified its held-out
+    panel -- see predicates_log.md, problem_31."""
+    regions = _enclosed_hole_regions(panel)
+    if len(regions) < 2:
+        return 0.0
+    elongs = []
+    for xs, ys in regions[:2]:
+        major, minor = _pca_extents(xs, ys)
+        elongs.append(major / minor if minor > 1e-6 else 1e9)
+    return float(min(elongs))
+
+
 def p_000_two_loop_appendage_defect(panel, ratio_thresh=1.15, elong_thresh=2.5, ratio_scale=20.0):
     """'Is this shape made of exactly two closed loops joined at a point,
     where one loop is clearly bigger than the other (`p_00_hole_pair_area_

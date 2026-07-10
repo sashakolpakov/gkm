@@ -220,8 +220,8 @@
     "problem_id": "bd_bala_three_intersect_circles2_0324",
     "category": "basic",
     "concept": "bala_three_intersect_circles2",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=9.355"
+    "solved": true,
+    "rule": "p_0000000_hole_pair_min_elongation>=3.483"
   },
   "problem_32": {
     "problem_id": "bd_asymmetric_unbala_x_0158",
