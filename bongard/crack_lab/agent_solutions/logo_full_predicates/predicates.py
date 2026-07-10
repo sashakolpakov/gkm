@@ -375,6 +375,41 @@ def p_0_blunt_tip_defect(panel):
     return float(abs(max(w_start, w_end) / w_mid - 1.0))
 
 
+def _fill_ratio(panel):
+    """Filled-interior pixel count divided by raw ink pixel count (see
+    `_filled_mask`). Low (~2-3) for an open curve/stroke (the flood-fill
+    only catches a thin sliver near the ink, since there's no enclosed
+    region), much higher (~6+) for any closed loop, regardless of the
+    loop's size or how convex/concave it is. A cheap, robust open-vs-closed
+    discriminator that doesn't depend on tracing/ordering the curve."""
+    ink = float(np.asarray(panel).sum())
+    if ink < 1:
+        return 0.0
+    return float(_filled_mask(panel).sum()) / ink
+
+
+def p_open_or_symmetric_defect(panel, open_ratio_thresh=4.0, sym_target=0.9):
+    """'Is this shape either a single open curve, or a closed shape with
+    strong 180-degree point symmetry' defect -- near zero if EITHER holds,
+    large otherwise. Combines two already-existing signals (`_fill_ratio`
+    and `p_180_rotational_self_iou`) via min(), the same OR-via-min pattern
+    used elsewhere in this library (e.g. `_arc_defect_score`'s AND-via-max):
+    an open stroke (arc, wave, or self-crossing X) is judged solely on being
+    open, since fill-ratio-based symmetry is meaningless for it; a closed
+    shape is judged solely on point symmetry. Distinguishes freeform open
+    curves and symmetric closed blobs/lenses/wavy-quads from closed shapes
+    that are both non-open and asymmetric -- e.g. a polygon with one
+    lopsided concave scoop, or two straight-edged sub-shapes meeting at a
+    point, both of which break 180-degree symmetry without being open.
+    sym_target of 0.9 (rather than a lower value) was chosen because the
+    closest near-miss negative here is itself moderately symmetric
+    (~0.79) -- see predicates_log.md problem_09."""
+    ratio = _fill_ratio(panel)
+    defect_open = max(0.0, ratio - open_ratio_thresh)
+    defect_sym = max(0.0, sym_target - p_180_rotational_self_iou(panel))
+    return float(min(defect_open, defect_sym))
+
+
 def _densest_point(panel, r=3.0):
     """The ink pixel with the most other ink pixels within radius r --
     a local-density peak. Reusable as a cheap locator for a drawing's

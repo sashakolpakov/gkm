@@ -341,3 +341,62 @@ lexically before `p_fan_quad_ratio_defect`. Renamed to
 the same fix pattern as `p_0_blunt_tip_defect`. Check the `rule=` field
 whenever heldout is just short of solved with a wide-margin new predicate
 in play -- it may already be correct and merely losing a naming tie.
+
+## problem_09: open curves / symmetric closed blobs vs lopsided-concave or two-part shapes
+Visually the hardest-to-eyeball problem so far -- the six positives look
+unrelated at a glance (an open two-arc wave, a closed lens, a single open
+arc, a closed wavy quadrilateral, a closed rounded blob, and a crossing
+X-stroke). What they share: each is EITHER a single open stroke (no
+enclosed interior) OR a closed shape with strong 180-degree point
+symmetry. Negatives are closed shapes that are neither: three are a single
+polygon-ish outline with one or two straight edges replaced by a lopsided
+concave arc scoop (breaks symmetry without being open), one is a straight-
+edged zigzag/notched polygon (also asymmetric), and two are actually two
+separate straight-edged sub-shapes (a quadrilateral + a triangle/chevron)
+touching at one point.
+
+Tried and abandoned: RDP polygon segmentation + per-segment line-vs-circle
+classification to test a "no mixed straight+curved edges" hypothesis --
+too noisy at this pixel resolution (spurious short segments), and it also
+doesn't explain the all-straight-edged negatives (zigzag, two-touching-
+shapes). Tried raw pixel-adjacency branch-point counting (degree>=3 in the
+ink mask) to detect self-crossings/junctions directly -- also too noisy,
+since a jagged 1px-wide curve's normal bends already create many spurious
+"degree >= 3" pixels; not usable as a signal here.
+
+What worked: `_fill_ratio` (new helper) -- filled-interior-pixels /
+raw-ink-pixels via the existing `_filled_mask` -- cleanly separates open
+strokes (~2.4-2.8) from any closed loop (~5.7-14), independent of size or
+convexity, without needing to trace/order the curve at all. Combined with
+the existing `p_180_rotational_self_iou` (from problem_03) via `min()`
+(the same OR-via-min pattern `_arc_defect_score` uses for AND-via-max):
+`p_open_or_symmetric_defect` is near zero if EITHER the shape is open OR
+it's closed-and-symmetric, and large only for closed-and-asymmetric shapes
+-- which covers both negative failure modes (lopsided concave scoop,
+two-touching-sub-shapes) with one scalar, no separate junction-detection
+predicate needed.
+
+### Lesson: OR-via-min lets one scalar cover qualitatively different
+### positive subgroups that a single monotonic measurement can't
+Positives here split into two subgroups (open vs closed) that no single
+existing scale (solidity, circle-fit residual, raw symmetry) treated
+alike -- closed-shape solidity for the wavy-quad positive (0.884) was
+actually *lower* than the zigzag negative's solidity (0.958), so plain
+convexity was not the answer despite looking plausible from the pictures.
+Whenever positives visually split into "obviously different" cases, check
+whether each case is cleanly gated by a DIFFERENT existing signal, then
+combine those signals with min() (defect scores, OR semantics) rather
+than searching for one measurement that treats both cases the same way.
+
+### Threshold tuning for LOO margin (recurrence of problem_00's lesson)
+The first `sym_target` tried (0.85) gave a positive/negative gap of only
+0.0558 between the positive band (0) and the closest negative (a lopsided-
+concave kite whose 180-degree self-IoU, ~0.79, is coincidentally not that
+low). Leave-one-out on that negative would have put the fitted threshold
+above its own value once it was excluded from training. Raising
+`sym_target` to 0.9 (tightening how symmetric a closed shape must be to
+count as "symmetric enough") pushed that same negative's defect up to
+~0.106 while leaving every positive's defect at exactly 0 (they all clear
+either branch by a wide margin), restoring a safe LOO gap -- worth
+rechecking the *target/threshold constant* inside a composite predicate,
+not just which raw signals to combine, when the initial margin is thin.

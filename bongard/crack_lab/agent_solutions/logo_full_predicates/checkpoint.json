@@ -1,8 +1,8 @@
 {
   "tag": "logo_full",
-  "solved": 21,
-  "total_marginal_C": 687,
-  "free_energy": -7.26,
+  "solved": 22,
+  "total_marginal_C": 718,
+  "free_energy": -7.640000000000001,
   "records": [
     {
       "opaque_id": "problem_00",
@@ -105,14 +105,14 @@
     },
     {
       "opaque_id": "problem_09",
-      "solved": false,
-      "heldout_accuracy": 0.5277777777777778,
-      "rule": "p_arc_defect_score_217<=33.96",
+      "solved": true,
+      "heldout_accuracy": 1.0,
+      "rule": "p_open_or_symmetric_defect<=0.05292",
       "rule_cost": 1.5,
-      "marginal_C": 0,
-      "model": "opus",
-      "attempts": 3,
-      "escalated": true
+      "marginal_C": 31,
+      "model": "sonnet",
+      "attempts": 1,
+      "escalated": false
     },
     {
       "opaque_id": "problem_10",

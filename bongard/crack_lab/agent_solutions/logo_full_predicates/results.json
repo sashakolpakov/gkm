@@ -66,8 +66,8 @@
     "problem_id": "hd_self_transposed_0004",
     "category": "abstract",
     "concept": "self_transposed",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=33.96"
+    "solved": true,
+    "rule": "p_open_or_symmetric_defect<=0.05292"
   },
   "problem_10": {
     "problem_id": "bd_thin_sym_nail5_0487",
