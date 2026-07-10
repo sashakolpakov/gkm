@@ -900,3 +900,49 @@ and combine both via min() rather than trying to make the one test more
 selective -- the two failure modes (closed loop, plain curve) are disjoint
 in which classification they trip, so an AND-via-min separates both at
 once.
+
+## problem_22: one-corner crescent vs. open curve / near-circle / two-corner shape
+Positives are a closed "crescent/leaf" made of exactly one sharp corner
+(two straight edges meeting at a point) plus one smooth arc closing back to
+form a moderate enclosed area. Negatives are near-misses of that same
+recipe: a plain open arc/bent curve with no closure at all (zero enclosed
+area), a near-full circle/rounded blob (closed but no straight component,
+enclosed area huge relative to ink), a lens shape with TWO sharp corners
+and two concave arcs (no straight edges at all), an all-straight zigzag
+(no arc at all), and a "spindle" with two spikes plus a curve (two corners
+instead of one).
+
+First attempt: a single deviation-from-target predicate (`abs(hole_area /
+ink_pixels - target)`, target fit to the positive cluster's mean) achieved
+train=1.0 but heldout=0.847. Root cause: one negative (a closed shape with
+a *small* enclosed area, the near-miss on the low side) sat closer to the
+positive cluster than to the OTHER negatives on this same feature. Whenever
+that one negative was the held-out point, the remaining low-side negatives
+all had ratio 0 (wide open shapes), so the auto-fit threshold (midpoint
+between remaining clusters) drifted well past that negative's own true
+value -- a data-fit threshold on a *symmetric band* is fragile exactly when
+only ONE negative occupies the near-side of the band and it gets excluded.
+
+Fix: instead of fitting a threshold from data, pick TWO fixed constants
+baked directly into the predicate (not searched) -- a hole-to-ink ratio
+floor (rules out open strokes) and a circle-fit inlier-fraction ceiling
+(rules out near-circular/all-arc shapes, since a shape that's part-arc
+part-corner has a large minority of its pixels far off any single fitted
+circle). Combined via max() of the two shortfalls into one predicate,
+`p_0000_open_or_rounder_defect`. Each of the two problem negatives that was
+a near-miss on ONE feature (open-vs-closed, or too-round) was cleanly
+NOT a near-miss on the OTHER feature, so the max() combination gives every
+negative a comfortable margin on at least one term, and because the
+thresholds are fixed constants rather than fit from the remaining training
+rows, that margin does not shrink under leave-one-out no matter which
+point is excluded. heldout=1.0 on first try after this fix.
+
+General pattern: when a single feature has a band-shaped (two-sided)
+separation with only one negative near each side, check whether a SECOND,
+unrelated feature happens to give the "wrong-side" negative a wide margin
+instead -- then combine both features' one-sided shortfalls via max() into
+a single predicate with FIXED (not data-fit) thresholds. Fixed thresholds
+inside the predicate turn a fragile data-fit-band problem into a robust
+large-constant-gap problem, since the leave-one-out rule search now only
+ever has to split a {0} cluster from a {>=fixed-margin} cluster that is
+invariant to which panel is held out.

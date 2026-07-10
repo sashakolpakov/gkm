@@ -870,6 +870,99 @@ def p_00_hole_area_to_ink_ratio_defect(panel, c=0.07):
     return float(max(0.0, f - c))
 
 
+def p_0000_total_hole_to_ink_ratio(panel):
+    """SUM of all enclosed hole areas (not just the largest -- unlike
+    `p_00_hole_area_to_ink_ratio_defect` -- via `_enclosed_hole_areas`),
+    divided by ink-pixel-count. Summing matters here: a single lens/crescent
+    shape's dilation seam at its one sharp corner often splits its true hole
+    into two adjacent labeled regions, so taking only the largest
+    systematically undercounts the enclosed area for exactly the shapes this
+    predicate needs to recognize. 0.0 for an open curve with no enclosed
+    region at all. Meant to be used as a ONE-SIDED lower-bound atom (ratio
+    >= T) that only needs to separate closed shapes with a substantial
+    enclosed area from open/unclosed strokes (ratio 0) -- NOT as a two-sided
+    band, since a fatter closed shape (large ratio) is instead ruled out by
+    `p_arc_circle_inlier_fraction` in this file's use, keeping this
+    predicate's own threshold need only clear the huge 0-vs-positive gap,
+    which stays robust under leave-one-out (unlike a symmetric
+    deviation-from-target band, whose fitted midpoint can drift past a
+    close negative once that negative itself is the held-out point -- see
+    predicates_log.md).
+
+    Named with a `p_0000_` prefix (four zeros, sorting before this file's
+    existing `p_000_`/`p_00_` predicates) for the same tie-break-robustness
+    reason documented at `p_00_hole_pair_area_ratio`."""
+    areas = _enclosed_hole_areas(panel)
+    ink = float(panel.sum())
+    if not areas or ink <= 0:
+        return 0.0
+    return float(sum(areas) / ink)
+
+
+def p_arc_circle_inlier_fraction(panel, tol_frac=0.06):
+    """Fraction of ink pixels within `tol_frac` * bbox-diagonal of the
+    best-fit circle (reuses `_fit_circle`, the same fit `p_circle_fit_
+    residual` uses, but reports inlier COUNT rather than RMS residual).
+    Low when a large share of the ink lies OFF the fitted circle -- true of
+    a shape built from one dominant circular arc plus a substantial straight
+    portion (e.g. a sharp corner/spike), where the straight pixels are far
+    from the arc's circle. High when nearly all ink lies on (or near) a
+    single circle -- a clean circular arc/loop with no straight component --
+    or, conversely, when the shape is dominated by straight edges so poorly
+    fit by any circle that pixels scatter widely and few land within the
+    tolerance either way that high-outlier case is instead distinguished by
+    the OTHER extreme of this same measure being low, not this predicate
+    alone. Reusable wherever "how much of this stroke is straight vs. arced"
+    is the relevant distinction."""
+    xs, ys = _xy(panel)
+    if len(xs) < 5:
+        return 1.0
+    cx, cy, r = _fit_circle(xs, ys)
+    d = np.abs(np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2) - r)
+    diag = np.hypot(xs.max() - xs.min(), ys.max() - ys.min())
+    if diag < 1e-6:
+        return 1.0
+    tol = tol_frac * diag
+    return float(np.mean(d < tol))
+
+
+def p_0000_open_or_rounder_defect(panel, hole_ratio_thresh=1.0, inlier_thresh=0.6):
+    """'Is this a closed shape with a substantial enclosed area (`p_0000_
+    total_hole_to_ink_ratio` >= `hole_ratio_thresh`) AND does a large chunk
+    of its ink lie off any single fitted circle (`p_arc_circle_inlier_
+    fraction` <= `inlier_thresh`, i.e. it has a real straight/cornered
+    portion rather than being all-arc)' defect: max() of the two features'
+    shortfalls, the AND-via-max pattern also used by `p_00_single_hole_
+    compact_defect`. Zero only when BOTH hold -- a one-corner crescent/leaf
+    whose enclosed area is neither absent nor swallowed by an all-circular
+    outline. Positive if either fails: an open unclosed stroke or a
+    near-full circle/loop with no straight component (both push `p_arc_
+    circle_inlier_fraction` toward 1 or push the hole ratio toward 0), or a
+    closed shape that IS mostly arc (little straight portion, high inlier
+    fraction) even if some small hole exists.
+
+    Combining two measurements into one predicate via max() (rather than
+    exposing two one-sided atoms) matters here beyond the usual style
+    reason: with `hole_ratio_thresh`/`inlier_thresh` as FIXED constants
+    baked into this function (not fit from the training rows), each
+    shortfall term is invariant to which panels are held out, so the only
+    thing the outer rule-search still fits per leave-one-out fold is a
+    single threshold splitting the {0}-defect cluster from the
+    {>=~0.14}-defect cluster -- a gap that does not shrink no matter which
+    single point is excluded. A symmetric deviation-from-a-data-fit-target
+    band (as tried first for this problem, see predicates_log.md) does NOT
+    have this property: removing the one negative closest to the positive
+    cluster lets the auto-fit threshold drift past that very point's own
+    value once it is the held-out point, which measurably fails the
+    leave-one-out check even though the whole-set fit looks perfect.
+
+    Named with a `p_0000_` prefix for the same tie-break-robustness reason
+    as `p_00_hole_pair_area_ratio`."""
+    low = max(0.0, hole_ratio_thresh - p_0000_total_hole_to_ink_ratio(panel))
+    high = max(0.0, p_arc_circle_inlier_fraction(panel) - inlier_thresh)
+    return float(max(low, high))
+
+
 def _enclosed_hole_regions(panel, min_size=15):
     """Like `_enclosed_hole_areas`, but returns the actual pixel coordinates
     (xs, ys) of each enclosed background region (largest first), dropping
