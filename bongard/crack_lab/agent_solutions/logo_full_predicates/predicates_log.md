@@ -602,3 +602,46 @@ feature separates all 12 -- it required manually noticing the complementary
 gap structure across two feature columns at once, then hand-writing the
 OR-combinator predicate so the harness's single-atom-threshold search could
 use it as one atom.
+
+## problem_15: quadrilateral + small triangle joined at a point, big/small area ratio
+Positives: a square (or similar quadrilateral) with a small triangle
+attached at one shared vertex, sticking out to the side -- consistently the
+square's enclosed area is ~19-20x the triangle's. Negatives are near-misses
+that share the "two closed loops joined at a point" gestalt but fail on the
+size ratio: two comparable-sized shapes touching at a point (ratio ~1),
+several triangles only (no quadrilateral), or a big shape + a triangle whose
+area ratio is only ~10-14x (still visibly "small triangle on a big shape" to
+the eye, but the ratio sits well below the ~19-20x the positives all share).
+
+Added:
+- `_enclosed_hole_areas`: labels the background regions enclosed by a
+  (1px-dilated, to seal corner gaps) line drawing, largest first, ignoring
+  regions touching the image border. Reusable whenever a shape is made of
+  multiple closed loops joined at a point/edge and their individual sizes
+  (not just total filled area, cf. `_filled_mask`) matter.
+- `p_00_hole_pair_area_ratio`: ratio of the two largest such hole areas.
+  Robust, wide-margin separator here (positives ~19-20, closest negative
+  13.8).
+
+### Lesson: tie-breaking-by-name can hand the rule to a fragile coincidental separator
+Even though `p_00_hole_pair_area_ratio` alone gets perfect leave-one-out
+accuracy, adding it under a "natural" name (`p_two_largest_hole_area_ratio`)
+left the problem unsolved (heldout=0.778): two *unrelated* existing
+predicates (`p_circle_fit_residual`, `p_0_blunt_tip_defect`) each happened to
+also reach zero training error on this problem's data via a razor-thin,
+non-robust margin (gaps of ~0.002-0.008 between the closest pos/neg values).
+`select_rule`'s tie-break for equal training-error/cost atoms is lexical
+name order, with no notion of margin size -- so whichever coincidental
+near-separator's name sorted first kept winning individual leave-one-out
+folds, including the folds where its thin margin actually gets the held-out
+panel wrong. Renaming the new predicate to `p_00_...` (sorts before every
+other name in the file, including all `p_0_*` and `p_circle_*` ones) made it
+win every tie instead, and since it's genuinely robust across all folds,
+heldout went to 1.000. General pattern: when a new predicate has a wide,
+robust separating margin but the harness still reports heldout<1 despite
+train=1, suspect a same-training-error rival predicate winning individual
+LOO folds by alphabetical accident (diagnose by rerunning `select_rule` on
+each held-out pair with the current values matrix and checking rule.describe());
+if so, prefix the new predicate's name so it sorts first (`p_00_...` is
+currently the earliest-sorting prefix in this file) rather than trying to
+out-engineer the existing rival's margin.

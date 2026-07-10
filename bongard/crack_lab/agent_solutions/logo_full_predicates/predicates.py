@@ -3,6 +3,7 @@ import itertools
 import math
 import numpy as np
 from scipy.spatial import cKDTree, ConvexHull
+from scipy import ndimage
 from scipy.ndimage import binary_fill_holes, binary_dilation
 
 
@@ -715,3 +716,48 @@ def p_elongated_or_unpinched_defect(panel, elong_thresh=1.7756, selfprox_thresh=
     elong_defect = max(0.0, elong_thresh - p_elongation(panel))
     pinch_defect = max(0.0, selfprox_thresh - p_self_proximity_ratio(panel))
     return float(min(elong_defect, pinch_defect))
+
+
+def _enclosed_hole_areas(panel):
+    """Areas of the individual background regions enclosed by the drawing's
+    ink (e.g. the separate interiors of a square and a triangle joined at a
+    point), largest first. Dilates by 1px to seal 1-pixel gaps at corners/
+    junctions, then labels connected background components and keeps only
+    those that don't touch the image border. Reusable whenever a problem's
+    shapes are made of multiple closed loops and their relative/absolute
+    sizes matter."""
+    dilated = binary_dilation(panel.astype(bool), iterations=1)
+    bg = ~dilated
+    lab, n = ndimage.label(bg, structure=np.ones((3, 3)))
+    h, w = panel.shape
+    areas = []
+    for i in range(1, n + 1):
+        ys, xs = np.nonzero(lab == i)
+        if ys.min() == 0 or xs.min() == 0 or ys.max() == h - 1 or xs.max() == w - 1:
+            continue
+        areas.append(len(ys))
+    areas.sort(reverse=True)
+    return areas
+
+
+def p_00_hole_pair_area_ratio(panel):
+    """Ratio of the two largest enclosed hole areas (`_enclosed_hole_areas`)
+    of a shape made of two loops joined at a point/edge -- e.g. a big square
+    next to a small triangle. Large when one loop is much bigger than the
+    other (e.g. a small triangle attached to a much larger square), close to
+    1 when the two loops are comparable in size. Returns 1.0 if fewer than
+    two holes are found.
+
+    Named with a `p_00_` prefix (sorts before every other predicate name in
+    this file) on purpose: this measurement's separating margin is wide and
+    robust under leave-one-out, but the MDL rule search breaks ties among
+    equally-zero-training-error atoms by lexical name, not by margin size --
+    so when an unrelated predicate coincidentally also reaches zero error on
+    a given fold (see predicates_log.md), the fragile one must not win the
+    tie just by alphabetical accident. Reusable naming trick whenever a new
+    predicate is the true robust separator but risks losing ties to
+    coincidental near-separators already in the library."""
+    areas = _enclosed_hole_areas(panel)
+    if len(areas) < 2 or areas[1] <= 0:
+        return 1.0
+    return float(areas[0] / areas[1])

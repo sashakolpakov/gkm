@@ -108,8 +108,8 @@
     "problem_id": "bd_mismatch_triangle_square6_0377",
     "category": "basic",
     "concept": "mismatch_triangle_square6",
-    "solved": false,
-    "rule": "p_circle_fit_residual<=0.0737"
+    "solved": true,
+    "rule": "p_00_hole_pair_area_ratio>=16.25"
   },
   "problem_16": {
     "problem_id": "bd_advanced_lamp1_0476",
