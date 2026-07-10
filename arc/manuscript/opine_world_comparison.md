@@ -49,3 +49,38 @@ Conservative manuscript update:
   competition mode, comparable model budget, and artifact-level audit of source
   isolation, replay traces, action counts, and complexity/growth traces.
 
+Artifact-audit plan for OPINE:
+
+1. Download the published run-artifact archive and index, for each game and
+   level, the synthesized `game_engine.py`, natural-language world model,
+   transition buffer, planner calls, critic calls, model rewrites, action count,
+   and final replay.
+2. Measure reuse versus rediscovery. A genuinely reusable world model should
+   make later levels cheaper: fewer synthesis turns, fewer transition-model
+   rewrites, fewer exploratory actions, and stable object/type names or
+   transition rules across levels. If each level restarts hypothesis search,
+   rewrites object ontology, or solves by bespoke planner patches, then the
+   20/25 score is mostly agentic spend rather than learned structure.
+3. Charge an explicit cost ledger: LLM calls, wall time, action count,
+   synthesized-code churn, and per-level reset/retry count. Compare against
+   GKM's marginal-C ledger and sawtooth reuse trace. OPINE's README reports the
+   sweep used four Claude Max accounts; that is not disqualifying, but it must
+   be surfaced as compute budget, not hidden behind solved count.
+4. Check the world-model claim directly. For each admitted model, test whether
+   it predicts held-out later-level transitions before seeing them, or whether it
+   is only exact on the accumulated replay buffer. Exact replay on seen
+   transitions is necessary but not enough to establish transfer.
+5. Check planner dependence. Count cases where the planner succeeds from the
+   admitted model versus cases where the goal-directed agent supplies custom
+   plans because the model/planner is inadequate. These should be reported
+   separately.
+6. Produce a game-overlap table against GKM (`wa30`, `ls20`, and any shared
+   public IDs): solved depth, action count, number of model/synth turns, source
+   isolation evidence, and whether later levels reused earlier structure.
+
+Pass/fail criterion for the critique: do not argue from impression. Show, from
+their own artifacts, whether OPINE has cross-level compression/reuse or whether
+it burns fresh agentic search per level. If the artifacts show stable reusable
+models, concede that. If they show repeated rediscovery and high rewrite churn,
+position GKM's contribution as the missing audit/MDL accounting that OPINE's
+score alone does not expose.

@@ -54,7 +54,8 @@ Reply with the COMPLETE new content of `predicates.py` in a single
 float | bool` over a 128x128 uint8 array, ink=1; numpy/math/scipy only;
 deterministic; no file or network access). Keep and reuse existing library
 predicates unless they are broken -- reused predicates are free, new code
-is charged. I will run the verifier and report its RESULT line back."""
+is charged. Use ASCII only, including comments and string literals. I will
+run the verifier and report its RESULT line back."""
 
 
 def load_api_key(path: str = KEY_FILE) -> str:
@@ -92,6 +93,7 @@ def _verify_ws(ws: str) -> A.VerifyResult:
 
 
 def api_propose(variant: str = "current", max_turns: int = 8,
+                max_tokens: int = 8000, per_call_timeout: float = 90.0,
                 client_factory: Callable = None,
                 verbose: bool = True) -> Callable[[str, str, str, int], Optional[str]]:
     """Build a propose_fn for bongard_legs.run.
@@ -124,11 +126,14 @@ def api_propose(variant: str = "current", max_turns: int = 8,
         transcript: List[str] = []
         deadline = time.time() + minutes * 60
         for turn in range(max_turns):
-            if time.time() > deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
                 break
             try:
+                timeout = max(1.0, min(per_call_timeout, remaining))
                 reply = client.messages.create(
-                    model=model_id, max_tokens=8000, messages=messages)
+                    model=model_id, max_tokens=max_tokens, messages=messages,
+                    timeout=timeout)
                 text = "".join(b.text for b in reply.content
                                if getattr(b, "type", "") == "text")
             except Exception as exc:
