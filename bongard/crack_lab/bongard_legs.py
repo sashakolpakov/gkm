@@ -54,7 +54,9 @@ DEFAULT_LADDER = ("sonnet", "sonnet", "opus")
 """Proposer escalation ladder: model per attempt round."""
 
 INFRA_FAILURE_MARKERS = ("session limit", "rate limit", "credit balance",
-                         "overloaded", "usage limit", "quota")
+                         "overloaded", "usage limit", "quota",
+                         "usage credits", "out of credits", "api error",
+                         "connection closed", "temporarily unavailable")
 """Proposer transcript markers meaning the INFRASTRUCTURE failed (limits,
 credits), not the proposer's reasoning. Such a round must not consume a
 ladder attempt: the run waits and retries, or stops resumably. Learned the
