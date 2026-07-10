@@ -81,7 +81,7 @@
     "category": "basic",
     "concept": "advanced_lamp2",
     "solved": false,
-    "rule": "p_circle_fit_residual<=0.1097 AND p_arc_defect_score_217<=30.51"
+    "rule": "p_hole_to_ink_ratio>=3.719"
   },
   "problem_12": {
     "problem_id": "bd_three_mismatch_triangles2_0358",
@@ -91,11 +91,11 @@
     "rule": "p_arc_defect_score_217<=30.44"
   },
   "problem_13": {
+    "problem_id": "bd_closed_threequarter_circle_0030",
     "category": "basic",
     "concept": "closed_threequarter_circle",
-    "problem_id": "bd_closed_threequarter_circle_0030",
-    "rule": "p_180_rotational_self_iou>=0.7636",
-    "solved": true
+    "solved": false,
+    "rule": "p_arc_defect_score_217>=34.9"
   },
   "problem_14": {
     "problem_id": "hd_has_three_straight_lines_0005",
@@ -161,11 +161,11 @@
     "rule": "p_arc_defect_score_217<=10.62"
   },
   "problem_23": {
+    "problem_id": "bd_open_right_equi_triangle_0236",
     "category": "basic",
     "concept": "open_right_equi_triangle",
-    "problem_id": "bd_open_right_equi_triangle_0236",
-    "rule": "p_0_blunt_tip_defect>=0.7257",
-    "solved": true
+    "solved": false,
+    "rule": "p_arc_defect_score_217<=14.89"
   },
   "problem_24": {
     "problem_id": "hd_thin_shape_0011",
