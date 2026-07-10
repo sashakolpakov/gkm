@@ -761,3 +761,23 @@ def p_00_hole_pair_area_ratio(panel):
     if len(areas) < 2 or areas[1] <= 0:
         return 1.0
     return float(areas[0] / areas[1])
+
+
+def p_00_single_hole_compact_defect(panel, elong_thresh=1.15):
+    """'Is this shape a SINGLE enclosed loop (one connected hole, via
+    `_enclosed_hole_areas`) AND is it compact/non-elongated (PCA major/minor
+    extent ratio, `p_elongation`, below a fixed threshold)' defect: max() of
+    the two features' shortfalls, the AND-via-max counterpart to the
+    OR-via-min pattern in `p_elongated_or_unpinched_defect`. Zero only when
+    BOTH hold (one hole AND compact); positive if either fails -- multiple
+    separate loops (e.g. several crossing triangles forming 3 enclosed
+    regions), or a single elongated loop (e.g. a zigzag arrow or a
+    symmetric hourglass bowtie, both markedly more elongated than the
+    twisted single-lobe shapes that satisfy both conditions).
+
+    Named with a `p_00_` prefix (sorts before other predicates) for the same
+    tie-break-robustness reason as `p_00_hole_pair_area_ratio` -- see
+    predicates_log.md."""
+    hole_defect = max(0, len(_enclosed_hole_areas(panel)) - 1)
+    elong_defect = max(0.0, p_elongation(panel) - elong_thresh)
+    return float(max(hole_defect, elong_defect))

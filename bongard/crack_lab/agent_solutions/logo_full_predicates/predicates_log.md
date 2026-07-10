@@ -645,3 +645,33 @@ each held-out pair with the current values matrix and checking rule.describe());
 if so, prefix the new predicate's name so it sorts first (`p_00_...` is
 currently the earliest-sorting prefix in this file) rather than trying to
 out-engineer the existing rival's margin.
+
+## problem_16: single-lobe twisted quadrilateral, one hole + compact
+Positives: a single self-crossing outline forming one asymmetric twisted
+lobe (like a sheared/kinked ribbon) -- exactly one enclosed background
+region, and compact (PCA major/minor extent ratio near 1.0-1.03).
+Negatives split into two near-miss groups: (a) a pinwheel of 3+ separately
+overlapping triangles -- same "single connected ink component" gestalt but
+3 distinct enclosed holes instead of 1 (`_enclosed_hole_areas`); and (b) a
+single-hole shape that is NOT compact -- a symmetric hourglass/bowtie or a
+zigzag arrow, both with elongation ~1.23-1.26 vs positives' ~1.0-1.03.
+Neither "hole count" nor "elongation" alone separates all 12; each only
+catches one of the two negative groups.
+
+Added `p_00_single_hole_compact_defect`: AND-via-max of `len(_enclosed_hole_areas)-1`
+and `p_elongation(panel) - 1.15` shortfalls -- the AND counterpart to the
+existing OR-via-min pattern (`p_elongated_or_unpinched_defect`). Zero only
+when a shape has exactly one hole AND is compact; positive if either fails.
+Reused `_enclosed_hole_areas` and `p_elongation` as-is, no other new code.
+Prefixed `p_00_` per the tie-break lesson above (multiple existing predicates
+could otherwise coincidentally tie on zero training error and win LOO folds
+by alphabetical luck).
+
+### Pattern: AND-via-max mirrors OR-via-min
+When two existing scalar features each cleanly separate one of two
+complementary negative subgroups from all positives, and positives require
+BOTH conditions to hold, combine their fixed-threshold shortfalls with
+`max()` (defect nonzero if either fails) rather than writing two separate
+atoms -- the harness only searches single-atom threshold rules. This is the
+mirror image of the earlier OR-via-min combinator: use `min()` when
+positives need EITHER condition, `max()` when positives need BOTH.

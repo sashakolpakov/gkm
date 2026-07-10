@@ -115,8 +115,8 @@
     "problem_id": "bd_advanced_lamp1_0476",
     "category": "basic",
     "concept": "advanced_lamp1",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=31.68"
+    "solved": true,
+    "rule": "p_00_single_hole_compact_defect<=0.04218"
   },
   "problem_17": {
     "problem_id": "bd_necked_six_lines17_0573",
