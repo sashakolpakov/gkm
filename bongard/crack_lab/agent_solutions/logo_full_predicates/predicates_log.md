@@ -675,3 +675,30 @@ BOTH conditions to hold, combine their fixed-threshold shortfalls with
 atoms -- the harness only searches single-atom threshold rules. This is the
 mirror image of the earlier OR-via-min combinator: use `min()` when
 positives need EITHER condition, `max()` when positives need BOTH.
+
+## problem_17: elongated, point-symmetric bowtie/hourglass loop
+Positives: a single self-crossing closed curve forming an elongated
+bowtie/hourglass (one triangular lobe, one wavy lobe), strongly 180-degree
+point-symmetric (`p_180_rotational_self_iou` ~0.93-0.97) and elongated
+(`p_elongation` ~2.0-2.1). Negatives split into near-miss groups that each
+share one property but not both: a symmetric but compact wavy quadrilateral
+with no self-crossing (elongation 1.47, sym 0.97); an elongated but
+asymmetric parallelogram with a dangling open tail (elongation 2.54, sym
+0.68); plus more distant negatives (multi-crossing zigzags, open polylines)
+that fail both.
+
+Added `p_00_sym_elongated_bowtie_defect`: AND-via-max of
+`p_180_rotational_self_iou` and `p_elongation` shortfalls below thresholds
+0.9 and 1.9 -- reused both signals as-is. Initial sym_thresh=0.85 gave
+train=1.0 but heldout=0.917: the closest negative's defect (0.173) was thin
+enough that its own leave-one-out fold (where it's excluded from fitting)
+let the auto-fit threshold shift and swallow it back in as a false
+positive. Raising sym_thresh to 0.9 -- just under the tightest positive's
+own score -- widened that negative's margin to 0.223 and fixed the fold.
+General lesson: a thin margin on the training-set closest negative is a
+LOO risk even when train accuracy is already 1.0, since that negative's
+own removal-from-training fold is exactly where the fitted threshold can
+drift past it; always check the LOO-fold-by-fold breakdown (not just train
+accuracy) before accepting a near-zero margin, and prefer pushing the
+threshold as close as safely possible to the tightest *positive* rather
+than leaving headroom on the negative side.

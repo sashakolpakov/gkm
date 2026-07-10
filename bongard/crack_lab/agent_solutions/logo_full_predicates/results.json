@@ -122,8 +122,8 @@
     "problem_id": "bd_necked_six_lines17_0573",
     "category": "basic",
     "concept": "necked_six_lines17",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1105"
+    "solved": true,
+    "rule": "p_00_sym_elongated_bowtie_defect<=0.1116"
   },
   "problem_18": {
     "problem_id": "bd_thin_unbalanced_symm_cup_0134",

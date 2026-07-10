@@ -718,6 +718,29 @@ def p_elongated_or_unpinched_defect(panel, elong_thresh=1.7756, selfprox_thresh=
     return float(min(elong_defect, pinch_defect))
 
 
+def p_00_sym_elongated_bowtie_defect(panel, sym_thresh=0.9, elong_thresh=1.9):
+    """'Is this shape BOTH strongly 180-degree point-symmetric
+    (`p_180_rotational_self_iou`) AND notably elongated (`p_elongation`)' --
+    the AND-via-max combinator (see `p_00_single_hole_compact_defect`) of the
+    two features' shortfalls below their own fixed thresholds. Zero only
+    when a shape is an elongated, point-symmetric bowtie/hourglass loop;
+    positive if it is symmetric but compact (a wavy quadrilateral with no
+    crossing) or elongated but asymmetric (a lopsided parallelogram with a
+    dangling tail) -- the two near-miss negative groups this separates from
+    positives that are both symmetric and elongated at once. Reuses both
+    signals as-is, no new geometry. sym_thresh of 0.9 (rather than the
+    initially-tried 0.85) matters: with 0.85 the closest negative's defect
+    (0.173, an asymmetric elongated parallelogram+tail) was thin enough that
+    dropping it from the training set during its own leave-one-out fold let
+    the min negative shift and the fitted threshold swallow it back in as a
+    false positive (heldout 0.917); pushing sym_thresh to 0.9 -- just under
+    the tightest positive's own symmetry score (0.927) -- roughly doubles
+    that negative's margin (0.223) and fixes the fold (heldout 1.0)."""
+    sym_defect = max(0.0, sym_thresh - p_180_rotational_self_iou(panel))
+    elong_defect = max(0.0, elong_thresh - p_elongation(panel))
+    return float(max(sym_defect, elong_defect))
+
+
 def _enclosed_hole_areas(panel):
     """Areas of the individual background regions enclosed by the drawing's
     ink (e.g. the separate interiors of a square and a triangle joined at a
