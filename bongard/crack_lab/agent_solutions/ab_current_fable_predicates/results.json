@@ -1,0 +1,9 @@
+{
+  "problem_00": {
+    "problem_id": "bd_open_s5_0279",
+    "category": "basic",
+    "concept": "open_s5",
+    "solved": false,
+    "rule": "p_chain_circle_residual<=0.008628"
+  }
+}
