@@ -1048,3 +1048,29 @@ diameter) over an AREA one for the size-ratio comparison -- squaring a
 noisy quantity roughly doubles its relative noise, so it costs LOO margin
 for no benefit when both loops are already known to be simple convex
 polygons.
+
+## problem_26: concave "dart/arrow" quadrilateral vs. convex quadrilateral
+Rule: `p_0000_convexity_solidity<=0.8732` (new, thin wrapper). Positives are
+all a single concave quadrilateral with one reflex vertex (a dart/arrow
+outline); negatives are convex quadrilaterals (trapezoids, a kite/rhombus,
+irregular convex quads) -- same stroke complexity (4 vertices, closed
+loop), differing only in whether one vertex points inward.
+
+`_solidity` (filled area / convex-hull area of the filled shape) already
+existed in the library from problem_22's pinch/notch predicate and turned
+out to be an almost perfect direct measurement of this problem's target
+concept with no combination needed: positives 0.730-0.741, negatives
+1.006-1.016 -- solidity for a concave quad's filled mask is always visibly
+<1 (the reflex vertex gives up real area to the hull) while a convex
+polygon's filled mask is >=1 (the 1px dilation in `_filled_mask` pads the
+outline slightly, pushing convex shapes' ratio just over 1 rather than
+exactly 1). Added `p_0000_convexity_solidity` as a one-line pass-through
+exposing `_solidity` directly, since no existing predicate exposed it
+un-combined and the raw scalar alone already gives the widest, most
+LOO-robust separation possible for this family (~0.27 absolute gap with no
+overlap).
+
+General pattern: `_solidity` is the generic "is this outline convex"
+measurement -- worth trying bare (not just inside `p_pinch_notch_defect`'s
+max-combination) whenever a problem's near-miss axis looks like
+"convex vs. has-a-notch/reflex-vertex" for closed polygonal shapes.

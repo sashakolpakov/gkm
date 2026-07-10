@@ -185,8 +185,8 @@
     "problem_id": "bd_asymmetric_dagger_0057",
     "category": "basic",
     "concept": "asymmetric_dagger",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=34.22 AND p_circle_fit_residual<=0.1077"
+    "solved": true,
+    "rule": "p_0000_convexity_solidity<=0.8732"
   },
   "problem_27": {
     "problem_id": "bd_bala_two_intersect_circles_new4_0503",

@@ -1206,3 +1206,13 @@ def p_000_hole_pair_hull_perimeter_ratio_defect(panel, target=3.18, scale=0.15):
         return 99.0
     ratio = p0 / p1
     return float(abs(ratio - target) / scale)
+
+
+def p_0000_convexity_solidity(panel):
+    """Direct exposure of `_solidity` (filled area / convex-hull area of the
+    filled shape) as its own predicate. Near 1 for convex polygons/blobs;
+    well below 1 (~0.7-0.75 here) for a concave quadrilateral (dart/arrow
+    shape with one reflex vertex, i.e. a single notch cut into an otherwise
+    convex outline). Distinguishes convex quads (trapezoid, kite, rhombus)
+    from concave dart/arrow quads with a wide, LOO-robust gap."""
+    return _solidity(panel)
