@@ -24,11 +24,10 @@ taint, git checkpoints, infra-failure guardrails) is reused unchanged.
 from __future__ import annotations
 
 import base64
-import contextlib
 import glob
+import multiprocessing as mp
 import os
 import re
-import signal
 import sys
 import time
 from typing import Callable, List, Optional
@@ -98,19 +97,51 @@ class APICallTimeout(TimeoutError):
     """Raised when one model call exceeds the harness hard wall."""
 
 
-@contextlib.contextmanager
-def _hard_timeout(seconds: float):
-    def _raise_timeout(signum, frame):
-        raise APICallTimeout(f"API call timed out after {seconds:.1f}s")
-
-    old_handler = signal.getsignal(signal.SIGALRM)
-    signal.signal(signal.SIGALRM, _raise_timeout)
-    signal.setitimer(signal.ITIMER_REAL, seconds)
+def _api_call_worker(queue, model_id: str, max_tokens: int,
+                     messages: List[dict], timeout: float) -> None:
     try:
-        yield
-    finally:
-        signal.setitimer(signal.ITIMER_REAL, 0)
-        signal.signal(signal.SIGALRM, old_handler)
+        import anthropic
+        client = anthropic.Anthropic(api_key=load_api_key())
+        reply = client.messages.create(
+            model=model_id, max_tokens=max_tokens, messages=messages,
+            timeout=timeout)
+        text = "".join(b.text for b in reply.content
+                       if getattr(b, "type", "") == "text")
+        queue.put(("ok", text))
+    except BaseException as exc:
+        queue.put(("error", repr(exc)))
+
+
+def _create_message_text(model_id: str, max_tokens: int, messages: List[dict],
+                         timeout: float,
+                         client_factory: Optional[Callable] = None) -> str:
+    if client_factory is not None:
+        client = client_factory()
+        reply = client.messages.create(
+            model=model_id, max_tokens=max_tokens, messages=messages,
+            timeout=timeout)
+        return "".join(b.text for b in reply.content
+                       if getattr(b, "type", "") == "text")
+
+    ctx = mp.get_context("spawn")
+    queue = ctx.Queue()
+    proc = ctx.Process(target=_api_call_worker,
+                       args=(queue, model_id, max_tokens, messages, timeout))
+    proc.start()
+    proc.join(timeout + 5.0)
+    if proc.is_alive():
+        proc.terminate()
+        proc.join(5.0)
+        if proc.is_alive():
+            proc.kill()
+            proc.join()
+        raise APICallTimeout(f"API call timed out after {timeout:.1f}s")
+    if queue.empty():
+        raise RuntimeError(f"API worker exited with code {proc.exitcode}")
+    status, payload = queue.get()
+    if status == "error":
+        raise RuntimeError(payload)
+    return payload
 
 
 def api_propose(variant: str = "current", max_turns: int = 8,
@@ -124,11 +155,6 @@ def api_propose(variant: str = "current", max_turns: int = 8,
     assert variant in ("current", "describe_first")
 
     def propose(task: str, ws: str, model: str, minutes: int) -> Optional[str]:
-        if client_factory is not None:
-            client = client_factory()
-        else:
-            import anthropic
-            client = anthropic.Anthropic(api_key=load_api_key())
         model_id = MODEL_MAP.get(model, model)
         oid = open(os.path.join(ws, "current_problem.txt")).read().strip()
         lib_path = os.path.join(ws, "predicates.py")
@@ -152,12 +178,8 @@ def api_propose(variant: str = "current", max_turns: int = 8,
                 break
             try:
                 timeout = max(1.0, min(per_call_timeout, remaining))
-                with _hard_timeout(timeout + 5.0):
-                    reply = client.messages.create(
-                        model=model_id, max_tokens=max_tokens,
-                        messages=messages, timeout=timeout)
-                text = "".join(b.text for b in reply.content
-                               if getattr(b, "type", "") == "text")
+                text = _create_message_text(
+                    model_id, max_tokens, messages, timeout, client_factory)
             except Exception as exc:
                 transcript.append(f"API failure: {exc}")
                 break
