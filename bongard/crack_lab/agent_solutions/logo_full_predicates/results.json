@@ -199,8 +199,8 @@
     "problem_id": "bd_necked_six_lines2_0558",
     "category": "basic",
     "concept": "necked_six_lines2",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=34.1"
+    "solved": true,
+    "rule": "p_00000_total_hole_to_ink_ratio>=5.941"
   },
   "problem_29": {
     "problem_id": "hd_unbalanced_two_0019",

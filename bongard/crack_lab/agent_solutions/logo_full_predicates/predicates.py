@@ -870,7 +870,7 @@ def p_00_hole_area_to_ink_ratio_defect(panel, c=0.07):
     return float(max(0.0, f - c))
 
 
-def p_0000_total_hole_to_ink_ratio(panel):
+def p_00000_total_hole_to_ink_ratio(panel):
     """SUM of all enclosed hole areas (not just the largest -- unlike
     `p_00_hole_area_to_ink_ratio_defect` -- via `_enclosed_hole_areas`),
     divided by ink-pixel-count. Summing matters here: a single lens/crescent
@@ -889,9 +889,12 @@ def p_0000_total_hole_to_ink_ratio(panel):
     close negative once that negative itself is the held-out point -- see
     predicates_log.md).
 
-    Named with a `p_0000_` prefix (four zeros, sorting before this file's
-    existing `p_000_`/`p_00_` predicates) for the same tie-break-robustness
-    reason documented at `p_00_hole_pair_area_ratio`."""
+    Named with a `p_00000_` prefix (five zeros, sorting before this file's
+    other `p_0000_`/`p_000_`/`p_00_` predicates -- bumped from four to five
+    zeros in problem_28 when a four-zero predicate, `p_0000_convexity_
+    solidity`, started winning tie-breaks over this one in some leave-one-
+    out folds; see predicates_log.md problem_28) for the same tie-break-
+    robustness reason documented at `p_00_hole_pair_area_ratio`."""
     areas = _enclosed_hole_areas(panel)
     ink = float(panel.sum())
     if not areas or ink <= 0:
@@ -958,7 +961,7 @@ def p_0000_open_or_rounder_defect(panel, hole_ratio_thresh=1.0, inlier_thresh=0.
 
     Named with a `p_0000_` prefix for the same tie-break-robustness reason
     as `p_00_hole_pair_area_ratio`."""
-    low = max(0.0, hole_ratio_thresh - p_0000_total_hole_to_ink_ratio(panel))
+    low = max(0.0, hole_ratio_thresh - p_00000_total_hole_to_ink_ratio(panel))
     high = max(0.0, p_arc_circle_inlier_fraction(panel) - inlier_thresh)
     return float(max(low, high))
 
@@ -1150,7 +1153,7 @@ def p_000_isoceles_right_chevron_defect(panel, angle_scale=15.0, ratio_scale=0.2
     chevron with a right-angle corner, equal-length arms, and arms long
     enough to be a full-size chevron (not a small one)'. Combines four
     one-sided/two-sided shortfalls via max(): closedness (reuses
-    `p_0000_total_hole_to_ink_ratio` -- nonzero means a closed loop, not an
+    `p_00000_total_hole_to_ink_ratio` -- nonzero means a closed loop, not an
     open chevron), |angle-90| scaled, (arm-ratio-1) scaled, and a fixed-
     threshold shortfall on average arm length (rules out otherwise-perfect
     right-angle-isoceles chevrons that are simply too small). The size
@@ -1159,7 +1162,7 @@ def p_000_isoceles_right_chevron_defect(panel, angle_scale=15.0, ratio_scale=0.2
     alone -- this problem's hardest negative is exactly that: a right-angle
     (~89 deg), equal-arm (ratio~1.02) chevron with average arm length
     ~43px vs. >=45.6px for every positive."""
-    hole_defect = p_0000_total_hole_to_ink_ratio(panel) / 0.3
+    hole_defect = p_00000_total_hole_to_ink_ratio(panel) / 0.3
     ang, ratio, avg_len = _chevron_angle_ratio_armlen(panel)
     angle_defect = abs(ang - 90.0) / angle_scale
     ratio_defect = (ratio - 1.0) / ratio_scale

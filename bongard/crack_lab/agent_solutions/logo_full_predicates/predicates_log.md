@@ -1110,3 +1110,75 @@ leave-one-out fold where all the *other* negatives happen to be sentinel
 -valued will drag the decision threshold past that real value. Check this
 by simulating each held-out (pos, neg) pair directly (see `bongard_arena.
 verify`'s rotation loop) rather than trusting the full-sample margin.
+
+## problem_28: single notched/bitten blob (closed loop, substantial enclosed
+area) vs. open curves, a pure convex lens, and multi-loop/multi-petal
+composites
+Rule: `p_00000_total_hole_to_ink_ratio>=5.941` (existing predicate, renamed).
+Positives are all a single closed outline with one or two concave bites cut
+out of an otherwise rounded/polygonal blob -- plenty of enclosed area
+relative to their ink. Negatives fail differently: three are open curves
+with no closed loop at all (ratio 0.0 -- `neg_1`, `neg_3`, `neg_5`), one is
+a convex lens/vesica shape (closed, but a *pure* convex loop with no notch
+-- `neg_2`), one is a triangle+lens pair touching at a point (`neg_0`), and
+one is a three-petal cluster (`neg_4`) -- all of these enclose much less
+area relative to their ink than the single notched blob does.
+
+No new predicate needed in the end -- `p_0000_total_hole_to_ink_ratio`
+(now renamed `p_00000_total_hole_to_ink_ratio`, see below) already
+separates perfectly and is individually LOO-robust (verified by directly
+simulating all 36 held-out pairs using *only* this one predicate: 72/72
+correct). The raw `bongard_try.py` run nonetheless first reported
+heldout=0.917: a *different*, pre-existing predicate,
+`p_0000_convexity_solidity` (raw filled-area/hull-area solidity), also
+reaches perfect training accuracy on 5 of the 6 leave-one-out folds that
+exclude `neg_2` specifically -- because solidity's single blind spot is
+exactly a pure convex lens (`neg_2`'s solidity is ~1.04, indistinguishable
+from a convex blob, since a lens really is a convex region). Whenever
+`neg_2` was the held-out negative, the fitted rule ignored the (also
+perfect) hole-to-ink atom and picked the solidity atom instead purely
+because `p_0000_convexity_solidity`'s name sorts alphabetically before
+`p_0000_total_hole_to_ink_ratio` ('c' < 't') and the harness's tie-break
+between equal-F rules is lexical-by-description. That solidity atom then
+misclassified the held-out `neg_2` itself (since its own threshold, fit
+without `neg_2` in view, allows solidity up to ~1.0).
+
+### Fix: widen a naming-priority gap that's already load-bearing, don't add a redundant predicate
+First attempt was to add a NEW predicate, `p_0000_solidity_band_defect`
+(`|solidity - 0.83|`, a two-sided band instead of solidity's one-sided
+threshold), meant to also catch pure-convex `neg_2` while staying low for
+notched blobs. This actually made heldout accuracy *worse* (0.833): the
+new predicate's name sorted between `convexity_solidity` and
+`total_hole_to_ink_ratio` ('c' < 's' < 't'), so it just became a *second*
+hijacker -- it has its own hardest negative (`neg_4`, the three-petal
+cluster, whose solidity 0.766 is its closest approach to the positive
+band), and whenever `neg_4` was the held-out point, the same overshoot
+pattern occurred: the fitted band threshold, built from only the
+*remaining* (easier, farther) negatives, landed above `neg_4`'s true
+value. Lesson (generalizing the sentinel-magnitude lesson above): this
+overshoot risk is structural whenever a predicate's negatives are not
+evenly spread -- if the single closest negative is excluded, the next
+candidate threshold jumps to the *next*-closest negative's neighborhood,
+which can easily land past the excluded (harder, closer) point's true
+value. Adding more near-miss-specific predicates multiplies the number of
+"hardest negative for predicate X" trapdoors rather than closing any.
+
+The actual fix: since `p_0000_total_hole_to_ink_ratio` was independently
+verified LOO-robust *by itself* (72/72), the real problem was purely
+alphabetical -- a fragile-in-one-fold predicate (`convexity_solidity`)
+outranked a fully-robust one in the tie-break. Renamed the hole-ratio
+predicate from a 4-zero to a 5-zero prefix
+(`p_00000_total_hole_to_ink_ratio`) so it now sorts before every other
+`p_0000_*`/`p_000_*`/`p_00_*` predicate in the file, guaranteeing it wins
+any future tie against them too. Confirmed solved=True, heldout=1.000
+after the rename with zero new predicate code.
+
+### Lesson: verify a candidate predicate's LOO-robustness in isolation before concluding the *predicate* is the problem
+When `bongard_try.py`'s heldout accuracy is < 1.0 but a specific predicate
+looks like it should separate cleanly, check whether that predicate is
+robust *on its own* (drop all other predicates and rerun the 36-fold
+simulation) before assuming it needs a new companion predicate. If it's
+already robust alone, the failure is a naming/tie-break collision with a
+*different*, fragile predicate elsewhere in the shared library -- fixable
+by a rename (bumping a leading-zero prefix), which costs nothing, rather
+than by adding new code that can introduce its own fresh trapdoor.
