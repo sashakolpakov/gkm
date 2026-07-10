@@ -1,8 +1,8 @@
 {
   "tag": "ab_current_fable",
-  "solved": 1,
-  "total_marginal_C": 108,
-  "free_energy": 1.1600000000000001,
+  "solved": 2,
+  "total_marginal_C": 137,
+  "free_energy": 0.7400000000000002,
   "records": [
     {
       "opaque_id": "problem_00",
@@ -33,6 +33,17 @@
       "rule": "LOAD_ERROR",
       "rule_cost": 0.0,
       "marginal_C": 0,
+      "model": "claude-fable-5",
+      "attempts": 1,
+      "escalated": false
+    },
+    {
+      "opaque_id": "problem_03",
+      "solved": true,
+      "heldout_accuracy": 1.0,
+      "rule": "p_arc_dev_from_half>=129.7",
+      "rule_cost": 1.5,
+      "marginal_C": 29,
       "model": "claude-fable-5",
       "attempts": 1,
       "escalated": false

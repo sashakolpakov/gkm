@@ -19,5 +19,12 @@
     "concept": "bird3",
     "solved": false,
     "rule": "LOAD_ERROR"
+  },
+  "problem_03": {
+    "problem_id": "bd_necked_six_lines4_0560",
+    "category": "basic",
+    "concept": "necked_six_lines4",
+    "solved": true,
+    "rule": "p_arc_dev_from_half>=129.7"
   }
 }

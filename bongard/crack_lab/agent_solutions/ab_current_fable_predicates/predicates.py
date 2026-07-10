@@ -97,3 +97,21 @@ def p_chord_over_arclen(panel) -> float:
     d = math.hypot(float(exs[0] - exs[1]), float(eys[0] - eys[1]))
     n = float(p.sum())
     return d / max(n, 1.0)
+
+
+def p_num_holes(panel) -> float:
+    """Number of enclosed background regions (holes) in the drawing.
+
+    Background is 4-connected (complementary to 8-connected ink); a hole is
+    a background component that does not touch the image border.
+    """
+    bg = (panel == 0)
+    lbl, n = ndimage.label(bg)  # 4-connectivity by default
+    if n == 0:
+        return 0.0
+    border = np.unique(np.concatenate([
+        lbl[0, :], lbl[-1, :], lbl[:, 0], lbl[:, -1]
+    ]))
+    border = set(int(v) for v in border if v != 0)
+    holes = sum(1 for v in range(1, n + 1) if v not in border)
+    return float(holes)
