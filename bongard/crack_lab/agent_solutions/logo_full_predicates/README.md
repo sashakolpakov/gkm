@@ -2,9 +2,9 @@
 
 Latest verified predicate-library state promoted by `bongard_legs.py`. Re-running `bongard_arena.verify` on the recorded problems with this `predicates.py` reproduces every solved verdict (deterministic substrate = replay).
 
-- Problems solved: 30/80
-- Total marginal C: 991
-- F = -10.180
+- Problems solved: 25/80
+- Total marginal C: 786
+- F = -9.280
 
 Per-problem novelty:
 
@@ -20,18 +20,18 @@ Per-problem novelty:
 - problem_09: solved=True marginal_C=31 model=sonnet
 - problem_10: solved=True marginal_C=68 model=sonnet
 - problem_11: solved=False marginal_C=0 model=opus
-- problem_12: solved=True marginal_C=58 model=opus
-- problem_13: solved=True marginal_C=0 model=sonnet
-- problem_14: solved=True marginal_C=26 model=sonnet
-- problem_15: solved=True marginal_C=49 model=sonnet
-- problem_16: solved=True marginal_C=17 model=sonnet
-- problem_17: solved=True marginal_C=21 model=sonnet
-- problem_18: solved=True marginal_C=34 model=sonnet
+- problem_12: solved=False marginal_C=0 model=opus
+- problem_13: solved=True marginal_C=0 model=claude-fable-5
+- problem_14: solved=False marginal_C=0 model=opus
+- problem_15: solved=False marginal_C=0 model=opus
+- problem_16: solved=False marginal_C=0 model=opus
+- problem_17: solved=False marginal_C=0 model=opus
+- problem_18: solved=False marginal_C=0 model=opus
 - problem_19: solved=False marginal_C=0 model=opus
 - problem_20: solved=False marginal_C=0 model=opus
 - problem_21: solved=False marginal_C=0 model=opus
 - problem_22: solved=False marginal_C=0 model=opus
-- problem_23: solved=False marginal_C=0 model=opus
+- problem_23: solved=True marginal_C=0 model=claude-fable-5
 - problem_24: solved=False marginal_C=0 model=opus
 - problem_25: solved=False marginal_C=0 model=opus
 - problem_26: solved=False marginal_C=0 model=opus

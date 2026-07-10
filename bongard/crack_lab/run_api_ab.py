@@ -12,7 +12,8 @@ the Messages-API proposer from an EMPTY library under its own tag:
                           [--minutes=8] [--turns=6] [--source-tag=logo_full]
                           [--model=claude-fable-5] [--tag-suffix=_fable]
                           [--max-tokens=8000] [--call-timeout=90]
-                          [--ab-limit=25]
+                          [--ab-limit=25] [--infra-wait=10]
+                          [--max-infra-waits=2]
 
 Scoring (solve rate, articulation name-match vs results.json ground truth,
 marginal-C shape) is done by the report, not here.
@@ -49,7 +50,8 @@ def stage1_corpus(source_tag: str = "logo_full", max_problems: int = 80,
 
 def run_arm(variant: str, corpus, minutes: int, turns: int,
             model: str, tag_suffix: str, max_tokens: int,
-            call_timeout: float) -> None:
+            call_timeout: float, infra_wait: int,
+            max_infra_waits: int) -> None:
     tag = ("ab_current" if variant == "current" else "ab_describe") + tag_suffix
     print(f"=== arm {variant} (tag {tag}) ===")
     L.run(corpus, tag=tag, ws=os.path.join("/tmp", f"bongard_ws_{tag}"),
@@ -57,13 +59,15 @@ def run_arm(variant: str, corpus, minutes: int, turns: int,
                                      max_tokens=max_tokens,
                                      per_call_timeout=call_timeout),
           ladder=(model,), minutes=minutes,
-          git_checkpoints=True)
+          git_checkpoints=True, infra_wait_seconds=infra_wait,
+          max_infra_waits=max_infra_waits)
 
 
 if __name__ == "__main__":
     arm, minutes, turns, source_tag = "both", 8, 6, "logo_full"
     model, tag_suffix = "sonnet", ""
     max_tokens, call_timeout, ab_limit = 8000, 90.0, 0
+    infra_wait, max_infra_waits = 1200, 12
     for a in sys.argv[1:]:
         if a.startswith("--arm="):
             arm = a.split("=", 1)[1]
@@ -83,7 +87,11 @@ if __name__ == "__main__":
             call_timeout = float(a.split("=", 1)[1])
         elif a.startswith("--ab-limit="):
             ab_limit = int(a.split("=", 1)[1])
+        elif a.startswith("--infra-wait="):
+            infra_wait = int(a.split("=", 1)[1])
+        elif a.startswith("--max-infra-waits="):
+            max_infra_waits = int(a.split("=", 1)[1])
     corpus = stage1_corpus(source_tag, ab_limit=ab_limit)
     for variant in (("current", "describe_first") if arm == "both" else (arm,)):
         run_arm(variant, corpus, minutes, turns, model, tag_suffix,
-                max_tokens, call_timeout)
+                max_tokens, call_timeout, infra_wait, max_infra_waits)
