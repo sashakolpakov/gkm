@@ -1182,3 +1182,46 @@ already robust alone, the failure is a naming/tie-break collision with a
 *different*, fragile predicate elsewhere in the shared library -- fixable
 by a rename (bumping a leading-zero prefix), which costs nothing, rather
 than by adding new code that can introduce its own fresh trapdoor.
+
+## problem_29: small loop/tab attached to a much bigger shape vs. single-loop/open/comparable-loop-pair shapes
+Rule: positives are a large closed shape (polygon, fan, or wedge) with a
+small closed loop or tab (a tiny square, triangle, or sliver) attached at
+exactly one shared point, where the small loop's enclosed area is much
+smaller than the main shape's. Negatives are a single closed loop, a
+single open polyline, or a self-crossing stroke that happens to carve two
+comparably-sized background pockets (not a small-vs-big pair).
+
+No new geometric measurement was needed: `_enclosed_hole_areas` and
+`p_00_hole_pair_area_ratio` (ratio of the two largest enclosed background
+regions) already existed in the library from a prior problem and separate
+this problem perfectly by themselves (positives ratio 4.97-61.9, negatives
+1.0-1.29 -- single-hole/no-hole negatives default to the neutral 1.0, and
+the one negative with a genuine second hole, a self-crossing stroke, lands
+at 1.29 since its two pockets are near-equal-sized carved slices, not a
+small-vs-big pair).
+
+The only obstacle was the MDL search's lexical tie-break: an existing
+*fragile* predicate, `p_000_touching_pair_area_ratio_defect` (distance
+from one FIXED template ratio, built for a different problem's specific
+shape pair), also reached zero training error here by coincidence, and its
+name (`p_000_...`) sorts lexically before `p_00_hole_pair_area_ratio`
+(more leading zeros before the next `_` sorts earlier -- see the
+tie-break lesson elsewhere in this log), so the search picked the fragile
+one and failed heldout (0.847).
+
+Fix: added `p_0000_hole_pair_ratio_raw`, a thin re-export of
+`p_00_hole_pair_area_ratio` under a name with one more leading zero than
+`p_000_touching_pair_area_ratio_defect`, so it wins the tie-break. Zero new
+geometric logic -- purely a naming fix, same pattern as the
+`p_00000_total_hole_to_ink_ratio` rename above. Confirmed solved=True,
+heldout=1.000.
+
+### Lesson: check whether an EXISTING predicate already separates before writing anything new
+Before designing new measurements, compute all existing `p_*`/`_*` helpers
+already in the library against the new problem's panels -- a prior
+problem's "big loop + small attached loop" measurement can be exactly the
+current problem's rule, differing only in the target's specific size ratio
+(a threshold, not a template). When that happens, the only work needed is
+resolving any lexical tie-break collision with other coincidentally-zero-
+error predicates already in the file, via the same leading-zero-prefix
+renaming trick -- not new geometry.

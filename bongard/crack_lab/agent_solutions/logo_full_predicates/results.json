@@ -206,8 +206,8 @@
     "problem_id": "hd_unbalanced_two_0019",
     "category": "abstract",
     "concept": "unbalanced_two",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=29.52 AND p_arc_defect_score_217<=34.26"
+    "solved": true,
+    "rule": "p_0000_hole_pair_ratio_raw>=3.459"
   },
   "problem_30": {
     "problem_id": "bd_exist_triangle_eight_lines3_0598",

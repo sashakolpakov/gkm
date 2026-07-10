@@ -1252,3 +1252,24 @@ def p_00001_exactly_two_equal_holes_defect(panel):
     if a1 <= 0:
         return 5.0
     return float(abs(a0 / a1 - 1.0))
+
+
+def p_0000_hole_pair_ratio_raw(panel):
+    """Raw `p_00_hole_pair_area_ratio` value, re-exposed under an earlier-
+    sorting name. Separates 'big shape with a small loop/tab attached at one
+    point' (ratio far above 1, since the small loop's enclosed area is much
+    smaller than the main shape's) from single-loop shapes, open curves
+    (ratio pinned to the neutral 1.0), and shapes with two comparable-sized
+    holes such as a self-crossing stroke that happens to carve two similarly
+    sized pockets (ratio near 1). Unlike `p_000_touching_pair_area_ratio_
+    defect`, which measures closeness to one fixed template ratio and so is
+    only valid for a single specific pair of template shapes, this is a
+    plain one-sided threshold on the ratio itself -- valid whenever the rule
+    is simply 'one loop is much smaller than the other', regardless of the
+    two shapes' own identities. Named with a `p_0000_` prefix (sorts before
+    `p_000_...`, `p_00_...`, and plain `p_0_...`/`p_...` names) so that when
+    both this atom and a fixed-target defect atom reach zero training
+    error, this wider-margin/more-general one wins the MDL search's
+    lexical tie-break instead of losing to it -- see predicates_log.md and
+    the identical trick already used by `p_00_hole_pair_area_ratio`."""
+    return p_00_hole_pair_area_ratio(panel)
