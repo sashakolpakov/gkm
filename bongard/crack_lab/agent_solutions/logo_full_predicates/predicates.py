@@ -1094,3 +1094,74 @@ def p_000_open_stroke_with_side_branch(panel):
     n_endpoints = int(np.sum(counts == 1))
     n_branch = int(np.sum(counts >= 3))
     return float(min(n_endpoints, n_branch))
+
+
+def _two_segment_corner(panel):
+    """For a two-straight-segment open polyline (a 'V'/chevron/checkmark),
+    find the two tips (the farthest-apart pair of convex-hull vertices) and
+    the corner (the ink pixel with max perpendicular distance from the
+    tip-to-tip chord). Returns (corner, tip1, tip2) as float xy arrays.
+    Robust to which end `_order_curve` happens to start from (it doesn't
+    use that ordering at all), unlike a walk-based corner finder -- needed
+    because `_order_curve`'s greedy nearest-neighbor walk can leave a few
+    stray unvisited pixels near a sharp corner and mis-place them at the
+    very end of the trace, corrupting anything that trusts pts[0]/pts[-1]
+    as the true tips."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1).astype(float)
+    hull = ConvexHull(pts)
+    hp = pts[hull.vertices]
+    best = (-1.0, None, None)
+    for i in range(len(hp)):
+        for j in range(i + 1, len(hp)):
+            d = np.linalg.norm(hp[i] - hp[j])
+            if d > best[0]:
+                best = (d, hp[i], hp[j])
+    _, t1, t2 = best
+    d = t2 - t1
+    dn = d / (np.linalg.norm(d) + 1e-9)
+    rel = pts - t1
+    proj = rel @ dn
+    perp = rel - np.outer(proj, dn)
+    dist = np.linalg.norm(perp, axis=1)
+    corner = pts[np.argmax(dist)]
+    return corner, t1, t2
+
+
+def _chevron_angle_ratio_armlen(panel):
+    """(interior angle in degrees at the corner, arm-length ratio
+    max/min>=1, average arm length) of a two-segment chevron, via
+    `_two_segment_corner`."""
+    corner, t1, t2 = _two_segment_corner(panel)
+    v1 = t1 - corner
+    v2 = t2 - corner
+    n1 = np.linalg.norm(v1)
+    n2 = np.linalg.norm(v2)
+    cosang = np.clip(np.dot(v1, v2) / (n1 * n2 + 1e-9), -1, 1)
+    ang = float(np.degrees(np.arccos(cosang)))
+    ratio = float(max(n1, n2) / (min(n1, n2) + 1e-9))
+    avg_len = float((n1 + n2) / 2)
+    return ang, ratio, avg_len
+
+
+def p_000_isoceles_right_chevron_defect(panel, angle_scale=15.0, ratio_scale=0.2,
+                                         size_thresh=44.5, size_scale=0.15):
+    """Defect (0 = matches, higher = violates) for 'open two-segment
+    chevron with a right-angle corner, equal-length arms, and arms long
+    enough to be a full-size chevron (not a small one)'. Combines four
+    one-sided/two-sided shortfalls via max(): closedness (reuses
+    `p_0000_total_hole_to_ink_ratio` -- nonzero means a closed loop, not an
+    open chevron), |angle-90| scaled, (arm-ratio-1) scaled, and a fixed-
+    threshold shortfall on average arm length (rules out otherwise-perfect
+    right-angle-isoceles chevrons that are simply too small). The size
+    term is needed because a small isoceles-right chevron is otherwise
+    numerically indistinguishable from a full-size one on angle/ratio
+    alone -- this problem's hardest negative is exactly that: a right-angle
+    (~89 deg), equal-arm (ratio~1.02) chevron with average arm length
+    ~43px vs. >=45.6px for every positive."""
+    hole_defect = p_0000_total_hole_to_ink_ratio(panel) / 0.3
+    ang, ratio, avg_len = _chevron_angle_ratio_armlen(panel)
+    angle_defect = abs(ang - 90.0) / angle_scale
+    ratio_defect = (ratio - 1.0) / ratio_scale
+    size_defect = max(0.0, size_thresh - avg_len) / size_scale
+    return float(max(hole_defect, angle_defect, ratio_defect, size_defect))

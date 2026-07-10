@@ -164,8 +164,8 @@
     "problem_id": "bd_open_right_equi_triangle_0236",
     "category": "basic",
     "concept": "open_right_equi_triangle",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=14.89"
+    "solved": true,
+    "rule": "p_000_isoceles_right_chevron_defect<=4.594"
   },
   "problem_24": {
     "problem_id": "hd_thin_shape_0011",

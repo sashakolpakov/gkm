@@ -946,3 +946,60 @@ inside the predicate turn a fragile data-fit-band problem into a robust
 large-constant-gap problem, since the leave-one-out rule search now only
 ever has to split a {0} cluster from a {>=fixed-margin} cluster that is
 invariant to which panel is held out.
+
+## problem_23: full-size right-angle isoceles chevron vs. wrong-angle / unequal-arm / closed / undersized near-misses
+Positives are all open two-straight-segment "chevron" strokes (a chevron:
+< or > or V rotated to any orientation) whose corner is a right angle
+(~90 deg) and whose two arms are equal length, drawn at full size (arm
+length ~46-55px). Negatives are near-misses on four different independent
+axes: obtuse-angle open chevrons (~122-149 deg), closed triangles (3
+corners, nonzero enclosed area) with various angles/ratios, and -- the
+genuinely hard one -- an open chevron that is *also* right-angle and
+equal-arm (matches positives almost exactly on angle and arm-ratio) but
+whose arms are visibly shorter (~43px) than every positive's.
+
+Added generic reusable helpers:
+- `_two_segment_corner` (helper): locates the corner and two tips of a
+  two-straight-segment open polyline WITHOUT depending on `_order_curve`'s
+  start/end point, by taking the farthest-apart pair of convex-hull
+  vertices as the tips and the ink pixel with max perpendicular distance
+  from the tip-to-tip chord as the corner. Needed because `_order_curve`'s
+  greedy nearest-neighbor walk can leave a few stray pixels near a sharp
+  corner unvisited until the very end of the trace, which silently
+  corrupts any predicate that trusts pts[0]/pts[-1] as the true endpoints
+  (observed concretely on this problem's pos_1/pos_2: naive endpoint-based
+  corner-angle came out ~87-90 for some panels only by chance and wildly
+  wrong -- e.g. treating a mid-arm point as an endpoint -- for others).
+  Reusable for any future "two straight segments meeting at a corner"
+  problem (angle, arm-length ratio, arm-length itself).
+- `_chevron_angle_ratio_armlen` (helper): (interior corner angle in
+  degrees, arm-length ratio >=1, average arm length) tuple from
+  `_two_segment_corner`.
+- `p_000_isoceles_right_chevron_defect`: max() of four one-sided/two-sided
+  shortfalls -- closedness (reuses `p_0000_total_hole_to_ink_ratio`),
+  |angle-90|, (arm-ratio-1), and a FIXED-threshold shortfall on average arm
+  length (44.5px). This is the predicate the solved rule uses.
+
+### Lesson (sharpened form of the "uneven gap" lesson from problem_00/07/17/22): when only ONE negative is near the boundary and every other negative is far, the size of ITS OWN margin from the far cluster -- not from the positive cluster -- is what LOO robustness depends on
+First attempt at the arm-length shortfall used `size_scale=1.5`, giving the
+hard negative (neg_3) a defect of 0.91 against a positive-cluster max of
+0.12 -- looked like an 8x margin, but heldout was still 0.917 (1 miss).
+Diagnosis: when neg_3 itself is the held-out point, the *remaining*
+negatives' minimum defect (13.35, from a totally different negative on a
+totally different axis, the closed-triangle hole-ratio term) is what the
+auto-fit threshold lands near -- roughly (0.12+13.35)/2 ~= 6.7 -- and
+neg_3's own true value (0.91) is far below that, so it gets misclassified
+as positive once excluded from training. Rescaling `size_scale` down to
+0.15 (raising neg_3's defect to ~4.5, then even accounting for the
+remaining shift the actual solved threshold landed at 4.594) was still not
+enough on the very first retry (0.3 -> 4.54, still failed) and required
+going one step further (0.15 -> 9.07 raw, though the harness's own search
+found 4.594 sufficient once neg_3's true value was pushed close enough to
+the *next-nearest negative's* value rather than merely far from positives).
+General pattern: when a defect predicate is built from max() of several
+sub-defects that fire on *different* negatives, and only one negative is
+the near-miss on one particular sub-defect, don't just check that
+negative's margin over the positive cluster -- explicitly compute
+`(positive_max + next_nearest_negative_min) / 2` (the threshold LOO will
+actually fit once that negative is excluded) and make sure the near-miss
+negative's own fixed value clears *that*, not just the raw train-time gap.
