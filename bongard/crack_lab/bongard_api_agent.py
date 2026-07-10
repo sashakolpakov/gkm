@@ -24,9 +24,11 @@ taint, git checkpoints, infra-failure guardrails) is reused unchanged.
 from __future__ import annotations
 
 import base64
+import contextlib
 import glob
 import os
 import re
+import signal
 import sys
 import time
 from typing import Callable, List, Optional
@@ -92,6 +94,25 @@ def _verify_ws(ws: str) -> A.VerifyResult:
     return A.verify(preds, problem)
 
 
+class APICallTimeout(TimeoutError):
+    """Raised when one model call exceeds the harness hard wall."""
+
+
+@contextlib.contextmanager
+def _hard_timeout(seconds: float):
+    def _raise_timeout(signum, frame):
+        raise APICallTimeout(f"API call timed out after {seconds:.1f}s")
+
+    old_handler = signal.getsignal(signal.SIGALRM)
+    signal.signal(signal.SIGALRM, _raise_timeout)
+    signal.setitimer(signal.ITIMER_REAL, seconds)
+    try:
+        yield
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+        signal.signal(signal.SIGALRM, old_handler)
+
+
 def api_propose(variant: str = "current", max_turns: int = 8,
                 max_tokens: int = 8000, per_call_timeout: float = 90.0,
                 client_factory: Callable = None,
@@ -131,9 +152,10 @@ def api_propose(variant: str = "current", max_turns: int = 8,
                 break
             try:
                 timeout = max(1.0, min(per_call_timeout, remaining))
-                reply = client.messages.create(
-                    model=model_id, max_tokens=max_tokens, messages=messages,
-                    timeout=timeout)
+                with _hard_timeout(timeout + 5.0):
+                    reply = client.messages.create(
+                        model=model_id, max_tokens=max_tokens,
+                        messages=messages, timeout=timeout)
                 text = "".join(b.text for b in reply.content
                                if getattr(b, "type", "") == "text")
             except Exception as exc:
