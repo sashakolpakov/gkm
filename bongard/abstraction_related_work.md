@@ -176,3 +176,25 @@ multi-task: shared predicate library should reduce total free energy;
 transfer: learned predicate should help new tasks using the same latent property;
 failure: if macros do not transfer, the abstraction story is not yet working.
 ```
+
+## Vaishnav & Tammet 2026 (arXiv:2604.21346): the same bottleneck, diagnosed externally
+
+"Symbolic Grounding Reveals Representational Bottlenecks in Abstract Visual
+Reasoning" independently replicates this repository's LOGO-adapter finding:
+VLMs on raw Bongard-LOGO pixels sit near chance while LLMs given symbolic
+LOGO-program inputs reach mid-90s -- representation, not reasoning, is the
+bottleneck. Their "symbolic input as controlled diagnostic upper bound" plays
+the same epistemic role as our privileged `metadata` mode
+(`bongard_logo_report.md`), and matches colimit-cone consequence 1
+(generalization failure = representation poverty = a missing morphism).
+
+Positioning: their paper stops at the diagnosis (the symbolic layer is handed
+over by the experimenter); the crack lab (`bongard_crack_plan.md`) is the
+treatment -- the agent constructs the missing symbolic layer itself from raw
+panels as priced predicate code, verified by rotated leave-one-out and
+selected by free energy. Two of their observations bear on the stage-1.5
+describe-first A/B: weak VLM perception and the small effect of concept
+prompts both cut against the describe-first arm's prediction; our design
+differs in that descriptions only generate hypotheses while verification
+runs on model-written deterministic code with RESULT feedback. Either A/B
+outcome is now interpretable against their result.
