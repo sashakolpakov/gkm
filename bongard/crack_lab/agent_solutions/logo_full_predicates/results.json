@@ -332,8 +332,8 @@
     "problem_id": "bd_scissor_0319",
     "category": "basic",
     "concept": "scissor",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1146"
+    "solved": true,
+    "rule": "p_0000000000000_self_crossing_tail_defect<=56.53"
   },
   "problem_48": {
     "problem_id": "bd_open_thin_symmetric_arrow_0238",

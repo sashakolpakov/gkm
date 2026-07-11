@@ -1687,3 +1687,16 @@ def p_000000000000_flag_much_smaller_than_body_defect(panel, thresh=15.0):
     automatically sort first just because it looks short)."""
     ratio = p_00_hole_pair_area_ratio(panel)
     return float(max(0.0, thresh - ratio))
+
+
+def p_0000000000000_self_crossing_tail_defect(panel):
+    """Alias for `p_line_crossing_defect` (does a stroke cross itself into a
+    closed loop-plus-tail, like a fish shape, vs. staying a simple open/closed
+    curve with no self-intersection). The underlying measurement separates
+    this problem's panels by a huge margin (~50), but
+    `p_00000000000_crossing_pocket_vs_polygon_defect` (eleven zeros) also
+    reaches zero training error here on a razor-thin margin (~0.012) that
+    fails leave-one-out, and would win the lexical tie against
+    `p_line_crossing_defect` since '0' < 'l'. Thirteen zeros -- one more than
+    this file's previous max of twelve -- to win that tie-break."""
+    return p_line_crossing_defect(panel)

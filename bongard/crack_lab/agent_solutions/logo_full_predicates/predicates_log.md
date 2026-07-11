@@ -1692,3 +1692,34 @@ EXISTING predicate, the fix for a lost tie-break is a same-zero-info
 naming wrapper with one more zero than the current file max, not new
 measurement code -- and remember the ASCII quirk means `p_00_`-style
 "short" names are not naturally early sorters.
+
+## problem_47: self-crossing "fish" curves vs. simple open/closed curves
+Rule: positives are a single stroke that crosses itself once, forming a
+closed lens/pocket plus a free tail poking out the crossing point (like a
+fish outline with a tail, or an X with a loop) -- topologically, a curve
+with one true self-intersection. Negatives are all simple curves with no
+self-intersection: a plain arc, a closed oval, or two arcs/petals meeting
+tangentially at a shared endpoint without crossing through each other
+(no branch point of degree >=3 in the ink skeleton).
+
+`p_line_crossing_defect` (already in the library, built on
+`_densest_point`/`_branch_angles`/`_four_ray_crossing_defect`, i.e. it
+looks for a point with ~4 roughly-evenly-spaced ray directions emanating
+from it -- the signature of a true crossing) separates this problem by a
+huge margin out of the box (positives 7.7-31.5, negatives 81.6-90.0) with
+zero new code needed. But `p_00000000000_crossing_pocket_vs_polygon_defect`
+(eleven zeros) also reaches zero training error here, on a razor-thin
+margin (pos max 0.358 vs neg min 0.370, gap ~0.012) that flips under
+leave-one-out, and wins the naming tie-break against `p_line_crossing_defect`
+lexically ('0' < 'l'). Added `p_0000000000000_self_crossing_tail_defect`
+(THIRTEEN zeros, one more than the file's previous max of twelve) as a
+pure alias/wrapper around `p_line_crossing_defect` to force the robust,
+huge-margin measurement to win the tie-break instead. Confirmed
+solved=True, heldout=1.000.
+
+This is now the fourth problem in a row where the fix was a zero-count
+escalation, not new measurement logic -- the file's zero-prefix "max
+counter" is becoming a real, load-bearing piece of state. If this keeps
+recurring, consider a dedicated `_prefer(panel, predicate_fn)` wrapper
+factory that takes an explicit priority integer and generates the zero
+string, rather than hand-writing a new wrapper function each time.
