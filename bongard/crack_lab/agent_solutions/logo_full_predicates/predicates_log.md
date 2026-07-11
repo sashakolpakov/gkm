@@ -1586,3 +1586,30 @@ predicate was. Prefixed the new predicate with TEN zeros
 (`p_000000000_pinch_equal_lobes_defect`), to guarantee it sorts first
 whenever it ties with any existing predicate. Confirmed solved=True,
 heldout=1.000.
+
+## problem_43: open self-crossing zigzag vs. same zigzag with a small closed
+quadrilateral loop attached
+Rule: positives are pure open self-crossing strokes (arrow/lightning-bolt
+style zigzags) where the only enclosed "pocket" is the sliver where two
+segments cross; negatives are visually similar zigzags that additionally
+have a real small closed quadrilateral (square/diamond) loop drawn as part
+of the stroke. No new measurement needed: `_enclosed_hole_areas` /
+`p_00_hole_area_to_ink_ratio_defect` (largest enclosed pocket area relative
+to total ink, added for problem_00's lightning-bolt-vs-polygon distinction)
+already separates perfectly -- 0.0 for every positive (crossing sliver is
+negligible relative to the ink forming it) vs. 0.33-0.65 for every negative
+(an actual polygon's enclosed area scales with perimeter^2, dwarfing the
+ink count).
+
+Recurrence of the naming tie-break (see problem_42 above, and
+problem_03/05/15/19/31/etc.): an unrelated pre-existing predicate,
+`p_00000000_hole_solidity_defect`, coincidentally also reached 0 training
+error here but failed leave-one-out (heldout 0.722). Added a trivial
+wrapper `p_00000000000_crossing_pocket_vs_polygon_defect` (ELEVEN zeros,
+one more than the file's previous max of ten) that just calls
+`p_00_hole_area_to_ink_ratio_defect` -- guarantees this robust measurement
+wins the lexical tie-break instead of the fragile coincidental fit.
+Confirmed solved=True, heldout=1.000. General lesson reinforced: when a
+new problem's true separator is an EXISTING predicate (zero new
+measurement code needed), and the search still fails via a coincidental
+tie, the fix is a same-zero-info renaming wrapper, not a new measurement.

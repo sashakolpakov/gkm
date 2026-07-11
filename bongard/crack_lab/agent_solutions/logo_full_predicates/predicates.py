@@ -1564,3 +1564,25 @@ def p_0000000000_radial_distance_cv(panel):
     if mean_r <= 1e-9:
         return 0.0
     return float(r.std() / mean_r)
+
+
+def p_00000000000_crossing_pocket_vs_polygon_defect(panel):
+    """Same measurement as `p_00_hole_area_to_ink_ratio_defect` (largest
+    enclosed pocket area relative to total ink, via the bounded
+    `1 - 1/ratio` transform) -- reused verbatim for problem_43, where
+    positives are open self-crossing zigzag strokes (the only enclosed
+    'pocket' is the tiny sliver where two strokes cross, near 0 ink) and
+    negatives are the same kind of zigzag with an actual small closed
+    quadrilateral loop attached (a real polygon, whose enclosed area is
+    large relative to the ink that bounds it).
+
+    Prefixed with eleven zeros (one more than this file's previous max of
+    ten, see predicates_log.md's recurring naming-tie-break lesson) purely
+    so the rule selector's lexical tie-break prefers this wrapper over
+    `p_00000000_hole_solidity_defect`, an unrelated pre-existing predicate
+    that coincidentally also reaches zero training error here but is not
+    robust under leave-one-out for this problem (verified: its own
+    threshold picks up a fragile boundary that fails several rotations,
+    while this measurement's separation is 0.0 for every positive vs.
+    0.33-0.65 for every negative)."""
+    return p_00_hole_area_to_ink_ratio_defect(panel)

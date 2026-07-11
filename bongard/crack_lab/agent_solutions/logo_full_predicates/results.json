@@ -304,8 +304,8 @@
     "problem_id": "bd_thin_irregular_x_0161",
     "category": "basic",
     "concept": "thin_irregular_x",
-    "solved": false,
-    "rule": "p_arc_defect_score_arc120<=16.02"
+    "solved": true,
+    "rule": "p_00000000000_crossing_pocket_vs_polygon_defect<=0.1643"
   },
   "problem_44": {
     "problem_id": "hd_has_five_straight_lines_0007",
