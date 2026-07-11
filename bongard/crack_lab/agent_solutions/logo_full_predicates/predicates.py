@@ -1700,3 +1700,92 @@ def p_0000000000000_self_crossing_tail_defect(panel):
     `p_line_crossing_defect` since '0' < 'l'. Thirteen zeros -- one more than
     this file's previous max of twelve -- to win that tie-break."""
     return p_line_crossing_defect(panel)
+
+
+def p_significant_hole_count(panel, min_area=5):
+    """Count of `_enclosed_hole_areas` regions big enough (> min_area
+    pixels) to be a real enclosed loop rather than a 1-2px dilation/
+    anti-aliasing artifact. A single simple closed curve (however non-convex
+    or pinched) encloses exactly one background region; a curve made of two
+    loops joined at a point/crossing (a leaf's two petals, a self-crossing
+    dart, a fan-plus-triangle pair) encloses two or more; a fully open curve
+    (never closes up) encloses zero. Reusable any time a problem's rule
+    depends on the number of separate enclosed regions rather than their
+    sizes (see `p_00_hole_pair_area_ratio` family for the size-ratio
+    question)."""
+    return float(sum(1 for a in _enclosed_hole_areas(panel) if a > min_area))
+
+
+def p_0_single_loop_noncircular_defect(panel, hole_scale=0.5,
+                                       circ_thresh=0.0855, circ_scale=0.001):
+    """'Is this a single enclosed loop (not two loops joined at a point/
+    crossing, not an open curve) AND is its outline NOT close to a plain
+    circle/regular-polygon' defect: max() of (a) `p_significant_hole_count`'s
+    excess over 1 (>0 for a leaf's two petals, a self-crossing dart's two
+    background slices, or any multi-loop figure) and (b) how far
+    `p_circle_fit_residual` falls short of `circ_thresh` (>0 for a near-
+    circular/near-regular outline like a hexagon or plain arc, which fits a
+    single circle far better than any of this problem's single-necked/
+    zigzag/notched figures do). AND-via-max, same pattern as
+    `p_pinch_notch_defect`/`p_lopsided_or_round_defect`: zero only when a
+    shape is both a single loop and irregular enough in outline; positive
+    (>=~1) if it has extra loops, no loop at all (open curve, hole count 0
+    still clears condition (a) but the shape then fits the (b) test on its
+    own merits), or reads as suspiciously circle-like despite being one
+    loop."""
+    hole_defect = max(0.0, p_significant_hole_count(panel) - 1.0) / hole_scale
+    circ_defect = max(0.0, circ_thresh - p_circle_fit_residual(panel)) / circ_scale
+    return float(max(hole_defect, circ_defect))
+
+
+def _hull_mask(mask):
+    """Boolean raster of the filled convex hull of a boolean region, using
+    only scipy's ConvexHull (no skimage). A point is inside the hull iff it
+    satisfies every facet inequality A.x + b <= 0."""
+    ys, xs = np.nonzero(mask)
+    pts = np.c_[xs, ys].astype(float)
+    hull = ConvexHull(pts)
+    Y, X = np.mgrid[0:mask.shape[0], 0:mask.shape[1]]
+    grid = np.c_[X.ravel(), Y.ravel()].astype(float)
+    inside = np.ones(grid.shape[0], dtype=bool)
+    for a, b, c in hull.equations:
+        inside &= (a * grid[:, 0] + b * grid[:, 1] + c) <= 1e-9
+    return inside.reshape(mask.shape)
+
+
+def p_00000000000000_concave_notch_count(panel, dil=3, area_frac=0.02, min_enclosed=40):
+    """Number of significant concave notches (convexity defects) on the
+    outline of the panel's main closed blob. The broken stroke is dilated,
+    hole-filled and re-eroded to recover a solid silhouette; if that
+    silhouette encloses no real interior (an open curve like a plain arc), 0
+    is returned. Otherwise the silhouette's largest component is compared to
+    its convex hull, and each connected hull-minus-shape pocket exceeding
+    `area_frac` of the hull area counts as one notch. Distinguishes plainly
+    convex or single-dented figures (hexagon=0, chevron/leaf=1) from
+    multiply-indented zigzag/bowtie/notched figures (>=2). Reusable whenever
+    a rule turns on HOW MANY concavities a shape's boundary has, complementing
+    the scalar solidity measures (`p_0000_convexity_solidity`) and the pinch/
+    notch-depth measures (`p_pinch_notch_defect`)."""
+    d = binary_dilation(panel.astype(bool), iterations=dil)
+    filled = binary_fill_holes(d)
+    if int(filled.sum() - d.sum()) < min_enclosed:
+        return 0.0
+    solid = ndimage.binary_erosion(filled, iterations=dil)
+    lbl, n = ndimage.label(solid)
+    if n == 0:
+        return 0.0
+    sizes = ndimage.sum(np.ones_like(lbl), lbl, range(1, n + 1))
+    big = lbl == (int(np.argmax(sizes)) + 1)
+    if big.sum() < 5:
+        return 0.0
+    try:
+        hull = _hull_mask(big)
+    except Exception:
+        return 0.0
+    defect = hull & ~big
+    lbl2, n2 = ndimage.label(defect)
+    if n2 == 0:
+        return 0.0
+    sizes2 = ndimage.sum(np.ones_like(lbl2), lbl2, range(1, n2 + 1))
+    thr = area_frac * float(hull.sum())
+    return float(int((np.asarray(sizes2) > thr).sum()))

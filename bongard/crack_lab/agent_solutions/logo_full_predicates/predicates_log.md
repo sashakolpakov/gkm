@@ -1737,3 +1737,31 @@ counter" is becoming a real, load-bearing piece of state. If this keeps
 recurring, consider a dedicated `_prefer(panel, predicate_fn)` wrapper
 factory that takes an explicit priority integer and generates the zero
 string, rather than hand-writing a new wrapper function each time.
+
+## problem_49 — multiply-notched zigzag vs convex/single-dent/open/two-loop
+
+Positives are all single closed silhouettes with TWO OR MORE concave
+notches on the outline (bowtie/waist, W, lightning, blocky, bitten blobs).
+Negatives each fail this differently: hexagon (convex, 0 notches),
+chevron/boomerang and thin arrow and single leaf (exactly 1 concavity),
+two-petal leaves (largest filled component is one convex-ish lobe → ≤1),
+and a plain open arc (never closes, 0 enclosed area).
+
+New generic predicate `p_00000000000000_concave_notch_count` (FOURTEEN
+zeros, one more than the previous max of thirteen): dilate→fill→erode the
+broken stroke to recover a solid silhouette; return 0 if it encloses no
+real interior (open curve); else compare the largest component to its
+convex hull (rasterized via `_hull_mask`, a new scipy-only ConvexHull
+inequality test — no skimage) and count hull-minus-shape pockets exceeding
+`area_frac` of the hull. Clean margin: positives all =2, negatives in
+{0,1}. Rule `p_..._concave_notch_count>=1.5` solves, heldout=1.000.
+
+Fifth consecutive zero-count escalation. The measurement here (# of
+convexity-defect regions) is genuinely new and complements the scalar
+`p_0000_convexity_solidity` (magnitude of concavity) and
+`p_pinch_notch_defect` (depth of a single pinch) — this one answers HOW
+MANY separate concavities, which none of the existing predicates counted.
+The `_hull_mask` helper is reusable for any future "shape vs its convex
+hull" pocket/defect analysis. The zero-prefix priority hack remains the
+recurring tie-break mechanism — a `_prefer(fn, priority)` factory is now
+clearly overdue.

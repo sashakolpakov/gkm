@@ -346,8 +346,8 @@
     "problem_id": "hd_necked_0020",
     "category": "abstract",
     "concept": "necked",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=11.69"
+    "solved": true,
+    "rule": "p_00000000000000_concave_notch_count>=1.5"
   },
   "problem_50": {
     "problem_id": "bd_open_triangle7_0496",
