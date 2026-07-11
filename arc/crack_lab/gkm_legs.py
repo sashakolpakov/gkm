@@ -39,7 +39,13 @@ from typing import Callable, List, Optional
 import gkm_arena as A
 from gkm_solve_agent import discovered_context
 
-SCRATCH = "/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad"
+# Working-directory root for per-game leg workspaces. Defaults to a repo-relative
+# ``runs/scratch`` dir; override with the ``GKM_SCRATCH`` environment variable.
+from pathlib import Path as _Path
+SCRATCH = os.environ.get(
+    "GKM_SCRATCH",
+    str(_Path(__file__).resolve().parent / "runs" / "scratch"),
+)
 
 
 def _loc(code: str) -> int:

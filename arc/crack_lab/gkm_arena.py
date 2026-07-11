@@ -181,9 +181,16 @@ np.ptp(a), not a.ptp().)"""
 
 
 def _save_program(game: str, rnd: int, code: str):
-    """Persist each generated program so we can inspect WHAT the agent wrote."""
+    """Persist each generated program so we can inspect WHAT the agent wrote.
+
+    Defaults to a repo-relative ``runs/gkm_programs`` dir; override with the
+    ``GKM_PROGRAMS_DIR`` environment variable."""
     import os
-    d = "/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-d1a5-4095-a6ef-4d720f42d84e/scratchpad/gkm_programs"
+    from pathlib import Path
+    d = os.environ.get(
+        "GKM_PROGRAMS_DIR",
+        str(Path(__file__).resolve().parent / "runs" / "gkm_programs"),
+    )
     try:
         os.makedirs(d, exist_ok=True)
         with open(os.path.join(d, f"{game}_round{rnd}.py"), "w") as fh:

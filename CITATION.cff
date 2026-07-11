@@ -1,0 +1,9 @@
+cff-version: 1.2.0
+message: "If you use this repository or artifacts, please cite it as below."
+title: "GKM: Replay-Validated Self-Improvement for ARC-AGI-3"
+authors:
+  - family-names: "Kolpakov"
+    given-names: "Alexander"
+repository-code: "https://github.com/sashakolpakov/gkm"
+date-released: "2026-07-11"
+version: "0.1-arc-artifacts"

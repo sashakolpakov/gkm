@@ -16,8 +16,8 @@ python gkm_legs.py --game=<GAME> --model=<MODEL> --proposer=claude --max-level=<
 
 ## Key paths
 - Workspaces (persist across runs; the "leg library"):
-  `/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-.../scratchpad/gkm_legs_ws_<GAME>/`
-  (hardcoded `SCRATCH` in gkm_legs.py — NOT this session's scratchpad.)
+  `arc/crack_lab/runs/scratch/gkm_legs_ws_<GAME>/`
+  (`SCRATCH` in gkm_legs.py; override the root with the `GKM_SCRATCH` env var.)
   Files: `legs.py` (shared skills), `players.py` (`play_level_K`), `solve.py`,
   `checkpoint.json` (levels reached + marginal-C), `legs_log.md` (debrief),
   `proposer_last.log` (last proposer stdout — READ THIS to see WHY it stopped).
@@ -40,7 +40,7 @@ API drop = `Connection closed mid-response` (transient — just relaunch).
 
 ## Check progress mid-run
 ```
-WS=/private/tmp/claude-501/-Users-sasha-gkm/e3e00be1-.../scratchpad/gkm_legs_ws_<GAME>
+WS=${GKM_SCRATCH:-arc/crack_lab/runs/scratch}/gkm_legs_ws_<GAME>
 python -c "import json;print(json.load(open('$WS/checkpoint.json'))['reached'])"   # level reached
 grep -cE 'def play_level' $WS/players.py ; grep -cE '^def ' $WS/legs.py            # size
 find $WS -maxdepth 1 -type f -mmin -5 -printf '%TH:%TM %f\n'                        # heartbeat

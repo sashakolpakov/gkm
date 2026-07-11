@@ -1,9 +1,61 @@
-# GKM: structure under free energy
+# GKM: Replay-Validated Self-Improvement for ARC-AGI-3
 
-This repository collects small, controllable substrates that test one idea from
-several angles: **free energy `F = R + λ·C` used as a local selection principle** —
-where `R` is loss and `C` is a raw description length — can drive the discovery,
-composition, and (we hope) open-ended growth of structure.
+GKM is a verifier-driven program-growth loop for ARC-AGI-3 agents.
+A proposer writes solver structure, the simulator verifies candidates by replay,
+and marginal description length records what new structure was worth keeping.
+
+The result is not only a solved-level count, but an audit trail of how competence
+was acquired: promoted solver code, replay validation, WIP snapshots, charged
+literals, reusable solver-leg refactors, and marginal-complexity accounting.
+
+## Current replay-validated ARC-AGI-3 artifacts
+
+| Game | Levels | Actions | Total marginal complexity | Artifact |
+|---|---:|---:|---:|---|
+| `wa30` | 9/9 | 596 | 1243 | `arc/crack_lab/agent_solutions/wa30_legs/` |
+| `ls20` | 7/7 | 393 | 362 | `arc/crack_lab/agent_solutions/ls20_legs/` |
+
+The central claim is that GKM converts proposer compute into replay-validated
+solver structure. Reused legs are free, new reusable legs are charged once,
+per-level glue is charged, and literal recovered paths are charged as literals.
+The marginal-complexity trace therefore records when transfer is sufficient and
+when the game forces new structure.
+
+## Reproduce the ARC-AGI-3 artifacts
+
+See [`REPRODUCE_ARC.md`](REPRODUCE_ARC.md).
+
+The replay script is:
+
+```bash
+python arc/crack_lab/replay_scorecard.py --mode online
+```
+
+Artifact folders:
+
+- [`wa30_legs`](arc/crack_lab/agent_solutions/wa30_legs/)
+- [`ls20_legs`](arc/crack_lab/agent_solutions/ls20_legs/)
+
+## Exact claim
+
+The current public artifact claims replay-validated promoted solvers for:
+
+- `wa30`: 9/9 levels, 596 actions, total marginal complexity 1243.
+- `ls20`: 7/7 levels, 393 actions, total marginal complexity 362.
+
+The claim is about promoted public artifacts and replay validation, not about
+a private ARC-AGI-3 leaderboard result. The current repository is intended for
+independent artifact review, reproduction, comparison, and extension.
+
+---
+
+## The broader GKM program: structure under free energy
+
+Beyond the ARC-AGI-3 artifact, this repository collects small, controllable
+substrates that test one idea from several angles: **free energy `F = R + λ·C`
+used as a local selection principle** — where `R` is loss and `C` is a raw
+description length — can drive the discovery, composition, and (we hope)
+open-ended growth of structure.
 
 > Open-ended artificial evolution is possible under a free-energy paradigm if free
 > energy is used as a local selection principle over agents embedded in an expanding,
