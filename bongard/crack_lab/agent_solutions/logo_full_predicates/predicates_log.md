@@ -1452,3 +1452,21 @@ self-crossing or many-cornered straight-line shapes, prefer an order-free,
 global "can every ink pixel be greedily assigned to some long, continuously-
 covered straight run" test over any local-window or single-trace-path
 curvature measure.
+
+## problem_37: convex closed blob vs. pinched/open/crescent near-misses
+Rule: positives are simple convex-ish closed loops (rounded blobs mixing
+straight and curved edges, no pinch, no gap). Negatives fail via three
+distinct near-miss modes: a pinched bowtie/hourglass or zigzag (self-
+crossing, so the fill collapses into two thin slivers), an open stroke with
+a real gap (near-circle with a break, or a plain open arc), or a thin
+crescent/wedge (curved but not enclosing much area even where "closed").
+All three failure modes collapse onto one existing measurement: `_solidity`
+(filled-area / convex-hull-area), exposed as `p_000000_solidity_raw`
+(already in the library from problem_30). Positives land at ~1.01-1.03
+(their fill_holes-based filled area is essentially convex here); every
+negative sits at <=0.68, since a pinch, gap, or crescent all make the
+convex hull much bigger than the actual filled region. No new predicate
+needed -- solved by reusing `p_000000_solidity_raw` alone
+(`p_000000_solidity_raw>=0.8439`, heldout=1.0). Good example of an old
+predicate generalizing to a fresh failure-mode combination it wasn't
+originally written for.

@@ -262,8 +262,8 @@
     "problem_id": "bd_right_trap_arc180_0183",
     "category": "basic",
     "concept": "right_trap_arc180",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=31.99"
+    "solved": true,
+    "rule": "p_000000_solidity_raw>=0.8439"
   },
   "problem_38": {
     "problem_id": "bd_hat_sector12_0449",
