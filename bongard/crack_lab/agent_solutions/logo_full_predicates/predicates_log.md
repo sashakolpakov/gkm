@@ -1470,3 +1470,43 @@ needed -- solved by reusing `p_000000_solidity_raw` alone
 (`p_000000_solidity_raw>=0.8439`, heldout=1.0). Good example of an old
 predicate generalizing to a fresh failure-mode combination it wasn't
 originally written for.
+
+## problem_38: fan/sector + quadrilateral touching-pair with a fixed area ratio, vs. line-crossing near-misses
+Rule: positives are a circular fan/sector and a quadrilateral joined at one
+shared point (no interior overlap), where the fan's own enclosed area is
+consistently ~4.1-4.3x the quad's enclosed area. Negatives look like the
+same two-part fan+quad gestalt but a straight edge/radius from one part
+actually crosses through the other's edge (a genuine X, not a shared
+vertex), which carves the two background loops into arbitrary slices whose
+area ratio lands far from the template (near 1, for two similarly-sized
+slices, or ~9, for a lopsided crossing).
+
+No new geometric logic: `p_00_hole_pair_area_ratio` (existing, from
+problem_29/30) already isolates this by itself once re-targeted --
+positives cluster at 4.10-4.27, negatives at 1.0-1.24 with one outlier
+(a crossing) at 9.25. Added `p_00000_fan_quad_hole_area_ratio_defect` =
+`abs(p_00_hole_pair_area_ratio(panel) - 4.175)`, the same "same
+measurement, new fixed target" pattern as `p_000_touching_pair_area_ratio_
+defect`/`p_000_hole_pair_hull_perimeter_ratio_defect`.
+
+Hit the exact tie-break collision predicted in the problem_29/30 log
+entries: excluding the one high-ratio negative (9.25) during leave-one-out
+left the remaining 5 negatives all clustered low (~1.0-1.24), so the
+unbounded raw-ratio predicate `p_0000_hole_pair_ratio_raw` (`>=threshold`)
+spuriously reached zero training error on those folds too, and its 4-zero
+name would otherwise beat a naively-named `p_000_...` defect atom's 3-zero
+name in the tie-break -- then fail on exactly the excluded 9.25 panel
+(heldout dropped to 0.917, all 6 failures involving that one negative).
+Fixed by naming the new predicate with a 5-zero `p_00000_` prefix instead
+of the more natural `p_000_` tier, per the "add a higher-priority
+re-parameterization for THIS problem, don't rename the shared `p_0000_...`
+predicate" lesson from problem_30. Confirmed solved=True, heldout=1.000.
+
+### Lesson: an unbounded raw-ratio predicate can spuriously "solve" a fold that excludes the one far-outlier negative
+Whenever a template-ratio problem's negatives include one outlier that sits
+even farther from 1 than the positives (rather than closer to 1, the usual
+near-miss shape), leave-one-out folds that exclude that specific outlier
+will let a naive `>=threshold` on the raw ratio look perfect on training --
+check this explicitly (which panel's exclusion changes the winning rule)
+before trusting a first "solved" attempt, since the harness's `RESULT`
+line alone won't say *why* heldout dropped.

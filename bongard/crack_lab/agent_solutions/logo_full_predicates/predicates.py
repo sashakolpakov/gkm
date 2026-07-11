@@ -812,6 +812,41 @@ def p_000_touching_pair_area_ratio_defect(panel, target=1.485):
     return float(abs(ratio - target))
 
 
+def p_00000_fan_quad_hole_area_ratio_defect(panel, target=4.175):
+    """`p_000_touching_pair_area_ratio_defect`'s same measurement
+    (`abs(p_00_hole_pair_area_ratio(panel) - target)`), re-parameterized
+    with a different fixed `target` for a different template pair: a
+    circular fan/sector touching a quadrilateral at one point, where the
+    fan's own enclosed area is consistently ~4.1-4.3x the quad's. As with
+    that predicate, when the two loops instead CROSS (the fan's radius and
+    the quad's edge cut through each other rather than merely meeting at a
+    shared vertex), the two background loops carved by the drawing are
+    arbitrary slices of the original shapes rather than the shapes
+    themselves, landing the ratio far from `target` -- observed either
+    much closer to 1 (a crossing that carves two similarly-sized slivers)
+    or much larger (one sliver, one near-full remainder). Reusing the
+    single `p_00_hole_pair_area_ratio` measurement under a second target
+    (rather than adding new hole-finding logic) is the same "same
+    measurement, different template constant" pattern already used for
+    `p_000_hole_pair_hull_perimeter_ratio_defect` alongside the area-ratio
+    version.
+
+    Named with a 5-zero `p_00000_` prefix (one more than `p_0000_hole_
+    pair_ratio_raw`'s 4) rather than the more natural `p_000_` tier: on
+    several leave-one-out folds here, excluding the single high-ratio
+    negative (a genuine crossing whose carved slices happen to land on the
+    far side of 1, past even the positive band) makes the unbounded raw
+    ratio predicate spuriously reach zero training error too via a one-
+    sided `>=` threshold, and its `p_0000_` name would otherwise win that
+    tie and fail on exactly the excluded panel. Per predicates_log.md's
+    "tie-break priority is directional and problem-specific" lesson, the
+    fix is a higher-priority thin re-parameterization for THIS problem
+    rather than renaming the shared `p_0000_...`/`p_000_...` predicates
+    (which were ranked that way to fix earlier problems)."""
+    ratio = p_00_hole_pair_area_ratio(panel)
+    return float(abs(ratio - target))
+
+
 def p_00_single_hole_compact_defect(panel, elong_thresh=1.15):
     """'Is this shape a SINGLE enclosed loop (one connected hole, via
     `_enclosed_hole_areas`) AND is it compact/non-elongated (PCA major/minor
