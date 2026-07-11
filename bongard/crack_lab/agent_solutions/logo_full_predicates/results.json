@@ -255,8 +255,8 @@
     "problem_id": "bd_unbala_asymm_lamp_0180",
     "category": "basic",
     "concept": "unbala_asymm_lamp",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=32.97"
+    "solved": true,
+    "rule": "p_180_rotational_self_iou<=0.3883"
   },
   "problem_37": {
     "problem_id": "bd_right_trap_arc180_0183",
