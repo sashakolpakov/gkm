@@ -1374,3 +1374,76 @@ def p_0000_hole_pair_ratio_raw(panel):
     lexical tie-break instead of losing to it -- see predicates_log.md and
     the identical trick already used by `p_00_hole_pair_area_ratio`."""
     return p_00_hole_pair_area_ratio(panel)
+
+
+def p_0_straight_edge_coverage_leftover(panel, tol=1.2, gap_tol=5.0,
+                                         min_len_frac=0.38, density=0.5,
+                                         max_lines=6):
+    """Fraction of ink pixels NOT explainable by any long, gap-free straight
+    run. Greedily searches all pairs of ink pixels for the longest chord
+    (length > min_len_frac * bbox diagonal) whose ink lies within `tol` of
+    the straight line between them with no gap along it wider than
+    `gap_tol` (i.e. a genuinely drawn straight edge, not two collinear-by-
+    coincidence points on a curve or across empty space), removes its
+    inlier pixels, and repeats up to `max_lines` times. Shapes built
+    entirely from straight polygon edges get almost fully explained (low
+    leftover); shapes containing a real circular-arc segment leave a large
+    unexplained remainder, since no long chord across a curved arc stays
+    within `tol` of the ink for its full gap-free span. Requiring both a
+    minimum span and continuous gap-free coverage (rather than a naive
+    generous inlier-distance count) is what prevents short chords across a
+    gentle curve, or long chords cutting through a polygon's empty
+    interior, from being mistaken for genuine drawn edges. Named with a
+    `p_0_` prefix purely for MDL tie-break priority (see
+    `p_0_blunt_tip_defect`/predicates_log.md): under leave-one-out, some
+    folds let `p_arc_circle_inlier_fraction` spuriously reach 0 training
+    error too, and without sorting ahead of it in the lexical tie-break
+    this atom loses to that non-generalizing one on those folds."""
+    xs, ys = _xy(panel)
+    pts = np.stack([xs, ys], axis=1)
+    n = len(pts)
+    if n < 8:
+        return 0.0
+    diag = math.hypot(xs.max() - xs.min(), ys.max() - ys.min()) + 1e-6
+    min_len = min_len_frac * diag
+    remaining = np.ones(n, dtype=bool)
+    for _ in range(max_lines):
+        idx = np.where(remaining)[0]
+        m = len(idx)
+        if m < 8:
+            break
+        P = pts[idx]
+        best = None
+        for a in range(m):
+            diffs = P - P[a]
+            dists = np.hypot(diffs[:, 0], diffs[:, 1])
+            cand = np.where(dists > min_len)[0]
+            for b in cand:
+                if b <= a:
+                    continue
+                d = P[b] - P[a]
+                L = math.hypot(d[0], d[1])
+                dirv = d / L
+                normal = np.array([-dirv[1], dirv[0]])
+                rel = P - P[a]
+                perp = np.abs(rel @ normal)
+                proj = rel @ dirv
+                mask = (perp < tol) & (proj > -2) & (proj < L + 2)
+                cnt = mask.sum()
+                min_count = max(8, int(L * density))
+                if cnt < min_count:
+                    continue
+                projs = np.sort(proj[mask])
+                gaps = np.diff(projs)
+                maxgap = gaps.max() if len(gaps) > 0 else 0
+                if maxgap > gap_tol:
+                    continue
+                if projs[0] > gap_tol or (L - projs[-1]) > gap_tol:
+                    continue
+                if best is None or L > best[0]:
+                    best = (L, mask)
+        if best is None:
+            break
+        _, mask = best
+        remaining[idx[mask]] = False
+    return float(remaining.mean())

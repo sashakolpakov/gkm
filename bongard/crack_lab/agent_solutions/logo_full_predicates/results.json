@@ -241,8 +241,8 @@
     "problem_id": "hd_has_curve_0001",
     "category": "abstract",
     "concept": "has_curve",
-    "solved": false,
-    "rule": "p_circle_fit_residual<=0.1082"
+    "solved": true,
+    "rule": "p_0_straight_edge_coverage_leftover>=0.4909"
   },
   "problem_35": {
     "problem_id": "bd_uneven_band_four_arcs_0297",

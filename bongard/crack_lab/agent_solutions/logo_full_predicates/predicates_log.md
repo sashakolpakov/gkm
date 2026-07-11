@@ -1387,3 +1387,68 @@ prefix to 8 zeros (one more than the previous max of 7,
 `p_0000000_hole_pair_min_elongation`) so it wins every fold's tie, not
 just the full-data one. Always debug by enumerating per-fold winners
 (see the lesson above), not by re-reading the full-data `rule=` line.
+
+## problem_34: shapes containing a curved (circular-arc) segment vs. pure straight-line polygons
+Rule: positives all contain at least one visibly rounded/curved edge
+(a lens, a circle, an arc combined with straight tabs, etc.); negatives are
+all polygons built entirely from straight edges (bowties, zigzags,
+quadrilaterals, self-intersecting "hourglass" shapes), some of which are
+non-convex or self-crossing near-misses that look just as "complex" as the
+positives at a glance.
+
+Straightforward local-curvature measures failed here: per-pixel PCA
+eigenvalue ratios and local line-vs-circle fit-residual ratios in a small
+window were dominated by the many corners/junctions in these polygons
+(a corner where two straight edges cross looks just as "non-linear" in a
+small window as a gentle curve does), so they didn't separate. Ordering-
+based approaches (`_order_curve` + RDP simplification) also failed because
+several of the negatives are self-intersecting (bowtie/hourglass shapes),
+which breaks the single-stroke-without-branching assumption baked into
+`_order_curve`'s greedy nearest-neighbor trace, producing spurious jumbled
+paths with fake "high deviation" artifacts.
+
+What worked: a global, order-free, greedy straight-edge "set cover". Repeatedly
+search all pairs of ink pixels for the longest chord (length above a fraction
+of the bbox diagonal) whose ink lies within a tight tolerance of the
+straight line between them **with no gap** along the full span (checked via
+sorting the inlier points' projections onto the chord and requiring the
+largest consecutive gap, and the gaps at both ends, to stay below a small
+bound) -- i.e. a chord that is actually a continuously-drawn straight
+stroke, not a coincidental alignment of scattered points or a line cut
+through empty interior space. Remove each such chord's inlier pixels and
+repeat. The final leftover fraction of unexplained ink pixels is near 0 for
+pure polygons (every edge eventually gets claimed as a long, gap-free
+straight run, regardless of how many corners or self-intersections the
+polygon has) and stays large for anything containing a real arc, since no
+long chord across a curved arc can stay within tolerance for a full
+gap-free span. Both the minimum-length requirement (short chords across a
+gentle curve would otherwise pass) and the gap-free-coverage requirement
+(chords cutting across a polygon's hollow interior would otherwise look
+like "explained" long straight runs) were necessary -- dropping either
+collapsed the separation.
+
+Added:
+- `p_0_straight_edge_coverage_leftover` (predicates.py): the leftover-
+  fraction measure described above. Reusable any time a rule seems to
+  hinge on "does this shape contain a curved segment" vs. "is this shape
+  made purely of straight edges" -- including shapes with self-
+  intersections or junctions, where curvature/corner-detection methods
+  that assume a single simple traceable stroke break down. Named with the
+  usual `p_0_` MDL tie-break prefix: on some leave-one-out folds
+  `p_arc_circle_inlier_fraction` spuriously reaches 0 training error too
+  (its own weakness at detecting curvature when a junction-heavy negative
+  is held out), and without sorting ahead of it lexically this atom lost
+  those folds' tie-break to that non-generalizing one even though this
+  atom's own value classified the held-out panel correctly.
+
+### Lesson: corner/junction confusion breaks local curvature detectors; a global gap-free-coverage line search doesn't
+Any predicate that inspects curvature in a small local window (PCA
+eccentricity, line-vs-circle residual ratio, per-pixel turning angle) will
+also fire on ordinary polygon corners and especially on self-intersections,
+since both a real curve and a sharp crossing look "non-linear" locally.
+Ordering-dependent methods (trace-then-simplify) additionally break outright
+on self-intersecting shapes. When a problem's negatives include
+self-crossing or many-cornered straight-line shapes, prefer an order-free,
+global "can every ink pixel be greedily assigned to some long, continuously-
+covered straight run" test over any local-window or single-trace-path
+curvature measure.
