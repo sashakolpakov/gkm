@@ -1586,3 +1586,79 @@ def p_00000000000_crossing_pocket_vs_polygon_defect(panel):
     while this measurement's separation is 0.0 for every positive vs.
     0.33-0.65 for every negative)."""
     return p_00_hole_area_to_ink_ratio_defect(panel)
+
+
+def _radial_profile(panel, nbins=72):
+    """Mean radius of ink pixels as a function of angle about the ink
+    centroid, sampled into `nbins` equal angular bins (empty bins left at 0,
+    which registers directions the shape does not occupy at all -- important
+    for open/concave figures like a lone arc). A generic descriptor of a
+    silhouette's shape as
+    seen from its center; its Fourier harmonics measure rotational structure
+    (k=1 lopsidedness, k=2 elongation, k=3 threefold, ...). Reusable wherever
+    a predicate needs the angular shape signature rather than a raw point
+    cloud."""
+    xs, ys = _xy(panel)
+    if len(xs) < 8:
+        return np.zeros(nbins)
+    cx, cy = xs.mean(), ys.mean()
+    ang = np.arctan2(ys - cy, xs - cx)
+    rad = np.hypot(xs - cx, ys - cy)
+    edges = np.linspace(-math.pi, math.pi, nbins + 1)
+    idx = np.clip(np.digitize(ang, edges) - 1, 0, nbins - 1)
+    prof = np.zeros(nbins, dtype=float)
+    for k in range(nbins):
+        m = idx == k
+        if m.any():
+            prof[k] = rad[m].mean()
+    return prof
+
+
+def p_radial_lopsidedness(panel):
+    """Normalized magnitude of the first Fourier harmonic of the centroid
+    radial profile (see `_radial_profile`). Small when the silhouette is
+    balanced about its centroid (a regular polygon, a symmetric lens, a
+    windmill), large when it is one-sided/pear-shaped -- most of the ink lies
+    to one side of the center (a triangle whose centroid sits near one edge,
+    a big shape with a small appendage stuck on one end). Scale-free."""
+    prof = _radial_profile(panel)
+    prof = prof - prof.mean()
+    nrm = np.linalg.norm(prof)
+    if nrm < 1e-9:
+        return 0.0
+    F = np.abs(np.fft.rfft(prof))
+    return float(F[1] / nrm)
+
+
+def p_compactness(panel):
+    """Isoperimetric ratio 4*pi*Area / Perimeter^2 of the filled silhouette
+    (the ink dilated to close 1px gaps, then hole-filled). 1.0 for a perfect
+    disk, lower for elongated or spiky outlines. A generic roundness measure;
+    reusable to tell compact blobs/lenses from jagged or star-shaped figures."""
+    d = binary_dilation(panel.astype(bool), iterations=1)
+    filled = binary_fill_holes(d)
+    area = float(filled.sum())
+    if area < 1:
+        return 0.0
+    er = ndimage.binary_erosion(filled)
+    perim = float((filled & ~er).sum())
+    if perim < 1:
+        return 0.0
+    return float(4.0 * math.pi * area / (perim * perim))
+
+
+def p_lopsided_or_round_defect(panel, lop_scale=1.68, comp_scale=1.05):
+    """AND-via-max combinator (cf. `p_00_single_hole_compact_defect`) of two
+    generic silhouette measurements: centroid radial lopsidedness
+    (`p_radial_lopsidedness`) and roundness (`p_compactness`). Returns
+    max(lopsidedness/lop_scale, compactness/comp_scale), which stays below 1
+    only when the shape is BOTH balanced about its centroid (not one-sided)
+    AND not a compact round blob -- i.e. a centered, non-circular figure
+    (regular polygon, slender leaf, crossing triangles, windmill, arc with
+    teeth). It rises above 1 when either fails: a lopsided figure with a small
+    appendage or off-center mass (large first harmonic), or a fat symmetric
+    lens/disk (large compactness). One scalar so the rule selector needs no
+    conjunction."""
+    lop = p_radial_lopsidedness(panel)
+    comp = p_compactness(panel)
+    return float(max(lop / lop_scale, comp / comp_scale))

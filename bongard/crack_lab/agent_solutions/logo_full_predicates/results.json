@@ -311,8 +311,8 @@
     "problem_id": "hd_has_five_straight_lines_0007",
     "category": "abstract",
     "concept": "has_five_straight_lines",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1059"
+    "solved": true,
+    "rule": "p_lopsided_or_round_defect<=1.002"
   },
   "problem_45": {
     "problem_id": "bd_big_small_right_triangles_0101",

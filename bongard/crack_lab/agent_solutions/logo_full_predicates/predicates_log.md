@@ -1613,3 +1613,43 @@ Confirmed solved=True, heldout=1.000. General lesson reinforced: when a
 new problem's true separator is an EXISTING predicate (zero new
 measurement code needed), and the search still fails via a coincidental
 tie, the fix is a same-zero-info renaming wrapper, not a new measurement.
+
+## problem_44: centered non-circular figures vs. lopsided or round blobs
+Rule: positives are figures whose ink is BALANCED about its centroid AND
+not a compact round blob -- a convex pentagon, a slender leaf, two crossing
+triangles, a fan+arrow, an arc with teeth, a 3-bladed windmill. Negatives
+fail one of the two: they are either LOPSIDED (a triangle whose centroid
+sits near one edge, a bar with a small flag on one end, a trapezoid with a
+square appendage, a sprout of two leaves, a downward-tailed pennant -- all
+have most mass to one side) OR a fat symmetric round blob (the lens neg_0,
+which IS centered but is round).
+
+Two NEW generic measurements, both reusable:
+- `p_radial_lopsidedness`: normalized magnitude of the FIRST Fourier
+  harmonic of the centroid radial profile (`_radial_profile`, mean ink
+  radius per angular bin, empty bins = 0 so open/concave figures like a
+  lone arc register their unoccupied directions). Small = balanced about
+  the center; large = one-sided/pear-shaped. Separated 11/12 alone (only
+  the round lens neg_0, itself centered, slipped through low).
+- `p_compactness`: isoperimetric ratio 4*pi*A/P^2 of the filled silhouette.
+  Round lens neg_0 is the single highest; every positive is lower. This is
+  exactly the term that excludes neg_0.
+
+Combined into ONE scalar via the AND-via-max combinator
+`p_lopsided_or_round_defect` = max(lop/1.68, comp/1.05): <1 iff BOTH hold.
+Positives 0.53-0.91, negatives 1.09-2.04 -- clean margin at ~1.0.
+Confirmed solved=True, heldout=1.000.
+
+Why one scalar and not a 2-atom AND: the selector's F = train_error +
+0.1*cost, cost = 1.5 per atom. A perfect 2-AND (cost 3.0 -> F 0.30) LOSES
+to a single predicate with 1/12 train error (F 0.0833+0.15 = 0.233). So a
+two-condition rule must be baked into one predicate via max() to ever be
+selected. Recurring lesson: conjunctions only pay off when they reach zero
+error AND the cost delta (0.1*1.5=0.15) is under the error they remove
+(1/12=0.083) -- it never is for a single removed error, so fold AND logic
+into one max-combinator predicate.
+
+### Recurrence: radial-profile Fourier harmonics as a shape-symmetry family
+`_radial_profile` + its harmonics is a general tool (k=1 lopsidedness,
+k=2 elongation, k=3 threefold, ...). Worth reaching for whenever a rule
+looks like "balanced/symmetric vs. off-center" or "n-fold structure".
