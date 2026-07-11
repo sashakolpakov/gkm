@@ -297,8 +297,8 @@
     "problem_id": "bd_acute_hexagon_0107",
     "category": "basic",
     "concept": "acute_hexagon",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=34.63"
+    "solved": true,
+    "rule": "p_0000000000_radial_distance_cv<=0.209"
   },
   "problem_43": {
     "problem_id": "bd_thin_irregular_x_0161",

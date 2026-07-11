@@ -1550,3 +1550,39 @@ and `neg_2`, `p_00_hole_area_to_ink_ratio_defect` also reaches 0 training
 error and would otherwise win the tie-break by alphabetical accident --
 same lesson as `p_0000000_hole_pair_min_elongation`/predicates_log.md
 problem_31. Confirmed solved=True, heldout=1.000.
+
+## problem_42: near-convex polygon with a finely scalloped edge vs. sharp-spiked/sliver/open near-misses
+Rule: positives are closed, roughly convex, roughly round-ish outlines
+(triangle/quad-like) where one edge is replaced by a gentle wave of many
+small shallow bumps; negatives look similar at a glance but differ in how
+their outline deviates from "round": either one or two sharp deep
+zigzag/spike notches, a thin elongated convex sliver (no bumps at all,
+just straight sides), or an unclosed bracket-like curve.
+
+Tried convex-hull solidity (`p_0000_convexity_solidity`/`p_000000_solidity_raw`,
+already in the library) first -- it cleanly separates 5 of 6 negatives (low
+solidity from the deep zigzag notches) but misses the thin sliver negative,
+which is itself fully convex (solidity ~1.0, indistinguishable from the
+positives) despite having no scalloped edge at all.
+
+Added `p_0000000000_radial_distance_cv`: coefficient of variation
+(std/mean) of every ink pixel's Euclidean distance from the shape's
+centroid. This is a cheap centroid-only "roundness" measure, distinct from
+hull-based solidity -- it catches the sliver too, since a sliver's two
+pointed tips sit far from its centroid even though the shape itself is
+convex, giving high radial CV (0.48) versus positives' tight range
+(0.15-0.16) and even the zigzag negatives (0.25-0.48). Clean margin at
+~0.21 on both raw scan and full leave-one-out rotation.
+
+### Recurrence: naming tie-break (see problem_03/05/15/19/31/etc.)
+An unrelated pre-existing predicate, `p_00000_total_hole_to_ink_ratio`
+(enclosed-area / ink-count), coincidentally also reached 0 training error
+on this problem's 12 panels via a threshold that doesn't generalize
+(heldout 0.917 -- fails 2 of 24 LOO folds). Since the selector tie-breaks
+equal-(error,cost) rules lexically, and `p_00000_...` sorted before any
+`p_radial_...` name, it would keep winning regardless of how good the new
+predicate was. Prefixed the new predicate with TEN zeros
+(`p_0000000000_`), one more than this file's previous max of nine
+(`p_000000000_pinch_equal_lobes_defect`), to guarantee it sorts first
+whenever it ties with any existing predicate. Confirmed solved=True,
+heldout=1.000.

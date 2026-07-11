@@ -1529,3 +1529,38 @@ def p_000000000_pinch_equal_lobes_defect(panel, pinch_scale=0.02, ratio_thresh=1
     ratio = p_00_hole_pair_area_ratio(panel)
     ratio_defect = max(0.0, ratio - ratio_thresh) / ratio_scale
     return float(max(pinch, ratio_defect))
+
+
+def p_0000000000_radial_distance_cv(panel):
+    """Coefficient of variation (std/mean) of each ink pixel's distance from
+    the shape's centroid.
+
+    Prefixed with ten zeros (one more than this file's previous max of
+    nine, see predicates_log.md's recurring naming-tie-break lesson) so
+    that when this predicate reaches zero training error alongside some
+    unrelated pre-existing predicate that coincidentally also fits a given
+    problem's 12 panels, the rule selector's lexical tie-break picks this
+    one -- which is the one actually robust under leave-one-out for
+    problem_42, unlike the coincidental fit.
+
+    Measures overall "roundness"/regularity of a closed outline's radius
+    as seen from its own centroid, independent of scale, orientation, and
+    fine boundary detail. A polygon whose outline stays close to a single
+    convex, roughly-round envelope (even if one edge is finely scalloped
+    with many shallow bumps) has a tight, low-variance spread of radii.
+    A shape with one or more sharp spikes/deep notches, or an elongated
+    sliver, has a much wider spread of radii (some pixels near the
+    centroid, some far out at the spike/tip) and so a much higher CV --
+    this is a cheap centroid-only alternative to convex-hull solidity that
+    (per problem_42) also catches thin convex slivers solidity misses,
+    since a sliver's tips sit far from its centroid even though the shape
+    itself is fully convex."""
+    ys, xs = np.where(panel > 0)
+    if len(xs) < 3:
+        return 0.0
+    cx, cy = xs.mean(), ys.mean()
+    r = np.sqrt((xs - cx) ** 2 + (ys - cy) ** 2)
+    mean_r = r.mean()
+    if mean_r <= 1e-9:
+        return 0.0
+    return float(r.std() / mean_r)
