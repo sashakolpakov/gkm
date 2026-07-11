@@ -1693,6 +1693,20 @@ naming wrapper with one more zero than the current file max, not new
 measurement code -- and remember the ASCII quirk means `p_00_`-style
 "short" names are not naturally early sorters.
 
+## problem_48: open thin needle/dart (elongated open stroke) vs. closed polygon blob
+Positives are all thin, highly elongated open strokes (two long nearly
+parallel lines forming a "needle"/dart, not closed up at one or both
+ends). Negatives are ordinary closed polygons (hexagon, quadrilaterals,
+notched/concave blobs) of normal aspect ratio. Solved with ZERO new code:
+reused `p_00000000000_crossing_pocket_vs_polygon_defect` (itself a wrapper
+around `p_00_hole_area_to_ink_ratio_defect` from problem_00/43) verbatim --
+positives have no enclosed pocket (open curve, ratio-defect ~0), negatives
+have a large enclosed polygon area relative to ink. Confirms this
+hole-area-ratio measurement is a general open-vs-closed-curve detector,
+not specific to problem_43's zigzag setting. (`p_elongation` also cleanly
+separates this problem on its own -- pos ~5.5-5.9 vs neg ~0.8-2.0 -- but
+the existing predicate was cheaper since it was already selected/paid for.)
+
 ## problem_47: self-crossing "fish" curves vs. simple open/closed curves
 Rule: positives are a single stroke that crosses itself once, forming a
 closed lens/pocket plus a free tail poking out the crossing point (like a

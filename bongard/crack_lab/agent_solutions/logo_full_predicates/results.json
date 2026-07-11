@@ -339,8 +339,8 @@
     "problem_id": "bd_open_thin_symmetric_arrow_0238",
     "category": "basic",
     "concept": "open_thin_symmetric_arrow",
-    "solved": false,
-    "rule": "p_circle_fit_residual>=0.1166"
+    "solved": true,
+    "rule": "p_00000000000_crossing_pocket_vs_polygon_defect>=0.886"
   },
   "problem_49": {
     "problem_id": "hd_necked_0020",
