@@ -276,8 +276,8 @@
     "problem_id": "hd_has_line_crossing_0016",
     "category": "abstract",
     "concept": "has_line_crossing",
-    "solved": false,
-    "rule": "p_arc_defect_score_217<=28.93 AND p_circle_fit_residual>=0.05258"
+    "solved": true,
+    "rule": "p_000000000_pinch_equal_lobes_defect<=1.263"
   },
   "problem_40": {
     "problem_id": "bd_hat_sector2_0439",

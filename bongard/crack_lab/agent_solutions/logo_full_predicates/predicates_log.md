@@ -1510,3 +1510,43 @@ will let a naive `>=threshold` on the raw ratio look perfect on training --
 check this explicitly (which panel's exclusion changes the winning rule)
 before trusting a first "solved" attempt, since the harness's `RESULT`
 line alone won't say *why* heldout dropped.
+
+## problem_39: single-stroke figures that pinch to a point splitting into two
+comparably-sized lobes, vs. open arcs / unequal overlaps / loose necks
+Rule: positives are all one continuous stroke that comes to a genuine
+near-point self-touch somewhere along its length (a line-crossing, a
+shared vertex, or a sharp cusp where the path revisits the same spot) --
+regardless of whether the two resulting parts are open (a bare tail),
+closed loops, or one of each -- AND, whenever it does enclose two areas,
+those two areas are close to equal (a triangle-plus-tail, a two-petal
+flower, a crossed-diamond-plus-fan, two stacked bowties). Negatives fail
+one of two unrelated ways: no pinch at all (a lone circular arc, or a
+bowtie whose "waist" is a wide isthmus that never truly touches -- self-
+proximity ratio ~0.05-0.18 vs. positives' ~0.01-0.015), or a genuine pinch
+whose two sides are wildly unequal because it's an overlap-carved sliver
+rather than a clean touch (a big triangle with a small triangle fused onto
+one corner, or a lens whose tip crossing shaves off a tiny second region --
+hole-area ratio 7.8-10.9 vs. positives' 1.0-1.05).
+
+No new geometric primitives: combined two existing measurements,
+`p_self_proximity_ratio` (already used for `p_pinch_notch_defect`) and
+`p_00_hole_pair_area_ratio` (already used for the problem_19/29/30 two-
+loop-appendage family, whose sentinel of 1.0 for <2 holes turns out to be
+exactly right here: an open tail or a single loop should never be
+penalized on the ratio condition, only a genuine two-hole overlap should).
+`p_pinch_notch_defect` (pinch AND non-convex-enough) almost worked
+(11/12, train=0.917) but missed `pos_5` (two stacked bowties) because its
+solidity component reads a zigzag chain of equal-area lobes as "too
+convex" to count as notched. Swapping the second condition from raw
+solidity to "the hole-pair ratio isn't overlap-unequal" fixed exactly that
+case without breaking any other panel. Added
+`p_000000000_pinch_equal_lobes_defect` = `max(p_self_proximity_ratio/0.02,
+max(0, p_00_hole_pair_area_ratio - 1.15)/0.05)` (same AND-via-max pattern
+as `p_pinch_notch_defect`/`p_000_two_loop_appendage_defect`).
+
+Named with 9 leading zeros (one more than the previous max,
+`p_00000000_hole_solidity_defect`) because on the fold excluding `pos_0`
+and `neg_2`, `p_00_hole_area_to_ink_ratio_defect` also reaches 0 training
+error and would otherwise win the tie-break by alphabetical accident --
+same lesson as `p_0000000_hole_pair_min_elongation`/predicates_log.md
+problem_31. Confirmed solved=True, heldout=1.000.

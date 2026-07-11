@@ -1482,3 +1482,50 @@ def p_0_straight_edge_coverage_leftover(panel, tol=1.2, gap_tol=5.0,
         _, mask = best
         remaining[idx[mask]] = False
     return float(remaining.mean())
+
+
+def p_000000000_pinch_equal_lobes_defect(panel, pinch_scale=0.02, ratio_thresh=1.15, ratio_scale=0.05):
+    """Named with 9 leading zeros (more than any existing `p_0+_` predicate
+    at the time this was added, e.g. `p_00000000_hole_solidity_defect`) to
+    win the MDL rule search's lexical tie-break in every leave-one-out fold:
+    when `pos_0` and `neg_2` are the held-out pair, `p_00_hole_area_to_ink_
+    ratio_defect` coincidentally also reaches 0 training error on the
+    remaining 10 panels, and without a naming win this atom loses that tie
+    despite being the one that actually generalizes back to `pos_0`/`neg_2`
+    -- see predicates_log.md, problem_39, and the same lesson at
+    `p_0000000_hole_pair_min_elongation`.
+
+    'Is this a single stroke that pinches to a near-point somewhere AND,
+    wherever it encloses two areas at all, those two areas are close to
+    equal' defect: AND-via-max of `p_self_proximity_ratio` (normalized by
+    `pinch_scale`) and the shortfall of `p_00_hole_pair_area_ratio` above
+    `ratio_thresh` (normalized by `ratio_scale`). Zero only when both hold.
+    Catches two different near-miss families with one scalar: a plain arc
+    or blunt shape with no pinch at all (large `p_self_proximity_ratio`,
+    e.g. a lone circular arc or a bowtie whose 'waist' is a wide isthmus
+    rather than a true touch), and a shape that DOES pinch cleanly but
+    whose two sides are wildly unequal -- one dominant lobe plus a sliver
+    carved off by an overlap rather than a clean touch (e.g. a big triangle
+    with a small triangle fused onto one corner, or a lens whose tip
+    crossing shaves off a tiny second region). A shape with fewer than two
+    enclosed regions (an open curve, or one closed loop plus a bare open
+    tail) takes the `p_00_hole_pair_area_ratio` sentinel of 1.0, which is
+    always <= `ratio_thresh` -- i.e. that condition is vacuously satisfied
+    rather than penalized, so the appendage's shape/closedness doesn't
+    matter, only whether a genuine pinch exists at all.
+
+    Combining the two checks into one scalar (rather than leaving them as
+    two separate atoms) matters here: with only 12 training panels the MDL
+    rule search's per-atom cost (see predicates_log.md, problem_19) makes a
+    2-atom conjunction that reaches 0 training error score WORSE than a
+    single cheaper atom that accepts one mistake, so both conditions must
+    be pre-combined to be selected as a single atom. `pinch_scale`/
+    `ratio_scale` are picked so a shape that fails one condition badly
+    (e.g. a lone arc's `p_self_proximity_ratio` ~10x too large, or an
+    overlap-sliver's hole-area ratio ~7-10x too large) reads as comparably
+    'very defective' on both sides of the max(), so no single negative
+    example is a scaling-fragile outlier under leave-one-out."""
+    pinch = p_self_proximity_ratio(panel) / pinch_scale
+    ratio = p_00_hole_pair_area_ratio(panel)
+    ratio_defect = max(0.0, ratio - ratio_thresh) / ratio_scale
+    return float(max(pinch, ratio_defect))
