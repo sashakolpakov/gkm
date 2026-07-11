@@ -322,6 +322,52 @@ marginal-complexity charges, charged literals, and leg-library refactors. This i
 qualitative comparison, not a compute-matched one; a matched head-to-head is the next
 evaluation step.
 
+\paragraph{Comparison to OPINE-World.} A recent leaderboard entry, OPINE-World~\cite{courtis2026opine},
+synthesizes an executable \texttt{game\_engine.py} per game and advertises the result as a
+learned world model. Two observations follow from our audit of its paper and published
+\texttt{wa30} artifacts. First, OPINE does not engage the compression-theoretic foundations of
+world modeling: apart from one citation of Schmidhuber's curiosity work as exploration
+motivation, neither the paper nor the released code makes contact with Kolmogorov complexity,
+Solomonoff induction, MDL, or Schmidhuber's self-rewriting line (G\"odel machine,
+PowerPlay)~\cite{kolmogorov1965,solomonoff1964,schmidhuber2007godel,schmidhuber2013powerplay}
+--- and, consistently, it reports no description-length accounting of the model it grows.
+Second, OPINE publishes no marginal ledger, but its \texttt{wa30} archive is complete enough
+that we can \emph{measure} one: diffing all 65 recoverable \texttt{game\_engine.py} snapshots
+and attributing added tokens to the level active at each synthesis run yields per-level
+marginal novelty of $3243, 3978, 1712, 2053, 1246, 1136, 266, 3310, 1444$ normalized Python
+tokens (Fig.~\ref{fig:gkm-opine}, middle). The measured profile lacks both teeth of the
+sawtooth that actual world-model learning predicts. There is no reuse tooth: the cheapest
+level still charges 266 new tokens, and every level additionally ships a verbatim 8{,}464-byte
+level-entry pickle that the final transition function loads on reset --- a per-level literal
+cost that never amortizes. And there is no compression tooth: across all 65 revisions,
+retained source grows from 1{,}882 to 14{,}161 tokens (7.5$\times$). It shrinks in only
+8 of 64 revision steps, and the largest single-revision shrink is 222 tokens, 1.6\%
+of the final model, so no refactor ever compresses accumulated structure into
+abstractions. In the GKM ledger both teeth are load-bearing:
+\texttt{ls20} levels~2 and~4 cost 2 and 3 because they compose existing legs, and the
+\texttt{wa30} level-9 refactor compresses a recovered literal path into the reusable
+\texttt{ferry\_each} leg. In relative terms OPINE's \texttt{wa30} floor is comparable
+to GKM's because this game keeps demanding novelty from any solver; that caveat does not
+change the artifact-level result. The OPINE archive exposes accumulated replay machinery:
+uncompressed per-level literal caches, no charged reuse ledger, and no material compression
+event. Under description-length accounting, that is not evidence for a compressed world
+model.
+
+\begin{figure}[h]
+\centering
+\includegraphics[width=\linewidth]{figures/gkm_opine_marginal_complexity.png}
+\caption{GKM vs.\ OPINE complexity profiles; both marginal profiles are \emph{measured}.
+Left: GKM's admitted per-level novelty drops to near zero when a level is expressible in
+existing legs (\texttt{ls20} L2$=$2, L4$=$3) and spikes when the game demands new structure.
+Middle: OPINE \texttt{wa30} marginal novelty measured from its own artifacts ---
+diff-added source tokens across all snapshots in each level. The floor is 266 tokens, and
+each level also carries a verbatim 8{,}464-byte entry cache. Right: OPINE's retained
+\texttt{game\_engine.py} grows 7.5$\times$ across 65 revisions; it shrinks in only
+8 of 64 revision steps, with largest shrink 222 tokens. Units differ between panels;
+the comparison is profile shape.}
+\label{fig:gkm-opine}
+\end{figure}
+
 Relative to the classical colimit-cone experiments, where reusable structure is enumerated
 and priced, here it is \emph{invented} and priced by the same free energy; the two are
 ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that the artifact
