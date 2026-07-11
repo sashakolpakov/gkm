@@ -1301,6 +1301,60 @@ def p_00001_exactly_two_equal_holes_defect(panel):
     return float(abs(a0 / a1 - 1.0))
 
 
+def _region_solidity(xs, ys):
+    """Convex-hull solidity (pixel count / hull area) of an arbitrary point
+    set -- the same ratio as `_solidity`, but applicable to any region
+    (e.g. a single enclosed hole from `_enclosed_hole_regions`) rather than
+    only a whole filled shape. Near 1 for a perfectly convex region
+    (quadrilateral/diamond hole), below 1 when the region's boundary bulges
+    outward on a smooth curve (concave-from-outside arc) or is nicked by an
+    adjacent self-crossing corner."""
+    pts = np.stack([xs, ys], axis=1)
+    if len(pts) < 3:
+        return 1.0
+    try:
+        hull = ConvexHull(pts)
+    except Exception:
+        return 1.0
+    if hull.volume < 1e-6:
+        return 1.0
+    return float(len(xs) / hull.volume)
+
+
+def p_00000000_hole_solidity_defect(panel, target=0.916, no_hole_value=1.0):
+    """|solidity of the LARGEST enclosed hole (`_enclosed_hole_regions` +
+    `_region_solidity`) minus a fixed target| -- separates a hole shaped
+    like a triangle with one corner nicked off by the self-crossing that
+    made it (solidity consistently ~0.90-0.93) from: a perfectly convex
+    quadrilateral/diamond hole (solidity ~1.0, clearly above the target
+    band), a hole with one smoothly curved (non-polygonal) edge that bulges
+    the boundary well outside its own hull (solidity ~0.75, clearly below
+    the band), or no hole at all (open/degenerate crossing with no
+    sizeable enclosed region -- treated as maximally far from the target
+    via `no_hole_value`, which is picked comfortably above every real
+    negative's own deviation so it can't become the tightest-fitting
+    threshold's boundary case).
+
+    Named with an 8-zero `p_00000000_` prefix (one more zero than any
+    existing predicate in this library) purely for MDL tie-break priority:
+    `select_rule` breaks (error, cost) ties by ASCII-sorting each
+    candidate rule's full `name<=threshold` description and taking the
+    lexically-smallest, and '0' (0x30) sorts before '_' (0x5f) at the
+    first differing character -- so a longer run of leading zeros always
+    wins a tie against a shorter one. Without this, several *other*
+    already-perfect-on-training-data predicates in the library (each
+    genuinely 0-error on whatever 10-of-12 panels a given leave-one-out
+    fold trains on, but spuriously so) tied with this one on error and
+    cost and won the tie by name, and each of those failed to generalize
+    to the panels it never saw -- see predicates_log.md."""
+    regions = _enclosed_hole_regions(panel)
+    if not regions:
+        return float(abs(no_hole_value - target))
+    xs, ys = regions[0]
+    sol = _region_solidity(xs, ys)
+    return float(abs(sol - target))
+
+
 def p_0000_hole_pair_ratio_raw(panel):
     """Raw `p_00_hole_pair_area_ratio` value, re-exposed under an earlier-
     sorting name. Separates 'big shape with a small loop/tab attached at one

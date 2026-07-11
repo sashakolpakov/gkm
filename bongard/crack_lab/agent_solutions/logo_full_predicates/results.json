@@ -227,8 +227,8 @@
     "problem_id": "bd_asymmetric_unbala_x_0158",
     "category": "basic",
     "concept": "asymmetric_unbala_x",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=30.41"
+    "solved": true,
+    "rule": "p_00000000_hole_solidity_defect<=0.05034"
   },
   "problem_33": {
     "problem_id": "bd_asymmetric_house_0075",

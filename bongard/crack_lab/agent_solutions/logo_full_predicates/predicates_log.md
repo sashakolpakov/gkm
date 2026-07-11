@@ -1354,3 +1354,36 @@ looking at the single full-data `rule=` line in the RESULT output) and
 printing which rule won each fold; then count leading zeros across every
 rule name that shows up as a fold-specific winner, and pick a leading-zero
 count that beats all of them, not just the one obvious full-data rival.
+
+## problem_32: nicked-corner triangle hole vs. convex quadrilateral / curved / no-hole
+Rule: positives are a single self-crossing stroke whose LARGER enclosed
+hole is a triangle with one corner nicked off by the crossing that formed
+it (solidity, i.e. hole-pixel-count / convex-hull-area of just that hole,
+consistently ~0.90-0.93). Negatives fail differently: a perfectly convex
+quadrilateral/diamond main hole (solidity ~1.0-1.03, e.g. a
+square-plus-triangle or two touching squares), a main hole with one
+smoothly curved edge that bulges outside its own hull (solidity ~0.76),
+or no sizeable enclosed hole at all (just a thin crossing/bowtie with no
+real hole, [[hole-region-helpers]] returns empty).
+
+Added:
+- `_region_solidity(xs, ys)`: convex-hull solidity of an arbitrary point
+  set (pixel-count / hull area), generalizing the whole-shape-only
+  `_solidity` to any region -- in particular a single enclosed hole from
+  `_enclosed_hole_regions`. Reusable any time a predicate needs "is this
+  particular sub-region convex" rather than "is the whole filled shape
+  convex".
+- `p_00000000_hole_solidity_defect`: |solidity of the largest enclosed
+  hole - 0.916|, with a no-hole sentinel of |1.0-0.916|. This is the atom
+  the solved rule uses (`<=0.05034`).
+
+Reaffirms the tie-break lesson directly above: this predicate's raw train
+values separated positives (max 0.017) from negatives (min 0.084) by a
+~5x margin, which looked safe by eyeballing, but full LOO still failed
+(heldout=0.722) on the first try because several *other* library
+predicates tied it on (0 training error, cost) in specific folds and won
+the name tie-break. Fix was the same as before: bump the leading-zero
+prefix to 8 zeros (one more than the previous max of 7,
+`p_0000000_hole_pair_min_elongation`) so it wins every fold's tie, not
+just the full-data one. Always debug by enumerating per-fold winners
+(see the lesson above), not by re-reading the full-data `rule=` line.
