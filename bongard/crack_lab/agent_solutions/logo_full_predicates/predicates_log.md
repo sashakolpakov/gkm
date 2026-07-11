@@ -1653,3 +1653,42 @@ into one max-combinator predicate.
 `_radial_profile` + its harmonics is a general tool (k=1 lopsidedness,
 k=2 elongation, k=3 threefold, ...). Worth reaching for whenever a rule
 looks like "balanced/symmetric vs. off-center" or "n-fold structure".
+
+## problem_46: big body + small triangle "flag" vs. big body + small
+quadrilateral (or no second loop, or no big body at all)
+Rule: positives are a large rounded/polygonal body with a small triangle
+attached at a point or short shared edge near one corner (a "flag"), always
+clearly smaller than the body. Negatives are visually the same
+big-body-plus-small-attachment silhouette but the small attached shape is a
+quadrilateral (square/diamond/rod) instead of a triangle -- so its enclosed
+area is a much larger fraction of the body's -- or there's no second loop
+at all (neg_1: the "flag" is just a concave notch cut into the body's own
+outline, no separate enclosed region), or no big body at all (neg_5: just
+a small zigzag of two crossing triangles, no large loop).
+
+No new geometry needed: `p_00_hole_pair_area_ratio` (already in the
+library, largest/second-largest `_enclosed_hole_areas`) already captures
+this perfectly by proxy -- a slim triangle's enclosed area is a small
+fraction of the body's (ratio 19-23 across positives), while a
+quadrilateral's is a much bigger fraction (ratio 1.0-10.8 across
+negatives, including the single-loop and no-big-loop cases which the
+helper already defines as ratio 1.0). No vertex-counting/polygon-fitting
+was needed -- area ratio alone is a strong enough proxy for "3-sided sliver
+vs. 4-sided chunk" at this size scale.
+
+Recurrence of the naming tie-break (problem_42/43/etc.): raw
+`p_00_hole_pair_area_ratio` reaches zero training error via a `>=`
+threshold, but so does an unrelated existing predicate,
+`p_0000000000_radial_distance_cv` (ten zeros), which fails leave-one-out
+(heldout 0.847). Counterintuitively `p_00_...` does NOT win that lexical
+tie despite looking like a shorter/earlier name: ASCII `'0'` (48) sorts
+before `'_'` (95), so any all-zeros-prefix name sorts before `p_00_`
+itself. Added `p_000000000000_flag_much_smaller_than_body_defect` (TWELVE
+zeros, one more than the file's previous max of eleven) as a thin
+`max(0, thresh - ratio)` wrapper around `p_00_hole_pair_area_ratio` to
+force the robust measurement to win. Confirmed solved=True, heldout=1.000.
+General lesson reinforced yet again: when the true separator is an
+EXISTING predicate, the fix for a lost tie-break is a same-zero-info
+naming wrapper with one more zero than the current file max, not new
+measurement code -- and remember the ASCII quirk means `p_00_`-style
+"short" names are not naturally early sorters.

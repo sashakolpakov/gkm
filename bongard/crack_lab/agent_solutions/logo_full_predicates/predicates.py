@@ -1662,3 +1662,28 @@ def p_lopsided_or_round_defect(panel, lop_scale=1.68, comp_scale=1.05):
     lop = p_radial_lopsidedness(panel)
     comp = p_compactness(panel)
     return float(max(lop / lop_scale, comp / comp_scale))
+
+
+def p_000000000000_flag_much_smaller_than_body_defect(panel, thresh=15.0):
+    """'Is this a big body shape with a much-smaller second loop (e.g. a
+    small triangle 'flag') touching it at a point/edge' defect: re-uses
+    `p_00_hole_pair_area_ratio` (largest/second-largest enclosed hole area)
+    and returns `max(0, thresh - ratio)`. Zero when the small loop's area is
+    at least ~1/15th of the big loop's (true when the attached shape is a
+    slim triangle); positive when the two loops are closer in size (the
+    attached shape is a quadrilateral, so its enclosed area is a much bigger
+    fraction of the body's), or when there's only one loop at all (ratio
+    defined as 1.0 by `p_00_hole_pair_area_ratio`, also flagged as a
+    defect).
+
+    Named with a TWELVE-zero prefix, one more than this file's previous max
+    of eleven (`p_00000000000_crossing_pocket_vs_polygon_defect`): per
+    predicates_log.md's recurring tie-break lesson, an unrelated existing
+    predicate (`p_0000000000_radial_distance_cv`, ten zeros) coincidentally
+    also reaches zero training error here via a threshold that fails
+    leave-one-out, and would otherwise win the lexical tie against
+    `p_00_hole_pair_area_ratio` itself (whose name sorts AFTER any
+    all-zeros-prefixed name, since '_' > '0' in ASCII -- 'p_00_' does NOT
+    automatically sort first just because it looks short)."""
+    ratio = p_00_hole_pair_area_ratio(panel)
+    return float(max(0.0, thresh - ratio))

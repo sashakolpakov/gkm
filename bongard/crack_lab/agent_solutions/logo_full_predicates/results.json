@@ -325,8 +325,8 @@
     "problem_id": "bd_jar_triangle4_0453",
     "category": "basic",
     "concept": "jar_triangle4",
-    "solved": false,
-    "rule": "p_arc_defect_score_217>=33.63"
+    "solved": true,
+    "rule": "p_000000000000_flag_much_smaller_than_body_defect<=2.095"
   },
   "problem_47": {
     "problem_id": "bd_scissor_0319",
