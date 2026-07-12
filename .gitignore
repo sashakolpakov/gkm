@@ -85,6 +85,7 @@ opine-world/
 
 # Bongard crack-lab generated predicates, transcripts, and image arrays
 bongard/crack_lab/agent_solutions/
+bongard/crack_lab/semantic_runs/
 
 # GKM run artifacts: generated programs + per-game leg workspaces
 # (override locations with GKM_PROGRAMS_DIR / GKM_SCRATCH)

@@ -1,0 +1,92 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+
+\title{Bongard Semantic Cones}
+\author{Alexander Kolpakov}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The Bongard system in this repository has been extended with typed semantic
+cones alongside the existing unrestricted predicate-search control.  The target
+of the semantic track is not merely to find reusable differentiators over pixels.
+The target is to recover human-like semantic descriptions whose executable
+decisions factor through declared objects, bindings, relations, and nuisance
+morphisms.  Kolmogorov/MDL selection remains the outer selector, but only among
+admissible semantic cones.
+\end{abstract}
+
+\section{Problem}
+
+A Bongard task contains a small positive class and a small negative class.
+Many functions can separate twelve panels.  Some are genuine semantic
+descriptions; many are accidental differentiators.  A reusable differentiator
+may be Kolmogorov-cheap while still failing to match the human concept.  The
+system must therefore distinguish semantic recovery from unrestricted
+classification.
+
+\section{Semantic Cone}
+
+Let $\mathcal P$ be an operational category of panel representations and
+transformations.  Let $\mathcal S$ be a typed relational category containing
+scenes, objects, descriptors, measurements, relations, and Booleans.  A
+semantic realization is a functor-like map
+\[
+S : \mathcal P \to \mathcal S .
+\]
+
+A hypothesis is a typed diagram $D_H : J \to \mathcal S$.  A solution is an
+executable cone over that diagram.  The final predicate must factor as
+\[
+p_H = \beta \circ r \circ b \circ S,
+\]
+where $b$ selects and binds variables, $r$ evaluates declared measurements or
+relations, and $\beta$ evaluates the Boolean rule.  A direct panel function
+$q : \mathrm{Panel}\to\mathrm{Bool}$ is not a semantic solution unless this
+factorization is exhibited by the compiler.
+
+\section{Human-Like Constraint}
+
+The artifact records the selected description.  A cone that uses only a direct
+panel statistic, such as total ink, is reported as a measurement-only control,
+not as a semantic-pure solve.  Semantic-pure admission requires an object or
+relation factorization and declared preservation morphisms.  This does not
+prove that the English sentence is uniquely human, but it rejects the known
+failure in which natural language and code are merely paired rather than
+causally connected.
+
+\section{Verification}
+
+Thresholds are fit by leave-one-out folds.  Declared nuisance morphisms define
+naturality obligations, and contrast interventions define discriminative
+obligations.  The verifier should report the first noncommuting node when a
+cone fails under transformation.
+
+\section{Selection}
+
+For a cone $C$ and promoted library $L$, the objective is
+\[
+F(C\mid L) =
+R_{\mathrm{support}} + R_{\mathrm{loo}} + R_{\mathrm{naturality}}
++ R_{\mathrm{contrast}} + \lambda K(C\mid L).
+\]
+Previously admitted legs are not recharged, but calls, bindings, diagrams, and
+parameters are charged.  The MDL term selects among admissible semantic cones;
+it does not license bypassing the semantic factorization.
+
+\section{Implementation Status}
+
+The active code paths are in \texttt{bongard/crack\_lab}.  The unrestricted
+\texttt{predicates.py} crack loop remains the control track.  The semantic
+runner accepts cofibered proposer outputs: typed cones over the current problem
+object.  Static cones are allowed only as unit test fixtures.  Hybrid solutions,
+when added, must label residual guards separately and price them explicitly.
+
+\bibliographystyle{plain}
+\bibliography{references}
+
+\end{document}
