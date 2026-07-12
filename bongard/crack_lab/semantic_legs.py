@@ -4,11 +4,18 @@ The unrestricted predicate path still lives in ``bongard_arena.py`` and
 ``bongard_legs.py``.  This module is the semantic-pure basis: every arrow has
 an auditable contract and returns either a typed witness or a scalar
 measurement derived from such witnesses.
+
+Honesty invariant: a witness-producing leg must verify the structure it
+claims.  ``detect_contact`` returns a ContactWitness only when parts actually
+meet at a junction; when the relation is absent it raises instead of
+fabricating evidence.  Absence claims are expressed through the honest
+counting measurements (``contact_count``, ``intersection_count``,
+``part_count``) which return 0 rather than raising.
 """
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any, Callable
 
 import numpy as np
@@ -20,6 +27,7 @@ from visual_witnesses import (
     CircleWitness,
     ContactWitness,
     ContourWitness,
+    CurveWitness,
     IntersectionWitness,
     LineSegmentWitness,
     PartGraphWitness,
@@ -87,33 +95,122 @@ class LegRegistry:
         return tuple(sorted({leg.codomain for leg in self._legs.values()}))
 
 
-def _component_masks(panel: np.ndarray, min_pixels: int = 3) -> tuple[ObjectMask, ...]:
-    ink = np.asarray(panel, dtype=np.uint8) > 0
-    h, w = ink.shape
-    seen = np.zeros_like(ink, dtype=bool)
-    objects: list[ObjectMask] = []
-    for y0, x0 in np.argwhere(ink):
-        if seen[y0, x0]:
-            continue
-        stack = [(int(y0), int(x0))]
-        seen[y0, x0] = True
-        pts: list[tuple[int, int]] = []
+# ---------------------------------------------------------------------------
+# Pixel-graph helpers.  Panels are 1-px stroke drawings, so the mask itself
+# is the curve; degree analysis on the 8-neighbourhood gives endpoints,
+# junctions and cycles.
+# ---------------------------------------------------------------------------
+
+_NEIGHBOR_OFFSETS = tuple((dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
+                          if (dy, dx) != (0, 0))
+
+
+def _degree_map(mask: np.ndarray) -> dict[tuple[int, int], int]:
+    coords = {(int(y), int(x)) for y, x in np.argwhere(mask)}
+    return {
+        p: sum((p[0] + dy, p[1] + dx) in coords for dy, dx in _NEIGHBOR_OFFSETS)
+        for p in coords
+    }
+
+
+def _degrees(mask: np.ndarray) -> tuple[int, int, int]:
+    deg = _degree_map(mask)
+    endpoints = sum(1 for d in deg.values() if d <= 1)
+    branches = sum(1 for d in deg.values() if d >= 3)
+    edges = sum(deg.values()) // 2
+    cycles = max(0, edges - len(deg) + 1) if deg else 0
+    return endpoints, branches, cycles
+
+
+def _cluster_points(points: set[tuple[int, int]]) -> list[set[tuple[int, int]]]:
+    clusters: list[set[tuple[int, int]]] = []
+    remaining = set(points)
+    while remaining:
+        seed = remaining.pop()
+        cluster = {seed}
+        stack = [seed]
         while stack:
             y, x = stack.pop()
-            pts.append((y, x))
-            for dy in (-1, 0, 1):
-                for dx in (-1, 0, 1):
-                    if dy == 0 and dx == 0:
-                        continue
-                    yy, xx = y + dy, x + dx
-                    if 0 <= yy < h and 0 <= xx < w and ink[yy, xx] and not seen[yy, xx]:
-                        seen[yy, xx] = True
-                        stack.append((yy, xx))
-        if len(pts) >= min_pixels:
-            mask = np.zeros_like(ink, dtype=bool)
-            ys, xs = zip(*pts)
-            mask[list(ys), list(xs)] = True
-            objects.append(ObjectMask(mask, f"object_{len(objects)}"))
+            for dy, dx in _NEIGHBOR_OFFSETS:
+                p = (y + dy, x + dx)
+                if p in remaining:
+                    remaining.discard(p)
+                    cluster.add(p)
+                    stack.append(p)
+        clusters.append(cluster)
+    return clusters
+
+
+_JUMP_OFFSETS = tuple((dy, dx) for dy in (-2, -1, 0, 1, 2) for dx in (-2, -1, 0, 1, 2)
+                      if (dy, dx) != (0, 0) and max(abs(dy), abs(dx)) == 2)
+
+
+def _walk_order(coords: set[tuple[int, int]]) -> list[tuple[int, int]]:
+    """Order stroke pixels along the curve (endpoint-first, straightest-next).
+
+    Rasterized strokes contain 2-px staircase doublings; when the walk gets
+    locally stuck it may hop to an unvisited pixel at Chebyshev distance 2,
+    which keeps the ordering monotone along the curve without any thinning.
+    """
+    if not coords:
+        return []
+    deg = {
+        p: sum((p[0] + dy, p[1] + dx) in coords for dy, dx in _NEIGHBOR_OFFSETS)
+        for p in coords
+    }
+    endpoints = sorted(p for p, d in deg.items() if d <= 1)
+    current = endpoints[0] if endpoints else min(coords)
+    visited = {current}
+    path = [current]
+    prev_dir: tuple[float, float] | None = None
+    while True:
+        options = [
+            (current[0] + dy, current[1] + dx)
+            for dy, dx in _NEIGHBOR_OFFSETS
+            if (current[0] + dy, current[1] + dx) in coords
+            and (current[0] + dy, current[1] + dx) not in visited
+        ]
+        if not options:
+            options = [
+                (current[0] + dy, current[1] + dx)
+                for dy, dx in _JUMP_OFFSETS
+                if (current[0] + dy, current[1] + dx) in coords
+                and (current[0] + dy, current[1] + dx) not in visited
+            ]
+        if not options:
+            break
+        if prev_dir is None:
+            nxt = options[0]
+        else:
+            def straightness(p: tuple[int, int]) -> float:
+                vy, vx = p[0] - current[0], p[1] - current[1]
+                norm = math.hypot(vy, vx) or 1.0
+                return (vy * prev_dir[0] + vx * prev_dir[1]) / norm
+            nxt = max(options, key=straightness)
+        vy, vx = nxt[0] - current[0], nxt[1] - current[1]
+        norm = math.hypot(vy, vx) or 1.0
+        prev_dir = (vy / norm, vx / norm)
+        visited.add(nxt)
+        path.append(nxt)
+        current = nxt
+    return path
+
+
+def _mask_from_points(points: set[tuple[int, int]], shape: tuple[int, int]) -> np.ndarray:
+    mask = np.zeros(shape, dtype=bool)
+    if points:
+        ys, xs = zip(*points)
+        mask[list(ys), list(xs)] = True
+    return mask
+
+
+def _component_masks(panel: np.ndarray, min_pixels: int = 3) -> tuple[ObjectMask, ...]:
+    ink = np.asarray(panel, dtype=np.uint8) > 0
+    coords = {(int(y), int(x)) for y, x in np.argwhere(ink)}
+    objects: list[ObjectMask] = []
+    for cluster in _cluster_points(coords):
+        if len(cluster) >= min_pixels:
+            objects.append(ObjectMask(_mask_from_points(cluster, ink.shape), "tmp"))
     objects.sort(key=lambda o: int(o.mask.sum()), reverse=True)
     return tuple(ObjectMask(o.mask, f"object_{i}") for i, o in enumerate(objects))
 
@@ -206,63 +303,52 @@ def bbox_fill(obj: ObjectMask) -> float:
     return float(obj.mask.sum() / area)
 
 
-def _boundary_points(mask: np.ndarray) -> np.ndarray:
-    pts = []
-    h, w = mask.shape
-    for y, x in np.argwhere(mask):
-        boundary = False
-        for dy, dx in ((1, 0), (-1, 0), (0, 1), (0, -1)):
-            yy, xx = int(y) + dy, int(x) + dx
-            if yy < 0 or yy >= h or xx < 0 or xx >= w or not mask[yy, xx]:
-                boundary = True
-                break
-        if boundary:
-            pts.append((float(x), float(y)))
-    return np.asarray(pts, dtype=float)
-
+# ---------------------------------------------------------------------------
+# Contours and curve geometry.
+# ---------------------------------------------------------------------------
 
 def extract_contours(obj: ObjectMask) -> ContourWitness:
-    pts = _boundary_points(obj.mask)
-    if len(pts) == 0:
-        return ContourWitness(source_component_id=obj.object_id, provenance=("extract_contours",))
-    center = pts.mean(axis=0)
-    angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
-    order = np.argsort(angles)
-    ordered = tuple((float(x), float(y)) for x, y in pts[order])
+    coords = {(int(y), int(x)) for y, x in np.argwhere(obj.mask)}
+    if not coords:
+        return ContourWitness(source_component_id=obj.object_id,
+                              provenance=("extract_contours",))
+    deg = _degree_map(obj.mask)
+    endpoints = sum(1 for d in deg.values() if d <= 1)
+    is_closed = endpoints == 0
+    path = _walk_order(coords)
+    covered = len(path) / len(coords)
+    # Completeness is topological, not a raw coverage fraction: doubled
+    # raster pixels are legitimately skipped by the walk.
+    complete = False
+    if len(path) >= 2 and covered >= 0.6:
+        start, end = path[0], path[-1]
+        if is_closed:
+            complete = max(abs(start[0] - end[0]), abs(start[1] - end[1])) <= 2
+        else:
+            complete = deg[start] <= 1 and deg[end] <= 1 and start != end
+    if complete:
+        ordered = tuple((float(x), float(y)) for y, x in path)
+        confidence = 1.0
+    elif covered >= 0.8:
+        ordered = tuple((float(x), float(y)) for y, x in path)
+        confidence = covered
+    else:
+        pts = np.asarray([(x, y) for y, x in sorted(coords)], dtype=float)
+        center = pts.mean(axis=0)
+        angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
+        ordered = tuple((float(x), float(y)) for x, y in pts[np.argsort(angles)])
+        confidence = 0.5
     return ContourWitness(
         source_component_id=obj.object_id,
         points=ordered,
-        is_closed=True,
-        confidence=1.0,
+        is_closed=is_closed,
+        confidence=confidence,
         provenance=("extract_contours",),
     )
 
 
-def build_containment_tree(scene: Scene) -> PartGraphWitness:
-    return build_part_graph(scene)
-
-
-def _degrees(mask: np.ndarray) -> tuple[int, int, int]:
-    endpoints = branches = edge_count = 0
-    pts = np.argwhere(mask)
-    h, w = mask.shape
-    for y, x in pts:
-        deg = 0
-        for dy in (-1, 0, 1):
-            for dx in (-1, 0, 1):
-                if dy == 0 and dx == 0:
-                    continue
-                yy, xx = int(y) + dy, int(x) + dx
-                if 0 <= yy < h and 0 <= xx < w and mask[yy, xx]:
-                    deg += 1
-        edge_count += deg
-        if deg <= 1:
-            endpoints += 1
-        if deg >= 3:
-            branches += 1
-    edges = edge_count // 2
-    cycles = max(0, edges - len(pts) + 1) if len(pts) else 0
-    return endpoints, branches, cycles
+def contour_closedness(contour: ContourWitness) -> float:
+    return 1.0 if contour.is_closed else 0.0
 
 
 def build_skeleton_graph(obj: ObjectMask) -> SkeletonGraphWitness:
@@ -330,49 +416,128 @@ def curvature_extrema(curve: CurveWitness) -> SkeletonGraphWitness:
     )
 
 
-def _corner_vertices(contour: ContourWitness, max_vertices: int = 8) -> tuple[PointWitness, ...]:
+# ---------------------------------------------------------------------------
+# Polygon fitting via Ramer-Douglas-Peucker on the path-ordered contour.
+# ---------------------------------------------------------------------------
+
+def _rdp_indices(pts: np.ndarray, lo: int, hi: int, eps: float,
+                 keep: set[int]) -> None:
+    if hi <= lo + 1:
+        return
+    a, b = pts[lo], pts[hi]
+    chord = b - a
+    norm = float(np.hypot(*chord)) or 1.0
+    rel = pts[lo + 1:hi] - a
+    dist = np.abs(rel[:, 0] * chord[1] - rel[:, 1] * chord[0]) / norm
+    k = int(np.argmax(dist))
+    if float(dist[k]) > eps:
+        mid = lo + 1 + k
+        keep.add(mid)
+        _rdp_indices(pts, lo, mid, eps, keep)
+        _rdp_indices(pts, mid, hi, eps, keep)
+
+
+def _simplify_polyline(pts: np.ndarray, eps: float) -> list[int]:
+    keep: set[int] = {0, len(pts) - 1}
+    _rdp_indices(pts, 0, len(pts) - 1, eps, keep)
+    return sorted(keep)
+
+
+def _turn_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
+    v1, v2 = b - a, c - b
+    n1, n2 = float(np.hypot(*v1)), float(np.hypot(*v2))
+    if n1 < 1e-9 or n2 < 1e-9:
+        return 0.0
+    cosang = float(np.clip(np.dot(v1, v2) / (n1 * n2), -1.0, 1.0))
+    return math.degrees(math.acos(cosang))
+
+
+def _polygon_vertices(contour: ContourWitness) -> tuple[tuple[PointWitness, ...], float]:
     pts = np.asarray(contour.points, dtype=float)
-    if len(pts) == 0:
-        return ()
-    center = pts.mean(axis=0)
-    angles = np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0])
-    bins = np.linspace(-math.pi, math.pi, max_vertices + 1)
-    verts = []
-    for lo, hi in zip(bins[:-1], bins[1:]):
-        idx = np.where((angles >= lo) & (angles < hi))[0]
-        if len(idx) == 0:
-            continue
-        sub = pts[idx]
-        d = np.linalg.norm(sub - center, axis=1)
-        x, y = sub[int(np.argmax(d))]
-        verts.append(PointWitness(x=float(x), y=float(y), source_id=contour.source_component_id))
-    if len(verts) <= 5:
-        # Collapse near-duplicate angular bins for simple polygons.
-        dedup: list[PointWitness] = []
-        for v in verts:
-            if not dedup or math.hypot(v.x - dedup[-1].x, v.y - dedup[-1].y) > 3.0:
-                dedup.append(v)
-        verts = dedup
-    return tuple(verts)
-
-
-def detect_corners(contour: ContourWitness) -> PolygonWitness:
-    vertices = _corner_vertices(contour)
-    return PolygonWitness(
-        source_component_id=contour.source_component_id,
-        vertices=vertices,
-        side_count=len(vertices),
-        confidence=1.0 if len(vertices) >= 3 else 0.2,
-        provenance=contour.provenance + ("detect_corners",),
+    if len(pts) < 3:
+        return (), 1.0
+    extent = max(float(np.ptp(pts[:, 0])), float(np.ptp(pts[:, 1])), 1.0)
+    eps = max(2.0, 0.04 * extent)
+    if contour.is_closed:
+        # Split the loop at its two mutually farthest samples so RDP sees
+        # two open halves, then merge and drop near-straight vertices.
+        start = 0
+        far = int(np.argmax(np.linalg.norm(pts - pts[start], axis=1)))
+        lo, hi = sorted((start, far))
+        first = pts[lo:hi + 1]
+        second = np.concatenate((pts[hi:], pts[:lo + 1]))
+        idx1 = _simplify_polyline(first, eps)
+        idx2 = _simplify_polyline(second, eps)
+        ring = [tuple(first[i]) for i in idx1[:-1]] + \
+               [tuple(second[i]) for i in idx2[:-1]]
+        verts = [np.asarray(v) for v in ring]
+        kept = []
+        n = len(verts)
+        for i in range(n):
+            a, b, c = verts[(i - 1) % n], verts[i], verts[(i + 1) % n]
+            if _turn_angle(a, b, c) >= 12.0:
+                kept.append(b)
+    else:
+        idx = _simplify_polyline(pts, eps)
+        verts = [pts[i] for i in idx]
+        kept = [verts[0]]
+        for i in range(1, len(verts) - 1):
+            if _turn_angle(verts[i - 1], verts[i], verts[i + 1]) >= 12.0:
+                kept.append(verts[i])
+        kept.append(verts[-1])
+    dedup: list[np.ndarray] = []
+    for v in kept:
+        if not dedup or float(np.hypot(*(v - dedup[-1]))) > 3.0:
+            dedup.append(v)
+    if len(dedup) > 1 and float(np.hypot(*(dedup[0] - dedup[-1]))) <= 3.0 \
+            and contour.is_closed:
+        dedup.pop()
+    residual = _polygon_residual(pts, dedup, contour.is_closed) / extent
+    vertices = tuple(
+        PointWitness(x=float(v[0]), y=float(v[1]),
+                     source_id=contour.source_component_id)
+        for v in dedup
     )
+    return vertices, residual
 
 
-def decompose_into_line_segments(contour: ContourWitness) -> PolygonWitness:
-    return detect_corners(contour)
+def _polygon_residual(pts: np.ndarray, verts: list[np.ndarray],
+                      closed: bool) -> float:
+    if len(verts) < 2:
+        return float("inf")
+    edges = list(zip(verts, verts[1:]))
+    if closed:
+        edges.append((verts[-1], verts[0]))
+    dists = np.full(len(pts), np.inf)
+    for a, b in edges:
+        chord = b - a
+        length2 = float(chord @ chord) or 1.0
+        t = np.clip(((pts - a) @ chord) / length2, 0.0, 1.0)
+        proj = a + t[:, None] * chord
+        dists = np.minimum(dists, np.linalg.norm(pts - proj, axis=1))
+    return float(np.mean(dists))
 
 
 def fit_polygon(contour: ContourWitness) -> PolygonWitness:
-    return detect_corners(contour)
+    vertices, residual = _polygon_vertices(contour)
+    side_count = len(vertices) if contour.is_closed else max(0, len(vertices) - 1)
+    confidence = max(0.0, 1.0 - 10.0 * residual) if len(vertices) >= 2 else 0.1
+    return PolygonWitness(
+        source_component_id=contour.source_component_id,
+        vertices=vertices,
+        side_count=side_count,
+        residual=residual,
+        confidence=confidence,
+        provenance=contour.provenance + ("fit_polygon",),
+    )
+
+
+def detect_corners(contour: ContourWitness) -> PolygonWitness:
+    return fit_polygon(contour)
+
+
+def decompose_into_line_segments(contour: ContourWitness) -> PolygonWitness:
+    return fit_polygon(contour)
 
 
 def polygon_side_count(poly: PolygonWitness) -> float:
@@ -381,7 +546,7 @@ def polygon_side_count(poly: PolygonWitness) -> float:
 
 def classify_triangle(poly: PolygonWitness) -> TriangleWitness:
     if poly.side_count != 3:
-        raise ValueError("polygon is not a triangle")
+        raise ValueError(f"polygon has {poly.side_count} sides, not a triangle")
     return TriangleWitness(
         source_component_id=poly.source_component_id,
         vertices=poly.vertices,
@@ -393,7 +558,7 @@ def classify_triangle(poly: PolygonWitness) -> TriangleWitness:
 
 def classify_quadrilateral(poly: PolygonWitness) -> QuadrilateralWitness:
     if poly.side_count != 4:
-        raise ValueError("polygon is not a quadrilateral")
+        raise ValueError(f"polygon has {poly.side_count} sides, not a quadrilateral")
     return QuadrilateralWitness(
         source_component_id=poly.source_component_id,
         vertices=poly.vertices,
@@ -419,17 +584,29 @@ def fit_line_segment(contour: ContourWitness) -> LineSegmentWitness:
     )
 
 
-def fit_circle(contour: ContourWitness) -> CircleWitness:
+def _fit_circle_raw(contour: ContourWitness) -> CircleWitness:
     pts = np.asarray(contour.points, dtype=float)
     if len(pts) < 3:
         raise ValueError("not enough contour points for circle fit")
-    center = pts.mean(axis=0)
+    # Kåsa least-squares fit: correct for partial arcs, where the centroid
+    # of the samples is nowhere near the circle center.
+    a_mat = np.column_stack((2.0 * pts[:, 0], 2.0 * pts[:, 1], np.ones(len(pts))))
+    b_vec = pts[:, 0] ** 2 + pts[:, 1] ** 2
+    try:
+        (cx, cy, c), *_ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
+    except np.linalg.LinAlgError as exc:
+        raise ValueError("degenerate circle fit") from exc
+    center = np.array([float(cx), float(cy)])
+    radius_sq = float(c) + float(cx) ** 2 + float(cy) ** 2
+    if not np.isfinite(radius_sq) or radius_sq <= 0:
+        raise ValueError("degenerate circle fit")
+    radius = math.sqrt(radius_sq)
     radii = np.linalg.norm(pts - center, axis=1)
-    radius = float(np.mean(radii))
     residual = float(np.sqrt(np.mean((radii - radius) ** 2)) / max(radius, 1e-9))
     return CircleWitness(
         source_component_id=contour.source_component_id,
-        center=PointWitness(x=float(center[0]), y=float(center[1]), source_id=contour.source_component_id),
+        center=PointWitness(x=float(center[0]), y=float(center[1]),
+                            source_id=contour.source_component_id),
         radius=radius,
         support_points=tuple((float(x), float(y)) for x, y in pts[:: max(1, len(pts) // 32)]),
         residual=residual,
@@ -438,37 +615,47 @@ def fit_circle(contour: ContourWitness) -> CircleWitness:
     )
 
 
+def fit_circle(contour: ContourWitness) -> CircleWitness:
+    if not contour.is_closed:
+        raise ValueError("contour is open; a circle is a closed curve")
+    return _fit_circle_raw(contour)
+
+
 def fit_arc(contour: ContourWitness) -> ArcWitness:
-    circle = fit_circle(contour)
+    circle = _fit_circle_raw(contour)
+    pts = np.asarray(contour.points, dtype=float)
+    center = np.array([circle.center.x, circle.center.y])
+    angles = np.unwrap(np.arctan2(pts[:, 1] - center[1], pts[:, 0] - center[0]))
+    swept = math.degrees(abs(float(angles[-1] - angles[0]))) if len(angles) > 1 else 0.0
     return ArcWitness(
         source_component_id=contour.source_component_id,
         center=circle.center,
         radius=circle.radius,
-        angle_degrees=180.0,
+        angle_degrees=min(360.0, swept),
         residual=circle.residual,
         confidence=circle.confidence,
         provenance=circle.provenance + ("fit_arc",),
     )
 
 
-def decompose_curve_into_arcs_and_lines(contour: ContourWitness) -> PartGraphWitness:
-    part = PartWitness(
-        part_id=f"{contour.source_component_id}_curve",
-        role="curve",
-        source_component_id=contour.source_component_id,
-        contour=contour,
-        provenance=contour.provenance + ("decompose_curve_into_arcs_and_lines",),
-    )
-    return PartGraphWitness(parts=(part,), provenance=part.provenance)
+def arc_angle_degrees(arc: ArcWitness) -> float:
+    return float(arc.angle_degrees)
 
 
 def fit_multiple_circles(scene: Scene) -> CirclePairWitness:
-    circles = []
-    for obj in scene.objects[:2]:
-        circles.append(fit_circle(extract_contours(obj)))
-    if len(circles) < 2:
+    candidates: list[CircleWitness] = []
+    for obj in scene.objects[:4]:
+        contour = extract_contours(obj)
+        if len(contour.points) < 3:
+            continue
+        try:
+            candidates.append(_fit_circle_raw(contour))
+        except ValueError:
+            continue
+    candidates.sort(key=lambda c: c.residual)
+    if len(candidates) < 2:
         raise ValueError("need at least two circle candidates")
-    a, b = circles[:2]
+    a, b = candidates[:2]
     d = math.hypot(a.center.x - b.center.x, a.center.y - b.center.y)
     return CirclePairWitness(
         first=a,
@@ -480,32 +667,241 @@ def fit_multiple_circles(scene: Scene) -> CirclePairWitness:
     )
 
 
-def decompose_component_into_parts(obj: ObjectMask) -> PartGraphWitness:
-    contour = extract_contours(obj)
-    part = PartWitness(
-        part_id=f"{obj.object_id}_part_0",
-        role="principal",
-        source_component_id=obj.object_id,
-        contour=contour,
-        provenance=("decompose_component_into_parts",),
+# ---------------------------------------------------------------------------
+# Part decomposition at stroke junctions.  A junction is a pixel cluster of
+# degree >= 3; removing it splits the stroke into parts.  Clusters touching
+# only two parts are raster artifacts and get merged back.  Real junctions
+# become honest contact/intersection evidence: attachment for 3 incident
+# branches, crossing for 4 or more.
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class _Junction:
+    center: tuple[float, float]           # (x, y)
+    part_indices: tuple[int, ...]
+    branchiness: int
+
+
+def _decompose_mask(mask: np.ndarray, source_id: str,
+                    min_part_pixels: int = 4
+                    ) -> tuple[list[set[tuple[int, int]]], list[_Junction]]:
+    coords = {(int(y), int(x)) for y, x in np.argwhere(mask)}
+    if not coords:
+        return [], []
+    deg = _degree_map(mask)
+    junction_pixels = {p for p, d in deg.items() if d >= 3}
+    clusters = _cluster_points(junction_pixels)
+    remainder = coords - junction_pixels
+    raw_parts = [c for c in _cluster_points(remainder) if len(c) >= min_part_pixels]
+    tiny = [c for c in _cluster_points(remainder) if len(c) < min_part_pixels]
+
+    def adjacent_parts(cluster: set[tuple[int, int]],
+                       parts: list[set[tuple[int, int]]]) -> list[int]:
+        found = []
+        for i, part in enumerate(parts):
+            if any((y + dy, x + dx) in part
+                   for y, x in cluster for dy, dx in _NEIGHBOR_OFFSETS):
+                found.append(i)
+        return found
+
+    # Absorb tiny fragments into the nearest real part.
+    for frag in tiny:
+        fy, fx = next(iter(frag))
+        best, best_d = None, float("inf")
+        for i, part in enumerate(raw_parts):
+            py, px = next(iter(part))
+            d = abs(py - fy) + abs(px - fx)
+            if d < best_d:
+                best, best_d = i, d
+        if best is not None:
+            raw_parts[best] |= frag
+
+    # Merge parts across artifact clusters (only two incident branches means
+    # the stroke merely continues through a raster-thick spot).
+    parent = list(range(len(raw_parts)))
+
+    def find(i: int) -> int:
+        while parent[i] != i:
+            parent[i] = parent[parent[i]]
+            i = parent[i]
+        return i
+
+    def union(i: int, j: int) -> None:
+        parent[find(i)] = find(j)
+
+    real_clusters: list[tuple[set[tuple[int, int]], list[int]]] = []
+    for cluster in clusters:
+        adj = adjacent_parts(cluster, raw_parts)
+        if len(adj) <= 2:
+            for i in adj[1:]:
+                union(adj[0], i)
+            if adj:
+                raw_parts[adj[0]] |= cluster
+            continue
+        real_clusters.append((cluster, adj))
+
+    merged: dict[int, set[tuple[int, int]]] = {}
+    for i, part in enumerate(raw_parts):
+        merged.setdefault(find(i), set()).update(part)
+    part_list = sorted(merged.values(), key=len, reverse=True)
+    index_of = {find(i): None for i in range(len(raw_parts))}
+    for root in index_of:
+        for k, part in enumerate(part_list):
+            if merged[root] is part:
+                index_of[root] = k
+                break
+
+    junctions: list[_Junction] = []
+    for cluster, adj in real_clusters:
+        ys, xs = zip(*cluster)
+        center = (float(sum(xs)) / len(xs), float(sum(ys)) / len(ys))
+        parts_idx = tuple(sorted({index_of[find(i)] for i in adj
+                                  if index_of.get(find(i)) is not None}))
+        branchiness = sum(
+            1 for p, d in deg.items()
+            if p not in junction_pixels
+            and any((p[0] + dy, p[1] + dx) in cluster for dy, dx in _NEIGHBOR_OFFSETS)
+        )
+        junctions.append(_Junction(center, parts_idx, branchiness))
+    if not part_list:
+        part_list = [coords]
+    return part_list, junctions
+
+
+def _part_witness(points: set[tuple[int, int]], shape: tuple[int, int],
+                  part_id: str, source_id: str, provenance: tuple[str, ...]
+                  ) -> PartWitness:
+    sub = ObjectMask(_mask_from_points(points, shape), part_id)
+    contour = extract_contours(sub)
+    contour = ContourWitness(
+        source_component_id=source_id,
+        points=contour.points,
+        is_closed=contour.is_closed,
+        confidence=contour.confidence,
+        provenance=provenance,
     )
-    return PartGraphWitness(parts=(part,), provenance=("decompose_component_into_parts",))
+    return PartWitness(
+        part_id=part_id,
+        role="stroke",
+        source_component_id=source_id,
+        contour=contour,
+        provenance=provenance,
+    )
+
+
+def _graph_from_mask(mask: np.ndarray, source_id: str,
+                     provenance: tuple[str, ...]) -> PartGraphWitness:
+    parts_pts, junctions = _decompose_mask(mask, source_id)
+    parts = tuple(
+        _part_witness(pts, mask.shape, f"{source_id}_part_{i}", source_id, provenance)
+        for i, pts in enumerate(parts_pts)
+    )
+    contacts = []
+    adjacency = []
+    for j in junctions:
+        relation = "intersection" if j.branchiness >= 4 else "attachment"
+        point = PointWitness(x=j.center[0], y=j.center[1], source_id=source_id)
+        ids = [parts[i].part_id for i in j.part_indices if i < len(parts)]
+        for a in range(len(ids)):
+            for b in range(a + 1, len(ids)):
+                adjacency.append((ids[a], ids[b]))
+        if len(ids) >= 2:
+            witness_cls = IntersectionWitness if relation == "intersection" else ContactWitness
+            contacts.append(witness_cls(
+                source_a=ids[0], source_b=ids[1], points=(point,),
+                relation=relation, confidence=1.0,
+                provenance=provenance,
+            ))
+    return PartGraphWitness(
+        parts=parts,
+        contacts=tuple(contacts),
+        adjacency=tuple(adjacency),
+        confidence=1.0,
+        provenance=provenance,
+    )
+
+
+def decompose_component_into_parts(obj: ObjectMask) -> PartGraphWitness:
+    return _graph_from_mask(obj.mask, obj.object_id,
+                            ("decompose_component_into_parts",))
 
 
 def build_part_graph(value: Scene | ObjectMask) -> PartGraphWitness:
-    if isinstance(value, Scene):
-        parts = tuple(
-            PartWitness(part_id=f"{obj.object_id}_part", role="object",
-                        source_component_id=obj.object_id, contour=extract_contours(obj),
-                        provenance=("build_part_graph",))
-            for obj in value.objects
-        )
-    else:
-        parts = decompose_component_into_parts(value).parts
-    adjacency = tuple((parts[i].part_id, parts[j].part_id)
-                      for i in range(len(parts)) for j in range(i + 1, len(parts)))
-    return PartGraphWitness(parts=parts, adjacency=adjacency, provenance=("build_part_graph",))
+    if isinstance(value, ObjectMask):
+        return _graph_from_mask(value.mask, value.object_id, ("build_part_graph",))
+    parts: list[PartWitness] = []
+    contacts: list[ContactWitness] = []
+    adjacency: list[tuple[str, str]] = []
+    for obj in value.objects:
+        sub = _graph_from_mask(obj.mask, obj.object_id, ("build_part_graph",))
+        parts.extend(sub.parts)
+        contacts.extend(sub.contacts)
+        adjacency.extend(sub.adjacency)
+    return PartGraphWitness(
+        parts=tuple(parts),
+        contacts=tuple(contacts),
+        adjacency=tuple(adjacency),
+        confidence=1.0,
+        provenance=("build_part_graph",),
+    )
 
+
+def build_containment_tree(scene: Scene) -> PartGraphWitness:
+    return build_part_graph(scene)
+
+
+def decompose_curve_into_arcs_and_lines(contour: ContourWitness) -> PartGraphWitness:
+    pts = np.asarray(contour.points, dtype=float)
+    if len(pts) < 2:
+        raise ValueError("contour too small to decompose")
+    vertices, _residual = _polygon_vertices(contour)
+    cuts = [0]
+    vert_xy = [np.array([v.x, v.y]) for v in vertices]
+    for v in vert_xy:
+        idx = int(np.argmin(np.linalg.norm(pts - v, axis=1)))
+        cuts.append(idx)
+    cuts.append(len(pts) - 1)
+    cuts = sorted(set(cuts))
+    parts = []
+    contacts = []
+    adjacency = []
+    prov = contour.provenance + ("decompose_curve_into_arcs_and_lines",)
+    for k, (a, b) in enumerate(zip(cuts[:-1], cuts[1:])):
+        if b - a < 2:
+            continue
+        seg_points = tuple((float(x), float(y)) for x, y in pts[a:b + 1])
+        seg_contour = ContourWitness(
+            source_component_id=contour.source_component_id,
+            points=seg_points, is_closed=False,
+            confidence=contour.confidence, provenance=prov,
+        )
+        parts.append(PartWitness(
+            part_id=f"{contour.source_component_id}_seg_{k}",
+            role="segment",
+            source_component_id=contour.source_component_id,
+            contour=seg_contour,
+            provenance=prov,
+        ))
+    for prev, nxt in zip(parts[:-1], parts[1:]):
+        adjacency.append((prev.part_id, nxt.part_id))
+        joint = prev.contour.points[-1]
+        contacts.append(ContactWitness(
+            source_a=prev.part_id, source_b=nxt.part_id,
+            points=(PointWitness(x=joint[0], y=joint[1],
+                                 source_id=contour.source_component_id),),
+            relation="shared_endpoint", confidence=1.0, provenance=prov,
+        ))
+    if not parts:
+        raise ValueError("no curve segments found")
+    return PartGraphWitness(parts=tuple(parts), contacts=tuple(contacts),
+                            adjacency=tuple(adjacency), confidence=1.0,
+                            provenance=prov)
+
+
+# ---------------------------------------------------------------------------
+# Honest relation witnesses.  These raise when the relation is absent; the
+# counting measurements below return 0 instead.
+# ---------------------------------------------------------------------------
 
 def _part_centroid(part: PartWitness) -> PointWitness:
     if not part.contour or not part.contour.points:
@@ -517,12 +913,10 @@ def _part_centroid(part: PartWitness) -> PointWitness:
 
 def detect_contact(graph: PartGraphWitness) -> ContactWitness:
     if len(graph.parts) < 2:
-        raise ValueError("need at least two parts")
-    a, b = graph.parts[:2]
-    pa, pb = _part_centroid(a), _part_centroid(b)
-    mid = PointWitness(x=(pa.x + pb.x) / 2.0, y=(pa.y + pb.y) / 2.0, source_id="contact")
-    return ContactWitness(source_a=a.part_id, source_b=b.part_id, points=(mid,),
-                          provenance=graph.provenance + ("detect_contact",))
+        raise ValueError("need at least two parts to witness contact")
+    if not graph.contacts:
+        raise ValueError("no contact between parts")
+    return max(graph.contacts, key=lambda c: c.confidence)
 
 
 def detect_attachment(graph: PartGraphWitness) -> ContactWitness:
@@ -532,29 +926,36 @@ def detect_attachment(graph: PartGraphWitness) -> ContactWitness:
 def detect_tangency(graph: PartGraphWitness) -> ContactWitness:
     c = detect_contact(graph)
     return ContactWitness(source_a=c.source_a, source_b=c.source_b, points=c.points,
-                          relation="tangency",
+                          relation="tangency", confidence=c.confidence,
                           provenance=c.provenance + ("detect_tangency",))
 
 
-def detect_intersection(value: PartGraphWitness | CirclePairWitness) -> IntersectionWitness:
-    if isinstance(value, CirclePairWitness):
-        return circle_pair_intersection(value)
-    c = detect_contact(value)
-    return IntersectionWitness(source_a=c.source_a, source_b=c.source_b, points=c.points,
-                               provenance=c.provenance + ("detect_intersection",))
+def detect_intersection(graph: PartGraphWitness) -> IntersectionWitness:
+    crossings = [c for c in graph.contacts if c.relation == "intersection"]
+    if not crossings:
+        raise ValueError("no crossing junction between parts")
+    best = max(crossings, key=lambda c: c.confidence)
+    return IntersectionWitness(
+        source_a=best.source_a, source_b=best.source_b, points=best.points,
+        confidence=best.confidence,
+        provenance=best.provenance + ("detect_intersection",),
+    )
 
 
 def detect_shared_endpoint(graph: PartGraphWitness) -> ContactWitness:
+    shared = [c for c in graph.contacts if c.relation == "shared_endpoint"]
+    if shared:
+        return shared[0]
     c = detect_contact(graph)
     return ContactWitness(source_a=c.source_a, source_b=c.source_b, points=c.points,
-                          relation="shared_endpoint",
+                          relation="shared_endpoint", confidence=c.confidence,
                           provenance=c.provenance + ("detect_shared_endpoint",))
 
 
 def detect_shared_point(graph: PartGraphWitness) -> ContactWitness:
     c = detect_contact(graph)
     return ContactWitness(source_a=c.source_a, source_b=c.source_b, points=c.points,
-                          relation="shared_point",
+                          relation="shared_point", confidence=c.confidence,
                           provenance=c.provenance + ("detect_shared_point",))
 
 
@@ -577,6 +978,18 @@ def circle_pair_intersection(pair: CirclePairWitness) -> CircleIntersectionWitne
         residual=pair.residual,
         provenance=pair.provenance + ("circle_pair_intersection",),
     )
+
+
+def part_count(graph: PartGraphWitness) -> float:
+    return float(len(graph.parts))
+
+
+def contact_count(graph: PartGraphWitness) -> float:
+    return float(len(graph.contacts))
+
+
+def intersection_count(graph: PartGraphWitness) -> float:
+    return float(sum(1 for c in graph.contacts if c.relation == "intersection"))
 
 
 def reflection_symmetry(obj: ObjectMask) -> SymmetryWitness:
@@ -621,18 +1034,38 @@ def symmetry_residual(obj: ObjectMask) -> float:
 
 
 def detect_radial_arrangement(graph: PartGraphWitness) -> RadialArrangementWitness:
-    centers = tuple(_part_centroid(p) for p in graph.parts)
-    if centers:
+    if len(graph.parts) < 3:
+        raise ValueError("need at least three parts for a radial arrangement")
+    centers = [_part_centroid(p) for p in graph.parts]
+    hub_contacts = [c for c in graph.contacts if c.points]
+    if hub_contacts:
+        hub = max(
+            hub_contacts,
+            key=lambda c: sum(1 for a, b in graph.adjacency
+                              if c.source_a in (a, b) or c.source_b in (a, b)),
+        ).points[0]
+        cx, cy = hub.x, hub.y
+    else:
         cx = sum(p.x for p in centers) / len(centers)
         cy = sum(p.y for p in centers) / len(centers)
-    else:
-        cx = cy = 0.0
+    angles = sorted(math.atan2(p.y - cy, p.x - cx) for p in centers)
+    gaps = [angles[i + 1] - angles[i] for i in range(len(angles) - 1)]
+    gaps.append(2 * math.pi - (angles[-1] - angles[0]))
+    mean_gap = sum(gaps) / len(gaps)
+    gap_var = sum((g - mean_gap) ** 2 for g in gaps) / len(gaps)
+    uniformity = max(0.0, 1.0 - math.sqrt(gap_var) / max(mean_gap, 1e-9))
+    radii = [math.hypot(p.x - cx, p.y - cy) for p in centers]
+    mean_r = sum(radii) / len(radii)
+    radius_var = sum((r - mean_r) ** 2 for r in radii) / len(radii)
+    evenness = max(0.0, 1.0 - math.sqrt(radius_var) / max(mean_r, 1e-9))
+    confidence = min(uniformity, evenness)
     return RadialArrangementWitness(
         center=PointWitness(x=cx, y=cy, source_id="radial_center"),
         parts=graph.parts,
         part_count=len(graph.parts),
         symmetry_order=len(graph.parts),
-        confidence=1.0 if len(graph.parts) >= 3 else 0.4,
+        confidence=confidence,
+        residual=1.0 - confidence,
         provenance=graph.provenance + ("detect_radial_arrangement",),
     )
 
@@ -642,6 +1075,7 @@ def pair_parts_by_symmetry(graph: PartGraphWitness) -> PartGraphWitness:
 
 
 def prototype_bird_like(graph: PartGraphWitness) -> PrototypeWitness:
+    """Kept only as a template for future promoted macros; not registered."""
     roles = {}
     for idx, role in enumerate(("body", "left_appendage", "right_appendage")):
         if idx < len(graph.parts):
@@ -698,40 +1132,47 @@ def default_registry() -> LegRegistry:
         _reg("binarize_panel", ("Panel",), "BinaryPanel", binarize_panel, 1),
         _reg("parse_scene", ("Panel",), "Scene", parse_scene, 4, common_inv),
         _reg("extract_connected_components", ("Panel",), "Scene", extract_connected_components, 4, common_inv),
-        _reg("extract_contours", ("Object",), "ContourWitness", extract_contours, 4, common_inv),
+        _reg("extract_contours", ("Object",), "ContourWitness", extract_contours, 4, common_inv, proxy_for=("curve", "contour", "stroke", "boundary", "outline", "path")),
+        _reg("contour_closedness", ("ContourWitness",), "Measurement", contour_closedness, 1, common_inv, proxy_for=("open", "closed", "closure", "openness", "closedness", "loop")),
         _reg("build_containment_tree", ("Scene",), "PartGraphWitness", build_containment_tree, 3, common_inv),
-        _reg("skeletonize_component", ("Object",), "SkeletonGraphWitness", skeletonize_component, 3, common_inv),
-        _reg("build_skeleton_graph", ("Object",), "SkeletonGraphWitness", build_skeleton_graph, 3, common_inv),
-        _reg("endpoint_count", ("SkeletonGraphWitness",), "Measurement", endpoint_count, 1, common_inv),
-        _reg("branch_count", ("SkeletonGraphWitness",), "Measurement", branch_count, 1, common_inv),
-        _reg("cycle_count", ("SkeletonGraphWitness",), "Measurement", cycle_count, 1, common_inv),
+        _reg("skeletonize_component", ("Object",), "SkeletonGraphWitness", skeletonize_component, 3, common_inv, proxy_for=("skeleton", "path", "graph")),
+        _reg("build_skeleton_graph", ("Object",), "SkeletonGraphWitness", build_skeleton_graph, 3, common_inv, proxy_for=("skeleton", "path", "graph")),
+        _reg("endpoint_count", ("SkeletonGraphWitness",), "Measurement", endpoint_count, 1, common_inv, proxy_for=("endpoint", "end", "tip", "open", "closed")),
+        _reg("branch_count", ("SkeletonGraphWitness",), "Measurement", branch_count, 1, common_inv, proxy_for=("branch", "branching", "fork", "forked", "junction")),
+        _reg("cycle_count", ("SkeletonGraphWitness",), "Measurement", cycle_count, 1, common_inv, proxy_for=("cycle", "loop", "acyclic", "tree", "open", "closed")),
         _reg("estimate_tangents", ("ContourWitness",), "CurveWitness", estimate_tangents, 2, common_inv),
         _reg("estimate_curvature", ("ContourWitness",), "CurveWitness", estimate_curvature, 2, common_inv),
         _reg("curvature_extrema", ("CurveWitness",), "SkeletonGraphWitness", curvature_extrema, 2, common_inv),
-        _reg("decompose_curve_into_arcs_and_lines", ("ContourWitness",), "PartGraphWitness", decompose_curve_into_arcs_and_lines, 5, common_inv),
-        _reg("fit_line_segment", ("ContourWitness",), "LineSegmentWitness", fit_line_segment, 2, common_inv),
-        _reg("fit_arc", ("ContourWitness",), "ArcWitness", fit_arc, 3, common_inv),
-        _reg("fit_circle", ("ContourWitness",), "CircleWitness", fit_circle, 4, common_inv, failure_modes=("not_enough_points", "high_residual")),
+        _reg("decompose_curve_into_arcs_and_lines", ("ContourWitness",), "PartGraphWitness", decompose_curve_into_arcs_and_lines, 5, common_inv, failure_modes=("contour_too_small",)),
+        _reg("fit_line_segment", ("ContourWitness",), "LineSegmentWitness", fit_line_segment, 2, common_inv, proxy_for=("line", "segment", "straight")),
+        _reg("fit_arc", ("ContourWitness",), "ArcWitness", fit_arc, 3, common_inv, failure_modes=("not_enough_points",), proxy_for=("arc", "curved", "smooth")),
+        _reg("arc_angle_degrees", ("ArcWitness",), "Measurement", arc_angle_degrees, 1, common_inv, proxy_for=("angle", "sweep")),
+        _reg("arc_residual", ("ArcWitness",), "Measurement", witness_residual, 1, common_inv, proxy_for=("smooth", "arc")),
+        _reg("fit_circle", ("ContourWitness",), "CircleWitness", fit_circle, 4, common_inv, failure_modes=("not_enough_points", "open_contour", "high_residual")),
         _reg("fit_multiple_circles", ("Scene",), "CirclePairWitness", fit_multiple_circles, 8, common_inv, failure_modes=("fewer_than_two_candidates", "high_residual")),
         _reg("detect_corners", ("ContourWitness",), "PolygonWitness", detect_corners, 4, common_inv),
         _reg("decompose_into_line_segments", ("ContourWitness",), "PolygonWitness", decompose_into_line_segments, 4, common_inv),
-        _reg("fit_polygon", ("ContourWitness",), "PolygonWitness", fit_polygon, 5, common_inv),
+        _reg("fit_polygon", ("ContourWitness",), "PolygonWitness", fit_polygon, 5, common_inv, proxy_for=("polygon", "corner", "side", "sides", "angular", "vertex", "vertices", "bend")),
         _reg("polygon_side_count", ("PolygonWitness",), "Measurement", polygon_side_count, 1, common_inv),
-        _reg("classify_triangle", ("PolygonWitness",), "TriangleWitness", classify_triangle, 2, common_inv),
-        _reg("classify_quadrilateral", ("PolygonWitness",), "QuadrilateralWitness", classify_quadrilateral, 2, common_inv),
+        _reg("polygon_fit_residual", ("PolygonWitness",), "Measurement", witness_residual, 1, common_inv),
+        _reg("classify_triangle", ("PolygonWitness",), "TriangleWitness", classify_triangle, 2, common_inv, failure_modes=("wrong_side_count",)),
+        _reg("classify_quadrilateral", ("PolygonWitness",), "QuadrilateralWitness", classify_quadrilateral, 2, common_inv, failure_modes=("wrong_side_count",)),
         _reg("decompose_component_into_parts", ("Object",), "PartGraphWitness", decompose_component_into_parts, 5, common_inv),
         _reg("build_part_graph", ("Scene",), "PartGraphWitness", build_part_graph, 5, common_inv),
         _reg("build_object_part_graph", ("Object",), "PartGraphWitness", build_part_graph, 5, common_inv),
-        _reg("detect_attachment", ("PartGraphWitness",), "ContactWitness", detect_attachment, 3, common_inv),
-        _reg("detect_contact", ("PartGraphWitness",), "ContactWitness", detect_contact, 3, common_inv),
-        _reg("detect_tangency", ("PartGraphWitness",), "ContactWitness", detect_tangency, 3, common_inv),
-        _reg("detect_intersection", ("PartGraphWitness",), "IntersectionWitness", detect_intersection, 3, common_inv),
-        _reg("circle_pair_intersection", ("CirclePairWitness",), "CircleIntersectionWitness", circle_pair_intersection, 3, common_inv),
-        _reg("detect_shared_endpoint", ("PartGraphWitness",), "ContactWitness", detect_shared_endpoint, 2, common_inv),
-        _reg("detect_shared_point", ("PartGraphWitness",), "ContactWitness", detect_shared_point, 2, common_inv),
-        _reg("reflection_symmetry", ("Object",), "SymmetryWitness", reflection_symmetry, 3, common_inv),
-        _reg("rotational_symmetry_order", ("Object",), "SymmetryWitness", rotational_symmetry_order, 4, common_inv),
-        _reg("detect_radial_arrangement", ("PartGraphWitness",), "RadialArrangementWitness", detect_radial_arrangement, 5, common_inv),
+        _reg("detect_attachment", ("PartGraphWitness",), "ContactWitness", detect_attachment, 3, common_inv, failure_modes=("no_contact",), proxy_for=("attachment", "attached", "touching", "touch", "joined", "junction", "meet", "contact")),
+        _reg("detect_contact", ("PartGraphWitness",), "ContactWitness", detect_contact, 3, common_inv, failure_modes=("no_contact",), proxy_for=("contact", "touching", "touch", "adjacent")),
+        _reg("detect_tangency", ("PartGraphWitness",), "ContactWitness", detect_tangency, 3, common_inv, failure_modes=("no_contact",), proxy_for=("tangent", "tangency")),
+        _reg("detect_intersection", ("PartGraphWitness",), "IntersectionWitness", detect_intersection, 3, common_inv, failure_modes=("no_crossing",), proxy_for=("intersect", "intersecting", "intersection", "crossing", "cross", "overlap", "overlapping")),
+        _reg("circle_pair_intersection", ("CirclePairWitness",), "CircleIntersectionWitness", circle_pair_intersection, 3, common_inv, failure_modes=("no_intersection",), proxy_for=("intersect", "intersecting", "overlap")),
+        _reg("detect_shared_endpoint", ("PartGraphWitness",), "ContactWitness", detect_shared_endpoint, 2, common_inv, failure_modes=("no_contact",), proxy_for=("shared", "endpoint", "meeting")),
+        _reg("detect_shared_point", ("PartGraphWitness",), "ContactWitness", detect_shared_point, 2, common_inv, failure_modes=("no_contact",)),
+        _reg("part_count", ("PartGraphWitness",), "Measurement", part_count, 1, common_inv, proxy_for=("part", "parts", "segment", "piece", "component", "connected", "continuous", "unbroken", "disjoint", "separate")),
+        _reg("contact_count", ("PartGraphWitness",), "Measurement", contact_count, 1, common_inv, proxy_for=("contact", "touching", "attachment", "junction", "shared")),
+        _reg("intersection_count", ("PartGraphWitness",), "Measurement", intersection_count, 1, common_inv, proxy_for=("intersect", "intersecting", "intersection", "crossing", "cross", "overlap")),
+        _reg("reflection_symmetry", ("Object",), "SymmetryWitness", reflection_symmetry, 3, common_inv, proxy_for=("symmetric", "symmetrical", "mirror", "bilateral")),
+        _reg("rotational_symmetry_order", ("Object",), "SymmetryWitness", rotational_symmetry_order, 4, common_inv, proxy_for=("symmetric", "rotational")),
+        _reg("detect_radial_arrangement", ("PartGraphWitness",), "RadialArrangementWitness", detect_radial_arrangement, 5, common_inv, failure_modes=("fewer_than_three_parts",)),
         _reg("pair_parts_by_symmetry", ("PartGraphWitness",), "PartGraphWitness", pair_parts_by_symmetry, 3, common_inv),
         _reg("select_all_objects", ("Scene",), "Scene", select_all_objects, 1),
         _reg("select_principal_objects", ("Scene",), "Scene", select_principal_objects, 1),
@@ -741,18 +1182,20 @@ def default_registry() -> LegRegistry:
         _reg("select_inner_object", ("Scene",), "Object", select_inner_object, 1),
         _reg("select_outer_object", ("Scene",), "Object", select_outer_object, 1),
         _reg("select_parts", ("PartGraphWitness",), "PartGraphWitness", select_parts, 1),
-        _reg("object_count", ("Scene",), "Measurement", object_count, 1, proxy_for=("count",)),
+        _reg("object_count", ("Scene",), "Measurement", object_count, 1, proxy_for=("count", "component", "connected", "continuous", "unbroken", "disconnected", "disjoint", "separate")),
         _reg("total_ink", ("Panel",), "Measurement", total_ink, 1, proxy_for=("ink", "area")),
         _reg("largest_area", ("Scene",), "Measurement", largest_area, 1, proxy_for=("area",)),
-        _reg("bbox_aspect", ("Object",), "Measurement", bbox_aspect, 1, proxy_for=("elongated", "aspect")),
+        _reg("bbox_aspect", ("Object",), "Measurement", bbox_aspect, 1, proxy_for=("elongated", "aspect", "thin", "narrow", "wide", "slender")),
         _reg("bbox_fill", ("Object",), "Measurement", bbox_fill, 1, proxy_for=("sparse", "filled", "fill")),
         _reg("closure_ratio", ("Object",), "Measurement", closure_ratio, 2, proxy_for=("open", "closed")),
         _reg("symmetry_residual", ("Object",), "Measurement", symmetry_residual, 3, proxy_for=("symmetric", "asymmetric")),
         _reg("witness_confidence", ("TriangleWitness",), "Measurement", witness_confidence, 1),
         _reg("quadrilateral_confidence", ("QuadrilateralWitness",), "Measurement", witness_confidence, 1),
         _reg("circle_residual", ("CircleWitness",), "Measurement", witness_residual, 1),
+        _reg("contact_confidence", ("ContactWitness",), "Measurement", witness_confidence, 1),
         _reg("circle_intersection_confidence", ("CircleIntersectionWitness",), "Measurement", witness_confidence, 1),
         _reg("radial_part_count", ("RadialArrangementWitness",), "Measurement", radial_part_count, 1),
+        _reg("radial_uniformity", ("RadialArrangementWitness",), "Measurement", witness_confidence, 1),
         _reg("symmetry_order_score", ("SymmetryWitness",), "Measurement", symmetry_order_score, 1),
     ):
         reg.register(contract)

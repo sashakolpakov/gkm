@@ -155,6 +155,52 @@ relation_H(S(m(x))) ~= relation_H(S(x))
 
 The verifier should report the first noncommuting node, not just final accuracy.
 
+## 5a. Cofibrations are Gluing Morphisms
+
+Composite semantic structure is built by attaching a patch `P` to a source
+witness `A` along an interface `I`, i.e. by a pushout
+
+```text
+I  ---->  P
+|         |
+v         v
+A  --->  A ⊔_I P
+```
+
+The cofibration is the canonical morphism `A -> A ⊔_I P`. Two consequences
+fix the verified contract:
+
+1. It is NOT an inclusion on the nose. The gluing identifies structure along
+   `I`, so identifiers may be renamed, coordinates re-expressed, and derived
+   fields recomputed. The contract therefore verifies *glue-equivalence*: a
+   single consistent bijection of witness identifiers plus numeric tolerance
+   on geometry. Field-for-field equality (an earlier, wrong formulation)
+   rejects legitimate gluings the moment a part is renumbered.
+2. Projections split the gluing only up to that identification:
+   `proj(A ⊔_I P) ≅ A` over `I`, never `proj(...) == A`.
+
+Cofibration specs carry no concept content and are never library constants:
+the proposer generates each spec inside its cone IR (binding diagram nodes
+as source and target of the gluing), the compiler checks the declared nodes,
+types and attachment leg — a missing attachment leg is a MISSING_LEG demand,
+which keeps representation poverty visible — and the verifier checks
+glue-equivalence on the actual witness values of every panel. Hard-coded
+specs are admissible only as unit-test fixtures.
+
+## 5b. Generality of the Gate
+
+Nothing problem-specific is admissible anywhere in the harness: no concept
+lexicon, no per-concept requirement table, no hard-coded composite gluing.
+Term admissibility is audited against the leg registry itself: every
+declared term must be anchored by structure inside the score's dependency
+cone (witness types, legs, contract vocabulary) or by a declared gluing; a
+term naming registry-expressible structure the score does not execute is
+rejected as weakening; a term the registry cannot express at all surfaces
+as MISSING_LEG rather than riding on an unrelated scalar. Cone invariance
+(Section 5) is likewise executed generally: declared nuisance morphisms
+with exact pixel actions are applied to the panels and the decision must
+commute; morphisms without an exact action are reported as unchecked.
+
 ## 6. Contrast
 
 Contrast interventions are not label-preserving morphisms. They are controlled

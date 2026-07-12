@@ -8,7 +8,12 @@ import numpy as np
 
 from semantic_ir import SemanticHypothesis
 from semantic_legs import LegRegistry
-from semantic_requirements import MissingLeg, requirements_for_hypothesis
+from semantic_requirements import (
+    MissingLeg,
+    audit_term_coverage,
+    leg_suggestions,
+    term_tokens,
+)
 
 
 class CompileError(ValueError):
@@ -110,73 +115,112 @@ def compile_hypothesis(hypothesis: SemanticHypothesis,
         raise CompileError("score node must have type Measurement")
     if hypothesis.order not in {"low_positive", "high_positive"}:
         raise CompileError("order must be low_positive or high_positive")
+    complexity += sum(spec.complexity_cost for spec in hypothesis.cofibrations)
     cone = CompiledCone(hypothesis, tuple(used), env_types, dependencies, complexity)
+    _validate_gluings(cone, registry)
     _validate_semantic_requirements(cone, registry)
     return cone
+
+
+def _validate_gluings(cone: CompiledCone, registry: LegRegistry) -> None:
+    """Statically check proposer-generated gluing requests.
+
+    Nothing here is concept-specific: a gluing is admitted or rejected purely
+    on whether its declared nodes exist with the declared types and whether
+    its attachment leg is implemented.  A missing attachment leg is reported
+    as MISSING_LEG so representation poverty stays a visible outcome.
+    """
+    node_types = cone.node_types
+    score_deps = cone.node_dependencies.get(cone.hypothesis.score_node, frozenset())
+    available = tuple(sorted(set(node_types.values())))
+    for spec in cone.hypothesis.cofibrations:
+        if spec.attachment_leg:
+            try:
+                registry.get(spec.attachment_leg)
+            except KeyError:
+                raise MissingLegError(MissingLeg(
+                    semantic_term=spec.name,
+                    required_witness_types=tuple(
+                        t for t in (spec.source_type, spec.target_type) if t),
+                    available_terminal_types=available,
+                    unresolved_relation="gluing attachment leg is not implemented",
+                    attempted_paths=cone.used_legs,
+                    missing_legs=(spec.attachment_leg,),
+                ))
+        for node_attr, type_attr in (("source_node", "source_type"),
+                                     ("target_node", "target_type")):
+            node = getattr(spec, node_attr)
+            declared = getattr(spec, type_attr)
+            if not node:
+                continue
+            if node not in node_types:
+                raise CompileError(
+                    f"gluing {spec.name}: {node_attr} {node} is not a diagram node")
+            if declared and node_types[node] != declared:
+                raise CompileError(
+                    f"gluing {spec.name}: {node} has type {node_types[node]}, "
+                    f"declared {declared}")
+        if spec.target_node and spec.target_node not in score_deps:
+            raise MissingLegError(MissingLeg(
+                semantic_term=spec.name,
+                required_witness_types=tuple(
+                    t for t in (spec.source_type, spec.target_type) if t),
+                available_terminal_types=available,
+                unresolved_relation="gluing is decorative; final score does not depend on it",
+                attempted_paths=cone.used_legs,
+            ))
 
 
 def _validate_semantic_requirements(cone: CompiledCone, registry: LegRegistry) -> None:
     """Reject semantic weakening before verifier/MDL selection.
 
-    A description that names a rich concept must be witnessed by the compiled
-    graph.  Bbox/fill/aspect/closure scalars remain legal when explicitly
-    named as the concept, but they cannot stand in for triangle/circle/bird,
-    attachment, intersection, pinwheel, etc.
+    Every declared term must be witnessed by structure the score actually
+    depends on, be explicitly proxy-covered by a used leg's own contract, or
+    be carried by a declared gluing.  The audit is registry-driven; there is
+    no concept table to weaken.
     """
-    node_types = set(cone.node_types.values())
+    node_types = cone.node_types
     score_deps = cone.node_dependencies.get(cone.hypothesis.score_node, frozenset())
-    used = set(cone.used_legs)
-    available = tuple(sorted(node_types))
+    available = tuple(sorted(set(node_types.values())))
+    known_witness_types = tuple(
+        t for t in registry.terminal_types() if t.endswith("Witness"))
 
-    explicit_witnesses = tuple(getattr(cone.hypothesis, "witness_requirements", ()))
-    for witness_type in explicit_witnesses:
-        if witness_type and witness_type not in node_types:
-            raise MissingLegError(MissingLeg(
-                semantic_term=witness_type,
-                required_witness_types=(witness_type,),
-                available_terminal_types=available,
-                attempted_paths=cone.used_legs,
-            ))
+    # witness_requirements entries are free-form strings from the proposer:
+    # any exact witness type name found inside is enforced (present and
+    # load-bearing); phrases naming no known type fall through to the general
+    # term audit instead of being rejected on phrasing.
+    audit_extras: list[str] = []
+    for requirement in getattr(cone.hypothesis, "witness_requirements", ()):
+        if not requirement:
+            continue
+        named_types = [t for t in known_witness_types if t in requirement]
+        if not named_types:
+            audit_extras.append(requirement)
+            continue
+        for witness_type in named_types:
+            if witness_type not in node_types.values():
+                suggestions: tuple[str, ...] = ()
+                for token in term_tokens(witness_type):
+                    suggestions += leg_suggestions(token, registry)
+                raise MissingLegError(MissingLeg(
+                    semantic_term=witness_type,
+                    required_witness_types=(witness_type,),
+                    available_terminal_types=available,
+                    attempted_paths=cone.used_legs,
+                    missing_legs=tuple(dict.fromkeys(suggestions)),
+                ))
+            nodes_of_type = {n for n, t in node_types.items() if t == witness_type}
+            if not nodes_of_type & score_deps:
+                raise MissingLegError(MissingLeg(
+                    semantic_term=witness_type,
+                    required_witness_types=(witness_type,),
+                    available_terminal_types=available,
+                    unresolved_relation="required witness is decorative; final score does not depend on it",
+                    attempted_paths=cone.used_legs,
+                ))
 
-    for req in requirements_for_hypothesis(cone.hypothesis):
-        missing_types = tuple(t for t in req.primitive_required_types if t not in node_types)
-        accepted = any(t in node_types for t in req.accepted_types)
-        if missing_types or not accepted:
-            required = tuple(dict.fromkeys(req.primitive_required_types + req.accepted_types))
-            raise MissingLegError(MissingLeg(
-                semantic_term=req.term,
-                required_witness_types=required,
-                available_terminal_types=available,
-                unresolved_relation=req.unresolved_relation,
-                attempted_paths=cone.used_legs,
-                missing_legs=req.missing_legs,
-            ))
-
-        required_nodes = tuple(
-            name for name, typ in cone.node_types.items()
-            if typ in req.primitive_required_types or typ in req.accepted_types
-        )
-        if required_nodes and not any(node in score_deps for node in required_nodes):
-            raise MissingLegError(MissingLeg(
-                semantic_term=req.term,
-                required_witness_types=tuple(dict.fromkeys(req.primitive_required_types + req.accepted_types)),
-                available_terminal_types=available,
-                unresolved_relation="required witness is decorative; final score does not depend on it",
-                attempted_paths=cone.used_legs,
-            ))
-
-        proxy_only = used <= {
-            "parse_scene", "select_largest", "select_largest_object",
-            "select_principal_objects", "select_all_objects",
-            "bbox_fill", "bbox_aspect", "total_ink", "largest_area",
-            "closure_ratio", "symmetry_residual", "object_count",
-        }
-        if proxy_only:
-            raise MissingLegError(MissingLeg(
-                semantic_term=req.term,
-                required_witness_types=tuple(dict.fromkeys(req.primitive_required_types + req.accepted_types)),
-                available_terminal_types=available,
-                unresolved_relation="rich concept discharged only by scalar proxy legs",
-                attempted_paths=cone.used_legs,
-                missing_legs=req.missing_legs,
-            ))
+    failures = audit_term_coverage(
+        cone.hypothesis, node_types, score_deps, cone.used_legs, registry,
+        extra_terms=tuple(audit_extras))
+    if failures:
+        raise MissingLegError(failures[0])

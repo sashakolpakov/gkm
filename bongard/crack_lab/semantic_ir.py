@@ -6,6 +6,8 @@ import json
 from dataclasses import asdict, dataclass, field
 from typing import Any
 
+from cofibrations import CofibrationSpec
+
 
 Literal = str | int | float | bool | None
 
@@ -53,8 +55,11 @@ class MorphSpec:
 
     @staticmethod
     def from_dict(data: dict[str, Any]) -> "MorphSpec":
+        name = data.get("name") or data.get("description") or data.get("semantic_term")
+        if not name:
+            name = "unnamed_morphism"
         return MorphSpec(
-            name=str(data["name"]),
+            name=str(name),
             scope=str(data.get("scope", "panel")),
             expected_effect=str(data.get("expected_effect", "preserve")),
             parameters=dict(data.get("parameters", {})),
@@ -75,6 +80,9 @@ class SemanticHypothesis:
     semantic_requirements: tuple[str, ...] = ()
     witness_requirements: tuple[str, ...] = ()
     relations: tuple[str, ...] = ()
+    # Gluings are proposer-generated, never library constants: each spec
+    # binds diagram nodes and is verified mechanically per panel.
+    cofibrations: tuple[CofibrationSpec, ...] = ()
     complexity_hint: int = 0
 
     def to_dict(self) -> dict[str, Any]:
@@ -103,6 +111,8 @@ class SemanticHypothesis:
             semantic_requirements=tuple(str(x) for x in data.get("semantic_requirements", ())),
             witness_requirements=tuple(str(x) for x in data.get("witness_requirements", ())),
             relations=tuple(str(x) for x in data.get("relations", ())),
+            cofibrations=tuple(
+                CofibrationSpec.from_dict(x) for x in data.get("cofibrations", ())),
             complexity_hint=int(data.get("complexity_hint", 0)),
         )
 
