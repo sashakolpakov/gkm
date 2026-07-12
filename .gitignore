@@ -70,9 +70,21 @@ Thumbs.db
 environment_files/
 recordings/
 
-# scratch lab logs (keep the code + docs tracked)
+# scratch lab logs
 arc/crack_lab/*.log
+
+# Opine artifacts (generated, not tracked)
+arc/opine-artifacts/
+arc/opine_artifacts/
+arc/opine-world/
+opine-artifacts/
+opine_artifacts/
+opine-world/
+*.zip
 **/manuscript/*.synctex.gz
+
+# Bongard crack-lab generated predicates, transcripts, and image arrays
+bongard/crack_lab/agent_solutions/
 
 # GKM run artifacts: generated programs + per-game leg workspaces
 # (override locations with GKM_PROGRAMS_DIR / GKM_SCRATCH)
