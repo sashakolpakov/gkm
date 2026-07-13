@@ -201,6 +201,39 @@ as MISSING_LEG rather than riding on an unrelated scalar. Cone invariance
 with exact pixel actions are applied to the panels and the decision must
 commute; morphisms without an exact action are reported as unchecked.
 
+## 5c. Primitive Adequacy Precedes Everything
+
+A cone can only be as good as the arrows it is built from.  This is obvious —
+any commonsensical person expects that bad primitives produce bad solutions —
+but it is worth stating precisely because the failure is easy to hide.
+
+Two distinct primitive defects cause distinct, and initially indistinguishable,
+failures:
+
+1. **Non-separation.**  The measurement does not distinguish the two sides at
+   all; support/LOO error is high.  Honest and visible.
+2. **Accidental separation.**  The measurement separates the support set only
+   through an artifact — most often panel *orientation* — and does not
+   correspond to the claimed semantic content.  Before cone invariance
+   (Section 5) is *executed*, such a cone looks solved.  It is not.
+
+Empirically (Bongard-LOGO basic track, 2026-07): measurements built on
+axis-aligned bounding boxes (aspect, fill), on raster skeleton degree counts
+(branch/cycle counts on diagonal strokes), and on axis-aligned symmetry
+residuals separated support sets but drifted by factors of 10-300 under a
+45-degree rotation.  Executing the declared preservation morphisms turned
+these from false "solves" into honest `NATURALITY_FAILURE`s.  The lesson is
+that the invariance a primitive *claims* must be *tested*, on true isometries
+(including off-grid rotation), not assumed — and that improving a solve rate
+is, in the first instance, a matter of building rotation/scale-robust
+primitives (arc-length-resampled curvature, algebraic circle fits with low
+arc bias, curvature-minima part decomposition), not of prompting harder.
+
+Equivalently: representation poverty and representation *fragility* are both
+first-class, reportable outcomes, on par with "no cone found".  A cheap proxy
+that only works because every training panel happened to share an orientation
+is a shortcut, and the harness must expose it rather than bank the accuracy.
+
 ## 6. Contrast
 
 Contrast interventions are not label-preserving morphisms. They are controlled

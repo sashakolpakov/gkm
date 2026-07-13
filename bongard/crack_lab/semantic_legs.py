@@ -105,6 +105,48 @@ _NEIGHBOR_OFFSETS = tuple((dy, dx) for dy in (-1, 0, 1) for dx in (-1, 0, 1)
                           if (dy, dx) != (0, 0))
 
 
+def _skeletonize(mask: np.ndarray) -> np.ndarray:
+    """Thin a stroke mask to a 1-px medial skeleton (scikit-image).
+
+    Rasterized strokes are ~2 px thick with orientation-dependent staircase
+    doublings, which make 8-neighbourhood degree analysis (endpoints,
+    junctions, cycles) and contour ordering sensitive to rotation.  Thinning
+    to a 1-px skeleton restores the true curve topology so those measurements
+    become rotation-invariant.  scikit-image's ``skeletonize`` is a required
+    dependency and the single source of truth here — thinning is not
+    hand-rolled.
+    """
+    binary = np.asarray(mask) > 0
+    if not binary.any():
+        return binary
+    from skimage.morphology import skeletonize
+    return np.asarray(skeletonize(binary), dtype=bool)
+
+
+_THIN_CACHE: dict[bytes, np.ndarray] = {}
+
+
+def _thinned(mask: np.ndarray) -> np.ndarray:
+    """Thinned copy of a stroke mask; solid/tiny blobs are left intact."""
+    key = np.ascontiguousarray(mask).tobytes()
+    cached = _THIN_CACHE.get(key)
+    if cached is not None:
+        return cached
+    thin = _skeletonize(mask)
+    # Never erase a real component: a filled region whose skeleton collapses
+    # below the min-stroke size keeps its raw mask.
+    if thin.sum() < 3 <= int(np.asarray(mask).sum()):
+        thin = np.asarray(mask) > 0
+    if len(_THIN_CACHE) > 1024:
+        _THIN_CACHE.clear()
+    _THIN_CACHE[key] = thin
+    return thin
+
+
+def _topo(obj: "ObjectMask") -> np.ndarray:
+    return _thinned(obj.mask)
+
+
 def _degree_map(mask: np.ndarray) -> dict[tuple[int, int], int]:
     coords = {(int(y), int(x)) for y, x in np.argwhere(mask)}
     return {
@@ -303,16 +345,39 @@ def bbox_fill(obj: ObjectMask) -> float:
     return float(obj.mask.sum() / area)
 
 
+def _covariance_eigs(mask: np.ndarray) -> tuple[float, float]:
+    pts = np.argwhere(mask).astype(float)
+    if len(pts) < 2:
+        return 0.0, 0.0
+    cov = np.cov(pts.T)
+    eigs = np.linalg.eigvalsh(cov)
+    return float(max(eigs, default=0.0)), float(min(eigs, default=0.0))
+
+
+def elongation(obj: ObjectMask) -> float:
+    """Rotation-invariant elongation: sqrt(major/minor) of the point cloud.
+
+    The axis-aligned bounding box makes ``bbox_aspect`` swing under rotation
+    (a diagonal bar looks square).  The ratio of the covariance eigenvalues
+    is orientation-free, so a thin/elongated shape scores high at any angle.
+    """
+    major, minor = _covariance_eigs(obj.mask)
+    if major <= 0:
+        return 1.0
+    return float(math.sqrt(major / max(minor, 1e-6)))
+
+
 # ---------------------------------------------------------------------------
 # Contours and curve geometry.
 # ---------------------------------------------------------------------------
 
 def extract_contours(obj: ObjectMask) -> ContourWitness:
-    coords = {(int(y), int(x)) for y, x in np.argwhere(obj.mask)}
+    topo = _topo(obj)
+    coords = {(int(y), int(x)) for y, x in np.argwhere(topo)}
     if not coords:
         return ContourWitness(source_component_id=obj.object_id,
                               provenance=("extract_contours",))
-    deg = _degree_map(obj.mask)
+    deg = _degree_map(topo)
     endpoints = sum(1 for d in deg.values() if d <= 1)
     is_closed = endpoints == 0
     path = _walk_order(coords)
@@ -352,8 +417,9 @@ def contour_closedness(contour: ContourWitness) -> float:
 
 
 def build_skeleton_graph(obj: ObjectMask) -> SkeletonGraphWitness:
-    endpoints, branches, cycles = _degrees(obj.mask)
-    pts = np.argwhere(obj.mask)
+    topo = _topo(obj)
+    endpoints, branches, cycles = _degrees(topo)
+    pts = np.argwhere(topo)
     nodes = tuple(PointWitness(x=float(x), y=float(y), source_id=obj.object_id)
                   for y, x in pts[:: max(1, len(pts) // 64)])
     return SkeletonGraphWitness(
@@ -383,10 +449,11 @@ def cycle_count(graph: SkeletonGraphWitness) -> float:
 
 
 def closure_ratio(obj: ObjectMask) -> float:
-    pts = np.argwhere(obj.mask)
+    topo = _topo(obj)
+    pts = np.argwhere(topo)
     if len(pts) == 0:
         return 1.0
-    endpoints, _, _ = _degrees(obj.mask)
+    endpoints, _, _ = _degrees(topo)
     return float(endpoints / max(1, len(pts)))
 
 
@@ -452,51 +519,92 @@ def _turn_angle(a: np.ndarray, b: np.ndarray, c: np.ndarray) -> float:
     return math.degrees(math.acos(cosang))
 
 
+def _resample_contour(pts: np.ndarray, n: int, closed: bool) -> np.ndarray:
+    """Uniform arc-length resampling (rotation- and density-invariant)."""
+    ring = np.vstack([pts, pts[:1]]) if closed else pts
+    seg = np.linalg.norm(np.diff(ring, axis=0), axis=1)
+    arc = np.concatenate(([0.0], np.cumsum(seg)))
+    total = float(arc[-1])
+    if total < 1e-6:
+        return pts[:1]
+    u = np.linspace(0.0, total, n, endpoint=not closed)
+    xs = np.interp(u, arc, ring[:, 0])
+    ys = np.interp(u, arc, ring[:, 1])
+    return np.stack([xs, ys], axis=1)
+
+
+def _turning_profile(rs: np.ndarray, closed: bool, k: int) -> np.ndarray:
+    """Absolute turning angle (radians) at each sample over an arc window k."""
+    n = len(rs)
+    ang = np.zeros(n)
+    indices = range(n) if closed else range(k, n - k)
+    for i in indices:
+        a, b, c = rs[(i - k) % n], rs[i], rs[(i + k) % n]
+        v1, v2 = b - a, c - b
+        n1, n2 = float(np.hypot(*v1)), float(np.hypot(*v2))
+        if n1 < 1e-9 or n2 < 1e-9:
+            continue
+        cross = v1[0] * v2[1] - v1[1] * v2[0]
+        dot = float(v1 @ v2)
+        ang[i] = abs(math.atan2(cross, dot))
+    return ang
+
+
+def _circular_distance(a: int, b: int, n: int) -> int:
+    d = abs(a - b)
+    return min(d, n - d)
+
+
 def _polygon_vertices(contour: ContourWitness) -> tuple[tuple[PointWitness, ...], float]:
+    """Detect corners as turning-angle peaks on an arc-length-resampled curve.
+
+    Turning angle and arc length are both rotation-invariant, so the corner
+    set (and hence the side count) no longer depends on panel orientation or
+    raster density.  A smooth curve (circle/arc) has turning spread evenly
+    below threshold and yields no corners; a polygon concentrates turning at
+    its vertices.
+    """
     pts = np.asarray(contour.points, dtype=float)
-    if len(pts) < 3:
+    if len(pts) < 4:
         return (), 1.0
+    closed = contour.is_closed
     extent = max(float(np.ptp(pts[:, 0])), float(np.ptp(pts[:, 1])), 1.0)
-    eps = max(2.0, 0.04 * extent)
-    if contour.is_closed:
-        # Split the loop at its two mutually farthest samples so RDP sees
-        # two open halves, then merge and drop near-straight vertices.
-        start = 0
-        far = int(np.argmax(np.linalg.norm(pts - pts[start], axis=1)))
-        lo, hi = sorted((start, far))
-        first = pts[lo:hi + 1]
-        second = np.concatenate((pts[hi:], pts[:lo + 1]))
-        idx1 = _simplify_polyline(first, eps)
-        idx2 = _simplify_polyline(second, eps)
-        ring = [tuple(first[i]) for i in idx1[:-1]] + \
-               [tuple(second[i]) for i in idx2[:-1]]
-        verts = [np.asarray(v) for v in ring]
-        kept = []
-        n = len(verts)
-        for i in range(n):
-            a, b, c = verts[(i - 1) % n], verts[i], verts[(i + 1) % n]
-            if _turn_angle(a, b, c) >= 12.0:
-                kept.append(b)
+    perim = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+    n = int(np.clip(round(perim / 2.0), 24, 200))
+    rs = _resample_contour(pts, n, closed)
+    if len(rs) < 4:
+        return (), 1.0
+    n = len(rs)
+    k = max(2, n // 16)
+    window = max(2, n // 12)
+    threshold = math.radians(33.0)
+    ang = _turning_profile(rs, closed, k)
+
+    accepted: list[int] = []
+    for i in np.argsort(ang)[::-1]:
+        if ang[i] < threshold:
+            break
+        i = int(i)
+        if closed:
+            if all(_circular_distance(i, j, n) > window for j in accepted):
+                accepted.append(i)
+        elif all(abs(i - j) > window for j in accepted):
+            accepted.append(i)
+    accepted.sort()
+
+    corner_pts = [rs[i] for i in accepted]
+    if closed:
+        verts = corner_pts
+        side_verts = corner_pts
     else:
-        idx = _simplify_polyline(pts, eps)
-        verts = [pts[i] for i in idx]
-        kept = [verts[0]]
-        for i in range(1, len(verts) - 1):
-            if _turn_angle(verts[i - 1], verts[i], verts[i + 1]) >= 12.0:
-                kept.append(verts[i])
-        kept.append(verts[-1])
-    dedup: list[np.ndarray] = []
-    for v in kept:
-        if not dedup or float(np.hypot(*(v - dedup[-1]))) > 3.0:
-            dedup.append(v)
-    if len(dedup) > 1 and float(np.hypot(*(dedup[0] - dedup[-1]))) <= 3.0 \
-            and contour.is_closed:
-        dedup.pop()
-    residual = _polygon_residual(pts, dedup, contour.is_closed) / extent
+        verts = [rs[0]] + corner_pts + [rs[-1]]
+        side_verts = verts
+    residual = _polygon_residual(pts, side_verts, closed) / extent if len(side_verts) >= 2 \
+        else 1.0
     vertices = tuple(
         PointWitness(x=float(v[0]), y=float(v[1]),
                      source_id=contour.source_component_id)
-        for v in dedup
+        for v in verts
     )
     return vertices, residual
 
@@ -584,23 +692,57 @@ def fit_line_segment(contour: ContourWitness) -> LineSegmentWitness:
     )
 
 
+def _taubin_circle(pts: np.ndarray) -> tuple[np.ndarray, float]:
+    """Taubin algebraic circle fit (Chernov).
+
+    Kåsa's fit is heavily biased for small/partial arcs (Chernov, "Circular
+    and Linear Regression"); Taubin removes most of that essential bias while
+    staying a closed-form algebraic fit, so arc residuals are meaningful for
+    the partial arcs common in these panels.
+    """
+    x, y = pts[:, 0], pts[:, 1]
+    mx, my = float(x.mean()), float(y.mean())
+    u, v = x - mx, y - my
+    z = u * u + v * v
+    mz = float(z.mean())
+    mxx, myy, mxy = float((u * u).mean()), float((v * v).mean()), float((u * v).mean())
+    mxz, myz, mzz = float((u * z).mean()), float((v * z).mean()), float((z * z).mean())
+    cov_xy = mxx * myy - mxy * mxy
+    var_z = mzz - mz * mz
+    a3 = 4.0 * mz
+    a2 = -3.0 * mz * mz - mzz
+    a1 = var_z * mz + 4.0 * cov_xy * mz - mxz * mxz - myz * myz
+    a0 = mxz * (mxz * myy - myz * mxy) + myz * (myz * mxx - mxz * mxy) - var_z * cov_xy
+    a22, a33 = a2 + a2, a3 + a3 + a3
+    xnew, ynew = 0.0, a0
+    for _ in range(99):
+        dy = a1 + xnew * (a22 + a33 * xnew)
+        if dy == 0.0:
+            break
+        step = ynew / dy
+        cand = xnew - step
+        if cand == xnew or not math.isfinite(cand):
+            break
+        yval = a0 + cand * (a1 + cand * (a2 + cand * a3))
+        if abs(yval) >= abs(ynew):
+            break
+        xnew, ynew = cand, yval
+    det = xnew * xnew - xnew * mz + cov_xy
+    if abs(det) < 1e-12:
+        raise ValueError("degenerate circle fit")
+    xc = (mxz * (myy - xnew) - myz * mxy) / det / 2.0
+    yc = (myz * (mxx - xnew) - mxz * mxy) / det / 2.0
+    radius_sq = xc * xc + yc * yc + mz
+    if not math.isfinite(radius_sq) or radius_sq <= 0:
+        raise ValueError("degenerate circle fit")
+    return np.array([xc + mx, yc + my]), math.sqrt(radius_sq)
+
+
 def _fit_circle_raw(contour: ContourWitness) -> CircleWitness:
     pts = np.asarray(contour.points, dtype=float)
     if len(pts) < 3:
         raise ValueError("not enough contour points for circle fit")
-    # Kåsa least-squares fit: correct for partial arcs, where the centroid
-    # of the samples is nowhere near the circle center.
-    a_mat = np.column_stack((2.0 * pts[:, 0], 2.0 * pts[:, 1], np.ones(len(pts))))
-    b_vec = pts[:, 0] ** 2 + pts[:, 1] ** 2
-    try:
-        (cx, cy, c), *_ = np.linalg.lstsq(a_mat, b_vec, rcond=None)
-    except np.linalg.LinAlgError as exc:
-        raise ValueError("degenerate circle fit") from exc
-    center = np.array([float(cx), float(cy)])
-    radius_sq = float(c) + float(cx) ** 2 + float(cy) ** 2
-    if not np.isfinite(radius_sq) or radius_sq <= 0:
-        raise ValueError("degenerate circle fit")
-    radius = math.sqrt(radius_sq)
+    center, radius = _taubin_circle(pts)
     radii = np.linalg.norm(pts - center, axis=1)
     residual = float(np.sqrt(np.mean((radii - radius) ** 2)) / max(radius, 1e-9))
     return CircleWitness(
@@ -640,6 +782,105 @@ def fit_arc(contour: ContourWitness) -> ArcWitness:
 
 def arc_angle_degrees(arc: ArcWitness) -> float:
     return float(arc.angle_degrees)
+
+
+def _signed_turning_profile(rs: np.ndarray, closed: bool, k: int) -> np.ndarray:
+    """Signed turning angle (radians) per sample; + is left/convex for CCW."""
+    n = len(rs)
+    ang = np.zeros(n)
+    indices = range(n) if closed else range(k, n - k)
+    for i in indices:
+        a, b, c = rs[(i - k) % n], rs[i], rs[(i + k) % n]
+        v1, v2 = b - a, c - b
+        n1, n2 = float(np.hypot(*v1)), float(np.hypot(*v2))
+        if n1 < 1e-9 or n2 < 1e-9:
+            continue
+        cross = v1[0] * v2[1] - v1[1] * v2[0]
+        dot = float(v1 @ v2)
+        ang[i] = math.atan2(cross, dot)
+    return ang
+
+
+def _signed_area(rs: np.ndarray) -> float:
+    x, y = rs[:, 0], rs[:, 1]
+    return 0.5 * float(np.sum(x * np.roll(y, -1) - np.roll(x, -1) * y))
+
+
+def count_curve_parts(contour: ContourWitness) -> float:
+    """Number of parts by the minima rule (Hoffman & Richards).
+
+    A shape's boundary is segmented at negative minima of curvature — the
+    concave creases where transversality says two parts join.  The contour
+    is oriented counter-clockwise first so "negative" (concave) is defined
+    independent of walk direction, and curvature is measured on an
+    arc-length resampling, so the part count is rotation-invariant.  A convex
+    blob has one part; a k-lobed/petalled shape has k concave notches → k
+    parts.
+    """
+    pts = np.asarray(contour.points, dtype=float)
+    if len(pts) < 6:
+        return 1.0
+    closed = contour.is_closed
+    perim = float(np.sum(np.linalg.norm(np.diff(pts, axis=0), axis=1)))
+    n = int(np.clip(round(perim / 2.0), 24, 200))
+    rs = _resample_contour(pts, n, closed)
+    if len(rs) < 6:
+        return 1.0
+    n = len(rs)
+    if closed and _signed_area(rs) < 0:
+        rs = rs[::-1]
+    k = max(2, n // 16)
+    window = max(2, n // 12)
+    ang = _signed_turning_profile(rs, closed, k)
+    concavity = -ang  # positive where the boundary is concave (a notch)
+    threshold = math.radians(25.0)
+    notches: list[int] = []
+    for i in np.argsort(concavity)[::-1]:
+        if concavity[i] < threshold:
+            break
+        i = int(i)
+        if closed:
+            if all(_circular_distance(i, j, n) > window for j in notches):
+                notches.append(i)
+        elif all(abs(i - j) > window for j in notches):
+            notches.append(i)
+    if closed:
+        return float(max(1, len(notches)))
+    return float(len(notches) + 1)
+
+
+def count_inflections(contour: ContourWitness) -> float:
+    """Number of turning-direction reversals along the curve.
+
+    A general, rotation-invariant shape primitive: resample the ordered
+    contour by arc length, take the signed turn (cross product of successive
+    tangents) with a deadband to ignore raster noise, and count sign
+    changes.  A simple arc turns monotonically (0 reversals); a wavy /
+    scalloped / S-shaped curve reverses several times.  This is curve
+    geometry, not a named concept.
+    """
+    pts = np.asarray(contour.points, dtype=float)
+    if len(pts) < 5:
+        return 0.0
+    seg = np.linalg.norm(np.diff(pts, axis=0), axis=1)
+    arc = np.concatenate(([0.0], np.cumsum(seg)))
+    if arc[-1] < 1e-6:
+        return 0.0
+    n = 48
+    u = np.linspace(0.0, arc[-1], n)
+    xs = np.interp(u, arc, pts[:, 0])
+    ys = np.interp(u, arc, pts[:, 1])
+    rs = np.stack([xs, ys], axis=1)
+    v = np.diff(rs, axis=0)
+    norms = np.linalg.norm(v, axis=1)
+    cross = v[:-1, 0] * v[1:, 1] - v[:-1, 1] * v[1:, 0]
+    denom = norms[:-1] * norms[1:] + 1e-9
+    sine = cross / denom
+    sign = np.where(sine > 0.12, 1, np.where(sine < -0.12, -1, 0))
+    sign = sign[sign != 0]
+    if len(sign) < 2:
+        return 0.0
+    return float(int(np.sum(sign[1:] != sign[:-1])))
 
 
 def fit_multiple_circles(scene: Scene) -> CirclePairWitness:
@@ -822,18 +1063,18 @@ def _graph_from_mask(mask: np.ndarray, source_id: str,
 
 
 def decompose_component_into_parts(obj: ObjectMask) -> PartGraphWitness:
-    return _graph_from_mask(obj.mask, obj.object_id,
+    return _graph_from_mask(_topo(obj), obj.object_id,
                             ("decompose_component_into_parts",))
 
 
 def build_part_graph(value: Scene | ObjectMask) -> PartGraphWitness:
     if isinstance(value, ObjectMask):
-        return _graph_from_mask(value.mask, value.object_id, ("build_part_graph",))
+        return _graph_from_mask(_topo(value), value.object_id, ("build_part_graph",))
     parts: list[PartWitness] = []
     contacts: list[ContactWitness] = []
     adjacency: list[tuple[str, str]] = []
     for obj in value.objects:
-        sub = _graph_from_mask(obj.mask, obj.object_id, ("build_part_graph",))
+        sub = _graph_from_mask(_topo(obj), obj.object_id, ("build_part_graph",))
         parts.extend(sub.parts)
         contacts.extend(sub.contacts)
         adjacency.extend(sub.adjacency)
@@ -1148,6 +1389,8 @@ def default_registry() -> LegRegistry:
         _reg("fit_arc", ("ContourWitness",), "ArcWitness", fit_arc, 3, common_inv, failure_modes=("not_enough_points",), proxy_for=("arc", "curved", "smooth")),
         _reg("arc_angle_degrees", ("ArcWitness",), "Measurement", arc_angle_degrees, 1, common_inv, proxy_for=("angle", "sweep")),
         _reg("arc_residual", ("ArcWitness",), "Measurement", witness_residual, 1, common_inv, proxy_for=("smooth", "arc")),
+        _reg("count_inflections", ("ContourWitness",), "Measurement", count_inflections, 2, common_inv, proxy_for=("wavy", "bump", "bumpy", "undulating", "undulation", "inflection", "scalloped", "sinuous", "wiggly", "reversal")),
+        _reg("count_curve_parts", ("ContourWitness",), "Measurement", count_curve_parts, 3, common_inv, proxy_for=("part", "parts", "lobe", "lobes", "petal", "petals", "blade", "blades", "concavity", "concave", "notch", "notches", "arm", "arms")),
         _reg("fit_circle", ("ContourWitness",), "CircleWitness", fit_circle, 4, common_inv, failure_modes=("not_enough_points", "open_contour", "high_residual")),
         _reg("fit_multiple_circles", ("Scene",), "CirclePairWitness", fit_multiple_circles, 8, common_inv, failure_modes=("fewer_than_two_candidates", "high_residual")),
         _reg("detect_corners", ("ContourWitness",), "PolygonWitness", detect_corners, 4, common_inv),

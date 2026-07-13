@@ -60,6 +60,7 @@ class ConeVerification:
     naturality_errors: int = 0
     cofibration_errors: int = 0
     unchecked_morphisms: tuple[str, ...] = ()
+    worst_transform: str = ""
     compile_error: str = ""
     semantic_issue: str = ""
     missing_leg: dict | None = None
@@ -123,6 +124,50 @@ _MORPHISM_ACTIONS = {
 }
 
 
+def _offgrid_rotation(panel: np.ndarray, degrees: float) -> np.ndarray | None:
+    """Connectivity-preserving off-grid rotation.
+
+    Grid-exact 90-degree rotation hides anisotropy: a measurement can be
+    stable under rot90 yet swing wildly at 45 degrees (axis-aligned bounding
+    boxes, raster skeleton degree counts).  Bilinear interpolation keeps the
+    stroke connected (unlike nearest-neighbour, which shatters it), so this is
+    a fair test of true rotational invariance.
+    """
+    try:
+        import scipy.ndimage as ndi
+    except Exception:
+        return None
+    rot = ndi.rotate(np.asarray(panel, dtype=float), degrees, order=1,
+                     reshape=False)
+    out = (rot > 0.25).astype(np.asarray(panel).dtype)
+    if int((out > 0).sum()) == 0:
+        return None
+    return out
+
+
+def _stability_transforms(panel: np.ndarray) -> list[tuple[str, np.ndarray]]:
+    """Label-preserving battery for shape concepts.
+
+    Bongard-LOGO renders every shape at a random orientation, so orientation
+    is a nuisance by construction; a valid concept must be invariant to it.
+    We therefore always test the dihedral isometries plus two off-grid
+    rotations, independent of what morphisms the proposer declared.
+    """
+    battery: list[tuple[str, np.ndarray]] = []
+    arr = np.asarray(panel)
+    for k in (1, 2, 3):
+        battery.append((f"rot{90 * k}", np.rot90(arr, k).copy()))
+    battery.append(("reflect", np.fliplr(arr).copy()))
+    for deg in (30.0, 55.0):
+        rotated = _offgrid_rotation(arr, deg)
+        if rotated is not None:
+            battery.append((f"rot{int(deg)}", rotated))
+    translated = _translate_panel(arr)
+    if translated is not None:
+        battery.append(("translate", translated))
+    return battery
+
+
 def _resolve_projection_fn(spec, registry: LegRegistry):
     if not spec.projection_leg:
         return None
@@ -172,25 +217,23 @@ def verify_compiled_cone(cone: CompiledCone, registry: LegRegistry,
     support_pred = np.array([full_rule.predict(float(s)) for s in scores])
     support_errors = int(np.sum(support_pred != labels))
 
+    # Universal cone-invariance battery: the decision must survive the
+    # nuisance isometries (rotation/reflection/translation), tested per panel.
+    # Instability under any of them is counted and the worst offender is
+    # named so the proposer can drop rotation-fragile measurements.
     naturality_errors = 0
-    unchecked: list[str] = []
-    for morph in cone.hypothesis.preservation_morphisms:
-        if morph.expected_effect != "preserve":
-            continue
-        action = _MORPHISM_ACTIONS.get(morph.name.strip().lower())
-        if action is None:
-            unchecked.append(morph.name)
-            continue
-        for i, panel in enumerate(panels):
-            transformed = action(panel)
-            if transformed is None:
-                continue
+    drift_by_transform: dict[str, int] = {}
+    for i, panel in enumerate(panels):
+        for name, transformed in _stability_transforms(panel):
             new_score, trace = cone.score(transformed, registry)
-            if trace.errors:
+            broke = bool(trace.errors) or (
+                full_rule.predict(float(new_score)) != bool(support_pred[i]))
+            if broke:
                 naturality_errors += 1
-                continue
-            if full_rule.predict(float(new_score)) != bool(support_pred[i]):
-                naturality_errors += 1
+                drift_by_transform[name] = drift_by_transform.get(name, 0) + 1
+    unchecked: list[str] = []
+    worst_transform = max(drift_by_transform, key=drift_by_transform.get) \
+        if drift_by_transform else ""
 
     correct = 0
     total = 0
@@ -228,6 +271,7 @@ def verify_compiled_cone(cone: CompiledCone, registry: LegRegistry,
         naturality_errors=naturality_errors,
         cofibration_errors=cofibration_errors,
         unchecked_morphisms=tuple(unchecked),
+        worst_transform=worst_transform,
         semantic_issue=semantic_issue,
         scores=tuple(float(s) for s in scores),
     )

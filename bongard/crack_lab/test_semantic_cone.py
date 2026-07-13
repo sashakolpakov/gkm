@@ -380,7 +380,12 @@ def test_polygon_side_counts_from_strokes():
     tri_poly, sq_poly, circle_poly = poly_of(tri), poly_of(sq), poly_of(circle)
     assert tri_poly.side_count == 3
     assert sq_poly.side_count == 4
-    assert circle_poly.side_count >= 6
+    # A circle has no corners; it is identified by a low circle-fit residual,
+    # not by being treated as a many-sided polygon.
+    assert circle_poly.side_count <= 2
+    circ_contour = L.extract_contours(L.select_largest(
+        L.parse_scene(_panel_from_polylines([circle]))))
+    assert L.fit_circle(circ_contour).residual < 0.1
     assert L.classify_triangle(tri_poly).confidence > 0.0
     assert L.classify_quadrilateral(sq_poly).confidence > 0.0
     for bad, cls in ((sq_poly, L.classify_triangle),

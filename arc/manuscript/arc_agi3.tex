@@ -7,10 +7,10 @@
 \usepackage{graphicx}
 \hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
 
-\title{Cracking ARC-AGI-3 Games with a Self-Improving Agent\\
+\title{Solving ARC-AGI-3 Games with a Self-Improving Agent\\
 under a Free-Energy Selection Principle}
-\author{GKM Project}
-\date{2026}
+\author{Alexander Kolpakov}
+\date{\today}
 
 \newcommand{\F}{\mathcal{F}}
 
@@ -18,31 +18,29 @@ under a Free-Energy Selection Principle}
 \maketitle
 
 \begin{abstract}
-We study whether an agent can \emph{figure a game out on its own} --- discover its
-perception, its mechanics, its goal, and a winning strategy --- from the rawest
+We study whether an agent can figure a game out on its own (i.e. discover its
+perception, its mechanics, its goal, and a winning strategy) from the rawest
 possible interface, carrying only general human preconceptions, with a single
 free-energy rule deciding what structure is worth keeping. The setting is ARC-AGI-3
 keyboard games played offline through their runtime. Our agent is given nothing but
-\texttt{step(action)}$\to$\emph{frame}, a scalar reward (\emph{levels completed}), and
-a clone for lookahead. A proposer, prompted with human world-priors, \emph{writes its
-own program} to play; a candidate is admitted only if it verifiably improves on the
+\texttt{step(action)}$\to$\emph{frame}, a scalar reward (levels completed), and
+a clone for lookahead. A proposer, prompted with human world-priors, writes its
+own program to play; a candidate is admitted only if it verifiably improves on the
 incumbent under a free energy $\F = R + \lambda C$ that trades reward against
 description length. We connect this to Kolmogorov complexity and Solomonoff induction
 (the $C$ term), to Schmidhuber's G\"odel machine and PowerPlay (self-rewriting under an
 empirical proof of improvement, driven by compression-progress novelty), and to a
 colimit-cone view of skills (``legs'') composed into solutions. Empirically, the
-promoted GKM artifacts solve \texttt{wa30} through level~9 and \texttt{ls20} through
+promoted artifacts solve \texttt{wa30} through level~9 and \texttt{ls20} through
 level~7, replay-validated from their recorded action paths. The \texttt{wa30}
 artifact reaches level~9 in 596 moves with total marginal complexity 1243; the
 \texttt{ls20} artifact reaches level~7 in 393 moves with total marginal complexity
-362. The preserved WIP snapshots show how these solvers were obtained: early levels
+362. The preserved work-in-progress snapshots show how these solvers were obtained: early levels
 were searched or written directly by the proposer, later levels were refactored into
 thin players over a shared leg library, and recovered verified paths were admitted only
-after independent replay. The result is not ``one monolithic script got lucky'' but a
+after independent replay. The result is a
 priced growth trace: reuse is free, literal replay plans are charged, and new
-mechanics appear as marginal novelty. We report the honest negatives alongside: the
-result is on two local preview games, not the full ARC-AGI-3 distribution, and a
-prompt-only local model is currently too weak to drive the same loop.
+mechanics appear as marginal novelty. 
 \end{abstract}
 
 \section{Introduction}

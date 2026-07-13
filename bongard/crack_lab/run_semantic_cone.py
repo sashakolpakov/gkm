@@ -103,12 +103,17 @@ def _feedback_text(bundle: ProposalBundle,
         elif v.compile_error:
             lines.append(f"- {v.hypothesis_id}: COMPILE_ERROR: {v.compile_error}")
         else:
+            nat = f"naturality_errors={v.naturality_errors}"
+            if v.naturality_errors and v.worst_transform:
+                nat += (f" (ROTATION/REFLECTION-UNSTABLE: this measurement "
+                        f"changes the decision under '{v.worst_transform}'; "
+                        f"drop it for a rotation-invariant one)")
             lines.append(
                 f"- {v.hypothesis_id}: accepted={v.accepted} "
                 f"support_errors={v.support_errors}/{v.n_examples} "
                 f"loo_errors={v.loo_errors}/{v.n_examples} "
                 f"predicate_errors={v.predicate_errors} "
-                f"naturality_errors={v.naturality_errors} "
+                f"{nat} "
                 f"cofibration_errors={v.cofibration_errors} "
                 f"rule={v.rule} fold_t=[{v.fold_threshold_min:.4g}, "
                 f"{v.fold_threshold_max:.4g}]")
@@ -129,7 +134,13 @@ def _feedback_text(bundle: ProposalBundle,
         "object if the score table looks promising and improve the typed "
         "evidence path; otherwise propose different semantics. Do not weaken "
         "rich terms into scalar proxies; if a leg is missing, keep naming it "
-        "so the MISSING_LEG demand stays visible.")
+        "so the MISSING_LEG demand stays visible. Panels appear at random "
+        "orientations, so the decision MUST be rotation- and reflection-"
+        "invariant: prefer measurements that do not depend on orientation "
+        "(residuals of fitted circles/arcs, endpoint/part counts computed "
+        "after thinning, principal-axis elongation) over axis-aligned "
+        "bounding-box measures or raw skeleton branch/cycle counts, which the "
+        "battery rejects as unstable.")
     return "\n".join(lines)
 
 
