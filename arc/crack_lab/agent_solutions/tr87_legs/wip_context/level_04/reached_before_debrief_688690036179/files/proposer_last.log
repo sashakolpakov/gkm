@@ -1,0 +1,304 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat solve.py players.py checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && timeout 300 python gkm_try.py 2>&1 | tail -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python gkm_try.py 2>&1 | tail -30
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py 2>/dev/null | head -80
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,220p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe.py <<'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+vals, cnts = np.unique(f, return_counts=True)
+print("colors:", dict(zip(vals.tolist(), cnts.tolist())))
+np.save('/tmp/lvl4.npy', f)
+EOF
+python /tmp/probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/show.py <<'EOF'
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+for r in range(64):
+    print(''.join(f"{f[r,c]:X}" for c in range(64)))
+EOF
+python /tmp/show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && wc -l legs.py && grep -n "^def \|^    def " legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && sed -n '195,528p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && sed -n '1,195p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe2.py <<'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("level:", env.levels_completed)
+dd = P.action_deltas(env, actions=[1,2,3,4])
+for a,d in dd.items():
+    print(a, "count", d['count'], "bbox", d['bbox'])
+EOF
+python /tmp/probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe2.py <<'EOF'
+import sys, json, os
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("level:", env.levels_completed)
+dd = P.action_deltas(env, actions=[1,2,3,4])
+for a,d in dd.items():
+    print(a, "count", d['count'], "bbox", d['bbox'], "samples", d['samples'][:6])
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe3.py <<'EOF'
+import sys, json, os
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+import legs as L
+import numpy as np
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("level:", env.levels_completed)
+print("discover_tile_cycle:", L.discover_tile_cycle_puzzle(env))
+print("discover_glyph_tiles:", None if L.discover_glyph_tiles(env) is None else {k:v for k,v in L.discover_glyph_tiles(env).items() if k not in ('f','tall','editbox')})
+print("cipher:", L.discover_glyph_cipher_puzzle(env))
+print("legend:", L.discover_glyph_legend_puzzle(env))
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe4.py <<'EOF'
+import sys, json, os
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import perception as P
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+blobs = P.connected_components(f, min_area=15)
+# glyph-tall boxes are 7 tall (gh=5 -> 5+2)
+for b in blobs:
+    h = b.bbox[2]-b.bbox[0]+1
+    w = b.bbox[3]-b.bbox[1]+1
+    if h==7:
+        print(f"color={b.color} bbox={b.bbox} hw=({h},{w})")
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe5.py <<'EOF'
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+# find color-3 arrows in top region rows<36 (background is 2 there)
+for r in range(36):
+    cols = [c for c in range(64) if f[r,c]==3]
+    if cols:
+        print("row",r,"cols",cols)
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe6.py <<'EOF'
+import sys, os
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import legs as L
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+
+def glyph_str(g):
+    return '\n'.join(''.join('#' if x else '.' for x in row) for row in g)
+
+# small boxes: top-left+1 gives glyph at (r0+1,c0+1), 5x5, fg=5
+boxes = {
+ 'r1p1_key':(3,12,7),'r1p1_val':(3,22,11),
+ 'r1p2_key':(3,35,10),'r1p2_val':(3,45,7),
+ 'r2p1_key':(11,12,10),'r2p1_val':(11,22,7),
+ 'r2p2_key':(11,35,7),'r2p2_val':(11,45,11),
+ 'r3p1_key':(19,12,7),'r3p1_val':(19,22,11),
+ 'r3p2_key':(19,35,10),'r3p2_val':(19,45,7),
+ 'r4p1_key':(27,12,10),'r4p1_val':(27,22,7),
+ 'r4p2_key':(27,35,7),'r4p2_val':(27,45,11),
+}
+gl = {}
+for name,(r0,c0,col) in boxes.items():
+    g = L._glyph(f, r0+1, c0+1, 5,5,5)
+    gl[name]=(g,col)
+
+for name,(g,col) in gl.items():
+    print(name, "border",col, "canon",hash(L._glyph_canon(g))%100000)
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe6.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe7.py <<'EOF'
+import sys, os
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import legs as L
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+
+# A-word: border10 rows40-46 cols7-55, 7 glyphs pitch7 starting c0+1=8
+Aword = L._box_glyphs(f,(40,7,46,55),5,5,7,5)
+Bword = L._box_glyphs(f,(51,7,57,55),5,5,7,5)
+Acanon = [L._glyph_canon(g) for g in Aword]
+Bcanon = [L._glyph_canon(g) for g in Bword]
+print("A canon:", [hash(x)%100000 for x in Acanon])
+print("B canon:", [hash(x)%100000 for x in Bcanon])
+
+# Legends
+legY = {}  # 10->7  key canon -> val canon
+legX = {}  # 7->11  key canon -> val canon
+pairs = [
+ ((3,12),(3,22),7,11),
+ ((3,35),(3,45),10,7),
+ ((11,12),(11,22),10,7),
+ ((11,35),(11,45),7,11),
+ ((19,12),(19,22),7,11),
+ ((19,35),(19,45),10,7),
+ ((27,12),(27,22),10,7),
+ ((27,35),(27,45),7,11),
+]
+for (kr,kc),(vr,vc),kb,vb in pairs:
+    kg = L._glyph_canon(L._glyph(f,kr+1,kc+1,5,5,5))
+    vg = L._glyph_canon(L._glyph(f,vr+1,vc+1,5,5,5))
+    if kb==10 and vb==7:
+        legY[kg]=vg
+    elif kb==7 and vb==11:
+        legX[kg]=vg
+print("legY size",len(legY),"legX size",len(legX))
+
+# translate A-word via Y then X
+ok=True
+target=[]
+for i,a in enumerate(Acanon):
+    if a not in legY:
+        print("A glyph",i,"not in legY"); ok=False; continue
+    mid = legY[a]
+    if mid not in legX:
+        print("mid",i,"not in legX"); ok=False; continue
+    target.append(legX[mid])
+print("ok",ok)
+print("target canon:", [hash(x)%100000 for x in target])
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe7.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe8.py <<'EOF'
+import sys, os, json
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs as L
+import numpy as np
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+f = np.asarray(env.frame())
+
+# build target
+pairs = [((3,12),(3,22),7,11),((3,35),(3,45),10,7),((11,12),(11,22),10,7),
+ ((11,35),(11,45),7,11),((19,12),(19,22),7,11),((19,35),(19,45),10,7),
+ ((27,12),(27,22),10,7),((27,35),(27,45),7,11)]
+legY={}; legX={}
+for (kr,kc),(vr,vc),kb,vb in pairs:
+    kg=L._glyph_canon(L._glyph(f,kr+1,kc+1,5,5,5))
+    vg=L._glyph_canon(L._glyph(f,vr+1,vc+1,5,5,5))
+    if kb==10 and vb==7: legY[kg]=vg
+    else: legX[kg]=vg
+Aword=[L._glyph_canon(g) for g in L._box_glyphs(f,(40,7,46,55),5,5,7,5)]
+target=[legX[legY[a]] for a in Aword]
+
+spec={'edit':1,'move':4,'n_tiles':7,'cycle':7,'gh':5,'gw':5,'pitch':7,'fg':5,
+      'editreg':(51,7,57,55),'seq_canon':target}
+path=L.plan_glyph_cipher(env,spec)
+print("path len",None if path is None else len(path))
+if path:
+    before=env.levels_completed
+    for a in path:
+        if env.terminal(): break
+        env.step(a)
+    print("levels before",before,"after",env.levels_completed)
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe8.py
+The two-step composition cipher works. Now let me build a general, reusable leg for this and wire up `play_level_4`.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe9.py <<'EOF'
+# verify a general chain-based discovery reproduces the target
+import sys, os, json
+sys.path.insert(0, os.getcwd())
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import legs as L, perception as P
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+gh=gw=5; pitch=7; FG=5; VAL=11
+blobs=P.connected_components(f,min_area=15)
+tall=[b for b in blobs if (b.bbox[2]-b.bbox[0]+1)==gh+2]
+wide=[b for b in tall if (b.bbox[3]-b.bbox[1]+1)>pitch]
+small=[b for b in tall if (b.bbox[3]-b.bbox[1]+1)==pitch]
+editbox=[b for b in wide if b.color==VAL][0]
+srcbox=[b for b in wide if b is not editbox][0]
+SRC=srcbox.color
+print("SRC",SRC,"VAL",VAL, "wide", [(b.color,b.bbox) for b in wide])
+# group small boxes by row, pair consecutively
+from collections import defaultdict
+rows=defaultdict(list)
+for b in small: rows[b.bbox[0]].append(b)
+maps={}
+for r in sorted(rows):
+    bs=sorted(rows[r], key=lambda b:b.bbox[1])
+    for i in range(0,len(bs)-1,2):
+        kb,vb=bs[i],bs[i+1]
+        kc=L._glyph_canon(L._glyph(f,kb.bbox[0]+1,kb.bbox[1]+1,gh,gw,FG))
+        vc=L._glyph_canon(L._glyph(f,vb.bbox[0]+1,vb.bbox[1]+1,gh,gw,FG))
+        key=kb.color
+        if key not in maps: maps[key]=(vb.color,{})
+        maps[key][1][kc]=vc
+print("map borders:", {k:v[0] for k,v in maps.items()})
+# chain SRC->VAL
+srcglyphs=[L._glyph_canon(g) for g in L._box_glyphs(f,srcbox.bbox,gh,gw,pitch,FG)]
+target=[]
+for g in srcglyphs:
+    cur=SRC; cg=g
+    while cur!=VAL:
+        vb,m=maps[cur]; cg=m[cg]; cur=vb
+    target.append(cg)
+print("target:", [hash(x)%100000 for x in target])
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/probe9.py
+The general chain approach reproduces the target. Now I'll add the leg to `legs.py`.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python gkm_try.py 2>&1 | tail -5
+Done. `RESULT levels=4 moves=126 replay_ok=True`.
+
+## Summary
+
+I got `solve.py` to reach **level 4** of tr87.
+
+**Discovery (via clone experiments on level 4):**
+- Actions `1`/`2` cycle the current tile's glyph (EDIT); `3`/`4` move the cursor (MOVE) — the same tile-cycle mechanic as earlier levels. There are 7 editable tiles (`cycle=7`).
+- The frame has: an **editable target word** (border colour 11, wide box holding the tiles), a **source word** (border colour 10), and a legend of 8 small key→value glyph-box pairs.
+- The crucial new mechanic: it's a **composed two-legend cipher**. The legend pairs split by border colour into two maps: `10→7` and `7→11`. To decode, each source glyph (border 10) is chained: `10 →(map)→ 7 →(map)→ 11`, yielding the target glyph for each tile. All 7 source glyphs resolved cleanly through the chain, and setting the tiles to those targets raised `levels_completed` from 3→4.
+
+**Leg library (reuse-first):**
+- Added one new, general leg to `legs.py`: `discover_glyph_compose_puzzle` (+ thin `solve_glyph_compose_puzzle`). It infers SRC/VAL border colours, groups legend boxes into pairs per row, builds one map per key-border, then **chains the maps by border colour** from the source word's border to the editable word's border. It feeds the existing `plan_glyph_cipher` → `tile_cycle_path` → `replay_for_reward` pipeline — so the only new logic is the border-colour legend chaining; everything else is reused.
+- `players.play_level_4` just composes that leg (no inline level logic).
+
+The full run reproduces from scratch and replay-validates (`replay_ok=True`).

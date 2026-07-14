@@ -1,0 +1,84 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat players.py gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat solve.py checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && timeout 900 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed (`levels=3`, `replay_ok=True`). Now let me compare the three players closely.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && grep -n "def solve_unlock_macro\|def solve_unlock_reach" legs.py
+The comparison is now clear. Let me check the defaults precisely:
+
+- `play_level_1`: `solve_unlock_reach(env, max_toggles=2)` — but `max_toggles=2` **is** the default.
+- `play_level_2`: `solve_unlock_macro(env, max_expand=400)` — but `max_expand=400` **is** the default.
+- `play_level_3`: `solve_unlock_macro(env)`.
+
+**Key finding:** `play_level_2` and `play_level_3` are *literally the same call* — both `solve_unlock_macro` with the default `max_expand=400`. Level 3 introduced **no new skill**; it is fully subsumed by the general unlock-macro leg written for level 2. The repeated code is the duplicated (and redundantly-parameterised) leg invocation across the two players.
+
+The right refactor: keep each skill written ONCE in `legs.py` (it already is — `solve_unlock_macro`), and make the players uniformly thin bare-leg calls so the L2≡L3 sharing is explicit rather than obscured by a redundant argument.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/players.py
+Now append the L3 debrief and the recurring composition pattern to `legs_log.md`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat >> legs_log.md << 'EOF'
+
+## Level 3 (g50t)
+Same maze family as L2: the goal chamber only becomes movement-reachable after
+chaining several `walk-somewhere-then-USE` openings (a USE resets the avatar to
+start but PRESERVES gates opened en route). Ran the arena and observed L3 clears
+with NO new leg -- the general `solve_unlock_macro` already covers it. Confirmed
+`solve_unlock_reach`'s single-USE-must-grow pruning is still too weak here (same
+reason as L2), but the best-first USE-macro search stages the openings and wins.
+
+## Debrief refactor (post-clear of L3)
+- Compared `play_level_3` to the earlier players. FINDING: L3 introduced no new
+  skill -- `play_level_2` and `play_level_3` are the SAME thin call,
+  `solve_unlock_macro(env)`. The only "duplication" was cosmetic: `play_level_2`
+  passed `max_expand=400`, which is exactly the leg's default, hiding the fact
+  that the two players are identical compositions.
+- Also spotted the same redundancy in `play_level_1`, which passed
+  `max_toggles=2` (again the default of `solve_unlock_reach`).
+- Refactor (behaviour-preserving): dropped the redundant default arguments so
+  every player is now a bare general-leg call. L2 and L3 now read identically
+  (`solve_unlock_macro(env)`), making the leg-reuse explicit. No code was moved
+  INTO legs.py because the shared skill (`solve_unlock_macro`) was already
+  written ONCE; the players stay thin one-liners naming which leg to commit.
+
+## Candidate higher-order leg (reaffirmed by L3): unlock_search(env, reach_fn, schedule)
+- RECURRING COMPOSITION PATTERN, now with THREE levels of evidence. The stronger
+  observation from L3 is the "one general leg, many levels" pattern: a single
+  parameter-free `solve_unlock_macro` cleared BOTH L2 and L3, i.e. once a leg is
+  general enough, new levels of the same family are solved by REUSE, not by new
+  code -- the player for a new level collapses to naming an existing leg.
+- This is exactly the payoff the `unlock_search(env, reach_fn, schedule)`
+  candidate predicts: every "unlock-then-reach" solver is the shared reach+macro
+  frontier search (`_reach_bfs` + `_use_macros`) differing ONLY in the
+  scheduling/pruning policy:
+    * grow-pruned bounded DFS      -> `plan_unlock_reach`  (L1)
+    * best-first on -|reach-set|   -> `plan_unlock_macro`  (L2, L3)
+  Unifying them under one `unlock_search(env, reach_fn, schedule)` would make the
+  unlock skill written literally ONCE, with each planner supplying only a
+  `schedule` policy; paired with `plan_and_commit`, future unlock variants get
+  their `solve_*` for free and every player stays a one-line composition. Kept
+  as a candidate (not yet cut over) to preserve the current, validated behaviour.
+EOF
+echo done
+Now confirm behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat players.py && echo "=== RUN ===" && python gkm_try.py 2>&1 | tail -5
+Done. Debrief complete and behaviour preserved.
+
+## Summary
+
+**Comparison of `play_level_3` vs. earlier players** — I ran `gkm_try.py` first to lock in the baseline (`levels=3 replay_ok=True`), then compared the three players. The finding:
+
+- `play_level_1` → `solve_unlock_reach(env, max_toggles=2)` — but `2` is the leg's default.
+- `play_level_2` → `solve_unlock_macro(env, max_expand=400)` — but `400` is the leg's default.
+- `play_level_3` → `solve_unlock_macro(env)`.
+
+So **`play_level_3` is literally identical to `play_level_2`** (both `solve_unlock_macro` with the default `max_expand=400`). Level 3 introduced **no new skill** — it is fully subsumed by the general USE-macro unlock leg already written for level 2. The only duplication was cosmetic: redundant default arguments that hid the fact the two players are the same composition (and the same redundancy on `play_level_1`).
+
+**Refactor (behaviour-preserving):**
+- The shared skill (`solve_unlock_macro`) was already written **once** in `legs.py`, so no new extraction into `legs.py` was needed. Instead I made the players uniformly thin bare-leg calls by dropping the redundant default args, so the L2≡L3 leg-reuse is now explicit rather than obscured.
+- Players remain thin compositions that only name which leg to commit.
+
+**`legs_log.md`** — appended the L3 clear notes, the post-clear refactor rationale, and reaffirmed the recurring composition pattern / candidate higher-order leg `unlock_search(env, reach_fn, schedule)`. L3 adds a third data point and highlights the "one general leg, many levels" payoff: once a leg is general enough (best-first reach + `_use_macros` frontier search), a new level of the same family is solved by **reuse, not new code**. The two existing planners differ only in scheduling policy (grow-pruned bounded DFS vs. best-first on `-|reach-set|`), which is exactly what `unlock_search` would parameterise. Kept as a candidate rather than cutting over, to preserve validated behaviour.
+
+**Verification:** `python gkm_try.py` → `RESULT levels=3 moves=114 replay_ok=True err=None` (unchanged, `levels>=3`).

@@ -1,0 +1,110 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat gkm_try.py && echo "---SOLVE---" && cat solve.py && echo "---CHECKPOINT---" && cat checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat perception.py
+Now let me run the current solution to confirm it reaches level 3:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && timeout 600 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py
+The solution already reaches level 3. Now let me analyze the structure. All three players are one-liners, but `play_level_2` and `play_level_3` are identical, and there's duplication *inside* legs.py. Let me examine the repeated gestures carefully.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "env.clone()" legs.py && echo "---" && grep -n "levels_completed > start_levels\|levels_completed > base\|active_pos(c)" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '220,300p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '300,375p' legs.py
+I now have a clear picture. Key findings:
+
+1. **`play_level_2` and `play_level_3` are identical** one-liners → already thin, but the identical body signals the recurring composition.
+2. **Duplication inside legs.py:**
+   - The *single-drag clone probe* (clone → drag → check landed/completed) is hand-rolled in both `_can_drop` and `walk_box_to`.
+   - The *straddle offset-plan loop* is **copy-pasted twice** inside `straddle_box_to` (once on the trial clone, once to commit on `env`).
+
+Let me refactor these into shared, well-named legs — carefully preserving exact behaviour. First the single-drag probe:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now refactor `walk_box_to`'s inner probe to use the shared leg:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now the copy-pasted straddle offset-plan loop. I'll extract one leg with a `check_bounds` flag matching both call sites exactly:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now replace the two inlined loops in `straddle_box_to` with calls to the shared leg:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now update the players so `play_level_3`'s comment reflects that it reuses the same multi-rope solver (making the recurring composition explicit) rather than being a bare copy:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/players.py
+Now verify behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python -c "import ast; ast.parse(open('legs.py').read()); ast.parse(open('players.py').read()); print('syntax ok')" && python gkm_try.py
+Behaviour is identical (`levels=3 moves=27 replay_ok=True`). Now let me append the debrief for level 3 to `legs_log.md`, capturing the recurring composition pattern (the candidate higher-order leg):
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat >> legs_log.md <<'EOF'
+
+## r11l level 3
+Level 3 is a bigger multi-rope board (more colour systems, boxes farther from
+their rings) but introduces NO new mechanic. `play_level_3` needed nothing
+level-specific: it is the SAME one-line composition as level 2,
+`place_boxes_on_rings(env)`. The whole board is solved by the generic
+solver discovering every colour system, walking each far box in, then
+straddle-snapping it onto its own-colour ring. Behaviour unchanged:
+`python gkm_try.py` still reports `RESULT levels=3 moves=27 replay_ok=True`.
+
+## Debrief refactor (after clearing level 3)
+Comparing `play_level_3` to the earlier players confirmed the players were
+already thin (`play_level_2` and `play_level_3` are the identical one-liner
+`place_boxes_on_rings(env)`). The remaining duplication lived INSIDE legs.py,
+and it was the same "try a move, then commit it" gesture written more than once.
+Written ONCE now and shared:
+  * `probe_drag(env, frm, dst, base_levels)` — TRY one `drag_endpoint` on a
+    CLONE and report `(clone, landed, completed)` without mutating `env`. This
+    "look before you leap" probe was hand-rolled in both `_can_drop` (the
+    reachability test) and `walk_box_to` (the greedy inner loop); both now call
+    the one leg. `landed` folds the axis-swapped `active_pos == dst` check and
+    `completed` folds the "this move wins the level" check into one place.
+  * `_run_straddle_plan(target_env, eps, perm, pat, target, base, check_bounds)`
+    — apply ONE symmetric-straddle plan (permutation -> offset pattern) with
+    early stop on level completion. `straddle_box_to` previously inlined this
+    EXACT loop twice: once bounded on a clone to TRIAL, then again on the real
+    env to COMMIT. The single leg is now called twice, distinguished only by
+    the `check_bounds` flag (trial bounds-checks; commit replays the validated
+    plan), removing a verbatim copy-paste block.
+
+## Candidate higher-order leg (recurring composition pattern)
+Three levels in, the pattern that recurs across the WHOLE family is now sharp,
+in two nested layers:
+
+  1. per-move: PROPOSE a drag, PROBE it on a clone, and only COMMIT if it
+     improves (or wins). Concretely `probe_drag` + "keep the best; a
+     level-completing move always wins" — shared by walk and straddle.
+  2. per-board: for each independent SYSTEM, drive its DERIVED feature
+     (midpoint / centroid) onto its target by WALK-then-STRADDLE, ordering
+     systems farthest-gap-first so a placed system stays out of the others'
+     reach. `place_boxes_on_rings` is this orchestrator; `place_box_on_ring`
+     is its degenerate single-system, closed-form instance.
+
+A higher-order leg would capture layer (2) directly:
+
+    solve_systems(env, discover, feature_fn, place_one):
+        systems = discover(env)                      # ring_systems
+        systems.sort(key=gap_to_target, reverse=True)  # farthest first
+        for s in systems:
+            if feature_fn(env, s) == s.target: continue
+            place_one(env, s)                        # walk_box_to; straddle_box_to
+
+with `place_one` itself built from layer (1)'s probe/commit loop
+(`converge_feature_to_target`, sketched in the level-2 debrief). Every current
+r11l player would then be `solve_systems(env, ...)` with level-appropriate
+`discover` / `feature_fn` / `place_one`, and `play_level_1..3` stay one line.
+EOF
+echo "appended"
+Let me do a final confirmation run and review the refactored legs:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py && echo "===PLAYERS===" && cat players.py
+The debrief is complete. Summary of what I did:
+
+## Findings
+- Ran `python gkm_try.py`: confirmed `RESULT levels=3 moves=27 replay_ok=True` before and after.
+- The **players were already thin** — `play_level_2` and `play_level_3` are the identical one-liner `place_boxes_on_rings(env)`. The real duplication lived *inside* `legs.py`: the same "try a move, then commit it" gesture was written more than once.
+
+## Refactor (behaviour-preserving, each skill written ONCE)
+1. **`probe_drag(env, frm, dst, base_levels)`** — the recurring "look before you leap" gesture: clone `env`, do one `drag_endpoint`, and report `(clone, landed, completed)` without mutating `env`. It folds the axis-swapped `active_pos == dst` landing check and the "this move wins the level" check into one place. Previously hand-rolled in both `_can_drop` and `walk_box_to`; both now call it.
+2. **`_run_straddle_plan(...)`** — applies one symmetric-straddle plan with early stop on level completion. `straddle_box_to` had this **exact loop copy-pasted twice** (bounds-checked TRIAL on a clone, then COMMIT on the real env). Now it's a single leg called twice, distinguished only by a `check_bounds` flag — which reproduces the original asymmetry (trial bounds-checks, commit replays the already-validated plan) exactly.
+
+The players stay one-line compositions; `play_level_3`'s comment now makes explicit that it reuses the generic multi-rope solver.
+
+## Log
+Appended a level-3 debrief plus the sharpened recurring composition pattern to `legs_log.md`: a **two-layer candidate higher-order leg** — per-move *propose→probe→commit* (`probe_drag`), and per-board *discover→sort-farthest-first→walk-then-straddle each system* (`solve_systems`), with `place_box_on_ring` as the degenerate closed-form instance.
+
+Final check confirms behaviour unchanged: `RESULT levels=3 moves=27 replay_ok=True`.

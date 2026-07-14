@@ -1,0 +1,32 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat players.py legs.py legs_log.md gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat solve.py checkpoint.json && echo "---PERCEPTION---" && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -20
+The current setup works (levels=1). Now let me analyze the code for repeated patterns to refactor.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "env.step(6" legs.py players.py
+Found the repetition: the raw coordinate-click `env.step(6, ...)` is written twice — once in `_click_to` and again inline for selecting the other endpoint. Let me refactor so the click primitive is written once, with clearly-named semantic legs.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now let me append the recurring composition pattern (candidate higher-order leg) to the log:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs_log.md
+Let me also make `play_level_1`'s thin-composition intent explicit in the comment, then re-run to confirm behaviour is unchanged.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -5
+Behaviour unchanged: `RESULT levels=1 moves=3 replay_ok=True`.
+
+## Debrief summary
+
+**Comparison.** `players.py` has a single player, `play_level_1`, and it was already a one-line composition. The real duplication was *inside* `legs.py`: the sole engine action `env.step(6, x, y)` was written **twice** — once in the private `_click_to` helper and once inline for selecting the other endpoint (with the awkward `(x=col, y=row)` axis-swap repeated too).
+
+**Refactor (each skill written ONCE).**
+- `click(env, row, col)` — the single primitive that owns the `env.step(6, ...)` call and the axis swap.
+- `move_active_to(env, row, col)` — semantic skill: drop the active endpoint.
+- `select_endpoint(env, point)` — semantic skill: activate a marker.
+- `place_box_on_ring` now composes those named legs instead of raw/duplicated steps. `_click_to` is gone.
+
+Players stay thin: `play_level_1` just calls `place_box_on_ring(env)`.
+
+**Candidate higher-order leg** appended to `legs_log.md`: the recurring skeleton
+`detect_state → move_active_to(A) → select_endpoint(other) → move_active_to(B)` — "drive two coupled handles so a *derived* feature lands on a target" — generalized as `place_derived_on_target(env, detect, solve_positions)`, of which `place_box_on_ring` is the midpoint instance.
+
+Confirmed with `python gkm_try.py`: still `levels=1` (>=1), same 3 moves, replay OK.

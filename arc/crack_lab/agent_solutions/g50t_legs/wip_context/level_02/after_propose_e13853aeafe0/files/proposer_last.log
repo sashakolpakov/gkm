@@ -1,0 +1,1127 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat gkm_try.py 2>/dev/null | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat solve.py players.py checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat l2env.py p_l2_init.py p2_view.py p2_track.py p2_delta.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python p2_view.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python p2_track.py 2>&1 && echo "=== DELTAS ===" && python p2_delta.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import avatar_tl, clone_after
+env=get_l2_env()
+print('avatar_tl', avatar_tl(env))
+# track avatar after each single move
+import numpy as np
+from legs import _components
+def blob9big(f):
+    comps=_components(f==9)
+    # avatar is a compact ~24-cell blob not the border rows
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return cand[0] if cand else None
+f=np.asarray(env.frame())
+b=blob9big(f); print('start avatar tl',b[0],b[1],'size',len(b[2]))
+for a in [1,2,3,4]:
+    c=clone_after(env,a)
+    b2=blob9big(np.asarray(c.frame()))
+    print('move',a,'->',(b2[0],b2[1]),'size',len(b2[2]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+from legs import _components
+def blob9big(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return cand[0] if cand else None
+env=get_l2_env()
+seq=[]
+for a in [1,1,1,1,3,3,3,3,2,2]:
+    seq.append(a)
+    c=clone_after(env,seq)
+    f=np.asarray(c.frame())
+    b=blob9big(f)
+    print('seq',seq[-6:],'->',(b[0],b[1]) if b else None,'lvl',c.levels_completed)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore
+env=get_l2_env()
+rp,reach=_move_explore(env)
+print('reward_path',rp)
+print('num reachable',len(reach))
+for p in sorted(reach): print(p, len(reach[p]))
+" 2>&1 | head -40
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+env=get_l2_env()
+f=np.asarray(env.frame())
+# print with col ruler
+print('    '+''.join(str(c%10) for c in range(64)))
+chars={0:'.',1:'1',5:' ',8:'8',9:'9'}
+for r in range(64):
+    print(f'{r:3} '+''.join(chars.get(int(f[r,c]),'?') for c in range(64)))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after
+import numpy as np
+env=get_l2_env()
+rp,reach=_move_explore(env)
+base=len(reach)
+print('base reach',base)
+for pos,path in sorted(reach.items(), key=lambda kv:len(kv[1])):
+    c=clone_after(env, path+[5])
+    f0=np.asarray(clone_after(env,path).frame())
+    f1=np.asarray(c.frame())
+    diff=int((f0!=f1).sum())
+    rp2,reach2=_move_explore(c)
+    print('USE at',pos,'framediff',diff,'reach',len(reach2),'reward',rp2 is not None)
+" 2>&1 | head -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+env=get_l2_env()
+f_init=np.asarray(env.frame())
+# move around then USE
+c=clone_after(env,[1,1,3,3])  # to (8,38)
+f_before=np.asarray(c.frame())
+c2=clone_after(c,[5])
+f_after=np.asarray(c2.frame())
+print('after moves == init?', np.array_equal(f_before,f_init))
+print('after USE == init?', np.array_equal(f_after,f_init))
+print('diff USE vs before', int((f_before!=f_after).sum()))
+# where did avatar go after USE
+from legs import _components
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+print('avatar before USE',av(f_before),'after USE',av(f_after))
+# show diff cells
+d=np.argwhere(f_before!=f_after)
+for (r,col) in d[:40]:
+    print(r,col,f_before[r,col],'->',f_after[r,col])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+def player(env):
+    f=np.asarray(env.frame())
+    print('L1 colors',np.unique(f,return_counts=True))
+    chars={0:'.',1:'1',5:' ',8:'8',9:'9'}
+    for r in range(64):
+        print(''.join(chars.get(int(f[r,c]),chr(65+int(f[r,c]))) for c in range(64)))
+    raise SystemExit
+try:
+    A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+env=get_l2_env()
+# Try the L1-style: navigate toward the 9-chamber (rows19-25 cols24-31).
+# From start (26,50) move LEFT toward chamber. Explore reaching col ~32 row ~19-25.
+# Let's brute BFS with 8-config key.
+from collections import deque
+def key(e):
+    f=np.asarray(e.frame())
+    a=av(f)
+    m8=(f==8).tobytes()
+    return (a,hash(m8))
+base=env.levels_completed
+start=env.clone()
+q=deque([(start,[])])
+seen={key(start)}
+found=None
+steps=0
+import time; t=time.time()
+while q and steps<4000:
+    node,path=q.popleft()
+    for aa in (1,2,3,4,5):
+        c=node.clone(); c.step(aa); steps+=1
+        if c.levels_completed>base:
+            found=path+[aa]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k)
+        if len(path)<40:
+            q.append((c,path+[aa]))
+    if found: break
+print('found',found,'steps',steps,'seen',len(seen),'time',round(time.time()-t,1))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys,json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return cand[0] if cand else None
+path=[4,4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]
+def player(env):
+    a0=av(np.asarray(env.frame())); print('start avatar',(a0[0],a0[1]))
+    for i,act in enumerate(path):
+        before=env.levels_completed
+        env.step(act)
+        a=av(np.asarray(env.frame()))
+        if env.levels_completed>before:
+            print('step',i,'act',act,'-> LEVEL UP! avatar',(a[0],a[1]) if a else None)
+        #else: print('step',i,'act',act,'avatar',(a[0],a[1]) if a else None,'lvl',env.levels_completed)
+    print('final lvl',env.levels_completed)
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return cand[0] if cand else None
+def n8(f): return int((f==8).sum())
+path=[4,4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]
+def player(env):
+    f=np.asarray(env.frame());a=av(f);print('start',(a[0],a[1]),'n8',n8(f))
+    for i,act in enumerate(path):
+        b=env.levels_completed
+        env.step(act)
+        f=np.asarray(env.frame());a=av(f)
+        print('step',i,'act',act,'av',(a[0],a[1]) if a else None,'n8',n8(f),'lvl',env.levels_completed)
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after
+import numpy as np
+env=get_l2_env()
+rp,reach=_move_explore(env)
+def n8(e): return int((np.asarray(e.frame())==8).sum())
+print('start n8',n8(env))
+for pos,path in sorted(reach.items()):
+    c=clone_after(env,path)
+    print(pos,'n8',n8(c),'pathlen',len(path))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+from legs import _components
+from collections import deque
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+env=get_l2_env()
+base=env.levels_completed
+def key(e):
+    f=np.asarray(e.frame()); return (av(f), int((f==8).sum()), hash((f==8).tobytes()))
+start=env.clone()
+q=deque([(start,[])]); seen={key(start)}; found=None; steps=0
+n8seen=set()
+while q and steps<20000:
+    node,path=q.popleft()
+    for aa in (1,2,3,4,5):
+        c=node.clone(); c.step(aa); steps+=1
+        if c.levels_completed>base: found=path+[aa]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k); n8seen.add(k[1])
+        if len(path)<60: q.append((c,path+[aa]))
+    if found: break
+print('found',found,'steps',steps,'seen',len(seen),'n8 values',sorted(n8seen))
+# print distinct positions
+pos=sorted(set(k[0] for k in seen))
+print('num distinct pos',len(pos)); print(pos)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+from collections import deque
+env=get_l2_env()
+base=env.levels_completed
+def key(e): return np.asarray(e.frame()).tobytes()
+start=env.clone(); q=deque([(start,[])]); seen={key(start)}; found=None; steps=0
+while q and steps<30000:
+    node,path=q.popleft()
+    for aa in (1,2,3,4,5):
+        c=node.clone(); c.step(aa); steps+=1
+        if c.levels_completed>base: found=path+[aa]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k)
+        if len(path)<80: q.append((c,path+[aa]))
+    if found: break
+print('found',found)
+print('steps',steps,'seen',len(seen))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+env=get_l2_env()
+def topleft(f):
+    return f[0:6,0:12]
+c=env.clone()
+for i in range(8):
+    f=np.asarray(c.frame())
+    tl=topleft(f)
+    print('=== after',i,'USE  colors in TL',np.unique(tl,return_counts=True))
+    chars={0:'.',1:'1',2:'2',5:' ',8:'8',9:'9'}
+    for r in range(6):
+        print('   '+''.join(chars.get(int(tl[r,cc]),'?') for cc in range(12)))
+    c.step(5)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+env=get_l2_env()
+print('actions',env.actions, type(env.actions))
+c=env.clone()
+f0=np.asarray(c.frame())
+try:
+    r=c.step(6,10,10)
+    f1=np.asarray(c.frame())
+    print('step(6,10,10) ok, diff',int((f0!=f1).sum()),'ret',r)
+except Exception as e:
+    print('step(6,..) err',repr(e))
+# try step(6) alone
+c2=env.clone()
+try:
+    c2.step(6); print('step(6) ok diff',int((np.asarray(c2.frame())!=f0).sum()))
+except Exception as e: print('step(6) err',repr(e))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+env=get_l2_env()
+f=np.asarray(env.frame())
+print('    '+''.join(str(c%10) for c in range(13,42)))
+chars={0:'.',1:'1',2:'2',5:' ',8:'8',9:'9'}
+for r in range(14,32):
+    print(f'{r:3} '+''.join(chars.get(int(f[r,c]),'?') for c in range(13,42)))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after, _components
+import numpy as np
+def av(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+env=get_l2_env()
+rp,reach=_move_explore(env)
+for pos,path in sorted(reach.items()):
+    c=clone_after(env,path)
+    before=av(np.asarray(c.frame()))
+    c.step(5)
+    after=av(np.asarray(c.frame()))
+    print('at',pos,'USE-> avatar',after)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+from collections import deque
+env=get_l2_env()
+f=np.asarray(env.frame())
+# walkable = floor(5) or 8 (removable) ; treat 9-chamber-walls and 0 as blocked
+# avatar center approx (28,52). flood from there over 5-or-8 cells
+walk = (f==5)|(f==8)
+H,W=f.shape
+seen=np.zeros_like(walk)
+# start from a known floor cell near avatar start, e.g. (24,52) just above avatar
+# avatar at rows26-30 col49-53; floor above at row24? find a 5 cell near avatar
+# pick (14,52)
+starts=[(r,c) for r in range(H) for c in range(W) if walk[r,c] and 48<=c<=54 and r==14]
+print('starts',starts[:3])
+q=deque(starts)
+for s in starts: seen[s]=True
+while q:
+    r,c=q.popleft()
+    for dr,dc in((1,0),(-1,0),(0,1),(0,-1)):
+        nr,nc=r+dr,c+dc
+        if 0<=nr<H and 0<=nc<W and walk[nr,nc] and not seen[nr,nc]:
+            seen[nr,nc]=True; q.append((nr,nc))
+# is chamber-adjacent floor reached? chamber left opening around (22,24)
+print('reached (22,23)?',seen[22,23],'(22,25)?',seen[22,25],'(18,27)?',seen[18,27])
+print('reached (20,20)?',seen[20,20],'(22,20)?',seen[22,20])
+# count reached
+print('reached floor cells',int((seen&walk).sum()),'total walkable',int(walk.sum()))
+# show reached map
+chars=lambda r,c: ('R' if seen[r,c] else ('8' if f[r,c]==8 else (' ' if f[r,c]==5 else ('9' if f[r,c]==9 else '.'))))
+print('    '+''.join(str(c%10) for c in range(7,56)))
+for r in range(14,56):
+    print(f'{r:3} '+''.join(chars(r,c) for c in range(7,56)))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import solve_unlock_reach, _move_explore, _components
+def player(env):
+    solve_unlock_reach(env)  # solve L1 via leg
+    print('after leg, levels',env.levels_completed)
+    f=np.asarray(env.frame())
+    # avatar reachability in this real L2 state
+    rp,reach=_move_explore(env)
+    print('reward_path',rp,'reach',len(reach))
+    # avatar pos
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    print('avatar',(cand[0][0],cand[0][1]) if cand else None)
+    print('n8',int((f==8).sum()))
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after, _move_explore
+import numpy as np
+env=get_l2_env()
+rp,reach=_move_explore(env)
+path=reach[(28,40)]
+print('path to (28,40)',path)
+f0=np.asarray(env.frame())
+c=clone_after(env,path)
+f1=np.asarray(c.frame())
+d=np.argwhere(f0!=f1)
+print('num diff',len(d))
+for r,cc in d:
+    print(r,cc,int(f0[r,cc]),'->',int(f1[r,cc]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after, _components
+import numpy as np
+def stats(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    cand.sort(key=lambda c:-len(c[2]))
+    av=(cand[0][0],cand[0][1]) if cand else None
+    m8=np.argwhere(f==8)
+    if len(m8): bb=(m8[:,0].min(),m8[:,1].min(),m8[:,0].max(),m8[:,1].max())
+    else: bb=None
+    return av,int((f==8).sum()),bb
+env=get_l2_env()
+f=np.asarray(env.frame())
+print('start',stats(f))
+for a in [1,2,3,4]:
+    c=clone_after(env,a); f=np.asarray(c.frame())
+    print('move',a,stats(f))
+print('--- from (26,38) after [3] ---')
+c=clone_after(env,[3]); f=np.asarray(c.frame()); print('[3]',stats(f))
+for a in [1,2,3,4]:
+    c2=clone_after(env,[3,a]); f=np.asarray(c2.frame()); print(' then',a,stats(f))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after, _components
+import numpy as np
+def snake(f):
+    m8=np.argwhere(f==8)
+    if not len(m8): return 0,None
+    return len(m8),(int(m8[:,0].min()),int(m8[:,1].min()),int(m8[:,0].max()),int(m8[:,1].max()))
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+env=get_l2_env()
+# greedily push: try each move, keep ones that reduce n8 (advance snake)
+c=env.clone(); path=[]
+for it in range(20):
+    f=np.asarray(c.frame()); n,bb=snake(f); base=c.levels_completed
+    best=None
+    for a in [1,2,3,4]:
+        cc=clone_after(c,a); ff=np.asarray(cc.frame()); n2,_=snake(ff)
+        if cc.levels_completed>base: best=('WIN',a,cc); break
+        if n2<n: best=(n2,a,cc); break
+    if best is None:
+        print('it',it,'no snake-advancing move; av',av(f),'n8',n,bb); break
+    if best[0]=='WIN': print('it',it,'WIN move',best[1]); path.append(best[1]); break
+    n2,a,cc=best; path.append(a); c=cc
+    f=np.asarray(c.frame()); print('it',it,'move',a,'av',av(f),'n8',snake(f)[0],snake(f)[1],'lvl',c.levels_completed)
+print('path',path)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+def sn(f):
+    m8=np.argwhere(f==8)
+    if not len(m8): return 0,None
+    return len(m8),(int(m8[:,0].min()),int(m8[:,1].min()),int(m8[:,0].max()),int(m8[:,1].max()))
+path=[4,4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]
+def player(env):
+    f=np.asarray(env.frame()); print('start av',av(f),'snake',sn(f))
+    for i,a in enumerate(path):
+        env.step(a); f=np.asarray(env.frame())
+        print(i,'act',a,'av',av(f),'snake',sn(f),'lvl',env.levels_completed)
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after, _components
+import numpy as np
+from collections import deque
+def sn(f): return int((f==8).sum())
+env=get_l2_env()
+# BFS but goal: minimize n8. Track min n8 reachable and path, key=(9-mask,8-mask) full
+def key(e):
+    f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+start=env.clone(); q=deque([(start,[])]); seen={key(start)}
+minn=98; minpath=[]; base=start.levels_completed; win=None
+steps=0
+while q and steps<40000:
+    node,path=q.popleft()
+    for a in (1,2,3,4,5):
+        c=node.clone(); c.step(a); steps+=1
+        if c.levels_completed>base: win=path+[a]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k)
+        n=sn(np.asarray(c.frame()))
+        if n<minn: minn=n; minpath=path+[a]
+        if len(path)<60: q.append((c,path+[a]))
+    if win: break
+print('win',win,'minn',minn,'minpath_len',len(minpath),'seen',len(seen),'steps',steps)
+print('minpath',minpath)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+env=get_l2_env()
+def show(f,tag):
+    tl=f[0:6,0:14]; br=f[63,55:64]
+    chars={0:'.',1:'1',2:'2',5:' ',8:'8',9:'9'}
+    print(tag,'TL:',[ ''.join(chars.get(int(tl[r,c]),'?') for c in range(14)) for r in range(1,6)])
+    print('   BR row63[55:64]:',''.join(chars.get(int(x),str(int(x))) for x in br))
+c=env.clone()
+show(np.asarray(c.frame()),'init')
+# do: LEFT then USE (reset) repeatedly, watch TL counter
+for i in range(6):
+    c.step(3)  # left to (26,44)
+    c.step(5)  # USE reset
+    show(np.asarray(c.frame()),f'after L+USE #{i}')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import random, numpy as np
+env=get_l2_env(); base=env.levels_completed
+best=None
+for t in range(400):
+    c=env.clone(); path=[]
+    for i in range(120):
+        a=random.choice([1,2,3,4,5])
+        c.step(a); path.append(a)
+        if c.levels_completed>base:
+            best=path; break
+    if best: break
+print('WIN' if best else 'no win', 'len', len(best) if best else None)
+if best: print(best)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components, _move_explore
+from collections import deque
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+# BFS on L1 from scratch collecting distinct L2-entry states
+results=[]
+def player(env):
+    base=env.levels_completed  # 0
+    def key(e):
+        f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+    start=env.clone(); q=deque([(start,[])]); seen={key(start)}; steps=0
+    wins=[]
+    while q and steps<20000 and len(wins)<8:
+        node,path=q.popleft()
+        for a in (1,2,3,4,5):
+            c=node.clone(); c.step(a); steps+=1
+            if c.levels_completed>base:
+                wins.append((path+[a], c)); continue
+            k=key(c)
+            if k in seen: continue
+            seen.add(k)
+            if len(path)<40: q.append((c,path+[a]))
+    for wp,cw in wins:
+        f=np.asarray(cw.frame()); a=av(f)
+        rp,reach=_move_explore(cw)
+        results.append((len(wp),a,len(reach),rp is not None))
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+for r in results: print('L1winlen',r[0],'L2 avatar',r[1],'L2reach',r[2],'L2reward?',r[3])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+from legs import _components
+from collections import deque
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+env=get_l2_env(); base=env.levels_completed
+def key(e):
+    f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+start=env.clone(); q=deque([(start,[])]); seen={key(start)}; steps=0
+positions=set(); win=None
+while q and steps<40000:
+    node,path=q.popleft()
+    p=av(np.asarray(node.frame())); 
+    if p: positions.add(p)
+    for a in (1,2,3,4,5):
+        c=node.clone(); c.step(a); steps+=1
+        if c.levels_completed>base: win=path+[a]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k)
+        if len(path)<60: q.append((c,path+[a]))
+    if win: break
+print('win',win,'positions count',len(positions))
+print(sorted(positions))
+print('min col',min(c for r,c in positions),'min row',min(r for r,c in positions))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components, _move_explore
+from collections import deque
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+prefix=[4,4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4]  # to (50,38)
+out=[]
+def player(env):
+    for a in prefix: env.step(a)
+    base=env.levels_completed
+    print('at pre-win, avatar',av(np.asarray(env.frame())),'lvl',base)
+    # BFS depth<=8 for wins
+    def key(e):
+        f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+    q=deque([(env.clone(),[])]); seen={key(env)}; found={}
+    while q:
+        node,path=q.popleft()
+        if len(path)>8: continue
+        for a in (1,2,3,4,5):
+            c=node.clone(); c.step(a)
+            if c.levels_completed>base:
+                p=av(np.asarray(c.frame()))
+                if p not in found:
+                    rp,reach=_move_explore(c)
+                    found[p]=(path+[a],len(reach),rp is not None)
+                continue
+            k=key(c)
+            if k in seen: continue
+            seen.add(k); q.append((c,path+[a]))
+    for p,(wp,rc,rw) in found.items():
+        out.append((p,wp,rc,rw))
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+print('distinct L2 starts from L1 chamber entries:')
+for p,wp,rc,rw in out:
+    print(' L2avatar',p,'entrymoves',wp,'L2reach',rc,'reward?',rw)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after, _components
+import numpy as np
+def desc(f):
+    comps9=[(c[0],c[1],len(c[2])) for c in _components(f==9) if c[0]<60]
+    m8=np.argwhere(f==8); bb8=(int(m8[:,0].min()),int(m8[:,1].min()),int(m8[:,0].max()),int(m8[:,1].max())) if len(m8) else None
+    return comps9, (len(m8),bb8)
+env=get_l2_env()
+for sel_moves in [[], [3,5], [3,5,3,5]]:
+    c=clone_after(env,sel_moves)
+    f0=np.asarray(c.frame())
+    print('=== after selector setup',sel_moves,' selector slot~',len(sel_moves)//2%3)
+    for a in [1,2,3,4]:
+        cc=clone_after(c,a); f1=np.asarray(cc.frame())
+        d=np.argwhere(f0!=f1)
+        if len(d)==0: print('  move',a,'NO CHANGE'); continue
+        # what colors changed
+        chc={}
+        for r,cl in d:
+            k=(int(f0[r,cl]),int(f1[r,cl])); chc[k]=chc.get(k,0)+1
+        print('  move',a,'changes',dict(chc),'bbox',(int(d[:,0].min()),int(d[:,1].min()),int(d[:,0].max()),int(d[:,1].max())))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+env=get_l2_env()
+c=clone_after(env,[3,5,3])  # slot1 then LEFT
+f=np.asarray(c.frame())
+print('colors',dict(zip(*[x.tolist() for x in np.unique(f,return_counts=True)])))
+chars={0:'.',1:'1',2:'2',5:' ',8:'8',9:'9'}
+print('    '+''.join(str(cc%10) for cc in range(38,64)))
+for r in range(18,40):
+    print(f'{r:3} '+''.join(chars.get(int(f[r,cc]),'?') for cc in range(38,64)))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+import numpy as np
+from collections import deque
+env=get_l2_env(); base=env.levels_completed
+def key(e):
+    f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+start=env.clone(); q=deque([(start,[])]); seen={key(start)}; steps=0
+m8set={}
+while q and steps<40000:
+    node,path=q.popleft()
+    f=np.asarray(node.frame()); mk=(f==8).tobytes()
+    if mk not in m8set:
+        m8=np.argwhere(f==8); bb=(int(m8[:,0].min()),int(m8[:,1].min()),int(m8[:,0].max()),int(m8[:,1].max())) if len(m8) else None
+        m8set[mk]=(int((f==8).sum()),bb,path)
+    for a in (1,2,3,4,5):
+        c=node.clone(); c.step(a); steps+=1
+        k=key(c)
+        if k in seen: continue
+        seen.add(k)
+        if len(path)<60: q.append((c,path+[a]))
+print('distinct 8-masks',len(m8set))
+for mk,(n,bb,p) in m8set.items():
+    print('n8',n,'bbox',bb,'via',p[:12])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import clone_after
+import numpy as np
+env=get_l2_env()
+f0=np.asarray(env.frame())
+# focus chamber region rows19-25 cols24-31 for each action
+def cham(f): 
+    return [''.join('9' if f[r,c]==9 else ('#' if f[r,c]==5 else '.') for c in range(23,32)) for r in range(18,27)]
+print('INIT chamber:')
+for l in cham(f0): print(' ',l)
+for a in [1,2,3,4,5]:
+    c=clone_after(env,a); f=np.asarray(c.frame())
+    same = np.array_equal(f0[18:27,23:32],f[18:27,23:32])
+    print('action',a,'chamber changed?',not same)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys,json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+from collections import deque
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+res={}
+def player(env):
+    base=env.levels_completed
+    def key(e):
+        f=np.asarray(e.frame()); return (f==9).tobytes()+(f==8).tobytes()
+    start=env.clone(); q=deque([(start,[])]); seen={key(start)}; steps=0
+    wins={}
+    while q and steps<120000:
+        node,path=q.popleft()
+        for a in (1,2,3,4,5):
+            c=node.clone(); c.step(a); steps+=1
+            if c.levels_completed>base:
+                f=np.asarray(c.frame()); p=av(f)
+                sig=(p,int((f==8).sum()))
+                if sig not in wins: wins[sig]=path+[a]
+                continue
+            k=key(c)
+            if k in seen: continue
+            seen.add(k)
+            if len(path)<50: q.append((c,path+[a]))
+    res['wins']=wins; res['seen']=len(seen); res['steps']=steps
+    json.dump({'seen':len(seen),'steps':steps,'wins':{str(k):v for k,v in wins.items()}}, open('/tmp/l1wins.json','w'))
+try: A.run_program('g50t',player)
+except SystemExit: pass
+print('done', res.get('seen'), res.get('steps'))
+print('num distinct L2-entry sigs', len(res.get('wins',{})))
+for sig,p in res.get('wins',{}).items():
+    print(' sig',sig,'len',len(p))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+def try_path(path):
+    r={}
+    def player(env):
+        for a in path:
+            env.step(a)
+            if env.levels_completed>=1: break
+        r['lvl']=env.levels_completed; r['av']=av(np.asarray(env.frame()))
+        raise SystemExit
+    try: A.run_program('g50t',player)
+    except SystemExit: pass
+    return r
+# L1 minimal: straight down then right into chamber
+print('down7+right', try_path([2,2,2,2,2,2,2,4,4,4,4]))
+print('down then right variants')
+print('d6r4', try_path([2,2,2,2,2,2,4,4,4,4]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after
+import numpy as np
+env=get_l2_env()
+# reach (26,38) plow then USE then explore
+c=clone_after(env,[3,3])  # (26,38), plow
+print('after plow avatar reach:')
+rp,reach=_move_explore(c); print(' reach',len(reach),'reward',rp is not None)
+c2=clone_after(c,[5])  # USE reset
+print('after plow+USE:')
+rp2,reach2=_move_explore(c2); print(' reach',len(reach2),'reward',rp2 is not None,'positions',sorted(reach2)[:30])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from legs import _components
+def av(f):
+    comps=_components(f==9); cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]; cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1]) if cand else None
+def try_path(path,stopl=1):
+    r={'trace':[]}
+    def player(env):
+        for i,a in enumerate(path):
+            env.step(a)
+            if env.levels_completed>=stopl: r['won_at']=i; break
+        r['lvl']=env.levels_completed; r['av']=av(np.asarray(env.frame()))
+        raise SystemExit
+    try: A.run_program('g50t',player)
+    except SystemExit: pass
+    return r
+ck=[4,4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]
+print('checkpoint', try_path(ck))
+print('no-wiggle', try_path([4,4,4,4,5,2,2,2,2,2,2,2,4,4,4,4,4]))
+print('no-USE', try_path([4,4,4,4,2,1,2,2,2,2,2,2,2,4,4,4,4,4]))
+print('no-plow(no right4)', try_path([5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]))
+print('plow3 then down', try_path([4,4,4,5,2,1,2,2,2,2,2,2,2,4,4,4,4,4]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after
+from collections import deque
+env=get_l2_env()
+def reachkey(reach): return frozenset(reach.keys())
+q=deque([(env.clone(),[])])
+rp0,reach0=_move_explore(env)
+seen={reachkey(reach0)}
+found=None; expanded=0
+while q and expanded<40:
+    node,prefix=q.popleft(); expanded+=1
+    rp,reach=_move_explore(node)
+    if rp is not None: found=prefix+rp; break
+    for pos,path in sorted(reach.items(), key=lambda kv:len(kv[1])):
+        c=clone_after(node, path+[5])
+        rp2,reach2=_move_explore(c)
+        rk=reachkey(reach2)
+        if rk in seen: continue
+        seen.add(rk)
+        q.append((c, prefix+path+[5]))
+print('found',found,'expanded',expanded,'distinct reachsets',len(seen))
+for rk in seen: print(' reachset size',len(rk))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+from l2env import get_l2_env
+from legs import _move_explore, clone_after
+import heapq
+env=get_l2_env()
+def reachkey(reach): return frozenset(reach.keys())
+rp0,reach0=_move_explore(env)
+seen={reachkey(reach0)}
+# best-first: maximize reachset size
+pq=[(-len(reach0),0,env.clone(),[])]
+cnt=1; found=None; expanded=0; maxreach=len(reach0)
+import time; t=time.time()
+while pq and expanded<250:
+    negn,_,node,prefix=heapq.heappop(pq); expanded+=1
+    rp,reach=_move_explore(node)
+    if rp is not None: found=prefix+rp; break
+    for pos,path in sorted(reach.items(), key=lambda kv:len(kv[1])):
+        c=clone_after(node, path+[5])
+        rp2,reach2=_move_explore(c)
+        if rp2 is not None: found=prefix+path+[5]+rp2; break
+        rk=reachkey(reach2)
+        if rk in seen: continue
+        seen.add(rk); maxreach=max(maxreach,len(reach2))
+        heapq.heappush(pq,(-len(reach2),cnt,c,prefix+path+[5])); cnt+=1
+    if found: break
+print('found',bool(found),'expanded',expanded,'maxreach',maxreach,'distinct',len(seen),'time',round(time.time()-t,1))
+if found: print('PATHLEN',len(found)); print(found)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat > /tmp/fastsolve.py <<'PY'
+from l2env import get_l2_env
+from legs import clone_after, _components
+import numpy as np
+from collections import deque
+import heapq, time
+
+def avpos(f):
+    comps=_components(f==9)
+    cand=[c for c in comps if 5<len(c[2])<40 and c[0]<60]
+    if not cand: return None
+    cand.sort(key=lambda c:-len(c[2]))
+    return (cand[0][0],cand[0][1])
+
+MOVES=(1,2,3,4)
+
+def fast_reach(start):
+    """BFS over avatar positions (dedup on pos). Returns (reward_path or None, {pos:path})."""
+    base=int(start.levels_completed)
+    f=np.asarray(start.frame()); s=avpos(f)
+    if s is None: return None,{}
+    paths={s:[]}; seen={s}
+    q=deque([(start.clone(),s,[])])
+    while q:
+        node,pos,path=q.popleft()
+        for a in MOVES:
+            c=node.clone(); c.step(a)
+            if int(c.levels_completed)>base:
+                return path+[a],paths
+            p=avpos(np.asarray(c.frame()))
+            if p is None or p==pos or p in seen: continue
+            seen.add(p); paths[p]=path+[a]
+            q.append((c,p,path+[a]))
+    return None,paths
+
+def macro_search(env, max_expand=400, time_limit=550):
+    t=time.time()
+    rp0,reach0=fast_reach(env)
+    if rp0 is not None: return rp0
+    seen={frozenset(reach0)}
+    pq=[(-len(reach0),0,env.clone(),[])]; cnt=1; maxr=len(reach0)
+    while pq and cnt<max_expand and time.time()-t<time_limit:
+        negn,_,node,prefix=heapq.heappop(pq)
+        rp,reach=fast_reach(node)
+        if rp is not None: return prefix+rp
+        for pos,path in sorted(reach.items(), key=lambda kv:len(kv[1])):
+            c=clone_after(node, path+[5])
+            rp2,reach2=fast_reach(c)
+            if rp2 is not None:
+                return prefix+path+[5]+rp2
+            rk=frozenset(reach2)
+            if rk in seen: continue
+            seen.add(rk); maxr=max(maxr,len(reach2))
+            heapq.heappush(pq,(-len(reach2),cnt,c,prefix+path+[5])); cnt+=1
+    print('no sol; expanded',cnt,'maxreach',maxr,'distinct',len(seen),'time',round(time.time()-t,1))
+    return None
+
+if __name__=='__main__':
+    env=get_l2_env()
+    t=time.time()
+    rp,reach=fast_reach(env)
+    print('fast_reach time',round(time.time()-t,2),'n',len(reach),'reward',rp is not None)
+    sol=macro_search(env, max_expand=400)
+    print('SOL',sol)
+PY
+python /tmp/fastsolve.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cp /tmp/fastsolve.py ./fastsolve.py && python fastsolve.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import json
+ck=json.load(open('checkpoint.json')); l1=ck['final_path']
+l2=[3,3,5,2,2,2,2,3,3,3,3,1,1,3,3,5,1,1,1,3,3,3,3,3,3,3,2,2,4,4,4]
+def player(env):
+    for a in l1: env.step(a)
+    print('after L1 lvl',env.levels_completed)
+    for i,a in enumerate(l2):
+        env.step(a)
+        if env.levels_completed>=2:
+            print('L2 WON at step',i); break
+    print('final lvl',env.levels_completed)
+    raise SystemExit
+try: A.run_program('g50t',player)
+except SystemExit: pass
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -c "
+import time
+from l2env import get_l2_env
+from fastsolve import macro_search
+env=get_l2_env()
+t=time.time()
+sol=macro_search(env,max_expand=400)
+print('time',round(time.time()-t,1),'len',len(sol) if sol else None)
+"
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs.py
+Now add the fast reachability and macro-unlock legs at the end of legs.py:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat >> legs.py <<'PY'
+
+
+# --------------------------------------------------------------------------
+# Fast avatar position + reachability (no per-position re-cloning).
+#
+# `_move_explore`/`avatar_tl` call clone-heavy translation detection at every
+# node, which is too slow for the multi-USE search needed on later levels.
+# `_avatar_pos` reads the avatar straight from a frame (the largest compact
+# color-9 blob that is not full-width scenery), and `fast_reach` does a single
+# clone per (position,action) BFS edge, deduping on avatar position.  This is
+# valid within a FIXED gate configuration (movement is deterministic there).
+# --------------------------------------------------------------------------
+def _avatar_pos(frame):
+    """Top-left (row, col) of the avatar = largest compact color-9 blob that is
+    not a full-width border line.  Returns None if none found."""
+    f = np.asarray(frame)
+    cand = [(tr, tc, cells) for tr, tc, cells in _components(f == 9)
+            if 5 < len(cells) < 40 and tr < f.shape[0] - 4]
+    if not cand:
+        return None
+    cand.sort(key=lambda c: -len(c[2]))
+    return (cand[0][0], cand[0][1])
+
+
+def fast_reach(start):
+    """BFS over avatar POSITIONS inside the current (fixed) gate configuration.
+    One clone per explored edge; dedup on avatar position.  Returns
+    (reward_path, {pos: move_path}); reward_path is a winning move list if the
+    reward can be raised by pure movement, else None."""
+    base = int(start.levels_completed)
+    s = _avatar_pos(start.frame())
+    if s is None:
+        return None, {}
+    paths = {s: []}
+    seen = {s}
+    q = deque([(start.clone(), s, [])])
+    while q:
+        node, pos, path = q.popleft()
+        for a in MOVES:
+            c = node.clone()
+            c.step(a)
+            if int(c.levels_completed) > base:
+                return path + [a], paths
+            p = _avatar_pos(c.frame())
+            if p is None or p == pos or p in seen:
+                continue
+            seen.add(p)
+            paths[p] = path + [a]
+            q.append((c, p, path + [a]))
+    return None, paths
+
+
+# --------------------------------------------------------------------------
+# General unlock-then-reach via USE-MACROS.
+#
+# On these levels a USE performed after walking somewhere resets the avatar to
+# its start BUT PRESERVES gates that were opened along the way (touching a wall
+# segment can open a remote gate).  Chaining such "walk-somewhere-then-USE"
+# macros accumulates opened gates until the goal becomes reachable by plain
+# movement.  We search best-first over the resulting reachable-position sets:
+# a macro = (walk to some reachable position P, press USE); the state key is the
+# frozenset of currently reachable positions.  Unlike `plan_unlock_reach`, we do
+# NOT require each individual USE to enlarge reachability -- an opening can take
+# several staged macros before it pays off -- so this handles deeper unlock
+# chains while staying deterministic and clone-bounded.
+# --------------------------------------------------------------------------
+def plan_unlock_macro(env, max_expand=400, time_limit=550):
+    """Return a concrete winning action list, or None.  Plans on clones only."""
+    t0 = time.time()
+    rp0, reach0 = fast_reach(env)
+    if rp0 is not None:
+        return rp0
+    seen = {frozenset(reach0)}
+    # priority queue keyed by -reachable-count (explore the most-open configs
+    # first); cnt is a monotone tiebreaker so ordering stays deterministic.
+    pq = [(-len(reach0), 0, env.clone(), [])]
+    cnt = 1
+    while pq and cnt < max_expand and (time.time() - t0) < time_limit:
+        _, _, node, prefix = heapq.heappop(pq)
+        rp, reach = fast_reach(node)
+        if rp is not None:
+            return prefix + rp
+        for pos, path in sorted(reach.items(), key=lambda kv: len(kv[1])):
+            c = clone_after(node, path + [5])          # walk to P, then USE
+            rp2, reach2 = fast_reach(c)
+            if rp2 is not None:
+                return prefix + path + [5] + rp2
+            rk = frozenset(reach2)
+            if rk in seen:
+                continue
+            seen.add(rk)
+            heapq.heappush(pq, (-len(reach2), cnt, c, prefix + path + [5]))
+            cnt += 1
+    return None
+
+
+def solve_unlock_macro(env, max_expand=400, time_limit=550):
+    """Leg: plan a USE-macro unlock-then-reach route and commit it.  Returns
+    True iff a winning plan was found and committed."""
+    return plan_and_commit(env, plan_unlock_macro,
+                           max_expand=max_expand, time_limit=time_limit)
+PY
+echo OK
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && rm -f fastsolve.py && python gkm_try.py 2>&1 | tail -5
+Level 2 reached (`levels=2 ... replay_ok=True`). Let me confirm stability and tidy the log:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python gkm_try.py 2>&1 | tail -3 && cat >> legs_log.md <<'MD'
+
+## Level 2 (g50t)
+Same objective as L1 (avatar = compact color-9 block reaches the 9-outline goal
+chamber). But the chamber's region is joined to the avatar's only through gates
+that open REMOTELY when the avatar walks over wall segments; a USE resets the
+avatar to start while PRESERVING opened gates. Crucially a single USE never
+enlarges reachability here, so `solve_unlock_reach` (which prunes USEs that
+don't immediately grow reach) fails. Added general legs:
+  * `_avatar_pos` / `fast_reach` -- clone-cheap avatar-position BFS within a
+    fixed gate configuration.
+  * `plan_unlock_macro` / `solve_unlock_macro` -- best-first search over
+    "walk-somewhere-then-USE" macros keyed on the frozenset of reachable
+    positions, chaining staged gate openings until the goal is movement-reachable.
+`play_level_2` just calls `solve_unlock_macro`.
+MD
+echo LOGGED
+Done. `solve.py` now reaches **level 2** (`RESULT levels=2 moves=50 replay_ok=True`), reproducibly across runs.
+
+## What I discovered (by experiment on clones only)
+
+- **Avatar & movement:** the compact color-9 block is the avatar; actions 1–4 translate it in fixed 6-cell steps, blocked by void (color 0) and walls; action 5 is USE.
+- **Goal:** reach the 9-outline "chamber" (same win condition as level 1, where the avatar entering the chamber triggers the level increment).
+- **The key mechanic (level 2):** the avatar's region is only linked to the chamber through gates that open *remotely* when the avatar walks over certain wall segments. A **USE resets the avatar to its start but preserves already-opened gates.** Unlike level 1, no *single* USE enlarges reachability — so the existing `solve_unlock_reach` (which prunes USEs that don't immediately grow reach) can't crack it. Only *chaining* several staged "walk-then-USE" macros grows the reachable set (I observed it climb from 22 up to 33+ positions) until the chamber becomes movement-reachable.
+
+I confirmed frame/mask-based BFS is unreliable here (hidden state — a physical-key BFS wrongly reported even level 1 as unsolvable), so I planned strictly by stepping clones and deduping on avatar reachability, exactly as the legs.py note warns.
+
+## Legs added (general, reusable)
+
+- `_avatar_pos` / `fast_reach` — clone-cheap avatar-position BFS within a fixed gate configuration.
+- `plan_unlock_macro` / `solve_unlock_macro` — best-first search over "walk-to-P-then-USE" macros, keyed on the frozenset of reachable positions, chaining staged gate openings until the goal is reachable by plain movement (deterministic, clone-bounded).
+
+`players.play_level_2` only composes the leg: `solve_unlock_macro(env, max_expand=400)`. Planning runs ~20s on a clone and the committed path replays correctly.

@@ -1,2 +1,2 @@
-=== g50t: reached level 1 | validated=True | total_marginal_C=244 | F=3.880 ===
-per-level marginal novelty: L1:244
+=== g50t: reached level 4 | validated=True | total_marginal_C=348 | F=2.960 ===
+per-level marginal novelty: L1:244, L2:100, L3:2, L4:2

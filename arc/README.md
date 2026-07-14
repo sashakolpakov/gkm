@@ -16,9 +16,9 @@ Both published ledgers contain one entry for every replay-validated level. The o
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
 The bounded follow-on campaign currently has additional replay-valid partial
-artifacts for `ft09` through L4, `sp80` through L4, `g50t` through L1, and `tr87`
-through L3. They are kept in the same canonical artifact layout but are not part of
-the manuscript's two complete-history table above.
+artifacts for `ft09`, `sp80`, `g50t`, `tr87`, and `r11l` through L4. They are kept
+in the same canonical artifact layout but are not part of the manuscript's two
+complete-history table above.
 
 The action totals describe the final replay paths. Exploration used the local
 `Arena.clone()` oracle and was not metered, so these values do not measure official

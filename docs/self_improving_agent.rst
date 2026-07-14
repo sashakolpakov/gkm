@@ -95,9 +95,9 @@ Promoted Endpoints
 .. include:: generated/arc_artifacts.rst
 
 The bounded follow-on campaign also retains replay-valid partial artifacts for
-``ft09`` through L4, ``sp80`` through L4, ``g50t`` through L1, and ``tr87`` through
-L3. They use the same promotion and WIP layout but are not part of the manuscript's
-two complete-history endpoint table.
+``ft09``, ``sp80``, ``g50t``, ``tr87``, and ``r11l`` through L4. They use the same
+promotion and WIP layout but are not part of the manuscript's two complete-history
+endpoint table.
 
 The ``ls20`` checkpoint records ``43, 2, 45, 3, 72, 130, 67``. At L2 and L4,
 the thin player entries call unchanged search routines, which makes the small net

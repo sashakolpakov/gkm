@@ -1,0 +1,64 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat gkm_try.py solve.py perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && timeout 600 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -20
+Currently passing with levels=2. Now let me analyze the repeated code between the two players' legs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_neigh\|_components_area1\|_centroid\|_drop\|click\|mean\|select_endpoint\|move_active_to" legs.py
+I can now see the concrete duplications. Let me make the refactors:
+
+1. **4-neighbour colour set**: `_neigh_colors` vs inline code in `ring_center`.
+2. **Centroid (rounded mean)**: duplicated in `detect_rope` and `ring_center`.
+3. **Pick-and-drop drag** (two clicks): `_drop`, `_can_drop`, inline in `walk_box_to`, and the select+move in `place_box_on_ring` — all the same "select_endpoint then move_active_to" composition, but several bypass the named legs and re-issue raw clicks.
+
+Let me refactor these into shared, well-named legs.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now the primitive action legs — add the shared `drag_endpoint` composition:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now update `place_box_on_ring` to use `drag_endpoint` for the second endpoint:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now remove the now-duplicated `_neigh8` and `_components_area1`, and update their call sites to the shared helpers:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now update `ring_center` to use the shared helpers:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now update `active_pos` and the drag helpers `_drop`/`_can_drop` and the inline clone drag in `walk_box_to`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_components_area1\|_neigh8\b\|_neigh_colors\|_drop\|click(c\|click(env" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_components_area1\|_neigh8(" legs.py; echo "---active_pos---"; sed -n '125,145p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '160,180p' legs.py
+Good — `active_pos` already uses the renamed helpers. Now the drag helpers `_drop` / `_can_drop` and the inline clone drag:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_drop\|click(c, e\|click(c, dst" legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -i.bak 's/_drop(env, e, dst)/drag_endpoint(env, e, dst)/; s/_drop(c, cur\[i\], dst)/drag_endpoint(c, cur[i], dst)/; s/_drop(env, cur\[i\], dst)/drag_endpoint(env, cur[i], dst)/' legs.py && rm legs.py.bak && grep -n "_drop\|drag_endpoint\|click(c\|click(env" legs.py
+All drag call-sites now go through the single `drag_endpoint` leg. Let me verify no stragglers reference removed names and check the file compiles:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_neigh_colors\|_neigh8(\|_components_area1\|_drop(" legs.py; echo "exit:$?"; python -c "import ast; ast.parse(open('legs.py').read()); print('parse OK')"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "_can_drop" legs.py
+Now let me run the arena to confirm behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -5
+Identical result (`levels=2 moves=13 replay_ok=True`). Now update the players' docstrings to reflect the thin composition and shared gesture, then append the recurring pattern to the log.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/players.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs_log.md
+Let me run one final confirmation:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -3
+Done. Summary of the debrief work:
+
+## What I found
+Comparing `play_level_2` to `play_level_1`: both **players** were already thin one-liners, but the underlying **legs** had duplicated low-level code between the level-1 and level-2 skill families.
+
+## Refactor (each skill now written ONCE in `legs.py`)
+- **`_neigh4_colors` / `_neigh8_colors`** — neighbourhood colour-set scans. Previously `detect_rope` (L1) and `ring_center` (L2) each hand-rolled the 4-neighbour scan; `active_pos`/`endpoints_of` hand-rolled the 8-neighbour scan.
+- **`_centroid(points)`** — the rounded mean-of-points, duplicated verbatim in `detect_rope` and `ring_center`.
+- **`_isolated_cells`** — single-pixel marker detection (renamed from the L2-only `_components_area1`; `ring_center` had a second inline copy of the isolation logic).
+- **`drag_endpoint(env, frm, dst)`** — the key cross-level gesture: *select an endpoint, then move the active one* (two clicks). Level 1's `place_box_on_ring` used `select_endpoint`+`move_active_to`, while level 2's `walk_box_to`, `straddle_box_to`, and `_can_drop` re-issued raw `click` pairs. All now call this one leg.
+
+The players stay thin compositions (unchanged behaviour, only a docstring tweak in `play_level_1`).
+
+## Log
+Appended to `legs_log.md`: the refactor notes plus the recurring **candidate higher-order leg** — `converge_feature_to_target`, which captures the shape every r11l solver shares (repeatedly `drag_endpoint` to push a derived feature—midpoint/centroid—toward a target, clone-verifying each move, treating level-completion as success). `place_box_on_ring` is the closed-form instance, `walk_box_to` the greedy instance, `straddle_box_to` the symmetric-offset instance.
+
+## Confirmation
+`python gkm_try.py` → `RESULT levels=2 moves=13 replay_ok=True err=None` (identical before and after).

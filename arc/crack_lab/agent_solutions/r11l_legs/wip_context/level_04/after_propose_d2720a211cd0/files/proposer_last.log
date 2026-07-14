@@ -1,0 +1,431 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat gkm_try.py solve.py players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat checkpoint.json; echo ---; cat auto_solve_attempts.json; echo ---; cat legs_log.md | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat legs_log.md | tail -80
+$ cd /Users/sasha/gkm/arc/crack_lab && ls; echo ---; grep -n "def run_program\|def validate\|def clone\|def step\|def frame\|levels_completed\|def terminal" gkm_arena.py 2>/dev/null | head -40
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,130p' gkm_arena.py; echo ---; sed -n '242,270p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > probe_l4.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.Arena('r11l')
+ck = json.load(open('checkpoint.json'))
+for act in ck['final_path']:
+    env.step(act)
+print("levels_completed:", env.levels_completed)
+f = env.frame()
+print("shape:", f.shape)
+vals, cnts = np.unique(f, return_counts=True)
+print("colors:", dict(zip(vals.tolist(), cnts.tolist())))
+np.save('l4_frame.npy', f)
+EOF
+python probe_l4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > show.py <<'EOF'
+import numpy as np
+f = np.load('l4_frame.npy')
+for r in range(64):
+    print(''.join('{:X}'.format(int(v)) for v in f[r]))
+EOF
+python show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > probe2.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import *
+env = A.Arena('r11l')
+ck = json.load(open('checkpoint.json'))
+for act in ck['final_path']:
+    env.step(act)
+print("level", env.levels_completed)
+syss = ring_systems(env)
+for s in syss:
+    print(s)
+print("active_pos", active_pos(env))
+EOF
+python probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > probe3.py <<'EOF'
+import numpy as np
+f = np.load('l4_frame.npy')
+# find all 6 pixels and their neighborhoods
+print("6 pixels and 3x3 nbhd colors:")
+for r,c in np.argwhere(f==6):
+    blk = f[max(0,r-2):r+3, max(0,c-2):c+3]
+    print((int(r),int(c)), sorted(set(int(v) for v in blk.flatten())))
+EOF
+python probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > probe4.py <<'EOF'
+import numpy as np
+f = np.load('l4_frame.npy')
+for color in [0,1,3,6,7,8,9,11,12,13,14,15]:
+    pts = np.argwhere(f==color)
+    print(f"=== color {color}: {len(pts)} cells ===")
+    if len(pts)>0:
+        r0,c0 = pts.min(0); r1,c1=pts.max(0)
+        print("bbox", (int(r0),int(c0),int(r1),int(c1)))
+        # print small crop
+    print(sorted((int(r),int(c)) for r,c in pts))
+EOF
+python probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > crop.py <<'EOF'
+import numpy as np, sys
+f = np.load('l4_frame.npy')
+r0,r1,c0,c1 = [int(x) for x in sys.argv[1:5]]
+print("cols:", ''.join(str(c%10) for c in range(c0,c1)))
+for r in range(r0,r1):
+    print(''.join('{:X}'.format(int(v)) for v in f[r,c0:c1]), r)
+EOF
+python crop.py 3 13 15 26
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python crop.py 16 24 18 28
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python crop.py 10 18 27 37
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > exp1.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import _arr, click
+import numpy as np
+def load():
+    env = A.Arena('r11l')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+
+env=load()
+f0=_arr(env).copy()
+# active at (20,23). move it to (20,30)
+c=env.clone()
+click(c, 20, 30)
+f1=_arr(c)
+d=np.argwhere(f0!=f1)
+print("clicked (20,30) -> changed cells:", len(d))
+for r,cc in d:
+    print((int(r),int(cc)), int(f0[r,cc]),'->',int(f1[r,cc]))
+EOF
+python exp1.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python crop.py 48 55 31 42; echo ===; python crop.py 40 49 42 52; echo ===; python crop.py 41 50 14 24
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > exp2.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import _arr, click, active_pos
+import numpy as np
+def load():
+    env = A.Arena('r11l')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+env=load()
+f0=_arr(env).copy()
+for pt in [(6,39),(36,17),(36,46),(47,10),(52,27),(52,46)]:
+    c=env.clone()
+    click(c, pt[0], pt[1])
+    f1=_arr(c)
+    d=np.argwhere(f0!=f1)
+    ap=active_pos(c)
+    print(f"click {pt}: {len(d)} changed, active_pos now {ap}")
+EOF
+python exp2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > exp3.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import _arr, click, active_pos
+import numpy as np
+def load():
+    env = A.Arena('r11l')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+def boxes(f):
+    out={}
+    for r,c in np.argwhere(f==6):
+        blk=f[max(0,r-2):r+3,max(0,c-2):c+3]
+        cols=set(int(v) for v in blk.flatten())-{5,6}
+        # only real boxes: those with a 2-color fill
+        out[(int(r),int(c))]=sorted(cols)
+    return out
+
+env=load()
+f0=_arr(env)
+print("initial boxes:", boxes(f0))
+endpoints=[(20,23),(6,39),(36,17),(36,46),(47,10),(52,27),(52,46)]
+for ep in endpoints:
+    c=env.clone()
+    if ep!=(20,23):
+        click(c,ep[0],ep[1])  # select
+    b_before=boxes(_arr(c))
+    ap=active_pos(c)
+    # move it by +6 col
+    click(c, ap[0], ap[1]+6)
+    b_after=boxes(_arr(c))
+    # find which box moved
+    moved=[]
+    ba_centers=list(b_after.keys())
+    for k in b_before:
+        if k not in b_after:
+            moved.append(k)
+    print(f"ep {ep}: box centers before {sorted(b_before.keys())} after {sorted(b_after.keys())}")
+EOF
+python exp3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > rings.py <<'EOF'
+import numpy as np
+f = np.load('l4_frame.npy')
+from legs import _isolated_cells, _neigh4_colors, _neigh8_colors, _centroid
+# For each color, group isolated cells into clusters and report clusters that look like a hollow diamond (touch only bg 5)
+from scipy import ndimage
+for color in [7,8,9,11,12,13,14,15,3,1,6]:
+    mask=(f==color)
+    if mask.sum()==0: continue
+    lbl,n=ndimage.label(mask, structure=np.ones((3,3)))
+    for i in range(1,n+1):
+        pts=np.argwhere(lbl==i)
+        r0,c0=pts.min(0); r1,c1=pts.max(0)
+        # check if hollow: bounding box interior mostly not this color
+        h=r1-r0+1; w=c1-c0+1
+        cen=_centroid([(int(r),int(c)) for r,c in pts])
+        # neighbor colors overall
+        nb=set()
+        for r,c in pts:
+            nb|=_neigh4_colors(f,r,c)
+        nb-={color}
+        print(f"color {color} comp size {len(pts)} bbox {(int(r0),int(c0),int(r1),int(c1))} center {cen} nbcolors {sorted(nb)}")
+EOF
+python rings.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && echo "box A target region:"; python crop.py 44 54 31 43; echo "box B target region (top-right):"; python crop.py 8 17 45 56; echo "box C target region:"; python crop.py 49 59 12 22
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > detect.py <<'EOF'
+import numpy as np
+from scipy import ndimage
+f=np.load('l4_frame.npy')
+
+def box_fill_colors(f,r,c):
+    # flood the connected non-bg region around the 6 (excluding rope color 1)
+    from collections import deque
+    seen=set(); q=deque([(r,c)]); cols=set()
+    while q:
+        y,x=q.popleft()
+        if (y,x) in seen: continue
+        seen.add((y,x))
+        v=int(f[y,x])
+        if v in (5,): continue
+        cols.add(v)
+        for dy,dx in ((1,0),(-1,0),(0,1),(0,-1)):
+            ny,nx=y+dy,x+dx
+            if 0<=ny<64 and 0<=nx<64 and (ny,nx) not in seen and int(f[ny,nx]) not in (5,):
+                q.append((ny,nx))
+    return cols,seen
+
+# boxes: 6-pixels with a large multicolor fill
+for r,c in np.argwhere(f==6):
+    cols,seen=box_fill_colors(f,r,c)
+    if len(seen)>=8:  # real box (chevron 6-cells are isolated size1)
+        print("BOX at",(int(r),int(c)),"fill size",len(seen),"colors",sorted(cols-{6,1}))
+EOF
+python detect.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > detect2.py <<'EOF'
+import numpy as np
+f=np.load('l4_frame.npy')
+NON=[0,1,3,5,6]
+def isolated_ring_cells(f):
+    # cells of a color c (c not in {0,1,3,5,6}) whose 4-neighbors are only bg(5) or same color? 
+    # ring outline cells touch only bg. Use: cell color c not bg, and all 4-neighbors in {5} (touch only bg)
+    out=[]
+    for r,c in np.argwhere(~np.isin(f,[5])):
+        col=int(f[r,c])
+        if col in (0,1,3,6): continue
+        nb=set()
+        for dr,dc in ((1,0),(-1,0),(0,1),(0,-1)):
+            rr,cc=r+dr,c+dc
+            if 0<=rr<64 and 0<=cc<64: nb.add(int(f[rr,cc]))
+        if nb<= {5}:
+            out.append((int(r),int(c),col))
+    return out
+cells=isolated_ring_cells(f)
+# cluster by proximity
+clusters=[]
+for (r,c,col) in cells:
+    placed=False
+    for cl in clusters:
+        if any(abs(r-rr)<=5 and abs(c-cc)<=5 for rr,cc,_ in cl):
+            cl.append((r,c,col)); placed=True; break
+    if not placed: clusters.append([(r,c,col)])
+# merge overlapping clusters iteratively
+merged=True
+while merged:
+    merged=False
+    for i in range(len(clusters)):
+        for j in range(i+1,len(clusters)):
+            a,b=clusters[i],clusters[j]
+            if any(abs(r1-r2)<=5 and abs(c1-c2)<=5 for r1,c1,_ in a for r2,c2,_ in b):
+                clusters[i]=a+b; clusters.pop(j); merged=True; break
+        if merged: break
+for cl in clusters:
+    rs=[r for r,c,_ in cl]; cs=[c for r,c,_ in cl]; cols=set(x for _,_,x in cl)
+    print("RING center",(round(np.mean(rs)),round(np.mean(cs))),"colors",sorted(cols),"n",len(cl))
+EOF
+python detect2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > detect3.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import _arr, click, active_pos, box_center
+import numpy as np
+from collections import deque
+def load():
+    env=A.Arena('r11l'); ck=json.load(open('checkpoint.json'))
+    for a in ck['final_path']: env.step(a)
+    return env
+
+def flood_cols(f,r,c):
+    seen=set();q=deque([(r,c)]);cols=set()
+    while q:
+        y,x=q.popleft()
+        if (y,x) in seen:continue
+        seen.add((y,x))
+        if int(f[y,x])==5:continue
+        cols.add(int(f[y,x]))
+        for dy,dx in((1,0),(-1,0),(0,1),(0,-1)):
+            ny,nx=y+dy,x+dx
+            if 0<=ny<64 and 0<=nx<64 and (ny,nx) not in seen and int(f[ny,nx])!=5:
+                q.append((ny,nx))
+    return cols,len(seen)
+
+def find_boxes(f):
+    out=[]
+    for r,c in np.argwhere(f==6):
+        cols,n=flood_cols(f,int(r),int(c))
+        if n>=8:
+            fill=sorted(cols-{0,1,3,5,6})
+            out.append((int(r),int(c),fill))
+    return out
+
+def endpoint_markers(f):
+    # cells that are single pixel wrapped by 0 or 3 diamond (center of marker)
+    out=[]
+    for r,c in np.argwhere(~np.isin(f,[0,1,3,5,6])):
+        r,c=int(r),int(c)
+        nb=set()
+        for dr,dc in ((1,0),(-1,0),(0,1),(0,-1)):
+            rr,cc=r+dr,c+dc
+            if 0<=rr<64 and 0<=cc<64: nb.add(int(f[rr,cc]))
+        if 0 in nb or 3 in nb:
+            out.append((r,c))
+    return out
+
+env=load(); f=_arr(env)
+boxes=find_boxes(f)
+print("boxes:",boxes)
+eps=endpoint_markers(f)
+print("endpoint markers:",eps)
+# probe each endpoint to see which box moves
+bc0={tuple(b[:2]):b[2] for b in boxes}
+box_pos0=[(b[0],b[1]) for b in boxes]
+def box_centers(f):
+    return set((int(r),int(c)) for r,c in np.argwhere(f==6) if flood_cols(f,int(r),int(c))[1]>=8)
+for ep in eps:
+    c=env.clone()
+    click(c,ep[0],ep[1])  # select (harmless if already active)
+    ap=active_pos(c)
+    before=box_centers(_arr(c))
+    click(c,ap[0],ap[1]+5)
+    after=box_centers(_arr(c))
+    moved=before-after
+    print("ep",ep,"selected active",ap,"box moved from",sorted(moved))
+EOF
+python detect3.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat > test4.py <<'EOF'
+import sys, json, time
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from legs import multicolor_systems, box_center
+import players
+def load():
+    env=A.Arena('r11l'); ck=json.load(open('checkpoint.json'))
+    for a in ck['final_path']: env.step(a)
+    return env
+env=load()
+print("systems:")
+for s in multicolor_systems(env):
+    print(s)
+print("start level", env.levels_completed)
+t=time.time()
+players.play_level_4(env)
+print("after level", env.levels_completed, "elapsed", round(time.time()-t,1))
+for col in (12,11,8):
+    print("box",col,"->",box_center(env,col))
+EOF
+timeout 600 python test4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python test4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -3 && python gkm_try.py 2>&1 | tail -3
+Reaching level 4 consistently. Let me document the new legs in the log.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat >> legs_log.md <<'EOF'
+
+## r11l level 4
+Same rope/box/ring physics as L2/L3 (a click moves the ACTIVE endpoint; the box
+is the endpoints' midpoint/centroid; a distant box is rope-WALKED, a near one
+STRADDLED), but the board is now MULTI-COLOURED and salted with DECOYS:
+  * A BOX is a solid diamond around a `6` whose fill uses SEVERAL colours
+    (e.g. 12/14 top + 15 bottom); a matching RING is a hollow diamond showing
+    the SAME colour palette.  WIN = every box dropped into its own-palette ring.
+  * MANY extra hollow diamonds exist whose colour set matches NO box (decoys),
+    plus a big solid colour-10 slab; these must be ignored.
+  * The old colour==system identity breaks (colour 14 belongs to two boxes; a
+    box's fill colour is not its endpoint-marker colour).  So rope->box identity
+    is discovered by PROBING, not colour.
+
+New legs (all general, no level constants):
+  * `_flood_nonbg` — 4-flood a non-background blob, returning its palette+size.
+  * `multicolor_boxes` — solid `6`-centred blobs (size>=8) with their fill
+    palette; distinguishes real boxes from tiny chevron/ring `6`-cells.
+  * `_ring_outline_cells` + `multicolor_rings` — cluster background-touching
+    ring-outline pixels into hollow diamonds, each with a centre + colour set.
+  * `marker_endpoints` — precise endpoint markers (a pixel whose 4 orthogonal
+    neighbours are ALL 0 = active cursor, or ALL 3 = idle), filtering the
+    left-border artefacts the old `_isolated_cells`-based finder tripped on.
+  * `group_endpoints_by_box` — PROBE which box each marker drives (select+nudge
+    on a clone, see which `6` moved); the general substitute for colour-keyed
+    `endpoints_of` when colours are ambiguous.
+  * `multicolor_systems` — match box<->ring by identical palette, attach probed
+    endpoints, and pick a tracking colour UNIQUE to each box so the reused
+    `box_center`/walk/straddle stay unambiguous; skips decoy rings.
+  * `place_multicolor_boxes` — orchestrator (farthest-gap-first) that reuses the
+    existing `walk_box_to` + `straddle_box_to` per system.
+`play_level_4` is the one-liner `place_multicolor_boxes(env)`; the walk/straddle
+inner machinery is unchanged and shared with L1-L3.  `python gkm_try.py` reports
+`RESULT levels=4 moves=45 replay_ok=True`.
+
+Reuse note: `place_multicolor_boxes` and `place_boxes_on_rings` are the same
+orchestrator differing only in the DISCOVER step (colour-keyed `ring_systems`
+vs palette-matched + probe-grouped `multicolor_systems`).  A future refactor
+could unify them as `solve_systems(env, discover)` with the two discoverers as
+arguments; kept separate for now since L2/L3 remain green and the multicolour
+discoverer is heavier (probing).
+EOF
+echo done
+The task is complete. Let me do a final confirmation run.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -3
+Done. `solve.py` now reaches **level 4** (`RESULT levels=4 moves=45 replay_ok=True`).
+
+## What level 4 turned out to be
+
+Discovered entirely by probing on clones (never reading source):
+
+- **Same core physics as levels 1–3**: the sole action is a coordinate click that moves the *active* rope endpoint; a **box** is the midpoint/centroid of a rope's endpoints; the win condition is dropping every box onto its target **ring** (hollow diamond). A far box is rope-*walked*, a near one *straddled*.
+- **New twist**: boxes and rings are now **multi-coloured** (e.g. a box with a 12/14 top and a 15 bottom must fit the hollow diamond showing the same palette), and the board is salted with **decoy rings** whose palettes match no box, plus a big solid colour-10 slab. The old "colour == system" identity breaks (colour 14 belongs to two boxes; an endpoint-marker's colour ≠ its box's fill colour), so I discover which rope drives which box by **probing** (select an endpoint, nudge it, see which `6`-box moved).
+
+## Changes
+
+- **`players.py`**: added `play_level_4` as a thin one-liner → `place_multicolor_boxes(env)`.
+- **`legs.py`**: added general, level-constant-free legs — `_flood_nonbg`, `multicolor_boxes`, `_ring_outline_cells`/`multicolor_rings`, `marker_endpoints`, `group_endpoints_by_box`, `multicolor_systems`, and the orchestrator `place_multicolor_boxes`. The heavy lifting (`walk_box_to`, `straddle_box_to`, `probe_drag`, `drag_endpoint`) is **reused unchanged** from the earlier levels; box tracking uses a colour unique to each box so those legs stay unambiguous.
+- **`legs_log.md`**: documented the level-4 mechanic, the new legs, and a reuse note (the multicolour orchestrator differs from `place_boxes_on_rings` only in its discover step).
+
+Result is stable across repeated runs.

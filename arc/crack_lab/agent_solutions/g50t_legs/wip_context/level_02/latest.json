@@ -1,13 +1,13 @@
 {
-  "attempt": "credit_out_b3cbbdc9a844",
+  "attempt": "after_debrief_a21a58fc869f",
   "metadata": {
     "game": "g50t",
     "level": 2,
-    "phase": "credit_out",
-    "reached": 1,
-    "err": "api proposer reported no credits/quota (see /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/proposer_last.log)",
-    "attempt": "credit_out_b3cbbdc9a844",
-    "created_at": "2026-07-14T15:02:42.944953+00:00",
+    "phase": "after_debrief",
+    "reached": 2,
+    "err": null,
+    "attempt": "after_debrief_a21a58fc869f",
+    "created_at": "2026-07-14T15:58:33.808016+00:00",
     "files": [
       "auto_solve_attempts.json",
       "blocked_attempts.log",

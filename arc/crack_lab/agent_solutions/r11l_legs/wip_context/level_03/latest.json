@@ -1,0 +1,24 @@
+{
+  "attempt": "after_auto_solve_debrief_1e1b0798f8e5",
+  "metadata": {
+    "game": "r11l",
+    "level": 3,
+    "phase": "after_auto_solve_debrief",
+    "reached": 3,
+    "err": null,
+    "attempt": "after_auto_solve_debrief_1e1b0798f8e5",
+    "created_at": "2026-07-14T16:22:55.446541+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "blocked_attempts.log",
+      "checkpoint.json",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "proposer_last.log",
+      "solve.py"
+    ]
+  }
+}

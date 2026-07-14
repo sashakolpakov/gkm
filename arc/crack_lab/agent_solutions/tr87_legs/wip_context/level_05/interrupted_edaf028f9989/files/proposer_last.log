@@ -1,0 +1,210 @@
+I'll start by exploring the current state of the workspace and running the initial test.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat solve.py players.py perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat checkpoint.json auto_solve_attempts.json proposer_last.log
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python gkm_try.py 2>&1 | tail -20
+We're at level 4. Let me look at the legs and explore level 5 structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && sed -n '250,420p' legs.py
+Now let me learn the API for clones and get to level 5 to inspect it.
+$ [BLOCKED: forbidden source/history access blocked: private game/runtime introspection]
+$ cd /Users/sasha/gkm/arc/crack_lab && grep -n "def run_program\|def validate\|def make\|class \|def clone\|def step\|def frame\|def terminal\|levels_completed\|def actions" gkm_arena.py 2>/dev/null | head -40
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '58,130p' gkm_arena.py
+Now I'll build a probe to reach level 5 and inspect its frame.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe5.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0,'.')
+import gkm_arena as A
+import players
+
+env = A.Arena('tr87')
+# play levels 1-4
+for k in range(1,5):
+    fn = getattr(players, f'play_level_{k}')
+    before = env.levels_completed
+    fn(env)
+    print(f"after level {k}: levels_completed={env.levels_completed} terminal={env.terminal()}")
+    if env.levels_completed <= before:
+        print("STUCK at", k); break
+
+np.save('/tmp/frame5.npy', env.frame())
+print("actions", env.actions)
+print("frame saved, shape", env.frame().shape)
+EOF
+python /tmp/probe5.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python -c "
+import numpy as np
+f=np.load('/tmp/frame5.npy')
+np.set_printoptions(linewidth=200,threshold=10000)
+for r in range(64):
+    print(''.join('%X'%v for v in f[r]))
+"
+This is a more complex layout. Let me probe the mechanics and what the existing discoverers see.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe5b.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, perception as P, legs
+env = A.Arena('tr87')
+for k in range(1,5):
+    getattr(players, f'play_level_{k}')(env)
+print("lvl", env.levels_completed)
+# action deltas
+for a in env.actions:
+    print("action", a, "bbox", legs.action_bbox(env, a))
+EOF
+python /tmp/probe5b.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe5c.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, perception as P
+env = A.Arena('tr87')
+for k in range(1,5): getattr(players, f'play_level_{k}')(env)
+base = env.frame().copy()
+def show(f, r0,r1,c0,c1):
+    for r in range(r0,r1):
+        print(''.join('%X'%v for v in f[r,c0:c1]))
+for a in env.actions:
+    c=env.clone(); c.step(a)
+    d=P.frame_delta(base,c.frame())
+    print("=== action",a,"count",d['count'],"bbox",d['bbox'])
+EOF
+python /tmp/probe5c.py 2>&1 | tail -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/probe5d.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, perception as P
+env = A.Arena('tr87')
+for k in range(1,5): getattr(players, f'play_level_{k}')(env)
+base = env.frame().copy()
+for a in env.actions:
+    c=env.clone(); c.step(a)
+    d=P.frame_delta(base,c.frame())
+    print("=== action",a)
+    for (y,x,o,n) in d['samples']:
+        print(f"  ({y},{x}) {o}->{n}")
+EOF
+python /tmp/probe5d.py 2>&1 | tail -80
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/boxes.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, perception as P
+env = A.Arena('tr87')
+for k in range(1,5): getattr(players, f'play_level_{k}')(env)
+f=env.frame()
+blobs=P.connected_components(f,min_area=15)
+for b in blobs:
+    print(f"color={b.color} bbox={b.bbox} size={b.size} area={b.area}")
+EOF
+python /tmp/boxes.py 2>&1 | tail -40
+Let me try the existing solvers on level 5 to see if any fit.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/trysolvers.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, legs
+def fresh():
+    env=A.Arena('tr87')
+    for k in range(1,5): getattr(players,f'play_level_{k}')(env)
+    return env
+for name in ['discover_glyph_cipher_puzzle','discover_glyph_legend_puzzle','discover_glyph_compose_puzzle','discover_tile_cycle_puzzle','discover_glyph_tiles']:
+    env=fresh()
+    fn=getattr(legs,name)
+    try:
+        spec=fn(env)
+        print(name, "->", type(spec).__name__ if spec is not None else None)
+        if isinstance(spec,dict):
+            for k,v in spec.items():
+                if k=='f': continue
+                print("   ",k,"=",v if not hasattr(v,'shape') else v.shape)
+    except Exception as e:
+        print(name,"ERR",repr(e))
+EOF
+python /tmp/trysolvers.py 2>&1 | tail -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/trace.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, legs
+env=A.Arena('tr87')
+for k in range(1,5): getattr(players,f'play_level_{k}')(env)
+c=env.clone()
+for i in range(6):
+    bb=legs.action_bbox(c,1)  # edit region = where glyph would change
+    print(f"cursor {i}: editbbox={bb}")
+    c.step(4)
+EOF
+python /tmp/trace.py 2>&1 | tail -10
+The tile detection is wrong (n_tiles miscounted). Let me trace the real cursor by tracking color-0 markers.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/trace2.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players
+env=A.Arena('tr87')
+for k in range(1,5): getattr(players,f'play_level_{k}')(env)
+def curs(c):
+    f=c.frame(); ys,xs=np.where(f==0)
+    if len(ys)==0: return None
+    return (int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max()))
+c=env.clone()
+seen=[]
+for i in range(20):
+    p=curs(c); seen.append(p)
+    print(i,p)
+    c.step(4)
+    if curs(c)==seen[0] and i>0:
+        print("wrap at",i+1); break
+EOF
+python /tmp/trace2.py 2>&1 | tail -25
+The top region has 8 editable boxes (cursor wraps at 8); bottom has 2 wide reference words. Let me extract all glyph contents to understand the relationship.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/glyphs.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players, perception as P
+env=A.Arena('tr87')
+for k in range(1,5): getattr(players,f'play_level_{k}')(env)
+f=env.frame()
+FG=5
+def show_box(bbox):
+    r0,c0,r1,c1=bbox
+    n=(c1-c0+1)//7  # glyphs
+    for g in range(n):
+        gr0,gc0=r0+1,c0+1+7*g
+        print(f"  glyph@({gr0},{gc0}):")
+        for i in range(5):
+            print("    "+''.join('#' if f[gr0+i,gc0+j]==FG else '.' for j in range(5)))
+boxes=[b for b in P.connected_components(f,min_area=15) if b.color in (7,10) and (b.bbox[2]-b.bbox[0]+1)==7]
+for b in sorted(boxes,key=lambda b:(b.bbox[0],b.bbox[1])):
+    print(f"BOX color={b.color} bbox={b.bbox} width={b.bbox[3]-b.bbox[1]+1}")
+    show_box(b.bbox)
+EOF
+python /tmp/glyphs.py 2>&1 | tail -120
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && python /tmp/glyphs.py 2>&1 | head -40
+Let me enumerate the glyph cycle for a single tile (edit action).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_complete && cat > /tmp/cycle.py <<'EOF'
+import sys, numpy as np
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, players
+env=A.Arena('tr87')
+for k in range(1,5): getattr(players,f'play_level_{k}')(env)
+FG=5
+def gly(c,gr0,gc0):
+    f=c.frame()
+    return tuple(tuple(1 if f[gr0+i,gc0+j]==FG else 0 for j in range(5)) for i in range(5))
+def draw(g):
+    return '\n'.join(''.join('#' if v else '.' for v in row) for row in g)
+# tile0 A-box glyph @(11,9)
+c=env.clone()
+seen=[]
+for i in range(12):
+    g=gly(c,11,9)
+    if g in seen:
+        print("repeat at",i); break
+    seen.append(g)
+    c.step(1)
+print("distinct glyphs in cycle:",len(seen))
+for i,g in enumerate(seen):
+    print("state",i); print(draw(g))
+EOF
+python /tmp/cycle.py 2>&1 | tail -60
+Each tile cycles through a 7-symbol alphabet. Let me build a full symbolic catalog to find the mapping.

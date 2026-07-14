@@ -1,0 +1,97 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && wc -l legs.py && head -50 legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '50,608p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -n "^def \|^# ---" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '305,378p' legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && timeout 600 python gkm_try.py 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -5
+Baseline confirmed: `levels=4 replay_ok=True`. Now let me analyze the duplication between the three composition legs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '561,608p' legs.py
+Now I understand the duplication. `place_boxes_on_rings` and `place_multicolor_boxes` share a nearly identical loop body — the only differences are the discovery function and the dict key names. Let me check for any other uses of the `uniq` key.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && grep -rn "uniq\|place_boxes_on_rings\|place_multicolor_boxes\|multicolor_systems\|ring_systems" --include=*.py . | grep -v __pycache__
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat test4.py
+The `uniq` key is only used internally. Now let me perform the refactor. First, I'll normalize `multicolor_systems` to use the same `color` key that `ring_systems` uses:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now add the shared higher-order leg right after `straddle_box_to`, and replace both duplicated solvers with thin wrappers:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus/legs.py
+Now let me verify behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -5
+Identical result: `levels=4 moves=45 replay_ok=True`. The refactor preserves behaviour exactly. Let me verify `players.py` is thin composition and check the players are all still calling into legs:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && sed -n '561,600p' legs.py
+The players are already thin composition (unchanged). Now let me look at the players once more and also review `legs_log.md` format to append the recurring pattern:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && tail -60 legs_log.md
+The log already anticipated this unification. Let me append a debrief documenting the completed refactor and the recurring higher-order pattern:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && cat >> legs_log.md <<'EOF'
+
+## r11l post-L4 debrief — DRY refactor (the unification landed)
+Comparing `play_level_4` to the earlier players confirmed the reuse note above:
+`place_multicolor_boxes` and `place_boxes_on_rings` were BYTE-FOR-BYTE the same
+orchestration loop — capture `start_levels`, sort systems farthest-gap-first,
+then per system {skip-if-solved, `walk_box_to`, `straddle_box_to`, stop on
+level-up}. They differed ONLY in the DISCOVER step and in two dict-key names
+(`ring_systems`+`s["color"]` vs `multicolor_systems`+`s["uniq"]`).
+
+Refactor applied (behaviour-preserving; `RESULT levels=4 moves=45
+replay_ok=True` before and after):
+  * Normalised `multicolor_systems` to emit the SAME dict shape as
+    `ring_systems`: `{color, box, ring, endpoints}` (renamed `uniq`->`color`).
+  * Extracted the shared loop ONCE into the higher-order leg
+    `solve_systems_walk_straddle(env, systems)` — the recurring multi-rope
+    orchestrator, agnostic to how `systems` were discovered.
+  * Both `place_*` legs are now one-liners that just DISCOVER then delegate:
+        place_boxes_on_rings(env)   = solve_systems_walk_straddle(env, ring_systems(env))
+        place_multicolor_boxes(env) = solve_systems_walk_straddle(env, multicolor_systems(env))
+  * `players.py` stays thin (each `play_level_K` is a single leg call).
+
+### Candidate higher-order leg (recurring composition pattern)
+The pattern below now exists concretely as `solve_systems_walk_straddle`; the
+only remaining axis of variation across levels is the DISCOVER function, so the
+truly general shape is:
+
+    solve_systems(env, discover):                 # discover -> [ {color,box,ring,endpoints} ]
+        systems = sorted(discover(env), key=gap_to_target, reverse=True)
+        for s in systems:
+            if solved(env, s): continue
+            walk_box_to(env, s.color, s.ring, s.endpoints)      # coarse: rope-walk in
+            straddle_box_to(env, s.color, s.ring, s.endpoints)  # fine: snap exactly
+
+A new level that keeps the rope/box/ring physics but changes only how systems
+are perceived should add a fresh `discover_*` leg and reuse
+`solve_systems_walk_straddle` verbatim — no new orchestration code.
+EOF
+echo appended
+Let me do a final confirmation run:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_r11l_opus && python gkm_try.py 2>&1 | tail -3
+Done. Here's the debrief summary of what I found and changed.
+
+## What was duplicated
+
+Comparing `play_level_4` to the earlier players, the players in `players.py` were already thin (each `play_level_K` is a single leg call). The real duplication lived one layer down in `legs.py`: the two multi-rope orchestrators `place_multicolor_boxes` (level 4) and `place_boxes_on_rings` (levels 2/3) were **byte-for-byte the same loop**:
+
+- capture `start_levels`
+- sort systems farthest box→ring gap first
+- per system: skip if already solved, else `walk_box_to` (coarse) then `straddle_box_to` (fine), stopping the instant a drop completes the level
+
+They differed only in the **discovery** step and two dict-key names (`ring_systems`/`s["color"]` vs `multicolor_systems`/`s["uniq"]`).
+
+## Refactor (behaviour-preserving)
+
+1. **Normalised** `multicolor_systems` to emit the same dict shape as `ring_systems` — `{color, box, ring, endpoints}` (renamed the `uniq` key → `color`).
+2. **Extracted the shared loop ONCE** into a new higher-order leg, `solve_systems_walk_straddle(env, systems)`, which is agnostic to how the systems were discovered.
+3. Both solvers are now thin delegations:
+   - `place_boxes_on_rings(env)` → `solve_systems_walk_straddle(env, ring_systems(env))`
+   - `place_multicolor_boxes(env)` → `solve_systems_walk_straddle(env, multicolor_systems(env))`
+
+Each skill is now written once; `players.py` stays a thin composition (untouched).
+
+## Higher-order pattern logged
+
+Appended a debrief to `legs_log.md` recording the completed unification and the candidate higher-order leg — the recurring `solve_systems(env, discover)` shape where the *only* remaining axis of variation between levels is the perception/`discover` function.
+
+## Verification
+
+`python gkm_try.py` reports **`RESULT levels=4 moves=45 replay_ok=True`** — identical before and after the refactor, confirming levels≥4 and no behaviour change.

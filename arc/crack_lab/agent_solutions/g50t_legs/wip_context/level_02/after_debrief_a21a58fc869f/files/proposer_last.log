@@ -1,0 +1,45 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat gkm_try.py l2env.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && cat solve.py
+Let me first establish the baseline by running the current solution.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && timeout 900 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=2 moves=50 replay_ok=True`.
+
+Now let me analyze. Both players are already thin one-liners, but the real duplication is **inside legs.py**: `_move_explore` and `fast_reach` are the same skill (reach-BFS in a fixed gate config) written twice, differing only in the avatar-locating function. And both planners (`plan_unlock_reach`, `plan_unlock_macro`) share the "walk-to-a-reachable-tile-then-USE macro" expansion. Let me refactor.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs.py
+Now let me refactor `fast_reach` to reuse `_reach_bfs`, and extract the shared "walk-then-USE macro" expansion:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs.py
+Now refactor `plan_unlock_reach` to use the shared macro expansion:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs.py
+Now refactor `plan_unlock_macro`:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs.py
+Let me verify the file compiles and review the changed regions:
+$ [BLOCKED: forbidden source/history access blocked: private game/runtime introspection]
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -m py_compile legs.py players.py && echo "COMPILE OK"
+Compiles fine. Now the crucial check — run `gkm_try.py` to confirm behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python gkm_try.py 2>&1 | tail -5
+Behaviour unchanged: `levels=2 moves=50 replay_ok=True`. Let me review the full refactored legs.py to ensure it reads cleanly:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && sed -n '108,160p' legs.py
+Both players are already thin (single leg call each). Now let me append the recurring composition pattern to legs_log.md:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete/legs_log.md
+Let me do a final confirmation run to make sure everything still passes after all edits:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_complete && python -m py_compile legs.py players.py solve.py && python gkm_try.py 2>&1 | tail -3
+Done. Here's the debrief summary.
+
+## What I found
+- **The players were already thin.** `play_level_1 = solve_unlock_reach` and `play_level_2 = solve_unlock_macro` are each single leg calls with only doc comments — no player-side duplication to merge.
+- **The real duplication lived inside `legs.py`,** between the level-1 and level-2 solve paths — two copies of the same two skills.
+
+## Refactors (each skill now written ONCE)
+1. **Reach-BFS deduped.** `_move_explore` (L1) and `fast_reach` (L2) were byte-for-byte the same "flood avatar positions with moves, one clone per edge, dedup on position, stop on reward" BFS — differing only in *how* they locate the avatar. Extracted `_reach_bfs(start, locate)`; both are now one-line wrappers (`avatar_tl` vs the framewise `_avatar_pos`).
+2. **USE-macro successor deduped.** Both unlock planners advanced the gate config identically: pick a reachable tile → walk there → press USE. Extracted `_use_macros(node, reach, reach_fn)` yielding `(macro, child_env, child_reward_path, child_reach)`, cheapest walk first. `plan_unlock_reach` and `plan_unlock_macro` now share it and differ *only* in how they schedule/prune successors.
+
+## Behaviour preserved
+The bounded-DFS growth-prune of `plan_unlock_reach` and the best-first reach-set search of `plan_unlock_macro` are byte-identical in effect (the dead `visited_sizes` param was dropped). `python gkm_try.py` still reports **`RESULT levels=2 moves=50 replay_ok=True err=None`** — unchanged from baseline.
+
+## Candidate higher-order leg logged
+Appended to `legs_log.md`: **`unlock_search(env, reach_fn, schedule)`** — the recurring pattern is a frontier search over gate-configurations whose successors are `_use_macros`, terminating when `reach_fn` finds the reward movement-reachable. The *only* thing that varies between L1 and L2 is the scheduler/pruner (bounded-DFS-grow-prune vs best-first-on-reach-set), so both existing planners fall out as instances, and it pairs with the existing `plan_and_commit` wrapper to keep players one-line compositions.
