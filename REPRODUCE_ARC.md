@@ -47,9 +47,10 @@ python arc/crack_lab/replay_scorecard.py --mode competition
 * `arc/crack_lab/agent_solutions/ls20_legs/`
 
 The same canonical layout also holds the bounded campaign's partial promoted
-artifacts: `ft09_legs/` through L4, `sp80_legs/` through L4, and `tr87_legs/`
-through L1. Their `checkpoint.json` files contain the independently replayed paths;
-they are not included in the manuscript's complete-history table below.
+artifacts: `ft09_legs/` through L4, `sp80_legs/` through L4, `g50t_legs/` through
+L1, and `tr87_legs/` through L3. Their `checkpoint.json` files contain the
+independently replayed paths; they are not included in the manuscript's
+complete-history table below.
 
 Each folder holds the promoted `checkpoint.json` (the replay-validated flat
 action path, `reached` level count, and `total_marginal_C`), the shared leg

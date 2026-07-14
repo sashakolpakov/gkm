@@ -1,0 +1,94 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat solve.py players.py checkpoint.json legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_l2_init.py << 'EOF'
+import importlib.util, sys, os, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+# get env at start, advance past level 1 with checkpoint path
+ck = json.load(open("checkpoint.json"))
+path1 = ck["final_path"]
+
+def player(env):
+    for a in path1:
+        env.step(a)
+    print("after L1 path: levels=", env.levels_completed, "terminal=", env.terminal())
+    f = np.asarray(env.frame())
+    print("shape", f.shape, "colors", np.unique(f, return_counts=True))
+    # print compact
+    np.save("/tmp/l2frame.npy", f)
+    raise SystemExit  # stop here
+
+try:
+    A.run_program('g50t', player)
+except SystemExit:
+    pass
+EOF
+python p_l2_init.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,220p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > l2env.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+def get_l2_env():
+    """Return a fresh env advanced to start of level 2 (levels_completed==1)."""
+    ck = json.load(open("checkpoint.json"))
+    path1 = ck["final_path"]
+    env = A.Arena(game='g50t')
+    for a in path1:
+        env.step(a)
+    assert env.levels_completed == 1, env.levels_completed
+    return env
+EOF
+echo done
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p2_view.py << 'EOF'
+from l2env import get_l2_env
+import numpy as np
+env = get_l2_env()
+f = np.asarray(env.frame())
+print("actions", env.actions)
+print("colors", dict(zip(*[a.tolist() for a in np.unique(f, return_counts=True)])))
+# print grid compactly with chars
+chars = {0:'.',1:'1',5:'#',8:'8',9:'9'}
+for r in range(64):
+    print(''.join(chars.get(int(f[r,c]),'?') for c in range(64)))
+EOF
+python p2_view.py 2>&1 | head -80
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p2_delta.py << 'EOF'
+from l2env import get_l2_env
+import perception as P
+import numpy as np
+env = get_l2_env()
+d = P.action_deltas(env)
+for a,info in d.items():
+    print("action",a,"count",info["count"],"bbox",info["bbox"])
+    for s in info["samples"][:12]:
+        print("   ",s)
+EOF
+python p2_delta.py 2>&1 | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p2_track.py << 'EOF'
+from l2env import get_l2_env
+import numpy as np
+from legs import _components
+
+def blobs9(f):
+    return _components(f==9)
+
+env = get_l2_env()
+f0 = np.asarray(env.frame())
+# avatar is the 9-blob near rows26-30 col50-54. list all 9 comps
+comps = blobs9(f0)
+print("num 9-comps", len(comps))
+for tr,tc,cells in comps:
+    print("  tl",(tr,tc),"size",len(cells))
+EOF
+python p2_track.py 2>&1 | head
+API Error: BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'You have reached your specified API usage limits. You will regain access on 2026-08-01 at 00:00 UTC.'}, 'request_id': 'req_011Cd29pMEqSotZ8SAniBhWe'}

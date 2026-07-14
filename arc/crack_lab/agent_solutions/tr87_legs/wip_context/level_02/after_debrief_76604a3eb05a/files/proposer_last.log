@@ -1,0 +1,97 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && ls -la
+[edit] view /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat gkm_try.py && echo "=====LOG=====" && cat legs_log.md && echo "=====CKPT=====" && cat checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat perception.py && echo "=====SOLVE=====" && cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && timeout 600 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=2 replay_ok=True`. Now let me compare the two players and find the duplication. Both players are already thin one-liners, so the repeated code lives inside legs.py between the L1 and L2 solvers.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "path" legs.py | grep -iE "edit|move|\+= \[|\* s"
+Confirmed the duplication: both the L1 search (`search_tile_cycle_config`) and the L2 planner (`plan_glyph_cipher`) build a tile-cycle action path by interleaving `edit`-runs with `move`s. Let me extract that skill once and rewrite both to use it.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && sed -n '125,165p' legs.py
+Now let me add the shared `tile_cycle_path` leg. I'll place it right after `replay_for_reward` / before the tile-cycle puzzle section:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now rewrite `search_tile_cycle_config` to track per-tile counts and serialize via the shared leg:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now update `plan_glyph_cipher` to use the shared serializer:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now verify the refactor doesn't break anything and that `n` is still used in `plan_glyph_cipher`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "import ast; ast.parse(open('legs.py').read()); print('legs.py OK')" && sed -n '305,340p' legs.py
+Now run the harness to confirm behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -5
+Identical result (`levels=2 moves=58 replay_ok=True`). Let me also verify the refactored L1 search (which gkm_try short-circuits via checkpoint) still produces a valid winning path, to be sure the counts-based rewrite is behaviour-preserving:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+def only_l1(env):
+    legs.solve_tile_cycle_puzzle(env)
+levels, path, err = A.run_program('tr87', only_l1)
+ok = A.validate('tr87', path, levels) if path else False
+print(f'L1-only RESULT levels={levels} moves={len(path)} replay_ok={ok} err={err}')
+" 2>&1 | tail -5
+The refactored L1 search still solves level 1 from scratch (28 moves, matching the checkpoint), and gkm_try still reports `levels=2 replay_ok=True`. Behaviour preserved. Now append the debrief and candidate higher-order leg to legs_log.md:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat >> legs_log.md <<'EOF'
+
+## Debrief refactor (post-L2): the L1 and L2 solvers shared a hidden skill
+- Comparing `play_level_2` (glyph cipher) with `play_level_1` (clone search): both
+  players are already one-line compositions, so the duplication again lived INSIDE
+  legs.py. The repeated skill was PATH SERIALIZATION: turning a per-tile plan
+  (a list of EDIT-press counts) into the concrete `edit`/`move` action stream by
+  interleaving each tile's edit-run with a single MOVE (no trailing move).
+    - L1's `search_tile_cycle_config` built this inline during its DFS
+      (`path + [edit]*s + [move]`).
+    - L2's `plan_glyph_cipher` built the same thing in a tail loop
+      (`path += [edit]*s; if ti < n-1: path += [move]`).
+- Extracted ONCE as `tile_cycle_path(edit, move, counts)`. `plan_glyph_cipher`
+  now returns `tile_cycle_path(...)` directly; `search_tile_cycle_config` now
+  carries the winning *per-tile edit-count list* through its recursion and
+  serializes it once at the end via the same leg. Behaviour is unchanged
+  (gkm_try still RESULT levels=2 moves=58 replay_ok=True; L1-from-scratch still
+  28 moves replay_ok=True).
+
+## Candidate HIGHER-ORDER leg: solve_tile_row(env, plan_fn)
+- With `tile_cycle_path` factored out, L1 and L2 collapse to the SAME shape and
+  differ in only one place -- how the per-tile edit-count plan is derived:
+      spec   = discover_tile_cycle_puzzle(env)   # find edit/move, n_tiles, cycle
+      counts = plan_fn(env, spec)                # <-- the ONLY level-specific step
+      path   = tile_cycle_path(edit, move, counts)
+      replay_for_reward(env, path)
+  where `plan_fn` is:
+    * L1: a global clone DFS over configs (opaque reward, counts found by search);
+    * L2: a per-tile frame decode (legend cipher gives each tile's target glyph,
+      counts found by cycling a clone until the glyph matches).
+  This suggests a higher-order leg `solve_tile_row(env, plan_fn)` = discover the
+  tile-row structure -> `plan_fn` -> `tile_cycle_path` -> `replay_for_reward`.
+  It is a SPECIALISATION of `solve_by_clone_search` for the tile-row family: the
+  "search" half is fixed to "serialize a per-tile count plan", so any new
+  tile-row level would only supply a `plan_fn`. Not yet extracted (two data
+  points), but this is the pattern to watch for the next tile-row variant.
+EOF
+echo done
+Final confirmation run:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -3
+Done. Here's the debrief summary.
+
+## What I found
+
+Both `play_level_1` and `play_level_2` in `players.py` were **already thin one-line compositions** (each calls a single `solve_*` leg). So the repeated code lived *inside* `legs.py`, between the two solvers.
+
+The hidden duplication was **path serialization**: turning a per-tile plan (a list of EDIT-press counts) into the concrete `edit`/`move` action stream by interleaving each tile's edit-run with a single MOVE.
+- L1's `search_tile_cycle_config` built it inline in its DFS: `path + [edit]*s + [move]`.
+- L2's `plan_glyph_cipher` built the identical thing in a tail loop: `path += [edit]*s; if ti < n-1: path += [move]`.
+
+## What I changed
+
+1. **New leg `tile_cycle_path(edit, move, counts)`** in `legs.py` — the single place that serializes a per-tile edit-count plan into actions.
+2. **`plan_glyph_cipher`** now just returns `tile_cycle_path(...)`.
+3. **`search_tile_cycle_config`** now carries the winning *per-tile count list* through its recursion and serializes once at the end via the same leg (also tidied the last-tile loop symmetrically).
+4. **`legs_log.md`** — appended the post-L2 debrief plus the candidate higher-order leg **`solve_tile_row(env, plan_fn)`**: with `tile_cycle_path` factored out, L1 and L2 collapse to the same shape (`discover → plan_fn → tile_cycle_path → replay_for_reward`) and differ *only* in how the per-tile counts are derived (global clone DFS for L1's opaque reward vs. per-tile frame decode for L2's legend cipher).
+
+Players were left as thin compositions (no behavioural change needed there).
+
+## Behaviour preserved
+
+- `python gkm_try.py` → `RESULT levels=2 moves=58 replay_ok=True err=None` (identical to baseline).
+- Independently verified the refactored L1 search still solves level 1 from scratch: 28 moves, `replay_ok=True` (matches the checkpoint path length).

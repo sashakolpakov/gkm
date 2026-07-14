@@ -1,0 +1,1 @@
+[1784039832.990006] bash: 'cd /Users/sasha/gkm/arc/crack_lab && python -c "import gkm_arena as A; print([x for x in dir(A) if not x.startswith(\'__\')])"'

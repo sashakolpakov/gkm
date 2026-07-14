@@ -1,0 +1,21 @@
+{
+  "game": "tr87",
+  "level": 4,
+  "phase": "credit_out",
+  "reached": 3,
+  "err": "api proposer reported no credits/quota (see /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/proposer_last.log)",
+  "attempt": "credit_out_cd19c895658f",
+  "created_at": "2026-07-14T15:03:05.213201+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "blocked_attempts.log",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

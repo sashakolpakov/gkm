@@ -1,0 +1,114 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat gkm_try.py && echo "===CHECKPOINT===" && cat checkpoint.json && echo "===LOG===" && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat solve.py && echo "===PERCEPTION===" && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && timeout 600 python gkm_try.py 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -5
+Baseline confirmed at levels=3. Now let me analyze the duplication between L2 (`discover_glyph_cipher_puzzle`) and L3 (`discover_glyph_legend_puzzle`).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "_bordered_boxes\|def contains\|ring = \[\]\|VAL = Counter\|FG = fgc\|tall = \[b\|min_area=15" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "_bordered_boxes" legs.py players.py solve.py; echo "---count---"; grep -c "_bordered_boxes" legs.py
+Now let me add a shared `_box_contains` primitive and a `discover_glyph_tiles` front-end leg, then refactor both discover functions to use them.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now let me view the exact L2 discover function to refactor it:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "^def \|^# ---" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && sed -n '235,330p' legs.py
+Now let me insert the shared `discover_glyph_tiles` leg before `discover_glyph_cipher_puzzle`, and refactor that function:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now update the return statement of the cipher function to use `base`:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now let me refactor the L3 `discover_glyph_legend_puzzle`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "^def discover_glyph_legend_puzzle" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && sed -n '448,535p' legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+Now verify the file is syntactically clean and check the two functions:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "import legs" && echo "IMPORT OK"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -3
+Behaviour unchanged (levels=3, 97 moves, replay_ok). Let me also verify a from-scratch run of all three players still works without the checkpoint shortcut, to be sure the refactor is sound end-to-end:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import solve
+levels, path, err = A.run_program('tr87', solve.solve)
+ok = A.validate('tr87', path, levels) if path else False
+print(f'FROM-SCRATCH levels={levels} moves={len(path)} replay_ok={ok} err={err}')
+" 2>&1 | tail -3
+Both paths reach levels=3. Now let me append the debrief entry to `legs_log.md`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat >> legs_log.md << 'EOF'
+
+## Debrief refactor (post-L3): L2 and L3 discovery shared a whole front-end
+- Comparing `play_level_3` (legend cipher with segmentation) with the earlier
+  players: all three players are already thin one-line compositions, so — as
+  after L1 and L2 — the duplication lived INSIDE legs.py. This time the repeat
+  was not a tiny primitive but an entire PERCEPTION FRONT-END shared verbatim by
+  `discover_glyph_cipher_puzzle` (L2) and `discover_glyph_legend_puzzle` (L3):
+    * run `discover_tile_cycle_puzzle` and unpack edit/move/n_tiles/cycle;
+    * read the edit-region bbox and derive gh, gw, pitch;
+    * infer VAL (border color = the ring around the edit region) and FG (the
+      non-VAL color inside it) — an identical ~10-line ring scan in both;
+    * collect all glyph-tall bordered boxes (`tall`) and find the VAL box that
+      contains the edit region (the editable tiles).
+  Each copy also carried its own local `contains(b, bb)` closure.
+- Extracted ONCE as `discover_glyph_tiles(env)` (returns a base dict:
+  edit/move/n_tiles/cycle, f, ebb, gh/gw/pitch, VAL, FG, tall, editbox) plus a
+  generic `_box_contains(outer, inner)` bbox primitive. Both level-specific
+  discoverers now start with `base = discover_glyph_tiles(env)` and only add
+  their own legend-parsing tail (L2: single-glyph keys + a wide target word,
+  matched glyph-by-glyph; L3: multi-glyph key boxes paired with value boxes +
+  one unpaired word, matched by `_segment_word` tokenisation). Behaviour is
+  unchanged: gkm_try RESULT levels=3 moves=97 replay_ok=True, and a full
+  from-scratch run of all three players is likewise levels=3 moves=97.
+
+## Candidate HIGHER-ORDER leg: solve_glyph_cipher(env, decode_fn)
+- With `discover_glyph_tiles` factored out, L2 and L3 now collapse to the SAME
+  shape and differ in only ONE place — how the legend is parsed and the coded
+  word is turned into the canonical target glyph sequence:
+      base = discover_glyph_tiles(env)          # shared perception front-end
+      seq  = decode_fn(base)                     # <-- the ONLY level-specific step
+      spec = {**mechanic, editreg, seq_canon=seq}
+      solve_by_clone_search(discover=lambda: spec, search=plan_glyph_cipher)
+  where `decode_fn` is:
+    * L2: pair single-glyph key boxes with value regions, match each target-word
+      glyph to a key (D4-canonical), concatenate the paired value glyphs;
+    * L3: pair multi-glyph key boxes with value boxes, uniquely SEGMENT the
+      coded word into keys (`_segment_word`), concatenate the paired values.
+  This suggests a higher-order leg `solve_glyph_cipher(env, decode_fn)` =
+  discover_glyph_tiles -> `decode_fn` -> plan_glyph_cipher -> tile_cycle_path ->
+  replay_for_reward. It is a SPECIALISATION of `solve_by_clone_search` for the
+  glyph-cipher family (the "search" half is fixed to plan_glyph_cipher over a
+  decoded target sequence), just as `solve_tile_row` was proposed for the raw
+  tile-row family. Not yet extracted (the two decoders still differ enough to
+  earn their own named legs), but this is the pattern to collapse on the next
+  glyph-cipher variant.
+EOF
+echo "appended"
+Let me do a final confirmation run and a quick diff summary of the legs.py structure:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && grep -n "^def \|def contains\|ring = \[\]" legs.py && echo "=== FINAL RUN ===" && python gkm_try.py 2>&1 | tail -2
+The debrief and refactor are complete. Here's a summary of what I did.
+
+## Comparison
+Comparing `play_level_3` against `play_level_1` and `play_level_2` in `players.py`: **all three players are already thin one-line compositions** (each just calls one `solve_*` leg). So — consistent with the earlier debriefs — the duplication lived *inside* `legs.py`, specifically between the L2 and L3 discovery functions.
+
+## Repeated code found (written twice → now once)
+`discover_glyph_cipher_puzzle` (L2) and `discover_glyph_legend_puzzle` (L3) shared an entire **perception front-end** verbatim:
+- run `discover_tile_cycle_puzzle`, unpack `edit/move/n_tiles/cycle`
+- read the edit-region bbox → derive `gh, gw, pitch`
+- infer `VAL` (border color via the ~10-line ring scan) and `FG` (non-VAL interior color)
+- collect glyph-tall bordered boxes (`tall`) and find the VAL box containing the edit region
+- each copy carried its own local `contains(b, bb)` closure
+
+## Refactor (each skill written ONCE)
+- Added `_box_contains(outer, inner)` — a generic bbox-containment primitive (replaces both local `contains` closures).
+- Added `discover_glyph_tiles(env)` — the shared front-end, returning a base dict (`edit/move/n_tiles/cycle, f, ebb, gh/gw/pitch, VAL, FG, tall, editbox`).
+- Rewrote both level discoverers to start with `base = discover_glyph_tiles(env)` and keep only their genuinely level-specific legend-parsing tail (L2: single-glyph keys + wide target word; L3: multi-glyph key/value boxes + `_segment_word` tokenisation). The `ring = []` scan now appears exactly once.
+- Players unchanged — still thin composition calling `solve_*` legs.
+
+## Log
+Appended to `legs_log.md`: the post-L3 refactor note plus the recurring composition pattern as a candidate higher-order leg **`solve_glyph_cipher(env, decode_fn)`** = `discover_glyph_tiles → decode_fn → plan_glyph_cipher → tile_cycle_path → replay_for_reward` (a specialisation of `solve_by_clone_search` for the glyph-cipher family, parallel to the previously-noted `solve_tile_row`).
+
+## Behaviour preserved
+- `python gkm_try.py` → `RESULT levels=3 moves=97 replay_ok=True err=None`
+- Full from-scratch run of all three players → `levels=3 moves=97 replay_ok=True`
+
+No behaviour change; levels ≥ 3 confirmed.

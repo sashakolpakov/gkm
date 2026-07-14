@@ -1,0 +1,885 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat gkm_try.py solve.py players.py legs.py legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && timeout 120 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab && ls && head -50 gkm_arena.py 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab && grep -n "def run_program\|def validate\|def clone\|def step\|def frame\|def terminal\|levels_completed\|def actions\|class .*Env" gkm_arena.py | head -50
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '70,130p' gkm_arena.py
+Now let me write a probe to explore level 1 structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_init.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('g50t')
+print("actions:", env.actions)
+print("levels:", env.levels_completed, "terminal:", env.terminal())
+f = env.frame()
+print("shape:", f.shape, "colors:", P.color_counts(f))
+# print grid compactly
+for row in f:
+    print(''.join(str(int(v)) for v in row))
+EOF
+python p_init.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_delta.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+env = A.Arena('g50t')
+d = P.action_deltas(env)
+for a,v in d.items():
+    print(P.ACTION_NAME[a], v['count'], v['bbox'], v['samples'][:6])
+EOF
+python p_delta.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_track.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+def avatar(env):
+    # interior 9 blob (col>10) that's the avatar - biggest 9 blob in maze
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.bbox[1]>10 and b.bbox[0]<40]
+    bl.sort(key=lambda b:-b.area)
+    return bl[0] if bl else None
+
+env=A.Arena('g50t')
+a=avatar(env); print("start",a.bbox,a.area)
+for act in [2,2,4,4]:
+    env.step(act)
+    a=avatar(env); print(P.ACTION_NAME[act],a.bbox,a.area)
+EOF
+python p_track.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_reach.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+
+def avatar_tl(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.bbox[1]>10 and b.bbox[0]<40]
+    bl.sort(key=lambda b:-b.area)
+    return bl[0].bbox[:2] if bl else None
+
+env=A.Arena('g50t')
+start=avatar_tl(env)
+seen={start}
+q=deque([(env.clone(),start,[])])
+paths={start:[]}
+while q:
+    node,pos,path=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act)
+        np_=avatar_tl(c)
+        if np_ is None: continue
+        if np_==pos: continue
+        if np_ in seen: continue
+        seen.add(np_); paths[np_]=path+[act]
+        q.append((c,np_,path+[act]))
+print("reachable count",len(seen))
+for p in sorted(seen):
+    print(p, "len", len(paths[p]))
+EOF
+python p_reach.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_show.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+def show(env,r=(0,64),c=(0,64)):
+    f=env.frame()
+    for row in f[r[0]:r[1]]:
+        print(''.join(str(int(v)) for v in row[c[0]:c[1]]))
+
+env=A.Arena('g50t')
+for act in [4,4,4,4]:
+    env.step(act)
+print("after RIGHT x4 (avatar at 8,38 region):")
+show(env,(6,16),(12,50))
+print("USE now:")
+b=env.frame().copy()
+env.step(5)
+print("changed pix:", (env.frame()!=b).sum())
+EOF
+python p_show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_use.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+def show(env,r=(0,64),c=(0,64)):
+    f=env.frame()
+    for row in f[r[0]:r[1]]:
+        print(''.join(str(int(v)) for v in row[c[0]:c[1]]))
+
+env=A.Arena('g50t')
+for act in [4,4,4,4]:
+    env.step(act)
+print("before USE:")
+show(env,(6,20),(35,50))
+env.step(5)
+print("after USE:")
+show(env,(6,20),(35,50))
+print("levels:",env.levels_completed)
+EOF
+python p_use.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_bfs.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+env=A.Arena('g50t')
+key=lambda e: e.frame().tobytes()
+goal=lambda e,p: e.levels_completed>0
+path=P.bounded_bfs(env,goal,key_fn=key,max_states=4000,max_depth=30)
+print("PATH",path)
+EOF
+python p_bfs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_use2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+
+def avatar_tl(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.bbox[1]>10 and b.bbox[0]<40]
+    bl.sort(key=lambda b:-b.area)
+    return bl[0].bbox[:2] if bl else None
+
+env=A.Arena('g50t')
+start=avatar_tl(env)
+seen={start:env.clone()}
+q=deque([(env.clone(),start)])
+while q:
+    node,pos=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act)
+        np_=avatar_tl(c)
+        if np_ is None or np_==pos or np_ in seen: continue
+        seen[np_]=c; q.append((c,np_))
+
+for pos,cl in sorted(seen.items()):
+    before=cl.frame()
+    c2=cl.clone(); c2.step(5)
+    diff=(c2.frame()!=before).sum()
+    cc0=P.color_counts(before); cc1=P.color_counts(c2.frame())
+    print(pos,"USEdiff",int(diff),"d8",cc1.get(8,0)-cc0.get(8,0),"d9",cc1.get(9,0)-cc0.get(9,0),"lvl",c2.levels_completed)
+EOF
+python p_use2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_use3.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+def show(env,r,c):
+    f=env.frame()
+    for row in f[r[0]:r[1]]:
+        print(''.join(str(int(v)) for v in row[c[0]:c[1]]))
+
+env=A.Arena('g50t')
+env.step(4)  # to (8,20)
+print("BEFORE USE at (8,20):")
+show(env,(6,26),(12,45))
+env.step(5)
+print("AFTER USE:")
+show(env,(6,26),(12,45))
+EOF
+python p_use3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_after.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+
+def show(env,r,c):
+    for row in env.frame()[r[0]:r[1]]:
+        print(''.join(str(int(v)) for v in row[c[0]:c[1]]))
+
+env=A.Arena('g50t')
+for a in [4,4,4,4]: env.step(a)   # to (8,38)
+env.step(5)  # USE stamp
+print("after USE at (8,38): 9 count",P.color_counts(env.frame()).get(9))
+print("top-left region:")
+show(env,(0,15),(0,45))
+print("action deltas now:")
+for a,v in P.action_deltas(env).items():
+    print(P.ACTION_NAME[a],v['count'],v['bbox'])
+EOF
+python p_after.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_regions.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+def show(f,r,c):
+    for row in f[r[0]:r[1]]:
+        print(''.join(str(int(v)) for v in row[c[0]:c[1]]))
+env=A.Arena('g50t')
+f=env.frame()
+print("== top-left legend rows0-7 cols0-10 ==")
+show(f,(0,7),(0,10))
+print("== top-right 8 target rows7,15 cols37,45 ==")
+show(f,(7,16),(37,46))
+print("== bottom-right 9box rows47,58 cols40,52 ==")
+show(f,(47,58),(40,52))
+print("== mid 8 bar rows38,43 cols13,45 ==")
+show(f,(38,43),(13,45))
+EOF
+python p_regions.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_loop.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+def legend(f):
+    for row in f[0:7]:
+        print(''.join(str(int(v)) for v in row[0:10]))
+env=A.Arena('g50t')
+for i in range(6):
+    for a in [4,4,4,4]: env.step(a)
+    env.step(5)
+    print(f"--- after delivery {i+1}: lvl={env.levels_completed} 8count={P.color_counts(env.frame()).get(8)} ---")
+    legend(env.frame())
+EOF
+python p_loop.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_reach2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+
+env=A.Arena('g50t')
+s=av(env); print("start",s)
+seen={s}; q=deque([(env.clone(),s)]); paths={s:[]}
+while q:
+    node,pos=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act)
+        p=av(c)
+        if p is None or p==pos or p in seen: continue
+        seen.add(p); q.append((c,p))
+print("reach",len(seen))
+for p in sorted(seen): print(p)
+EOF
+python p_reach2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_bfs2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+
+env=A.Arena('g50t')
+start=env.clone()
+key=lambda e: e.frame().tobytes()
+q=deque([(start,[])]); seen={key(start)}
+best=None
+found=None
+maxrow=8
+while q and len(seen)<12000:
+    node,path=q.popleft()
+    if node.levels_completed>0:
+        found=path; break
+    p=av(node)
+    if p and p[0]>maxrow:
+        maxrow=p[0]; best=(p,path)
+    if len(path)>=45: continue
+    for act in (1,2,3,4,5):
+        c=node.clone(); c.step(act)
+        k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,path+[act]))
+print("found reward path:",found)
+print("deepest avatar row:",maxrow,"via",best[1] if best else None)
+print("states",len(seen))
+EOF
+python p_bfs2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_closure.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+env=A.Arena('g50t')
+key=lambda e: e.frame().tobytes()
+q=deque([env.clone()]); seen={key(env)}
+win=False
+while q and len(seen)<6000:
+    node=q.popleft()
+    if node.levels_completed>0: win=True; break
+    for act in (1,2,3,4,5):
+        c=node.clone(); c.step(act); k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append(c)
+print("closure states",len(seen),"win",win,"queue_empty",len(q)==0)
+EOF
+python p_closure.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_a6.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+env=A.Arena('g50t')
+b=env.frame().copy()
+try:
+    env.step(6,20,10)
+    d=P.frame_delta(b,env.frame())
+    print("a6(20,10) diff",d['count'],d['bbox'],d['samples'][:8],"lvl",env.levels_completed)
+except Exception as e:
+    print("err",e)
+EOF
+python p_a6.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_scan6.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+env=A.Arena('g50t')
+b=env.frame()
+hits=[]
+for x in range(0,64,2):
+    for y in range(0,64,2):
+        c=env.clone(); c.step(6,x,y)
+        d=(c.frame()!=b).sum()
+        if d>0 or c.levels_completed>0:
+            hits.append((x,y,int(d),c.levels_completed))
+print("num hits",len(hits))
+for h in hits[:60]: print(h)
+EOF
+python p_scan6.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_scan6b.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+env=A.Arena('g50t')
+# reach all 12 positions with their env clones
+s=av(env); states={s:env.clone()}; q=deque([(env.clone(),s)])
+while q:
+    node,pos=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act); p=av(c)
+        if p is None or p==pos or p in states: continue
+        states[p]=c; q.append((c,p))
+anyhit=0
+for pos,cl in states.items():
+    b=cl.frame()
+    for x in range(0,64,3):
+        for y in range(0,64,3):
+            c=cl.clone(); c.step(6,x,y)
+            d=(c.frame()!=b).sum()
+            if d>0 or c.levels_completed>0:
+                anyhit+=1
+                print("pos",pos,"click",x,y,"diff",int(d),"lvl",c.levels_completed)
+print("total hits",anyhit)
+EOF
+python p_scan6b.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_diff.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+env=A.Arena('g50t')
+b=env.frame().copy()
+for a in [4,4,4,4]: env.step(a)
+env.step(5)
+f=env.frame()
+ys,xs=np.where(b!=f)
+print("total changed",len(ys))
+for y,x in zip(ys,xs):
+    print((int(y),int(x)),int(b[y,x]),"->",int(f[y,x]))
+EOF
+python p_diff.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_det.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+# determinism check
+e1=A.Arena('g50t'); e2=A.Arena('g50t')
+seq=[2,4,2,4,5,2,3]
+for a in seq: e1.step(a); e2.step(a)
+print("deterministic:",(e1.frame()==e2.frame()).all())
+# what changes on a single no-op action (UP at start = blocked)
+e=A.Arena('g50t')
+b=e.frame().copy(); e.step(1); f=e.frame()
+print("UP@start diff",int((b!=f).sum()))
+# after one DOWN then UP (noop) 
+e=A.Arena('g50t'); e.step(2); b=e.frame().copy(); e.step(1); 
+import numpy as np
+ys,xs=np.where(b!=e.frame())
+print("noop UP after DOWN changes:",[(int(y),int(x),int(b[y,x]),int(e.frame()[y,x])) for y,x in zip(ys,xs)])
+# bottom row over several toggles
+e=A.Arena('g50t')
+def brow(e): return ''.join(str(int(v)) for v in e.frame()[63,55:64])
+print("brow start",brow(e))
+for i in range(5):
+    for a in [4,4,4,4,5]: e.step(a)
+    print("brow after toggle",i+1,brow(e))
+EOF
+python p_det.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_full.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env=A.Arena('g50t')
+f=env.frame()
+print("   "+''.join(str(c%10) for c in range(64)))
+for r in range(64):
+    row=''.join(('.' if v==0 else str(int(v))) for v in f[r])
+    print(f"{r:2d} {row}")
+EOF
+python p_full.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_reach3.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+def reachset(env):
+    s=av(env); seen={s}; q=deque([(env.clone(),s)])
+    while q:
+        node,pos=q.popleft()
+        for act in (1,2,3,4):
+            c=node.clone(); c.step(act); p=av(c)
+            if p is None or p==pos or p in seen: continue
+            seen.add(p); q.append((c,p))
+    return seen
+env=A.Arena('g50t')
+# toggle once
+for a in [4,4,4,4,5]: env.step(a)
+print("after 1 toggle, reach:",sorted(reachset(env)))
+EOF
+python p_reach3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_a6b.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+def diffcount(a,b): return int((a!=b).sum())
+env=A.Arena('g50t')
+# state B: toggle gates open
+for a in [4,4,4,4,5]: env.step(a)
+base=env.clone()
+targets=[(46,52),(52,46),(41,10),(10,41),(2,2),(46,46),(31,31),(63,60),(0,0)]
+print("From gates-open state, action6 diffs (>heartbeat):")
+for (x,y) in targets:
+    c=base.clone(); b=c.frame().copy(); c.step(6,x,y)
+    d=diffcount(b,c.frame())
+    if d>1 or c.levels_completed>0:
+        print("click",(x,y),"diff",d,"lvl",c.levels_completed)
+print("done B")
+EOF
+python p_a6b.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_goal.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+env=A.Arena('g50t')
+for a in [4,4,4,4,5]: env.step(a)  # open gates
+# BFS movement to each target position, record path
+start=av(env); q=deque([(env.clone(),start,[])]); seen={start}; paths={start:[]}
+while q:
+    node,pos,path=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act); p=av(c)
+        if p is None or p==pos or p in seen: continue
+        seen.add(p); paths[p]=path+[act]; q.append((c,p,path+[act]))
+for tgt in [(50,44),(50,38),(44,50),(50,50)]:
+    if tgt in paths:
+        c=env.clone()
+        for a in paths[tgt]: c.step(a)
+        # try use
+        cu=c.clone(); cu.step(5)
+        print(tgt,"reached lvl",c.levels_completed,"| afterUSE lvl",cu.levels_completed,"path",len(paths[tgt]))
+EOF
+python p_goal.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_path.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+env=A.Arena('g50t')
+pre=[4,4,4,4,5]
+for a in pre: env.step(a)
+start=av(env); q=deque([(env.clone(),start,[])]); seen={start}; paths={start:[]}
+while q:
+    node,pos,path=q.popleft()
+    for act in (1,2,3,4):
+        c=node.clone(); c.step(act); p=av(c)
+        if p is None or p==pos or p in seen: continue
+        seen.add(p); paths[p]=path+[act]; q.append((c,p,path+[act]))
+tgt=(50,50)
+full=pre+paths[tgt]
+print("FULL PATH",full,"len",len(full))
+# validate on fresh env
+e=A.Arena('g50t')
+for a in full:
+    e.step(a)
+    if e.levels_completed>0: break
+print("levels after path:",e.levels_completed,"steps taken:",len(e.path))
+EOF
+python p_path.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_dbg.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from collections import deque
+env=A.Arena('g50t')
+key=lambda e: e.frame().tobytes()
+q=deque([(env.clone(),0)]); seen={key(env)}
+win=None; maxlen=0
+while q:
+    node,dep=q.popleft()
+    maxlen=max(maxlen,dep)
+    if node.levels_completed>0: win=dep; break
+    for act in (1,2,3,4,5):
+        c=node.clone(); c.step(act); k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,dep+1))
+    if len(seen)>200000: print("cap"); break
+print("win at depth",win,"states",len(seen),"maxdepth",maxlen)
+EOF
+python p_dbg.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '128,175p' gkm_arena.py && echo ---- && sed -n '240,270p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '55,80p' gkm_arena.py
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_leg.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs, time
+env=A.Arena('g50t')
+t=time.time()
+path=legs.bfs_to_reward(env)
+print("path len",len(path),"time",round(time.time()-t,1),"path",path)
+# validate
+e=A.Arena('g50t')
+legs.run_path(e,path)
+print("levels",e.levels_completed)
+EOF
+python p_leg.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_win.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+path=[4,4,4,4,5, 2,2,2,2,2,2,2, 4,4,4,4,4]
+e=A.Arena('g50t')
+prev=None
+for i,a in enumerate(path):
+    e.step(a)
+    print(i+1,"act",a,"levels",e.levels_completed,"terminal",e.terminal())
+EOF
+python p_win.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_probe_bfs.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from collections import deque
+# reference frames along winning path
+path=[4,4,4,4,5, 2,2,2,2,2,2,2, 4,4,4,4,4]
+e=A.Arena('g50t'); frames=[e.frame().tobytes()]
+for a in path:
+    e.step(a); frames.append(e.frame().tobytes())
+f_gatesopen=frames[5]   # after [4,4,4,4,5]
+f_step16=frames[16]
+# full BFS closure record
+env=A.Arena('g50t')
+key=lambda e:e.frame().tobytes()
+q=deque([env.clone()]); seen={key(env)}
+while q:
+    n=q.popleft()
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a); k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append(c)
+print("total seen",len(seen))
+print("gates-open frame in seen:",f_gatesopen in seen)
+print("step16 frame in seen:",f_step16 in seen)
+EOF
+python p_probe_bfs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_mask.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from collections import deque
+import numpy as np
+def mkey(e):
+    f=e.frame().copy(); f[63,:]=0
+    return (f.tobytes(), int(e.levels_completed))
+env=A.Arena('g50t')
+base=0
+q=deque([(env.clone(),[])]); seen={mkey(env)}; found=None
+while q and len(seen)<60000:
+    n,p=q.popleft()
+    if len(p)>=160: continue
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.levels_completed>base: found=p+[a]; q.clear(); break
+        k=mkey(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,p+[a]))
+print("found",found,"states",len(seen))
+if found:
+    e=A.Arena('g50t')
+    for a in found: e.step(a)
+    print("validate levels",e.levels_completed)
+EOF
+python p_mask.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_posbfs.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+def key(e):
+    f=e.frame()
+    return (av(e), f[0:7,0:12].tobytes(), int(e.levels_completed))
+env=A.Arena('g50t'); base=0
+q=deque([(env.clone(),[])]); seen={key(env)}; found=None
+while q and len(seen)<40000:
+    n,p=q.popleft()
+    if len(p)>=120: continue
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.levels_completed>base: found=p+[a]; break
+        k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,p+[a]))
+    if found: break
+print("found len",len(found) if found else None,"states",len(seen))
+if found:
+    e=A.Arena('g50t')
+    for a in found: e.step(a)
+    print("validate",e.levels_completed,"moves",len(found))
+    print(found)
+EOF
+python p_posbfs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_dbg2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+def leg(e): return hash(e.frame()[0:7,0:12].tobytes())%1000
+def key(e): return (av(e), e.frame()[0:7,0:12].tobytes(), int(e.levels_completed))
+env=A.Arena('g50t')
+q=deque([(env.clone(),[])]); seen={key(env)}; states=[]
+while q and len(seen)<40000:
+    n,p=q.popleft()
+    if len(p)>=120: continue
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.levels_completed>0: print("WIN",p+[a]); sys.exit()
+        k=key(c)
+        if k in seen: continue
+        seen.add(k); states.append((av(c),leg(c),p+[a]))
+        q.append((c,p+[a]))
+for pos,lg,p in states: print(pos,lg,"path",p)
+EOF
+python p_dbg2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_trace.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from collections import deque
+env=A.Arena('g50t'); key=lambda e:e.frame().tobytes()
+q=deque([env.clone()]); seen={key(env)}
+while q:
+    n=q.popleft()
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a); k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append(c)
+path=[4,4,4,4,5, 2,2,2,2,2,2,2, 4,4,4,4,4]
+e=A.Arena('g50t')
+for i,a in enumerate(path):
+    e.step(a)
+    print(i+1,"act",a,"inClosure",key(e) in seen,"lvl",e.levels_completed)
+EOF
+python p_trace.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_hidden.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+def fr(path):
+    e=A.Arena('g50t')
+    for a in path: e.step(a)
+    return e
+e1=fr([4,4,4,4,5])      # USE at (8,38)
+e2=fr([2,5])            # USE at (14,14)
+e0=fr([])
+f1,f2,f0=e1.frame(),e2.frame(),e0.frame()
+print("f1==f2:",(f1==f2).all(), "f1==f0:",(f1==f0).all(),"f2==f0:",(f2==f0).all())
+# reachability from each (moves only)
+import perception as P
+from collections import deque
+def av(env):
+    bl=[b for b in P.connected_components(env.frame(),colors=[9]) if b.area==24 and (b.bbox[2]-b.bbox[0])==4 and (b.bbox[3]-b.bbox[1])==4]
+    return bl[0].bbox[:2] if bl else None
+def reach(env):
+    s=av(env); seen={s}; q=deque([(env.clone(),s)])
+    while q:
+        n,pos=q.popleft()
+        for a in (1,2,3,4):
+            c=n.clone(); c.step(a); p=av(c)
+            if p is None or p==pos or p in seen: continue
+            seen.add(p); q.append((c,p))
+    return len(seen)
+print("reach e1(USE@8,38):",reach(e1))
+print("reach e2(USE@14,14):",reach(e2))
+print("reach e0(start):",reach(e0))
+EOF
+python p_hidden.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_hid2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+from collections import deque
+env=A.Arena('g50t'); key=lambda e:e.frame().tobytes()
+q=deque([env.clone()]); seen={key(env)}
+frame_to_env={}
+while q:
+    n=q.popleft()
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a); k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append(c); frame_to_env[k]=c
+# gates-open via [4,4,4,4,5]
+e1=A.Arena('g50t')
+for a in [4,4,4,4,5]: e1.step(a)
+k1=key(e1)
+print("f1 in seen:",k1 in seen)
+# expand stored representative of f1
+rep=frame_to_env.get(k1)
+if rep is not None:
+    d=rep.clone(); d.step(2)  # DOWN
+    print("rep DOWN reach frame in seen:",key(d) in seen)
+    # what avatar reach does rep have vs e1
+    import perception as P
+    def av(e):
+        bl=[b for b in P.connected_components(e.frame(),colors=[9]) if b.area==24]
+        return bl[0].bbox[:2] if bl else None
+    print("rep av",av(rep),"e1 av",av(e1))
+    print("rep frame == e1 frame:",(rep.frame()==e1.frame()).all())
+    # DOWN from e1
+    d2=e1.clone(); d2.step(2)
+    print("e1 DOWN == rep DOWN:",(d2.frame()==d.frame()).all())
+    print("e1 DOWN frame in seen:",key(d2) in seen)
+EOF
+python p_hid2.py
+I've discovered the environment has **hidden state** (identical frames transition differently), so frame-keyed dedup is invalid. But navigation via concrete action sequences is deterministic. Let me build a general "unlock-then-reach" planner keyed on avatar position, detecting the avatar by movement.
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_leg2.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs, time
+env=A.Arena('g50t')
+t=time.time()
+plan=legs.plan_unlock_reach(env)
+print("plan",plan,"len",len(plan) if plan else None,"time",round(time.time()-t,1))
+if plan:
+    e=A.Arena('g50t')
+    legs.run_path(e,plan)
+    print("validate levels",e.levels_completed,"real moves",len(e.path))
+EOF
+python p_leg2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && cat > p_dbg3.py << 'EOF'
+import sys
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+env=A.Arena('g50t')
+print("avatar_tl start:",legs.avatar_tl(env))
+rp,reach=legs._move_explore(env)
+print("reward_path:",rp,"reach size:",len(reach),"positions:",sorted(reach.keys()))
+EOF
+python p_dbg3.py
+The movement detector is confused by the ambient counter animation. Let me make it robust by matching a **shape-preserving translation** (ignores the flickering counter and static goal box).
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python p_dbg3.py
+Reach is now correct (12 positions). Let me run the full planner:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python p_leg2.py
+The planner works and validates to level 1. Now let me wire up `play_level_1`:
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python gkm_try.py
+`RESULT levels=1 moves=19 replay_ok=True`. Let me confirm robustness by running once more and record the leg-library debrief.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python gkm_try.py && cat >> legs_log.md << 'EOF'
+
+## g50t level 1
+- Avatar = the object that TRANSLATES under a move (detected via colour+shape
+  match). Movement actions 1/2/3/4; action 5 = USE.
+- USE on a "switch" tile reconfigures the maze (opens gates -> avatar reachable
+  set grows); elsewhere USE is a reset. Goal = drive avatar into goal region;
+  reward is sparse (levels_completed).
+- HIDDEN STATE: byte-identical frames can transition differently, so frame-key
+  BFS is invalid. Plan as concrete action sequences on clones, dedup only on
+  avatar position within a fixed gate config.
+- Legs added: avatar_tl, _move_explore, plan_unlock_reach / solve_unlock_reach
+  (general "unlock-then-reach"). play_level_1 = solve_unlock_reach.
+EOF
+echo done
+Solved consistently. Let me tidy the one now-unused import in legs.py:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && sed -i '' 's/from collections import deque, Counter/from collections import deque/' legs.py && python gkm_try.py
+Done. `RESULT levels=1 moves=19 replay_ok=True err=None`.
+
+## Summary
+
+I reached **level 1** of g50t by discovering the mechanics purely through clone experiments on raw frames.
+
+**What I found:**
+- **Avatar**: a 5×5 block (colour 9) that translates with actions 1/2/3/4 (UP/DOWN/LEFT/RIGHT), moving in 6-pixel maze cells; blocked by voids and walls. Action 5 = USE.
+- **USE = a switch**: at a specific "switch" tile (top-right, cols≈38–42) USE reconfigures the maze — it *opens gates* so the avatar's reachable set jumps from 12 cells (trapped top-left) to 33 cells reaching the bottom-right **goal region**. Elsewhere USE just resets the avatar.
+- **Goal**: driving the avatar into the bottom-right box increments `levels_completed`.
+- **Critical gotcha — hidden state**: I proved two byte-identical frames transition *differently* under the same action (`rep.frame()==e1.frame()` but `rep.DOWN != e1.DOWN`). So frame-keyed BFS is invalid and silently misses the win. I plan instead as concrete action sequences on clones (deterministic on replay), deduping only on **avatar position** within a fixed gate configuration.
+
+**Legs added (general, in `legs.py`):**
+- `avatar_tl` — locates the avatar as the object that translates (colour+shape match), ignoring the flickering move-counter and static scenery.
+- `_move_explore` — position-deduped movement BFS within a fixed gate config; returns a reward-path or the reachable map.
+- `plan_unlock_reach` / `solve_unlock_reach` — general "unlock-then-reach": try to reach the reward by moving; otherwise press USE at candidate switch positions (keeping only those that enlarge reachability) and recurse, bounded by `max_toggles`.
+
+`play_level_1` simply composes `solve_unlock_reach(env)`. Replay validation passes (`replay_ok=True`) and it's stable across runs.

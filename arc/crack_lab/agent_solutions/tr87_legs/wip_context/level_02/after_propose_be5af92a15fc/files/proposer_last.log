@@ -1,0 +1,740 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat solve.py players.py checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && timeout 300 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py
+$ [BLOCKED: forbidden source/history access blocked: private game/runtime introspection]
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py 2>/dev/null | head -100
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,200p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("levels_completed", env.levels_completed)
+print("actions", env.actions)
+f = env.frame()
+print("shape", f.shape)
+print("colors", P.color_counts(f))
+np.save('/tmp/l2frame.npy', f)
+EOF
+python probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+for r in range(64):
+    print(''.join('%X'%v for v in f[r]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe2.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P
+
+def geten():
+    env=A.Arena('tr87')
+    for a in json.load(open('checkpoint.json'))['final_path']:
+        env.step(a)
+    return env
+
+env=geten()
+d=P.action_deltas(env,[1,2,3,4])
+for a,dd in d.items():
+    print(a, dd['count'], dd['bbox'])
+    print('   samples', dd['samples'][:6])
+EOF
+python probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+for r in [48,49,50,51,52,53,54,55,56,57,58,59]:
+    row=f[r]
+    print(r, ''.join('%X'%v for v in row))
+print('cols with 0 at row48:', np.where(f[48]==0)[0])
+print('cols with 0 at row49:', np.where(f[49]==0)[0])
+print('cols with 0 at row58:', np.where(f[58]==0)[0])
+print('cols with 0 at row59:', np.where(f[59]==0)[0])
+print('B row51 cols:', np.where(f[51]==11)[0].min(), np.where(f[51]==11)[0].max())
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe3.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P, legs
+
+def geten():
+    env=A.Arena('tr87')
+    for a in json.load(open('checkpoint.json'))['final_path']:
+        env.step(a)
+    return env
+
+env=geten()
+spec=legs.discover_tile_cycle_puzzle(env)
+print("spec", spec)
+EOF
+python probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe4.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P
+
+def geten():
+    env=A.Arena('tr87')
+    for a in json.load(open('checkpoint.json'))['final_path']:
+        env.step(a)
+    return env
+
+# move cursor right, track marker cols at row 59
+env=geten()
+def markercols(e):
+    f=e.frame()
+    return list(np.where(f[59]==0)[0])
+print("start", markercols(env))
+c=env.clone()
+for i in range(9):
+    c.step(4)
+    print("after move4 x",i+1, markercols(c))
+EOF
+python probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+print('rows 40-46 (bottom 7-box):')
+for r in range(40,47):
+    print(r, ''.join('%X'%v for v in f[r]))
+print('7 cols row40:', np.where(f[40]==7)[0].min(), np.where(f[40]==7)[0].max())
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+sub=f[41:46,19:45]
+for r in range(5):
+    print(''.join('%X'%v for v in sub[r]))
+print('cols all-7 (separators):')
+for c in range(sub.shape[1]):
+    if all(sub[:,c]==7): print(' sep at rel col',c,'abs',c+19)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe5.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def geten():
+    env=A.Arena('tr87')
+    for a in json.load(open('checkpoint.json'))['final_path']:
+        env.step(a)
+    return env
+
+env=geten()
+# tile0 at rows 52-56 cols 8-12. Cycle with action 1 (edit).
+def tile(e,i):
+    f=e.frame(); c0=8+7*i
+    return f[52:57,c0:c0+5]
+def show(t):
+    return '\n'.join(''.join('%X'%v for v in r) for r in t)
+c=env.clone()
+for s in range(8):
+    print("edit state",s)
+    print(show(tile(c,0)))
+    c.step(1)
+    print()
+EOF
+python probe5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+for r in range(0,33):
+    print('%2d'%r, ''.join('%X'%v for v in f[r]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+# top region bg 2, rows 0-33. Find 7-boxes and B-regions.
+import perception as P
+blobs=P.connected_components(f)
+for b in blobs:
+    if b.color in (7,11) and b.area>10:
+        print('color',b.color,'bbox',b.bbox,'area',b.area,'size',b.size)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+def show(r0,c0,r1,c1):
+    for r in range(r0,r1+1):
+        print(''.join('%X'%v for v in f[r,c0:c1+1]))
+    print()
+print('band1 right B (4,38)-(10,58):')
+show(4,38,10,58)
+print('band3 left B (22,15)-(28,35):')
+show(22,15,28,35)
+print('band2 left B (13,15)-(19,28):')
+show(13,15,19,28)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe6.py <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P
+
+def geten():
+    env=A.Arena('tr87')
+    for a in json.load(open('checkpoint.json'))['final_path']:
+        env.step(a)
+    return env
+
+env=geten()
+f=env.frame()
+
+def glyph(r0,c0):
+    # 5x5 fg==5 at rows r0..r0+4, cols c0..c0+4
+    return tuple(tuple(1 if f[r0+i,c0+j]==5 else 0 for j in range(5)) for i in range(5))
+
+def region_glyphs(bbox):
+    r0,c0,r1,c1=bbox
+    w=c1-c0+1
+    ng=(w+1)//7  # 7->1,14->2,21->3
+    gs=[]
+    gr0=r0+1
+    for k in range(ng):
+        gc0=c0+1+7*k
+        gs.append(glyph(gr0,gc0))
+    return gs
+
+# 7-boxes = keys
+boxes7=[(4,5,10,11),(13,5,19,11),(22,5,28,11),(4,28,10,34),(13,35,19,41),(22,42,28,48)]
+Bregs=[(4,15,10,21),(13,15,19,28),(22,15,28,35),(4,38,10,58),(13,45,19,58),(22,52,28,58)]
+keys=[region_glyphs(b)[0] for b in boxes7]
+vals=[region_glyphs(b) for b in Bregs]
+for i,(k,v) in enumerate(zip(keys,vals)):
+    print('entry',i,'val_len',len(v))
+
+# target box bottom (40,18)-(46,45), width 28 -> 4 glyphs, sep 2
+tgt_bbox=(40,18,46,45)
+r0,c0,r1,c1=tgt_bbox
+targets=[glyph(r0+1,c0+1+7*k) for k in range(4)]
+print('num targets',len(targets))
+
+# match each target to a key
+def show(g):
+    return '\n'.join(''.join('#' if x else '.' for x in row) for row in g)
+for ti,t in enumerate(targets):
+    matches=[i for i,k in enumerate(keys) if k==t]
+    print('target',ti,'matches key',matches)
+
+# alphabet: cycle editable tile 0
+def tileglyph(e,i):
+    ff=e.frame(); c0=8+7*i
+    return tuple(tuple(1 if ff[52+r,c0+j]==5 else 0 for j in range(5)) for r in range(5))
+c=env.clone()
+alphabet=[]
+for s in range(7):
+    alphabet.append(tileglyph(c,0))
+    c.step(1)
+print('alphabet size',len(alphabet), 'distinct', len(set(alphabet)))
+
+# build target sequence
+seq=[]
+for t in targets:
+    idx=[i for i,k in enumerate(keys) if k==t][0]
+    seq.extend(vals[idx])
+print('target sequence length',len(seq))
+# map each to alphabet index
+alpha_idx=[]
+for g in seq:
+    m=[i for i,a in enumerate(alphabet) if a==g]
+    alpha_idx.append(m)
+print('alpha indices per tile:',alpha_idx)
+EOF
+python probe6.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat >> probe6.py <<'EOF'
+
+print("=== KEYS ===")
+for i,k in enumerate(keys):
+    print('key',i)
+    print(show(k))
+print("=== TARGETS ===")
+for i,t in enumerate(targets):
+    print('target',i)
+    print(show(t))
+EOF
+python probe6.py 2>/dev/null | sed -n '/=== KEYS/,$p'
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && sed -i 's/idx=\[i for i,k in enumerate(keys) if k==t\]\[0\]/m2=[i for i,k in enumerate(keys) if k==t]\n    if not m2:\n        continue\n    idx=m2[0]/' probe6.py
+python probe6.py 2>/dev/null | sed -n '/=== KEYS/,$p'
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=env.frame()
+def glyph(r0,c0):
+    return tuple(tuple(1 if f[r0+i,c0+j]==5 else 0 for j in range(5)) for i in range(5))
+def show(g):
+    return '\n'.join(''.join('#' if x else '.' for x in row) for row in g)
+boxes7=[(4,5,10,11),(13,5,19,11),(22,5,28,11),(4,28,10,34),(13,35,19,41),(22,42,28,48)]
+keys=[glyph(b[0]+1,b[1]+1) for b in boxes7]
+tgt=(40,18,46,45)
+targets=[glyph(tgt[0]+1,tgt[1]+1+7*k) for k in range(4)]
+for i,k in enumerate(keys):
+    print('KEY',i); print(show(k)); print()
+for i,t in enumerate(targets):
+    print('TGT',i); print(show(t)); print()
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=env.frame()
+
+def glyph_at(f,r0,c0):
+    return tuple(tuple(1 if f[r0+i,c0+j]==5 else 0 for j in range(5)) for i in range(5))
+
+# alphabet from editable tile 0 cycling
+c=env.clone()
+alpha=[]
+for s in range(7):
+    ff=c.frame()
+    alpha.append(glyph_at(ff,52,8))
+    c.step(1)
+print('alphabet distinct',len(set(alpha)))
+amap={g:i for i,g in enumerate(alpha)}
+
+def classify(g):
+    return amap.get(g,'?')
+
+# keys (7-boxes)
+boxes7=[(4,5),(13,5),(22,5),(4,28),(13,35),(22,42)]
+print('KEY classifications:', [classify(glyph_at(f,r+1,c+1)) for r,c in boxes7])
+
+# B-region values
+Bregs=[(4,15,7),(13,15,14),(22,15,21),(4,38,21),(13,45,14),(22,52,7)]
+for r,c,w in Bregs:
+    ng=(w+1)//7
+    gs=[classify(glyph_at(f,r+1,c+1+7*k)) for k in range(ng)]
+    print('Breg at',(r,c),'->',gs)
+
+# target box 4 glyphs
+tr,tc=40,18
+print('TARGET:', [classify(glyph_at(f,tr+1,tc+1+7*k)) for k in range(4)])
+
+# current editable tiles (7)
+print('EDIT current:', [classify(glyph_at(f,52,8+7*k)) for k in range(7)])
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=env.frame()
+def g(f,r0,c0):
+    return tuple(tuple(1 if f[r0+i,c0+j]==5 else 0 for j in range(5)) for i in range(5))
+
+# cycle each editable tile through its 7 states; record sets
+tilesets=[]
+for ti in range(7):
+    c=env.clone()
+    # move cursor to tile ti
+    for _ in range(ti):
+        c.step(4)
+    s=[]
+    for k in range(7):
+        s.append(g(c.frame(),52,8+7*ti))
+        c.step(1)
+    tilesets.append(s)
+for ti,s in enumerate(tilesets):
+    print('tile',ti,'distinct',len(set(s)))
+# are all tiles same set?
+sets=[frozenset(s) for s in tilesets]
+print('all same set?', all(x==sets[0] for x in sets))
+# global alphabet
+allg=set()
+for s in tilesets: allg|=set(s)
+print('total distinct editable glyphs across tiles:',len(allg))
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+def showbox(r0,c0,r1,c1):
+    for r in range(r0,r1+1):
+        print(''.join('%X'%v for v in f[r,c0:c1+1]))
+    print()
+print('7box band1L (4,5)-(10,11)'); showbox(4,5,10,11)
+print('7box band1R (4,28)-(10,34)'); showbox(4,28,10,34)
+print('target box full (40,18)-(46,45)'); showbox(40,18,46,45)
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+def g(r0,c0):
+    return np.array([[1 if f[r0+i,c0+j]==5 else 0 for j in range(5)] for i in range(5)])
+def norm(a): return tuple(map(tuple,a))
+boxes7=[(4,5),(13,5),(22,5),(4,28),(13,35),(22,42)]
+keys=[g(r+1,c+1) for r,c in boxes7]
+targets=[g(41,19+7*k) for k in range(4)]
+transforms={'id':lambda a:a,'h':lambda a:a[:,::-1],'v':lambda a:a[::-1],'180':lambda a:a[::-1,::-1]}
+for ti,t in enumerate(targets):
+    res=[]
+    for ki,k in enumerate(keys):
+        for tn,fn in transforms.items():
+            if norm(fn(t))==norm(k):
+                res.append((ki,tn))
+    print('target',ti,'->',res)
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import numpy as np
+f=np.load('/tmp/l2frame.npy')
+def g(r0,c0):
+    return np.array([[1 if f[r0+i,c0+j]==5 else 0 for j in range(5)] for i in range(5)])
+def norm(a): return tuple(map(tuple,a.tolist()))
+boxes7=[(4,5),(13,5),(22,5),(4,28),(13,35),(22,42)]
+keys=[g(r+1,c+1) for r,c in boxes7]
+targets=[g(41,19+7*k) for k in range(4)]
+def transforms(a):
+    outs={}
+    cur=a
+    for i in range(4):
+        outs['r%d'%(i*90)]=cur
+        outs['r%df'%(i*90)]=cur[:,::-1]
+        cur=np.rot90(cur)
+    return outs
+for ti,t in enumerate(targets):
+    res=[]
+    for ki,k in enumerate(keys):
+        for tn,tt in transforms(t).items():
+            if norm(tt)==norm(k):
+                res.append((ki,tn))
+    print('target',ti,'->',res)
+print('--- print all keys and target3 ---')
+def show(a): return '\n'.join(''.join('#' if x else '.' for x in r) for r in a)
+print('TGT3'); print(show(targets[3]))
+for ki,k in enumerate(keys):
+    print('KEY',ki); print(show(k))
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=env.frame()
+def g(f,r0,c0):
+    return tuple(tuple(1 if f[r0+i,c0+j]==5 else 0 for j in range(5)) for i in range(5))
+def gn(f,r0,c0):
+    return np.array([[1 if f[r0+i,c0+j]==5 else 0 for j in range(5)] for i in range(5)])
+def norm(a): return tuple(map(tuple,a.tolist()))
+
+# keys and their value bregs
+boxes7=[(4,5),(13,5),(22,5),(4,28),(13,35),(22,42)]
+Bregs=[(4,15,1),(13,15,2),(22,15,3),(4,38,3),(13,45,2),(22,52,1)]
+keys=[gn(f,r+1,c+1) for r,c in boxes7]
+vals=[]
+for r,c,n in Bregs:
+    vals.append([g(f,r+1,c+1+7*k) for k in range(n)])
+
+targets=[gn(f,41,19+7*k) for k in range(4)]
+def transforms(a):
+    outs=[]; cur=a
+    for i in range(4):
+        outs.append(cur); outs.append(cur[:,::-1]); cur=np.rot90(cur)
+    return outs
+tgtkeys=[]
+for t in targets:
+    found=None
+    for ki,k in enumerate(keys):
+        if any(norm(tt)==norm(k) for tt in transforms(t)):
+            found=ki;break
+    tgtkeys.append(found)
+print('target->keys',tgtkeys)
+seq=[]
+for ki in tgtkeys:
+    seq.extend(vals[ki])
+print('seq len',len(seq))
+
+# for each editable tile, find edit count to reach seq[i]
+c0=env.clone()
+plan=[]
+ok=True
+for ti in range(7):
+    c=env.clone()
+    for _ in range(ti): c.step(4)
+    found=None
+    for s in range(7):
+        if g(c.frame(),52,8+7*ti)==seq[ti]:
+            found=s;break
+        c.step(1)
+    print('tile',ti,'edits',found)
+    if found is None: ok=False
+    else: plan.append(found)
+print('ok',ok,'plan',plan)
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=env.frame()
+def gn(f,r0,c0):
+    return np.array([[1 if f[r0+i,c0+j]==5 else 0 for j in range(5)] for i in range(5)])
+def norm(a): return tuple(map(tuple,a.tolist()))
+def transforms(a):
+    outs=[]; cur=a
+    for i in range(4):
+        outs.append(cur); outs.append(cur[:,::-1]); cur=np.rot90(cur)
+    return outs
+boxes7=[(4,5),(13,5),(22,5),(4,28),(13,35),(22,42)]
+Bregs=[(4,15,1),(13,15,2),(22,15,3),(4,38,3),(13,45,2),(22,52,1)]
+keys=[gn(f,r+1,c+1) for r,c in boxes7]
+vals=[[gn(f,r+1,c+1+7*k) for k in range(n)] for r,c,n in Bregs]
+targets=[gn(f,41,19+7*k) for k in range(4)]
+tgtkeys=[]
+for t in targets:
+    for ki,k in enumerate(keys):
+        if any(norm(tt)==norm(k) for tt in transforms(t)):
+            tgtkeys.append(ki);break
+seq=[]
+for ki in tgtkeys: seq.extend(vals[ki])
+
+for ti in range(7):
+    c=env.clone()
+    for _ in range(ti): c.step(4)
+    states=[]
+    for s in range(7):
+        states.append(gn(c.frame(),52,8+7*ti)); c.step(1)
+    tset=set(norm(x) for x in transforms(seq[ti]))
+    matches=[s for s in range(7) if norm(states[s]) in tset]
+    # also exact
+    exact=[s for s in range(7) if norm(states[s])==norm(seq[ti])]
+    print('tile',ti,'exact',exact,'transform-match',matches)
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+edits=[4,5,3,2,3,3,4]
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+print('before',env.levels_completed)
+c=env.clone()
+path=[]
+for ti,e in enumerate(edits):
+    path+= [1]*e
+    if ti<6: path+=[4]
+for a in path:
+    c.step(a)
+print('after',c.levels_completed,'terminal',c.terminal(),'pathlen',len(path))
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+# prototype the general decoder before writing the leg
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+
+# discover tile-cycle structure
+import legs
+spec=legs.discover_tile_cycle_puzzle(env)
+edit,move,n_tiles,cycle=spec['edit'],spec['move'],spec['n_tiles'],spec['cycle']
+ebb=legs.action_bbox(env,edit)
+gh=ebb[2]-ebb[0]+1; gw=ebb[3]-ebb[1]+1
+print('glyph',gh,gw,'ebb',ebb)
+VAL=int(f[ebb[0]-1,ebb[1]])  # border just above tile? guess
+# region color = color of component containing ebb. Detect via a cell adjacent.
+# find components
+blobs=P.connected_components(f,min_area=15)
+# box color candidates: colors forming 7x7 squares
+from collections import Counter
+# determine VAL color: component that contains the edit bbox pixels border
+# The tile fg=5. Let's find the border color surrounding tile: look at ring around ebb
+r0,c0,r1,c1=ebb
+ring=[]
+for c in range(c0-1,c1+2):
+    ring.append(int(f[r0-1,c])); ring.append(int(f[r1+1,c]))
+for r in range(r0-1,r1+2):
+    ring.append(int(f[r,c0-1])); ring.append(int(f[r,c1+1]))
+VAL=Counter(ring).most_common(1)[0][0]
+print('VAL color',VAL)
+FG=int(f[ebb[0],ebb[1]]) if f[ebb[0],ebb[1]]!=VAL else 5
+# fg = color inside tile that's not VAL
+inside=f[r0:r1+1,c0:c1+1]
+fgc=[v for v in np.unique(inside) if v!=VAL]
+FG=int(fgc[0]) if fgc else 5
+print('FG',FG)
+# box color: the bordered boxes color that isn't VAL. Look at connected comps that are square 7x7
+boxcolors=Counter()
+for b in blobs:
+    h,w=b.size
+    if b.color!=VAL and h==gh+2:
+        boxcolors[b.color]+=1
+print('boxcolors',boxcolors)
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python - <<'EOF'
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np, perception as P, legs
+
+env=A.Arena('tr87')
+for a in json.load(open('checkpoint.json'))['final_path']:
+    env.step(a)
+f=np.asarray(env.frame())
+spec=legs.discover_tile_cycle_puzzle(env)
+edit,move,n_tiles,cycle=spec['edit'],spec['move'],spec['n_tiles'],spec['cycle']
+ebb=legs.action_bbox(env,edit); r0,c0,r1,c1=ebb
+gh,gw=r1-r0+1,c1-c0+1
+VAL=11; BOX=7; FG=5; PITCH=gw+2  #7
+
+def glyph(fr,r,c,fg):
+    return tuple(tuple(1 if fr[r+i,c+j]==fg else 0 for j in range(gw)) for i in range(gh))
+def canon(g):
+    a=np.array(g); best=None
+    cur=a
+    for _ in range(4):
+        for m in (cur,cur[:,::-1]):
+            t=tuple(map(tuple,m.tolist()))
+            if best is None or t<best: best=t
+        cur=np.rot90(cur)
+    return best
+
+blobs=P.connected_components(f,min_area=15)
+boxes=[b for b in blobs if b.color==BOX and (b.bbox[2]-b.bbox[0]+1)==gh+2]
+valregs=[b for b in blobs if b.color==VAL and (b.bbox[2]-b.bbox[0]+1)==gh+2]
+# editable region = valreg containing ebb
+def contains(b,bb):
+    R0,C0,R1,C1=b.bbox; return R0<=bb[0] and R1>=bb[2] and C0<=bb[1] and C1>=bb[3]
+editreg=[b for b in valregs if contains(b,ebb)][0]
+legvals=[b for b in valregs if b is not editreg]
+# key boxes = width 7 (single glyph); target box = wider
+keyboxes=[b for b in boxes if (b.bbox[3]-b.bbox[1]+1)==PITCH]
+targetboxes=[b for b in boxes if (b.bbox[3]-b.bbox[1]+1)>PITCH]
+tb=targetboxes[0]
+def box_glyphs(b):
+    R0,C0,R1,C1=b.bbox; w=C1-C0+1; k=w//PITCH
+    return [glyph(f,R0+1,C0+1+PITCH*g,FG) for g in range(k)]
+keys=[box_glyphs(b)[0] for b in keyboxes]
+# pair each key box with the val region on same rows, to its right, nearest
+def pairval(kb):
+    R0,C0,R1,C1=kb.bbox
+    cands=[v for v in legvals if v.bbox[0]==R0 and v.bbox[1]>C1]
+    cands.sort(key=lambda v:v.bbox[1]-C1)
+    return cands[0]
+keyvals=[box_glyphs(pairval(kb)) for kb in keyboxes]
+keycanon=[canon(k) for k in keys]
+targets=box_glyphs(tb)
+seq=[]
+for t in targets:
+    ct=canon(t)
+    ki=[i for i,kc in enumerate(keycanon) if kc==ct]
+    assert len(ki)==1, (ki)
+    seq.extend(keyvals[ki[0]])
+print('seq len',len(seq),'n_tiles',n_tiles)
+seqcanon=[canon(g) for g in seq]
+# editable tiles positions from editreg
+R0,C0,R1,C1=editreg.bbox
+plan=[]
+for ti in range(n_tiles):
+    c=env.clone()
+    for _ in range(ti): c.step(move)
+    found=None
+    for s in range(cycle):
+        tg=glyph(np.asarray(c.frame()),R0+1,C0+1+PITCH*ti,FG)
+        if canon(tg)==seqcanon[ti]:
+            found=s;break
+        c.step(edit)
+    plan.append(found)
+print('plan',plan)
+EOF
+The general decoder reproduces `[4,5,3,2,3,3,4]`. Now let me add a clean leg to `legs.py` and write `play_level_2`.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py
+Level 2 reached with `replay_ok=True`. Let me clean up probe files and update the debrief log.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && rm -f probe*.py && cat >> legs_log.md <<'EOF'
+
+## tr87 level 2 (legend-decode glyph cipher)
+- Same tile-cycle *mechanic* as L1 (discover_tile_cycle_puzzle finds edit=1,
+  move=4, n_tiles=7, cycle=7), but a NEW win condition: 7 editable glyph tiles
+  (5x5 fg=5 on VAL=11 border) must be set to a hidden target sequence. Reward
+  is still opaque (EDIT changes only the tile; no feedback), and 7^7 is far too
+  big to brute force -- so the target MUST be read from the frame.
+- The frame is a Rosetta legend: 6 small 'key' boxes (border=7, one glyph each)
+  each paired with a 'value' region (border=11, 1..k glyphs) on the same rows to
+  its right (a `333` arrow sits between). A wide 'target' box (border=7, 4
+  glyphs) is the coded word. Decoding: match each target glyph to a key, then
+  concatenate that key's value glyphs -> exactly 7 glyphs = the tile targets.
+- KEY GOTCHA: the same symbol is drawn in DIFFERENT poses across the legend,
+  target box, and per-tile cycle sets (each tile cycles its own 7-glyph set,
+  17 distinct total). Exact pixel match fails; matching by a D4-canonical form
+  (min over 8 rotations/reflections) makes every lookup unique and correct.
+  Decoded plan for L2: per-tile edit-counts [4,5,3,2,3,3,4].
+- New legs (general for this cipher class): `_glyph`, `_glyph_canon` (D4 canon),
+  `_bordered_boxes`/`_box_glyphs` (split a framed glyph-row on a fixed pitch),
+  `discover_glyph_cipher_puzzle` (auto-detects VAL/BOX/FG colors, editable
+  region, key/value legend pairs, target box; decodes to a canonical target
+  sequence), `plan_glyph_cipher` (per-tile edit-count via clone), and
+  `solve_glyph_cipher_puzzle` = the same discover->plan->replay HOF
+  (solve_by_clone_search) used for L1. Player stays a one-line composition.
+EOF
+echo done
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py && echo "--- players.py ---" && cat players.py
+Done. The task is complete.
+
+## Summary
+
+`python gkm_try.py` now shows **`RESULT levels=2 moves=58 replay_ok=True`** — solve.py reaches level 2 and the solution replay-validates.
+
+### What level 2 turned out to be
+Same tile-cycle *mechanic* as level 1 (EDIT=action1 cycles a tile through 7 glyphs, MOVE=action4 advances a cursor across 7 tiles), but with a **new, opaque win condition**: the 7 editable glyph tiles must be set to a hidden target sequence. Since 7⁷ is far too big to brute-force and there's no per-tile feedback, the target had to be *read from the frame*.
+
+I discovered by probing clones that the frame is a **Rosetta legend / cipher**:
+- 6 small "key" boxes (border color 7, one glyph each), each paired via a `333` arrow with a "value" region (border color 11, 1–3 glyphs) to its right.
+- One wide "target" box (4 coded glyphs).
+- Decoding: match each target glyph to a key, concatenate that key's value glyphs → exactly 7 target glyphs.
+
+**Key gotcha:** the same symbol is drawn in different orientations across the legend, target box, and each tile's own cycle set — so exact pixel matching fails. Matching by a **D4-canonical form** (min over 8 rotations/reflections) makes every lookup unique. Decoded plan: per-tile edit counts `[4,5,3,2,3,3,4]`.
+
+### Legs added (general, in legs.py)
+- `_glyph`, `_glyph_canon` (D4-invariant canonical form)
+- `_bordered_boxes`, `_box_glyphs` (split a framed glyph-row on a fixed pitch)
+- `discover_glyph_cipher_puzzle` (auto-detects VAL/BOX/FG colors, editable region, key→value legend pairs, target box; decodes to a canonical target sequence)
+- `plan_glyph_cipher` (per-tile edit-count via clones)
+- `solve_glyph_cipher_puzzle` — expressed through the existing `solve_by_clone_search` discover→plan→replay HOF (reused from L1)
+
+`play_level_2` is a one-line composition calling `solve_glyph_cipher_puzzle(env)`, and the debrief in `legs_log.md` records the pattern. Probe scripts were cleaned up.

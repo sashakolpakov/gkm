@@ -1,2 +1,2 @@
-=== tr87: reached level 1 | validated=True | total_marginal_C=156 | F=2.120 ===
-per-level marginal novelty: L1:156
+=== tr87: reached level 3 | validated=True | total_marginal_C=580 | F=8.600 ===
+per-level marginal novelty: L1:156, L2:241, L3:183

@@ -1,0 +1,160 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat solve.py players.py checkpoint.json auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py 2>/dev/null | head -100
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '80,220p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/probe4.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+print("terminal:", env.terminal())
+print("actions:", env.actions)
+f = np.asarray(env.frame())
+print("frame shape:", f.shape)
+print("colors:", P.color_counts(f))
+EOF
+python /tmp/probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && sed -i '' 's#sys.path.insert(0, .*)#sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")#' /tmp/probe4.py && python /tmp/probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/show4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+f = np.asarray(env.frame())
+chars = {0:'.',1:'#',2:' ',3:'o',5:'*',7:'+',10:'x',11:'K'}
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in f[r]))
+EOF
+python /tmp/show4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/act4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+import perception as P
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+d = P.action_deltas(env, actions=env.actions)
+for a,dd in d.items():
+    print(a, dd['count'], dd['bbox'])
+EOF
+python /tmp/act4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/diff4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+chars = {0:'.',1:'#',2:' ',3:'o',5:'*',7:'+',10:'x',11:'K'}
+def show(f, r0,r1,c0,c1):
+    for r in range(r0,r1):
+        print(''.join(chars.get(int(v),'?') for v in f[r,c0:c1]))
+base = np.asarray(env.frame())
+for act in env.actions:
+    c = env.clone(); c.step(act)
+    f2 = np.asarray(c.frame())
+    ys,xs = np.where(base!=f2)
+    print(f"=== action {act}: changed {len(ys)} cells, rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()} ===")
+    show(f2, ys.min(), ys.max()+1, xs.min(), xs.max()+1)
+    print("--- was ---")
+    show(base, ys.min(), ys.max()+1, xs.min(), xs.max()+1)
+EOF
+python /tmp/diff4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/try_disc.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+import legs
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+for name in ['discover_tile_cycle_puzzle','discover_glyph_tiles','discover_glyph_cipher_puzzle','discover_glyph_legend_puzzle']:
+    try:
+        r = getattr(legs, name)(env)
+        if isinstance(r, dict):
+            print(name, "->", {k:v for k,v in r.items() if k not in ('f','tall','editbox','seq_canon')})
+        else:
+            print(name, "->", r)
+    except Exception as e:
+        print(name, "EXC", repr(e))
+EOF
+python /tmp/try_disc.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/blobs4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+import perception as P
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+f = np.asarray(env.frame())
+blobs = P.connected_components(f, min_area=10)
+for b in blobs:
+    h=b.bbox[2]-b.bbox[0]+1; w=b.bbox[3]-b.bbox[1]+1
+    print(f"color={b.color} bbox={b.bbox} h={h} w={w} area={b.area}")
+EOF
+python /tmp/blobs4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > /tmp/legend4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import numpy as np
+import perception as P
+import legs
+env = A.Arena('tr87')
+ck = json.load(open('checkpoint.json'))
+for a in ck['final_path']:
+    env.step(a)
+f = np.asarray(env.frame())
+blobs = P.connected_components(f, min_area=10)
+boxes = [b for b in blobs if b.color in (7,10,11) and (b.bbox[2]-b.bbox[0]+1)==7 and (b.bbox[3]-b.bbox[1]+1)==7]
+def gkey(b):
+    r0,c0=b.bbox[0],b.bbox[1]
+    g=legs._glyph(f, r0+1, c0+1, 5,5,5)
+    return legs._glyph_canon(g)
+# group by row
+from collections import defaultdict
+rows=defaultdict(list)
+for b in boxes:
+    rows[b.bbox[0]].append(b)
+gid={}
+def gname(cg):
+    if cg not in gid: gid[cg]=len(gid)
+    return gid[cg]
+for r in sorted(rows):
+    bs=sorted(rows[r], key=lambda b:b.bbox[1])
+    print("row",r, [(b.bbox[1], b.color, gname(gkey(b))) for b in bs])
+# word box (x-box color10 wide) and edit box (K color11 wide)
+wide=[b for b in blobs if (b.bbox[3]-b.bbox[1]+1)>40]
+for b in wide:
+    r0,c0,r1,c1=b.bbox
+    n=(c1-c0+1)//7
+    gs=[gname(legs._glyph_canon(legs._glyph(f,r0+1,c0+1+7*i,5,5,5))) for i in range(n)]
+    print("wide color",b.color,"bbox",b.bbox,"glyphs",gs)
+EOF
+python /tmp/legend4.py
+API Error: BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'You have reached your specified API usage limits. You will regain access on 2026-08-01 at 00:00 UTC.'}, 'request_id': 'req_011Cd29qxmnRQBzWkp4vGq1u'}

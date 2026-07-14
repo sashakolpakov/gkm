@@ -48,9 +48,10 @@ Both published ledgers contain one entry for every replay-validated level. The o
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
 The ongoing bounded campaign has also promoted replay-valid partial endpoints for
-`ft09` through L4 (46 actions), `sp80` through L4 (79 actions), and `tr87` through
-L1 (28 actions). These are operational campaign artifacts, not additions to the
-two complete histories reported in the manuscript table above.
+`ft09` through L4 (46 actions), `sp80` through L4 (79 actions), `g50t` through L1
+(19 actions), and `tr87` through L3 (97 actions). These are operational campaign
+artifacts, not additions to the two complete histories reported in the manuscript
+table above.
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.

@@ -1,0 +1,21 @@
+{
+  "game": "tr87",
+  "level": 3,
+  "phase": "after_propose",
+  "reached": 2,
+  "err": null,
+  "attempt": "after_propose_a279f57a782a",
+  "created_at": "2026-07-14T14:56:23.874705+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "blocked_attempts.log",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

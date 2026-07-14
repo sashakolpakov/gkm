@@ -1,0 +1,393 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat solve.py players.py checkpoint.json auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && ls && head -50 gkm_arena.py 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab && grep -n "def run_program\|def validate\|def clone\|def step\|def frame\|def terminal\|levels_completed\|def actions" gkm_arena.py | head -40
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '75,130p' gkm_arena.py
+Now let me create a probe script to reach level 3 and examine its structure.
+$ [BLOCKED: forbidden source/history access blocked: private game/runtime introspection]
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '242,270p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '40,80p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+np.set_printoptions(linewidth=200, threshold=10000)
+
+with open("checkpoint.json") as f:
+    ck = json.load(f)
+path = ck["final_path"]
+
+env = A.Arena('tr87')
+for a in path:
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+vals,cnts = np.unique(f, return_counts=True)
+print("colors:", dict(zip(vals.tolist(),cnts.tolist())))
+np.save("l3_frame.npy", f)
+EOF
+python probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('l3_frame.npy')
+for r in range(64):
+    print(''.join('%X'%v for v in f[r]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe2.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+import legs
+
+with open("checkpoint.json") as f:
+    ck = json.load(f)
+path = ck["final_path"]
+env = A.Arena('tr87')
+for a in path:
+    env.step(a)
+
+# action deltas
+d = P.action_deltas(env, actions=(1,2,3,4))
+for a in (1,2,3,4):
+    print("action",a,"->",d[a]["bbox"],"count",d[a]["count"])
+EOF
+python probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat >> probe2.py << 'EOF'
+
+print("=== tile cycle discover ===")
+spec = legs.discover_tile_cycle_puzzle(env)
+print(spec)
+print("=== glyph cipher discover ===")
+spec2 = legs.discover_glyph_cipher_puzzle(env)
+print(spec2)
+EOF
+python probe2.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe3.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+with open("checkpoint.json") as f:
+    ck = json.load(f)
+path = ck["final_path"]
+env = A.Arena('tr87')
+for a in path:
+    env.step(a)
+f = np.asarray(env.frame())
+
+blobs = P.connected_components(f, min_area=15)
+for b in blobs:
+    r0,c0,r1,c1 = b.bbox
+    h,w = r1-r0+1, c1-c0+1
+    print(f"color={b.color} bbox={b.bbox} size=({h}x{w}) area={b.area}")
+EOF
+python probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import numpy as np
+f=np.load('l3_frame.npy')
+print('   '+''.join(str(c%10) for c in range(64)))
+for r in range(4,29):
+    print('%2d '%r+''.join('%X'%v for v in f[r]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe4.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+from legs import _glyph, _glyph_canon
+
+with open("checkpoint.json") as f:
+    ck = json.load(f)
+env = A.Arena('tr87')
+for a in ck["final_path"]:
+    env.step(a)
+f = np.asarray(env.frame())
+FG=5
+
+def box_glyphs(bbox):
+    r0,c0,r1,c1 = bbox
+    k = (c1-c0+1)//7
+    return [_glyph(f, r0+1, c0+1+7*g, 5,5,FG) for g in range(k)]
+
+# Legend entries: (key_bbox, val_bbox)
+legend = [
+    ((4,5,10,11),(4,15,10,21)),
+    ((4,28,10,41),(4,45,10,58)),
+    ((13,5,19,11),(13,15,19,28)),
+    ((13,35,19,48),(13,52,19,58)),
+    ((22,5,28,25),(22,29,28,35)),
+    ((22,42,28,48),(22,52,28,58)),
+]
+keys=[]
+vals=[]
+for kb,vb in legend:
+    kg = box_glyphs(kb); vg = box_glyphs(vb)
+    keys.append([_glyph_canon(g) for g in kg])
+    vals.append([_glyph_canon(g) for g in vg])
+    print("KEY len",len(kg),"-> VAL len",len(vg))
+
+target = box_glyphs((40,4,46,59))
+target_c = [_glyph_canon(g) for g in target]
+print("target len", len(target_c))
+
+tiles = box_glyphs((51,7,57,55))
+tiles_c = [_glyph_canon(g) for g in tiles]
+print("tiles (current) len", len(tiles_c))
+
+# save for parsing
+import pickle
+pickle.dump(dict(keys=keys,vals=vals,target=target_c,tiles=tiles_c), open("l3.pkl","wb"))
+EOF
+python probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe5.py << 'EOF'
+import pickle
+d = pickle.load(open("l3.pkl","rb"))
+keys=d["keys"]; vals=d["vals"]; target=d["target"]; tiles=d["tiles"]
+
+# unique canonical glyph inventory
+allg = set()
+for k in keys: allg|=set(k)
+for v in vals: allg|=set(v)
+allg|=set(target); allg|=set(tiles)
+print("distinct canonical glyphs:", len(allg))
+
+# label glyphs
+labels = {g:i for i,g in enumerate(sorted(allg))}
+def lab(seq): return [labels[g] for g in seq]
+print("keys:", [lab(k) for k in keys])
+print("vals:", [lab(v) for v in vals])
+print("target:", lab(target))
+print("tiles :", lab(tiles))
+
+# DP parse target into keys
+import functools
+keyseq = [tuple(k) for k in keys]
+tgt = tuple(target)
+n=len(tgt)
+# find segmentation
+from functools import lru_cache
+sols=[]
+def rec(i, acc):
+    if i==n:
+        sols.append(list(acc)); return
+    for ki,k in enumerate(keyseq):
+        L=len(k)
+        if tgt[i:i+L]==k:
+            rec(i+L, acc+[ki])
+rec(0,[])
+print("num segmentations:", len(sols))
+for s in sols:
+    out=[]
+    for ki in s: out+= vals[ki]
+    print("seg keys", s, "-> val len", len(out), "labels", [labels[g] for g in out])
+EOF
+python probe5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe6.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import legs
+from legs import _glyph, _glyph_canon, plan_glyph_cipher, replay_for_reward
+
+def make_env():
+    with open("checkpoint.json") as f:
+        ck = json.load(f)
+    env = A.Arena('tr87')
+    for a in ck["final_path"]:
+        env.step(a)
+    return env
+
+env = make_env()
+f = np.asarray(env.frame())
+FG=5
+def box_glyphs(bbox):
+    r0,c0,r1,c1 = bbox
+    k = (c1-c0+1)//7
+    return [_glyph_canon(_glyph(f, r0+1, c0+1+7*g, 5,5,FG)) for g in range(k)]
+
+legend = [
+    ((4,5,10,11),(4,15,10,21)),
+    ((4,28,10,41),(4,45,10,58)),
+    ((13,5,19,11),(13,15,19,28)),
+    ((13,35,19,48),(13,52,19,58)),
+    ((22,5,28,25),(22,29,28,35)),
+    ((22,42,28,48),(22,52,28,58)),
+]
+keys=[tuple(box_glyphs(kb)) for kb,vb in legend]
+vals=[box_glyphs(vb) for kb,vb in legend]
+target=tuple(box_glyphs((40,4,46,59)))
+
+# DP segment
+sols=[]
+def rec(i,acc):
+    if i==len(target): sols.append(acc[:]); return
+    for ki,k in enumerate(keys):
+        if target[i:i+len(k)]==k: rec(i+len(k), acc+[ki])
+rec(0,[])
+assert len(sols)==1, len(sols)
+seq_canon=[]
+for ki in sols[0]:
+    seq_canon += vals[ki]
+print("seq_canon len", len(seq_canon))
+
+spec = dict(edit=1, move=4, n_tiles=7, cycle=7, gh=5, gw=5, pitch=7, fg=5,
+            editreg=(51,7,57,55), seq_canon=seq_canon)
+path = plan_glyph_cipher(env, spec)
+print("plan path:", path, "len", len(path))
+ok = replay_for_reward(env, path)
+print("replay_for_reward ->", ok, "levels_completed", env.levels_completed)
+EOF
+python probe6.py
+The full approach works and reaches level 3. Now let me build a general, auto-discovering leg rather than hardcoding. Let me verify my discovery heuristics programmatically first.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat > probe7.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+from collections import Counter
+import legs
+from legs import action_bbox
+
+with open("checkpoint.json") as f:
+    ck = json.load(f)
+env = A.Arena('tr87')
+for a in ck["final_path"]:
+    env.step(a)
+f = np.asarray(env.frame())
+
+spec0 = legs.discover_tile_cycle_puzzle(env)
+edit, move = spec0["edit"], spec0["move"]
+ebb = action_bbox(env, edit)
+print("ebb", ebb)
+r0,c0,r1,c1 = ebb
+gh,gw = r1-r0+1, c1-c0+1
+pitch = gw+2
+print("gh,gw,pitch", gh,gw,pitch)
+
+# ring color -> VAL (editable border)
+ring=[]
+for c in range(c0-1,c1+2):
+    ring.append(int(f[r0-1,c])); ring.append(int(f[r1+1,c]))
+for r in range(r0-1,r1+2):
+    ring.append(int(f[r,c0-1])); ring.append(int(f[r,c1+1]))
+VAL = Counter(ring).most_common(1)[0][0]
+inside = f[r0:r1+1,c0:c1+1]
+FG = [int(v) for v in np.unique(inside) if int(v)!=VAL][0]
+print("VAL(editable border)=",VAL,"FG=",FG)
+
+# bordered boxes height gh+2
+blobs = P.connected_components(f, min_area=15)
+tall = [b for b in blobs if (b.bbox[2]-b.bbox[0]+1)==gh+2]
+colors = Counter(b.color for b in tall)
+print("tall box colors:", colors)
+KEYCOLOR = [c for c in colors if c!=VAL][0]
+print("KEYCOLOR", KEYCOLOR, "VALCOLOR", VAL)
+
+def contains(b, bb):
+    R0,C0,R1,C1 = b.bbox
+    return R0<=bb[0] and R1>=bb[2] and C0<=bb[1] and C1>=bb[3]
+editbox = [b for b in tall if b.color==VAL and contains(b, ebb)][0]
+print("editbox bbox", editbox.bbox)
+
+keyboxes = [b for b in tall if b.color==KEYCOLOR]
+valboxes = [b for b in tall if b.color==VAL and b is not editbox]
+# pair
+pairs=[]
+unpaired=[]
+for kb in keyboxes:
+    R0,C0,R1,C1 = kb.bbox
+    cands = [v for v in valboxes if v.bbox[0]==R0 and v.bbox[1]>C1]
+    cands.sort(key=lambda v: v.bbox[1]-C1)
+    if cands: pairs.append((kb,cands[0]))
+    else: unpaired.append(kb)
+print("num pairs", len(pairs), "unpaired keys", [u.bbox for u in unpaired])
+EOF
+python probe7.py
+All heuristics work. Now let me add the general legs to legs.py.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -5
+Reached level 3 with replay_ok=True. Let me verify the discovery is fully automatic (not relying on hardcoding) and clean up.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python -c "
+import sys, json
+sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+with open('checkpoint.json') as f: ck=json.load(f)
+env=A.Arena('tr87')
+for a in ck['final_path']: env.step(a)
+spec = legs.discover_glyph_legend_puzzle(env)
+print('discovered spec keys:', {k:v for k,v in spec.items() if k!='seq_canon'})
+print('seq_canon len:', len(spec['seq_canon']))
+" && rm -f probe*.py l3.pkl l3_frame.npy && echo cleaned
+Fully automatic discovery works. Let me update the debrief log.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && cat >> legs_log.md << 'EOF'
+
+## tr87 level 3 (legend cipher with multi-glyph keys -> word segmentation)
+- Same tile-cycle MECHANIC as L1/L2 (discover_tile_cycle_puzzle finds edit=1,
+  move=4, n_tiles=7, cycle=7; editable A-box at (51,7,57,55), 5x5 fg=5 glyphs).
+  Same "decode a legend to get the hidden tile targets" GOAL as L2. Reward is
+  opaque, 7^7 too big -> target MUST be read from the frame.
+- NEW structure vs L2: keys AND values are BOTH bordered boxes (two distinct
+  border colors: KEY=11, VAL=10), laid out as key->value PAIRS (a `333` arrow
+  between), several pairs per row. Crucially a single KEY box may span SEVERAL
+  glyphs (key glyph-lengths here were 1,2,1,2,3,1). So the coded 'word' (the one
+  unpaired KEY-colored box, 8 glyphs) cannot be read glyph-by-glyph like L2 --
+  it must be SEGMENTED (tokenised) into keys first, then each key replaced by
+  its value glyph-sequence -> exactly n_tiles(=7) target glyphs.
+- Discovery is fully automatic: VAL/FG from the ring around the EDIT region;
+  the OTHER glyph-tall bordered-box color = KEY; the VAL box containing the edit
+  region = the editable tiles; each KEY box paired with the nearest VAL box on
+  its row to the right; the ONE unpaired KEY box = the coded word. D4-canonical
+  glyph forms make legend/word/tile lookups pose-invariant (reused _glyph_canon).
+  Decoded plan: word tokenises uniquely as keys [K0,K4,K2,K5,K1] -> 7 tile
+  targets; per-tile edit-counts [6,2,4,3,1,4,5] (via plan_glyph_cipher on clone).
+- New legs (general for this cipher class): `_box_glyphs_canon` (split a box
+  into D4-canonical glyphs), `_segment_word` (unique DFS tokenisation of a glyph
+  word into keys), `discover_glyph_legend_puzzle` (auto-detects KEY/VAL/FG,
+  editable box, key->value legend pairs, the unpaired coded word; segments and
+  decodes to a canonical target sequence -> spec for plan_glyph_cipher),
+  `solve_glyph_legend_puzzle` = the SAME discover->plan->replay HOF
+  (solve_by_clone_search) used for L1/L2. Player stays a one-line composition.
+- REUSE: the entire back half (plan_glyph_cipher -> tile_cycle_path ->
+  replay_for_reward) and the front half (discover_tile_cycle_puzzle, _glyph,
+  _glyph_canon, _box_glyphs) were reused unchanged; only the legend-parsing +
+  segmentation front-end was new. gkm_try: RESULT levels=3 moves=97 replay_ok=True.
+EOF
+echo done
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tr87_opus_retry90 && python gkm_try.py 2>&1 | tail -3
+Done. The task is complete: **RESULT levels=3 moves=97 replay_ok=True**.
+
+## Summary
+
+I got `solve.py` to reach **level 3** of tr87 by discovering its structure on clones and composing legs.
+
+**What level 3 is:** Same tile-cycle *mechanic* (edit=action1, move=action4, 7 tiles, 7-glyph cycle) and same "decode a legend to find the hidden tile targets" *goal* as level 2 — but with a richer legend. Discovered by experiment:
+- Keys **and** values are both bordered boxes (two border colors: KEY=11, VAL=10), laid out as key→value pairs (a `333` arrow between them), several pairs per row.
+- Critically, a single **key can span multiple glyphs** (key lengths 1,2,1,2,3,1 here). So the coded "word" (the one unpaired key-colored box, 8 glyphs) must be **segmented/tokenised** into keys before substituting each key by its value glyph-sequence — yielding exactly 7 target glyphs.
+
+**Reuse vs new:**
+- Reused unchanged: `discover_tile_cycle_puzzle`, `_glyph`, `_glyph_canon`, `_box_glyphs`, `plan_glyph_cipher`, `tile_cycle_path`, `replay_for_reward`, and the `solve_by_clone_search` HOF.
+- Added 3 minimal, general legs to `legs.py`:
+  - `_box_glyphs_canon` — split a bordered box into D4-canonical glyphs.
+  - `_segment_word` — unique DFS tokenisation of a glyph word into keys.
+  - `discover_glyph_legend_puzzle` — fully auto-discovers KEY/VAL/FG colors, the editable box, key→value legend pairs, and the unpaired coded word; segments + decodes into a canonical target sequence (a spec for `plan_glyph_cipher`).
+  - `solve_glyph_legend_puzzle` — the same discover→plan→replay composition.
+
+`players.play_level_3` is a one-line composition calling `solve_glyph_legend_puzzle(env)`. Discovery is fully automatic (no hardcoded coordinates), verified on a clone. Debrief log updated.

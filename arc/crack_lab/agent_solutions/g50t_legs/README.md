@@ -1,10 +1,16 @@
-# g50t WIP artifact
+# g50t legs artifact
 
-No replay-validated level has been promoted for `g50t` yet. The
-`wip_context/` tree preserves the bounded level-1 attempt, including probes,
-transcripts, blocked commands, and the unsuccessful candidate solver.
+Latest replay-validated leg-library state promoted by `gkm_legs.py`.
 
-A normal continuation restores the non-promoted probe context from these
-snapshots. Candidate `legs.py`, `players.py`, and checkpoints remain untrusted
-until a fresh replay reaches the claimed level and promotion passes the taint
-guard.
+- Game: `g50t`
+- Verified through level: 1
+- Replay validated: True
+- Total marginal_C: 244
+- Final path length: 19
+
+Per-level novelty:
+
+- L1: marginal_C=244
+
+Files here are the clean state to resume from. New runs seed the scratch
+workspace from this directory before asking a proposer for the next level.

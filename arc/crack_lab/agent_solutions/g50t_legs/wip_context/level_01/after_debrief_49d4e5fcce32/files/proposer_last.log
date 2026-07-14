@@ -1,0 +1,41 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && ls -la
+Let me look at the key files:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && echo "=== players.py ===" && cat players.py && echo "" && echo "=== legs.py ===" && cat legs.py && echo "" && echo "=== legs_log.md ===" && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && echo "=== gkm_try.py ===" && cat gkm_try.py && echo "" && echo "=== checkpoint.json ===" && cat checkpoint.json && echo "" && echo "=== git status ===" && git status 2>/dev/null | head; git log --oneline -20 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && echo "=== solve.py ===" && cat solve.py && echo "" && echo "=== p_leg2.py (latest player-like) ===" && cat p_leg2.py && echo "" && echo "=== p_leg.py ===" && cat p_leg.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && git log --oneline -- players.py 2>/dev/null | head; echo "---file history in this dir---"; git log --oneline -5 -- legs.py 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && grep -rl "play_level" . 2>/dev/null; echo "---"; grep -rn "def play_level" . 2>/dev/null
+The current state passes (levels=1). Now let me analyze the code for repeated idioms to extract into shared legs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && grep -n "clone()" legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && sed -n '68,80p;100,115p;135,175p' legs.py
+Now I have a clear picture. Let me refactor. First, add a `clone_after` leg and use it in the three clone+step sites:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+Now let me add a general higher-order "plan-then-commit" leg and rewrite `solve_unlock_reach` in terms of it:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs.py
+Now update `legs_log.md` with the recurring composition pattern, then verify:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90/legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && python -c "import ast; ast.parse(open('legs.py').read()); print('legs.py OK')" && python -c "import legs; print('imports OK'); print(hasattr(legs,'clone_after'), hasattr(legs,'plan_and_commit'), hasattr(legs,'solve_unlock_reach'))"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && rm -rf __pycache__ && python gkm_try.py 2>&1 | tail -5
+Behaviour unchanged: `levels=1 moves=19 replay_ok=True`. Let me confirm the final files read cleanly:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_g50t_opus_retry90 && echo "=== players.py ===" && cat players.py && echo "" && echo "=== legs.py: clone_after + tail ===" && sed -n '30,46p' legs.py && echo "..." && sed -n '175,205p' legs.py
+Debrief complete. Summary of what I did:
+
+## Findings
+- **players.py already had a single, thin player** — `play_level_1` was one line delegating to `solve_unlock_reach`. There was no cross-player duplication to merge (nothing else defines `play_level_*` anywhere).
+- **The real duplication lived inside `legs.py`**: the same "fresh clone → replay actions → never touch the original" idiom was copy-pasted at three sites (`avatar_tl`'s probe step, `_move_explore`'s BFS expansion, and `plan_unlock_reach`'s replay-to-switch-then-USE).
+
+## Refactor (behaviour-preserving)
+1. **`clone_after(env, actions)`** — the clone+replay skill, written ONCE. Accepts a single action or an iterable. All three sites now call it and are one-liners (e.g. `clone_after(node, path + [5])`).
+2. **`plan_and_commit(env, planner, **kw)`** — a **higher-order leg** capturing the recurring two-phase shape forced by the hidden-state substrate: plan on a clone, then commit the concrete action list on the real env. `solve_unlock_reach` is now literally `plan_and_commit(env, plan_unlock_reach, max_toggles=...)`, so any future `plan_*` gets its `solve_*` for free.
+3. Players stay thin — `play_level_1` unchanged.
+
+## Log
+Appended a "Debrief refactor" section and the **candidate higher-order leg (`plan_and_commit`)** to `legs_log.md`, documenting `solve_X == plan_and_commit(env, plan_X, **kw)` as the recurring composition pattern.
+
+## Verification
+`python gkm_try.py` → `RESULT levels=1 moves=19 replay_ok=True err=None` — identical to before the refactor (levels ≥ 1 confirmed).
