@@ -59,6 +59,13 @@ hashed clean core files; the full dirty restart context remains in each artifact
 python arc/manuscript/build_artifact_history.py --check
 ```
 
+Dirty WIP is intentionally not solver evidence. In particular,
+`ft09_legs/wip_context/level_01/interrupted_a9a30e6e4da1/files/proposer_last.log`
+records two separate Sonnet commands accessing `env._game`. These are retained as
+operational cheating evidence, not promoted or used to support a result. Promotion
+requires a separately clean
+workspace to pass the current taint check and fresh replay.
+
 ## What should be checked
 
 A reviewer should verify:

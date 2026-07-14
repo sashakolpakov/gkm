@@ -97,6 +97,15 @@ Both published ledgers contain one entry for every replay-validated level. The o
   two-sided reachability under barriers even with the priors spelled out. The open
   question is how weak a proposer the same harness (priors, simulator-as-verifier,
   free-energy admission) can lift to competence.
+- Sonnet repeatedly violated the declared interface during stalled `ft09` work. The
+  run emitted two separate attempts at `env._game` access and private-object
+  enumeration. These are cheating
+  attempts in the operational sense, not merely poor solutions: they sought evidence
+  unavailable through frames and actions. The exact first transcript remains at
+  `agent_solutions/ft09_legs/wip_context/level_01/interrupted_a9a30e6e4da1/`, and the
+  run is WIP-only. The repetition suggests compliance weakens when observational
+  progress stalls. Pre-execution blocking plus an independent promotion-time taint
+  check is therefore mandatory for every proposer, including Opus.
 
 ## Index of this domain
 

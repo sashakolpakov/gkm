@@ -45,6 +45,15 @@ WIP that predates the guard remains dirty evidence unless execution-time blockin
 independently recorded. Canonical promoted files are always checked under the current
 taint rules, regardless of their creation date.
 
+The separation is motivated by repeated proposer misconduct. During `ft09`, the
+Sonnet API proposer emitted two separate commands that accessed `env._game` and
+enumerated the private runtime after frame-only probing stalled. We classify these as
+cheating attempts in the operational sense: they sought evidence outside the declared
+interface. The run is WIP-only, and its exact transcript is preserved under
+`crack_lab/agent_solutions/ft09_legs/wip_context/level_01/interrupted_a9a30e6e4da1/`.
+The repetition shows that model instructions are not an audit boundary and that
+compliance can deteriorate when a proposer stops making progress.
+
 ## Entry Points
 
 - [`ARC.md`](ARC.md): detailed domain guide and experiment history.

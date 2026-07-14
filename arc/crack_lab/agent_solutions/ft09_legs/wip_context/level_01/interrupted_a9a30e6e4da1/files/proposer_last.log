@@ -1,0 +1,763 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && cat legs.py && cat players.py && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.make('ft09')
+frame = np.array(env.frame())
+print('Frame shape:', frame.shape)
+print('Unique colors:', np.unique(frame).tolist())
+print('levels_completed:', env.levels_completed)
+print('terminal:', env.terminal())
+print()
+print('Frame (top 32 rows):')
+for r in range(64):
+    row = frame[r].tolist()
+    print(f'r{r:02d}:', row)
+"
+
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09 && python3 -c "
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+# Try using gkm_legs to make the env
+import gkm_legs as G
+env = G.make_env('ft09')
+import numpy as np
+frame = np.array(env.frame())
+print('Frame shape:', frame.shape)
+print('Unique colors:', np.unique(frame).tolist())
+print('levels_completed:', env.levels_completed)
+print()
+for r in range(64):
+    row = frame[r].tolist()
+    print(f'r{r:02d}:', row)
+"
+
+$ ls /Users/sasha/gkm/arc/crack_lab/*.py | head -20
+$ grep -n "def make_env\|def make\|class Env\|def run_program\|def validate" /Users/sasha/gkm/arc/crack_lab/gkm_legs.py | head -30
+$ grep -n "make_env\|make\b\|run_program\|validate" /Users/sasha/gkm/arc/crack_lab/gkm_legs.py | head -30
+$ head -60 /Users/sasha/gkm/arc/crack_lab/gkm_legs.py
+$ grep -n "def run_program\|def make\b\|class " /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -30
+$ sed -n '1,80p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ sed -n '80,160p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ grep -n "from lab import\|import lab\|from arcengine\|import arcengine" /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ python3 -c "import sys; sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); from arcengine import ActionInput, GameAction as EA; print('arcengine ok')"
+$ find /Users/sasha/gkm -name "arcengine*" 2>/dev/null | head -10
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+env = Arena('ft09')
+import numpy as np
+frame = np.array(env.frame())
+print('Frame shape:', frame.shape)
+print('Unique colors:', np.unique(frame).tolist())
+print('levels_completed:', env.levels_completed)
+print('terminal:', env.terminal())
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame = np.array(env.frame())
+print('Frame (64x64):')
+for r in range(64):
+    row = frame[r].tolist()
+    print(f'r{r:02d}:', ' '.join(f'{v:2d}' for v in row))
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+print('Testing all actions (1-6) on clones:')
+for a in range(1, 7):
+    c = env.clone()
+    c.step(a)
+    f = np.array(c.frame())
+    diff = np.where(frame0 != f)
+    n_diff = len(diff[0])
+    if n_diff > 0:
+        # Get changed pixels
+        rows_changed = diff[0]
+        cols_changed = diff[1]
+        print(f'Action {a}: {n_diff} pixels changed')
+        print(f'  Row range: {rows_changed.min()}-{rows_changed.max()}, Col range: {cols_changed.min()}-{cols_changed.max()}')
+        # Show a few samples
+        for i in range(min(10, n_diff)):
+            r, c_pos = rows_changed[i], cols_changed[i]
+            print(f'  ({r},{c_pos}): {frame0[r,c_pos]} -> {f[r,c_pos]}')
+    else:
+        print(f'Action {a}: no change')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Take 20 actions of type 6 and look at diffs
+print('Taking 20 action-6 steps:')
+prev = frame0.copy()
+for i in range(20):
+    env.step(6)
+    f = np.array(env.frame())
+    diff_count = np.sum(f != prev)
+    if diff_count > 0:
+        print(f'Step {i+1}: {diff_count} pixels changed')
+    prev = f.copy()
+
+print()
+print('Taking 20 action-1 steps:')
+env = Arena('ft09')
+prev = np.array(env.frame()).copy()
+for i in range(20):
+    env.step(1)
+    f = np.array(env.frame())
+    diff_count = np.sum(f != prev)
+    print(f'Step {i+1}: {diff_count} pixels changed, levels={env.levels_completed}')
+    if diff_count > 2:
+        diff = np.where(prev != f)
+        print(f'  Changed at rows: {sorted(set(diff[0].tolist()))}')
+    prev = f.copy()
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Look at the bottom row more carefully
+print('Bottom row (r63):')
+print('Initial:', frame0[63].tolist())
+
+# Take step and see what changes
+env.step(1)
+f1 = np.array(env.frame())
+print('After action 1:', f1[63].tolist())
+
+env.step(1)
+f2 = np.array(env.frame())
+print('After action 2:', f2[63].tolist())
+
+env.step(1)
+f3 = np.array(env.frame())
+print('After action 3:', f3[63].tolist())
+
+# What about the pixels at cols 62-63?
+print()
+print('r63,c62-63 over time:')
+print(f'Step 0: {frame0[63,60:64].tolist()}')
+print(f'Step 1: {f1[63,60:64].tolist()}')
+print(f'Step 2: {f2[63,60:64].tolist()}')
+print(f'Step 3: {f3[63,60:64].tolist()}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Check what actions actually DO in terms of the full frame
+# (not just timer bar)
+print('Checking all action impacts on full frame (excluding row 63):')
+for a in range(1, 7):
+    c = env.clone()
+    c.step(a)
+    f = np.array(c.frame())
+    # Exclude bottom row
+    f_body = f[:63]
+    f0_body = frame0[:63]
+    diff = np.where(f0_body != f_body)
+    n_diff = len(diff[0])
+    print(f'Action {a}: {n_diff} pixels changed in body')
+
+print()
+# Let's try many steps and check for level changes
+print('Trying to find what causes level change...')
+# BFS with bounded depth
+from collections import deque
+
+def key(env):
+    return np.array(env.frame()[:63]).tobytes()
+
+env_start = Arena('ft09')
+q = deque([(env_start.clone(), [])])
+seen = {key(env_start)}
+found = None
+while q:
+    node, path = q.popleft()
+    if node.levels_completed > 0:
+        found = path
+        print(f'Found level completion at depth {len(path)}: {path}')
+        break
+    if len(path) >= 8:
+        continue
+    for a in range(1, 7):
+        child = node.clone()
+        child.step(a)
+        k = key(child)
+        if k not in seen:
+            seen.add(k)
+            q.append((child, path + [a]))
+
+if found is None:
+    print('No level completion found within depth 8')
+    print(f'States explored: {len(seen)}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+
+# Try ALL action sequences of length 1-3 and see if any complete a level
+from itertools import product
+print('Testing action sequences up to length 3:')
+for length in range(1, 4):
+    found = False
+    for actions in product(range(1, 7), repeat=length):
+        c = env.clone()
+        for a in actions:
+            c.step(a)
+        if c.levels_completed > 0:
+            print(f'  Found! Sequence {actions} -> levels={c.levels_completed}')
+            found = True
+    if not found:
+        print(f'  Length {length}: No completion')
+
+print()
+# Also check if terminal ever happens
+print('Checking terminal state:')
+c = env.clone()
+for i in range(50):
+    c.step(1)
+    if c.terminal():
+        print(f'Terminal after {i+1} steps')
+        break
+else:
+    print('Not terminal after 50 steps')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+
+# Check action 6 behavior in detail
+print('Action 6 tests:')
+c = env.clone()
+for i in range(200):
+    c.step(6)
+    if c.levels_completed > 0:
+        print(f'Level completed after {i+1} action-6 steps!')
+        break
+    if c.terminal():
+        print(f'Terminal after {i+1} action-6 steps')
+        break
+    if i < 5 or i % 50 == 0:
+        f = np.array(c.frame())
+        print(f'Step {i+1}: levels={c.levels_completed}, terminal={c.terminal()}, bottom_row_11s={np.sum(f[63]==11)}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Check if actions 1-5 produce EXACTLY the same frame
+print('Do actions 1-5 produce identical frames?')
+frames = {}
+for a in range(1, 6):
+    c = env.clone()
+    c.step(a)
+    frames[a] = np.array(c.frame())
+
+for a in range(2, 6):
+    diff = np.sum(frames[1] != frames[a])
+    print(f'  Action 1 vs Action {a}: {diff} pixel differences')
+
+print()
+# Check if path affects subsequent frames
+print('Path dependency check:')
+c1 = env.clone(); c1.step(1); c1.step(2)
+c2 = env.clone(); c2.step(2); c2.step(1)
+f1 = np.array(c1.frame())
+f2 = np.array(c2.frame())
+print(f'  [1,2] vs [2,1]: {np.sum(f1!=f2)} pixel differences')
+
+# Look at internal game state (can we access it?)
+print()
+print('levels_completed after different sequences:')
+for seq in [[1,1],[1,2],[2,1],[3,3],[5,5],[1,2,3,4,5]]:
+    c = env.clone()
+    for a in seq:
+        c.step(a)
+    print(f'  {seq}: levels={c.levels_completed}, terminal={c.terminal()}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+
+# Run until terminal and check levels
+c = env.clone()
+prev_levels = 0
+for i in range(100):
+    if c.terminal():
+        print(f'Terminal at step {i}, levels={c.levels_completed}')
+        break
+    c.step(1)
+    if c.levels_completed != prev_levels:
+        print(f'Level change at step {i+1}: {prev_levels} -> {c.levels_completed}')
+        prev_levels = c.levels_completed
+else:
+    print(f'Ran 100 steps, levels={c.levels_completed}, terminal={c.terminal()}')
+
+print()
+# Also try just action 6 (no timer change) - what happens?
+c2 = env.clone()
+# Take 5 action-6 steps
+for i in range(5):
+    c2.step(6)
+    
+print(f'After 5 action-6 steps: levels={c2.levels_completed}, terminal={c2.terminal()}')
+
+# Now check what levels_completed is AT terminal (just before vs at terminal)
+c3 = env.clone()
+print()
+print('Running to terminal with action 1:')
+for i in range(40):
+    if c3.terminal():
+        print(f'  At terminal (step {i}): levels={c3.levels_completed}')
+        break
+    prev_lvl = c3.levels_completed
+    c3.step(1)
+    if c3.levels_completed != prev_lvl:
+        print(f'  Level change at step {i+1}: {prev_lvl} -> {c3.levels_completed}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+from itertools import product
+
+env = Arena('ft09')
+
+# Since all actions 1-5 produce identical frames, but internally might differ,
+# let's try ALL action sequences up to length 10 checking only for level completion
+# Focus on small action values first
+
+print('Testing all sequences with actions 1-5 up to length 5:')
+found = False
+total = 0
+for length in range(1, 6):
+    for actions in product(range(1, 6), repeat=length):
+        c = env.clone()
+        for a in actions:
+            c.step(a)
+        total += 1
+        if c.levels_completed > 0:
+            print(f'  FOUND! {actions} -> levels={c.levels_completed}')
+            found = True
+    print(f'  Length {length} done, total checked: {total}')
+    if found:
+        break
+
+if not found:
+    print('No solution found in 5 steps with actions 1-5')
+" 2>&1 | head -30
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+from itertools import product
+
+env = Arena('ft09')
+
+# Check what the game state INTERNALLY is - look for any signal at all
+# Let me check paths of length 6-10 more carefully, only sampling
+import random
+random.seed(42)
+
+# Random sampling for lengths 6-30
+for length in [6, 8, 10, 12, 15, 20, 25, 30, 31]:
+    found = False
+    for trial in range(500):
+        actions = [random.randint(1, 5) for _ in range(length)]
+        c = env.clone()
+        for a in actions:
+            if c.terminal():
+                break
+            c.step(a)
+        if c.levels_completed > 0:
+            print(f'Length {length}: FOUND {actions}')
+            found = True
+            break
+    if not found:
+        print(f'Length {length}: Not found in 500 random trials')
+" 2>&1
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+
+# Try pressing action 6 at different timer levels
+# First use actions 1-5 to set timer, then try action 6
+print('Trying action-6 after various timer states:')
+for n_timer_steps in range(0, 33):
+    c = env.clone()
+    for _ in range(n_timer_steps):
+        c.step(1)  # advance timer
+    
+    # Try action 6
+    if not c.terminal():
+        c.step(6)
+        if c.levels_completed > 0:
+            print(f'  After {n_timer_steps} timer steps + action 6: levels={c.levels_completed}')
+        # Also check: what if we then step more?
+
+print()
+# Also check: maybe action 6 needs to be at a specific position in the sequence
+# Like [6, 1, 6] or something
+print('Testing sequences including action 6:')
+for length in range(1, 8):
+    for first_6_pos in range(length):
+        actions = [1] * length
+        actions[first_6_pos] = 6
+        c = env.clone()
+        for a in actions:
+            c.step(a)
+        if c.levels_completed > 0:
+            print(f'  FOUND: {actions} -> levels={c.levels_completed}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+
+# Try: N steps of action 1, then action 6
+print('Trying N steps + action 6:')
+for n in range(0, 32):
+    c = env.clone()
+    for _ in range(n):
+        c.step(1)
+    c.step(6)
+    if c.levels_completed > 0:
+        print(f'  N={n}: levels={c.levels_completed}')
+
+print()
+# Try specific sequences of mixed actions
+print('Testing specific patterns:')
+# Maybe it's a pattern like UP, RIGHT, DOWN, LEFT, USE (circular)
+seqs = [
+    [1, 4, 2, 3, 5],  # UP RIGHT DOWN LEFT USE
+    [1, 2, 3, 4, 5],  # UP DOWN LEFT RIGHT USE
+    [5, 4, 3, 2, 1],  # USE RIGHT LEFT DOWN UP
+    [1, 1, 2, 2],     # UP UP DOWN DOWN (konami-like)
+    [1, 1, 2, 2, 3, 4, 3, 4, 5],  # konami
+    [1, 2, 1, 2, 1, 2],  # alternating UP DOWN
+    [3, 4, 3, 4, 3, 4],  # alternating LEFT RIGHT
+    [5, 5, 5, 5, 5],  # all USE
+    [6, 6, 6],  # all ACTION6
+    [1, 6, 2, 6, 3, 6],  # interleaved with action 6
+    [6, 1, 6, 2, 6],  # action 6 first
+    [1, 2, 3, 4, 5, 6],  # all actions in order
+    [6, 5, 4, 3, 2, 1],  # all actions reverse
+]
+for seq in seqs:
+    c = env.clone()
+    for a in seq:
+        if c.terminal():
+            break
+        c.step(a)
+    if c.levels_completed > 0:
+        print(f'  FOUND: {seq} -> levels={c.levels_completed}')
+    else:
+        print(f'  {seq}: levels=0')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Let me look at the full game structure more carefully
+# Check what colors 0 looks like in the pattern blocks
+print('Detailed pattern block analysis:')
+print()
+print('Block at rows 10-15, cols 12-17 (full):')
+for r in range(10, 16):
+    print(f'r{r}: {frame0[r, 12:18].tolist()}')
+print()
+print('Block at rows 44-49, cols 12-17 (full):')
+for r in range(44, 50):
+    print(f'r{r}: {frame0[r, 12:18].tolist()}')
+print()
+print('Block at rows 10-15, cols 46-51 (right):')
+for r in range(10, 16):
+    print(f'r{r}: {frame0[r, 46:52].tolist()}')
+print()
+print('Block at rows 44-49, cols 46-51 (right):')
+for r in range(44, 50):
+    print(f'r{r}: {frame0[r, 46:52].tolist()}')
+print()
+print('Block at rows 44-49, cols 44-50 (big rect center):')
+for r in range(44, 50):
+    print(f'r{r}: {frame0[r, 44:50].tolist()}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+from itertools import product
+
+env = Arena('ft09')
+
+# Try ALL sequences including action 6 up to length 6
+print('Testing ALL sequences (actions 1-6) up to length 6:')
+found_any = False
+for length in range(1, 7):
+    count = 0
+    for actions in product(range(1, 7), repeat=length):
+        c = env.clone()
+        ok = True
+        for a in actions:
+            if c.terminal():
+                ok = False
+                break
+            c.step(a)
+        if ok and c.levels_completed > 0:
+            print(f'  FOUND at length {length}: {actions} -> levels={c.levels_completed}')
+            found_any = True
+        count += 1
+    print(f'  Length {length}: checked {count} sequences')
+    if found_any:
+        break
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Check ALL pixel changes for each action 
+print('Complete pixel analysis for each action:')
+for a in range(1, 7):
+    c = env.clone()
+    c.step(a)
+    f = np.array(c.frame())
+    diff_positions = np.where(frame0 != f)
+    rows = diff_positions[0]
+    cols = diff_positions[1]
+    print(f'Action {a}: {len(rows)} pixels changed')
+    for i in range(len(rows)):
+        r, col = rows[i], cols[i]
+        print(f'  ({r},{col}): {frame0[r,col]} -> {f[r,col]}')
+    print()
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Let me look very carefully at the entire game structure
+# Maybe there's something I'm missing - check the complete color distribution
+print('Color distribution by region:')
+
+# Top half (rows 0-31)
+top = frame0[:32]
+print(f'Top half: {dict(zip(*np.unique(top, return_counts=True)))}')
+
+# Bottom half (rows 32-63)
+bot = frame0[32:]
+print(f'Bottom half: {dict(zip(*np.unique(bot, return_counts=True)))}')
+
+# Left side (cols 0-31)
+left = frame0[:, :32]
+print(f'Left side: {dict(zip(*np.unique(left, return_counts=True)))}')
+
+# Right side (cols 32-63)
+right = frame0[:, 32:]
+print(f'Right side: {dict(zip(*np.unique(right, return_counts=True)))}')
+
+print()
+# Check specifically: are there any non-background pixels in rows 26-32?
+print('Rows 26-31 (gap between top grids and big rectangle):')
+for r in range(26, 32):
+    unique = np.unique(frame0[r])
+    print(f'r{r}: {unique.tolist()}')
+
+print()
+print('Rows 58-63 (bottom of big rectangle to timer):')
+for r in range(58, 64):
+    print(f'r{r}: {np.unique(frame0[r]).tolist()}')
+
+print()
+print('Cols 28-36 (right side of left grid to big rectangle):')
+for c in range(28, 36):
+    unique = np.unique(frame0[:, c])
+    print(f'c{c}: {unique.tolist()}')
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena import Arena
+import numpy as np
+
+env = Arena('ft09')
+frame0 = np.array(env.frame())
+
+# Carefully probe what action 6 does
+# Try action 6 after various setups
+print('=== PROBING ACTION 6 ===')
+print()
+
+# First: single action 6 from initial state  
+c = env.clone()
+c.step(6)
+f1 = np.array(c.frame())
+print(f'After 1x action-6: {np.sum(f1 != frame0)} pixels changed, levels={c.levels_completed}')
+
+# Second: multiple action 6
+c = env.clone()
+for i in range(100):
+    c.step(6)
+f2 = np.array(c.frame())
+print(f'After 100x action-6: {np.sum(f2 != frame0)} pixels changed, levels={c.levels_completed}')
+
+# Third: what if action 6 does something to INTERNAL state only?
+# Check levels_completed after each step
+print()
+print('levels_completed after action-6 sequence:')
+c = env.clone()
+for i in range(30):
+    c.step(6)
+    if c.levels_completed > 0:
+        print(f'  Step {i+1}: levels={c.levels_completed}!!!')
+        break
+    
+print('  (no change to levels in 30 steps)')
+
+print()
+print('=== CHECKING GAME STATE ENCODING ===')
+print('Bottom row changes as step counter:')
+c = env.clone()
+prev_timer = np.array(env.frame())[63].copy()
+for i in range(5):
+    c.step(1)
+    curr_timer = np.array(c.frame())[63].copy()
+    n_changed = np.sum(curr_timer != prev_timer)
+    changed_pos = np.where(curr_timer != prev_timer)[0].tolist()
+    print(f'  Step {i+1}: timer col changes at {changed_pos}')
+    prev_timer = curr_timer.copy()
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+from gkm_arena as A
+import numpy as np
+
+# Let me look at this from a different angle.
+# Maybe the game has different levels and the structure changes per level.
+# Let me get more details about the game using gkm_arena's validate function
+env = A.Arena('ft09')
+print('Game info:')
+print('levels_completed:', env.levels_completed)
+print('terminal:', env.terminal())
+print('actions:', env.actions)
+print()
+
+# Try to understand if there's a way to 'win' by examining internal state
+# Look at the actual game object
+game = env._game
+print('Game type:', type(game))
+print('Game dir:', [x for x in dir(game) if not x.startswith('_')])
+"
+
+$ /Users/sasha/gkm/.venv/bin/python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+# Let me look at this from a different angle.
+env = A.Arena('ft09')
+
+# Try to understand if there's a way to 'win' by examining internal state
+# Look at the actual game object
+game = env._game
+print('Game type:', type(game))
+print('Game dir:', [x for x in dir(game) if not x.startswith('_')])
+"
+

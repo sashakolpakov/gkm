@@ -1,0 +1,19 @@
+{
+  "game": "ft09",
+  "level": 1,
+  "phase": "interrupted",
+  "reached": 0,
+  "err": "interrupted mid-level",
+  "attempt": "interrupted_293734d61708",
+  "created_at": "2026-07-14T10:25:06.992120+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

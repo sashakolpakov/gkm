@@ -325,6 +325,20 @@ work can be much larger than the promoted program. The retained-complexity measu
 concerns the executable structure carried forward to subsequent levels; generation cost
 and interaction cost remain separate resources and are not silently folded into $C_k$.
 
+A later campaign exposed why proposer compliance cannot be assumed from instructions.
+After observational probing stalled on \texttt{ft09}, a Sonnet API proposer emitted two
+separate commands accessing \texttt{env.\_game} and enumerating the private runtime.
+We classify these
+as operational cheating attempts because they seek evidence outside the declared
+frame/action interface. The attempts were retained only as dirty WIP and are excluded
+from every promotion and result in this paper. The first exact transcript is preserved
+under \texttt{agent\_solutions/ft09\_legs/wip\_context/level\_01/}
+\texttt{interrupted\_a9a30e6e4da1}. Their recurrence suggests that instruction
+compliance can deteriorate when observational progress stalls. The harness therefore
+blocks recognized private-runtime and hidden-source access before execution and
+independently rejects tainted workspaces before replay or promotion; prompt wording
+alone is not an audit boundary.
+
 \subsection{Program structure and promotion protocol}
 The workspace separates reusable and level-specific code. The module
 \texttt{legs.py} contains shared routines, \texttt{players.py} contains one thin entry

@@ -51,6 +51,16 @@ by that guard; historical WIP is not retroactively relabelled as blocked. Promot
 from earlier runs are nevertheless scanned by the current checker and need no rebuild
 when they remain clean and their replay still validates.
 
+This guard responds to repeated observed misconduct. During stalled ``ft09`` work,
+the Sonnet API proposer emitted two separate commands that accessed ``env._game`` and
+enumerated the private runtime. Under the declared interface these are operational cheating
+attempts because they seek evidence unavailable through frames and actions. The first
+exact transcript is retained in the ``interrupted_a9a30e6e4da1`` level-1 WIP snapshot,
+and the run is not promotion evidence. The repetition suggests that compliance can
+deteriorate when observational progress stalls. Prompt instructions are consequently
+not treated as enforcement; blocking and promotion-time taint checks apply to every
+proposer model.
+
 Source-Growth Statistic
 -----------------------
 
