@@ -1,0 +1,574 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat players.py && cat legs.py && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+env = A.make('sp80')
+frame = env.frame()
+import numpy as np
+f = np.array(frame)
+print('Frame shape:', f.shape)
+print('Unique colors:', np.unique(f))
+print('Color counts:')
+vals, cnts = np.unique(f, return_counts=True)
+for v, c in zip(vals, cnts):
+    print(f'  color {v}: {c} pixels')
+print()
+print('Frame:')
+for r in range(64):
+    row = ''.join(str(f[r,c]) for c in range(64))
+    print(row)
+"
+
+$ pip install numpy -q && cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+env = A.make('sp80')
+frame = env.frame()
+import numpy as np
+f = np.array(frame)
+print('Frame shape:', f.shape)
+print('Unique colors:', np.unique(f))
+print('Color counts:')
+vals, cnts = np.unique(f, return_counts=True)
+for v, c in zip(vals, cnts):
+    print(f'  color {v}: {c} pixels')
+"
+
+$ which python3 && python3 -c "import numpy" 2>&1 || true
+/usr/bin/python3 -c "import numpy" 2>&1 || true
+python -c "import numpy" 2>&1 || true
+$ pip3 install numpy 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+env = A.make('sp80')
+frame = env.frame()
+import numpy as np
+f = np.array(frame)
+print('Frame shape:', f.shape)
+print('Unique colors:', np.unique(f))
+print('Color counts:')
+vals, cnts = np.unique(f, return_counts=True)
+for v, c in zip(vals, cnts):
+    print(f'  color {v}: {c} pixels')
+print()
+print('Frame (each row):')
+for r in range(64):
+    row = ''.join(f'{f[r,c]:2d}' for c in range(64))
+    print(row)
+"
+
+$ cat /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -50
+$ cat /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | grep -n "def make\|def run_program\|def validate\|class.*Env\|_Budget\|step\|clone\|frame\|terminal\|levels_completed" | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python3 -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+
+# Try to import just what we need
+import gkm_arena as A
+print('gkm_arena imported OK')
+env = A.make('sp80')
+print('env created OK')
+print('levels_completed:', env.levels_completed)
+print('terminal:', env.terminal())
+f = env.frame()
+print('frame type:', type(f))
+print('frame shape:', f.shape)
+" 2>&1
+$ cat /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | grep -n "def make"
+$ grep -n "def make\|^def \|^class " /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ grep -n "def make\|^make " /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -10
+grep -n "^def " /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ grep -n "make\b" /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -20
+$ cat /Users/sasha/gkm/arc/crack_lab/gkm_try.py | grep "make\|Arena"
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/gkm_try.py
+$ grep -n "run_program\|Arena\|make\b" /Users/sasha/gkm/arc/crack_lab/gkm_arena.py | head -30
+$ sed -n '223,260p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && which python && python --version 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "import numpy; print(numpy.__version__)"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+print('A imported OK')
+env = A.Arena('sp80')
+print('Arena created OK')
+print('levels_completed:', env.levels_completed)
+f = env.frame()
+print('frame type:', type(f))
+print('frame shape:', f.shape)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.Arena('sp80')
+f = env.frame()
+print('Unique colors:', np.unique(f))
+print('Color counts:')
+vals, cnts = np.unique(f, return_counts=True)
+for v, c in zip(vals, cnts):
+    print(f'  color {v}: {c} pixels')
+print()
+print('Frame (compressed):')
+for r in range(64):
+    row = ''.join(str(f[r,c]) for c in range(64))
+    print(row)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.Arena('sp80')
+f = env.frame()
+print('Frame shape:', f.shape)
+print('Unique colors:', np.unique(f).tolist())
+# Use hex-like mapping: 0-9='0'-'9', 10='a', 11='b', etc.
+def to_char(v):
+    return '0123456789abcdef'[v]
+print()
+print('Frame (64 cols, using hex):')
+for r in range(64):
+    row = ''.join(to_char(f[r,c]) for c in range(64))
+    print(f'{r:2d} {row}')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def to_char(v):
+    return '0123456789abcdef'[v]
+
+def show_frame(f, title=''):
+    if title: print(title)
+    for r in range(64):
+        row = ''.join(to_char(f[r,c]) for c in range(64))
+        print(f'{r:2d} {row}')
+
+def show_delta(before, after, title=''):
+    b, a = np.array(before), np.array(after)
+    ys, xs = np.where(b != a)
+    if len(ys) == 0:
+        print(f'{title}: NO CHANGE')
+        return
+    print(f'{title}: {len(ys)} pixel changes')
+    for y, x in zip(ys[:20], xs[:20]):
+        print(f'  ({y},{x}): {b[y,x]} -> {a[y,x]}')
+
+env = A.Arena('sp80')
+base_f = env.frame().copy()
+
+# Test each action
+for act in [1, 2, 3, 4, 5, 6]:
+    clone = env.clone()
+    clone.step(act)
+    show_delta(base_f, clone.frame(), f'Action {act}')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def to_char(v):
+    return '0123456789abcdef'[v]
+
+def show_delta_full(before, after, title=''):
+    b, a = np.array(before), np.array(after)
+    ys, xs = np.where(b != a)
+    print(f'{title}: {len(ys)} pixel changes')
+    for y, x in zip(ys, xs):
+        print(f'  ({y},{x}): {b[y,x]} -> {a[y,x]}')
+
+env = A.Arena('sp80')
+base_f = env.frame().copy()
+
+# Test action 1 fully
+clone = env.clone()
+clone.step(1)
+show_delta_full(base_f, clone.frame(), 'Action 1 (UP)')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def to_char(v):
+    return '0123456789abcdef'[v]
+
+def show_frame(f, title=''):
+    if title: print(title)
+    for r in range(64):
+        row = ''.join(to_char(f[r,c]) for c in range(64))
+        # Only print non-background rows
+        if any(c != 'c' for c in row):
+            print(f'{r:2d} {row}')
+    print()
+
+env = A.Arena('sp80')
+print('=== Initial state ===')
+show_frame(env.frame())
+
+# Move the block down several times
+for i in range(10):
+    env.step(2)  # DOWN
+    print(f'=== After {i+1} DOWNs ===')
+    show_frame(env.frame())
+    if env.terminal():
+        print('TERMINAL!')
+        break
+    if env.levels_completed > 0:
+        print('LEVEL COMPLETED!')
+        break
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def to_char(v):
+    return '0123456789abcdef'[v]
+
+# Let me explore what happens with boundaries
+env = A.Arena('sp80')
+
+# Move the block left multiple times
+for i in range(15):
+    clone = env.clone()
+    clone.step(3)  # LEFT
+    f_after = np.array(clone.frame())
+    f_before = np.array(env.frame())
+    ys, xs = np.where(f_before != f_after)
+    if len(ys) > 2:  # More than just timer
+        print(f'LEFT move {i+1}: block moved')
+        env = clone
+    else:
+        print(f'LEFT move {i+1}: block did NOT move (wall?)')
+        break
+
+# Show position
+f = np.array(env.frame())
+nines = np.where(f == 9)
+if len(nines[0]) > 0:
+    print(f'9-block at rows {nines[0].min()}-{nines[0].max()}, cols {nines[1].min()}-{nines[1].max()}')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+# Explore boundaries - right
+env = A.Arena('sp80')
+for i in range(20):
+    clone = env.clone()
+    clone.step(4)  # RIGHT
+    f_after = np.array(clone.frame())
+    f_before = np.array(env.frame())
+    ys, xs = np.where(f_before != f_after)
+    if len(ys) > 2:
+        env = clone
+    else:
+        f = np.array(env.frame())
+        nines = np.where(f == 9)
+        print(f'RIGHT block stopped at cols {nines[1].min()}-{nines[1].max()} after {i} moves')
+        break
+else:
+    f = np.array(env.frame())
+    nines = np.where(f == 9)
+    print(f'9-block at rows {nines[0].min()}-{nines[0].max()}, cols {nines[1].min()}-{nines[1].max()} after all moves')
+
+# Explore up boundary
+env = A.Arena('sp80')
+for i in range(20):
+    clone = env.clone()
+    clone.step(1)  # UP
+    f_after = np.array(clone.frame())
+    f_before = np.array(env.frame())
+    ys, xs = np.where(f_before != f_after)
+    if len(ys) > 2:
+        env = clone
+    else:
+        f = np.array(env.frame())
+        nines = np.where(f == 9)
+        print(f'UP block stopped at rows {nines[0].min()}-{nines[0].max()} after {i} moves')
+        break
+else:
+    f = np.array(env.frame())
+    nines = np.where(f == 9)
+    print(f'9-block at rows {nines[0].min()}-{nines[0].max()} after all UP moves')
+
+# Explore down boundary
+env = A.Arena('sp80')
+for i in range(20):
+    clone = env.clone()
+    clone.step(2)  # DOWN
+    f_after = np.array(clone.frame())
+    f_before = np.array(env.frame())
+    ys, xs = np.where(f_before != f_after)
+    if len(ys) > 2:
+        env = clone
+    else:
+        f = np.array(env.frame())
+        nines = np.where(f == 9)
+        print(f'DOWN block stopped at rows {nines[0].min()}-{nines[0].max()} after {i} moves')
+        break
+else:
+    f = np.array(env.frame())
+    nines = np.where(f == 9)
+    print(f'9-block at rows {nines[0].min()}-{nines[0].max()} after all DOWN moves')
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && timeout 60 python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+env = A.Arena('sp80')
+base_level = env.levels_completed
+
+# BFS for win condition
+def make_key(e):
+    f = np.array(e.frame())
+    nines = np.where(f == 9)
+    if len(nines[0]) == 0:
+        return None
+    return (nines[0].min(), nines[0].max(), nines[1].min(), nines[1].max())
+
+start_key = make_key(env)
+q = deque([(env.clone(), [])])
+seen = {start_key}
+found = None
+
+print(f'BFS starting, key={start_key}')
+
+while q and len(seen) < 5000:
+    node, path = q.popleft()
+    
+    for action in [1, 2, 3, 4, 5, 6]:
+        child = node.clone()
+        child.step(action)
+        
+        if child.levels_completed > base_level:
+            found = path + [action]
+            print(f'WIN FOUND! Path: {found}')
+            break
+        
+        key = make_key(child)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        q.append((child, path + [action]))
+    
+    if found:
+        break
+
+if not found:
+    print(f'No win found, explored {len(seen)} states')
+    # Show all states found
+    print('States found:', sorted(seen)[:10])
+" 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys, signal
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+env = A.Arena('sp80')
+base_level = env.levels_completed
+
+def make_key(e):
+    f = np.array(e.frame())
+    nines = np.where(f == 9)
+    if len(nines[0]) == 0:
+        return None
+    return (nines[0].min(), nines[0].max(), nines[1].min(), nines[1].max())
+
+start_key = make_key(env)
+q = deque([(env.clone(), [])])
+seen = {start_key}
+found = None
+
+print(f'BFS starting, key={start_key}')
+
+while q and len(seen) < 2000:
+    node, path = q.popleft()
+    
+    if len(path) > 30:
+        continue
+    
+    for action in [1, 2, 3, 4, 5, 6]:
+        child = node.clone()
+        child.step(action)
+        
+        if child.levels_completed > base_level:
+            found = path + [action]
+            print(f'WIN FOUND! Path: {found}')
+            break
+        
+        key = make_key(child)
+        if key is None or key in seen:
+            continue
+        seen.add(key)
+        q.append((child, path + [action]))
+    
+    if found:
+        break
+
+if not found:
+    print(f'No win found in {len(seen)} states')
+    print('All reachable block positions:')
+    for k in sorted(seen):
+        print(f'  rows {k[0]}-{k[1]}, cols {k[2]}-{k[3]}')
+" 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def to_char(v):
+    return '0123456789abcdef'[v]
+
+def show_frame(f, title=''):
+    if title: print(title)
+    for r in range(64):
+        row = ''.join(to_char(f[r,c]) for c in range(64))
+        if any(c != 'c' for c in row):
+            print(f'{r:2d} {row}')
+    print()
+
+env = A.Arena('sp80')
+show_frame(env.frame(), 'Initial')
+
+steps = [4, 4, 4, 5]
+names = {1:'UP', 2:'DOWN', 3:'LEFT', 4:'RIGHT', 5:'USE', 6:'ACTION6'}
+
+for act in steps:
+    print(f'Taking action {act} ({names[act]})')
+    env.step(act)
+    show_frame(env.frame(), f'After {names[act]}')
+    print(f'levels_completed: {env.levels_completed}')
+    if env.terminal():
+        print('TERMINAL')
+        break
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+env = A.Arena('sp80')
+base_level = env.levels_completed
+
+def make_key(e):
+    f = np.array(e.frame())
+    nines = np.where(f == 9)
+    if len(nines[0]) == 0:
+        return None
+    return (nines[0].min(), nines[0].max(), nines[1].min(), nines[1].max())
+
+# BFS to find ALL shortest winning paths
+start_key = make_key(env)
+q = deque([(env.clone(), [])])
+seen = {start_key: []}
+found_paths = []
+
+while q:
+    node, path = q.popleft()
+    
+    if found_paths and len(path) >= len(found_paths[0]):
+        continue  # Only look for paths of same length or shorter
+    
+    for action in [1, 2, 3, 4, 5, 6]:
+        child = node.clone()
+        child.step(action)
+        
+        if child.levels_completed > base_level:
+            found_paths.append(path + [action])
+            continue
+        
+        key = make_key(child)
+        if key is None:
+            continue
+        
+        new_path = path + [action]
+        if key not in seen or len(seen[key]) > len(new_path):
+            seen[key] = new_path
+            q.append((child, new_path))
+    
+    if found_paths and len(q) == 0:
+        break
+
+print(f'Found {len(found_paths)} winning paths:')
+for p in found_paths[:20]:
+    print(f'  {p}')
+"
+The winning sequence is `[4, 4, 4, 5]` (RIGHT x3, then USE). Now let me write the legs and player code.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python -c "
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+
+# Verify the sequence works reliably
+env = A.Arena('sp80')
+for act in [4, 4, 4, 5]:
+    env.step(act)
+print(f'levels_completed after [4,4,4,5]: {env.levels_completed}')
+print(f'terminal: {env.terminal()}')
+"
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs.py
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py 2>&1
+Level 1 solved! Let me update the legs log to document what was found.
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py 2>&1
+The solution works reliably. Here's a summary of everything discovered and implemented:
+
+## What I found
+
+**Game sp80, Level 1:**
+- The 64×64 frame contains a moveable color-9 block (4 rows × 20 cols) starting at rows 16-19, cols 12-31
+- A static color-4+6 indicator object sits at rows 1-7, cols 36-39
+- Two color-11 U-shaped goal structures sit at rows 52-59
+- A timer bar (color-14) depletes 2 pixels per action
+
+**Actions:**
+- 1=UP, 2=DOWN, 3=LEFT, 4=RIGHT: slide the 9-block 4 pixels in that direction (wall-bounded)
+- 5=USE: triggers a level-completion check (wins when block is in correct position)
+- 6=no visible effect
+
+**Win condition:** Move the block RIGHT 3 times (to cols 24-43), then USE → level 1 complete.
+
+## Code written
+
+**`legs.py`** — three reusable legs:
+1. `play_fixed_sequence(env, sequence)` — commits a hardcoded list of actions
+2. `bfs_win(env, ...)` — BFS with full-frame key to find winning path
+3. `bfs_win_compact(env, key_fn, ...)` — BFS with custom lightweight key
+
+**`players.py`** — `play_level_1(env)` runs a compact BFS (key = 9-block bounding box, ≤500 states) then plays the found path; falls back to hardcoded `[4, 4, 4, 5]`.
+
+**Result:** `RESULT levels=1 moves=4 replay_ok=True err=None` ✓

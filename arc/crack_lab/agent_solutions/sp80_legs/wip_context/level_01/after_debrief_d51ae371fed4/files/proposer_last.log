@@ -1,0 +1,91 @@
+$ find /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 -type f | sort
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/players.py
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs.py
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs_log.md
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/gkm_try.py
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/solve.py
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/checkpoint.json
+Now I have the full picture. Let me analyse what repeats before touching anything.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py
+Baseline confirmed: `levels=1`. Now let me map every repeated idiom:
+
+| Idiom | Where | Extraction candidate |
+|---|---|---|
+| Inline `_key` → bbox of color-N pixels | `play_level_1` body | `make_bbox_key(color)` → reusable key factory |
+| `bfs_win_compact → play_fixed_sequence` + hardcoded fallback | `play_level_1` body | `bfs_or_fallback(env, key_fn, fallback, …)` higher-order leg |
+
+Both belong in `legs.py`. The player then collapses to a single expressive call.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs.py
+Now slim `play_level_1` down to a single expressive call:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/players.py
+Now append the higher-order leg pattern to `legs_log.md`:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs_log.md
+Now verify the final state of both files and confirm behaviour is unchanged:
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs.py
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py
+`levels=1, moves=4, replay_ok=True` — identical to baseline.
+$ cat /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80/legs_log.md
+Everything is clean. Here is the full debrief:
+
+---
+
+## Debrief
+
+### What repeated across players
+
+Only one player existed (`play_level_1`), but it contained **two inlinable idioms** that would have been copy-pasted into every future player:
+
+| Idiom | Old location | Problem |
+|---|---|---|
+| Inline `_key` closure: `np.where(f == 9)` → bbox tuple | Body of `play_level_1` | The "track a moveable object by bounding box" concept is not named or reusable |
+| `if bfs…: play_fixed_sequence(…) else: play_fixed_sequence(fallback)` | Body of `play_level_1` | The try-BFS-then-fallback pattern would be duplicated in every player |
+
+---
+
+### New legs added to `legs.py`
+
+**`make_bbox_key(color)`** — a *factory*. Given a color integer it returns a closure that extracts the bounding box `(row_min, row_max, col_min, col_max)` of that color's pixels as a cheap BFS state key. Returns `None` when the color is absent (which `bfs_win_compact` already treats as a skip). Written once; any level with a single moveable object just calls `make_bbox_key(<color>)`.
+
+**`bfs_or_fallback(env, key_fn, fallback, actions, max_states, max_depth)`** — the higher-order leg. Calls `bfs_win_compact`, plays the discovered path if found, plays `fallback` otherwise. Encapsulates the entire search-and-execute cycle.
+
+---
+
+### Refactored `play_level_1`
+
+Before (14 lines, repeated logic, import inside function):
+```python
+def play_level_1(env):
+    import numpy as np
+    def _key(e):
+        f = np.array(e.frame())
+        nines = np.where(f == 9)
+        if len(nines[0]) == 0: return None
+        return (int(nines[0].min()), int(nines[0].max()),
+                int(nines[1].min()), int(nines[1].max()))
+    path = bfs_win_compact(env, _key, actions=(1,2,3,4,5,6), max_states=500, max_depth=20)
+    if path:
+        play_fixed_sequence(env, path)
+    else:
+        play_fixed_sequence(env, [4, 4, 4, 5])
+```
+
+After (2 lines, thin composition):
+```python
+def play_level_1(env):
+    """Level 1: move the 9-block right 3 times then USE."""
+    bfs_or_fallback(env, make_bbox_key(9), fallback=[4, 4, 4, 5],
+                    actions=(1, 2, 3, 4, 5, 6), max_states=500, max_depth=20)
+```
+
+---
+
+### Candidate higher-order leg (appended to `legs_log.md`)
+
+```
+key_fn = make_bbox_key(<moveable-object color>)
+path   = bfs_win_compact(env, key_fn, …)
+play_fixed_sequence(env, path if path else <fallback>)
+```
+
+→ `bfs_or_fallback(env, key_fn, fallback, …)` is the canonical encapsulation. Future players are expected to be single-line calls to this leg; reach for lower-level primitives only when the state key or win condition is more complex than a single-color bounding box.
