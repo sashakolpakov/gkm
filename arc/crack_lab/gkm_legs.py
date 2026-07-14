@@ -104,16 +104,23 @@ AUTO_SOLVE_LOG = "auto_solve_attempts.json"
 """Per-level record of failed auto-solve attempts, keyed by (level, legs-hash), so a
 relaunch does not re-pay a long BFS that already failed against the same legs."""
 
+ARC_GAME_SOURCE_NAMES = tuple(
+    f"{game}.py" for game in (
+        "ar25", "bp35", "cd82", "cn04", "dc22", "ft09", "g50t", "ka59",
+        "lf52", "lp85", "ls20", "m0r0", "r11l", "re86", "s5i5", "sb26",
+        "sc25", "sk48", "sp80", "su15", "tn36", "tr87", "tu93", "vc33",
+        "wa30",
+    )
+)
+
 SOURCE_TAINT_MARKERS = (
-    "environment_files/wa30",
-    "environment_files/ls20",
-    "/environment_files/wa30",
-    "/environment_files/ls20",
-    "wa30.py",
-    "ls20.py",
+    "environment_files/",
+    "/environment_files/",
+    "agent_solutions/",
+    "/agent_solutions/",
     "source reveals",
     "actual game source",
-)
+) + ARC_GAME_SOURCE_NAMES
 """Strings that make a proposer workspace inadmissible.
 
 The arena may execute the hidden game implementation internally, but the

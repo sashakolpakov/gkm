@@ -195,6 +195,13 @@ def test_private_runtime_introspection_taints_workspace(tmp_path):
     assert "private game/runtime introspection" in reason
 
 
+def test_other_catalog_game_source_taints_workspace(tmp_path):
+    (tmp_path / "proposer_last.log").write_text("find .. -name 'g50t.py'\n")
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "g50t.py" in reason
+
+
 def test_blocked_attempt_ledger_is_audit_evidence_not_execution_taint(tmp_path):
     (tmp_path / L.BLOCKED_ATTEMPTS_LOG).write_text(
         "bash: 'python3 -c \\\"print(env._game)\\\"'\n"

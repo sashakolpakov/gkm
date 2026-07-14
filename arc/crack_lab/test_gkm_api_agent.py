@@ -81,6 +81,12 @@ def test_source_access_blocked_in_bash_and_editor(tmp_path):
     assert err
     assert "forbidden source/history access blocked" in out
 
+
+def test_direct_source_filename_is_blocked_for_other_catalog_games(tmp_path):
+    out, err = G._run_bash(str(tmp_path), "find .. -name 'g50t.py'")
+    assert err
+    assert "forbidden source/history access blocked" in out
+
     out, err = G._run_editor(
         str(tmp_path),
         {"command": "view", "path": f"{ENVFILES}/ls20/x/ls20.py"},
