@@ -38,6 +38,13 @@ The complete published `wa30` ledger is
 operational resume file and therefore retains only its post-base records; the manuscript
 sidecar indexes the complete ledger, the clean promotion events, and their file hashes.
 
+The proposer blocks hidden-source and private-runtime inspection before execution.
+Rejected tool inputs are preserved verbatim in `blocked_attempts.log` within WIP but do
+not taint a promotion because they never ran. The exception is not retroactive: older
+WIP that predates the guard remains dirty evidence unless execution-time blocking is
+independently recorded. Canonical promoted files are always checked under the current
+taint rules, regardless of their creation date.
+
 ## Entry Points
 
 - [`ARC.md`](ARC.md): detailed domain guide and experiment history.

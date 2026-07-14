@@ -127,6 +127,7 @@ PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT
 """Files that define a verified leg-library state and should survive scratch loss."""
 
 SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache"}
+BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 
 
 class WorkspaceTainted(RuntimeError):
@@ -137,6 +138,8 @@ def _workspace_taint_reason(ws: str) -> Optional[str]:
     for root, dirs, files in os.walk(ws):
         dirs[:] = [d for d in dirs if d not in SNAPSHOT_SKIP_DIRS]
         for name in files:
+            if name == BLOCKED_ATTEMPTS_LOG:
+                continue
             path = os.path.join(root, name)
             try:
                 if os.path.getsize(path) > 2_000_000:

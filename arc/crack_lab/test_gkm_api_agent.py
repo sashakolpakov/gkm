@@ -110,6 +110,22 @@ def test_private_runtime_introspection_blocked(tmp_path):
     assert "forbidden source/history access blocked" in out
 
 
+def test_blocked_attempt_is_audited_without_tainting_main_transcript(tmp_path):
+    command = "python3 -c \"print(env._game)\""
+    responses = [
+        _Resp([_Block(type="tool_use", id="t1", name="bash",
+                      input={"command": command})], "tool_use"),
+        _Resp([_Block(type="text", text="continued source-free")], "end_turn"),
+    ]
+    transcript = G.run_agent(
+        str(tmp_path), "task", client=_FakeClient(responses), minutes=1
+    )
+    assert command not in transcript
+    assert "[BLOCKED:" in transcript
+    assert command in (tmp_path / G.BLOCKED_ATTEMPTS_LOG).read_text()
+    assert G._workspace_forbidden_reference(str(tmp_path)) is None
+
+
 def test_api_error_is_logged_not_raised(tmp_path):
     class _Boom:
         class messages:

@@ -193,6 +193,13 @@ def test_private_runtime_introspection_taints_workspace(tmp_path):
     assert "private game/runtime introspection" in reason
 
 
+def test_blocked_attempt_ledger_is_audit_evidence_not_execution_taint(tmp_path):
+    (tmp_path / L.BLOCKED_ATTEMPTS_LOG).write_text(
+        "bash: 'python3 -c \\\"print(env._game)\\\"'\n"
+    )
+    assert L._workspace_taint_reason(str(tmp_path)) is None
+
+
 def test_action_path_accepts_coordinate_clicks_without_changing_key_paths():
     assert L._load_action_path([1, 5, 2]) == [1, 5, 2]
     assert L._load_action_path([[6, 12, 34], [6, 0, 63]]) == [

@@ -35,6 +35,7 @@ BASH_TIMEOUT_S = 600        # gkm_try.py BFS verifications can take minutes
 TOOL_OUTPUT_CAP = 20000     # chars per tool result kept in context
 API_TRANSIENT_RETRIES = 6
 API_TRANSIENT_BACKOFF_S = (20, 45, 90, 180, 300, 300)
+BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 
 TOOLS = [
     {"type": "bash_20250124", "name": "bash"},
@@ -86,6 +87,8 @@ def _workspace_forbidden_reference(ws: str) -> Optional[str]:
     for root, dirs, files in os.walk(ws):
         dirs[:] = [d for d in dirs if d not in {"__pycache__", ".pytest_cache"}]
         for name in files:
+            if name == BLOCKED_ATTEMPTS_LOG:
+                continue
             path = os.path.join(root, name)
             try:
                 if os.path.getsize(path) > 2_000_000:
@@ -121,6 +124,13 @@ def _redact_secrets(text: str) -> str:
             out = out.replace(value, "[REDACTED]")
     out = re.sub(r"(ANTHROPIC_API_KEY\s*=\s*)\S+", r"\1[REDACTED]", out)
     return out
+
+
+def _record_blocked_attempt(ws: str, tool: str, payload) -> None:
+    """Keep rejected tool input for audit without treating it as executed access."""
+    path = os.path.join(ws, BLOCKED_ATTEMPTS_LOG)
+    with open(path, "a", encoding="utf-8") as f:
+        f.write(f"[{time.time():.6f}] {tool}: {payload!r}\n")
 
 
 def _transient_api_failure(ex: Exception) -> bool:
@@ -293,13 +303,22 @@ def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40
                 if tu.name == "bash":
                     if tu.input.get("restart"):
                         out, err = "(stateless shell; nothing to restart)", False
+                        emit("$ [restart ignored: stateless shell]")
                     else:
                         cmd = tu.input.get("command", "")
-                        emit(f"$ {cmd}")
                         out, err = _run_bash(ws, cmd)
+                        if out.startswith("forbidden source/history access blocked:"):
+                            _record_blocked_attempt(ws, "bash", cmd)
+                            emit(f"$ [BLOCKED: {out.split('.', 1)[0]}]")
+                        else:
+                            emit(f"$ {cmd}")
                 else:
-                    emit(f"[edit] {tu.input.get('command')} {tu.input.get('path')}")
                     out, err = _run_editor(ws, tu.input)
+                    if "forbidden source/history access blocked:" in out:
+                        _record_blocked_attempt(ws, "editor", dict(tu.input))
+                        emit(f"[edit BLOCKED: {out.split('.', 1)[0]}]")
+                    else:
+                        emit(f"[edit] {tu.input.get('command')} {tu.input.get('path')}")
                 results.append({"type": "tool_result", "tool_use_id": tu.id,
                                 "content": out, "is_error": err})
             messages.append({"role": "user", "content": results})

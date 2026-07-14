@@ -43,6 +43,14 @@ only a validated state is promoted. Pre-debrief, recovered-path, interrupted, an
 post-debrief workspaces are retained under ``wip_context``. This distinguishes a
 successful literal plan from a later parameterized refactor.
 
+Forbidden source and private-runtime inspection is blocked before execution. The exact
+rejected payload is retained in ``blocked_attempts.log`` for audit, while the main
+transcript records only the rejection. This ledger is excluded from execution-taint
+checks because its commands did not run. The exclusion applies only to entries created
+by that guard; historical WIP is not retroactively relabelled as blocked. Promoted files
+from earlier runs are nevertheless scanned by the current checker and need no rebuild
+when they remain clean and their replay still validates.
+
 Source-Growth Statistic
 -----------------------
 
