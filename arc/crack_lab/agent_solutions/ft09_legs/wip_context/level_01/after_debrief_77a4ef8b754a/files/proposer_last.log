@@ -1,0 +1,36 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat players.py legs.py legs_log.md gkm_try.py solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && git log --oneline -20 2>/dev/null; echo "---"; git status 2>/dev/null | head
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat checkpoint.json auto_solve_attempts.json; echo "---RUN---"; timeout 300 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Baseline confirmed: `levels=1 moves=4 replay_ok=True`. Now let me analyze the structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && grep -n "def " legs.py; echo "---players---"; grep -n "def \|solve_\|search_\|discover_\|commit\|env.step\|for " players.py
+I now understand the state. There's a single thin player `play_level_1` → `solve_toggle_board`. The recurring composition pattern lives inside the legs: **plan on clones (search for a goal-raising action sequence) → commit that sequence on the real env**. That plan/commit loop is written inline in `solve_toggle_board` but is a general shape (e.g. `bounded_bfs`/`search_toggle_solution` return a plan, then something replays it). Let me extract it as a reusable higher-order leg written ONCE, and make `solve_toggle_board` thin composition over it.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+The player is already thin (single leg call), so no cross-player duplication remains. Now append the recurring composition pattern (the candidate higher-order leg) to `legs_log.md`.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Behaviour unchanged: `levels=1 moves=4 replay_ok=True`. Let me show the final refactored files.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && echo "=== players.py ==="; cat players.py; echo; echo "=== legs.py (composition tail) ==="; sed -n '66,105p' legs.py
+Debrief complete. Summary of what I did:
+
+## Findings from comparing the players
+`players.py` contains a single player, `play_level_1`, which was already a thin one-liner (`solve_toggle_board(env)`). So there was **no cross-player duplication** to remove — the player is already pure composition. The real duplication risk lived *inside the legs*.
+
+## The recurring composition pattern I extracted
+Every level so far follows the same shape: a **planner searches on `env.clone()`s** for an action sequence that raises `levels_completed` (`search_toggle_solution`, and `perception.bounded_bfs`), then the caller **commits that sequence action-by-action on the real env**. That commit loop was inlined inside `solve_toggle_board`.
+
+I wrote that skill **once** in `legs.py`:
+- `commit_plan(env, plan, apply_fn)` — the replay-on-real-env loop, written once.
+- `plan_and_commit(env, planner, apply_fn)` — the higher-order leg capturing "plan on clones → replay on real env". The only per-game parts are the `planner` and the `apply_fn` (how one planned action executes).
+- `_click_xy` — the coordinate-click applier for boards.
+
+`solve_toggle_board` is now thin composition: `plan_and_commit(env, search_toggle_solution, _click_xy)`.
+
+## Log
+Appended the `plan_and_commit` candidate higher-order leg (with its planner/apply_fn seam) to `legs_log.md`.
+
+## Behaviour preserved
+`python gkm_try.py` → **`RESULT levels=1 moves=4 replay_ok=True err=None`**, identical to the pre-refactor baseline (still `levels>=1`).
