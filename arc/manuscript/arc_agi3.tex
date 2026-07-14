@@ -1,311 +1,554 @@
 \documentclass[11pt]{article}
+\usepackage[T1]{fontenc}
 \usepackage[margin=1in]{geometry}
-\usepackage{amsmath,amssymb}
+\usepackage{amsmath,amssymb,amsthm}
 \usepackage{hyperref}
-\usepackage{enumitem}
 \usepackage{booktabs}
+\usepackage{tabularx}
 \usepackage{graphicx}
-\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+\usepackage{microtype}
+\usepackage[font=small,labelfont=bf]{caption}
+\hypersetup{hidelinks}
 
-\title{Solving ARC-AGI-3 Games with a Self-Improving Agent\\
-under a Free-Energy Selection Principle}
+\title{Kolmogorov Structure Functions and Categorical Colimits:\\
+Solving ARC-AGI-3 Challenges}
 \author{Alexander Kolpakov}
 \date{\today}
 
 \newcommand{\F}{\mathcal{F}}
+\newtheorem{definition}{Definition}
+\newtheorem{theorem}{Theorem}
 
 \begin{document}
 \maketitle
+\raggedbottom
 
 \begin{abstract}
-We study whether an agent can figure a game out on its own (i.e. discover its
-perception, its mechanics, its goal, and a winning strategy) from the rawest
-possible interface, carrying only general human preconceptions, with a single
-free-energy rule deciding what structure is worth keeping. The setting is ARC-AGI-3
-keyboard games played offline through their runtime. Our agent is given nothing but
-\texttt{step(action)}$\to$\emph{frame}, a scalar reward (levels completed), and
-a clone for lookahead. A proposer, prompted with human world-priors, writes its
-own program to play; a candidate is admitted only if it verifiably improves on the
-incumbent under a free energy $\F = R + \lambda C$ that trades reward against
-description length. We connect this to Kolmogorov complexity and Solomonoff induction
-(the $C$ term), to Schmidhuber's G\"odel machine and PowerPlay (self-rewriting under an
-empirical proof of improvement, driven by compression-progress novelty), and to a
-colimit-cone view of skills (``legs'') composed into solutions. Empirically, the
-promoted artifacts solve \texttt{wa30} through level~9 and \texttt{ls20} through
-level~7, replay-validated from their recorded action paths. The \texttt{wa30}
-artifact reaches level~9 in 596 moves with total marginal complexity 1243; the
-\texttt{ls20} artifact reaches level~7 in 393 moves with total marginal complexity
-362. The preserved work-in-progress snapshots show how these solvers were obtained: early levels
-were searched or written directly by the proposer, later levels were refactored into
-thin players over a shared leg library, and recovered verified paths were admitted only
-after independent replay. The result is a
-priced growth trace: reuse is free, literal replay plans are charged, and new
-mechanics appear as marginal novelty. 
+When a coding agent solves successive tasks, the final score does not reveal whether
+later solutions reuse earlier structure, introduce new abstractions, or merely retain
+task-specific traces. We present a new artifact-oriented harness for auditing these
+alternatives in interactive ARC-AGI-3 games. A coding proposer receives only raw frames,
+actions, scalar level progress, and environment cloning; it writes per-level programs
+that compose a shared library of solver routines. Advancement is verified by replay on
+a fresh environment. A marginal description-length ledger then charges increases in
+executable source structure and explicit literals while assigning no additional charge
+to unchanged library code. In two case studies, the promoted artifacts replay through
+all nine levels of \texttt{wa30} in 596 actions and all seven levels of \texttt{ls20}
+in 393 actions. The \texttt{ls20} ledger has marginal costs
+$43,2,45,3,72,130,67$: the two near-zero troughs coincide with direct reuse of existing
+search routines, whereas peaks coincide with a noise-masking requirement and later
+mechanic-specific plans. Preserved intermediate states further distinguish recovered
+action sequences from subsequent reusable refactors. These results establish an
+auditable case study, not a benchmark-wide or compute-matched performance claim. They
+suggest that marginal source accounting can expose transfer and memorization that a
+solved-level total alone cannot distinguish.
 \end{abstract}
 
 \section{Introduction}
-ARC-AGI-3~\cite{chollet2019measure,arcagi3} poses interactive grid games whose rules are not
-given: an agent sees a $64\times64$ grid of colour integers, may press one of a few
-opaque buttons, and receives only a coarse reward when it completes a level. Nothing is
-labelled --- not the avatar, not the objects, not the goal. Solving such a game from
-scratch requires \emph{discovering} the perception, the manipulation mechanics, the
-objective, and a plan, and then \emph{transferring} what was learned to later levels
-and other games.
-This is a deliberately hard regime: the ARC-AGI-3 report describes human test-takers
-solving all environments while frontier AI systems scored below 1\% as of March
-2026~\cite{arcagi3}. The immediately preceding ARC Prize 2025 report identifies
-per-task refinement loops --- iterative program improvement guided by feedback --- as
-the defining successful pattern on ARC-AGI-2~\cite{arcprize2025}. Our work brings that
-pattern to the interactive ARC-AGI-3 setting, but with an explicit MDL/free-energy
-price on new program structure. Contemporary ARC-AGI-3 baselines also point toward
-explicit state tracking, exploration graphs, and executable world models rather than
-pure prompt-only reasoning~\cite{arcagi3graph,arcagi3worldmodels}; GKM differs by
-making the growth of those structures itself the priced object.
+ARC-AGI-3~\cite{chollet2019measure,arcagi3} consists of interactive grid games whose
+rules are withheld. An agent observes a $64\times64$ array of colour values, chooses
+among a small set of opaque actions, and receives sparse feedback when a level is
+completed. It must infer useful perceptual categories, mechanics, objectives, and plans
+from interaction. Successive levels create a second problem beyond task completion:
+determining whether competence transfers or whether each level is solved anew.
 
-Our thesis is that an agent equipped with a rich stock of \emph{human preconceptions}
-about the world, and disciplined by a single \emph{free-energy} selection rule, can do
-this itself, with the human contribution confined to (i) the rawest game-independent
-interface, (ii) the preconception priors, and (iii) the free-energy accounting. We make
-three points precise. First, the interface must expose \emph{only} what is common to
-all games, or it smuggles in a solution that will not transfer. Second, the reusable
-structure that lets later levels be cheap must be \emph{invented by a proposer}, not
-enumerated from a fixed library --- and admitted only against an empirical proof.
-Third, the accounting that decides ``is this structure worth its cost'' is the same
-free energy throughout, and it is exactly the object that makes transfer the parsimonious
-choice.
+This distinction is obscured by aggregate scores. A solver that composes a previously
+learned routine and one that stores a newly recovered action sequence may reach the same
+level, but they provide different evidence about generalization. The distinction is
+especially relevant for coding agents, whose iterative write--execute--revise loops are
+effective on ARC-style tasks~\cite{arcprize2025}, and for ARC-AGI-3 approaches based on
+exploration graphs or executable world models~\cite{arcagi3graph,arcagi3worldmodels}.
+Their executable artifacts make structural growth observable, but only if changes are
+recorded and charged rather than hidden in a cumulative program.
 
-\section{Background}
-\subsection{Kolmogorov complexity, MDL, and free energy}
+We study the following question: \emph{Can marginal description-length accounting make
+reuse, new solver structure, and literal memorization distinguishable in the growth
+history of an interactive agent?} We investigate it through a verifier-driven
+program-growth harness in which a coding proposer writes level solvers over a shared
+library. The game runtime validates behavioral progress, while a source-based ledger
+records the structure introduced at each level. The free-energy quantity
+$\F=R+\lambda C$ summarizes progress and cumulative marginal cost; in the present
+implementation it is an audit statistic rather than a complete optimizer over multiple
+candidate programs.
+
+The paper makes three contributions. First, it specifies an artifact protocol that
+separates proposal, fresh replay validation, promotion, and post-level refactoring.
+Second, it defines an operational marginal-complexity proxy under which unchanged
+library routines incur no new cost, per-level glue and new routines are charged, and
+literal paths remain visible in the ledger. Third, it reports complete promoted traces
+for two ARC-AGI-3 games, including
+intermediate artifacts that permit reuse and replay claims to be inspected. These are
+case studies of solver-growth accounting; they do not
+establish general ARC-AGI-3 performance or a compute-controlled advantage over other
+systems.
+
+\section{Related Work and Accounting Framework}
+\subsection{Description length and free energy}
 The (prefix) Kolmogorov complexity $K(x)$ is the length of the shortest program that
 outputs $x$; Solomonoff induction weights hypotheses by $2^{-K}$, formalising Occam's
 razor~\cite{kolmogorov1965,solomonoff1964,live2008}. $K$ is uncomputable, but its
-description-length spirit is usable: prefer the shortest structure that explains the
-data. We adopt a loss--complexity \emph{free energy}
+description-length principle motivates computable proxies that trade fit against model
+size. For a solver state $s$, let $L(s)$ denote the number of levels reached and let
+$C(s)$ denote a source-based complexity proxy. We summarize the trade-off by
 \begin{equation}
-  \F_\lambda(s) \;=\; R(s) \;+\; \lambda\,C(s),
+  \F_\lambda(s) \;=\; -L(s) \;+\; \lambda\,C(s),
   \label{eq:fe}
 \end{equation}
-where $R$ is empirical goal risk (here, unsolved levels) and $C$ is a description-length
-complexity of the candidate structure $s$; $\lambda$ tunes the pressure toward compact
-solutions~\cite{losscomplexity}. Equation~\eqref{eq:fe} is an MDL objective: a
-structure earns its complexity only if it buys enough reduction in risk.
+where $\lambda$ expresses the reporting scale between behavioral progress and program
+growth~\cite{losscomplexity}. In the experiments below, Eq.~\eqref{eq:fe} is a
+diagnostic summary. Advancement is decided by replay-validated level completion, not by
+optimizing Eq.~\eqref{eq:fe} over a controlled set of alternative candidates. We
+therefore do not interpret the reported values as an MDL optimum.
 
-\subsection{Schmidhuber: self-rewriting, PowerPlay, curiosity}
+\subsection{Self-modifying programs and interactive ARC agents}
 Schmidhuber's G\"odel machine~\cite{schmidhuber2007godel} is an agent that may rewrite
 \emph{any} part of its own code, including its learning algorithm, once it finds a proof
 that the rewrite increases expected reward. PowerPlay~\cite{schmidhuber2013powerplay}
 incrementally searches for the simplest task the system cannot yet solve together with a
 solver for it, never forgetting old skills. Artificial curiosity rewards
 \emph{compression progress}: transitions that make the agent's world model more
-predictable~\cite{schmidhuber2010curiosity}. We take three ideas: (a) the agent should
-\emph{write and revise its own problem-solving code}; (b) a candidate is adopted only
-against a \emph{proof of improvement} --- which we discharge \emph{empirically}, by the
-simulator, rather than by a theorem prover; (c) novelty/compression-progress can
-\emph{steer} exploration but is priced, not free.
+predictable~\cite{schmidhuber2010curiosity}. Our approach adopts the operational parts of this
+lineage: the agent revises executable problem-solving code, behavioral improvement is
+checked empirically, and retained structure remains inspectable.
 
-\subsection{The colimit-cone view of skills}
-A recurring construction in this project treats few-shot competence as a diagram of
-reusable behaviours (``legs'') together with priced gluings (``cones'') that compose
-them into a solution, selected by free energy. In the classical form the legs are
-\emph{discovered by interaction} and the cone is a search over them. Here we push the
-construction to its limit: the legs are \emph{written by the proposer} as program
-fragments, the cone that glues them is the proposer's own planner, and admission remains
-Eq.~\eqref{eq:fe}. The essential invariant is that a reused leg is already paid for, so
-composition is cheap and only genuine novelty is charged.
+ARC-AGI-3 introduces an interactive counterpart to static ARC tasks. Graph-based
+exploration represents observed states and transitions explicitly
+\cite{arcagi3graph}, while executable-world-model approaches synthesize transition
+programs and plan through them~\cite{arcagi3worldmodels,courtis2026opine}. Instead, we
+account for the growth of the solver program, regardless of whether a retained routine
+is a search procedure, a perceptual transformation, a plan, or a predictive model.
+
+\subsection{Structure functions for solver artifacts}
+For a finite observation history $x$ and a model class $\mathcal{S}$, a Kolmogorov
+structure function asks for the least description length among models that achieve a
+specified fit~\cite{vereshchagin2004}. The uncomputable ideal motivates the following
+empirical analogue. Let
+$V(s)$ be the number of levels reproduced by fresh replay from solver artifact $s$, and
+let $D(s)$ be its retained executable description length. For a finite set $\mathcal{P}$
+of proposed artifacts, define
+\begin{equation}
+ h_{\mathcal{P}}(v)=\min\{D(s):s\in\mathcal{P},\;V(s)\geq v\}.
+ \label{eq:structure-function}
+\end{equation}
+The function is empirical in two senses: it is restricted to proposed programs, and
+membership in the constraint set is decided by execution rather than formal proof.
+Nevertheless, it separates two questions that a level score conflates: whether a
+behavioral threshold has been reached, and how much retained executable structure was
+required to reach it. We record one verified path through this finite
+loss--complexity landscape. It does not claim to compute the global minimum in
+Eq.~\eqref{eq:structure-function}.
+
+The marginal trace is the positive variation along the retained construction history,
+with an important accounting convention: additions are charged when first admitted,
+whereas unchanged shared code is not charged again. Large positive increments indicate
+that the newly verified behavior was not expressible by the incumbent library without
+additional source or literals. Small increments indicate that a new player could be
+formed mostly by composition. This turns program history into an observable object
+rather than inferring transfer from final accuracy alone.
+
+\subsection{Kolmogorov structure functions and free-energy duality}
+The mathematical object is Kolmogorov's structure function. The recent work \cite{losscomplexity} develops its free-energy and Legendre--Fenchel treatment, taking
+the whole structure function rather than a single regularized optimum as the primary
+object. Let $m$ be the number of levels in a game and define
+replay risk by $R(s)=m-V(s)$. The empirical structure function is
+\begin{equation}
+  C^{*}_{\mathcal P}(r)
+  =\inf\{D(s):s\in\mathcal P,\ R(s)\leq r\}.
+  \label{eq:model-function}
+\end{equation}
+It is the least retained description among proposed artifacts achieving risk at most
+$r$. Equation~\eqref{eq:structure-function} is the same function in the level-depth
+coordinate:
+\begin{equation}
+  h_{\mathcal P}(v)=C^{*}_{\mathcal P}(m-v).
+  \label{eq:depth-risk-coordinate}
+\end{equation}
+This equivalence matters experimentally. A final score supplies one horizontal
+coordinate; a promoted source snapshot supplies the other. The full clean history
+samples a curve in the $(R,D)$ plane.
+
+The free-energy envelope is the one-parameter dual
+\begin{align}
+  \Phi_{\mathcal P}(\lambda)
+    &=\inf_{s\in\mathcal P}\bigl(R(s)+\lambda D(s)\bigr) \\
+    &=\inf_r\bigl(r+\lambda C^{*}_{\mathcal P}(r)\bigr),
+  \qquad \lambda>0.
+  \label{eq:model-dual}
+\end{align}
+Thus a sweep in $\lambda$ selects supporting lines of slope $-\lambda$ in $(D,R)$
+coordinates. Conversely,
+\begin{equation}
+  \underline C_{\mathcal P}(r)
+    =\sup_{\lambda>0}\frac{\Phi_{\mathcal P}(\lambda)-r}{\lambda}
+    \leq C^{*}_{\mathcal P}(r)
+  \label{eq:model-biconjugate}
+\end{equation}
+recovers the lower convex envelope visible to linear scalarization. Equality holds on
+supported points of the empirical frontier. Where a unique minimizer $s_\lambda$ is
+stable, the envelope theorem gives
+\begin{equation}
+  \Phi'_{\mathcal P}(\lambda)=D(s_\lambda),
+  \qquad
+  R(s_\lambda)=\Phi_{\mathcal P}(\lambda)
+                    -\lambda\Phi'_{\mathcal P}(\lambda).
+  \label{eq:model-envelope}
+\end{equation}
+Kinks therefore mark changes in the selected structural regime. This is the precise
+sense in which model complexity, free energy, and the Kolmogorov structure function encode the same
+frontier information.
+
+For two candidates $s$ and $s'$, free-energy selection admits the more complex candidate
+exactly when its replay improvement pays for its description increase:
+\begin{equation}
+  R(s)-R(s')>\lambda\bigl(D(s')-D(s)\bigr).
+  \label{eq:complexity-ratchet}
+\end{equation}
+The loss--complexity formulation from \cite{losscomplexity} yields this inequality;
+Eq.~\eqref{eq:complexity-ratchet} specializes it to solver artifacts. Our
+present promotion rule first requires strict replay progress, so the reported trace is
+not a complete $\lambda$ sweep. It is a verified chain that samples the structure function.
+On a nested chain with nondecreasing retained descriptions and one clean artifact per
+depth, the frontier increment $h_{\mathcal P}(k)-h_{\mathcal P}(k-1)$ equals the source
+increment. With refactors, the pathwise positive variation in
+Eq.~\eqref{eq:marginal-c} retains the historical price even when $D$ later falls. The
+two quantities answer different questions: the structure function asks for the shortest
+retained representative, while the ledger asks when new structure was paid for.
+
+\subsection{Categorical formulation}
+Let an environment be a deterministic transition system
+$E=(X,A,T)$, where $X$ is the set of frames augmented with internal solver state,
+$A$ is the action set, and $T:X\times A\to X$ is the transition map. A partial policy
+is a map $p:U_p\to A$ on some $U_p\subseteq X$. Search procedures, reactive routines,
+and literal paths all induce partial policies, although their program descriptions can
+have very different lengths.
+
+\begin{definition}
+The category $\mathsf{Pol}(E)$ has partial policies as objects and a unique morphism
+$p\to q$ when $U_p\subseteq U_q$ and $q|_{U_p}=p$. Thus morphisms are
+trace-preserving policy extensions. A family $(p_i)_{i\in I}$ is compatible when
+$p_i(x)=p_j(x)$ for every $x\in U_{p_i}\cap U_{p_j}$.
+\end{definition}
+This is a partially ordered set regarded as a category; colimits therefore coincide
+with least upper bounds when they exist~\cite{maclane1998}.
+
+\begin{theorem}[Compatible-policy colimit]
+Every compatible family $(p_i)_{i\in I}$ in $\mathsf{Pol}(E)$ has a colimit. Its
+domain is $U=\bigcup_i U_{p_i}$ and its action map is the union
+$p=\bigcup_i p_i$.
+\end{theorem}
+\begin{proof}
+Compatibility makes $p$ single-valued on overlaps. Each inclusion $p_i\to p$ is a
+morphism. If $q$ is any other cocone, then $q$ extends every $p_i$, hence extends their
+union $p$ and determines a morphism $p\to q$. Uniqueness follows because
+$\mathsf{Pol}(E)$ is a poset category.
+\end{proof}
+
+This elementary colimit becomes substantive at the representation level. A shared leg
+describes a partial policy intensionally; a level player supplies dispatch, sequencing,
+and boundary conditions that make selected policies compatible on the states actually
+encountered. New glue resolves overlaps or fills states not covered by the existing
+diagram. A debrief that replaces repeated literal actions by a parameterized ferry or
+search routine changes the program description of the same observed partial policy
+union. The behavioral colimit can therefore remain fixed while its structure-function
+value falls.
+
+Arbitrary Python programs do not expose their full policy domains, and replay visits
+only a finite trace.  Consequently, our method constructs a finite empirical diagram: the
+objects are observed leg behaviors, the cocone is the executable player, and commuting
+conditions are tested on replayed transitions. The construction is an under-approximation
+to $\mathsf{Pol}(E)$, but it is not metaphorical: the source names the component maps,
+the action trace supplies the tested states, and failed replay identifies a concrete
+failure of compatibility. Equation~\eqref{eq:marginal-c} estimates the additional
+description required to extend this empirical colimit from level $k-1$ to level $k$.
+
+The categorical construction also determines a natural two-part description code. Let
+$L_k$ be the set of shared legs available through depth $k$, and let $g_i$ encode the
+level-$i$ player: selected leg names, argument bindings, order, and residual glue. Up to
+a fixed interpreter and self-delimiting headers, the joint cone code is
+\begin{equation}
+  D_{\mathrm{cone}}(k)
+   =\sum_{\ell\in L_k}D(\ell)
+    +\sum_{i=1}^{k}D(g_i\mid L_i)+O(\log k).
+  \label{eq:cone-code}
+\end{equation}
+If existing leg definitions remain unchanged, extending the cone by one level costs
+\begin{equation}
+  \Delta D_{\mathrm{cone}}(k)
+   =\sum_{\ell\in L_k\setminus L_{k-1}}D(\ell)
+    +D(g_k\mid L_k)+O(\log k).
+  \label{eq:cone-marginal}
+\end{equation}
+This equation states the reuse claim precisely: an old leg is paid for once, while each
+new use pays only its binding and composition code. A literal action sequence remains
+part of $g_k$ and cannot become free by being placed on one source line. If a debrief
+replaces several literal gluings by one parameterized leg, the compression gain at
+fixed verified behavior is
+\begin{equation}
+  G_k=D_{\mathrm{cone}}^{\mathrm{before}}(k)
+      -D_{\mathrm{cone}}^{\mathrm{after}}(k).
+  \label{eq:compression-gain}
+\end{equation}
+The empirical structure function registers $G_k>0$ as a shorter representative; the
+historical marginal ledger does not erase the earlier construction cost. This is the
+mathematical distinction between compression of an artifact and retroactive deletion
+of provenance.
 
 \section{Method}
-\subsection{The rawest substrate}
-A persistent failure mode is smuggling the solution into the harness as a ``primitive'':
-any helper richer than the bare runtime --- a perception module, a typed object model, a
-push-versus-carry mechanic, a search planner --- is the programmer solving the game, and
-it does not survive a change of game \emph{type}. We therefore expose only
+\subsection{Questions and unit of analysis}
+The unit of analysis is a \emph{promoted solver transition}: a change from one clean,
+replay-validated artifact to another that clears at least one additional level. We ask
+three artifact-level questions. Does a later level compose previously admitted routines
+or introduce new executable structure? Can literal replay, new mechanics, and later
+abstraction be distinguished in the source history? Does the same protocol remain
+meaningful across games with different mechanics and marginal profiles? These questions
+concern attribution and auditability rather than global optimality. The observational
+object is the sequence of verified artifacts and the maps between them.
+
+\subsection{Interface and proposer}
+The game-independent interface exposes only
 \begin{center}
-\texttt{step(action)}$\to$\emph{frame}, \quad \emph{frame} (raw $64\times64$ grid),
-\quad \emph{levels\_completed} (reward), \quad \texttt{clone()} (lookahead).
+\texttt{step(action)}$\to$\emph{frame}, \; \emph{frame} (raw $64\times64$ grid),
+\; \emph{levels\_completed} (reward), \\ \; and \texttt{clone()} (lookahead).
 \end{center}
-Nothing here names objects, colours, walls, avatars, or goals. Perceiving objects,
-finding the controllable object, learning the mechanic, inducing the goal, modelling other
-agents, planning, and composing manoeuvres must all be produced \emph{inside} the loop.
+No interface field identifies objects, mechanics, or goals. The coding proposer is
+nevertheless not prior-free. Its prompt states general expectations about persistent
+objects, barriers, controllable and autonomous entities, sparse reward, and experimental
+probing. It receives file and shell tools and may interact with cloned environments while
+writing a \texttt{solve(env)} program. The reported artifacts were produced by a strong
+coding-agent proposer; an earlier prompt-only local model did not produce a successful
+trace. Proposer model calls and exploratory interactions were not normalized across
+levels and are not included in the complexity measure.
 
-\subsection{Preconceptions and the proposer}
-The proposer receives a system prompt of \emph{human preconceptions}: that frames contain
-persistent objects; that barriers partition space into regions and reachability must be
-reasoned per agent; that one object may be a controllable avatar and others autonomous
-agents (helpful or adversarial) that act on every move; that cooperation can require a
-hand-off at a shared boundary; that rewards are often sparse, so the agent should set
-itself dense surrogate objectives and discover its actions' affordances by experiment.
-These priors are deliberately \emph{non-procedural}: they say what a world tends to
-contain, not how to solve any game. Given the priors and the raw substrate the proposer
-\emph{writes a} \texttt{solve(env)} \emph{program} --- its perception, its mechanic
-probe, its planner, its strategy. The proposer is pluggable: a small local model, or the
-Claude Code agent invoked headlessly with file/shell tools and a tester, so it writes,
-runs, observes failures, and iterates --- the same write/run/fix loop a programmer uses.
-All reported results use the strong proposer; the small local model is presently too
-weak to drive the loop (Section~\ref{sec:discussion}).
+The proposer works in a disposable directory seeded from the latest clean promotion.
+It may write probes, inspect frames, execute candidates, and revise source. Temporary
+work can be much larger than the promoted program. The retained-complexity measure
+concerns the executable structure carried forward to subsequent levels; generation cost
+and interaction cost remain separate resources and are not silently folded into $C_k$.
 
-\subsection{Admission by free energy; the leg library}
-A written program is admitted only if replay lowers Eq.~\eqref{eq:fe} on the real
-game. We take $R$ to be minus the number of levels reached and $C$ to be the
-program's description length, with $\lambda$ small so parsimony breaks ties without
-stifling a larger program that clears more levels;
-compression-progress/disagreement add an intrinsic novelty term that only \emph{steers}
-exploration; earlier behaviour is preserved against regression; and the simulator is the
-ground-truth verifier (a candidate is replayed on a fresh environment and kept only if
-the reward actually advances). Two constraints govern the loop: selection cannot be a
-\emph{source} of novelty (that is the proposer's job), and discovery/strategy must be
-learned inside the loop, never hand-coded.
+\subsection{Program structure and promotion protocol}
+The workspace separates reusable and level-specific code. The module
+\texttt{legs.py} contains shared routines, \texttt{players.py} contains one thin entry
+point per level, and \texttt{solve.py} dispatches according to observed level progress.
+For level $k$, the harness first attempts to compose existing routines. If this fails,
+the proposer may add routines and level-specific glue. A candidate that reaches level
+$k$ is run again, and its recorded action sequence is replayed from a fresh environment.
+Only a replay-validated state is promoted. A separate debrief may then move repeated
+structure into the shared library, after which the solver is validated again. Failed,
+interrupted, pre-debrief, and post-debrief workspaces are preserved as provenance rather
+than merged into the promoted solver.
 
-To make later levels cheap we grow a \emph{leg library}. A shared module accumulates
-small named skills (perception helpers, navigation, transport, relay-across-a-barrier);
-each level's player is restricted to \emph{composing} those legs; after each level a
-\emph{debrief} refactors repeated code into shared legs and logs the recurring
-composition (itself a candidate higher-order leg). Crucially, the complexity term is
-\emph{marginal}: $C_{\text{marg}}$ counts only \emph{new} legs plus composition glue, so a
-reused leg costs nothing and Eq.~\eqref{eq:fe} literally rewards transfer. This is the
-colimit cone made operational, and it must be \emph{enforced by the harness}: merely
-asking the proposer to grow a library is ignored (it grows a monolith); restricting each
-player to composition over a shared library, with a separate refactor pass and marginal
-scoring, produces the intended behaviour.
+The promotion protocol has six stages: seed a workspace from the highest clean
+artifact; attempt composition from existing legs; permit a proposer to add source when
+reuse fails; execute and independently replay the candidate; measure and promote the
+validated delta; then debrief repeated glue into a higher-order leg and replay again.
+Known failed reuse attempts are keyed by level and library hash, so a restart does not
+repeat an identical expensive search. A proposer-mutated checkpoint is treated as an
+untrusted path candidate until the harness validates it. This order prevents edits that
+never solved a level, stale checkpoints, and unrefactored literal paths from being
+misreported as admitted abstractions.
 
-\section{Results}
-All results are replay-validated: the recorded action sequence is re-run on a fresh
-environment and must reach the claimed level. The ground truth for the claims below is
-the promoted GKM code/artifacts under \texttt{arc/crack\_lab/agent\_solutions/*\_legs}
-plus their preserved WIP snapshots.
+\subsection{Marginal-complexity measure}
+Let $d(f)$ be the number of nonblank, noncomment source lines in file $f$, plus the
+number of elements in Python list, tuple, set, and dictionary literals found by parsing
+its abstract syntax tree. The literal term prevents a long action sequence on one source
+line from receiving unit cost. If $\ell_k$ and $p_k$ are the shared-library and player
+sources after level $k$, the recorded marginal cost is
+\begin{equation}
+\begin{split}
+ &C_k = [d(\ell_k)-d(\ell_{k-1})]_+ + [d(p_k)-d(p_{k-1})]_+, \\
+ &\text{where } [x]_+ ={} \max(0,x).
+\end{split}
+ \label{eq:marginal-c}
+\end{equation}
+The cumulative ledger is $C_{\leq k}=\sum_{i\leq k}C_i$. Unchanged shared code
+therefore has zero marginal cost. New routines, glue, and container literals increase
+the statistic only to the extent that their file's total description size grows. This
+is a coarse, language-dependent proxy rather than Kolmogorov complexity:
+it ignores identifier length, comments, \texttt{solve.py}, temporary probes, model
+inference, environment interactions, and deleted code. Additions can cancel deletions
+within a file before the positive part is applied, and no negative credit is assigned
+when a refactor reduces source size. We use $\lambda=0.02$ only when displaying
+the diagnostic value in Eq.~\eqref{eq:fe}.
 
-\paragraph{Discovery and depth (\texttt{wa30}).} The current promoted \texttt{wa30}
-leg-library artifact is verified through level~9: \texttt{checkpoint.json} records
-\texttt{reached=9}, \texttt{validated=true}, a 596-action final path, and total
-marginal complexity 1243. Its run log reports
-$\F=-9+0.02\cdot1243=15.86$. The artifact is not a single opaque replay. The promoted
-\texttt{players.py} is a thin set of per-level compositions over shared legs:
-early levels use named movement/use and relay skills; levels~5--8 compose ferry,
-neutralise, courier-yield, and dual-socket filling legs; level~9 is a five-entry
-\texttt{ferry\_each} specification. The WIP snapshots preserve the search history:
-failed and interrupted proposals, reached-before-debrief states, recovered verified
-path artifacts, and after-debrief refactors. In particular, the level-9 WIP debrief
-shows that an initially recovered 61-action suffix was decoded into five repeated
-grab--carry--release ferries and refactored into \texttt{grab\_carry\_release} and
-\texttt{ferry\_each}, rather than left as an undifferentiated action string.
+Writing $D_k=d(\ell_k)+d(p_k)$, the two quantities have a precise relation. If neither
+file shrinks, then $C_{\leq k}=D_k-D_0$; with deletions or compressive refactors,
+$C_{\leq k}\geq D_k-D_0$. Thus $D_k$ locates the retained artifact in
+Eq.~\eqref{eq:structure-function}, whereas $C_{\leq k}$ records the pathwise
+construction charge. The experiments emphasize the latter because the question is when
+structure entered the verified history.
 
-The current artifact also supersedes the older level~6 claim. The important qualitative
-discoveries remain the same but now occur inside a longer growth trace: freezing target
-regions whose cells are overwritten by delivered objects; complementing autonomous
-helpers rather than competing with them; exploiting asymmetric carry collision at a
-wall boundary; neutralising autonomous agents that undo progress; and recognising a
-recurring ``neutralise, then deliver'' shape across later levels. The honest caveat is
-also preserved: some early runs used priors and probes that were later judged too
-informative about the carry family and relay concept. The promoted leg-library result is
-therefore best read as a replay-validated GKM growth artifact on \texttt{wa30}, not as a
-claim that every semantic hint was absent from every historical run.
+The implementation follows this definition directly. It counts nonblank, noncomment
+lines, parses Python with the standard abstract-syntax-tree parser, and adds one unit for
+each container-literal element. The positive-part operator makes accumulated recorded
+charges monotone, but it does not guarantee that every introduced structure was charged.
+A low $C_k$ supports reuse only when the
+player invokes previously charged behavior and the composed solver passes replay;
+therefore source provenance and behavioral validation are reported together.
 
-\paragraph{Transfer across game type (\texttt{ls20}).} The same enforced leg-library
-harness also promotes a \texttt{ls20} artifact verified through level~7:
-\texttt{reached=7}, \texttt{validated=true}, a 393-action final path, and total
-marginal complexity 362. This is a different game family: the early \texttt{ls20}
-levels are sliding-tile track puzzles rather than pick-up-and-carry logistics. The
-preserved debriefs show the agent first relying on full-frame BFS, then adding a
-generic noise-mask leg when a drifting HUD broke raw-frame deduplication, then using
-recovered verified paths for deeper levels where understanding combination-lock,
-energy, spring, patrol, and fog-of-war mechanics was cheaper than blind search. The
-same external interface and admission rule handle both games; what changes is the
-library the proposer grows.
+\subsection{Experimental and artifact scope}
+The study reports one accumulated development history for each of two local preview
+games, \texttt{wa30} and \texttt{ls20}; it does not report independent seeds or
+confidence intervals. The primary endpoints are the highest level reproduced by a fresh
+replay, replay action count, and the recorded sequence $(C_k)$. Promoted code,
+checkpoints, action paths, and intermediate workspaces are available in the repository
+\footnote{\href{https://github.com/sashakolpakov/gkm}{Project repository and artifacts available at https://github.com/sashakolpakov/gkm}.}.
+The replay procedure is documented in
+\texttt{REPRODUCE\_ARC.md}. This procedure reproduces the promoted behavior and ledger;
+it does not reproduce the stochastic and externally hosted coding-agent calls that
+generated the history.
 
-\paragraph{Leg reuse and marginal novelty.} The \texttt{ls20} promoted checkpoint gives
-the cleanest marginal-complexity trace (Table~\ref{tab:marg}). Levels~1--2 are cheap
-full-frame search; levels~3--4 add and reuse the noise-mask/search composition; levels
-5--7 use \texttt{solve\_by\_replay} for verified paths recovered from proposer WIP. The
-trace is sawtoothed rather than monotonically decreasing. Its drops
-($43\to2$, then $45\to3$) are direct evidence of transfer: once a leg exists, the
-next compatible level needs only glue. Its spikes ($45$, $72$, $130$) mark mechanic
-transitions: a drifting HUD/noise process, then recovered plan artifacts, then the
-combination-lock/display family. Level~7 drops again relative to level~6 because it
-reuses part of that lock/display understanding, while adding fog-of-war mapping and a
-new verified plan. This is exactly what the marginal free-energy accounting is meant
-to expose: reuse is cheap when the level admits reuse, and novelty is paid for when the
-game introduces new structure.
+\subsection{Artifact manifest and falsifiability}
+Each promoted game directory contains the shared library, per-level players, dispatcher,
+checkpoint, run summary, and debrief log. The checkpoint stores verified depth,
+cumulative marginal cost, transition records, the final action path, and validation
+status. The \texttt{wip\_context} tree retains reached-before-debrief, recovered-path,
+and after-debrief states. Git history retains earlier clean promotions, including the
+complete early \texttt{wa30} records used below.
 
-\begin{table}[h]
+Every central empirical claim has a direct countertest. Fresh replay can falsify depth
+or action count. Recomputing Eq.~\eqref{eq:marginal-c} on adjacent clean snapshots can
+falsify a ledger entry. Inspecting the player call graph can falsify reuse attribution,
+and comparing pre- and post-debrief source can falsify a claimed refactor. The manuscript
+is therefore a scholarly map to executable evidence; the repository is the primary
+result object.
+
+\section{Case Studies}
+The reported endpoints are reproduced from promoted checkpoints and action paths; the
+intermediate interpretations below come from the corresponding source snapshots and
+debrief records.
+
+\begin{table}[t]
 \centering
-\begin{tabular}{lccc}
+\small
+\begin{tabular}{@{}lrrr@{}}
 \toprule
-level & marginal $C$ (new structure) & cumulative $C$ & $\F$ \\
+Game & Levels & Replay actions & Ledger entries \\
 \midrule
-1 & 43 \; (full-frame search) & 43 & $-0.14$ \\
-2 & \phantom{0}2 \; (same search leg) & 45 & $-1.10$ \\
-3 & 45 \; (noise-mask search) & 90 & $-1.20$ \\
-4 & \phantom{0}3 \; (masked-search reuse) & 93 & $-2.14$ \\
-5 & 72 \; (verified replay path) & 165 & $-1.70$ \\
-6 & 130 \; (combination-lock path) & 295 & $-0.10$ \\
-7 & 67 \; (fog/lock path) & 362 & $+0.24$ \\
+\texttt{wa30} & 9/9 & 596 & 9 \\
+\texttt{ls20} & 7/7 & 393 & 7 \\
 \bottomrule
 \end{tabular}
-\caption{Promoted enforced leg-library artifact on \texttt{ls20}
-(\(\lambda=0.02\), \(R=-\text{level}\)): the sawtooth marginal trace drops under
-leg reuse and rises at mechanic transitions or literal verified plans.}
+\caption{Endpoints of the clean promoted artifacts. ``Ledger entries'' counts the
+per-level records available across the promoted artifact history.}
+\label{tab:endpoints}
+\end{table}
+
+\subsection{The \texttt{wa30} artifact}
+The promoted \texttt{wa30} checkpoint records nine levels reached, successful fresh
+replay, and a 596-action path. Its solver is not solely an action trace. Early player
+entries call movement, interaction, and relay routines; levels~5--8 compose transport,
+neutralization, courier-yield, and target-filling routines; and level~9 is represented
+as five calls through a shared \texttt{ferry\_each} interface. The preserved level-9
+history is particularly informative: a verified 61-action suffix first appears as a
+literal plan and is subsequently represented as repeated grab--carry--release
+operations through \texttt{grab\_carry\_release} and \texttt{ferry\_each}.
+
+The clean promoted history supplies a value for every level:
+$112,78,95,47,405,225,145,204,147$. The first four records are retained in the clean
+July 2 promotions, and the remaining records are retained in the successive deep
+promotions through level~9. Git commits \texttt{15c0a049}, \texttt{0ccea257},
+\texttt{875e5b86}, and \texttt{07a1885} make the progression directly inspectable.
+The large level-5 increment is followed by lower but still substantial costs because
+later levels continue to add logistics structure rather than becoming simple layout
+variants. Levels~6--8 nevertheless share a higher-order ``neutralize, then deliver''
+shape, while the level-9 debrief compresses a recovered suffix into a ferry batch.
+
+The historical record also contains a neutral-prior level-1 replication with cost 181
+and a Sonnet-produced replication with cost 164. These replications are evidence that
+the carry mechanic can be rediscovered under different proposer conditions; they are
+not substituted into the main chronological trace. The reported value 112 belongs to
+the promoted progression used for the complete ledger.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrrrrr@{}}
+\toprule
+Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
+\midrule
+$C_k$ & 112 & 78 & 95 & 47 & 405 & 225 & 145 & 204 & 147 \\
+\bottomrule
+\end{tabular}
+\caption{Complete \texttt{wa30} marginal record recovered from clean promoted
+artifacts in Git history.}
+\label{tab:wa30-ledger}
+\end{table}
+
+\subsection{The \texttt{ls20} artifact}
+The promoted \texttt{ls20} checkpoint records seven levels reached, successful fresh
+replay, a 393-action path, and a complete seven-entry marginal ledger totaling 362
+units. Its early levels are sliding-track puzzles rather than the transport tasks in
+\texttt{wa30}. The first solver uses full-frame search. When display noise makes raw
+frames unsuitable as search keys, the level-3 solver introduces a masking routine;
+level~4 reuses that routine with three units of player glue. Levels~5--7 retain verified
+plans recovered during proposal, including routines associated in the debriefs with a
+combination display, energy management, moving hazards, and partial observability.
+
+\subsection{The marginal ledger accounting}
+Table~\ref{tab:marg} and Fig.~\ref{fig:ls20-sawtooth} show the complete
+\texttt{ls20} trace. The two troughs have direct source-level provenance: levels~2 and~4
+invoke unchanged search code and add only small player entries. The peaks have different
+provenance. Level~3 adds masking and search structure, while levels~5--7 include explicit
+verified plans. The labels ``reuse'' and ``new mechanic'' are interpretations of the
+preserved code and debriefs, not independently measured ground-truth categories. Because
+Eq.~\eqref{eq:marginal-c} assigns zero cost to unchanged code by construction, the
+troughs validate the ledger's attribution and provenance rather than constituting an
+independent test of transfer.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrrr@{}}
+\toprule
+Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
+\midrule
+$C_k$ & 43 & 2 & 45 & 3 & 72 & 130 & 67 \\
+$C_{\leq k}$ & 43 & 45 & 90 & 93 & 165 & 295 & 362 \\
+\bottomrule
+\end{tabular}
+\caption{Complete marginal-complexity ledger for the promoted \texttt{ls20}
+artifact. Complexity units follow Eq.~\eqref{eq:marginal-c}.}
 \label{tab:marg}
 \end{table}
 
-\begin{figure}[h]
+\begin{figure}[t]
 \centering
-\includegraphics[width=0.92\linewidth]{figures/ls20_sawtooth.png}
-\begingroup
-\scriptsize
-\begin{verbatim}
-ls20 gives the cleanest “sawtooth” story:
-
-  L1  43   invent full-frame search
-  L2   2   reuse same search leg
-  L3  45   new issue: drifting HUD/noise breaks raw-frame dedup
-  L4   3   reuse masked-search leg
-  L5  72   recovered verified replay path / new plan artifact
-  L6 130   new mechanic: combination lock, energy, springs, patrol timing
-  L7  67   reuse parts of L6 lock/display understanding, but add fog/mapping
-
-  The consequence is not “complexity always goes down.” The consequence is stronger:
-
-  > Marginal complexity behaves like a novelty detector. It drops when a later level is expressible in existing legs,
-  > and spikes when the game introduces a genuinely new mechanic.
-\end{verbatim}
-\endgroup
+\includegraphics[width=0.72\textwidth]{figures/ls20_sawtooth.png}
+\caption{Marginal complexity across the seven promoted \texttt{ls20} levels.
+Reuse of an existing search leg produces the troughs at levels~2 and~4; new
+solver structure and verified plan literals produce the larger increments.}
 \label{fig:ls20-sawtooth}
 \end{figure}
 
-\paragraph{The complement on \texttt{wa30}: novelty tracks the game's novelty.} Running
-\texttt{wa30} under the same enforced library shows the honest counterpart. The
-promoted checkpoint records marginal novelty for levels~2 and~4--9 as
-$30,87,405,225,145,204,147$, with total marginal complexity 1243. The omitted early
-levels are already present in the promoted base state; the checkpoint records the
-resume history it can audit. The qualitative pattern is still clear from the code and
-WIP snapshots: \texttt{wa30} keeps introducing new logistics structure, so marginal
-complexity does \emph{not} collapse. Level~4 adds a larger ferry/yield composition;
-level~5 adds live-frame courier pacing; levels~6--8 share a higher-order
-\texttt{neutralize\_then\_deliver} pattern over different neutralisation and delivery
-subroutines; level~9 refactors a recovered path into the reusable \texttt{ferry\_each}
-batch leg. Reuse-collapse is therefore a property of the \emph{game's} level structure,
-not an artifact of the harness: the marginal price in Eq.~\eqref{eq:fe} is paid when
-the game demands new structure and drops when a new level can be expressed as a
-composition of existing legs.
+\subsection{What the two traces distinguish}
+The two games give complementary profiles. In \texttt{ls20}, levels~2 and~4 are close
+to the ideal colimit-extension case: a previously admitted search behavior covers the
+new states and the player supplies only a small amount of glue. Level~3 changes the
+effective state representation because a drifting display invalidates raw-frame
+identity; the cost increase is therefore attached to a new quotient of observation
+space, not merely a longer route. Levels~5--7 contain explicit plan information, so the
+ledger correctly keeps their cost visible even though replay succeeds.
 
-\section{Discussion and current scope}\label{sec:discussion}
-The architecture --- rawest substrate, preconception priors, free-energy admission,
-simulator-as-verifier, marginally-priced leg library --- is general and is the
-contribution. Three current bounds apply. (1) The claim is the promoted artifact result:
-\texttt{wa30} through level~9 and \texttt{ls20} through level~7 on the local preview
-games, not all ARC-AGI-3 games and not a private benchmark score. (2) The loop currently
-needs a strong proposer: a prompt-only local model mis-reasoned two-sided reachability
-under barriers even with the priors spelled out, so the interesting open question is how
-weak a proposer the same harness --- priors, simulator-as-verifier, free-energy
-admission --- can lift to competence. (3) Recovered verified paths are admissible under
-the artifact discipline only because they are independently replay-validated and charged
-as literal description length; they should not be confused with discovering a compact
-mechanistic leg until a debrief refactors them, as happened for \texttt{wa30} level~9.
-The same discipline governs interruption: WIP context is snapshotted on interrupt,
-restore never overwrites scratch state newer than the latest snapshot, and a
-proposer-mutated checkpoint is adopted only after independent replay validation ---
-so the preserved growth trace stays auditable across crashes and resumes.
+The \texttt{wa30} sequence tests a different regime. Level~1 establishes movement,
+interaction, transport, and perception. Level~2 adds an autonomous helper; level~3
+adds asymmetric relay across a barrier; and level~4 reuses the helper--relay mechanism,
+producing the early drop from 95 to 47. Level~5 requires live-frame courier pacing and
+is the largest increment in the complete trace. Levels~6--8 vary the agent that must be
+neutralized and the delivery topology, but the debrief identifies a shared two-stage
+control shape. Level~9 first enters as a verified suffix and is then factored into a
+parameterized ferry batch. Thus a downward marginal trend is not expected in general:
+the profile falls when an empirical policy colimit extends cheaply and rises when the
+domain, compatibility conditions, or retained plan information changes.
 
-\paragraph{Comparison to contemporary baselines.} The ARC-AGI-3 report lists
+This interpretation yields two testable predictions for future games. Repeated layout
+variants under stable mechanics should produce low marginal increments after the first
+successful abstraction. A mechanic change should produce an increment whose source
+diff localizes to new state representation, control, or glue. A scalar score makes
+neither prediction inspectable; the promoted transition history does.
+
+\section{Artifact-Level Comparison}
+\subsection{Contemporary ARC-AGI-3 systems}
+The ARC-AGI-3 report lists
 public-environment harnesses solving \texttt{ls20}, \texttt{ft09}, and \texttt{vc33};
 its paper source does not mention \texttt{wa30}~\cite{arcagi3}. The graph-exploration
 baseline evaluates \texttt{ls20} but not \texttt{wa30}; at its 4{,}000-interaction
@@ -313,63 +556,173 @@ comparison point it solves 2 levels on \texttt{ls20} and reports that levels~3+ 
 intractable for exhaustive exploration~\cite{arcagi3graph}. The closest comparator is
 the executable-world-model baseline, which reports \texttt{ls20} 7/7 with both of its
 models and \texttt{wa30} 7/9 versus 4/9 depending on the
-model~\cite{arcagi3worldmodels}. GKM is therefore not unique on \texttt{ls20}; its
-competitive point is \texttt{wa30} 9/9 replay-validated, together with the audit
-ledger behind the promoted solver --- preserved WIP snapshots, replay validation,
-marginal-complexity charges, charged literals, and leg-library refactors. This is a
-qualitative comparison, not a compute-matched one; a matched head-to-head is the next
-evaluation step.
+model~\cite{arcagi3worldmodels}. These figures establish neither an advantage nor a
+disadvantage for our approach because proposer models, interaction budgets, and evaluation
+conditions differ. The useful point of comparison is artifact scope: our harness adds a
+source-growth ledger and intermediate refactoring history to its promoted replays.
 
-\paragraph{Comparison to OPINE-World.} A recent leaderboard entry, OPINE-World~\cite{courtis2026opine},
-synthesizes an executable \texttt{game\_engine.py} per game and advertises the result as a
-learned world model. Two observations follow from our audit of its paper and published
-\texttt{wa30} artifacts. First, OPINE does not engage the compression-theoretic foundations of
-world modeling: apart from one citation of Schmidhuber's curiosity work as exploration
-motivation, neither the paper nor the released code makes contact with Kolmogorov complexity,
-Solomonoff induction, MDL, or Schmidhuber's self-rewriting line (G\"odel machine,
-PowerPlay)~\cite{kolmogorov1965,solomonoff1964,schmidhuber2007godel,schmidhuber2013powerplay}
---- and, consistently, it reports no description-length accounting of the model it grows.
-Second, OPINE publishes no marginal ledger, but its \texttt{wa30} archive is complete enough
-that we can \emph{measure} one: diffing all 65 recoverable \texttt{game\_engine.py} snapshots
-and attributing added tokens to the level active at each synthesis run yields per-level
-marginal novelty of $3243, 3978, 1712, 2053, 1246, 1136, 266, 3310, 1444$ normalized Python
-tokens (Fig.~\ref{fig:gkm-opine}, middle). The measured profile lacks both teeth of the
-sawtooth that actual world-model learning predicts. There is no reuse tooth: the cheapest
-level still charges 266 new tokens, and every level additionally ships a verbatim 8{,}464-byte
-level-entry pickle that the final transition function loads on reset --- a per-level literal
-cost that never amortizes. And there is no compression tooth: across all 65 revisions,
-retained source grows from 1{,}882 to 14{,}161 tokens (7.5$\times$). It shrinks in only
-8 of 64 revision steps, and the largest single-revision shrink is 222 tokens, 1.6\%
-of the final model, so no refactor ever compresses accumulated structure into
-abstractions. In the GKM ledger both teeth are load-bearing:
-\texttt{ls20} levels~2 and~4 cost 2 and 3 because they compose existing legs, and the
-\texttt{wa30} level-9 refactor compresses a recovered literal path into the reusable
-\texttt{ferry\_each} leg. In relative terms OPINE's \texttt{wa30} floor is comparable
-to GKM's because this game keeps demanding novelty from any solver; that caveat does not
-change the artifact-level result. The OPINE archive exposes accumulated replay machinery:
-uncompressed per-level literal caches, no charged reuse ledger, and no material compression
-event. Under description-length accounting, that is not evidence for a compressed world
-model.
+\subsection{A common artifact audit}
+Executable agents can be compared without pretending that unlike complexity units are
+equal. Four questions apply to either solver programs or synthesized world models:
+(i) what executable object is retained after a level; (ii) which behavioral claim is
+independently replayed; (iii) how is new source or data attributed to the active level;
+and (iv) what evidence shows that later behavior factors through earlier structure?
+Table~\ref{tab:audit-axes} applies these questions to the available artifacts.
 
-\begin{figure}[h]
+\begin{table}[t]
 \centering
-\includegraphics[width=\linewidth]{figures/gkm_opine_marginal_complexity.png}
-\caption{GKM vs.\ OPINE complexity profiles; both marginal profiles are \emph{measured}.
-Left: GKM's admitted per-level novelty drops to near zero when a level is expressible in
-existing legs (\texttt{ls20} L2$=$2, L4$=$3) and spikes when the game demands new structure.
-Middle: OPINE \texttt{wa30} marginal novelty measured from its own artifacts ---
-diff-added source tokens across all snapshots in each level. The floor is 266 tokens, and
-each level also carries a verbatim 8{,}464-byte entry cache. Right: OPINE's retained
-\texttt{game\_engine.py} grows 7.5$\times$ across 65 revisions; it shrinks in only
-8 of 64 revision steps, with largest shrink 222 tokens. Units differ between panels;
-the comparison is profile shape.}
+\small
+\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.18\textwidth}
+  >{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
+\toprule
+Audit axis & Our approach & OPINE-World \texttt{wa30} archive \\
+\midrule
+Retained object & Shared solver legs, thin level players, dispatcher, checkpoint, and
+validated action path & Cumulative executable transition model plus level-entry state
+caches \\
+Behavioral evidence & Fresh replay of promoted paths through 9/9 and 7/7 levels &
+Published run log and final model archive for the reported 9-level run \\
+Growth record & Clean promoted transitions, checkpoint ledger, Git history, and
+pre-/post-debrief workspaces & 65 recoverable \texttt{game\_engine.py} synthesis
+snapshots ordered by the run log \\
+Marginal unit & Positive net file-size change plus AST literal elements & Diff-added
+normalized Python tokens grouped by active level \\
+Reuse evidence & Player calls into unchanged charged legs; named higher-order refactors
+validated by replay & Functional reuse may occur, but the archive does not publish a
+charged leg/glue ledger \\
+Literal data & Container literals are explicitly surcharged & Final transition model
+loads nine 8,464-byte entry-state caches \\
+\bottomrule
+\end{tabularx}
+\caption{Artifact-level comparison. The columns describe what can be audited from each
+published object; their complexity magnitudes are not directly commensurate.}
+\label{tab:audit-axes}
+\end{table}
+
+\subsection{OPINE-World artifact audit}
+OPINE-World calls its synthesized \texttt{game\_engine.py} an executable world
+model~\cite{courtis2026opine}. For the present audit, that term requires more than an
+executable replay surrogate. A world-model artifact must expose a compact transition
+account that generates level behavior from shared rules; it must not depend on loading
+the observed entry frame for each level as an external fact. Its revision history should
+also reveal compression or charged reuse when later levels factor through earlier
+structure. The published \texttt{wa30} artifact fails both tests.
+
+First, the final transition function explicitly loads
+\texttt{l\%d\_initial.pkl} on reset and on a level-completing transition. It therefore
+does not generate the nine level-entry states from its learned transition structure.
+Each of the nine final caches is an 8,464-byte verbatim state object, for 76,176 bytes
+of retained level-entry data. Across the archive, 389 such caches occupy 3,292,496 raw
+bytes. This is valid replay support for a previously observed environment, but it is
+not a compressed generative account of the game.
+
+Second, all 65 synthesis snapshots are recoverable, so the absence of a compression
+profile is measurable rather than conjectural. Writing $A_k$ for diff-added source at
+level $k$, the measured sequence is
+\begin{equation}
+ (A_1,\ldots,A_9)
+ =(3243,3978,1712,2053,1246,1136,266,3310,1444),
+ \qquad \sum_k A_k=18388.
+ \label{eq:opine-added}
+\end{equation}
+Every level admits hundreds or thousands of new tokens. The 266-token minimum
+at level~7 is not a reuse tooth: it remains a substantial source addition and still
+ships a separate entry-state cache. Variation in synthesis burden is not the previously
+discussed sawtooth, whose troughs are tied to named unchanged legs and near-zero glue.
+
+Nor is there a compression ``tooth'' in retained size. Source grows from 1,882 to 14,161
+tokens, or 7.52 times its initial size. Only 8 of 64 consecutive revisions shrink, and
+the largest reduction is 222 tokens, merely 1.6\% of the final program. No revision
+refactors accumulated level cases into a substantially smaller shared account. The
+published object grows by accretion.
+
+\paragraph{Audit verdict.}
+The measurable OPINE \texttt{wa30} artifact is a cumulative simulator plus cached
+level-entry frames. It can be executed and used for planning, but execution alone does
+not make it a world model in the structure-function sense. The archive exhibits neither
+a charged reuse sawtooth nor a compression event, and it does not generate its own level
+initial conditions. Consequently, the published artifact does not substantiate the
+claim that OPINE learned a compressed generative world model; it substantiates an
+accumulated replay model of the observed game.
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=\textwidth]{figures/gkm_opine_marginal_complexity.png}
+\caption{Artifact growth profiles. Left: complete per-level records from our approach,
+with reuse troughs attributable to unchanged named legs. Middle: every OPINE
+\texttt{wa30} level adds hundreds or thousands of Python tokens; no level is a near-zero
+charged reuse. Right: OPINE retained source grows 7.52-fold, without a substantive
+compression event. The units differ, so the evidential comparison is profile and
+provenance, not magnitude.}
 \label{fig:gkm-opine}
 \end{figure}
 
-Relative to the classical colimit-cone experiments, where reusable structure is enumerated
-and priced, here it is \emph{invented} and priced by the same free energy; the two are
-ends of one spectrum, and Table~\ref{tab:marg} is direct evidence that the artifact
-records transfer and novelty in the same currency.
+\section{Discussion}\label{sec:discussion}
+\subsection{Interpretation}
+The artifact protocol answers a narrower question than whether a system has learned a
+general world model. It records where executable solver structure resides and whether a
+later player invokes previously charged code, adds new source, or retains a literal
+plan. In \texttt{ls20}, that distinction is visible in a complete chronological ledger.
+In \texttt{wa30}, the late level-9 history demonstrates a second useful distinction:
+behavioral replay can validate a literal plan before the debrief identifies a reusable
+transport pattern. Treating those two representations as equivalent would conceal the
+structural change.
+
+\subsection{Colimits as compression events}
+The categorical and algorithmic accounts meet at debrief time. Before refactoring, a
+literal suffix describes a policy only on the states of one verified trace. A
+parameterized leg describes a larger partial policy and supplies maps from several
+level-specific instances into one shared object. When the new description replays the
+old traces, the refactor is a compression event: behavioral coverage is preserved while
+the factorization becomes reusable. The level-9 \texttt{ferry\_each} change is the
+clearest instance in the repository. Conversely, a thin player that merely calls an
+unchanged search leg is already expressed in the incumbent colimit and needs little new
+description.
+
+The ledger deliberately charges additions rather than estimating semantic novelty from
+model activations or prose. This gives it a stable audit surface. A reviewer can locate
+the exact source introduced at a transition, decide whether the claimed abstraction is
+present, and run the composite. The price is representation dependence: a Python source
+measure is not an invariant of behavior. Equation~\eqref{eq:structure-function} makes
+the correct response explicit: compare multiple descriptions that attain the same
+verified threshold. The present repository supplies the first such points, including
+literal and refactored variants; a broader structure-function sweep is a natural next
+experiment.
+
+\subsection{Repository as the contribution surface}
+For a self-revising coding agent, a final source file omits the central scientific
+object: the sequence of proposals, validations, promotions, and compressions. The GitHub repository retains this sequence at three resolutions. Checkpoints provide machine-
+readable behavioral and complexity records; Git promotions provide clean chronological
+states; WIP snapshots show how recovered paths became admitted programs and later
+abstractions. The paper supplies definitions and interpretation, but the evidential
+weight lies in those executable transitions.
+
+This changes what replication means. Exact regeneration of stochastic coding-agent
+transcripts is useful for cost studies but unnecessary for testing the promoted claims.
+An independent implementation can replay the paths, recompute source deltas, and inspect
+whether the named legs factor the stated behaviors. It can then substitute a different
+proposer or complexity code while preserving the artifact protocol. The method is thus
+separable from the particular model that generated the current repository.
+
+\subsection{Scope and validity}
+The claims are deliberately artifact-scoped: two complete game traces, their promoted
+per-level records, and an audit of a published comparator archive. They are falsifiable
+by the repository procedures above. They do not assert a benchmark-wide frequency or a
+compute-matched cross-system ranking; neither assertion is needed for the measured
+replay, provenance, and marginal-complexity results to be valid.
+
+\section{Conclusion}
+Aggregate task completion cannot distinguish reusable solver growth from the retention
+of task-specific code or action traces. Our approach makes that distinction inspectable by
+combining fresh replay, a constrained shared-library structure, preserved intermediate
+states, and a marginal source ledger. The two case studies show that the protocol can
+record both near-zero-cost routine reuse and costly literal or mechanic-specific
+additions. The Kolmogorov structure-function view places each clean solver in an
+empirical behavior--description plane; the categorical view identifies reusable competence
+with compatible partial policies and their empirical colimit. Together they turn a
+self-improving solver from a final score into an auditable growth object. The primary
+contribution is the replayable repository of that growth, with the manuscript providing
+its formal and empirical account.
 
 \bibliographystyle{plain}
 \bibliography{references}

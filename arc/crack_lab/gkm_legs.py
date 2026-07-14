@@ -82,9 +82,12 @@ def description_complexity(code: str) -> int:
 
 def marginal_complexity(legs_before: str, legs_after: str,
                         players_before: str, players_after: str) -> int:
-    """C_marginal = NEW structure introduced this level. Growth of the shared library
-    plus growth of the per-level players. A reused leg is already in legs_before, so
-    it contributes 0 -- reuse is free, only novelty is paid for."""
+    """Return positive net description growth in the library and player files.
+
+    Unchanged code contributes zero. Additions and deletions within the same file are
+    netted before the positive part is taken, so this historical metric is not gross
+    diff size and must not be interpreted as charging every newly written structure.
+    """
     return (max(0, description_complexity(legs_after) - description_complexity(legs_before))
             + max(0, description_complexity(players_after) - description_complexity(players_before)))
 
@@ -1548,3 +1551,15 @@ if __name__ == "__main__":
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
                 minutes_per=minutes, tag=tag, seed_artifact=not fresh,
                 restore_wip=restore_wip)
+MARGINAL_COMPLEXITY_CONTRACT = {
+    "field": "marginal_C",
+    "label": "positive net retained-description growth per source file",
+    "formula": (
+        "max(0, d(legs_after)-d(legs_before)) + "
+        "max(0, d(players_after)-d(players_before))"
+    ),
+    "limitation": (
+        "additions and deletions within the same file are netted before the "
+        "positive part, so same-size replacement can receive zero"
+    ),
+}

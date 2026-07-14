@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game": "wa30",
+  "through_level": 4,
+  "replay_validated": true,
+  "source_observed_reached": null,
+  "embedded_checkpoint_actions": null,
+  "embedded_checkpoint_records": null,
+  "clean_core_digest": "5c543f87c358",
+  "source": {
+    "kind": "git",
+    "value": "0ccea2572ea7990f1573ac34bfbc5d83bd688bd7",
+    "prefix": "arc/crack_lab/agent_solutions/wa30_legs"
+  },
+  "files": {
+    "legs.py": "e1b000b6febd81d51d1ce60cc114b30d0216c90515f7decc127cd95e45bdd2ba",
+    "legs_log.md": "4c4c7d7c20b39161245358f1181bc35b4cde6482d7446b9d896dd64e26b0efce",
+    "players.py": "5b43fbb64b8e16a51a67156e64b9f9cf55e98991ad2e6fd624ce4eaadf3b65ec",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

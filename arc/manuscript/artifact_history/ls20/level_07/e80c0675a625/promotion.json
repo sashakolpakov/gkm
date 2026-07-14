@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "through_level": 7,
+  "replay_validated": true,
+  "source_observed_reached": 7,
+  "embedded_checkpoint_actions": 393,
+  "embedded_checkpoint_records": [
+    {
+      "level": 1,
+      "marginal_C": 43,
+      "reached": true
+    },
+    {
+      "level": 2,
+      "marginal_C": 2,
+      "reached": true
+    },
+    {
+      "level": 3,
+      "marginal_C": 45,
+      "reached": true
+    },
+    {
+      "level": 4,
+      "marginal_C": 3,
+      "reached": true
+    },
+    {
+      "level": 5,
+      "marginal_C": 72,
+      "reached": true
+    },
+    {
+      "level": 6,
+      "marginal_C": 130,
+      "reached": true
+    },
+    {
+      "level": 7,
+      "marginal_C": 67,
+      "reached": true
+    }
+  ],
+  "clean_core_digest": "e80c0675a625",
+  "source": {
+    "kind": "current",
+    "value": ".",
+    "prefix": ""
+  },
+  "files": {
+    "auto_solve_attempts.json": "4f08f9e136b89d964a0f88003c87b3f03063e14929ed3f0df3198f00859099b9",
+    "checkpoint.json": "cc2ca8d4ca3ea5331f8e4f2f87a072a32974a87fd1e734936864f9aa8ddb1639",
+    "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
+    "legs_log.md": "477af066568e3fe8b6bfca82acc57cff8f6daa5a53ff53ef4519cf33e7c445d4",
+    "players.py": "7042b503d8905037ecbf5dd4c70b014c1f95a788ae8b822758b18107c6e8fc0e",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

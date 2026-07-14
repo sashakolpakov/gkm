@@ -1,246 +1,128 @@
-Self-Improving Agent
-====================
+ARC-AGI-3 Program-Growth Audit
+================================
 
-This page summarizes the self-improving agent line of the GKM program: an agent
-that figures games out **on its own**, carrying a stock of human preconceptions,
-inside a GKM / Goedel-machine loop. It is the culmination of the colimit-cone
-view, where the reusable structures (the "legs") are no longer mined from a
-fixed library but are **written by a proposer** and admitted by the same
-free-energy accounting used elsewhere in the manuscript.
+This chapter documents the ARC-AGI-3 artifact study. A coding proposer writes
+level solvers, a local simulator validates promoted behavior by replay, and the
+repository retains the source and intermediate states needed to inspect growth.
+The study concerns artifact provenance. It is not an official ARC-AGI-3
+sample-efficiency or leaderboard evaluation.
 
-The Thesis
-----------
+Interface Scope
+---------------
 
-The macro experiments isolate one half of the program: a free-energy rule that
-admits a reusable abstraction only when it pays for itself, with candidate
-structures supplied by enumeration. The complementary half is where the
-candidate structures *come from* when they cannot be enumerated. Here the
-reusable structures are whole programs of perception, mechanic discovery,
-planning, and strategy, and they are produced by a proposer rather than picked
-from a list.
-
-The target environments are local ARC-style keyboard games, played only through
-their runtime. The running example is the game ``wa30``.
-
-The Rawest Substrate
---------------------
-
-A recurring failure mode was smuggling the solution into the harness as a
-"primitive." Any helper richer than the bare runtime interface (a perception
-module, a typed object model, a push-versus-carry mechanic, a search planner) is
-the programmer solving the game for the agent, and it does not transfer to a
-different *type* of game.
-
-The corrective is to expose only the boundary common to all games. The
-``Arena`` substrate hands the proposer exactly four things:
+The local ``Arena`` supplies:
 
 .. code-block:: text
 
    step(action)        -> next frame
    frame               -> raw 64x64 integer grid
    levels_completed    -> scalar reward
-   clone()             -> a copy for lookahead
+   clone()             -> independent state copy for lookahead
 
-Nothing in this interface mentions objects, colours, walls, avatars, or goals.
-It is the only contract that survives a change of game type, so it is the only
-contract the substrate provides. Everything else (perceiving objects, finding
-the controllable object, learning the mechanic, inducing the goal, modelling an
-autonomous helper, planning, composing manoeuvres) must be produced inside the
-loop. None of it is hand-coded.
+``clone()`` is a strong simulator oracle. Search routines can fork a state and
+evaluate actions without spending steps on the retained trajectory. The official
+ARC-AGI-3 environment wrapper documents ``reset()`` and ``step()`` but not arbitrary
+state forking. Accordingly, the reported 596 and 393 actions are final replay-path
+lengths. They exclude cloned exploration, failed trials, proposer calls, and compute.
 
-Human Preconceptions and the Proposer
--------------------------------------
+The local interface does not label game objects or goals. That fact should not be
+confused with prior-free discovery: prompts, discovered context, and development
+history can still transmit mechanic-specific information.
 
-The proposer is given a rich system prompt of **human preconceptions**: that
-frames contain objects with persistent identity; that some objects are
-containers and barriers partition space into regions; that one object may be a
-controllable avatar and others may be autonomous agents with their own goals;
-that cooperation can require a hand-off where one agent leaves something where
-another can reach it; that reachability is constrained by barriers and must be
-reasoned about per agent; that rewards may be sparse, so the agent should set
-itself dense surrogate objectives and discover the affordances of its actions.
-
-These priors are deliberately non-procedural. They describe what kinds of things
-a world tends to contain, not how to solve any particular game.
-
-Given those priors and the raw substrate, the proposer **writes its own code**:
-a ``solve(env)`` program containing its perception, its mechanic probe, its
-planner, and its strategy. The proposer is pluggable:
-
-- a **small local model**, which is currently too weak to drive the loop; and
-- the **Claude Code agent** invoked headlessly with file and shell tools and a
-  tester, so it writes a solution, runs it on the real ``Arena``, reads the
-  failures, and iterates -- the same write/run/fix loop a human programmer uses.
-
-All reported results use the strong proposer.
-
-Free-Energy Admission
----------------------
-
-A written program is admitted only if it verifiably improves on the incumbent,
-scored by the same free energy as the rest of the program:
-
-.. code-block:: text
-
-   F = R + lambda C
-
-where ``R`` is driven by ``levels_completed`` on the real game and ``C`` is the
-program's description length, with ``lambda`` small so that parsimony breaks ties
-between equally capable programs without stifling a program that is large but
-clears more levels. Compression-progress and disagreement signals supply an
-intrinsic novelty term that *steers* exploration when the reward is flat, and
-earlier admitted behavior is preserved against regression. The simulator is the
-ground-truth verifier: a candidate is replayed on a fresh environment and kept
-only if the reward actually advances.
-
-The Source-of-Novelty Principle
--------------------------------
-
-Two constraints govern the loop:
-
-1. **Selection and pricing cannot be a source of novelty.** Free energy can only
-   rank and compress structures it is given; the new structure must come from the
-   proposer.
-2. **Discovery and strategy must be learned inside the loop, never hand-coded.**
-
-Together they place the burden of invention on the proposer and the burden of
-honesty on the verifier. This is the stance of Schmidhuber's Goedel machine and
-PowerPlay: a system that rewrites its own problem-solving code and adopts a
-rewrite only against an empirical proof of improvement -- here discharged by the
-simulator rather than by a formal theorem prover.
-
-Result on ``wa30``
+Promotion Protocol
 ------------------
 
-The probe-discovered context for ``wa30`` (the controllable avatar, the carrier
-objects, the container region, the pick-up-and-carry mechanic, and the toggle
-action) is established by interaction, not declared. Handed that context and the
-preconception priors, the uncrippled Claude proposer wrote a single adaptive
-``solve(env)`` program over roughly 4.2 hours of write/run/fix iteration (final
-program 359 lines) that cracks ``wa30`` levels 1, 2, **and** 3. The result is
-replay-validated: an independent replay of the recorded 288-move sequence on a
-fresh environment reaches level 3, at ``F = -1.920``.
+The retained solver has three principal parts:
 
-The proposer found the insights that had earlier been hand-coded in failed
-attempts. An honest audit of *what was given*: the priors of these runs were not
-fully neutral -- distilled from earlier human play of this game, they contained an
-attach-carry-release experiment recipe and a relay-at-a-boundary hint, and the
-interaction probe named the mechanic ("pick-up-and-carry") from a hand-coded verb
-vocabulary. The priors have since been **neutralized** (generic world-priors only);
-re-cracking ``wa30`` from scratch under them is the discriminating experiment.
-Beyond the priors, the agent demonstrably found:
+* ``legs.py`` contains shared routines;
+* ``players.py`` contains level entry points and composition glue; and
+* ``solve.py`` dispatches to the appropriate player.
 
-- It learned to **freeze** the container region at level start. A delivered
-  carrier turns its slot the carrier colour and disappears from the interior
-  detector; without freezing, delivered carriers are re-counted as loose and the
-  goal signal is corrupted.
-- On level 2 it learned to **complement** the autonomous helper by delivering the
-  carriers farthest from the container, rather than competing for the same ones,
-  then idling to let the helper tick forward.
-- On level 3 it exploited the engine's **asymmetric** carry collision: a carried
-  carrier can be placed onto a dividing-wall cell the avatar itself cannot enter,
-  so the avatar relays each left-side carrier onto the wall column, where the
-  right-side helper picks it up and ferries it to the container.
+A proposal is executed, its action path is replayed from a fresh environment, and
+only a validated state is promoted. Pre-debrief, recovered-path, interrupted, and
+post-debrief workspaces are retained under ``wip_context``. This distinguishes a
+successful literal plan from a later parameterized refactor.
 
-All three were discovered from raw frames plus the probed context plus the
-priors, with no hand-coded leg. A later credited run extended the same solver
-further, reaching ``wa30`` **level 6** (458 moves, replay-validated, ``F = -3.903``)
-before a session limit stopped it. That run also exposed a limitation: asked in the
-prompt to grow a reusable *leg library* (see below), the agent ignored the request
-and instead grew a single monolithic solver -- the leg-library discipline has to be
-enforced by the harness, not merely requested.
+Source-Growth Statistic
+-----------------------
 
-The **current promoted artifact** supersedes those runs: under the enforced
-leg-library harness, ``wa30`` is replay-validated through **level 9 of 9**
-(``reached=9``, ``validated=true``, a 596-action final path, total marginal
-complexity 1243, ``F = -9 + 0.02 * 1243 = 15.86``). The promoted ``players.py``
-is a thin set of per-level compositions over shared legs: levels 5--8 compose
-ferry, neutralise, courier-yield, and dual-socket filling legs, and level 9 is a
-five-entry ``ferry_each`` specification obtained by debriefing a recovered
-verified 61-action suffix into ``grab_carry_release`` ferries. The preserved WIP
-snapshots keep the full search history auditable: failed and interrupted
-proposals, recovered verified path artifacts (charged as literals), and
-after-debrief refactors.
+For source text ``f``, let ``d(f)`` count nonblank, noncomment lines plus the number
+of elements in Python list, tuple, set, and dictionary literals. The historical
+checkpoint field ``marginal_C`` is
 
-Honest Caveats
---------------
+.. math::
 
-The result is bounded in two ways:
+   C_k = [d(legs_k)-d(legs_{k-1})]_+
+       + [d(players_k)-d(players_{k-1})]_+.
 
-- The claim is precisely the promoted artifacts: ``wa30`` through level 9 of 9
-  (596 actions, total marginal complexity 1243) and, for the same harness pointed
-  at a **second** game type (``ls20``, sliding-tile track puzzles), level 7 of 7
-  (393 actions, total marginal complexity 362) -- both replay-validated on the
-  local preview games. It is not the full ARC-AGI-3 distribution and not a
-  private benchmark score. The ``ls20`` transfer is the intended evidence that
-  the rawest substrate carries across game *types*; recovered verified paths
-  inside the artifacts are charged as literals and are not compact mechanistic
-  legs until a debrief refactors them.
-- The loop currently needs a **strong** proposer. A system-prompt-only local
-  model mis-reasoned two-sided reachability under barriers even with the priors
-  spelled out, asserting feasibility where the interaction verifier proved boxes
-  were stranded. The architecture (the rawest substrate, the preconception
-  priors, the free-energy admission, and the simulator as verifier) is general
-  and is the contribution; the open question is how weak a proposer that harness
-  can lift to competence.
+This is positive **net retained-size growth per file**, not gross diff additions and
+not semantic novelty. For example, replacing 100 charged units with 100 different
+units in the same file contributes zero. Unchanged shared code also contributes zero.
+Therefore a low value supports reuse only when source inspection identifies calls to
+previously retained routines and fresh replay validates the composition.
 
-Growing a Leg Library
----------------------
+The statistic is preserved because it is the one stored in the historical artifacts.
+Changing it now would invalidate comparisons with those checkpoints. A future gross
+diff or tree-edit ledger would need to be recomputed from paired snapshots and reported
+as a different measure.
 
-Re-deriving every level from scratch is wasteful and, worse, misses the point. The
-intended discipline is to grow a **library of legs** -- small, named, reusable
-program fragments (perception helpers, navigation, an object-transport skill, a
-relay-across-a-barrier skill) -- and to solve later levels by **composing** existing
-legs with as little new structure as possible. On the early levels the agent still
-invents legs, because it is learning the game's rules; by the later levels it should
-recognise a level as an earlier one in a different geometric configuration that is
-semantically the same, and clear it by combining known legs, adding almost nothing
-new. The novelty then lives in the *combination*, and the agent iterates on the
-composition far more than on the legs. After each level a **debrief** compares the new
-solver to the previous ones, refactors repeated code into shared legs, and logs the
-recurring composition pattern (itself a candidate higher-order leg).
+Promoted Endpoints
+------------------
 
-This is exactly ``F = R + lambda C`` with the right complexity term: ``C`` is the
-**marginal** novelty introduced -- the description length of *new* legs plus the
-composition glue -- so a reused leg costs nothing and parsimony directly rewards
-transfer. It is the same accounting as the macro experiments, now applied to
-invented rather than enumerated structure.
+.. include:: generated/arc_artifacts.rst
 
-Merely *requesting* this in the prompt was not enough (the agent grew a monolithic
-solver instead), so the discipline is **enforced by the harness**: each level's player
-is restricted to composition over a shared ``legs.py``, a separate refactor pass runs
-after each level, and free energy is scored on marginal new-leg size. The promoted
-``ls20`` artifact (level 7 of 7, replay-validated, total marginal complexity 362)
-gives the cleanest trace, and it is a **sawtooth**, not a monotone decline:
+The ``ls20`` checkpoint records ``43, 2, 45, 3, 72, 130, 67``. At L2 and L4,
+the thin player entries call unchanged search routines, which makes the small net
+growth values attributable to reuse in those two transitions. Larger entries retain
+more source or literal plan information. The sequence is an auditable construction
+history, not an estimator of Kolmogorov complexity.
 
-.. code-block:: text
+The complete published ``wa30`` ledger is
+``112, 78, 95, 47, 405, 225, 145, 204, 147`` for L1--L9. The manuscript audit
+sidecar maps these entries to the clean early Git promotions, preserved later
+promotion states, and final nine-level artifact. The root checkpoint is still the
+unchanged operational resume state, so its record list contains only the transitions
+retained after its resume base.
 
-   L1  43   invent full-frame search
-   L2   2   reuse the same search leg
-   L3  45   new issue: drifting HUD/noise breaks raw-frame dedup
-   L4   3   reuse the masked-search leg
-   L5  72   recovered verified replay path / new plan artifact
-   L6 130   new mechanics: combination lock, energy, springs, patrol timing
-   L7  67   reuse parts of the L6 lock/display understanding + fog-of-war mapping
+Prior and Source Audit
+----------------------
 
-The drops (``43 -> 2``, ``45 -> 3``) are leg reuse: once a leg exists, the next
-compatible level needs only glue. The spikes (``45``, ``72``, ``130``) mark genuine
-mechanic transitions. Marginal complexity behaves like a **novelty detector** --
-transfer is recorded when the level admits it, and novelty is paid for when the game
-introduces new structure. The same accounting on ``wa30`` shows the honest
-complement: its marginal trace does *not* collapse, because ``wa30`` keeps
-introducing new logistics structure level after level.
+The main ``wa30`` development history is not mechanic-blind. Earlier investigation
+used the actual game source to diagnose the carry mechanism, and later prompts/context
+contained carry and boundary-relay guidance derived from earlier human and agent work.
+The fact that a later proposer did not directly open the source does not remove that
+lineage contamination.
 
-Relation to the Colimit-Cone Program
--------------------------------------
+A later neutral-prior run independently reached ``wa30`` L1, and another proposer also
+reached L1. These replications support rediscovery of the first-level mechanic under
+different conditions. They do not validate neutral-prior discovery through L9. The
+complete wa30 result is therefore a replay-validated solver artifact, not evidence of
+blind nine-level mechanic induction.
 
-This substrate is the limiting case of the colimit-cone view that runs through
-the repository. There, reusable navigation and interaction *legs* are discovered
-by interaction rather than hand-coded, and a *cone* composes those legs into a
-solution priced by reward against complexity. In the self-improving agent the
-legs are no longer mined from a fixed motif library but are written by the
-proposer as program fragments, the cone that glues them is the proposer's own
-planner, and admission is still ``F = R + lambda C`` verified on the simulator.
-The macro experiment and this agent experiment are two ends of one spectrum: the
-same accounting decides whether a reusable structure earns its cost; what changes
-is whether that structure is enumerated or invented.
+Mathematical Scope
+------------------
+
+The manuscript places retained artifacts in a finite behavior-description plane and
+uses compatible partial policies to formalize leg composition. This is a framework
+for posing audits. The current ARC experiments do not compute a Kolmogorov structure
+function, perform a complete lambda sweep, or establish a free-energy optimum. The
+compatible-policy colimit is an elementary union theorem; empirical value must come
+from concrete factorization and replay, not from the theorem alone.
+
+Comparator Scope
+----------------
+
+OPINE-World publishes an executable transition model and cached level-entry states.
+Conditioning a transition model on observed initial state does not disqualify it as a
+world model. The defensible artifact-level distinction is narrower: OPINE does not
+publish the same charged leg/glue reuse ledger, and its wa30 archive shows substantial
+retained source growth. Complexity units and evaluation conditions differ, so this is
+not a compute-matched ranking and does not show that OPINE is ``not a world model``.
+
+Reproduction
+------------
+
+The promoted paths and artifact locations are documented in ``REPRODUCE_ARC.md``.
+The replay procedure tests endpoint behavior. Reproducing the stochastic proposer
+history, cloned exploration budget, and externally hosted model calls is a separate
+experiment not supplied by the current artifact replay.

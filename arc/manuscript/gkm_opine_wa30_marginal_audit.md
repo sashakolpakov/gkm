@@ -97,17 +97,20 @@ mechanic plus the L3 noise-mask structure.
 
 | Level | Marginal C |
 |---:|---:|
-| 1 | not separately recorded in promoted README |
-| 2 | 30 |
-| 3 | not separately recorded in promoted README |
-| 4 | 87 |
+| 1 | 112 |
+| 2 | 78 |
+| 3 | 95 |
+| 4 | 47 |
 | 5 | 405 |
 | 6 | 225 |
 | 7 | 145 |
 | 8 | 204 |
 | 9 | 147 |
 
-`wa30` total marginal C is 1243. The late `wa30` debrief records actual leg
+The complete published `wa30` ledger totals 1458. Its clean-source provenance and
+hashes are indexed in `artifact_history/wa30/manifest.json`; the root checkpoint's
+1243 total is the unchanged operational resume record, not the complete manuscript
+ledger. The late `wa30` debrief records actual leg
 reuse/refactor provenance: L6/L7/L8 share the `neutralize_then_deliver` shape,
 and the recovered L9 suffix is decoded into repeated
 `grab_carry_release`/`ferry_each` structure instead of being left as an opaque

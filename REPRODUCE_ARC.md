@@ -50,6 +50,15 @@ Each folder holds the promoted `checkpoint.json` (the replay-validated flat
 action path, `reached` level count, and `total_marginal_C`), the shared leg
 library, per-level players, and WIP snapshots.
 
+The manuscript's compact clean-history index is under
+`arc/manuscript/artifact_history/`. It contains complete published ledgers and
+hashed clean core files; the full dirty restart context remains in each artifact's
+`wip_context/` tree. Verify the index without changing an artifact:
+
+```bash
+python arc/manuscript/build_artifact_history.py --check
+```
+
 ## What should be checked
 
 A reviewer should verify:
@@ -75,7 +84,11 @@ Useful external checks include:
 
 ## Current claimed promoted artifacts
 
-| Game   | Levels | Actions | Total marginal complexity |
-| ------ | -----: | ------: | ------------------------: |
-| `wa30` |    9/9 |     596 |                      1243 |
-| `ls20` |    7/7 |     393 |                       362 |
+<!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
+| Game | Verified levels | Replay actions | Published ledger charge |
+|---|---:|---:|---:|
+| `wa30` | 9/9 | 596 | 1458 |
+| `ls20` | 7/7 | 393 | 362 |
+
+Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+<!-- END GENERATED: ARC_ARTIFACT_STATUS -->

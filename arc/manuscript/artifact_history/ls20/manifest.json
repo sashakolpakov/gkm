@@ -1,0 +1,337 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "verified_through_level": 7,
+  "final_replay_actions": 393,
+  "final_public_commit": "875e5b868a6b0b6c230945704bb54ff1a0fb9d50",
+  "metric": "positive net retained-description growth per source file",
+  "ledger": [
+    {
+      "level": 1,
+      "marginal_C": 43,
+      "evidence": "final checkpoint record L1"
+    },
+    {
+      "level": 2,
+      "marginal_C": 2,
+      "evidence": "final checkpoint record L2"
+    },
+    {
+      "level": 3,
+      "marginal_C": 45,
+      "evidence": "final checkpoint record L3"
+    },
+    {
+      "level": 4,
+      "marginal_C": 3,
+      "evidence": "final checkpoint record L4"
+    },
+    {
+      "level": 5,
+      "marginal_C": 72,
+      "evidence": "final checkpoint record L5"
+    },
+    {
+      "level": 6,
+      "marginal_C": 130,
+      "evidence": "final checkpoint record L6"
+    },
+    {
+      "level": 7,
+      "marginal_C": 67,
+      "evidence": "final checkpoint record L7"
+    }
+  ],
+  "total_marginal_C": 362,
+  "promotions": [
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 1,
+      "replay_validated": true,
+      "source_observed_reached": 1,
+      "embedded_checkpoint_actions": null,
+      "embedded_checkpoint_records": null,
+      "clean_core_digest": "295500c118ae",
+      "source": {
+        "kind": "wip",
+        "value": "level_01/after_debrief_b2872b134107",
+        "prefix": ""
+      },
+      "files": {
+        "legs.py": "ab6a44c231a6e83396c63c6aa40a90953d1f9fff1d9672c1e3051241708a12dd",
+        "legs_log.md": "c2b58ec1b489534ad8324a31985d8d4d9c881be0fb4444a829a83b16858a2240",
+        "players.py": "5054f368d0345e3f751220b7aabdbafee3306e4a837a8322eedb5214f72d172f",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 2,
+      "replay_validated": true,
+      "source_observed_reached": 2,
+      "embedded_checkpoint_actions": 58,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "922606b5b399",
+      "source": {
+        "kind": "wip",
+        "value": "level_03/not_reached_a547893d6480",
+        "prefix": ""
+      },
+      "files": {
+        "checkpoint.json": "858f9da8bcd3104fc2c85eb3248e49b51a258eeed7e30a1f7620ca1ae3d1cfab",
+        "legs.py": "ab6a44c231a6e83396c63c6aa40a90953d1f9fff1d9672c1e3051241708a12dd",
+        "legs_log.md": "de3e0c0f3b48ae557eda29e3c3a2fcd2536e1d7934b955afbfe8453931cb0956",
+        "players.py": "148c638df76c8307c10eacfe1fca15ee61b7e74ddceed2bd9fd30c115bc1928c",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 3,
+      "replay_validated": true,
+      "source_observed_reached": 3,
+      "embedded_checkpoint_actions": 58,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "fed3d49752e1",
+      "source": {
+        "kind": "wip",
+        "value": "level_03/after_debrief_2b9bd3a82595",
+        "prefix": ""
+      },
+      "files": {
+        "checkpoint.json": "858f9da8bcd3104fc2c85eb3248e49b51a258eeed7e30a1f7620ca1ae3d1cfab",
+        "legs.py": "14d9b53fecdf8c957cc09082e74263ab37e207103c04309ea55cea00aecc0a1c",
+        "legs_log.md": "109412ed298ddd0e6ceec9579893a1f3a2cb098191f595fa53fafc452bc2ab69",
+        "players.py": "f8925372997410fc2943d56b1f075bf240a1529aeb433599941d6639f873d9e6",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 4,
+      "replay_validated": true,
+      "source_observed_reached": 4,
+      "embedded_checkpoint_actions": 97,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 45,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "d4a4e30fe9fb",
+      "source": {
+        "kind": "wip",
+        "value": "level_04/after_debrief_7738f07791ee",
+        "prefix": ""
+      },
+      "files": {
+        "checkpoint.json": "a7b7bf3ab4bf80f0b223f33140436e5d59f4611c682cc422b11b0b2d68ee36eb",
+        "legs.py": "900f49d4cb77924719afe8b92c0e269bd4a43b63d4859ceda1a6badc69041659",
+        "legs_log.md": "364641e738bf0b243a4022a055ba1a237f9685b6042515fc02e30939278fb456",
+        "players.py": "7372a8ad208466b7adc5717fefd474ada8d9b8e16ed621aae1ddfceceab65608",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 5,
+      "replay_validated": true,
+      "source_observed_reached": 5,
+      "embedded_checkpoint_actions": 140,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 45,
+          "reached": true
+        },
+        {
+          "level": 4,
+          "marginal_C": 3,
+          "reached": true
+        },
+        {
+          "level": 5,
+          "marginal_C": 72,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "2bbc052f1e1e",
+      "source": {
+        "kind": "wip",
+        "value": "level_05/after_debrief_878509461d47",
+        "prefix": ""
+      },
+      "files": {
+        "auto_solve_attempts.json": "1429720cacc876bdf4a63f1efdb6c151e1d7abb49091cc073f882d7add603738",
+        "checkpoint.json": "7b3b29a902f26b1bfc37cd7614b8616b21834e26da76bf10b7130a5946f720bf",
+        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
+        "legs_log.md": "6f3bbc5d0ecce2f90de57a448f6c44856cc724c0671c98e6bc1e957c1714ff29",
+        "players.py": "7a6494d637437921a3da642a8a304d3d0353b97d569194e61f3326f93e4cb8a5",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 6,
+      "replay_validated": true,
+      "source_observed_reached": 6,
+      "embedded_checkpoint_actions": 328,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 45,
+          "reached": true
+        },
+        {
+          "level": 4,
+          "marginal_C": 3,
+          "reached": true
+        },
+        {
+          "level": 5,
+          "marginal_C": 72,
+          "reached": true
+        },
+        {
+          "level": 6,
+          "marginal_C": 0,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "0e1447b424c5",
+      "source": {
+        "kind": "wip",
+        "value": "level_06/recovered_after_credit_out_52480755b3fc",
+        "prefix": ""
+      },
+      "files": {
+        "auto_solve_attempts.json": "05174c1b38d1fcd559980662b12c676b7606c8d06fa83f84b75b4e37ada4f8ae",
+        "checkpoint.json": "5d72df8e75d70e713b867e61cbce2bb80bf5f498e66e51f39f5f6407b8a0a3c6",
+        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
+        "legs_log.md": "35ab73dd36738c86adcd757595b04e14b5e259ce79097a01861a463a7b540260",
+        "players.py": "96053f7f9a9bb735132220b2a76fbfef610b5ff3da1e731c8e4d26a529730642",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "ls20",
+      "through_level": 7,
+      "replay_validated": true,
+      "source_observed_reached": 7,
+      "embedded_checkpoint_actions": 393,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 2,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 45,
+          "reached": true
+        },
+        {
+          "level": 4,
+          "marginal_C": 3,
+          "reached": true
+        },
+        {
+          "level": 5,
+          "marginal_C": 72,
+          "reached": true
+        },
+        {
+          "level": 6,
+          "marginal_C": 130,
+          "reached": true
+        },
+        {
+          "level": 7,
+          "marginal_C": 67,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "e80c0675a625",
+      "source": {
+        "kind": "current",
+        "value": ".",
+        "prefix": ""
+      },
+      "files": {
+        "auto_solve_attempts.json": "4f08f9e136b89d964a0f88003c87b3f03063e14929ed3f0df3198f00859099b9",
+        "checkpoint.json": "cc2ca8d4ca3ea5331f8e4f2f87a072a32974a87fd1e734936864f9aa8ddb1639",
+        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
+        "legs_log.md": "477af066568e3fe8b6bfca82acc57cff8f6daa5a53ff53ef4519cf33e7c445d4",
+        "players.py": "7042b503d8905037ecbf5dd4c70b014c1f95a788ae8b822758b18107c6e8fc0e",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    }
+  ],
+  "final_artifact": "arc/crack_lab/agent_solutions/ls20_legs",
+  "wip_context": "arc/crack_lab/agent_solutions/ls20_legs/wip_context"
+}

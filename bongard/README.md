@@ -1,7 +1,15 @@
-# Bongard Semantic-Cone System
+# Bongard Concept-Induction Experiments
 
-This directory contains the existing Bongard unrestricted predicate-search
-system plus an additive typed semantic-cone track.
+This subject studies reusable abstraction in Bongard-style concept induction. The
+full subject guide is [`BONGARD.md`](BONGARD.md); this page also documents the newer
+typed semantic-cone track.
+
+The controlled symbolic experiments and the rendered Bongard-LOGO adapter have
+different evidential scope. The former measure whether a shared predicate macro is
+selected over duplicated rule bodies when primitive atoms are supplied. They do not
+show discovery of those atoms from pixels. The semantic-cone track below adds typed
+factorization and explicit witness checks; unrestricted predicate search remains a
+separate control path.
 
 The unrestricted `predicates.py` crack loop remains the control path: a
 proposer may write arbitrary `p_*(panel)` measurements and the existing

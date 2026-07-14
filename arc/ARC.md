@@ -1,10 +1,9 @@
-# ARC-AGI-3: a self-improving agent under free energy
+# ARC-AGI-3: replay-validated program growth
 
-This domain applies the GKM free-energy view to live **ARC-AGI-3** keyboard games,
-played locally and offline through their runtime. The question: can an agent *figure a
-game out on its own* — discover its perception, mechanics, goal, and a winning strategy
-— from the rawest interface, carrying only general human preconceptions, with a single
-free-energy rule deciding what structure is kept?
+This domain applies source accounting and replay validation to programs that solve
+local **ARC-AGI-3** keyboard games. It asks which retained routines are reused across
+levels, which source is added, and which successful behaviors remain literal plans.
+It does not measure official ARC-AGI-3 interaction efficiency.
 
 - **Self-contained manuscript:** [`manuscript/arc_agi3.tex`](manuscript/arc_agi3.tex)
   (Kolmogorov/MDL, Schmidhuber's Gödel machine + PowerPlay + curiosity, the colimit-cone
@@ -17,20 +16,21 @@ free-energy rule deciding what structure is kept?
 
 ## The method in one paragraph
 
-The engine exposes only `step(action) -> frame` (a 64×64 colour grid), the reward
-`levels_completed`, and `clone()` for lookahead — nothing game-specific, because that is
-the only boundary that transfers across game *types*. A **proposer** (a local model, or
+The local harness exposes `step(action) -> frame` (a 64×64 colour grid), the reward
+`levels_completed`, and `clone()` for lookahead. The clone operation is a simulator
+oracle supplied by this research harness; it is not part of the official ARC-AGI-3
+`reset()`/`step()` agent interface. A **proposer** (a local model, or
 the Claude Code agent invoked headlessly with tools + a tester) is given a rich
 **human-preconception** system prompt and *writes its own* `solve(env)` program:
 perception, a mechanic probe, a planner, a strategy. A candidate is admitted only if it
 verifiably lowers the free energy `F = R + λ·C` on the real game (`R` = −levels reached,
 `C` = description length), with the simulator as ground-truth verifier and every result
-**replay-validated**. To make later levels cheap, the harness enforces a growing **leg
+**replay-validated**. To expose retained structure, the harness enforces a growing **leg
 library**: each level's player only *composes* shared skills (`legs.py`), a per-level
-**debrief** refactors repeats into shared legs, and `C` is scored **marginally** (new
-legs only — a reused leg is free), so parsimony rewards transfer. This is the
-colimit-cone made operational: legs written by the proposer, composed by a cone, priced
-by the same free energy.
+**debrief** refactors repeats into shared legs. The historical `marginal_C` statistic is
+the positive net description-size change of the library and player files. Unchanged
+legs add no charge, but same-size replacement can also add no charge; source provenance
+and replay are therefore necessary to interpret the scalar.
 
 ## Current Promoted Artifacts
 
@@ -38,44 +38,47 @@ Replay-validated leg-library states are promoted automatically into
 `crack_lab/agent_solutions/`. Other game notes remain lab/WIP context until
 represented by one of these promoted artifacts.
 
-| game | status | actions | total marginal C | artifact |
-|---|---|---|---|---|
-| `wa30` | **9/9** replay-validated | 596 | 1243 | `crack_lab/agent_solutions/wa30_legs/` |
-| `ls20` | **7/7** replay-validated | 393 | 362 | `crack_lab/agent_solutions/ls20_legs/` |
-| `sp80` | WIP / separate concurrent run | — | — | not currently promoted |
+<!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
+| Game | Verified levels | Replay actions | Published ledger charge |
+|---|---:|---:|---:|
+| `wa30` | 9/9 | 596 | 1458 |
+| `ls20` | 7/7 | 393 | 362 |
+
+Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+<!-- END GENERATED: ARC_ARTIFACT_STATUS -->
+
+`sp80` remains WIP and is not currently promoted.
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
 
-- On `wa30` the agent found level tactics beyond its priors: freeze the target region
+- On `wa30` the agent found useful level tactics: freeze the target region
   at level start; complement an autonomous helper by taking the *farthest* objects; and
   the *asymmetric carry collision* (a carried object can enter a wall cell the avatar
   cannot) that makes the L3 relay geometrically possible. **Honest audit:** the priors
   of those runs were not fully neutral — distilled from earlier human play, they named
   the carry mechanic and hinted relay-at-a-boundary. The priors have since been
-  **neutralized** (generic world-priors only; no mechanic recipes, no verb names);
-  re-cracking `wa30` from scratch under neutral priors is the discriminating experiment.
+  **neutralized** (generic world-priors only; no mechanic recipes, no verb names).
+  A later neutral-prior run independently reached L1, but the complete L1-L9 lineage
+  remains prior-contaminated and must not be described as mechanic-blind.
 - The **same game-agnostic agent** transferred to `ls20` (a different mechanic) with no
   code change. Notably, ls20 got **no mechanic-name leak** (its interaction probe emitted
   only `move`), and the shared priors were wa30-flavored — *wrong* for ls20's
   transform-tile mechanic — yet the agent discovered the real mechanic itself (a generic
-  clone-BFS over game state). So ls20 succeeded **despite** misleading priors: robustness,
-  not leakage. The `sp80` liquid-pour result (below) is the same story on a third game.
-- Under the enforced leg library, the promoted `ls20` marginal-complexity trace is a
+  clone-BFS over game state). This supports cross-game reuse of the harness, subject to
+  the stronger clone-enabled interface; it is not an official sample-efficiency result.
+- Under the enforced leg library, the promoted `ls20` net-growth trace is a
   **sawtooth**, not monotone: `43 → 2` and `45 → 3` are leg-reuse drops, while `45`,
   `72`, `130` are novelty spikes at mechanic transitions (drifting-HUD noise mask,
   recovered plan artifacts, the combination-lock/display family); L7 drops back to
   `67` by reusing part of the L6 lock/display understanding while adding fog-of-war
-  mapping. Marginal free energy acts as a **novelty detector**.
-- The same enforced library on `wa30` (now 9/9) shows the honest complement: marginal
-  novelty does **not** collapse (`30, 87, 405, 225, 145, 204, 147` for the levels the
-  checkpoint audits) because each `wa30` level keeps introducing new logistics
-  structure — ferry/yield composition at L4, live-frame courier pacing at L5, a shared
-  higher-order `neutralize_then_deliver` pattern across L6–L8, and at L9 a recovered
-  61-action suffix debriefed into the reusable `grab_carry_release` / `ferry_each`
-  legs. Reuse-collapse is a property of the *game's* level structure; the method pays
-  for novelty exactly when the game demands it — which is what `F = R + λ·C_marginal`
-  is for.
+  mapping. The troughs are consistent with reuse because the corresponding source calls
+  unchanged search legs and replay succeeds. The numbers alone do not detect novelty.
+- The complete promoted `wa30` record is
+  `112, 78, 95, 47, 405, 225, 145, 204, 147` at L1--L9. The manuscript audit sidecar
+  maps the early clean Git promotions, the later preserved promotion states, and the
+  final nine-level artifact to this ledger. The root checkpoint remains the unchanged
+  operational resume state, so its own record list is shorter than the published history.
 
 ## Honest limitations
 
@@ -84,6 +87,12 @@ represented by one of these promoted artifacts.
   score. `sp80` remains WIP unless represented by a promoted artifact. Recovered
   verified paths in the artifacts are charged as literals and are not compact
   mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
+- The 596- and 393-action values are final replay paths. Cloned exploratory steps,
+  proposer calls, and compute were not counted or normalized.
+- The net-growth statistic can undercount replacement because additions and deletions
+  within a file cancel before the positive part is taken. A future gross-diff ledger
+  would require recomputing transitions from paired snapshots and must not be mixed
+  with the historical values reported here.
 - The loop currently needs a **strong** proposer: a prompt-only local model mis-reasoned
   two-sided reachability under barriers even with the priors spelled out. The open
   question is how weak a proposer the same harness (priors, simulator-as-verifier,

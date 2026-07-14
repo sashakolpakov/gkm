@@ -1,0 +1,54 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "through_level": 6,
+  "replay_validated": true,
+  "source_observed_reached": 6,
+  "embedded_checkpoint_actions": 328,
+  "embedded_checkpoint_records": [
+    {
+      "level": 1,
+      "marginal_C": 43,
+      "reached": true
+    },
+    {
+      "level": 2,
+      "marginal_C": 2,
+      "reached": true
+    },
+    {
+      "level": 3,
+      "marginal_C": 45,
+      "reached": true
+    },
+    {
+      "level": 4,
+      "marginal_C": 3,
+      "reached": true
+    },
+    {
+      "level": 5,
+      "marginal_C": 72,
+      "reached": true
+    },
+    {
+      "level": 6,
+      "marginal_C": 0,
+      "reached": true
+    }
+  ],
+  "clean_core_digest": "0e1447b424c5",
+  "source": {
+    "kind": "wip",
+    "value": "level_06/recovered_after_credit_out_52480755b3fc",
+    "prefix": ""
+  },
+  "files": {
+    "auto_solve_attempts.json": "05174c1b38d1fcd559980662b12c676b7606c8d06fa83f84b75b4e37ada4f8ae",
+    "checkpoint.json": "5d72df8e75d70e713b867e61cbce2bb80bf5f498e66e51f39f5f6407b8a0a3c6",
+    "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
+    "legs_log.md": "35ab73dd36738c86adcd757595b04e14b5e259ce79097a01861a463a7b540260",
+    "players.py": "96053f7f9a9bb735132220b2a76fbfef610b5ff3da1e731c8e4d26a529730642",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

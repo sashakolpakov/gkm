@@ -28,35 +28,29 @@
 Docs: \url{https://sashakolpakov.github.io/gkm/} \;·\;
 Manuscript: \texttt{arc/manuscript/arc\_agi3.tex}}
 
-\textbf{Claim.} GKM is a verifier-driven self-improvement loop for ARC-AGI-3 agents. A coding proposer grows solver structure from the raw interface, the game simulator verifies improvement by replay, and marginal description length decides what new structure is worth keeping. The result is not just a solved-level count; it is an auditable ledger of how competence was acquired.
+\textbf{Claim.} GKM is a verifier-driven program-growth loop for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and retained source states make that growth auditable.
 
 \section*{Setting and objective}
-The agent receives only \texttt{step(action) -> frame}, \texttt{levels\_completed}, and \texttt{clone()} for lookahead. Nothing in the harness names the avatar, mechanics, goals, helpers, walls, switches, or plans. A candidate program is promoted only if fresh replay validates more completed levels under
+The local harness exposes \texttt{step(action) -> frame}, \texttt{levels\_completed}, and \texttt{clone()} for lookahead. Clone-enabled exploration is stronger than the official reset/step interface and is not included in replay action totals. A candidate program is promoted only if fresh replay validates more completed levels under
 \[
 F(\pi)=R(\pi)+\lambda C(\pi), \qquad R(\pi)=-\operatorname{levels\_completed}(\pi),
 \]
-where $C$ is marginal description length. Reused legs are free; new reusable legs are charged once; per-level glue is charged locally; literal recovered paths are charged as literals until compressed. This is a Kolmogorov/MDL version of Schmidhuber-style self-improvement: the solver may rewrite or grow itself, but only replay-verified structure that improves reward survives.
+where historical $C$ is positive net retained-size growth in the library and player files. Unchanged legs add no charge, but additions and deletions within a file can cancel, so source inspection is required to attribute a low value to reuse.
 
 \section*{What is optimized}
 Executable-world-model agents try to build a predictive simulator, verify it, and plan through it. GKM treats a world model as only one possible useful structure. The optimized object is broader: solver-program growth. A promoted artifact may be a probe, perception routine, BFS, planner, reusable leg, literal replay path, or world model. The admission rule is operational: improve replay-verified reward and pay the marginal description-length cost.
 
 \section*{Current promoted artifacts}
 \begin{center}
-\begin{tabular}{@{}lccc@{}}
-\toprule
-Game & Replay-validated & Actions & Total marginal complexity \\
-\midrule
-\texttt{wa30} & 9/9 & 596 & 1243 \\
-\texttt{ls20} & 7/7 & 393 & 362 \\
-\bottomrule
-\end{tabular}
+\small
+\input{generated/arc_artifacts.tex}
 \end{center}
 
 \textbf{\texttt{wa30}.} GKM records a logistics game built around carry, helpers, handoffs, neutralisation, and delivery. The solver discovers and preserves reusable structure: freezing target regions before delivered objects overwrite them; complementing autonomous helpers instead of competing with them; exploiting asymmetric carry collision at wall boundaries; neutralising agents that undo delivery; and refactoring repeated transport into ferry legs.
 
 The level-9 WIP trail is the cleanest audit example. A recovered verified suffix was decoded into five repeated grab--carry--release operations and refactored into \texttt{grab\_carry\_release} and \texttt{ferry\_each}. The promoted player is therefore compact composition rather than an opaque replay; the literal suffix is charged, then the repeated structure is compressed into reusable code.
 
-\textbf{\texttt{ls20}.} The marginal-complexity trace shows why this accounting matters. It is sawtoothed, not monotone: $43\to2$ and $45\to3$ are leg-reuse drops, while $45$, $72$, and $130$ are novelty spikes caused by new mechanics or charged plan artifacts. Level 7 then drops to $67$, consistent with partial reuse of level-6 lock/display structure plus new fog/mapping. Marginal free energy acts as a novelty detector: it records when transfer is sufficient and when the game forces new structure. A solved-level count cannot show this; the sawtooth profile can.
+\textbf{\texttt{ls20}.} The complete net-growth trace is sawtoothed. The two troughs coincide with thin players that call unchanged search routines and pass fresh replay. Larger values retain more source or literal plans. The attribution comes from the code and replay, not from the scalar alone.
 
 \section*{Audit trail}
 GKM is meant to leave evidence, not just outputs. Each promoted step is backed by fresh replay, preserved WIP snapshots, a marginal-complexity charge, and a distinction between literal action recovery and reusable refactor. This makes the artifact reviewable: an external evaluator can inspect which information entered through interaction, which code was introduced, what was charged as a literal, and what later became a reusable leg.
@@ -67,7 +61,7 @@ The ARC-AGI-3 benchmark paper reports public-environment harnesses solving \text
 \section*{Next evaluation and collaboration request}
 The next step is a collaboration-grade evaluation: reproduce on more public games, run a compute-matched comparison against graph exploration and executable world models, and harden the leakage/audit protocol. We are looking for collaborators who can help with ARC-AGI-3 evaluation protocol, compute/model access, independent artifact review, private-set or organizer-facing evaluation, and funding for a systematic benchmark run.
 
-\textbf{Bottom line.} GKM reframes ARC-AGI-3 progress as auditable self-improvement. The proposer grows the solver, replay decides what works, and the MDL ledger records whether competence came from transfer, novelty, or literal memorization. On the current artifacts, that ledger accompanies \texttt{wa30} 9/9 and \texttt{ls20} 7/7 replay validation.
+\textbf{Bottom line.} GKM reframes local solver development as an artifact audit. Replay establishes endpoint behavior; checkpoint JSON and retained source establish exactly which growth records are available.
 
 \vspace{2pt}
 {\footnotesize \textbf{Context.} Related ideas include ARC/ARC-AGI, G\"odel machines, PowerPlay, minimum description length, Kolmogorov complexity, and universal AI.}

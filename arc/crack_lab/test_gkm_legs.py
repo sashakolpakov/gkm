@@ -27,6 +27,13 @@ def test_marginal_complexity_reuse_is_free():
     assert L.marginal_complexity(legs, legs2, "", "") == 2
 
 
+def test_marginal_complexity_nets_replacement_within_each_file():
+    before = "old_call(env)\n"
+    after = "new_call(env)\n"
+    assert L.description_complexity(before) == L.description_complexity(after)
+    assert L.marginal_complexity(before, after, "", "") == 0
+
+
 def test_free_energy_rewards_levels_and_penalises_novelty():
     assert L.free_energy(3, 0) == -3.0
     assert L.free_energy(3, 100, lam=0.02) == -3.0 + 2.0

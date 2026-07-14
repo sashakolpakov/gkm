@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "through_level": 4,
+  "replay_validated": true,
+  "source_observed_reached": 4,
+  "embedded_checkpoint_actions": 97,
+  "embedded_checkpoint_records": [
+    {
+      "level": 1,
+      "marginal_C": 43,
+      "reached": true
+    },
+    {
+      "level": 2,
+      "marginal_C": 2,
+      "reached": true
+    },
+    {
+      "level": 3,
+      "marginal_C": 45,
+      "reached": true
+    }
+  ],
+  "clean_core_digest": "d4a4e30fe9fb",
+  "source": {
+    "kind": "wip",
+    "value": "level_04/after_debrief_7738f07791ee",
+    "prefix": ""
+  },
+  "files": {
+    "checkpoint.json": "a7b7bf3ab4bf80f0b223f33140436e5d59f4611c682cc422b11b0b2d68ee36eb",
+    "legs.py": "900f49d4cb77924719afe8b92c0e269bd4a43b63d4859ceda1a6badc69041659",
+    "legs_log.md": "364641e738bf0b243a4022a055ba1a237f9685b6042515fc02e30939278fb456",
+    "players.py": "7372a8ad208466b7adc5717fefd474ada8d9b8e16ed621aae1ddfceceab65608",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

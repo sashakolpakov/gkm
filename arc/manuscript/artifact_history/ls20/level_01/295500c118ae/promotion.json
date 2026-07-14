@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "through_level": 1,
+  "replay_validated": true,
+  "source_observed_reached": 1,
+  "embedded_checkpoint_actions": null,
+  "embedded_checkpoint_records": null,
+  "clean_core_digest": "295500c118ae",
+  "source": {
+    "kind": "wip",
+    "value": "level_01/after_debrief_b2872b134107",
+    "prefix": ""
+  },
+  "files": {
+    "legs.py": "ab6a44c231a6e83396c63c6aa40a90953d1f9fff1d9672c1e3051241708a12dd",
+    "legs_log.md": "c2b58ec1b489534ad8324a31985d8d4d9c881be0fb4444a829a83b16858a2240",
+    "players.py": "5054f368d0345e3f751220b7aabdbafee3306e4a837a8322eedb5214f72d172f",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

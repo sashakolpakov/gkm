@@ -1,8 +1,9 @@
-# GKM: Replay-Validated Self-Improvement for ARC-AGI-3
+# GKM: Auditable Program-Growth Experiments
 
-GKM is a verifier-driven program-growth loop for ARC-AGI-3 agents.
-A proposer writes solver structure, the simulator verifies candidates by replay,
-and marginal description length records what new structure was worth keeping.
+GKM is a collection of verifier-driven program-growth experiments. In the
+ARC-AGI-3 study, a proposer writes solver code and the simulator validates promoted
+behavior by fresh replay. A source-size ledger records positive net growth of the
+retained library and player files.
 
 The result is not only a solved-level count, but an audit trail of how competence
 was acquired: promoted solver code, replay validation, WIP snapshots, charged
@@ -10,16 +11,22 @@ literals, reusable solver-leg refactors, and marginal-complexity accounting.
 
 ## Current replay-validated ARC-AGI-3 artifacts
 
-| Game | Levels | Actions | Total marginal complexity | Artifact |
-|---|---:|---:|---:|---|
-| `wa30` | 9/9 | 596 | 1243 | `arc/crack_lab/agent_solutions/wa30_legs/` |
-| `ls20` | 7/7 | 393 | 362 | `arc/crack_lab/agent_solutions/ls20_legs/` |
+<!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
+| Game | Verified levels | Replay actions | Published ledger charge |
+|---|---:|---:|---:|
+| `wa30` | 9/9 | 596 | 1458 |
+| `ls20` | 7/7 | 393 | 362 |
 
-The central claim is that GKM converts proposer compute into replay-validated
-solver structure. Reused legs are free, new reusable legs are charged once,
-per-level glue is charged, and literal recovered paths are charged as literals.
-The marginal-complexity trace therefore records when transfer is sufficient and
-when the game forces new structure.
+Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+<!-- END GENERATED: ARC_ARTIFACT_STATUS -->
+
+The endpoint claims are replay claims: the action counts are the final validated
+paths, not totals for proposal, search, or cloned lookahead. The historical growth
+charge is computed as the positive net change in each of two files, with an AST
+surcharge for container literals. Unchanged legs incur no new charge, but additions
+and deletions within one file can cancel. Consequently, a low value is evidence of
+reuse only when the source diff and replay also show reuse; the scalar alone is not a
+semantic novelty detector.
 
 ## Reproduce the ARC-AGI-3 artifacts
 
@@ -40,12 +47,17 @@ Artifact folders:
 
 The current public artifact claims replay-validated promoted solvers for:
 
-- `wa30`: 9/9 levels, 596 actions, total marginal complexity 1243.
-- `ls20`: 7/7 levels, 393 actions, total marginal complexity 362.
+- `wa30`: 9/9 levels, a 596-action validated replay, and the complete published
+  ledger `112, 78, 95, 47, 405, 225, 145, 204, 147`, totaling 1458. Its unchanged
+  operational checkpoint retains only the records accumulated after its resume base.
+- `ls20`: 7/7 levels and a 393-action validated replay, with a complete seven-entry
+  growth ledger totaling 362.
 
-The claim is about promoted public artifacts and replay validation, not about
-a private ARC-AGI-3 leaderboard result. The current repository is intended for
-independent artifact review, reproduction, comparison, and extension.
+The local harness exposes state cloning for lookahead. The official ARC-AGI-3
+environment wrapper exposes `reset()` and `step()`, not arbitrary state forking.
+Therefore these results are not claims about official interaction efficiency,
+sample efficiency, a private leaderboard, or compute-matched benchmark performance.
+The repository is intended for artifact review, reproduction, and extension.
 
 ---
 
@@ -70,24 +82,24 @@ same lens to a different substrate:
 
 ## Domains
 
-- **[foraging/](foraging/FORAGING.md)** — open-ended evolution of sparse finite-state
+- **[foraging/](foraging/README.md)** — open-ended evolution of sparse finite-state
   automata that play a visible grid-foraging game; free energy as the local selection
   rule, with lambda sweeps tracing a loss-complexity landscape. This is the founding
   thesis substrate ([`OPEN_ENDED_EVOLUTION_THESIS.md`](foraging/OPEN_ENDED_EVOLUTION_THESIS.md)).
-- **[transduction/](transduction/TRANSDUCTION.md)** — synthesising compact
+- **[transduction/](transduction/README.md)** — synthesising compact
   deterministic **register transducers** from opaque-token pattern transitions;
   tiered primitives ask which capabilities a task family needs, with validation-frontier
   Pareto selection.
-- **[bongard/](bongard/BONGARD.md)** — Bongard-style **concept induction** over
+- **[bongard/](bongard/README.md)** — Bongard-style **concept induction** over
   opaque-object sequences, and the question of when free-energy accounting drives the
   **emergence of reusable abstraction** (encapsulated predicate macros) over duplicated
   rule bodies.
-- **[cone/](cone/CONE.md)** — the substrate-agnostic core of the **colimit-cone
+- **[cone/](cone/README.md)** — the substrate-agnostic core of the **colimit-cone
   program**: learn a compiled, verifiable *cone* over goal atoms rather than a
   monolithic policy; cone-leg discovery, goal induction from scalar reward, and the
   free-energy bound. The program document is
   [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md).
-- **[arc/](arc/ARC.md)** — the ARC-AGI-3 lift of the cone machinery (the offline
+- **[arc/](arc/README.md)** — the ARC-AGI-3 lift of the cone machinery (the offline
   connector, scene atoms, cone-leg discovery on games), plus a **self-improving
   agent** that cracks live ARC-AGI-3 keyboard games from the rawest interface,
   carrying only human preconceptions, with a single free-energy rule deciding what
@@ -100,11 +112,11 @@ self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
 
 | domain hub | manuscript | extras |
 |---|---|---|
-| [`foraging/FORAGING.md`](foraging/FORAGING.md) | [`foraging.tex`](foraging/manuscript/foraging.tex) | [open-ended-evolution thesis](foraging/OPEN_ENDED_EVOLUTION_THESIS.md) |
-| [`transduction/TRANSDUCTION.md`](transduction/TRANSDUCTION.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
-| [`bongard/BONGARD.md`](bongard/BONGARD.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | 5 reports linked in the hub |
-| [`cone/CONE.md`](cone/CONE.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
-| [`arc/ARC.md`](arc/ARC.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
+| [`foraging/README.md`](foraging/README.md) | [`foraging.tex`](foraging/manuscript/foraging.tex) | [open-ended-evolution thesis](foraging/OPEN_ENDED_EVOLUTION_THESIS.md) |
+| [`transduction/README.md`](transduction/README.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
+| [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | reports linked in the hub |
+| [`cone/README.md`](cone/README.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
+| [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
 
 ## Tests
 
