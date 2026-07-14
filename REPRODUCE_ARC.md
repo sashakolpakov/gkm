@@ -52,6 +52,9 @@ artifacts: `ft09_legs/`, `sp80_legs/`, `g50t_legs/`, `tr87_legs/`, and
 replayed paths; they are not included in the manuscript's complete-history table
 below.
 
+`tu93_legs/` is promoted through L1. `sc25_legs/` contains WIP only and must not be
+treated as replay-validated solver evidence.
+
 Each folder holds the promoted `checkpoint.json` (the replay-validated flat
 action path, `reached` level count, and `total_marginal_C`), the shared leg
 library, per-level players, and WIP snapshots.

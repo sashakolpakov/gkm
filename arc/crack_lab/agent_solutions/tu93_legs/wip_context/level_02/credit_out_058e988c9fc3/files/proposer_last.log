@@ -1,0 +1,418 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat solve.py players.py legs_log.md checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && timeout 120 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py
+Level 1 is solved. Now let me explore level 2. Let me understand the arena API first.
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,60p' gkm_arena.py | head -100
+$ cd /Users/sasha/gkm/arc/crack_lab && grep -n "def " gkm_arena.py | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '60,130p' gkm_arena.py
+Now let me build a probe to reach level 2 and inspect its structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/probe.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tu93')
+# replay level 1 solution
+path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+for a in path:
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+print("terminal:", env.terminal())
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+vals, cnts = np.unique(f, return_counts=True)
+print("colors:", dict(zip(vals.tolist(), cnts.tolist())))
+EOF
+python /tmp/probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/probe.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tu93')
+path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+for a in path:
+    env.step(a)
+print("levels_completed:", env.levels_completed)
+print("terminal:", env.terminal())
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+vals, cnts = np.unique(f, return_counts=True)
+print("colors:", dict(zip(vals.tolist(), cnts.tolist())))
+np.save('/tmp/lvl2_frame.npy', f)
+EOF
+python /tmp/probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/show.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl2_frame.npy')
+# print compact
+for r in range(64):
+    row = ''.join(f'{v:x}' if v!=5 else '.' for v in f[r])
+    print(row)
+EOF
+python /tmp/show.py
+This looks like another block maze but with extra elements (color 8 block with marker 15, and color 9 avatar with marker 4). Let me analyze more carefully.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/an.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl2_frame.npy')
+# locate each special color
+for col in [4,8,9,14,15,0,2]:
+    ys,xs = np.where(f==col)
+    if len(ys):
+        print(f"color {col}: count={len(ys)} rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()}")
+EOF
+python /tmp/an.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/an2.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl2_frame.npy')
+# print rows 20-36 cols 10-52 with column ruler
+c0,c1=10,52
+print('    '+''.join(str((c//10)%10) for c in range(c0,c1)))
+print('    '+''.join(str(c%10) for c in range(c0,c1)))
+for r in range(20,37):
+    row=''.join(f'{v:x}' if v!=5 else '.' for v in f[r,c0:c1])
+    print(f'{r:3d} {row}')
+EOF
+python /tmp/an2.py
+This is another block maze. Avatar = color 9 block (with marker 4) at bottom-left; goal likely = color 14 block top-right. There's also a color 8 block (marker 15) sitting on a maze node. Let me test the existing `drive_block_maze` leg on a clone.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/test_maze.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+import legs
+
+env = A.Arena('tu93')
+path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+for a in path:
+    env.step(a)
+print("start level:", env.levels_completed)
+f = env.frame()
+g = legs.parse_block_maze(f)
+print("parse:", {k:v for k,v in g.items() if k!='neigh'})
+pa = legs.maze_path_actions(f)
+print("path actions:", pa)
+EOF
+python /tmp/test_maze.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/test2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+import legs
+
+env = A.Arena('tu93')
+path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+for a in path:
+    env.step(a)
+before = env.levels_completed
+clone = env.clone()
+r = legs.drive_block_maze(clone)
+print("drive result:", r, "levels:", clone.levels_completed, "terminal:", clone.terminal())
+print("moves used:", len(clone.path)-len(path))
+EOF
+python /tmp/test2.py
+The drive failed — went terminal after 4 moves. There's a dynamic element (color 8 block). Let me trace step by step.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/trace.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+import legs
+
+env = A.Arena('tu93')
+path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+for a in path:
+    env.step(a)
+
+def snap(f):
+    # positions of markers/blocks
+    d={}
+    for col in [4,8,9,14,15]:
+        ys,xs=np.where(f==col)
+        if len(ys): d[col]=(int(ys.min()),int(xs.min()),int(ys.max()),int(xs.max()))
+    return d
+
+clone = env.clone()
+print("init:", snap(clone.frame()), "lvl", clone.levels_completed)
+for i,a in enumerate([1,4,4,4]):
+    clone.step(a)
+    print(f"after {a}:", snap(clone.frame()), "lvl", clone.levels_completed, "term", clone.terminal())
+EOF
+python /tmp/trace.py
+Color 8 is a hostile enemy that killed the avatar on contact. Let me study its movement pattern.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/enemy.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+import legs
+
+def setup():
+    env = A.Arena('tu93')
+    path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+    for a in path: env.step(a)
+    return env
+
+def epos(f):
+    ys,xs=np.where(f==8)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+def apos(f):
+    ys,xs=np.where(f==9)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+
+# Test: avatar stays at start, keep pressing LEFT (blocked). Watch enemy.
+env=setup()
+c=env.clone()
+print("=== press LEFT (avatar blocked at col0) ===")
+print("init enemy",epos(c.frame()),"avatar",apos(c.frame()))
+for i in range(8):
+    c.step(3)
+    print(i, "enemy",epos(c.frame()),"avatar",apos(c.frame()),"term",c.terminal())
+EOF
+python /tmp/enemy.py
+Enemy stays put when the avatar is blocked far away. Let me carefully re-trace the enemy's reaction as the avatar approaches along its row.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/enemy2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+
+def setup():
+    env = A.Arena('tu93')
+    path = [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]
+    for a in path: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+
+env=setup()
+c=env.clone()
+# move UP once to enter enemy row, then RIGHT slowly
+seq=[1,4,4]
+for a in seq:
+    c.step(a)
+    print(f"act{a}: avatar9",pos(c.frame(),9),"enemy8",pos(c.frame(),8),"marker15",pos(c.frame(),15),"term",c.terminal())
+# now oscillate without approaching: go DOWN back out of row
+print("--- go down out of row, watch enemy ---")
+for a in [2,1,2,1]:
+    c.step(a)
+    print(f"act{a}: avatar9",pos(c.frame(),9),"enemy8",pos(c.frame(),8),"term",c.terminal())
+EOF
+python /tmp/enemy2.py
+The enemy stayed still even as the avatar sat 2 nodes away. Let me push one more RIGHT to reproduce the collision and see exactly what happens.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/enemy3.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+
+env=setup()
+c=env.clone()
+for a in [1,4,4]:
+    c.step(a)
+print("at blockcol4:", pos(c.frame(),9), "enemy", pos(c.frame(),8))
+# step RIGHT toward blockcol6
+c.step(4)
+print("after RIGHT: avatar",pos(c.frame(),9),"enemy",pos(c.frame(),8),"term",c.terminal(),"lvl",c.levels_completed)
+EOF
+python /tmp/enemy3.py
+The enemy moved 1 node toward the avatar right as it closed distance. Let me test whether the enemy advances while the avatar "waits" (presses into a wall) at distance 2.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/enemy4.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+
+env=setup()
+c=env.clone()
+for a in [1,4,4]:  # reach blockrow2 j2 (col24)
+    c.step(a)
+print("start:",pos(c.frame(),9),"enemy",pos(c.frame(),8))
+# press UP (should be blocked, no node above j2) as a wait
+for i in range(6):
+    c.step(1)
+    print(f"wait{i}: avatar",pos(c.frame(),9),"enemy",pos(c.frame(),8),"term",c.terminal())
+EOF
+python /tmp/enemy4.py
+The enemy doesn't chase on waits. Let me systematically test each single action from the start state and record how the enemy moves — this looks like it might mirror the avatar.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/mirror.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+env=setup()
+names={1:'UP',2:'DOWN',3:'LEFT',4:'RIGHT'}
+for a in [1,2,3,4]:
+    c=env.clone()
+    b9,b8=pos(c.frame(),9),pos(c.frame(),8)
+    c.step(a)
+    a9,a8=pos(c.frame(),9),pos(c.frame(),8)
+    d9=(a9[0]-b9[0],a9[1]-b9[1]) if a9 and b9 else None
+    d8=(a8[0]-b8[0],a8[1]-b8[1]) if a8 and b8 else None
+    print(f"{names[a]}: avatar d={d9} enemy d={d8}")
+EOF
+python /tmp/mirror.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/mirror2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+names={1:'UP',2:'DOWN',3:'LEFT',4:'RIGHT'}
+def test_at(pre, label):
+    env=setup(); base=env.clone()
+    for a in pre: base.step(a)
+    print(f"=== {label}: avatar {pos(base.frame(),9)} enemy {pos(base.frame(),8)} ===")
+    for a in [1,2,3,4]:
+        c=base.clone()
+        b9,b8=pos(c.frame(),9),pos(c.frame(),8)
+        c.step(a)
+        a9,a8=pos(c.frame(),9),pos(c.frame(),8)
+        d9=(a9[0]-b9[0],a9[1]-b9[1]) if a9 and b9 else 'DEAD'
+        d8=(a8[0]-b8[0],a8[1]-b8[1]) if a8 and b8 else 'DEAD'
+        print(f"  {names[a]}: avatar {d9} enemy {d8} term={c.terminal()}")
+
+test_at([1], "at j0 blockrow2 (enemy row)")
+test_at([1,4], "at j1")
+test_at([1,4,4], "at j2")
+EOF
+python /tmp/mirror2.py
+Enemy only "lunges" when the avatar moves toward it along its row at close range. Let me reconstruct the full node graph and edges, and probe the enemy from other directions.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/graph.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl2_frame.npy')
+bg=5
+R0,C0=21,12  # top-left including goal block
+cell=3
+def center(br,bc):
+    r,c=R0+br*cell,C0+bc*cell
+    if r+cell>64 or c+cell>64: return bg
+    return int(f[r+1,c+1])
+# node block indices even
+maxbr=(35-R0)//cell  # up to row35
+maxbc=(50-C0)//cell
+print("maxbr",maxbr,"maxbc",maxbc)
+nodes={}
+for br in range(0,maxbr+1,2):
+    for bc in range(0,maxbc+1,2):
+        col=center(br,bc)
+        if col!=bg:
+            nodes[(br//2,bc//2)]=col
+print("nodes:",nodes)
+# edges: horizontal at odd bc, vertical at odd br
+def present(br,bc):
+    return center(br,bc)!=bg
+edges=[]
+for (i,j),col in nodes.items():
+    br,bc=2*i,2*j
+    # right
+    if (i,j+1) in nodes and present(br,bc+1): edges.append(((i,j),(i,j+1)))
+    # down
+    if (i+1,j) in nodes and present(br+1,bc): edges.append(((i,j),(i+1,j)))
+for e in edges: print(e)
+EOF
+python /tmp/graph.py
+The enemy node (1,4) is a mandatory chokepoint. There's a lower corridor (row2). Let me route the avatar below the enemy to node (2,4) and probe the enemy from underneath/other sides.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/below.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+names={1:'UP',2:'DOWN',3:'LEFT',4:'RIGHT'}
+# path to (2,4): UP(->1,0),R(1,1),R(1,2),DOWN(2,2),R(2,3),R(2,4)
+env=setup(); base=env.clone()
+seq=[1,4,4,2,4,4]
+for a in seq:
+    base.step(a)
+    print(f"{names[a]}: avatar {pos(base.frame(),9)} enemy {pos(base.frame(),8)} term {base.terminal()}")
+print("=== at (2,4) below enemy, probe ===")
+for a in [1,2,3,4]:
+    c=base.clone()
+    b9,b8=pos(c.frame(),9),pos(c.frame(),8)
+    c.step(a)
+    a9,a8=pos(c.frame(),9),pos(c.frame(),8)
+    d9=(a9[0]-b9[0],a9[1]-b9[1]) if a9 and b9 else 'DEAD'
+    d8=(a8[0]-b8[0],a8[1]-b8[1]) if a8 and b8 else 'DEAD'
+    print(f"  {names[a]}: avatar {d9} enemy {d8} term {c.terminal()}")
+EOF
+python /tmp/below.py
+Excellent! From below, moving UP into the enemy **kills it** (enemy vanishes, avatar survives). Now the chokepoint clears. Let me complete the path to the goal.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > /tmp/win.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus')
+import gkm_arena as A
+import numpy as np
+def setup():
+    env = A.Arena('tu93')
+    for a in [4, 2, 2, 4, 1, 4, 2, 2, 3, 3, 2, 4, 4, 2, 4, 1, 4, 2]: env.step(a)
+    return env
+def pos(f,col):
+    ys,xs=np.where(f==col)
+    return (int(ys.min()),int(xs.min())) if len(ys) else None
+names={1:'UP',2:'DOWN',3:'LEFT',4:'RIGHT'}
+env=setup(); c=env.clone()
+seq=[1,4,4,2,4,4,1,4,4,1]
+for a in seq:
+    c.step(a)
+    print(f"{names[a]}: avatar {pos(c.frame(),9)} enemy {pos(c.frame(),8)} goal14 {pos(c.frame(),14)} lvl {c.levels_completed} term {c.terminal()}")
+EOF
+python /tmp/win.py
+API Error: BadRequestError: Error code: 400 - {'type': 'error', 'error': {'type': 'invalid_request_error', 'message': 'You have reached your specified API usage limits. You will regain access on 2026-08-01 at 00:00 UTC.'}, 'request_id': 'req_011Cd2RHLLGPYp6d23RCvwtr'}

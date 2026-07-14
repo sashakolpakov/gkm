@@ -53,6 +53,9 @@ The ongoing bounded campaign has also promoted replay-valid partial endpoints fo
 These are operational campaign artifacts, not additions to the two complete
 histories reported in the manuscript table above.
 
+The final bounded attempt also promoted `tu93` through L1 (18 actions). `sc25`
+ended at the API usage limit with clean L1 WIP but no promoted level.
+
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
 

@@ -20,6 +20,9 @@ artifacts for `ft09`, `sp80`, `g50t`, `tr87`, and `r11l` through L4. They are ke
 in the same canonical artifact layout but are not part of the manuscript's two
 complete-history table above.
 
+`tu93` additionally has a replay-valid L1 artifact. `sc25` retains clean L1 WIP
+only and makes no promoted claim.
+
 The action totals describe the final replay paths. Exploration used the local
 `Arena.clone()` oracle and was not metered, so these values do not measure official
 ARC-AGI-3 interaction or sample efficiency. The official wrapper provides `reset()`

@@ -1,0 +1,20 @@
+{
+  "game": "tu93",
+  "level": 2,
+  "phase": "credit_out",
+  "reached": 1,
+  "err": "api proposer reported no credits/quota (see /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/proposer_last.log)",
+  "attempt": "credit_out_058e988c9fc3",
+  "created_at": "2026-07-14T18:25:31.354601+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

@@ -99,6 +99,9 @@ The bounded follow-on campaign also retains replay-valid partial artifacts for
 promotion and WIP layout but are not part of the manuscript's two complete-history
 endpoint table.
 
+``tu93`` additionally has a replay-valid L1 artifact. ``sc25`` retains clean L1 WIP
+but no promoted level.
+
 The ``ls20`` checkpoint records ``43, 2, 45, 3, 72, 130, 67``. At L2 and L4,
 the thin player entries call unchanged search routines, which makes the small net
 growth values attributable to reuse in those two transitions. Larger entries retain

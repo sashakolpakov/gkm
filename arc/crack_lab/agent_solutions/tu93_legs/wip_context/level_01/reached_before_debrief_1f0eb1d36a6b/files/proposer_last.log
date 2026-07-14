@@ -1,0 +1,293 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat gkm_try.py legs.py legs_log.md players.py solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat auto_solve_attempts.json; echo "---"; timeout 120 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && ls; echo "---"; head -60 gkm_arena.py 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '60,180p' gkm_arena.py
+Now let me set up a probe script to explore level 1.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tu93')
+print("actions:", env.actions)
+print("levels:", env.levels_completed)
+f = env.frame()
+print("shape:", f.shape)
+print("colors:", P.color_counts(f))
+np.set_printoptions(linewidth=200, threshold=10000)
+print(f)
+EOF
+python probe.py 2>&1 | head -80
+Let me experiment with actions on clones.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('tu93')
+base = env.frame().copy()
+# find special colors
+for col in [4,9,14]:
+    ys,xs = np.where(base==col)
+    print(f"color {col}: rows {ys.min()}-{ys.max()} cols {xs.min()}-{xs.max()} count {len(ys)}")
+
+print("\naction deltas:")
+for a in env.actions:
+    c = env.clone(); c.step(a)
+    d = P.frame_delta(base, c.frame())
+    print(f"a={a}: count={d['count']} bbox={d['bbox']}")
+    print("   samples:", d['samples'][:12])
+EOF
+python probe2.py 2>&1 | head -40
+Action 4 moves the avatar (the 9-block + 4 center) right by 6 pixels (one grid cell). Let me map the maze grid structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe3.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+env = A.Arena('tu93')
+f = env.frame().copy()
+# The structure seems to be 3-wide blocks. grid starts at row 15, col 15.
+# Cells at rows 15-17,18-20,... step 3? Let's sample the value at each 3x3 block center.
+# rows from 15, cols from 15. Let's print block-center colors for a region.
+r0,c0=15,15
+print("Block map (each char = center color of 3x3 block):")
+for br in range(0, 11):
+    row=[]
+    for bc in range(0, 11):
+        r=r0+br*3; c=c0+bc*3
+        if r<64 and c<64:
+            row.append(int(f[r+1,c+1]))
+        else:
+            row.append(-1)
+    print(' '.join(f'{v:2d}' for v in row))
+EOF
+python probe3.py 2>&1
+The maze: nodes at even block positions, edges (passable if color 2) between them. Player at node (0,0), goal (14) at node (5,5). Let me discover the action→direction mapping.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe4.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+
+def find4(f):
+    ys,xs=np.where(f==4)
+    return (int(ys[0]),int(xs[0])) if len(ys) else None
+
+env = A.Arena('tu93')
+print("start 4 at", find4(env.frame()))
+# move right (a=4) once
+c=env.clone(); c.step(4)
+print("after a=4:", find4(c.frame()))
+# now from that node test each action
+for a in [1,2,3,4]:
+    cc=c.clone(); cc.step(a)
+    print(f"  then a={a}:", find4(cc.frame()))
+EOF
+python probe4.py 2>&1
+Mapping: 1=UP, 2=DOWN, 3=LEFT, 4=RIGHT. Now let me build the node graph and BFS to the goal.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe5.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+env = A.Arena('tu93')
+f = env.frame().copy()
+R0,C0=15,15
+def bm(br,bc):
+    r=R0+br*3; c=C0+bc*3
+    return int(f[r+1,c+1])
+# nodes i,j 0..5 -> block (2i,2j)
+# find start (9) and goal (14) nodes
+def nodecolor(i,j): return bm(2*i,2*j)
+start=goal=None
+for i in range(6):
+    for j in range(6):
+        v=nodecolor(i,j)
+        if v==9: start=(i,j)
+        if v==14: goal=(i,j)
+print("start",start,"goal",goal)
+# edges
+def edges(i,j):
+    out=[]
+    # right
+    if j<5 and bm(2*i,2*j+1)==2: out.append((i,j+1,4))
+    if j>0 and bm(2*i,2*j-1)==2: out.append((i,j-1,3))
+    if i<5 and bm(2*i+1,2*j)==2: out.append((i+1,j,2))
+    if i>0 and bm(2*i-1,2*j)==2: out.append((i-1,j,1))
+    return out
+# BFS
+q=deque([(start,[])]); seen={start}
+path=None
+while q:
+    (i,j),p=q.popleft()
+    if (i,j)==goal: path=p; break
+    for ni,nj,a in edges(i,j):
+        if (ni,nj) not in seen:
+            seen.add((ni,nj)); q.append(((ni,nj),p+[a]))
+print("path actions:",path,"len",len(path) if path else None)
+EOF
+python probe5.py 2>&1
+Found a path. Let me verify it completes the level.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat >> probe5.py << 'EOF'
+
+# verify
+c=env.clone()
+for a in path:
+    c.step(a)
+    if c.terminal(): break
+print("levels_completed after path:", c.levels_completed, "terminal", c.terminal())
+def find4(fr):
+    ys,xs=np.where(fr==4); return (int(ys[0]),int(xs[0])) if len(ys) else None
+print("final 4 pos", find4(c.frame()))
+EOF
+python probe5.py 2>&1 | tail -3
+The path reaches level 1. Now let me write a reusable maze-solving leg in legs.py and compose it in players.py.
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe6.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+env=A.Arena('tu93')
+g=legs.parse_block_maze(env.frame())
+print("start",g["start"],"goal",g["goal"],"marker",g["marker"],"open",g["open"],"bg",g["bg"])
+print("nodes count",len(g["nodes"]))
+p=legs.maze_path_actions(env.frame())
+print("path",p)
+EOF
+python probe6.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat >> probe6.py << 'EOF'
+import numpy as np
+f=env.frame()
+print("f[16,16]=",f[16,16],"f[16,22]=",f[16,22])
+print(sorted(g["nodes"].items()))
+EOF
+python probe6.py 2>&1 | tail -5
+The bottom-row border (color 6) is skewing the origin. Let me make origin detection ignore uniform full-row/col borders.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python probe6.py 2>&1 | head -4
+Now the parse works. Let me run the full solve.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -5
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe7.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+env=A.Arena('tu93')
+for step in range(6):
+    p=legs.maze_path_actions(env.frame())
+    g=legs.parse_block_maze(env.frame())
+    print(f"step {step}: start={g['start']} goal={g['goal']} pathlen={len(p) if p else None} first={p[0] if p else None}")
+    if not p: break
+    env.step(p[0])
+    print("   levels",env.levels_completed,"terminal",env.terminal())
+EOF
+python probe7.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe8.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs, numpy as np
+env=A.Arena('tu93'); env.step(4)
+f=env.frame()
+print("counts",{int(v):int(c) for v,c in zip(*np.unique(f,return_counts=True))})
+ys,xs=np.where(f==4); print("marker4 at",list(zip(ys.tolist(),xs.tolist())))
+ys,xs=np.where(f==9); print("9 rows",ys.min(),ys.max(),"cols",xs.min(),xs.max())
+EOF
+python probe8.py 2>&1
+The bottom row is a move-counter bar (6's decrement each move), breaking uniform-border detection. Let me relax border detection to near-full rows/cols.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python probe7.py 2>&1
+Re-planning tracks the avatar correctly. Now the full run:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -5
+16 moves but no completion. Let me trace the full drive.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe9.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs
+env=A.Arena('tu93')
+for step in range(25):
+    if env.terminal() or env.levels_completed>0:
+        print("STOP levels",env.levels_completed,"terminal",env.terminal()); break
+    p=legs.maze_path_actions(env.frame())
+    g=legs.parse_block_maze(env.frame())
+    print(f"step {step}: start={g['start']} goal={g['goal']} pathlen={len(p) if p else None} first={p[0] if p else None}")
+    if not p: break
+    env.step(p[0])
+EOF
+python probe9.py 2>&1
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat > probe10.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import legs, numpy as np
+env=A.Arena('tu93')
+for step in range(16):
+    p=legs.maze_path_actions(env.frame()); env.step(p[0])
+f=env.frame()
+print("counts",{int(v):int(c) for v,c in zip(*np.unique(f,return_counts=True))})
+ys,xs=np.where(f==4); print("4 at",list(zip(ys.tolist(),xs.tolist())))
+ys,xs=np.where(f==9); print("9 rows",ys.min(),ys.max(),"cols",xs.min(),xs.max()) if len(ys) else print("no 9")
+ys,xs=np.where(f==14); print("14 rows",ys.min(),ys.max(),"cols",xs.min(),xs.max()) if len(ys) else print("no14")
+g=legs.parse_block_maze(f)
+print("bg",g["bg"],"marker",g["marker"],"open",g["open"],"start",g["start"],"goal",g["goal"])
+EOF
+python probe10.py 2>&1
+The counter depleted below the 0.7 threshold. Better: detect a HUD bar as any color confined to a single row/col spanning a large fraction. Let me use bounding-box shape.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python probe10.py 2>&1 | tail -3 && echo "===FULL===" && python gkm_try.py 2>&1 | tail -3
+Solved — `RESULT levels=1 moves=18 replay_ok=True`. Let me update the leg log and confirm the code is clean.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && rm -f probe*.py && cat > legs_log.md << 'EOF'
+# Leg-library debrief log
+
+Recurring composition patterns and repeated novelty.
+
+## tu93 level 1 — fixed-block grid maze
+- Frame: 64x64. bg=5. Avatar = a 3x3 block (colour 9) with a single-pixel
+  marker (colour 4) inside it. Goal = a distinct 3x3 block (colour 14).
+- Actions 1/2/3/4 = UP/DOWN/LEFT/RIGHT, moving the avatar one NODE (6 px = two
+  3-px blocks) when the intervening edge is open. Blocked moves still burn a
+  turn (a bottom-row step-counter bar of colour 6 decrements each move).
+- Maze structure: 3x3 blocks; NODES at even block indices, EDGES at odd. An
+  edge is passable iff its block is non-bg (colour 2 here); bg (5) = wall.
+- New legs (general, source-free):
+  - parse_block_maze: origin via non-bg bbox, ignoring HUD bars (a colour
+    confined to a single row/col spanning >=50% of the frame — robust to the
+    depleting counter). Builds node graph, finds start (block holding the
+    rarest/marker colour) and goal (node colour != open-path and != start).
+  - maze_path_actions: BFS in node space -> key-action list.
+  - drive_block_maze: re-plans from the LIVE frame each step and commits one
+    action; robust to avatar/marker dynamics. Stops on level gain/terminal.
+- play_level_1 = drive_block_maze(env). Reuse for any later block-maze config.
+EOF
+echo done
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -2
+Done. The task is complete: `solve.py` now reaches **LEVEL 1** (`RESULT levels=1 moves=18 replay_ok=True`).
+
+## Summary
+
+**Discovered mechanics (by experiment on clones):**
+- tu93 level 1 is a **fixed-block grid maze**. Background = colour 5; the avatar is a 3×3 block (colour 9) with a single-pixel marker (colour 4) inside; the goal is a distinct 3×3 block (colour 14).
+- Actions **1/2/3/4 = UP/DOWN/LEFT/RIGHT**, moving the avatar one *node* (crossing a 3-px edge block into the next 3-px cell). Blocked moves still consume a turn, decrementing a bottom-row counter bar (colour 6).
+- Grid convention: **nodes at even block indices, edges at odd**; an edge is passable iff its block is non-background (colour 2), otherwise it's a wall (5).
+
+**Legs added to `legs.py`** (general, source-free, built only on observed frames):
+- `parse_block_maze` — finds the grid origin from the non-bg bbox while ignoring HUD bars (any colour confined to a single row/col spanning ≥50% of the frame, which robustly handles the depleting counter bar that broke earlier naive origin detection). Builds the node graph and identifies start (block containing the rarest/marker colour) and goal (node colour ≠ open-path and ≠ start).
+- `maze_path_actions` — BFS in node space → key-action list.
+- `drive_block_maze` — re-plans from the **live frame** each step and commits one action, robust to avatar/marker dynamics; stops on level gain or terminal.
+
+**`players.py`**: `play_level_1(env)` simply composes `drive_block_maze(env)` — no inline level logic. These legs are reusable for any later block-maze configuration.

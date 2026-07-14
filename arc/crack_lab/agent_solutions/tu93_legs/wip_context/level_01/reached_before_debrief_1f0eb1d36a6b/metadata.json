@@ -1,0 +1,20 @@
+{
+  "game": "tu93",
+  "level": 1,
+  "phase": "reached_before_debrief",
+  "reached": 1,
+  "err": null,
+  "attempt": "reached_before_debrief_1f0eb1d36a6b",
+  "created_at": "2026-07-14T18:18:32.273466+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

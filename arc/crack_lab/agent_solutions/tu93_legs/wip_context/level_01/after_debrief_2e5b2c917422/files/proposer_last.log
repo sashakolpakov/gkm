@@ -1,0 +1,32 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat players.py && echo "=====LEGS=====" && cat legs.py && echo "=====LOG=====" && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat gkm_try.py && echo "====SOLVE====" && cat solve.py && echo "====CKPT====" && cat checkpoint.json && echo && cat auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && git log --oneline -20 2>/dev/null; echo "---status---"; git status 2>/dev/null | head; echo "---diff players---"; git log -p --all -- players.py 2>/dev/null | head -100
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && timeout 300 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python gkm_try.py 2>&1 | tail -20
+Current state passes (levels=1). Let me examine the structure. There's only one player (`play_level_1`), and it's already thin. The real duplication opportunity is *inside* `legs.py`: `drive_block_maze` bundles two distinct skills — (a) the maze-specific planner and (b) a generic closed-loop "sense→plan→commit-one-step→repeat" driver. That driver is a reusable skill that shouldn't be welded to the maze.
+
+Let me refactor: extract the generic re-planning driver as its own named higher-order leg, and make `drive_block_maze` a thin composition of it.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs.py
+Now append the recurring composition pattern (candidate higher-order leg) to the log:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus/legs_log.md
+Players.py is already thin composition (`play_level_1 = drive_block_maze(env)`), so it's left as-is. Let me verify syntax and confirm behaviour is unchanged.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_tu93_opus && python -c "import ast; ast.parse(open('legs.py').read()); ast.parse(open('players.py').read()); print('syntax ok')" && python gkm_try.py 2>&1 | tail -5
+Done. Summary of the debrief and refactor:
+
+**Comparison of players.** `players.py` contains only `play_level_1`, and it was already a thin one-line composition (`drive_block_maze(env)`). There was no cross-player body duplication to fold. The genuine duplication risk lived *inside* `legs.py`.
+
+**Refactor (each skill written ONCE).** `drive_block_maze` had welded together two separable skills:
+- a maze-specific **planner** (`maze_path_actions`), and
+- a generic closed-loop **driver** loop (sense → plan → commit one action → re-plan).
+
+I extracted the driver into its own named higher-order leg, `drive_replan(env, plan_fn, max_steps)`, and reduced `drive_block_maze` to thin composition:
+```python
+drive_replan(env, lambda f: maze_path_actions(f, cell), max_steps)
+```
+Behaviour is byte-identical (same one-action-per-step commit, same stop conditions on level-gain/terminal/no-path). `players.py` stays thin.
+
+**Candidate higher-order leg logged.** Appended to `legs_log.md`: the recurring composition pattern is **closed-loop re-planning** — a general adapter that turns any per-frame planner `plan_fn(frame) -> [actions]` into a robust env-executing player. Future levels only need a level-specific `plan_fn`, then compose with `drive_replan`.
+
+**Behaviour confirmed unchanged.** `python gkm_try.py` → `RESULT levels=1 moves=18 replay_ok=True err=None` (levels ≥ 1).
