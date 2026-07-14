@@ -1,0 +1,20 @@
+{
+  "game": "ft09",
+  "level": 2,
+  "phase": "after_auto_solve_debrief",
+  "reached": 2,
+  "err": null,
+  "attempt": "after_auto_solve_debrief_d0af510d8003",
+  "created_at": "2026-07-14T10:36:48.699907+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

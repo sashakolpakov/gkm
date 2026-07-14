@@ -1,0 +1,114 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py; echo "==== checkpoint ===="; cat checkpoint.json; echo "==== auto_solve ===="; cat auto_solve_attempts.json; echo "==== solve.py ===="; cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && git status 2>/dev/null; echo "---log---"; git log --oneline -15 2>/dev/null; echo "---diff---"; git diff HEAD 2>/dev/null | head -100
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 600 python gkm_try.py 2>&1 | tail -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py 2>&1 | tail -30
+Current state already passes with levels=2. Let me explore the arena to understand level 2's actual mechanics before writing the debrief and refactoring.
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "import gkm_arena as A; print([x for x in dir(A) if not x.startswith('__')])"
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A
+env = A.make_env('ft09')
+print('methods', [x for x in dir(env) if not x.startswith('_')])
+print('levels_completed', env.levels_completed)
+print('terminal', env.terminal())
+import numpy as np
+f=np.asarray(env.frame())
+print('frame shape', f.shape, 'dtype', f.dtype)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A
+import inspect
+print(inspect.signature(A.make_env))
+print(inspect.signature(A.run_program))
+" 2>&1 | head
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A
+import numpy as np
+captured={}
+def solve(env):
+    captured['methods']=[x for x in dir(env) if not x.startswith('_')]
+    captured['lvl0']=env.levels_completed
+    f=np.asarray(env.frame()); captured['shape']=f.shape
+    captured['colors0']=dict(zip(*[a.tolist() for a in np.unique(f,return_counts=True)]))
+A.run_program('ft09', solve)
+print(captured)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab && python -c "
+import gkm_arena as A
+import numpy as np, json
+cap={}
+lvl1_path=[[6,38,38],[6,38,46],[6,54,46],[6,38,54]]
+def solve(env):
+    for a in lvl1_path: env.step(*a)
+    cap['lvl']=env.levels_completed
+    f=np.asarray(env.frame())
+    cap['colors_lvl2']=dict(zip(*[a.tolist() for a in np.unique(f,return_counts=True)]))
+    # probe clicks to find toggle tiles on level 2
+    import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus')
+    import legs
+    tiles=legs.discover_toggle_tiles(env)
+    cap['tiles']=tiles
+    sol=legs.search_toggle_solution(env, tiles)
+    cap['solution']=sol
+A.run_program('ft09', solve)
+print('level after replay:', cap['lvl'])
+print('colors lvl2:', cap['colors_lvl2'])
+print('tiles:', cap['tiles'])
+print('solution:', cap['solution'])
+"
+Confirmed: **Level 2 is also a toggle-tile board** — `discover_toggle_tiles` finds 13 independent tiles (a wider 3-row grid) and `search_toggle_solution` returns a 7-click subset. So `play_level_2` is correctly solved by the same shared skill. Let me verify there's no inline duplication remaining and that both players are truly thin:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && echo "=== players.py ===" && cat players.py && echo && echo "grep for inline probing/search logic in players (should be none):" && grep -nE "clone|step|itertools|argwhere|combinations|for |while " players.py || echo "  (none — players are thin)"
+Both players are already thin one-liner compositions with no inline logic — the discover/search/commit skills live once in `legs.py`. The real deliverable is to make the shared-skill relationship explicit and record the recurring pattern I observed now spanning **two** levels. Let me tighten `players.py` (comments only — no behaviour change) and append the level-2 debrief.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/players.py
+Now append the level-2 debrief documenting the recurring composition pattern:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs_log.md <<'EOF'
+
+## ft09 level 2 — another toggle-tile board (same skill, reused verbatim)
+- Discovered by running the arena: after replaying the level-1 clicks, level 2's
+  interactive region is a WIDER 3-row toggle grid (~13 independent tiles) rather
+  than a framed 3x3. Mechanic is identical: each tile toggles on a coordinate
+  click env.step(6,x,y); a hidden target subset completes the level.
+- discover_toggle_tiles found 13 tiles; search_toggle_solution returned a 7-click
+  subset that raises levels_completed. No new leg was written — play_level_2 is a
+  thin one-liner: solve_toggle_board(env), identical to play_level_1.
+- Confirms each skill is written ONCE: the discover -> subset-search -> commit
+  chain lives only in legs.py; both players just compose it.
+
+## Recurring composition pattern (candidate higher-order leg) — reconfirmed
+- The pattern now recurs across TWO levels: a per-level player collapses to a
+  single leg call because the underlying skill generalises. The reusable core is
+  solve_toggle_board = plan_and_commit(env, search_toggle_solution, _click_xy):
+    discover interactive tiles (probe clones) -> subset-search a goal-reaching
+    click set (on clones) -> commit the clicks (on the real env).
+- The generic higher-order leg is plan_and_commit(env, planner, apply_fn):
+  "plan on clones -> replay on the real env". Only the planner and the one-action
+  applier vary per game; the search->replay commit loop is written ONCE. Two
+  toggle levels reused it unchanged, so it is promoted from "candidate" to a
+  load-bearing shared leg for coordinate-click boards. Behaviour unchanged
+  (levels=2, moves=11: 4 for level 1 + 7 for level 2).
+EOF
+echo "appended"
+Now confirm behaviour is unchanged:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat players.py && echo "=== run ===" && python gkm_try.py 2>&1 | tail -5
+Debrief complete. Summary of what I found and did:
+
+## Findings (from running the arena, not source)
+- **Level 2 is the same mechanic as Level 1** — a toggle-tile board. After replaying the level-1 clicks, probing clones showed level 2 is just a *wider 3-row grid* (~13 independent tiles) instead of the framed 3×3. `discover_toggle_tiles` located all 13 tiles and `search_toggle_solution` found a 7-click completing subset (4 + 7 = 11 total moves, matching the RESULT).
+
+## Refactor / comparison of `play_level_2` vs earlier players
+- Both `play_level_1` and `play_level_2` were already **thin, one-line compositions** calling the single shared leg `solve_toggle_board(env)`. A grep confirmed **no inline probing/search/commit logic leaked into `players.py`** — every skill is written exactly once in `legs.py`:
+  - `discover_toggle_tiles` (probe clones, cluster by changed-region bbox)
+  - `search_toggle_solution` (fewest-clicks-first subset search on clones)
+  - `commit_plan` / `plan_and_commit` (the "plan-on-clones → replay-on-real" loop, written once)
+  - `solve_toggle_board = plan_and_commit(env, search_toggle_solution, _click_xy)`
+- I made the shared-skill relationship explicit in the player comments (comments only — no behaviour change), so it's clear the identical leg serves both levels.
+
+## legs_log.md
+- Appended a **level-2 debrief** and **reconfirmed the recurring higher-order pattern**: `plan_and_commit(env, planner, apply_fn)` — plan on clones, replay on the real env, with only the planner + one-action applier varying per game. Because two levels reused it unchanged, I promoted it from "candidate" to a load-bearing shared leg for coordinate-click boards.
+
+## Behaviour preserved
+`python gkm_try.py` → `RESULT levels=2 moves=11 replay_ok=True err=None` (levels ≥ 2 confirmed, unchanged).
