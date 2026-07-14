@@ -99,6 +99,17 @@ def test_source_reference_in_probe_script_blocks_later_bash(tmp_path):
     assert "forbidden source/history access blocked" in out
 
 
+def test_private_runtime_introspection_blocked(tmp_path):
+    out, err = G._run_bash(
+        str(tmp_path),
+        "python3 -c \"from gkm_arena import Arena; "
+        "env = Arena('ft09'); print(env._game)\"",
+    )
+    assert err
+    assert "private game/runtime introspection" in out
+    assert "forbidden source/history access blocked" in out
+
+
 def test_api_error_is_logged_not_raised(tmp_path):
     class _Boom:
         class messages:

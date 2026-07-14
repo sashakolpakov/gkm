@@ -61,6 +61,8 @@ FORBIDDEN_SOURCE_PATTERNS = (
 def _forbidden_source_reference(text: str) -> Optional[str]:
     """Return the forbidden marker when a tool command tries to read source/history."""
     lowered = text.lower()
+    if re.search(r"\.\s*_(?:game|env)\b|__dict__|inspect\.getsource", lowered):
+        return "private game/runtime introspection"
     for marker in FORBIDDEN_SOURCE_PATTERNS:
         if marker.lower() in lowered:
             return marker
