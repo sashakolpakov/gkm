@@ -1419,6 +1419,10 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 except CreditOut as ex:
                     print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
                     levels2, path2 = levels, path
+                snapshot_wip_context(
+                    game, ws, K, "after_auto_solve_debrief",
+                    max(levels, levels2), None, tag, verbose=verbose,
+                )
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
                 Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))

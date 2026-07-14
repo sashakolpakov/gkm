@@ -72,6 +72,8 @@ def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path, monkeypatch):
     assert by[4] <= by[2]                       # not strictly increasing
     assert by[3] == by[4]                       # pure reuse: identical marginal cost
     assert rep.total_marginal_C == sum(by.values())
+    level3_wip = artifact_root / "legstest_legs" / "wip_context" / "level_03"
+    assert any(p.name.startswith("after_auto_solve_debrief_") for p in level3_wip.iterdir())
 
 
 def test_setup_workspace_builds_valid_dispatch():
