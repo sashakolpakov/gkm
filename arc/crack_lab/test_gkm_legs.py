@@ -186,6 +186,13 @@ def test_tainted_workspace_cannot_promote_artifact(tmp_path, monkeypatch):
     assert not (artifact_root / "tainttest_legs" / "checkpoint.json").exists()
 
 
+def test_private_runtime_introspection_taints_workspace(tmp_path):
+    (tmp_path / "probe.py").write_text("print(env._game)\n")
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "private game/runtime introspection" in reason
+
+
 def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     artifact_root = tmp_path / "artifacts"
     monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))

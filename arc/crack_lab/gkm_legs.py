@@ -145,6 +145,11 @@ def _workspace_taint_reason(ws: str) -> Optional[str]:
                     text = f.read().lower()
             except OSError:
                 continue
+            if re.search(r"\.\s*_(?:game|env)\b|__dict__|inspect\.getsource", text):
+                return (
+                    "private game/runtime introspection in "
+                    f"{os.path.relpath(path, ws)}"
+                )
             for marker in SOURCE_TAINT_MARKERS:
                 if marker in text:
                     return f"{marker} in {os.path.relpath(path, ws)}"
