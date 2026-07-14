@@ -193,6 +193,14 @@ def test_private_runtime_introspection_taints_workspace(tmp_path):
     assert "private game/runtime introspection" in reason
 
 
+def test_action_path_accepts_coordinate_clicks_without_changing_key_paths():
+    assert L._load_action_path([1, 5, 2]) == [1, 5, 2]
+    assert L._load_action_path([[6, 12, 34], [6, 0, 63]]) == [
+        [6, 12, 34], [6, 0, 63]
+    ]
+    assert L._load_action_path([[5, 12, 34]]) is None
+
+
 def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     artifact_root = tmp_path / "artifacts"
     monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))

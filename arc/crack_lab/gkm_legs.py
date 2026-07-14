@@ -576,16 +576,25 @@ def _candidate_path_files(ws: str, K: int) -> List[str]:
     return ordered
 
 
-def _load_action_path(value) -> Optional[List[int]]:
-    """Normalize JSON/log candidates into a list of integer actions."""
+def _load_action_path(value) -> Optional[list]:
+    """Normalize JSON/log candidates into replayable key or coordinate actions."""
     if isinstance(value, dict):
         for key in ("path", "actions", "win", "solution"):
             if key in value:
                 value = value[key]
                 break
-    if (isinstance(value, list) and value
-            and all(isinstance(a, int) and 1 <= a <= 9 for a in value)):
-        return list(value)
+    if isinstance(value, list) and value:
+        normalized = []
+        for action in value:
+            if isinstance(action, int) and 1 <= action <= 9:
+                normalized.append(action)
+            elif (isinstance(action, (list, tuple)) and len(action) == 3
+                  and action[0] == 6
+                  and all(isinstance(v, int) for v in action[1:])):
+                normalized.append([6, action[1], action[2]])
+            else:
+                return None
+        return normalized
     return None
 
 
@@ -1266,8 +1275,10 @@ def _propose_task(game, K, context, legs_index):
             "where you are; solve.py dispatches to players.play_level_K. On a clone at "
             f"level {K}, learn its structure. Use perception.py first: it is a "
             "source-free scaffold that turns frames into blobs, object candidates, "
-            "action deltas, replay summaries, and bounded clone BFS keys. Build "
-            f"small symbolic probes on top of those observations instead of repeatedly "
+            "action deltas, replay summaries, and bounded clone BFS keys. "
+            "Inspect env.actions: key actions are integers; coordinate-only games "
+            "use env.step(6, x, y), recorded in replay paths as [6, x, y]. "
+            f"Build small symbolic probes on top of those observations instead of repeatedly "
             f"dumping raw pixels. Then WRITE `play_level_{K}(env)` in "
             "players.py that ONLY COMPOSES legs imported from legs.py. REUSE existing "
             "legs wherever the level is an earlier one in a new configuration; add NEW "

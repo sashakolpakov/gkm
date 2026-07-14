@@ -79,7 +79,16 @@ class Arena:
 
     @property
     def actions(self):
-        return (1, 2, 3, 4, 5, 6)
+        available = getattr(self._fd, "available_actions", None) or (1, 2, 3, 4, 5, 6)
+        out = []
+        for action in available:
+            name = getattr(action, "name", str(action))
+            match = re.search(r"(?:ACTION)?([1-6])$", name)
+            if match:
+                out.append(int(match.group(1)))
+            elif isinstance(action, int) and 1 <= action <= 6:
+                out.append(action)
+        return tuple(out) or (1, 2, 3, 4, 5, 6)
 
     @property
     def levels_completed(self) -> int:
@@ -91,12 +100,21 @@ class Arena:
     def frame(self) -> np.ndarray:
         return np.asarray(self._fd.frame[-1])
 
-    def step(self, a: int) -> np.ndarray:
+    def step(self, a, x: Optional[int] = None, y: Optional[int] = None) -> np.ndarray:
+        if isinstance(a, (list, tuple)):
+            if len(a) != 3 or int(a[0]) != 6:
+                raise ValueError("compound action must be [6, x, y]")
+            a, x, y = int(a[0]), int(a[1]), int(a[2])
+        else:
+            a = int(a)
         self._budget.tick()
         if a not in (1, 2, 3, 4, 5, 6):
             raise ValueError("action must be 1..6")
-        self._fd = self._game.perform_action(ActionInput(id=EA[_NAME[a]]), raw=True)
-        self.path.append(a)
+        data = {"x": int(x or 0), "y": int(y or 0)} if a == 6 else {}
+        self._fd = self._game.perform_action(
+            ActionInput(id=EA[_NAME[a]], data=data), raw=True
+        )
+        self.path.append([6, data["x"], data["y"]] if a == 6 else a)
         return self.frame()
 
     def clone(self) -> "Arena":
@@ -104,8 +122,8 @@ class Arena:
 
 
 PRECONCEPTIONS = """You are an agent with a deep, human-like model of the world. You will be given ONLY
-a raw 64x64 grid of small integers (colours 0..15), the ability to take one of five
-opaque actions, and a reward (levels_completed). Nothing is labelled. You must work
+a raw 64x64 grid of small integers (colours 0..15), the available opaque key or
+coordinate actions, and a reward (levels_completed). Nothing is labelled. You must work
 out EVERYTHING yourself, the way a person dropped into a strange video game would,
 using your common sense:
 
@@ -159,14 +177,15 @@ API = """Write a Python function with EXACTLY this signature (no other top-level
 collections, heapq):
   env.reset() -> np.ndarray            # 64x64 int frame; also resets the run
   env.frame() -> np.ndarray            # current 64x64 frame
-  env.step(a) -> np.ndarray            # commit action a in {1,2,3,4,5}; advances the
+  env.step(a) -> np.ndarray            # commit key action a; advances the
                                        #   REAL run (costs one move) and returns the new frame
+  env.step(6, x, y) -> np.ndarray      # commit coordinate action; replay token [6,x,y]
   env.clone() -> env                   # a COPY for SAFE lookahead; stepping the clone
                                        #   does NOT affect the real env -- use it to learn
                                        #   the rules and to plan, then commit on the real env
   env.levels_completed -> int          # your reward; make it go up
   env.terminal() -> bool               # True when the game is over (out of moves)
-  env.actions -> (1,2,3,4,5)
+  env.actions -> tuple                 # action IDs available in the current game
 
 Discover perception and rules from the frames via clones, then act on env. Keep total
 work bounded (a few hundred real moves). Output ONE ```python code block.
@@ -227,11 +246,11 @@ def run_program(game, solve, step_cap=600, time_cap=600):
     # wrap step to enforce wall-clock + a hard real-move cap
     real = {"n": 0}
     orig = env.step
-    def guarded(a):
+    def guarded(a, x=None, y=None):
         real["n"] += 1
         if real["n"] > step_cap or time.time() - started > time_cap:
             raise RuntimeError("real-move/time cap")
-        return orig(a)
+        return orig(a, x, y)
     env.step = guarded
     err = None
     try:
