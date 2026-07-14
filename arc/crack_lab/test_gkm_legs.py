@@ -6,6 +6,7 @@ tested is the load-bearing property: reusing a leg is free, so later levels that
 no new legs have lower marginal novelty than early rule-learning levels.
 """
 import os
+import json
 import re
 import shutil
 import subprocess
@@ -39,6 +40,69 @@ def test_free_energy_rewards_levels_and_penalises_novelty():
     assert L.free_energy(3, 100, lam=0.02) == -3.0 + 2.0
     # more levels for the same novelty is always lower F
     assert L.free_energy(4, 50) < L.free_energy(3, 50)
+
+
+def test_level_record_upsert_and_legacy_checkpoint_deduplication(tmp_path):
+    rep = L.Report(
+        game="duptest",
+        reached=3,
+        records=[
+            L.LevelRecord(level=1, marginal_C=10, reached=True),
+            L.LevelRecord(level=3, marginal_C=14, reached=True),
+            L.LevelRecord(level=3, marginal_C=184, reached=True),
+        ],
+        total_marginal_C=208,
+    )
+    L._save_checkpoint(str(tmp_path), rep)
+    assert [(r.level, r.marginal_C) for r in rep.records] == [(1, 10), (3, 184)]
+    assert rep.total_marginal_C == 194
+
+    data = json.loads((tmp_path / L.CHECKPOINT_FILE).read_text())
+    assert [(r["level"], r["marginal_C"]) for r in data["records"]] == [
+        (1, 10), (3, 184)
+    ]
+
+    L._record_level(rep, 3, 190)
+    assert [(r.level, r.marginal_C) for r in rep.records] == [(1, 10), (3, 190)]
+    assert rep.total_marginal_C == 200
+
+
+def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
+    first = L._acquire_workspace_lock(str(tmp_path))
+    try:
+        try:
+            L._acquire_workspace_lock(str(tmp_path))
+        except RuntimeError as ex:
+            assert "another orchestrator" in str(ex)
+        else:
+            raise AssertionError("overlapping workspace lock was accepted")
+
+        code = (
+            "import gkm_legs as L\n"
+            "try:\n"
+            f"    L._acquire_workspace_lock({str(tmp_path)!r})\n"
+            "except RuntimeError:\n"
+            "    print('BLOCKED')\n"
+            "else:\n"
+            "    raise SystemExit('overlap accepted')\n"
+        )
+        proc = subprocess.run(
+            [sys.executable, "-c", code],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            env={
+                **os.environ,
+                "PYTHONPATH": os.pathsep.join(filter(None, (
+                    os.path.dirname(L.__file__), os.environ.get("PYTHONPATH", "")
+                ))),
+            },
+            check=False,
+        )
+        assert proc.returncode == 0, proc.stderr
+        assert proc.stdout.strip() == "BLOCKED"
+    finally:
+        L._release_workspace_lock(first)
 
 
 def test_orchestration_loop_with_mocks_shows_reuse_trend(tmp_path, monkeypatch):
@@ -193,6 +257,16 @@ def test_private_runtime_introspection_taints_workspace(tmp_path):
     reason = L._workspace_taint_reason(str(tmp_path))
     assert reason is not None
     assert "private game/runtime introspection" in reason
+
+
+def test_runtime_enumeration_and_frame_data_taint_workspace(tmp_path):
+    for index, body in enumerate(("print(vars(env))\n", "print(env._fd)\n")):
+        path = tmp_path / f"probe_{index}.py"
+        path.write_text(body)
+        reason = L._workspace_taint_reason(str(tmp_path))
+        assert reason is not None
+        assert "private game/runtime introspection" in reason
+        path.unlink()
 
 
 def test_other_catalog_game_source_taints_workspace(tmp_path):

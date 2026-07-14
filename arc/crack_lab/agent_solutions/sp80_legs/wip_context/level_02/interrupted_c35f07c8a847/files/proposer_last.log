@@ -1,0 +1,2427 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat solve.py players.py legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat checkpoint.json legs_log.md proposer_last.log auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && timeout 120 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python gkm_try.py
+Level 1 solved. Now let me explore level 2 structure using a clone.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/probe2.py << 'EOF'
+import importlib.util, sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+# Build a fresh env, get to level 2
+def get_env():
+    holder = {}
+    def prog(env):
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+# Actually run_program passes env; we play level 1 then capture
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        # play level 1
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+print("levels_completed:", env.levels_completed)
+f = np.array(env.frame())
+print("shape", f.shape)
+print("colors", P.color_counts(f))
+EOF
+python /tmp/probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/probe2.py << 'EOF'
+import importlib.util, sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+print("levels_completed:", env.levels_completed)
+f = np.array(env.frame())
+print("shape", f.shape)
+print("colors", P.color_counts(f))
+print("objects:")
+for o in P.object_candidates(f):
+    print(o['color'], o['bbox'], 'area', o['area'])
+EOF
+cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && python /tmp/probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/vis.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+f = np.array(env.frame())
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'=',}
+for r in range(64):
+    print(''.join(chars.get(int(v),'?') for v in f[r]))
+EOF
+python /tmp/vis.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/act.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+d = P.action_deltas(env, actions=(1,2,3,4,5,6))
+for a,delta in d.items():
+    print("action",a,"count",delta['count'],"bbox",delta['bbox'])
+    for s in delta['samples'][:6]:
+        print("   ",s)
+EOF
+python /tmp/act.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/bfs2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+base = env.levels_completed
+
+def key_fn(e):
+    f = np.array(e.frame())
+    rows, cols = np.where(f == 9)
+    if len(rows)==0: return None
+    return (int(rows.min()), int(cols.min()))
+
+start = key_fn(env)
+q = deque([(env.clone(), [])])
+seen = {start}
+found=None
+states=0
+while q and states<=3000:
+    node, path = q.popleft()
+    states+=1
+    if len(path)>=25: continue
+    for a in (1,2,3,4,5):
+        child = node.clone()
+        child.step(a)
+        if child.levels_completed>base:
+            found=path+[a]; break
+        k=key_fn(child)
+        if k is None or k in seen: continue
+        seen.add(k); q.append((child, path+[a]))
+    if found: break
+print("found", found, "states", states, "seen", len(seen))
+EOF
+python /tmp/bfs2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/use2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+
+# explore many 9-block positions, press USE, see if any non-timer change
+# do a grid of moves
+import itertools
+def frame_no_timer(e):
+    f=np.array(e.frame())
+    f=f.copy(); f[63,:]=0; return f
+
+base_f = frame_no_timer(env)
+# Try pressing USE at each reachable position via random-ish exploration
+from collections import deque
+def pos(e):
+    f=np.array(e.frame()); r,c=np.where(f==9)
+    return (int(r.min()),int(c.min()))
+seen={pos(env):env.clone()}
+q=deque([env.clone()])
+while q:
+    node=q.popleft()
+    for a in (1,2,3,4):
+        ch=node.clone(); ch.step(a)
+        p=pos(ch)
+        if p not in seen:
+            seen[p]=ch; q.append(ch)
+print("reachable positions:", len(seen))
+# for each, press USE and check change vs its own pre-USE frame
+hits=[]
+for p,e in seen.items():
+    pre=frame_no_timer(e)
+    ch=e.clone(); ch.step(5)
+    post=frame_no_timer(ch)
+    diff=np.argwhere(pre!=post)
+    if len(diff)>0 or ch.levels_completed>env.levels_completed:
+        hits.append((p, len(diff), ch.levels_completed))
+print("USE hits:", hits[:40])
+EOF
+python /tmp/use2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/use3.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(f, r0=4, r1=52):
+    for r in range(r0,r1):
+        print(''.join(chars.get(int(v),'?') for v in f[r][:60]))
+
+env = get_to_level2()
+print("=== BEFORE USE (start) ===")
+show(np.array(env.frame()))
+ch=env.clone(); ch.step(5)
+print("=== AFTER USE (start) === level", ch.levels_completed)
+show(np.array(ch.frame()))
+EOF
+python /tmp/use3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/use4.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(f, r0=4, r1=52):
+    for r in range(r0,r1):
+        print('%2d '%r+''.join(chars.get(int(v),'?') for v in f[r][:60]))
+def pos(e):
+    f=np.array(e.frame()); r,c=np.where(f==9)
+    return (int(r.min()),int(c.min()))
+
+env = get_to_level2()
+# move up to row 16
+e=env.clone()
+for _ in range(6):
+    e.step(1)
+print("pos after ups", pos(e))
+print("=== BEFORE USE ===")
+show(np.array(e.frame()))
+ch=e.clone(); ch.step(5)
+print("=== AFTER USE === level", ch.levels_completed)
+show(np.array(ch.frame()))
+EOF
+python /tmp/use4.py
+This is a "possession"/merge mechanic. Let me BFS with a key capturing all 8 and 9 block positions.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/bfs2b.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]:
+            env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+
+env = get_to_level2()
+base = env.levels_completed
+
+def key_fn(e):
+    f = np.array(e.frame())
+    # positions of 8 and 9 pixels
+    k8 = tuple(sorted(map(tuple, np.argwhere(f==8).tolist())))
+    k9 = tuple(sorted(map(tuple, np.argwhere(f==9).tolist())))
+    return (k8,k9)
+
+start = key_fn(env)
+q = deque([(env.clone(), [])])
+seen = {start}
+found=None
+states=0
+t=time.time()
+while q and states<8000:
+    node, path = q.popleft()
+    states+=1
+    if len(path)>=30: continue
+    for a in (1,2,3,4,5):
+        child = node.clone()
+        child.step(a)
+        if child.levels_completed>base:
+            found=path+[a]; break
+        k=key_fn(child)
+        if k in seen: continue
+        seen.add(k); q.append((child, path+[a]))
+    if found: break
+print("found", found, "states", states, "seen", len(seen), "time", round(time.time()-t,1))
+EOF
+python /tmp/bfs2b.py
+Let me test the level-1 analogy: maybe USE wins when the 9-block's columns span the 4/6 target (cols 40-43), away from 8-blocks.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def pos(e):
+    f=np.array(e.frame()); r,c=np.where(f==9); return (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+for seq in [[4,5],[4,4,5],[4,4,4,5],[2,4,5],[2,2,4,5]]:
+    e=env.clone()
+    for a in seq: e.step(a)
+    print(seq, "pos", pos(e), "level", e.levels_completed)
+EOF
+python /tmp/t.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(f,r0=4,r1=40):
+    for r in range(r0,r1):
+        print('%2d '%r+''.join(chars.get(int(v),'?') for v in f[r][:60]))
+def pos9(e):
+    f=np.array(e.frame()); r,c=np.where(f==9)
+    if len(r)==0: return None
+    return (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+e=env.clone()
+for _ in range(6): e.step(1)   # to (16,20)
+e.step(5)  # possess B
+print("after possess, 9 at", pos9(e))
+show(np.array(e.frame()))
+# now move B (the 9) up
+print("=== move up 1 ===")
+e.step(1); print("9 at", pos9(e), "level", e.levels_completed)
+show(np.array(e.frame()))
+EOF
+python /tmp/t2.py
+Let me re-derive level 1's exact win rule to understand the core mechanic.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/l1.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_l1():
+    holder={}
+    def prog(env): holder['env']=env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_l1()
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+f=np.array(env.frame())
+for r in range(64):
+    print('%2d '%r+''.join(chars.get(int(v),'?') for v in f[r]))
+EOF
+python /tmp/l1.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/l1win.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_l1():
+    holder={}
+    def prog(env): holder['env']=env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_l1()
+def pos(e):
+    f=np.array(e.frame()); r,c=np.where(f==9); return (int(r.min()),int(c.min()),int(c.max()))
+# enumerate reachable positions via moves only
+seen={pos(env):env.clone()}
+q=deque([env.clone()])
+while q:
+    n=q.popleft()
+    for a in (1,2,3,4):
+        ch=n.clone(); ch.step(a); p=pos(ch)
+        if p not in seen: seen[p]=ch; q.append(ch)
+wins=[]
+for p,e in seen.items():
+    ch=e.clone(); ch.step(5)
+    if ch.levels_completed>0: wins.append(p)
+print("num reachable", len(seen))
+print("winning positions (rmin,cmin,cmax):")
+for w in sorted(wins): print(w)
+EOF
+python /tmp/l1win.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t3.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+chars = {0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(f,r0=4,r1=44):
+    for r in range(r0,r1):
+        print('%2d '%r+''.join(chars.get(int(v),'?') for v in f[r][:60]))
+def info(e):
+    f=np.array(e.frame())
+    r,c=np.where(f==9); p9=None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+    return p9
+env=get_to_level2()
+# Move 9 up to touch B from below: B rows24-27 cols28-39. 9 at rows36-39. up twice -> rows28-31
+e=env.clone()
+e.step(1); e.step(1)
+print("9 at", info(e))
+show(np.array(e.frame()))
+e.step(5)
+print("=== after USE ===  9 at", info(e), "level", e.levels_completed)
+show(np.array(e.frame()))
+EOF
+python /tmp/t3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/map.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def blocks(e,color):
+    f=np.array(e.frame())
+    seen=np.zeros(f.shape,bool); out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                q=[(r,c)]; seen[r,c]=True; pts=[]
+                while q:
+                    x,y=q.pop(); pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True; q.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+env=get_to_level2()
+def pos(e):
+    f=np.array(e.frame());r,c=np.where(f==9);return(int(r.min()),int(c.min()))
+seen={pos(env):env.clone()}; q=deque([env.clone()])
+while q:
+    n=q.popleft()
+    for a in(1,2,3,4):
+        ch=n.clone();ch.step(a);p=pos(ch)
+        if p not in seen:seen[p]=ch;q.append(ch)
+# classify USE effects
+for p in sorted(seen):
+    e=seen[p]
+    b9=blocks(e,9); b8=blocks(e,8)
+    ch=e.clone();ch.step(5)
+    a9=blocks(ch,9); a8=blocks(ch,8)
+    if b9!=a9 or b8!=a8:
+        print("9pos",p,"| before 8:",b8,"9:",b9)
+        print("     -> after 8:",a8,"9:",a9)
+EOF
+python /tmp/map.py 2>&1 | head -60
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/map2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+def pos(e):
+    f=np.array(e.frame());r,c=np.where(f==9);return(int(r.min()),int(c.min()),int(c.max()))
+seen={pos(env):env.clone()}; q=deque([env.clone()])
+while q:
+    n=q.popleft()
+    for a in(1,2,3,4):
+        ch=n.clone();ch.step(a);p=pos(ch)
+        if p not in seen:seen[p]=ch;q.append(ch)
+trig=[]; notrig=[]
+for p in sorted(seen):
+    e=seen[p]
+    before=np.array(e.frame()).copy(); before[63,:]=0
+    ch=e.clone();ch.step(5)
+    after=np.array(ch.frame()).copy(); after[63,:]=0
+    if not np.array_equal(before,after): trig.append(p)
+    else: notrig.append(p)
+print("NON-triggering positions:")
+for p in notrig: print("  ",p)
+print("num trig", len(trig), "num notrig", len(notrig))
+EOF
+python /tmp/map2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t4.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+chars={0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(f,r0=4,r1=32):
+    for r in range(r0,r1):
+        print('%2d '%r+''.join(chars.get(int(v),'?')for v in f[r][:60]))
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else(int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+e=env.clone()
+# stamp initial block harmlessly: move left+up to (16,0): from (36,20): up 5 ->16, left 5 ->0
+for _ in range(5): e.step(1)
+for _ in range(5): e.step(3)
+print("before stamp 9 at",p9(e))
+e.step(5)
+print("after stamp 9 at",p9(e),"level",e.levels_completed)
+show(np.array(e.frame()))
+# now drive 12-wide 9 up
+for i in range(6):
+    e.step(1)
+    print("up",i+1,"9 at",p9(e),"lvl",e.levels_completed)
+print("=== final ===")
+show(np.array(e.frame()))
+EOF
+python /tmp/t4.py
+The avatar is confined to rows 16-48; cups are unreachable column-templates. Let me test a "fill slot under each cup" hypothesis by building stamps.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t5.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+chars={0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+def show(e,r0=4,r1=30):
+    f=np.array(e.frame())
+    for r in range(r0,r1):
+        print('%2d '%r+''.join(chars.get(int(v),'?')for v in f[r][:60]))
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else(int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def step(e,seq,label=""):
+    for a in seq: e.step(a)
+    print(label,"9",p9(e),"lvl",e.levels_completed)
+env=get_to_level2()
+e=env.clone()
+# stamp 20-wide at bottom-left harmless: move down to rows44-47? and left. from (36,20)
+step(e,[2,2,3,3,3,3,3],"pos1")  # down2 ->44, left5 ->cols0
+step(e,[5],"stamp1")
+show(e)
+EOF
+python /tmp/t5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t6.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else(int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+# make a 12-wide 9: stamp initial 20-wide harmlessly bottom-left
+e=env.clone()
+for a in [2,2,3,3,3,3,3,5]: e.step(a)
+print("start 12-wide 9 at", p9(e))
+# enumerate reachable positions (moves 1-4), track state by 9 bbox (8-blocks are static during pure moves)
+seen={p9(e):e.clone()}; q=deque([e.clone()])
+while q:
+    n=q.popleft()
+    for a in(1,2,3,4):
+        ch=n.clone();ch.step(a);p=p9(ch)
+        if p not in seen:seen[p]=ch;q.append(ch)
+wins=[]
+for p,ee in seen.items():
+    ch=ee.clone();ch.step(5)
+    if ch.levels_completed>1: wins.append(p)
+print("reachable 12-wide positions:",len(seen),"wins:",wins)
+EOF
+python /tmp/t6.py
+8-blocks don't obstruct movement (9 overlaps them). Win needs a stamp configuration. Let me build the "fill under each cup" pattern, checking for a winning USE after each stamp.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/t7.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else(int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def scan_win(e):
+    # enumerate reachable 9 positions via moves, test USE for level up
+    seen={p9(e):e.clone()}; q=deque([e.clone()])
+    while q:
+        n=q.popleft()
+        for a in(1,2,3,4):
+            ch=n.clone();ch.step(a);p=p9(ch)
+            if p not in seen:seen[p]=ch;q.append(ch)
+    for p,ee in seen.items():
+        ch=ee.clone();ch.step(5)
+        if ch.levels_completed>1: return ('WIN at',p)
+    return None
+def move_to(e,tr,tc):
+    # move 9 (bbox) so rmin=tr,cmin=tc using greedy steps
+    for _ in range(40):
+        b=p9(e)
+        if b is None: break
+        rmin,rmax,cmin,cmax=b
+        if rmin==tr and cmin==tc: break
+        if cmin<tc: e.step(4)
+        elif cmin>tc: e.step(3)
+        elif rmin<tr: e.step(2)
+        elif rmin>tr: e.step(1)
+    return p9(e)
+env=get_to_level2()
+e=env.clone()
+# stamp initial 20-wide harmlessly
+for a in [2,2,3,3,3,3,3,5]: e.step(a)
+print("after init stamp:", p9(e), scan_win(e))
+# stamp under cup2 (16,28)
+print("moveto",move_to(e,16,28)); e.step(5); print("stamped cup2", p9(e), scan_win(e))
+# stamp under cup3 (16,44)
+print("moveto",move_to(e,16,44)); e.step(5); print("stamped cup3", p9(e), scan_win(e))
+# stamp under cup1 (16,12)
+print("moveto",move_to(e,16,12)); e.step(5); print("stamped cup1", p9(e), scan_win(e))
+EOF
+python /tmp/t7.py
+Important discovery — it's a block-cycling mechanic (3 blocks, USE rotates avatar). And there's a timer. Let me measure the timer budget and re-examine the cycle.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/timer.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+e=env.clone()
+n=0
+while not e.terminal() and n<400:
+    e.step(6); n+=1
+print("terminal after", n, "no-op steps; terminal=",e.terminal())
+# timer width
+f=np.array(env.frame()); print("row63 count14 at start:", int((f[63]==14).sum()))
+EOF
+python /tmp/timer.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/timer2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+e=env.clone()
+for i in range(10):
+    f=np.array(e.frame()); print(i, "timer14 count", int((f[63]==14).sum()))
+    e.step(6)
+EOF
+python /tmp/timer2.py
+45-step budget. Let me nail the cycle order precisely by tracing blocks through USE presses.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cyc.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def dump(e,lbl):
+    print(lbl,"| 9:",comps(e,9)," 8:",comps(e,8),"lvl",e.levels_completed)
+env=get_to_level2()
+e=env.clone()
+dump(e,"start")
+# move 20-wide up-left into trigger zone (16,0)
+for a in [1,1,1,1,1,3,3,3,3,3]: e.step(a)
+dump(e,"moved to (16,0)")
+for i in range(6):
+    e.step(5); dump(e,"USE#%d"%(i+1))
+EOF
+python /tmp/cyc.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cyc2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+e=env.clone()
+seq=[1,1,1,1,1,3,3,3,3,3,5,5,5,5,5,5,5]
+for i,a in enumerate(seq):
+    if e.terminal():
+        print("terminal before step",i); break
+    e.step(a)
+    print("step",i,"act",a,"lvl",e.levels_completed,"term",e.terminal())
+EOF
+python /tmp/cyc2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cyc3.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+def tc(e):
+    f=np.array(e.frame()); return int((f[63]==14).sum())
+# test each action's timer cost
+for act in [1,2,3,4,5,6]:
+    e=env.clone()
+    b=tc(e); e.step(act); print("act",act,"timer",b,"->",tc(e),"delta",b-tc(e))
+EOF
+python /tmp/cyc3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cyc4.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+for act in [6,5,1,4,2]:
+    e=env.clone(); n=0
+    while not e.terminal() and n<200:
+        e.step(act); n+=1
+    print("action",act,"-> terminal after",n,"steps, lvl",e.levels_completed)
+EOF
+python /tmp/cyc4.py
+USE is limited (~5 presses total) and no-op USEs still cost. Let me trace the cycle order with 3 blocks, dropping each at distinct spots.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cyc5.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def p9(e):
+    c=comps(e,9); return c[0] if c else None
+def dump(e,l): print(l,"9:",comps(e,9),"8:",comps(e,8),"lvl",e.levels_completed,"term",e.terminal())
+env=get_to_level2()
+e=env.clone()
+dump(e,"start")
+# active=20wide. Move to trigger top-left area but a distinct spot: (16,44) far right-top (trigger? map2: (16,44) triggered). 
+# Actually move to (48,0)? not trigger. Use top area. Let's drop 20wide at top-right (16, 44-63)
+for a in[1,1,1,1,1,4,4,4,4,4]: e.step(a)  # up5 to 16, right5 to cols44-63
+dump(e,"20wide moved topright")
+e.step(5); dump(e,"USE1")
+EOF
+python /tmp/cyc5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat >> /tmp/cyc5.py << 'EOF'
+print("---- continue ----")
+# 9 at socket (24,27,28,39). move it to top-left distinct spot (16,0)
+for a in[1,1,3,3,3,3,3,3,3]: e.step(a)  # up2->16 (from 24), left to 0
+dump(e,"9(B) moved to topleft")
+e.step(5); dump(e,"USE2")
+EOF
+python /tmp/cyc5.py 2>&1 | tail -5
+Let me run a bounded search over primitive actions with a USE-count limit (≤3) and config-dedup key.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/search.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def key(e):
+    f=np.array(e.frame())
+    k8=np.argwhere(f==8); k9=np.argwhere(f==9)
+    return (k8.tobytes(),k9.tobytes())
+env=get_to_level2()
+start=env.clone()
+q=deque([(start,[],0)])
+seen={key(start)}
+t=time.time(); best=None; states=0
+while q:
+    node,path,uses=q.popleft()
+    states+=1
+    if states%5000==0: print("states",states,"depth",len(path),"time",round(time.time()-t),"q",len(q))
+    if len(path)>=26: continue
+    for a in (1,2,3,4,5):
+        if a==5 and uses>=3: continue
+        child=node.clone()
+        child.step(a)
+        if child.terminal():
+            if child.levels_completed>1:
+                best=path+[a]; print("WIN",best); q.clear(); break
+            continue
+        if child.levels_completed>1:
+            best=path+[a]; print("WIN",best); q.clear(); break
+        k=key(child)
+        if k in seen: continue
+        seen.add(k)
+        q.append((child,path+[a],uses+(1 if a==5 else 0)))
+    if best: break
+    if time.time()-t>240: print("timeout"); break
+print("done best",best,"states",states,"seen",len(seen))
+EOF
+python /tmp/search.py
+USE limit is ~4 (5th press kills). The ≤3-USE search exhausted with no win. Let me expand to ≤4 USEs, deeper.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/search2.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def key(e):
+    f=np.array(e.frame())
+    return (np.argwhere(f==8).tobytes(),np.argwhere(f==9).tobytes())
+env=get_to_level2()
+start=env.clone()
+q=deque([(start,[],0)])
+seen={key(start)}
+t=time.time(); best=None; states=0
+while q:
+    node,path,uses=q.popleft()
+    states+=1
+    if states%20000==0: print("states",states,"depth",len(path),"time",round(time.time()-t),"q",len(q),flush=True)
+    if len(path)>=40: continue
+    for a in (1,2,3,4,5):
+        if a==5 and uses>=4: continue
+        child=node.clone(); child.step(a)
+        if child.terminal():
+            if child.levels_completed>1: best=path+[a]; print("WIN",best,flush=True); q.clear(); break
+            continue
+        if child.levels_completed>1: best=path+[a]; print("WIN",best,flush=True); q.clear(); break
+        k=key(child)
+        if k in seen: continue
+        seen.add(k); q.append((child,path+[a],uses+(1 if a==5 else 0)))
+    if best: break
+    if time.time()-t>1200: print("timeout",flush=True); break
+print("done best",best,"states",states,"seen",len(seen))
+import json
+open("/tmp/search2_result.json","w").write(json.dumps(best))
+EOF
+nohup python /tmp/search2.py > /tmp/search2.log 2>&1 &
+echo "started pid $!"
+While the search runs, let me monitor it.
+$ sleep 60 && cat /tmp/search2.log
+Only 11503 configs reachable with ≤4 USEs — none win. Let me test whether *effective* USEs count toward the death limit (maybe only no-op USEs kill).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/usetest.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def key(e):
+    f=np.array(e.frame()); return (np.argwhere(f==8).tobytes(),np.argwhere(f==9).tobytes())
+env=get_to_level2()
+e=env.clone()
+# do effective USEs: each time move active block up-left to a fresh trigger spot then USE
+uses=0; steps=0
+# helper: greedily move active 9 to (16, col) then USE
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(c.min()))
+targets=[(16,0),(16,4),(16,8),(16,12),(16,16),(16,20),(16,24)]
+for tr,tc in targets:
+    if e.terminal(): print("terminal before target",tr,tc); break
+    before=key(e)
+    # move
+    for _ in range(30):
+        b=p9(e)
+        if b is None or e.terminal(): break
+        r,c=b
+        if c<tc: e.step(4)
+        elif c>tc: e.step(3)
+        elif r<tr: e.step(2)
+        elif r>tr: e.step(1)
+        else: break
+        steps+=1
+    if e.terminal(): print("terminal during move"); break
+    e.step(5); uses+=1; steps+=1
+    after=key(e)
+    print("USE",uses,"steps",steps,"effective",before!=after,"term",e.terminal(),"lvl",e.levels_completed)
+EOF
+python /tmp/usetest.py
+The 5th USE always terminates — but it might terminate as a *win*. My search blocked the 5th USE. Let me allow up to 5 USEs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && sed 's/uses>=4/uses>=5/; s/path)>=40/path)>=44/' /tmp/search2.py > /tmp/search3.py && sed -i 's#search2_result#search3_result#' /tmp/search3.py && nohup python /tmp/search3.py > /tmp/search3.log 2>&1 & echo started $!
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && grep -n 'uses>=\|path)>=\|_result' /tmp/search3.py
+Let me wait for the deeper search while reconsidering the mechanics.
+$ sleep 120 && cat /tmp/search3.log
+$ ls -la /tmp/search3* /tmp/search2_result.json 2>&1; jobs; ps aux | grep search | grep -v grep
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && nohup python /tmp/search3.py > /tmp/search3.log 2>&1 & echo "started $!"
+$ sleep 90 && cat /tmp/search3.log
+No solution under my model even allowing 5 USEs. Let me re-test the death cause: is it a USE *count* limit, or caused by *merging* blocks?
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/deathtest.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def nblocks(e): return len(comps(e,8))+len(comps(e,9))
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(c.min()),int(c.max()))
+env=get_to_level2()
+e=env.clone()
+# Strategy: keep active at DOWN region (rows44-47), never overlapping, cycle many USEs.
+# But USE needs trigger zone (upper). Let me just move active straight UP to row16 then USE, and vary column so drops spread.
+# Simpler: just USE from wherever after moving up a bit, count deaths & nblocks
+import itertools
+uses=0
+log=[]
+# move active to row 16 (up) at current column, then USE, repeat
+while not e.terminal() and uses<10:
+    # move up to row16
+    for _ in range(10):
+        b=p9(e)
+        if b is None: break
+        if b[0]>16: e.step(1)
+        else: break
+        if e.terminal(): break
+    if e.terminal(): log.append(("died moving up",uses)); break
+    nb=nblocks(e)
+    e.step(5); uses+=1
+    if e.terminal(): log.append(("USE",uses,"->DEATH","nb_before",nb)); break
+    log.append(("USE",uses,"nb_after",nblocks(e),"9",p9(e)))
+for l in log: print(l)
+EOF
+python /tmp/deathtest.py
+Death is a hard USE-count limit (5th kills). Let me sanity-check my search harness on level 1 (known solvable) and verify level 2 determinism.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/verify.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_l1():
+    holder={}
+    def prog(env): holder['env']=env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def key(e):
+    f=np.array(e.frame()); return (np.argwhere(f==8).tobytes(),np.argwhere(f==9).tobytes())
+# BFS level1
+env=get_l1(); base=env.levels_completed
+q=deque([(env.clone(),[])]); seen={key(env)}; best=None; st=0
+while q and st<20000:
+    n,p=q.popleft(); st+=1
+    if len(p)>=12: continue
+    for a in(1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.levels_completed>base: best=p+[a]; break
+        if c.terminal(): continue
+        k=key(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,p+[a]))
+    if best: break
+print("L1 search win:",best,"states",st)
+# determinism check L2
+def l2frame():
+    holder={}
+    def prog(env):
+        for a in[4,4,4,5]: env.step(a)
+        holder['f']=np.array(env.frame()).copy()
+    A.run_program('sp80', prog)
+    return holder['f']
+f1=l2frame(); f2=l2frame()
+print("L2 deterministic:", np.array_equal(f1,f2))
+EOF
+python /tmp/verify.py
+Let me test whether the row-16 ceiling is a hard boundary or caused by cups — by pushing a block up in a column with no cup above.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/ceil.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+f=np.array(env.frame())
+# what colors at rows 12-15 across cols
+for r in range(4,16):
+    vals=set(int(v) for v in f[r])
+    print("row",r,"colors",sorted(vals))
+# push the 20-wide fully left then up, record
+e=env.clone()
+for _ in range(20): e.step(3)  # full left
+print("after full left",p9(e))
+for i in range(10):
+    b=p9(e); e.step(1)
+    if p9(e)==b: print("stopped up at",b); break
+print("final",p9(e))
+EOF
+python /tmp/ceil.py
+Critical question: is USE's transformation purely a function of the visible frame, or does it depend on hidden state (making my dedup unsound)? Let me test for frame-collisions with differing USE outcomes.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/hidden.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0  # ignore timer
+    return f.tobytes()
+env=get_to_level2()
+# BFS storing first env reaching each frame; on collision, compare USE outcomes
+q=deque([(env.clone(),[])]); first={fkey(env):env.clone()}
+checked=0; found=0
+while q and checked<4000:
+    n,p=q.popleft(); checked+=1
+    if len(p)>=10: continue
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.terminal(): continue
+        k=fkey(c)
+        if k in first:
+            # collision: compare USE outcome of stored vs c
+            e1=first[k].clone(); e2=c.clone()
+            if not e1.terminal() and not e2.terminal():
+                e1.step(5); e2.step(5)
+                if e1.terminal() or e2.terminal():
+                    if e1.terminal()!=e2.terminal():
+                        print("HIDDEN STATE: USE terminal differs, path",p+[a]); found+=1
+                elif fkey(e1)!=fkey(e2):
+                    print("HIDDEN STATE: USE outcome differs! path to collision", p+[a]); found+=1
+                    if found>3: q.clear(); break
+            continue
+        first[k]=c.clone(); q.append((c,p+[a]))
+print("done checked",checked,"distinct frames",len(first),"hidden_diffs",found)
+EOF
+python /tmp/hidden.py
+Confirmed: USE has hidden state — my dedup was unsound. Let me do a sound macro-search (keep real clones, no frame-dedup), restricting USE-drops to the top row across columns.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/macro.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def move_to(e,trow,tcol,acts):
+    # returns True if reached (approx), appends actions; e mutated
+    for _ in range(40):
+        if e.terminal(): return False
+        b=p9(e)
+        if b is None: return False
+        rmin,rmax,cmin,cmax=b
+        if rmin>trow: e.step(1); acts.append(1)
+        elif cmin<tcol: e.step(4); acts.append(4)
+        elif cmin>tcol: e.step(3); acts.append(3)
+        else: return True
+    return False
+env=get_to_level2()
+cols=list(range(0,53,4))  # possible cmin for 12-wide
+t=time.time(); win=None
+# DFS over up to 4 USE drops, each drop at (16, col)
+def dfs(e, acts, uses):
+    global win
+    if win or time.time()-t>300: return
+    if e.terminal(): return
+    if e.levels_completed>1: win=acts[:]; return
+    if uses>=4: return
+    b=p9(e)
+    if b is None: return
+    for col in cols:
+        c=e.clone(); a2=acts[:]
+        if not move_to(c,16,col,a2): continue
+        if c.terminal(): continue
+        if c.levels_completed>1: win=a2; return
+        c.step(5); a2.append(5)
+        if c.levels_completed>1: win=a2; return
+        if c.terminal(): continue
+        dfs(c,a2,uses+1)
+        if win: return
+dfs(env.clone(),[],0)
+print("WIN",win,"time",round(time.time()-t,1))
+import json; open("/tmp/macro_result.json","w").write(json.dumps(win))
+EOF
+nohup python /tmp/macro.py > /tmp/macro.log 2>&1 & echo started $!
+$ sleep 60 && cat /tmp/macro.log
+$ sleep 120 && cat /tmp/macro.log; cat /tmp/macro_result.json 2>/dev/null
+Row-16 drops (depth 4) found no win. Let me test the "delivery" idea: USE while a block is aligned under a cup at row16 — does the cup change or block get consumed?
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/deliv.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def counts(e):
+    f=np.array(e.frame()); v,c=np.unique(f,return_counts=True)
+    return {int(a):int(b) for a,b in zip(v,c)}
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+# get 12-wide: stamp 20wide harmlessly at bottom-left, then move under each cup at row16, USE, watch color11 & block
+e0=env.clone()
+for a in [2,2,3,3,3,3,3,5]: e0.step(a)  # 12-wide 9 at socket
+print("base counts11:",counts(e0).get(11),"9",p9(e0))
+for cup,col in [("cup1",12),("cup2",28),("cup3",44)]:
+    e=e0.clone()
+    # move to (16,col)
+    for _ in range(30):
+        b=p9(e); 
+        if b[0]>16: e.step(1)
+        elif b[2]<col: e.step(4)
+        elif b[2]>col: e.step(3)
+        else: break
+    print(cup,"at",p9(e))
+    before=counts(e)
+    e.step(5)
+    after=counts(e)
+    print("  after USE: 11:",before.get(11),"->",after.get(11)," 9now",p9(e),"lvl",e.levels_completed,"term",e.terminal())
+EOF
+python /tmp/deliv.py
+Cups are decorative. The hidden state blocks sound dedup. Let me inspect the env object for a keyable internal state (runtime observation only).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/insp.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+print("type",type(env))
+print("dir:", [a for a in dir(env) if not a.startswith('__')])
+print("__dict__ keys:", list(vars(env).keys()) if hasattr(env,'__dict__') else 'none')
+for k,v in (vars(env).items() if hasattr(env,'__dict__') else []):
+    print("  ",k,type(v),str(v)[:120])
+EOF
+python /tmp/insp.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/fd.py << 'EOF'
+import sys, os, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+fd=env._fd
+s=str(fd)
+print(s[:2000])
+EOF
+python /tmp/fd.py
+Let me examine a concrete hidden-state collision in detail to understand the activation rule.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/hidden2.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def cfg(e): return {"9":comps(e,9),"8":comps(e,8)}
+env=get_to_level2()
+def run(path):
+    e=env.clone()
+    for a in path: e.step(a)
+    return e
+# collision was between path [1,1,1,5,3,5] and some stored shorter path with same frame.
+# Let me find the stored path via BFS reproduction
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+target=run([1,1,1,5,3])  # before the final differing USE? Actually collision at [1,1,1,5,3,5]
+# Let's find two paths to the frame of run([1,1,1,5,3,5])
+tgt=run([1,1,1,5,3,5]); tk=fkey(tgt)
+q=deque([(env.clone(),[])]); seen=set(); paths=[]
+while q and len(paths)<2:
+    n,p=q.popleft()
+    if len(p)>8: continue
+    for a in(1,2,3,4,5):
+        c=n.clone(); 
+        try: c.step(a)
+        except: continue
+        if c.terminal(): continue
+        if fkey(c)==tk:
+            paths.append(p+[a])
+            if len(paths)>=2: break
+        k=fkey(c)
+        if k in seen: continue
+        seen.add(k); q.append((c,p+[a]))
+print("two paths to same frame:",paths)
+for p in paths:
+    e=run(p); print(" path",p,"cfg",cfg(e))
+    e.step(5); print("   after USE:",cfg(e))
+EOF
+python /tmp/hidden2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/hidden3.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+def masked(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f
+# BFS, store first path per frame; when collision found, rigorously compare
+firstpath={fkey(env):[]}
+q=deque([(env.clone(),[])]); checked=0
+def run(path):
+    e=env.clone()
+    for a in path: e.step(a)
+    return e
+diffs=0
+while q and checked<3000 and diffs<3:
+    n,p=q.popleft(); checked+=1
+    if len(p)>=9: continue
+    for a in (1,2,3,4,5):
+        c=n.clone(); c.step(a)
+        if c.terminal(): continue
+        k=fkey(c)
+        if k in firstpath:
+            p1=firstpath[k]; p2=p+[a]
+            e1=run(p1); e2=run(p2)
+            # verify same masked frame
+            if not np.array_equal(masked(e1),masked(e2)): continue
+            # compare USE outcome
+            u1=run(p1); u2=run(p2)
+            if u1.terminal() or u2.terminal(): continue
+            u1.step(5); u2.step(5)
+            same = (not u1.terminal() and not u2.terminal() and np.array_equal(masked(u1),masked(u2)))
+            if not same:
+                print("DIFF paths",p1,"vs",p2)
+                print("  frame9/8 equal? yes; USE u1 term",u1.terminal(),"u2 term",u2.terminal())
+                diffs+=1
+            continue
+        firstpath[k]=p+[a]; q.append((c,p+[a]))
+print("checked",checked,"frames",len(firstpath),"diffs",diffs)
+EOF
+python /tmp/hidden3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/order.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def p9(e):
+    c=comps(e,9); return c[0] if c else None
+env=get_to_level2()
+e=env.clone()
+def moveto(e,tr,tc):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return
+        r0,r1,c0,c1=b
+        if r0>tr: e.step(1)
+        elif c0<tc: e.step(4)
+        elif c0>tc: e.step(3)
+        else: return
+cols=[0,48,24,40]
+for i,col in enumerate(cols):
+    if e.terminal(): print("term"); break
+    moveto(e,16,col)
+    print("USE%d active before at"%(i+1),p9(e),"| 8before",comps(e,8))
+    e.step(5)
+    print("   -> after 9:",comps(e,9)," 8:",comps(e,8),"term",e.terminal())
+EOF
+python /tmp/order.py
+USE only "triggers" from certain positions (wasted USEs otherwise). Let me do a clean, sound recursive search: between USEs use full move-freedom, check wins at every reachable position, ≤3 USEs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/sound.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def pos9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(c.min()))
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+def reachable(e):
+    # dict pos->(env,path) reachable by moves only
+    start=pos9(e)
+    res={start:(e.clone(),[])}
+    q=deque([start])
+    while q:
+        p=q.popleft(); node,pa=res[p]
+        for a in(1,2,3,4):
+            c=node.clone(); c.step(a)
+            if c.terminal(): continue
+            np_=pos9(c)
+            if np_ is None or np_ in res: continue
+            res[np_]=(c,pa+[a]); q.append(np_)
+    return res
+t=time.time(); solution=None
+def search(e, prefix, uses_left):
+    global solution
+    if solution or time.time()-t>500: return
+    R=reachable(e)
+    # check win by position or by single USE
+    for p,(node,pa) in R.items():
+        if node.levels_completed>1:
+            solution=prefix+pa; return
+        c=node.clone(); c.step(5)
+        if c.levels_completed>1:
+            solution=prefix+pa+[5]; return
+    if uses_left<=0: return
+    # branch on effective USEs from distinct trigger positions, dedup children by frame
+    seen=set()
+    for p,(node,pa) in R.items():
+        c=node.clone(); before=fkey(c); c.step(5)
+        if c.terminal(): continue
+        if fkey(c)==before: continue  # no-op USE, skip
+        k=fkey(c)
+        if k in seen: continue
+        seen.add(k)
+        search(c, prefix+pa+[5], uses_left-1)
+        if solution: return
+env=get_to_level2()
+search(env.clone(), [], 3)
+print("SOLUTION", solution, "time", round(time.time()-t,1))
+import json; open("/tmp/sound_result.json","w").write(json.dumps(solution))
+EOF
+nohup python /tmp/sound.py > /tmp/sound.log 2>&1 & echo started $!
+$ sleep 90 && cat /tmp/sound.log; cat /tmp/sound_result.json 2>/dev/null
+$ sleep 60; cat /tmp/sound.log 2>/dev/null; echo "---"; cat /tmp/sound_result.json 2>/dev/null; echo; ps aux|grep sound.py|grep -v grep|head
+$ sleep 240; cat /tmp/sound.log 2>/dev/null; echo "==="; cat /tmp/sound_result.json 2>/dev/null; echo; ps aux|grep sound.py|grep -v grep|head
+There's a global clone step budget per env. Let me check its size (each `run_program` gives a fresh budget).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/budget.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+holder={}
+def prog(env):
+    holder['env']=env  # the real env (not clone)
+    n=0
+    try:
+        while True:
+            c=env.clone(); c.step(6); n+=1
+    except Exception as ex:
+        holder['n']=n; holder['ex']=str(ex)
+A.run_program('sp80', prog)
+print("clone steps before exhaust:", holder.get('n'), holder.get('ex'))
+EOF
+python /tmp/budget.py
+240k clone-step budget per env. I must be economical. New hypothesis: the 3 blocks (20+12+12=44 wide) can merge into one block spanning cols12–55 = exactly cup1-left to cup3-right. Let me test building that.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/merge.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def p9(e):
+    c=comps(e,9); return c[0] if c else None
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return
+        r0,r1,c0,c1=b
+        if r0>tr: e.step(1); log.append(1)
+        elif c0<tc: e.step(4); log.append(4)
+        elif c0>tc: e.step(3); log.append(3)
+        else: return
+env=get_to_level2()
+e=env.clone(); log=[]
+# step1: 20wide to (16,36) then USE
+moveto(e,16,36,log); print("20wide at",p9(e))
+e.step(5); log.append(5); print("USE1 9:",comps(e,9),"8:",comps(e,8),"lvl",e.levels_completed)
+# step2: B active to (16,24), USE
+moveto(e,16,24,log); print("B at",p9(e))
+e.step(5); log.append(5); print("USE2 9:",comps(e,9),"8:",comps(e,8),"lvl",e.levels_completed)
+# step3: A active to (16,12), USE
+moveto(e,16,12,log); print("A at",p9(e))
+e.step(5); log.append(5); print("USE3 9:",comps(e,9),"8:",comps(e,8),"lvl",e.levels_completed,"term",e.terminal())
+print("log",log)
+EOF
+python /tmp/merge.py
+Key insight: level-1's win = the block's columns overlap *both* cups (bridging). For level 2's three cups, likely all three cups must be column-covered by blocks. Cup3 (cols44-55) is currently uncovered. Let me test moving a block to cover cup3, then USE.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/cov.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return
+        r0,r1,c0,c1=b
+        if r0>tr: e.step(1); log.append(1)
+        elif r0<tr: e.step(2); log.append(2)
+        elif c0<tc: e.step(4); log.append(4)
+        elif c0>tc: e.step(3); log.append(3)
+        else: return
+env=get_to_level2()
+# try moving 20wide (active) to various positions covering cup3, then USE, check win
+for (tr,tc) in [(36,44),(16,44),(36,36),(16,36),(24,44),(36,40),(16,40)]:
+    e=env.clone(); log=[]
+    moveto(e,tr,tc,log)
+    b=p9(e)
+    lvl_before=e.levels_completed
+    e.step(5); log.append(5)
+    print("20wide->",b,"USE lvl",e.levels_completed,"term",e.terminal())
+EOF
+python /tmp/cov.py
+No win from simple cup3 coverage. New target: tile cols12–55 contiguously as A@12-23, 20wide@24-43, B@44-55 (each block, no gaps, spanning cup1→cup3). Let me build and check.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/tile.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def p9(e):
+    c=comps(e,9); return c[0] if c else None
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return
+        r0,r1,c0,c1=b
+        if r0>tr: e.step(1); log.append(1)
+        elif r0<tr: e.step(2); log.append(2)
+        elif c0<tc: e.step(4); log.append(4)
+        elif c0>tc: e.step(3); log.append(3)
+        else: return
+env=get_to_level2()
+e=env.clone(); log=[]
+moveto(e,16,24,log); print("20wide at",p9(e))
+e.step(5); log.append(5); print("USE1 8:",comps(e,8),"9:",comps(e,9),"lvl",e.levels_completed)
+moveto(e,16,44,log); print("active at",p9(e))
+e.step(5); log.append(5); print("USE2 8:",comps(e,8),"9:",comps(e,9),"lvl",e.levels_completed)
+moveto(e,16,12,log); print("active at",p9(e))
+e.step(5); log.append(5); print("USE3 8:",comps(e,8),"9:",comps(e,9),"lvl",e.levels_completed,"term",e.terminal())
+print("log",log)
+EOF
+python /tmp/tile.py
+USE can't trigger on the right side (cols44+), so cup3's block must stay the *active* 9. Let me build a contiguous cols12–55 bar: left blocks stamped, B as active 9 at cup3, checking win each step.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/build.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps(e,color):
+    f=np.array(e.frame());seen=np.zeros(f.shape,bool);out=[]
+    for r in range(64):
+        for c in range(64):
+            if f[r,c]==color and not seen[r,c]:
+                st=[(r,c)];seen[r,c]=True;pts=[]
+                while st:
+                    x,y=st.pop();pts.append((x,y))
+                    for dx,dy in((1,0),(-1,0),(0,1),(0,-1)):
+                        nx,ny=x+dx,y+dy
+                        if 0<=nx<64 and 0<=ny<64 and f[nx,ny]==color and not seen[nx,ny]:
+                            seen[nx,ny]=True;st.append((nx,ny))
+                rs=[p[0]for p in pts];cs=[p[1]for p in pts]
+                out.append((min(rs),max(rs),min(cs),max(cs)))
+    return sorted(out)
+def p9(e):
+    c=comps(e,9); return c[0] if c else None
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return
+        r0,r1,c0,c1=b
+        if r0>tr: e.step(1); log.append(1)
+        elif r0<tr: e.step(2); log.append(2)
+        elif c0<tc: e.step(4); log.append(4)
+        elif c0>tc: e.step(3); log.append(3)
+        else: return
+def U(e,log):
+    e.step(5); log.append(5)
+env=get_to_level2()
+e=env.clone(); log=[]
+moveto(e,16,24,log); U(e,log); print("USE1",comps(e,8),comps(e,9),"lvl",e.levels_completed)
+moveto(e,24,0,log); U(e,log); print("USE2 (stash B)",comps(e,8),comps(e,9),"lvl",e.levels_completed)
+moveto(e,16,12,log); U(e,log); print("USE3 (A->12)",comps(e,8),comps(e,9),"lvl",e.levels_completed)
+print("active now",p9(e))
+moveto(e,16,44,log); print("moved active to",p9(e),"lvl",e.levels_completed,"term",e.terminal())
+U(e,log); print("USE4",comps(e,8),comps(e,9),"lvl",e.levels_completed,"term",e.terminal())
+print("log",log)
+EOF
+python /tmp/build.py
+The trigger/activation rules are too intricate to hand-plan. Let me run a lean, sound search (direct moves, win-check active over all top-row columns incl. cup3, branch only on left-side stamps) within the step budget.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/lean.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+STEPS=[0]
+def clone_step(e,a):
+    e.step(a); STEPS[0]+=1
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return False
+        r0,c0,c1=b
+        if r0>tr: clone_step(e,1); log.append(1)
+        elif r0<tr: clone_step(e,2); log.append(2)
+        elif c0<tc: clone_step(e,4); log.append(4)
+        elif c0>tc: clone_step(e,3); log.append(3)
+        else: return True
+    return False
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+ALLCOLS=list(range(0,53,4))
+LEFTCOLS=[0,4,8,12,16,20,24]
+sol=[None]
+def search(e, prefix, uses_left):
+    if sol[0] or STEPS[0]>200000: return
+    # WIN check: move active to each top-row column, USE
+    for col in ALLCOLS:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        if c.levels_completed>1: sol[0]=lg; return
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.levels_completed>1: sol[0]=lg; return
+    if uses_left<=0: return
+    seen=set()
+    for col in LEFTCOLS:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        before=fkey(c); c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.terminal(): continue
+        if fkey(c)==before: continue
+        if c.levels_completed>1: sol[0]=lg; return
+        k=fkey(c)
+        if k in seen: continue
+        seen.add(k)
+        search(c, lg, uses_left-1)
+        if sol[0]: return
+env=get_to_level2()
+t=time.time()
+search(env.clone(), [], 3)
+print("SOL",sol[0],"steps",STEPS[0],"time",round(time.time()-t,1))
+import json; open("/tmp/lean_result.json","w").write(json.dumps(sol[0]))
+EOF
+python /tmp/lean.py
+Depth-3 lean search found nothing — my block-configuration model may miss reachable configs (e.g., block A seems stuck). Let me broaden: branch over all trigger stamp columns, depth 3, with frame-dedup, capped by budget.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/lean2.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+STEPS=[0]
+def cs(e,a): e.step(a); STEPS[0]+=1
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(40):
+        b=p9(e)
+        if b is None or e.terminal(): return False
+        r0,r1,c0,c1=b
+        if r0>tr: cs(e,1); log.append(1)
+        elif r0<tr: cs(e,2); log.append(2)
+        elif c0<tc: cs(e,4); log.append(4)
+        elif c0>tc: cs(e,3); log.append(3)
+        else: return True
+    return False
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+ALLCOLS=list(range(0,53,4))
+BRANCH=list(range(0,44,4))
+sol=[None]; GLOBAL_SEEN=set()
+def wincheck(e,prefix):
+    for row in (16,32):
+        for col in ALLCOLS:
+            c=e.clone(); lg=list(prefix)
+            if not moveto(c,row,col,lg): continue
+            if c.levels_completed>1: sol[0]=lg; return True
+            c.step(5); STEPS[0]+=1; lg.append(5)
+            if c.levels_completed>1: sol[0]=lg; return True
+    return False
+def search(e, prefix, uses_left):
+    if sol[0] or STEPS[0]>210000: return
+    if wincheck(e,prefix): return
+    if uses_left<=0: return
+    seen=set()
+    for col in BRANCH:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        before=fkey(c); c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.terminal(): continue
+        if c.levels_completed>1: sol[0]=lg; return
+        if fkey(c)==before: continue
+        k=fkey(c)
+        if k in seen or k in GLOBAL_SEEN: continue
+        seen.add(k); GLOBAL_SEEN.add(k)
+        search(c, lg, uses_left-1)
+        if sol[0]: return
+env=get_to_level2()
+t=time.time(); search(env.clone(), [], 3)
+print("SOL",sol[0],"steps",STEPS[0],"time",round(time.time()-t,1))
+import json; open("/tmp/lean2_result.json","w").write(json.dumps(sol[0]))
+EOF
+python /tmp/lean2.py
+Let me broaden: stamp at multiple rows (avoid forced merges), richer win-check, and allow depth 4 — within budget.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/lean3.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+STEPS=[0]
+def cs(e,a): e.step(a); STEPS[0]+=1
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(45):
+        b=p9(e)
+        if b is None or e.terminal(): return False
+        r0,r1,c0,c1=b
+        if r0>tr: cs(e,1); log.append(1)
+        elif r0<tr: cs(e,2); log.append(2)
+        elif c0<tc: cs(e,4); log.append(4)
+        elif c0>tc: cs(e,3); log.append(3)
+        else: return True
+    return False
+def fkey(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+ALLCOLS=list(range(0,53,4))
+BRANCH=[(r,c) for r in (16,24,32) for c in range(0,44,4)]
+sol=[None]; GSEEN=set()
+def wincheck(e,prefix):
+    for col in ALLCOLS:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        if c.levels_completed>1: sol[0]=lg; return True
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.levels_completed>1: sol[0]=lg; return True
+    return False
+def search(e, prefix, uses_left, cap):
+    if sol[0] or STEPS[0]>cap: return
+    if wincheck(e,prefix): return
+    if uses_left<=0: return
+    seen=set()
+    for (row,col) in BRANCH:
+        if STEPS[0]>cap: return
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,row,col,lg): continue
+        before=fkey(c); c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.terminal(): continue
+        if c.levels_completed>1: sol[0]=lg; return
+        if fkey(c)==before: continue
+        k=fkey(c)
+        if k in seen or k in GSEEN: continue
+        seen.add(k); GSEEN.add(k)
+        search(c, lg, uses_left-1, cap)
+        if sol[0]: return
+env=get_to_level2()
+t=time.time(); search(env.clone(), [], 4, 220000)
+print("SOL",sol[0],"steps",STEPS[0],"time",round(time.time()-t,1))
+import json; open("/tmp/lean3_result.json","w").write(json.dumps(sol[0]))
+EOF
+python /tmp/lean3.py
+Extensive sound search finds no win — I may be misreading the frame. Let me inspect the full frame-data structure (it's a list — maybe multiple layers).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/frames.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+fr=env._fd.frame
+print("type",type(fr),"len",len(fr))
+for i,layer in enumerate(fr):
+    a=np.array(layer)
+    print("layer",i,"shape",a.shape,"uniq",sorted(set(a.flatten().tolist()))[:20])
+EOF
+python /tmp/frames.py
+The frame is just a 20-frame history; hidden state is internal. My lean searches used unsound frame-dedup (which can prune the winner). Let me run a SOUND no-dedup macro search (short, limited branching).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/nodedup.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+STEPS=[0]
+def cs(e,a): e.step(a); STEPS[0]+=1
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(45):
+        b=p9(e)
+        if b is None or e.terminal(): return False
+        r0,r1,c0,c1=b
+        if r0>tr: cs(e,1); log.append(1)
+        elif r0<tr: cs(e,2); log.append(2)
+        elif c0<tc: cs(e,4); log.append(4)
+        elif c0>tc: cs(e,3); log.append(3)
+        else: return True
+    return False
+ALLCOLS=list(range(0,53,4))
+BRANCH=list(range(0,44,4))
+sol=[None]
+def wincheck(e,prefix):
+    for col in ALLCOLS:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        if c.levels_completed>1: sol[0]=lg; return True
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.levels_completed>1: sol[0]=lg; return True
+    return False
+def search(e, prefix, uses_left, cap):
+    if sol[0] or STEPS[0]>cap: return
+    if wincheck(e,prefix): return
+    if uses_left<=0: return
+    for col in BRANCH:
+        if STEPS[0]>cap: return
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        before=np.array(c.frame()).copy(); before[63,:]=0
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.terminal(): continue
+        if c.levels_completed>1: sol[0]=lg; return
+        aft=np.array(c.frame()).copy(); aft[63,:]=0
+        if np.array_equal(before,aft): continue   # no-op stamp, skip (same hidden? still skip; effective only)
+        search(c, lg, uses_left-1, cap)
+        if sol[0]: return
+env=get_to_level2()
+t=time.time(); search(env.clone(), [], 3, 225000)
+print("SOL",sol[0],"steps",STEPS[0],"time",round(time.time()-t,1))
+import json; open("/tmp/nodedup_result.json","w").write(json.dumps(sol[0]))
+EOF
+python /tmp/nodedup.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/d4.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+STEPS=[0]
+def cs(e,a): e.step(a); STEPS[0]+=1
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+def moveto(e,tr,tc,log):
+    for _ in range(45):
+        b=p9(e)
+        if b is None or e.terminal(): return False
+        r0,r1,c0,c1=b
+        if r0>tr: cs(e,1); log.append(1)
+        elif r0<tr: cs(e,2); log.append(2)
+        elif c0<tc: cs(e,4); log.append(4)
+        elif c0>tc: cs(e,3); log.append(3)
+        else: return True
+    return False
+ALLCOLS=list(range(0,53,4))
+BRANCH=[8,12,20,24,28,36]
+sol=[None]
+def wincheck(e,prefix):
+    for col in ALLCOLS:
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        if c.levels_completed>1: sol[0]=lg; return True
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.levels_completed>1: sol[0]=lg; return True
+    return False
+def search(e, prefix, uses_left, cap):
+    if sol[0] or STEPS[0]>cap: return
+    if wincheck(e,prefix): return
+    if uses_left<=0: return
+    for col in BRANCH:
+        if STEPS[0]>cap or sol[0]: return
+        c=e.clone(); lg=list(prefix)
+        if not moveto(c,16,col,lg): continue
+        before=np.array(c.frame()).copy(); before[63,:]=0
+        c.step(5); STEPS[0]+=1; lg.append(5)
+        if c.terminal(): continue
+        if c.levels_completed>1: sol[0]=lg; return
+        aft=np.array(c.frame()).copy(); aft[63,:]=0
+        if np.array_equal(before,aft): continue
+        search(c, lg, uses_left-1, cap)
+env=get_to_level2()
+t=time.time(); search(env.clone(), [], 4, 230000)
+print("SOL",sol[0],"steps",STEPS[0],"time",round(time.time()-t,1))
+import json; open("/tmp/d4_result.json","w").write(json.dumps(sol[0]))
+EOF
+python /tmp/d4.py
+Searches keep collapsing due to USE-limit. Let me reconsider reachability toward the bottom marker (roles may have swapped vs level 1). Let me probe max downward reach and near the marker.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/down.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+# push 20wide down fully at start col, then at right (cols40-59)
+for shift in [[], [4]*6]:
+    e=env.clone()
+    for a in shift: e.step(a)
+    for _ in range(12): e.step(2)
+    print("shift",len(shift),"down->",p9(e))
+# also check what's around rows 48-56 cols 36-47 in the static frame
+f=np.array(env.frame())
+chars={0:'.',1:'#',4:'4',6:'6',8:'8',9:'9',11:'U',12:' ',14:'='}
+for r in range(48,64):
+    print('%2d '%r+''.join(chars.get(int(v),'?')for v in f[r][30:60]))
+EOF
+python /tmp/down.py
+Let me try Monte-Carlo random rollouts on level 2 — sound and may stumble onto the win.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/rand.py << 'EOF'
+import sys, os, time, random
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+env=get_to_level2()
+random.seed(0)
+STEPS=0; best=None; nwin=0
+t=time.time()
+trials=0
+while STEPS<230000 and best is None:
+    e=env.clone(); path=[]
+    for _ in range(30):
+        a=random.choices([1,2,3,4,5],weights=[3,3,3,3,2])[0]
+        e.step(a); STEPS+=1; path.append(a)
+        if e.levels_completed>1: best=path; break
+        if e.terminal(): break
+    trials+=1
+print("trials",trials,"steps",STEPS,"WIN",best,"time",round(time.time()-t,1))
+EOF
+python /tmp/rand.py
+New hypothesis: I need a WIDE 9-block (merged) covering all cup columns. Let me build the widest 9 I can and scan its positions for a win.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/wide.py << 'EOF'
+import sys, os
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def p9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    return None if len(r)==0 else (int(r.min()),int(r.max()),int(c.min()),int(c.max()))
+env=get_to_level2()
+e=env.clone()
+for a in [1,1,1,1,1]: e.step(a)   # 20wide to row16
+e.step(5)                          # -> 8@8-39, 9=B@socket
+print("after USE1",p9(e))
+# move B to (16,0)
+for a in [1,1,3,3,3,3,3,3,3]: e.step(a)
+print("B at",p9(e))
+e.step(5)
+print("after USE2 (merge)",p9(e))
+b=p9(e); w=b[3]-b[2]+1; print("width",w)
+# scan all reachable positions of this wide 9 + USE for win
+def pos(e):
+    f=np.array(e.frame());r,c=np.where(f==9);return(int(r.min()),int(c.min()))
+seen={pos(e):e.clone()}; q=deque([e.clone()])
+while q:
+    n=q.popleft()
+    for a in(1,2,3,4):
+        ch=n.clone();ch.step(a);p=pos(ch)
+        if p not in seen: seen[p]=ch;q.append(ch)
+wins=[]
+for p,ee in seen.items():
+    if ee.levels_completed>1: wins.append(('move',p)); continue
+    ch=ee.clone();ch.step(5)
+    if ch.levels_completed>1: wins.append(('use',p))
+print("reachable",len(seen),"wins",wins[:20])
+EOF
+python /tmp/wide.py
+Key realization: the 3 blocks are persistent logical objects; USE cycles active between the 20-wide and B (A is stuck at 8-19). This gives a small, sound state space: (active, big_pos, small_pos). Let me BFS it.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/logic.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def active(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    if len(r)==0: return None
+    return (int(r.min()),int(c.min()),int(c.max()-c.min()+1))  # rmin,cmin,width
+def masked(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f.tobytes()
+env=get_to_level2()
+# start: active=big(20), big at (36,20), small(B,12) at (24,28)
+a0=active(env)
+print("start active",a0)
+# BFS with logical key
+# state carried: (env, active_is_big, big_pos(r,c), small_pos(r,c))
+start=(env.clone(), True, (36,20), (24,28))
+def key(s):
+    _,ab,bp,sp=s
+    return (ab,bp,sp)
+q=deque([(start,[])]); seen={key(start)}
+sol=None; steps=0; t=time.time(); bad=0
+while q and steps<230000 and sol is None:
+    (e,ab,bp,sp),path=q.popleft()
+    for act in (1,2,3,4,5):
+        c=e.clone(); before=masked(c); c.step(act); steps+=1
+        if c.levels_completed>1:
+            sol=path+[act]; break
+        if c.terminal(): continue
+        after=masked(c); ainfo=active(c)
+        if ainfo is None: continue
+        r,cmin,w=ainfo
+        if act in (1,2,3,4):
+            # moved active block
+            if ab: nbp=(r,cmin); nsp=sp; nab=True
+            else: nsp=(r,cmin); nbp=bp; nab=False
+        else: # USE
+            if np.array_equal(np.frombuffer(before,dtype=np.uint8),np.frombuffer(after,dtype=np.uint8)):
+                continue  # no-op USE, skip (waste)
+            # effective USE: stamped active, toggled. new active is the other block.
+            nab=not ab
+            # active block that got stamped stays where it was (its pos unchanged in our record)
+            # new active pos = ainfo; verify width matches other block
+            if nab: # now big active
+                nbp=(r,cmin); nsp=sp
+                if w!=20: bad+=1
+            else:
+                nsp=(r,cmin); nbp=bp
+                if w!=12: bad+=1
+        ns=(c,nab,nbp,nsp)
+        k=key(ns)
+        if k in seen: continue
+        seen.add(k); q.append((ns,path+[act]))
+    if sol: break
+print("SOL",sol,"steps",steps,"states",len(seen),"bad",bad,"time",round(time.time()-t,1))
+import json; open("/tmp/logic_result.json","w").write(json.dumps(sol))
+EOF
+python /tmp/logic.py
+Only ~11k reachable states with the 2-block model, no win, but 5 model-violations suggest A *can* sometimes activate. Let me BFS with a full 3-block tracker.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80 && cat > /tmp/logic3.py << 'EOF'
+import sys, os, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, os.getcwd())
+import gkm_arena as A
+import numpy as np
+from collections import deque
+def get_to_level2():
+    holder = {}
+    def prog(env):
+        for a in [4,4,4,5]: env.step(a)
+        holder['env'] = env.clone()
+    A.run_program('sp80', prog)
+    return holder['env']
+def comps9(e):
+    f=np.array(e.frame());r,c=np.where(f==9)
+    if len(r)==0: return None
+    return (int(r.min()),int(c.min()),int(c.max()-c.min()+1))
+def masked(e):
+    f=np.array(e.frame()).copy(); f[63,:]=0; return f
+env=get_to_level2()
+# 3 blocks: widths, initial positions (rmin,cmin)
+# big20 active@(36,20); A(12)@(16,8); B(12)@(24,28)
+W=[20,12,12]
+start_pos=[(36,20),(16,8),(24,28)]
+start=(env.clone(),0,tuple(start_pos))
+def key(s):
+    _,ai,pos=s
+    return (ai,pos)
+q=deque([(start,[])]); seen={key(start)}
+sol=None; steps=0; t=time.time(); unmatched=0
+while q and steps<230000 and sol is None:
+    (e,ai,pos),path=q.popleft()
+    for act in (1,2,3,4,5):
+        c=e.clone(); before=masked(c); c.step(act); steps+=1
+        if c.levels_completed>1: sol=path+[act]; break
+        if c.terminal(): continue
+        info=comps9(c)
+        if info is None: continue
+        r,cmin,w=info
+        pos=list(pos)
+        if act in (1,2,3,4):
+            npos=list(pos); npos[ai]=(r,cmin); nai=ai
+        else:
+            if np.array_equal(masked(c),before): continue  # no-op
+            # effective USE: active stamped at pos[ai] (unchanged since we moved it already).
+            # new active = block whose stored (r,cmin,width) matches info
+            nai=None
+            for j in range(3):
+                if j==ai: continue
+                if pos[j]==(r,cmin) and W[j]==w: nai=j; break
+            if nai is None:
+                # fallback: match by width only among non-active
+                cand=[j for j in range(3) if j!=ai and W[j]==w]
+                if len(cand)==1: nai=cand[0]; 
+                else: unmatched+=1; continue
+            npos=list(pos); npos[nai]=(r,cmin)
+        ns=(c,nai,tuple(npos)); k=key(ns)
+        if k in seen: continue
+        seen.add(k); q.append((ns,path+[act]))
+    if sol: break
+print("SOL",sol,"steps",steps,"states",len(seen),"unmatched",unmatched,"time",round(time.time()-t,1))
+import json; open("/tmp/logic3_result.json","w").write(json.dumps(sol))
+EOF
+python /tmp/logic3.py

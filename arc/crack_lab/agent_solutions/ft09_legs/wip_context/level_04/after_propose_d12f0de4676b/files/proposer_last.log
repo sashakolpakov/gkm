@@ -1,0 +1,416 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat solve.py players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat checkpoint.json auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 300 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+We're at level 3. Now let me explore level 4. Let me understand the arena API first.
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,80p' gkm_arena.py 2>/dev/null | head -120
+$ cd /Users/sasha/gkm/arc/crack_lab && grep -n "def " gkm_arena.py | head -50
+Let me build a probe to reach level 4 and inspect its structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('ft09')
+ck = json.load(open('checkpoint.json'))
+for act in ck['final_path']:
+    env.step(*act)
+print("levels_completed:", env.levels_completed)
+print("terminal:", env.terminal())
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+print("colors:", P.color_counts(f))
+np.save('/tmp/lvl4.npy', np.asarray(f))
+EOF
+python /tmp/probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && sed -i '' 's#sys.path.insert(0, .*#sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")#' /tmp/probe.py && python /tmp/probe.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/show.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+for r in range(64):
+    print(''.join('%X'%v for v in f[r]))
+EOF
+python /tmp/show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe2.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+# find blocks of non-bg (bg=4). Look at rows with content
+# Detect distinct block rows and columns
+core = f[:62]
+nonbg = core!=4
+# find row bands
+rows_with = [r for r in range(62) if nonbg[r].any()]
+print("rows_with:", rows_with)
+EOF
+python /tmp/probe2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe3.py << 'EOF'
+import sys
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+f = np.load('/tmp/lvl4.npy')
+bands = [(14,19),(22,27),(30,35),(38,43),(46,51)]
+for (r0,r1) in bands:
+    print("=== band rows", r0,r1)
+    # find col blocks
+    cols = [c for c in range(60) if (f[r0:r1+1,c]!=4).any()]
+    # group into contiguous
+    groups=[]
+    cur=[cols[0]]
+    for c in cols[1:]:
+        if c==cur[-1]+1: cur.append(c)
+        else: groups.append((cur[0],cur[-1])); cur=[c]
+    groups.append((cur[0],cur[-1]))
+    for (c0,c1) in groups:
+        blk = f[r0:r1+1,c0:c1+1]
+        u=np.unique(blk)
+        tag = 'SOLID' if len(u)==1 else 'PAT'
+        print(f"  cols {c0}-{c1} {tag} colors={u.tolist()}")
+        if tag=='PAT':
+            for row in blk:
+                print("    "+''.join('%X'%v for v in row))
+EOF
+python /tmp/probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+ck = json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('ft09')
+    for act in ck['final_path']: e.step(*act)
+    return e
+base = np.asarray(fresh().frame())
+# block centers
+bands = {0:(14,19),1:(22,27),2:(30,35),3:(38,43),4:(46,51)}
+cols = [12,20,28,36,44]
+def changed(a,b):
+    d=np.argwhere(a!=b)
+    return [(int(r),int(c),int(a[r,c]),int(b[r,c])) for r,c in d if r<62]
+for bi,(r0,r1) in bands.items():
+    for ci,c0 in enumerate(cols):
+        x=c0+2; y=r0+2  # inside block
+        # skip blocks not present in bands 3,4 (only cols 20,28,36)
+        if bi in (3,4) and c0 not in (20,28,36): continue
+        e=fresh(); e.step(6,x,y)
+        ch=changed(base, np.asarray(e.frame()))
+        print(f"band{bi} col{c0} click({x},{y}): {len(ch)} changed", ch[:6] if ch else "")
+EOF
+python /tmp/probe4.py
+Clicking solid-9 blocks toggles them (9→8); pattern blocks are non-clickable keys. This is the pattern-key board family. Let me test the existing leg.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe5.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+print("before level:", e.levels_completed)
+# try the grid detection
+g = legs._grid_of_blocks(e.frame())
+if g:
+    s,bg,slots,uniform,patterns = g
+    print("block size",s,"bg",bg,"n_slots",len(slots),"uniform",len(uniform),"patterns",len(patterns))
+    print("pattern slots:", sorted(patterns.keys()))
+    print("uniform slots:", sorted(uniform))
+# try planner
+clicks = legs.discover_pattern_key_clicks(e)
+print("clicks:", clicks)
+EOF
+python /tmp/probe5.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe6.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+clicks = legs.discover_pattern_key_clicks(e)
+c=e.clone()
+for (x,y) in clicks: c.step(6,x,y)
+print("after decode clicks, level:", c.levels_completed, "terminal:", c.terminal())
+EOF
+python /tmp/probe6.py
+Clicks from existing leg don't complete it. The decode rule differs. Let me work out the rule. Reading the 3 pattern blocks as 3×3 mini-keys, I'll test "select neighbor iff cell==2 (mark)".
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe7.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+g=legs._grid_of_blocks(e.frame())
+s,bg,slots,uniform,patterns=g
+def cell3(blk):
+    n=blk.shape[0]; off=[i*n//3+n//6 for i in range(3)]
+    return [[int(blk[off[i],off[j]]) for j in range(3)] for i in range(3)]
+# interpretation A: select neighbor iff cell==2
+sel=set()
+unsel=set()
+for (pi,pj),blk in patterns.items():
+    gg=cell3(blk)
+    for i in range(3):
+        for j in range(3):
+            if (i,j)==(1,1): continue
+            nb=(pi+i-1,pj+j-1)
+            if nb in uniform:
+                if gg[i][j]==2: sel.add(nb)
+                else: unsel.add(nb)
+print("conflicts:", sel & unsel)
+print("selected:", sorted(sel))
+clicks=[]
+for idx in sorted(sel):
+    r,c=slots[idx]; clicks.append((c+s//2-1, r+s//2-1))
+c=e.clone()
+for cl in clicks: c.step(6,*cl)
+print("level after:", c.levels_completed, "n_clicks", len(clicks))
+EOF
+python /tmp/probe7.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe8.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+def fresh():
+    e=A.Arena('ft09')
+    for act in ck['final_path']: e.step(*act)
+    return e
+e=fresh()
+# double click behavior on a solid block band0 col12 center
+c=e.clone()
+c.step(6,14,16)
+f1=np.asarray(c.frame())[14:20,12:18]
+c.step(6,14,16)
+f2=np.asarray(c.frame())[14:20,12:18]
+print("after1 unique:", np.unique(f1), "after2 unique:", np.unique(f2))
+# triple
+c.step(6,14,16); f3=np.asarray(c.frame())[14:20,12:18]
+print("after3 unique:", np.unique(f3))
+EOF
+python /tmp/probe8.py
+Blocks cycle through 3 states: 9→8→12→9. That's what the legend (9/8/C) shows! The pattern keys must encode target states. Let me brute-force the cell-value→state mapping on clones.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe9.py << 'EOF'
+import sys, json, itertools
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+g=legs._grid_of_blocks(e.frame())
+s,bg,slots,uniform,patterns=g
+def cell3(blk):
+    n=blk.shape[0]; off=[i*n//3+n//6 for i in range(3)]
+    return [[int(blk[off[i],off[j]]) for j in range(3)] for i in range(3)]
+# build per-block target-cellvalue from patterns (center ignored)
+rank={9:0,8:1,12:2}
+# collect cell value per uniform neighbor
+cellval={}
+conflict=False
+for (pi,pj),blk in patterns.items():
+    gg=cell3(blk)
+    for i in range(3):
+        for j in range(3):
+            if (i,j)==(1,1): continue
+            nb=(pi+i-1,pj+j-1)
+            if nb in uniform:
+                v=gg[i][j]
+                if nb in cellval and cellval[nb]!=v:
+                    print("CELLVAL CONFLICT at",nb, cellval[nb], v)
+                cellval[nb]=v
+print("cellval assignments count:", len(cellval), "uniform count:", len(uniform))
+# try all mappings val0->state, val2->state
+states=[9,8,12]
+base=e
+for s0 in states:
+    for s2 in states:
+        mp={0:s0,2:s2}
+        c=base.clone()
+        for nb,v in cellval.items():
+            tgt=mp[v]; nclk=rank[tgt]
+            r,cc=slots[nb]; x,y=cc+s//2-1, r+s//2-1
+            for _ in range(nclk): c.step(6,x,y)
+        print(f"val0->{s0} val2->{s2}: level={c.levels_completed}")
+EOF
+python /tmp/probe9.py
+None work with center ignored — so center matters and effects may be additive (clicks sum mod 3). Let me search contribution schemes.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe10.py << 'EOF'
+import sys, json, itertools
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+g=legs._grid_of_blocks(e.frame())
+s,bg,slots,uniform,patterns=g
+def cell3(blk):
+    n=blk.shape[0]; off=[i*n//3+n//6 for i in range(3)]
+    return [[int(blk[off[i],off[j]]) for j in range(3)] for i in range(3)]
+# collect (cell, center) contributions per neighbor block
+contribs={nb:[] for nb in uniform}
+for (pi,pj),blk in patterns.items():
+    gg=cell3(blk); center=gg[1][1]
+    for i in range(3):
+        for j in range(3):
+            if (i,j)==(1,1): continue
+            nb=(pi+i-1,pj+j-1)
+            if nb in uniform:
+                contribs[nb].append((gg[i][j],center))
+# search contribution table c(cell in {0,2}, center in {9,12}) each 0..2
+found=[]
+for c09 in range(3):
+ for c29 in range(3):
+  for c012 in range(3):
+   for c212 in range(3):
+    tbl={(0,9):c09,(2,9):c29,(0,12):c012,(2,12):c212}
+    c=e.clone()
+    for nb,lst in contribs.items():
+        n=sum(tbl[t] for t in lst)%3
+        r,cc=slots[nb]; x,y=cc+s//2-1, r+s//2-1
+        for _ in range(n): c.step(6,x,y)
+    if c.levels_completed>3:
+        found.append(tbl)
+        print("FOUND", tbl)
+print("done, found", len(found))
+EOF
+python /tmp/probe10.py
+No additive scheme. Let me reconsider — maybe direct per-(cell,center) target-state assignment. Enumerate all 81 and test consistent ones.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe11.py << 'EOF'
+import sys, json, itertools
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import numpy as np
+import gkm_arena as A
+import legs
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+g=legs._grid_of_blocks(e.frame())
+s,bg,slots,uniform,patterns=g
+def cell3(blk):
+    n=blk.shape[0]; off=[i*n//3+n//6 for i in range(3)]
+    return [[int(blk[off[i],off[j]]) for j in range(3)] for i in range(3)]
+contribs={nb:[] for nb in uniform}
+for (pi,pj),blk in patterns.items():
+    gg=cell3(blk); center=gg[1][1]
+    for i in range(3):
+        for j in range(3):
+            if (i,j)==(1,1): continue
+            nb=(pi+i-1,pj+j-1)
+            if nb in uniform: contribs[nb].append((gg[i][j],center))
+rank={9:0,8:1,12:2}
+keys=[(0,9),(2,9),(0,12),(2,12)]
+states=[9,8,12]
+tested=0; found=0
+for combo in itertools.product(states,repeat=4):
+    tbl=dict(zip(keys,combo))
+    # build target, check consistency
+    tgt={}; ok=True
+    for nb,lst in contribs.items():
+        vals={tbl[t] for t in lst}
+        if len(vals)!=1: ok=False; break
+        tgt[nb]=vals.pop()
+    if not ok: continue
+    tested+=1
+    c=e.clone()
+    for nb,t in tgt.items():
+        r,cc=slots[nb]; x,y=cc+s//2-1, r+s//2-1
+        for _ in range(rank[t]): c.step(6,x,y)
+    if c.levels_completed>3:
+        found+=1; print("FOUND", tbl)
+print("tested consistent mappings:", tested, "found", found)
+EOF
+python /tmp/probe11.py
+Found the rule! `(cell=0,center=9)→9, (cell=2,·)→8, (cell=0,center=12)→12`. Cleanly: a marked(2) neighbor targets the middle state (8); a blank(0) targets the pattern's center state. Rather than hardcode, I'll write a general leg that discovers the state cycle and searches consistent decode mappings, verifying on clones. Let me add it and test.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe12.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab"); sys.path.insert(0, ".")
+import gkm_arena as A
+import importlib, legs; importlib.reload(legs)
+ck = json.load(open('checkpoint.json'))
+e=A.Arena('ft09')
+for act in ck['final_path']: e.step(*act)
+cl=legs.discover_pattern_state_clicks(e)
+print("n clicks:", None if cl is None else len(cl))
+c=e.clone()
+for xy in cl: c.step(6,*xy)
+print("level after:", c.levels_completed, "terminal:", c.terminal())
+EOF
+python /tmp/probe12.py
+The leg works and reaches level 4. Now wire up `play_level_4`.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Reached level 4 with replay_ok=True. Let me document this in the legs log.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs_log.md << 'EOF'
+
+## ft09 level 4 — MULTI-STATE pattern-key board (new leg, 3-state generalisation)
+- Same coordinate-click substrate and lattice-of-blocks + non-clickable pattern
+  keys as level 3, BUT each clickable block CYCLES THREE colours per click
+  (discovered on a clone: 9 -> 8 -> 12 -> 9; the top-right 9/8/C legend depicts
+  exactly these three states). So a block's target is a 3-valued state reached by
+  0/1/2 clicks, not a binary toggle. All blocks start at 9.
+- Grid is irregular (5x5 with the bottom two rows indented to the middle 3
+  columns); _grid_of_blocks handled it verbatim: 18 clickable + 3 pattern blocks.
+- Decode RULE (found by enumerate-and-verify, not hand-derived): each pattern key
+  is a 3x3 mini-picture with centre colour C in {9,12} and surround cells in
+  {mark=2, blank=0}; a grid-neighbour's TARGET state is  8 if its cell is the
+  mark(2), else the pattern's centre colour C (9 or 12). Neither a pure
+  cell->state map (center ignored) nor an additive clicks-mod-3 scheme completes;
+  the winning consistent (cell,centre)->state table is
+  {(0,9):9, (2,9):8, (0,12):12, (2,12):8}.
+- Rather than hardcode that table, the new planner discover_pattern_state_clicks
+  DISCOVERS the per-click colour cycle on a clone (index = clicks-to-reach), reads
+  each neighbour's (cell,centre) votes, then ENUMERATES consistent
+  (cell,centre)->state mappings and VERIFIES each on a clone, returning the first
+  click sequence (block centres, repeated per cycle step) that raises the level.
+  This subsumes the binary case as a 2-length cycle.
+- New legs: _cell3 (read a block as a 3x3 of ninth-centre colours; factored out of
+  discover_pattern_key_clicks' inner helper), _block_state_cycle (probe one block's
+  per-click colour cycle on a clone), discover_pattern_state_clicks (the
+  enumerate+verify multi-state decoder), solve_pattern_state_board =
+  solve_click_board(env, discover_pattern_state_clicks). play_level_4 is a
+  one-liner composing that leg. Reuses solve_click_board/_click_xy/_grid_of_blocks
+  unchanged. Result: levels=4, moves=46 (25 + 21), replay_ok=True.
+EOF
+echo done
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Done. Final result: **`levels=4 moves=46 replay_ok=True`**.
+
+## Summary
+
+**Goal reached:** `solve.py` now clears level 4 of ft09.
+
+**How I cracked level 4 (all by experiment on clones, never reading source):**
+1. Replayed the level-3 solution to land at level 4, then dumped the raw 64×64 frame symbolically. It's the same substrate as level 3: a lattice of solid blocks (bg=4) plus a few decorated "pattern" blocks, and a 9/8/C legend in the top-right corner.
+2. Probing clicks on clones: clicking a solid block changed only that block; clicking a pattern block did nothing → pattern blocks are non-clickable keys.
+3. **Key discovery:** clicking one block repeatedly cycled it through **three** colours `9 → 8 → 12 → 9` — exactly the three legend colours. So this is a *3-state* generalization of level 3's binary toggle.
+4. Worked out the decode rule by enumerate-and-verify (pure cell→state and additive-mod-3 schemes both failed): a pattern key's neighbour targets state **8** if its surround cell is the mark (2), else the pattern's **centre colour** (9 or 12).
+
+**Legs added to `legs.py` (minimal, general):**
+- `_cell3` — read a block as a 3×3 of colours (factored out of the existing key decoder).
+- `_block_state_cycle` — probe one block's per-click colour cycle on a clone (index = clicks-to-reach).
+- `discover_pattern_state_clicks` — discovers the cycle, gathers each neighbour's `(cell, centre)` votes, then **enumerates consistent decode mappings and verifies each on a clone**, returning the winning click sequence. This subsumes the binary case.
+- `solve_pattern_state_board` = `solve_click_board(env, discover_pattern_state_clicks)`.
+
+**`players.py`:** `play_level_4` is a one-liner composing `solve_pattern_state_board`. It reuses `solve_click_board`, `_click_xy`, and `_grid_of_blocks` unchanged. `legs_log.md` updated with the debrief.

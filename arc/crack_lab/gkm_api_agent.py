@@ -65,11 +65,19 @@ FORBIDDEN_SOURCE_PATTERNS = (
     "/agent_solutions/",
 ) + ARC_GAME_SOURCE_NAMES
 
+PRIVATE_RUNTIME_RE = re.compile(
+    r"\.\s*_(?:game|env|fd|budget)\b"
+    r"|__dict__|inspect\.(?:getsource|getmembers)"
+    r"|\b(?:vars|dir)\s*\("
+    r"|object\.__getattribute__"
+    r"|\b(?:getattr|hasattr)\s*\([^,\n]+,\s*['\"]_(?:game|env|fd|budget)\b"
+)
+
 
 def _forbidden_source_reference(text: str) -> Optional[str]:
     """Return the forbidden marker when a tool command tries to read source/history."""
     lowered = text.lower()
-    if re.search(r"\.\s*_(?:game|env)\b|__dict__|inspect\.getsource", lowered):
+    if PRIVATE_RUNTIME_RE.search(lowered):
         return "private game/runtime introspection"
     for marker in FORBIDDEN_SOURCE_PATTERNS:
         if marker.lower() in lowered:

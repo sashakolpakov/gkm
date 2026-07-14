@@ -116,6 +116,18 @@ def test_private_runtime_introspection_blocked(tmp_path):
     assert "forbidden source/history access blocked" in out
 
 
+def test_runtime_enumeration_and_frame_data_are_blocked(tmp_path):
+    for command in (
+        "python3 -c \"print(vars(env))\"",
+        "python3 -c \"print(dir(env))\"",
+        "python3 -c \"print(env._fd)\"",
+        "python3 -c \"print(getattr(env, '_budget'))\"",
+    ):
+        out, err = G._run_bash(str(tmp_path), command)
+        assert err
+        assert "private game/runtime introspection" in out
+
+
 def test_blocked_attempt_is_audited_without_tainting_main_transcript(tmp_path):
     command = "python3 -c \"print(env._game)\""
     responses = [

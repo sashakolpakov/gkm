@@ -1,0 +1,1348 @@
+I'll start by exploring the workspace and understanding the current state.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat solve.py players.py legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs_log.md checkpoint.json auto_solve_attempts.json proposer_last.log
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 300 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+We're at level 2, need level 3. Let me understand the arena API and get to level 3 on a clone.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && sed -n '1,80p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py 2>/dev/null | head -120
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && sed -n '80,200p' /Users/sasha/gkm/arc/crack_lab/gkm_arena.py
+Now let me get to level 3 on a clone and study its structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/probe1.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '.')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+# reach level 3 by replaying checkpoint path
+import json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+print("levels_completed:", env.levels_completed)
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+print("colors:", P.color_counts(f))
+np.save('/tmp/lvl3.npy', f)
+EOF
+python /tmp/probe1.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/show.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl3.npy')
+for r in range(64):
+    print(''.join(f"{v:x}" if v<16 else '?' for v in f[r]))
+EOF
+python /tmp/show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/blocks.py << 'EOF'
+import numpy as np
+import perception as P
+f = np.load('/tmp/lvl3.npy')
+# find 6x6-ish blocks of color 8; use connected components of color 8
+blobs = P.connected_components(f, colors=[8])
+for b in blobs:
+    print(b.color, b.bbox, b.area)
+EOF
+python /tmp/blocks.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/blocks.py << 'EOF'
+import sys; sys.path.insert(0,'.')
+import numpy as np
+import perception as P
+f = np.load('/tmp/lvl3.npy')
+blobs = P.connected_components(f, colors=[8])
+print("8-blobs:")
+for b in blobs:
+    print(b.bbox, b.area)
+EOF
+python /tmp/blocks.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/pat.py << 'EOF'
+import sys; sys.path.insert(0,'.')
+import numpy as np
+f = np.load('/tmp/lvl3.npy')
+def show(r,c):
+    print(f"block at ({r},{c}):")
+    for rr in range(r,r+6):
+        print('  '+''.join(f"{v:x}" for v in f[rr,c:c+6]))
+for (r,c) in [(12,28),(28,20),(28,36),(44,28)]:
+    show(r,c)
+EOF
+python /tmp/pat.py
+Now let me probe what clicking does. Let me discover interactive tiles.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/disc.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import legs
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+print("lvl", env.levels_completed)
+tiles = legs.discover_toggle_tiles(env, step=2)
+print("num tiles:", len(tiles))
+for t in tiles:
+    print(t)
+EOF
+python /tmp/disc.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/click1.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import perception as P
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+env=base()
+b=np.asarray(env.frame()).copy()
+# click each tile, show delta bbox and colors
+tiles=[(22,6),(14,22),(22,22),(30,22),(14,30),(30,30),(22,38)]
+for (x,y) in tiles:
+    c=env.clone()
+    c.step(6,x,y)
+    d=P.frame_delta(b,c.frame())
+    print(f"click ({x},{y}) count={d['count']} bbox={d['bbox']} lvl={c.levels_completed}")
+    print("  samples:", d['samples'][:8])
+EOF
+python /tmp/click1.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/click2.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import perception as P
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+env=base()
+b=np.asarray(env.frame()).copy()
+# click a block twice
+c=env.clone()
+c.step(6,22,6)
+f1=np.asarray(c.frame()).copy()
+c.step(6,22,6)
+f2=np.asarray(c.frame()).copy()
+print("after 2 clicks == base?", np.array_equal(b,f2))
+d=P.frame_delta(b,f1)
+# find the non-block extra pixel(s)
+print("delta count", d['count'])
+for s in d['samples']:
+    if s[0]>50 or s[1]>50:
+        print("extra:",s)
+# check bottom rows/right col
+print("row60-63 cols55-63 base:")
+print(b[59:64,55:64])
+print("f1:")
+print(f1[59:64,55:64])
+EOF
+python /tmp/click2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/click3.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+env=base()
+b=np.asarray(env.frame()).copy()
+c=env.clone()
+for i in range(1,6):
+    c.step(6,22,6)
+    f=np.asarray(c.frame())
+    print(f"click#{i} block(4:10,20:26) unique={np.unique(f[4:10,20:26])} counter(63,63)={f[63,63]}")
+EOF
+python /tmp/click3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/click4.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import perception as P
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+env=base()
+b=np.asarray(env.frame()).copy()
+# click pattern blocks
+for (x,y,name) in [(30,14,'12,28'),(22,30,'28,20'),(38,30,'28,36'),(30,46,'44,28')]:
+    c=env.clone()
+    c.step(6,x,y)
+    d=P.frame_delta(b,c.frame())
+    print(f"click pattern ({x},{y}) [{name}] count={d['count']} bbox={d['bbox']}")
+    if d['count']<=3:
+        print("  ", d['samples'])
+EOF
+python /tmp/click4.py
+Let me map the block grid and try some configurations to find the win condition.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/tryall.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+tiles=[(22,6),(30,6),(38,6),(22,14),(38,14),(14,22),(22,22),(30,22),(38,22),(46,22),
+(14,30),(30,30),(46,30),(14,38),(22,38),(30,38),(38,38),(46,38),(22,46),(38,46),(22,54),(30,54),(38,54)]
+env=base()
+c=env.clone()
+for t in tiles:
+    c.step(6,t[0],t[1])
+print("all 23 clicked -> lvl", c.levels_completed)
+EOF
+python /tmp/tryall.py
+The layout has D2 mirror symmetry. Let me test the hypothesis that the solution respects that symmetry — searching 256 symmetric configs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/sym.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, itertools
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+# map grid (r,c)->click (x,y). row centers, col centers
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def orbit(rc):
+    r,c=rc
+    return frozenset([(r,c),(6-r,c),(r,4-c),(6-r,4-c)])
+orbits=[]
+seen=set()
+for b in Fblocks:
+    o=orbit(b)
+    # keep only members that are F blocks
+    o=frozenset(m for m in o if m in Fblocks)
+    if o not in seen:
+        seen.add(o); orbits.append(sorted(o))
+print("num orbits:", len(orbits))
+for o in orbits: print(o)
+env=base()
+base_lvl=env.levels_completed
+found=None
+for mask in range(1<<len(orbits)):
+    clicks=[]
+    for i,o in enumerate(orbits):
+        if mask&(1<<i):
+            clicks+=o
+    c=env.clone()
+    for (r,cc) in clicks:
+        c.step(6,colc[cc],rowc[r])
+    if c.levels_completed>base_lvl:
+        found=(mask,clicks); break
+print("FOUND:", found)
+EOF
+python /tmp/sym.py
+Symmetric configs failed. Let me test a decode hypothesis: pattern blocks may be maps telling which neighbors to select (color 2 = select).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/decode.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+def base():
+    env = A.Arena('ft09')
+    for act in ck['final_path']:
+        env.step(act)
+    return env
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+sets={
+ 'union12':[(1,3),(2,0),(2,1),(2,2),(2,3),(3,0),(3,4),(4,1),(4,2),(4,3),(4,4),(5,3)],
+}
+env=base()
+for name,blocks in sets.items():
+    c=env.clone()
+    for (r,cc) in blocks:
+        c.step(6,colc[cc],rowc[r])
+    print(name, "->lvl", c.levels_completed)
+EOF
+python /tmp/decode.py
+Let me watch the counter pixel across multiple distinct clicks to understand move budget.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/counter.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+c=env.clone()
+tiles=[(22,6),(30,6),(38,6),(22,14),(38,14),(14,22),(22,22)]
+print("start counter row63:", c.frame()[63,55:64])
+for i,t in enumerate(tiles):
+    c.step(6,t[0],t[1])
+    f=c.frame()
+    print(f"after click {i+1} {t}: (63,63)={f[63,63]} row63[55:]={f[63,55:64]} lvl={c.levels_completed}")
+EOF
+python /tmp/counter.py
+The bottom bar changes with selection — likely a progress meter toward the hidden target! Let me measure it per single-block click as a dense signal.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/bar.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+base_bar=env.frame()[63].copy()
+def fill(f):
+    return int(np.sum(f[63]!=12))
+print("base fill:", fill(env.frame()))
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+res={}
+for b in Fblocks:
+    c=env.clone()
+    c.step(6,colc[b[1]],rowc[b[0]])
+    res[b]=fill(c.frame())
+for b in Fblocks:
+    print(b, "fill=",res[b])
+EOF
+python /tmp/bar.py
+Single clicks change only the block + one bar pixel. Let me investigate the top-right corner region (an 8-block at rows0-3 and a 12 region at rows4-7) — possibly a button or indicator.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/corner.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import perception as P
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+f=env.frame()
+print("rows0-9 cols58-63:")
+print(f[0:10,58:64])
+b=f.copy()
+# click various coords in corner
+for (x,y) in [(62,2),(62,6),(62,1),(61,5),(63,2)]:
+    c=env.clone()
+    c.step(6,x,y)
+    d=P.frame_delta(b,c.frame())
+    print(f"click ({x},{y}) count={d['count']} bbox={d['bbox']} lvl={c.levels_completed}")
+EOF
+python /tmp/corner.py
+Corner is just a legend. Let me search for a hidden "correctness" indicator that responds to combinations of selections.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/hidden.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, random
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+base=env.frame().copy()
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+# mask of block interiors
+blockmask=np.zeros((64,64),bool)
+for (r,c) in Fblocks:
+    rr=rowc[r]-2; cc=colc[c]-2  # top-left approx; block spans center-... let's use bbox
+# actually block bbox: rowstart = {0:4,...}; use rowc-2..+3
+rowstart={0:4,1:12,2:20,3:28,4:36,5:44,6:52}
+colstart={0:12,1:20,2:28,3:36,4:44}
+for (r,c) in Fblocks:
+    rs=rowstart[r]; cs=colstart[c]
+    blockmask[rs:rs+6,cs:cs+6]=True
+blockmask[63,:]=True  # bar
+random.seed(1)
+extra_seen=set()
+for it in range(300):
+    k=random.randint(1,23)
+    sub=random.sample(Fblocks,k)
+    c=env.clone()
+    for (r,cc) in sub:
+        c.step(6,colc[cc],rowc[r])
+    if c.levels_completed>2:
+        print("WIN subset:",sub); break
+    f=c.frame()
+    diff=(f!=base)&(~blockmask)
+    ys,xs=np.where(diff)
+    for y,x in zip(ys,xs):
+        extra_seen.add((int(y),int(x)))
+print("extra changed pixels (outside blocks+bar):", sorted(extra_seen)[:50])
+print("count:",len(extra_seen))
+EOF
+python /tmp/hidden.py
+No hidden partial feedback — the target is a specific hidden subset encoded by the 4 pattern blocks. Let me test several decode hypotheses (XOR, unions, etc.) in one batch.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/dec2.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+def test(blocks):
+    c=env.clone()
+    for (r,cc) in blocks:
+        c.step(6,colc[cc],rowc[r])
+    return c.levels_completed
+# pattern 2-block sets (neighborhood)
+P12=[(1,3),(2,1),(2,3)]
+P31=[(2,0),(2,2),(3,0),(4,2)]
+P33=[(2,2),(3,4),(4,2),(4,4)]
+P52=[(4,1),(4,3),(5,3)]
+from collections import Counter
+cnt=Counter(P12+P31+P33+P52)
+xor=[b for b,n in cnt.items() if n%2==1]
+inter=[b for b,n in cnt.items() if n>=2]
+union=list(cnt.keys())
+cands={'xor':xor,'inter_ge2':inter,'union':union}
+# 0-blocks neighborhood
+def zeromap(pr,pc,grid):
+    out=[]
+    for i in range(3):
+        for j in range(3):
+            if grid[i][j]==0:
+                out.append((pr-1+i,pc-1+j))
+    return out
+g12=[[0,0,0],[0,-1,2],[2,0,2]]
+g31=[[2,0,2],[2,-1,0],[0,0,2]]
+g33=[[2,0,0],[0,-1,2],[2,0,2]]
+g52=[[2,0,2],[0,-1,2],[0,0,0]]
+Fset=set([(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)])
+z=zeromap(1,2,g12)+zeromap(3,1,g31)+zeromap(3,3,g33)+zeromap(5,2,g52)
+z=[b for b in z if b in Fset]
+cands['zero_union']=list(set(z))
+for name,blocks in cands.items():
+    blocks=[b for b in blocks if b in Fset]
+    print(name, len(blocks), "->lvl", test(blocks))
+EOF
+python /tmp/dec2.py
+Decodes fail. Let me brute-force configs that respect the board's top-bottom mirror symmetry (2^13).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/tb.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, time
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+Fset=set(Fblocks)
+# top-bottom orbits
+seen=set(); orbits=[]
+for b in Fblocks:
+    r,c=b; o=frozenset([(r,c),(6-r,c)])&Fset
+    o=frozenset(m for m in [(r,c),(6-r,c)] if m in Fset)
+    if o not in seen:
+        seen.add(o); orbits.append(sorted(o))
+print("orbits:",len(orbits))
+t0=time.time()
+found=None
+N=len(orbits)
+for mask in range(1<<N):
+    clicks=[]
+    for i in range(N):
+        if mask>>i&1:
+            clicks+=orbits[i]
+    c=env.clone()
+    for (r,cc) in clicks:
+        c.step(6,colc[cc],rowc[r])
+    if c.levels_completed>2:
+        found=(mask,clicks); break
+    if mask%1000==0:
+        print(mask, f"{time.time()-t0:.1f}s")
+print("FOUND",found, f"{time.time()-t0:.1f}s")
+EOF
+python /tmp/tb.py
+Top-bottom symmetry fails too. Let me try left-right and 180°-rotation symmetric configs, plus structural/complement candidates in one batch.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/multi.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, time
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+Fset=set(Fblocks)
+def clicks_for(blocks):
+    return [(colc[c],rowc[r]) for (r,c) in blocks]
+def test(blocks):
+    c=env.clone()
+    for (r,cc) in blocks:
+        c.step(6,colc[cc],rowc[r])
+    return c.levels_completed>2
+def sym_search(mapfn,label):
+    seen=set(); orbits=[]
+    for b in Fblocks:
+        o=frozenset(m for m in [b,mapfn(b)] if m in Fset)
+        if o not in seen: seen.add(o); orbits.append(sorted(o))
+    N=len(orbits); t0=time.time()
+    for mask in range(1<<N):
+        blocks=[]
+        for i in range(N):
+            if mask>>i&1: blocks+=orbits[i]
+        if test(blocks):
+            print(label,"FOUND", sorted(set(blocks))); return True
+    print(label,"none", N,"orbits", f"{time.time()-t0:.1f}s"); return False
+sym_search(lambda b:(b[0],4-b[1]),"LR")
+sym_search(lambda b:(6-b[0],4-b[1]),"180")
+EOF
+python /tmp/multi.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/each.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+import perception as P
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+b=env.frame().copy()
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}
+colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+for (r,c) in Fblocks:
+    cl=env.clone(); cl.step(6,colc[c],rowc[r])
+    d=P.frame_delta(b,cl.frame())
+    tos=set(s[3] for s in d['samples'] if s[0]<62)
+    print((r,c),"count",d['count'],"new_colors",tos)
+EOF
+python /tmp/each.py
+All symmetry classes fail — target is asymmetric, so I must decode the pattern blocks exactly. Let me re-extract them precisely and verify the 2x2-cell structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/reext.py << 'EOF'
+import sys; sys.path.insert(0,'.')
+import numpy as np
+f=np.load('/tmp/lvl3.npy')
+rowstart={0:4,1:12,2:20,3:28,4:36,5:44,6:52}
+colstart={0:12,1:20,2:28,3:36,4:44}
+for (pr,pc) in [(1,2),(3,1),(3,3),(5,2)]:
+    rs=rowstart[pr]; cs=colstart[pc]
+    blk=f[rs:rs+6,cs:cs+6]
+    print(f"pattern grid({pr},{pc}) pixels:")
+    for row in blk: print("  ",''.join(f"{v:x}" for v in row))
+    # 3x3 downscale
+    g=[[blk[2*i,2*j] for j in range(3)] for i in range(3)]
+    print("  3x3:", [[int(x) for x in r] for r in g])
+EOF
+python /tmp/reext.py
+Let me check whether there's a move limit causing game-over (the bottom bar tracks moves used).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/lim.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+c=env.clone()
+n11_prev=0
+for i in range(70):
+    c.step(6,14,6)  # toggle same block repeatedly
+    f=c.frame()
+    n11=int(np.sum(f[63]!=12))
+    if c.terminal():
+        print("TERMINAL at move",i+1,"bar11=",n11); break
+    if i<5 or i%10==0:
+        print("move",i+1,"bar_used(nonzero)=",n11,"term",c.terminal())
+EOF
+python /tmp/lim.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/lim2.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+c=env.clone()
+for i in range(6):
+    c.step(6,22,6)  # block(0,1)
+    f=c.frame()
+    print("toggle",i+1,"block(0,1)color",int(f[5,22]),"bar_nonzero",int(np.sum(f[63]!=12)),"row63last6",f[63,58:64])
+# now select many distinct then keep going to find limit
+c=env.clone()
+Fblocks=[(22,6),(30,6),(38,6),(22,14),(38,14),(14,22),(22,22),(30,22),(38,22),(46,22),
+(14,30),(30,30),(46,30),(14,38),(22,38),(30,38),(38,38),(46,38),(22,46),(38,46),(22,54),(30,54),(38,54)]
+for i,t in enumerate(Fblocks):
+    c.step(6,*t)
+f=c.frame()
+print("all23 selected bar_nonzero",int(np.sum(f[63]!=12)),"term",c.terminal())
+EOF
+python /tmp/lim2.py
+The bar behaves oddly. Let me dump the full row 63 to understand its structure precisely.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/row63.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+def r63(f): return ''.join(f"{v:x}" for v in f[63])
+print("base   :",r63(env.frame()))
+# select single distinct blocks, show row63
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+for b in Fblocks[:6]:
+    c=env.clone(); c.step(6,colc[b[1]],rowc[b[0]])
+    print(f"sel {b}:",r63(c.frame()))
+EOF
+python /tmp/row63.py
+The bar behavior is confusing. Let me get exact data: cumulative distinct selections and repeated toggles, with exact bar fill.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/bar2.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+def fill(f): return int(np.sum(f[63]!=12))
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+print("=== cumulative distinct selections ===")
+c=env.clone()
+for i,b in enumerate(Fblocks):
+    c.step(6,colc[b[1]],rowc[b[0]])
+    print(f"n={i+1} sel{b} fill={fill(c.frame())}")
+EOF
+python /tmp/bar2.py
+A clear dense signal! Selecting some blocks increments the bar (+1 = in target), others +0. The 15 "+1" blocks are the target. Let me test selecting exactly those 15.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/win.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+T=[(0,1),(0,3),(1,1),(2,0),(2,1),(2,3),(2,4),(3,2),(3,4),(4,1),(4,2),(4,4),(5,1),(6,1),(6,2)]
+c=env.clone()
+for b in T:
+    c.step(6,colc[b[1]],rowc[b[0]])
+print("selected 15 target: lvl",c.levels_completed,"fill",int(np.sum(c.frame()[63]!=12)),"term",c.terminal())
+EOF
+python /tmp/win.py
+fill is nonlinear (order/context dependent) — a real dense signal. Let me hill-climb on fill to find the max-fill config and check for a win.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/hc.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, random
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def fill(f): return int(np.sum(f[63]!=12))
+def click(cl,i):
+    b=Fblocks[i]; cl.step(6,colc[b[1]],rowc[b[0]])
+def build(sel):
+    c=env.clone()
+    for i in sorted(sel): click(c,i)
+    return c
+def hillclimb(start):
+    sel=set(start)
+    cur=build(sel); curfill=fill(cur.frame())
+    if cur.levels_completed>2: return sel,curfill,True
+    for it in range(60):
+        best=None
+        for i in range(23):
+            c=cur.clone(); click(c,i)
+            fv=fill(c.frame()); win=c.levels_completed>2
+            if win: return (sel^{i}), fv, True
+            if best is None or fv>best[1]:
+                best=(i,fv,c)
+        if best[1]>curfill:
+            i,fv,c=best
+            if i in sel: sel.discard(i)
+            else: sel.add(i)
+            cur=c; curfill=fv
+        else:
+            break
+    return sel,curfill,False
+random.seed(0)
+bestoverall=(None,-1)
+for trial in range(6):
+    if trial==0: start=set()
+    elif trial==1: start=set(range(23))
+    else: start=set(random.sample(range(23),random.randint(5,18)))
+    sel,fv,win=hillclimb(start)
+    print(f"trial{trial} start{len(start)} -> fill={fv} win={win} sel={sorted(sel)}")
+    if win:
+        print("WIN sel blocks:",[Fblocks[i] for i in sorted(sel)]); break
+    if fv>bestoverall[1]: bestoverall=(sel,fv)
+print("best fill",bestoverall[1],"set",sorted(bestoverall[0]) if bestoverall[0] else None)
+EOF
+python /tmp/hc.py
+fill seems history-dependent — suspicious. Let me record, after each click, both the actual set of selected (12) blocks and the fill, to learn exactly what fill counts.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/truth.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+rowstart={0:4,1:12,2:20,3:28,4:36,5:44,6:52}; colstart={0:12,1:20,2:28,3:36,4:44}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def selset(f):
+    s=set()
+    for i,(r,c) in enumerate(Fblocks):
+        if f[rowstart[r]+1,colstart[c]+1]==12: s.add(i)
+    return s
+def fill(f): return int(np.sum(f[63]!=12))
+c=env.clone()
+prev=set()
+for i,b in enumerate(Fblocks):
+    c.step(6,colc[b[1]],rowc[b[0]])
+    f=c.frame(); s=selset(f)
+    print(f"click{i} {b}: |sel|={len(s)} fill={fill(f)} newly={sorted(s-prev)} lost={sorted(prev-s)}")
+    prev=s
+EOF
+python /tmp/truth.py
+fill isn't a pure function of the selected set (hillclimb hit 17 at all-23 vs 15 here). Let me test if fill depends on click order/count — possibly an autonomous element.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/order.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, random
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def fill(f): return int(np.sum(f[63]!=12))
+def build_all(order):
+    c=env.clone()
+    for i in order: 
+        b=Fblocks[i]; c.step(6,colc[b[1]],rowc[b[0]])
+    return fill(c.frame())
+print("all23 sorted order:", build_all(list(range(23))))
+for s in range(5):
+    o=list(range(23)); random.Random(s).shuffle(o)
+    print("all23 shuffle",s,":",build_all(o))
+# extra clicks: click block0 on and off 4 times then all
+c=env.clone()
+for _ in range(4):
+    c.step(6,colc[Fblocks[0][1]],rowc[Fblocks[0][0]])  # toggles, ends off after 4
+print("after 4 toggles of block0 (net off) fill=",fill(c.frame()))
+for i in range(23):
+    b=Fblocks[i]; c.step(6,colc[b[1]],rowc[b[0]])
+print("then all toggled... fill=",fill(c.frame()))
+EOF
+python /tmp/order.py
+fill = pure-set-function (order-independent) plus a redundant-move term. Let me characterize the set function: test if fill(S) = |S| − (adjacent selected pairs) or similar, using the cumulative data.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/fit.py << 'EOF'
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+Fset=set(Fblocks)
+fills=[1,1,2,3,3,4,5,5,6,7,7,8,9,9,10,11,11,12,13,13,14,15,15]
+def edges(S):
+    e=0
+    for (r,c) in S:
+        for (dr,dc) in [(0,1),(1,0)]:
+            if (r+dr,c+dc) in S: e+=1
+    return e
+S=set()
+for n in range(23):
+    S.add(Fblocks[n])
+    e=edges(S)
+    print(f"n={n+1} fill={fills[n]} |S|-e={n+1-e} e={e} |S|-2e={n+1-2*e}")
+EOF
+python /tmp/fit.py
+fill is just a move-counter quirk (fill ≈ moves − ⌊(moves+1)/3⌋), not a puzzle signal. So the target is a hidden subset I must decode from the pattern blocks. Let me search orientation combinations of the 4 patterns for a globally-consistent neighborhood assignment.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/orient.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, itertools
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fset=set([(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)])
+pats={(1,2):[[0,0,0],[0,12,2],[2,0,2]],
+      (3,1):[[2,0,2],[2,8,0],[0,0,2]],
+      (3,3):[[2,0,0],[0,8,2],[2,0,2]],
+      (5,2):[[2,0,2],[0,12,2],[0,0,0]]}
+def orient(g,o):
+    a=np.array(g)
+    r=o%4; a=np.rot90(a,r)
+    if o>=4: a=np.fliplr(a)
+    return a.tolist()
+def selmap(pr,pc,g):
+    # returns dict block->bool(sel) for 2-cells and 0-cells (non center)
+    d={}
+    for i in range(3):
+        for j in range(3):
+            if i==1 and j==1: continue
+            b=(pr-1+i,pc-1+j)
+            if b in Fset:
+                d[b]= (g[i][j]==2)
+    return d
+def test(sel):
+    c=env.clone()
+    for (r,cc) in sel: c.step(6,colc[cc],rowc[r])
+    return c.levels_completed>2
+plist=list(pats.items())
+found_consistent=[]
+for combo in itertools.product(range(8),repeat=4):
+    maps=[selmap(pos[0],pos[1],orient(g,o)) for (pos,g),o in zip(plist,combo)]
+    merged={}
+    ok=True
+    for m in maps:
+        for b,v in m.items():
+            if b in merged and merged[b]!=v: ok=False;break
+            merged[b]=v
+        if not ok: break
+    if ok:
+        sel=frozenset(b for b,v in merged.items() if v)
+        found_consistent.append((combo,sel))
+print("consistent orientation combos:",len(found_consistent))
+seen=set(); wins=[]
+for combo,sel in found_consistent:
+    if sel in seen: continue
+    seen.add(sel)
+    if test(sel):
+        print("WIN",combo,sorted(sel)); wins.append(sel)
+print("distinct consistent sels:",len(seen),"wins:",len(wins))
+# show a few
+for s in list(seen)[:6]:
+    print(sorted(s))
+EOF
+python /tmp/orient.py
+Let me verify whether the +0 increments are tied to move-number (pure counter) or to specific blocks (real signal), by using a different click order.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/sig.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def fill(f): return int(np.sum(f[63]!=12))
+for order,name in [(list(range(22,-1,-1)),'reverse')]:
+    c=env.clone(); prev=0
+    print(name)
+    for k,i in enumerate(order):
+        b=Fblocks[i]; c.step(6,colc[b[1]],rowc[b[0]])
+        fv=fill(c.frame()); print(f" move{k+1} block{b} delta={fv-prev}"); prev=fv
+EOF
+python /tmp/sig.py
+Confirmed: fill is a pure move-counter (+0 at moves ≡2 mod 3), no puzzle signal. The target is a hidden exact-match subset. Let me run fewest-first search from both empty and full (few selects / few deselects).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/few.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, itertools, time
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fblocks=[(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)]
+def clickset(base_clone, idxs):
+    c=base_clone.clone()
+    for i in idxs:
+        b=Fblocks[i]; c.step(6,colc[b[1]],rowc[b[0]])
+    return c.levels_completed>2
+base=env.clone()
+allc=env.clone()
+for i in range(23):
+    b=Fblocks[i]; allc.step(6,colc[b[1]],rowc[b[0]])
+t0=time.time()
+found=None
+for k in range(0,5):
+    for combo in itertools.combinations(range(23),k):
+        # few-select from empty
+        if clickset(base,combo):
+            found=('select',combo); break
+    if found: break
+    print(f"k={k} select done {time.time()-t0:.1f}s")
+    for combo in itertools.combinations(range(23),k):
+        # few-deselect from all (toggle those k off)
+        if clickset(allc,combo):
+            found=('deselect',combo); break
+    if found: break
+    print(f"k={k} deselect done {time.time()-t0:.1f}s")
+print("FOUND",found)
+if found:
+    kind,combo=found
+    if kind=='select':
+        print("target blocks:",[Fblocks[i] for i in combo])
+    else:
+        sel=[Fblocks[i] for i in range(23) if i not in combo]
+        print("target blocks:",sel)
+EOF
+python /tmp/few.py
+Let me render the level 3 frame as an image to get visual/human intuition about the puzzle.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/png.py << 'EOF'
+import numpy as np
+from PIL import Image
+f=np.load('/tmp/lvl3.npy')
+pal={0:(0,0,0),2:(200,40,40),4:(210,210,210),5:(0,150,0),8:(60,90,200),9:(240,220,0),12:(150,80,220)}
+img=np.zeros((64,64,3),np.uint8)
+for v,col in pal.items():
+    img[f==v]=col
+Image.fromarray(img).resize((512,512),Image.NEAREST).save('/tmp/lvl3.png')
+print("saved")
+EOF
+python /tmp/png.py
+[edit] view /tmp/lvl3.png
+$ cp /tmp/lvl3.png /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/lvl3.png
+[edit] view /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/lvl3.png
+Let me reason about the pattern-to-block mapping with several conflict-resolution strategies in one batch.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/resolve.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fset=set([(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)])
+pats={(1,2):[[0,0,0],[0,12,2],[2,0,2]],
+      (3,1):[[2,0,2],[2,8,0],[0,0,2]],
+      (3,3):[[2,0,0],[0,8,2],[2,0,2]],
+      (5,2):[[2,0,2],[0,12,2],[0,0,0]]}
+def test(sel):
+    sel=[b for b in sel if b in Fset]
+    c=env.clone()
+    for (r,cc) in sel: c.step(6,colc[cc],rowc[r])
+    return c.levels_completed>2, len(sel)
+# build coverage: block-> list of (pattern_pos, value)
+cover={}
+for (pr,pc),g in pats.items():
+    for i in range(3):
+        for j in range(3):
+            if i==1 and j==1: continue
+            b=(pr-1+i,pc-1+j)
+            if b in Fset:
+                cover.setdefault(b,[]).append(((pr,pc),g[i][j]))
+def dist(b,p): return (b[0]-p[0])**2+(b[1]-p[1])**2
+strategies={}
+# nearest pattern, 2=select
+def nearest(b):
+    return min(cover[b],key=lambda pv: dist(b,pv[0]))
+strategies['near_2sel']=[b for b in cover if nearest(b)[1]==2]
+strategies['near_0sel']=[b for b in cover if nearest(b)[1]==0]
+# farthest
+def farthest(b):
+    return max(cover[b],key=lambda pv: dist(b,pv[0]))
+strategies['far_2sel']=[b for b in cover if farthest(b)[1]==2]
+# majority 2
+strategies['maj_2sel']=[b for b in cover if sum(1 for _,v in cover[b] if v==2)*2>len(cover[b])]
+strategies['maj_2sel_ge']=[b for b in cover if sum(1 for _,v in cover[b] if v==2)*2>=len(cover[b])]
+# all covering ==2
+strategies['all2']=[b for b in cover if all(v==2 for _,v in cover[b])]
+# any 0
+strategies['any0']=[b for b in cover if any(v==0 for _,v in cover[b])]
+for name,sel in list(strategies.items()):
+    w,n=test(sel)
+    print(name,n,"win",w)
+    cw,cn=test([b for b in Fset if b not in set(sel)])
+    print("  complement",cn,"win",cw)
+EOF
+python /tmp/resolve.py
+Let me reconsider: the pattern centers differ (purple=12 vs blue=8), maybe signaling opposite reading rules. Let me test mixed-reading interpretations.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/mixed.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json, itertools
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fset=set([(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)])
+pats={(1,2):([[0,0,0],[0,12,2],[2,0,2]],12),
+      (3,1):([[2,0,2],[2,8,0],[0,0,2]],8),
+      (3,3):([[2,0,0],[0,8,2],[2,0,2]],8),
+      (5,2):([[2,0,2],[0,12,2],[0,0,0]],12)}
+def test(sel):
+    sel=[b for b in set(sel) if b in Fset]
+    c=env.clone()
+    for (r,cc) in sel: c.step(6,colc[cc],rowc[r])
+    return c.levels_completed>2, len(sel)
+def build(purple_red_selects, blue_red_selects):
+    sel=set()
+    for (pr,pc),(g,center) in pats.items():
+        red_sel = purple_red_selects if center==12 else blue_red_selects
+        for i in range(3):
+            for j in range(3):
+                if i==1 and j==1: continue
+                b=(pr-1+i,pc-1+j)
+                if b not in Fset: continue
+                isred = g[i][j]==2
+                if (isred and red_sel) or ((not isred) and (not red_sel)):
+                    sel.add(b)
+    return sel
+for prs in (True,False):
+    for brs in (True,False):
+        s=build(prs,brs)
+        w,n=test(s)
+        cw,cn=test([b for b in Fset if b not in s])
+        print(f"purple_red_sel={prs} blue_red_sel={brs}: {n} win={w} | comp {cn} win={cw}")
+EOF
+python /tmp/mixed.py
+Two winning configs found — a specific 14-block set. Let me extract and verify it.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/verify.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+rowc={0:6,1:14,2:22,3:30,4:38,5:46,6:54}; colc={0:14,1:22,2:30,3:38,4:46}
+Fset=set([(0,1),(0,2),(0,3),(1,1),(1,3),(2,0),(2,1),(2,2),(2,3),(2,4),
+(3,0),(3,2),(3,4),(4,0),(4,1),(4,2),(4,3),(4,4),(5,1),(5,3),(6,1),(6,2),(6,3)])
+pats={(1,2):([[0,0,0],[0,12,2],[2,0,2]],12),
+      (3,1):([[2,0,2],[2,8,0],[0,0,2]],8),
+      (3,3):([[2,0,0],[0,8,2],[2,0,2]],8),
+      (5,2):([[2,0,2],[0,12,2],[0,0,0]],12)}
+sel=set()
+for (pr,pc),(g,center) in pats.items():
+    red_sel = (center==8)  # blue->red selects; purple->red doesn't
+    for i in range(3):
+        for j in range(3):
+            if i==1 and j==1: continue
+            b=(pr-1+i,pc-1+j)
+            if b not in Fset: continue
+            isred=g[i][j]==2
+            if (isred and red_sel) or ((not isred) and (not red_sel)):
+                sel.add(b)
+sel=sorted(sel)
+print("target blocks (%d):"%len(sel),sel)
+clicks=[[6,colc[c],rowc[r]] for (r,c) in sel]
+print("clicks:",clicks)
+c=env.clone()
+for a in clicks: c.step(*a)
+print("clone win: lvl",c.levels_completed)
+# also verify on the REAL env fresh replay
+env2=A.Arena('ft09')
+for act in ck['final_path']: env2.step(act)
+for a in clicks: env2.step(*a)
+print("real replay lvl",env2.levels_completed, "term",env2.terminal())
+EOF
+python /tmp/verify.py
+That wins level 3. The rule: a neighbor block is selected iff `(pattern_center == 8) == (cell == 2)`. Let me prototype a general, frame-driven decoder to confirm it reproduces the solution from pixels alone.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/proto.py << 'EOF'
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, json
+from collections import Counter
+ck = json.load(open('checkpoint.json'))
+env = A.Arena('ft09')
+for act in ck['final_path']:
+    env.step(act)
+f=np.asarray(env.frame())
+
+def decode_clicks(f):
+    H,W=f.shape
+    core=f[:62]  # ignore bottom bar row(s)
+    bg=Counter(core.ravel().tolist()).most_common(1)[0][0]
+    # find uniform sxs blocks: try s=6
+    s=6
+    # candidate block color = most common non-bg color among solid blocks
+    # scan grid slots: a slot (r,c) is start of block if region rxr non-bg dominantly
+    # First find all rows/cols that begin a block: detect by column profile of non-bg
+    nonbg=(core!=bg)
+    # find block starts by looking for runs; use pitch detection via projecting
+    # Simpler: find all top-left corners where a 6x6 area is fully non-bg (a block)
+    starts=[]
+    for r in range(0,62-s+1):
+        for c in range(0,W-s+1):
+            if nonbg[r:r+s,c:c+s].all():
+                # ensure it's a top-left (cell above/left is bg or edge)
+                if (r==0 or not nonbg[r-1,c]) and (c==0 or not nonbg[r,c-1]):
+                    starts.append((r,c))
+    rows=sorted(set(r for r,c in starts)); cols=sorted(set(c for r,c in starts))
+    ri={r:i for i,r in enumerate(rows)}; cimap={c:i for i,c in enumerate(cols)}
+    # block color = most common single-color among uniform blocks
+    blockcolor=None; cnt=Counter()
+    slots={}  # (i,j)->(r,c)
+    for (r,c) in starts:
+        blk=core[r:r+s,c:c+s]
+        slots[(ri[r],cimap[c])]=(r,c)
+        u=np.unique(blk)
+        if len(u)==1: cnt[int(u[0])]+=1
+    blockcolor=cnt.most_common(1)[0][0]
+    # identify pattern blocks (non-uniform) and clickable (uniform==blockcolor or selected)
+    clickable=set(); patterns={}
+    for (ij),(r,c) in slots.items():
+        blk=core[r:r+s,c:c+s]; u=np.unique(blk)
+        if len(u)==1:
+            clickable.add(ij)
+        else:
+            patterns[ij]=blk
+    # red color = the non-zero-ish decoration color: cells are 0 and 2; find them
+    # In pattern 3x3, non-center cells take two values; treat one as 'mark'.
+    # Determine 'mark' color = the color that appears as a cell value and equals 2? 
+    # Generalize: cell values are {v0, vmark}; center is blockcolor or selectedcolor.
+    # We define selected = ((center==blockcolor) == (cell==markcolor))
+    # markcolor = the decoration color that is NOT the background-of-pattern (0).
+    # Collect all cell colors across patterns' non-center cells:
+    def cell3(blk):
+        return [[int(blk[2*i,2*j]) for j in range(3)] for i in range(3)]
+    cellvals=Counter()
+    for blk in patterns.values():
+        g=cell3(blk)
+        for i in range(3):
+            for j in range(3):
+                if (i,j)!=(1,1): cellvals[g[i][j]]+=1
+    # two colors expected; mark = the less frequent? Here 0 freq> 2 freq. mark=2.
+    # choose markcolor as the color that is not the pattern's most common cell color
+    common_cell=cellvals.most_common()
+    markcolor=common_cell[-1][0] if len(common_cell)>1 else common_cell[0][0]
+    sel=set()
+    for (pi,pj),blk in patterns.items():
+        g=cell3(blk); center=g[1][1]
+        for i in range(3):
+            for j in range(3):
+                if (i,j)==(1,1): continue
+                nb=(pi+(i-1),pj+(j-1))
+                if nb in clickable:
+                    if ((center==blockcolor)==(g[i][j]==markcolor)):
+                        sel.add(nb)
+    # to clicks (x=col center, y=row center)
+    clicks=[]
+    for (i,j) in sorted(sel):
+        r,c=slots[(i,j)]
+        clicks.append([6, c+s//2-1, r+s//2-1])
+    return clicks, sorted(sel), blockcolor, markcolor
+
+clicks,sel,bc,mc=decode_clicks(f)
+print("blockcolor",bc,"markcolor",mc)
+print("selected",sel)
+print("nclicks",len(clicks))
+c=env.clone()
+for a in clicks: c.step(*a)
+print("win lvl",c.levels_completed)
+EOF
+python /tmp/proto.py
+The frame-driven decoder wins from pixels alone. Let me add a clean, general leg to legs.py and wire `play_level_3`.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && tail -5 legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs.py << 'PYEOF'
+
+
+def _grid_of_blocks(frame, row_limit=62):
+    """Perceive a regular grid of solid square blocks over a background.
+
+    Returns (block_size, bg, slots, uniform, patterns) where `slots` maps a grid
+    index (i, j) -> (top_row, left_col), `uniform` is the set of indices whose
+    block is a single solid colour, and `patterns` maps index -> the block's
+    pixel array for the non-uniform (decorated) blocks. Block size is auto
+    detected from the small candidate set {4, 6, 8}. Generic to any board drawn
+    as equal square cells on a lattice (e.g. the ft09 pattern-key boards).
+    """
+    f = np.asarray(frame)
+    core = f[:row_limit]
+    bg = Counter(core.ravel().tolist()).most_common(1)[0][0]
+    nonbg = core != bg
+    H, W = core.shape
+    best = None
+    for s in (6, 8, 4, 5, 10):
+        starts = []
+        for r in range(0, H - s + 1):
+            for c in range(0, W - s + 1):
+                if nonbg[r:r + s, c:c + s].all():
+                    if (r == 0 or not nonbg[r - 1, c]) and (c == 0 or not nonbg[r, c - 1]):
+                        starts.append((r, c))
+        if not starts:
+            continue
+        score = len(starts)
+        if best is None or score > best[0]:
+            best = (score, s, starts)
+    if best is None:
+        return None
+    _, s, starts = best
+    rows = sorted({r for r, _ in starts})
+    cols = sorted({c for _, c in starts})
+    ri = {r: i for i, r in enumerate(rows)}
+    ci = {c: j for j, c in enumerate(cols)}
+    slots, uniform, patterns = {}, set(), {}
+    for (r, c) in starts:
+        blk = core[r:r + s, c:c + s]
+        idx = (ri[r], ci[c])
+        slots[idx] = (r, c)
+        if len(np.unique(blk)) == 1:
+            uniform.add(idx)
+        else:
+            patterns[idx] = blk
+    return s, bg, slots, uniform, patterns
+
+
+def discover_pattern_key_clicks(env):
+    """Planner for the ft09 'pattern-key' toggle board.
+
+    The board is a lattice of solid square blocks; a few 'pattern' blocks carry a
+    3x3 mini-key (a solid centre colour plus mark/blank cells around it). Each
+    pattern block tells which of its 8 grid-neighbour blocks to toggle: a
+    neighbour is selected iff  (centre == block_colour) == (cell == mark_colour).
+    Returns the list of (x, y) clicks (block centres) that reach the target, or
+    None if the board is not a pattern-key board. Pure perception -- no search.
+    """
+    g = _grid_of_blocks(env.frame())
+    if not g:
+        return None
+    s, bg, slots, uniform, patterns = g
+    if not patterns or not uniform:
+        return None
+    block_color = Counter(
+        int(np.asarray(env.frame())[r + s // 2, c + s // 2])
+        for (r, c) in (slots[i] for i in uniform)
+    ).most_common(1)[0][0]
+
+    def cell3(blk):
+        return [[int(blk[2 * i, 2 * j]) for j in range(3)] for i in range(3)]
+
+    cellvals = Counter()
+    for blk in patterns.values():
+        gg = cell3(blk)
+        for i in range(3):
+            for j in range(3):
+                if (i, j) != (1, 1):
+                    cellvals[gg[i][j]] += 1
+    common = cellvals.most_common()
+    mark = common[-1][0] if len(common) > 1 else common[0][0]
+
+    sel = set()
+    for (pi, pj), blk in patterns.items():
+        gg = cell3(blk)
+        center = gg[1][1]
+        for i in range(3):
+            for j in range(3):
+                if (i, j) == (1, 1):
+                    continue
+                nb = (pi + (i - 1), pj + (j - 1))
+                if nb in uniform and ((center == block_color) == (gg[i][j] == mark)):
+                    sel.add(nb)
+    clicks = []
+    for idx in sorted(sel):
+        r, c = slots[idx]
+        clicks.append((c + s // 2 - 1, r + s // 2 - 1))
+    return clicks or None
+
+
+def solve_pattern_key_board(env):
+    """Decode the pattern-key board's target from the frame and commit the
+    completing block toggles on the real env. Thin composition of plan_and_commit
+    over the pattern-key planner and the coordinate-click applier."""
+    return plan_and_commit(env, discover_pattern_key_clicks, _click_xy)
+PYEOF
+echo done
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Block-size detection picked the wrong size. Let me fix `_grid_of_blocks` to detect block size via run-lengths and make the 3x3 sampling size-general.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+Now make the 3x3 sampling block-size-general (it currently hardcodes stride 2):
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py
+Reached level 3. Let me update the checkpoint and log for hygiene, then re-verify.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat > /tmp/mkck.py << 'EOF'
+import sys, json; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A, legs
+ck=json.load(open('checkpoint.json'))
+env=A.Arena('ft09')
+for a in ck['final_path']: env.step(a)
+clicks=legs.discover_pattern_key_clicks(env)
+for x,y in clicks: env.step(6,x,y)
+assert env.levels_completed==3, env.levels_completed
+newpath=ck['final_path']+[[6,x,y] for (x,y) in clicks]
+ok=A.validate('ft09', [tuple(p) if isinstance(p,list) else p for p in newpath], 3)
+ck2=dict(ck); ck2['reached']=3
+ck2['records']=ck['records']+[{"level":3,"marginal_C":len(clicks),"reached":True}]
+ck2['final_path']=newpath; ck2['validated']=True
+ck2['total_marginal_C']=ck.get('total_marginal_C',0)+len(clicks)
+json.dump(ck2, open('checkpoint.json','w'))
+print("levels",env.levels_completed,"validate",ok,"pathlen",len(newpath))
+EOF
+python /tmp/mkck.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && rm -f lvl3.png && python gkm_try.py
+Now let me append a debrief to the legs log.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs_log.md << 'EOF'
+
+## ft09 level 3 — pattern-key toggle board (new leg, decode not search)
+- Same coordinate-click substrate, but 23 independent toggle blocks (8<->12) on a
+  6x6-cell lattice => 2^23 subsets, far too many for search_toggle_solution
+  (which caps at 16 tiles). No dense feedback exists: the bottom bar is only a
+  move counter (fill = m - floor((m+1)/3), +0 every 3rd move, block-independent),
+  and no hidden indicator responds to combinations. All symmetric-subset searches
+  (D2 / top-bottom / left-right) fail => the target is asymmetric and must be
+  DECODED, not searched.
+- The board carries 4 non-clickable 'pattern' blocks, each a 3x3 mini-key: a solid
+  centre colour (block-colour 8 or selected-colour 12) plus mark(2)/blank(0) cells.
+  RULE (found by probing readings): a grid-neighbour block is toggled iff
+  (centre == block_colour) == (cell == mark_colour). This decodes to a unique
+  14-block set that raises the level; verified purely from pixels.
+- New legs: _grid_of_blocks (perceive an equal-square-cell lattice: bg, block
+  size via run-length mode, per-slot uniform vs pattern), discover_pattern_key_clicks
+  (apply the decode rule, return block-centre clicks), solve_pattern_key_board =
+  plan_and_commit(env, discover_pattern_key_clicks, _click_xy). play_level_3 is a
+  one-liner composing that leg. Reuses plan_and_commit/_click_xy unchanged.
+EOF
+echo done
+Let me do a final clean verification run.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py && echo "---players---" && cat players.py
+The task is complete. **`RESULT levels=3 moves=25 replay_ok=True err=None`**
+
+## Summary
+
+I got `solve.py` to reach **level 3** of ft09 by discovering the level's mechanics entirely through experiment on clones (never reading game source).
+
+**What level 3 is:** A lattice of 6×6 solid blocks over a background. 23 blocks are clickable and toggle color 8↔12 independently; 4 non-clickable "pattern" blocks each carry a 3×3 mini-key.
+
+**Key discoveries (by probing):**
+- The only feedback besides the sparse level-up is the bottom bar, which I proved is a **pure move-counter** (`fill = m − ⌊(m+1)/3⌋`, `+0` every 3rd move regardless of which block) — *not* a progress signal.
+- With no dense feedback and 2²³ subsets, brute force is infeasible. I ruled out all symmetric-subset hypotheses (D2 / top-bottom / left-right / 180°) and small/large fewest-first searches — the target is asymmetric and must be **decoded**.
+- The 4 pattern blocks encode it. The rule I found and verified from pixels: a grid-neighbour block is toggled iff `(pattern_center == block_color) == (cell == mark_color)`. This yields a unique 14-block solution.
+
+**Leg library additions (general, frame-driven):**
+- `_grid_of_blocks` — perceives an equal-square-cell lattice (background, block size via run-length mode, per-slot uniform-vs-pattern).
+- `discover_pattern_key_clicks` — planner applying the decode rule, returns block-centre clicks.
+- `solve_pattern_key_board` = `plan_and_commit(env, discover_pattern_key_clicks, _click_xy)` — reuses the existing higher-order commit leg.
+
+`play_level_3` is a one-line composition of `solve_pattern_key_board`. I also updated `checkpoint.json` (validated 25-move path) and appended a debrief to `legs_log.md`.

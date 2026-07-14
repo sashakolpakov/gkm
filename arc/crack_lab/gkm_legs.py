@@ -23,6 +23,7 @@ default proposer.
 from __future__ import annotations
 import importlib.util
 import ast
+import fcntl
 import glob
 import hashlib
 import json
@@ -121,6 +122,14 @@ SOURCE_TAINT_MARKERS = (
     "source reveals",
     "actual game source",
 ) + ARC_GAME_SOURCE_NAMES
+
+PRIVATE_RUNTIME_RE = re.compile(
+    r"\.\s*_(?:game|env|fd|budget)\b"
+    r"|__dict__|inspect\.(?:getsource|getmembers)"
+    r"|\b(?:vars|dir)\s*\("
+    r"|object\.__getattribute__"
+    r"|\b(?:getattr|hasattr)\s*\([^,\n]+,\s*['\"]_(?:game|env|fd|budget)\b"
+)
 """Strings that make a proposer workspace inadmissible.
 
 The arena may execute the hidden game implementation internally, but the
@@ -134,6 +143,7 @@ PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT
 """Files that define a verified leg-library state and should survive scratch loss."""
 
 SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache"}
+SNAPSHOT_SKIP_FILES = {".orchestrate.lock"}
 BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 
 
@@ -155,7 +165,7 @@ def _workspace_taint_reason(ws: str) -> Optional[str]:
                     text = f.read().lower()
             except OSError:
                 continue
-            if re.search(r"\.\s*_(?:game|env)\b|__dict__|inspect\.getsource", text):
+            if PRIVATE_RUNTIME_RE.search(text):
                 return (
                     "private game/runtime introspection in "
                     f"{os.path.relpath(path, ws)}"
@@ -174,8 +184,44 @@ def assert_workspace_not_tainted(ws: str) -> None:
         )
 
 
+def _deduplicate_level_records(rep: Report) -> int:
+    """Keep the last record for each level and remove its earlier charges.
+
+    This makes checkpoint recovery idempotent if an older overlapping run adopted
+    a level that another process had just recorded. New runs are prevented from
+    overlapping by the workspace lock below; this normalization repairs legacy
+    duplicate rows when they are loaded or saved.
+    """
+    seen = set()
+    kept_reversed = []
+    removed_cost = 0
+    for record in reversed(rep.records):
+        if record.level in seen:
+            removed_cost += record.marginal_C
+            continue
+        seen.add(record.level)
+        kept_reversed.append(record)
+    if removed_cost:
+        rep.records = list(reversed(kept_reversed))
+        rep.total_marginal_C = max(0, rep.total_marginal_C - removed_cost)
+    return removed_cost
+
+
+def _record_level(rep: Report, level: int, marginal_C: int,
+                  reached: bool = True) -> None:
+    """Insert or replace one level's charge; a level may occur only once."""
+    old = [record for record in rep.records if record.level == level]
+    if old:
+        rep.total_marginal_C -= sum(record.marginal_C for record in old)
+        rep.records = [record for record in rep.records if record.level != level]
+    rep.records.append(LevelRecord(level=level, marginal_C=marginal_C, reached=reached))
+    rep.records.sort(key=lambda record: record.level)
+    rep.total_marginal_C += marginal_C
+
+
 def _save_checkpoint(ws: str, rep: Report) -> None:
     """Persist the Report so a later restart restores the full marginal-C history."""
+    _deduplicate_level_records(rep)
     data = {
         "game": rep.game,
         "reached": rep.reached,
@@ -196,7 +242,7 @@ def _load_checkpoint(ws: str) -> Optional[Report]:
         return None
     with open(path) as f:
         data = json.load(f)
-    return Report(
+    rep = Report(
         game=data["game"],
         reached=data["reached"],
         total_marginal_C=data["total_marginal_C"],
@@ -204,6 +250,29 @@ def _load_checkpoint(ws: str) -> Optional[Report]:
         final_path=data.get("final_path", []),
         validated=data.get("validated", False),
     )
+    _deduplicate_level_records(rep)
+    return rep
+
+
+def _acquire_workspace_lock(ws: str):
+    """Hold an exclusive process lock for one orchestrator per scratch workspace."""
+    path = os.path.join(ws, ".orchestrate.lock")
+    lock = open(path, "a+")
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise RuntimeError(f"another orchestrator is already using workspace {ws}")
+    lock.seek(0)
+    lock.truncate()
+    lock.write(f"pid={os.getpid()}\n")
+    lock.flush()
+    return lock
+
+
+def _release_workspace_lock(lock) -> None:
+    fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+    lock.close()
 
 
 def _adopt_workspace_checkpoint(game: str, ws: str, rep: Report,
@@ -237,6 +306,8 @@ def _wip_level_dir(art: str, level: int) -> str:
 def _workspace_snapshot_files(ws: str) -> List[str]:
     files = []
     for name in sorted(os.listdir(ws)):
+        if name in SNAPSHOT_SKIP_FILES:
+            continue
         path = os.path.join(ws, name)
         if os.path.isdir(path):
             if name in SNAPSHOT_SKIP_DIRS:
@@ -1351,6 +1422,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     and the real game as verifier (credits needed for either proposer).
     """
     ws = setup_workspace(game, tag)
+    run_lock = _acquire_workspace_lock(ws)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
     if seed_artifact:
         seed_workspace_from_artifact(game, ws, tag, verbose=verbose, restore_wip=restore_wip)
@@ -1439,8 +1511,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
                 Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-                rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
-                rep.total_marginal_C += Cm
+                _record_level(rep, K, Cm)
                 rep.reached = reached
                 rep.final_path = path
                 rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
@@ -1530,8 +1601,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
             Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
-            rep.records.append(LevelRecord(level=K, marginal_C=Cm, reached=True))
-            rep.total_marginal_C += Cm
+            _record_level(rep, K, Cm)
             rep.reached = reached
             rep.final_path = path
             rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
@@ -1556,6 +1626,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
               f"total_marginal_C={rep.total_marginal_C} | F={rep.free_energy:.3f} ===")
         print("  per-level marginal novelty (should trend DOWN as legs are reused): "
               + ", ".join(f"L{r.level}:{r.marginal_C}" for r in rep.records))
+    _release_workspace_lock(run_lock)
     if interrupted:
         raise KeyboardInterrupt
     return rep

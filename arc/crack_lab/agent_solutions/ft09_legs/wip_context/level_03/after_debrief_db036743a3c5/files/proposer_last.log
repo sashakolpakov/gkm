@@ -1,0 +1,68 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py && echo "=== legs_log ===" && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && git log --oneline -20 2>/dev/null; git status 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat solve.py && echo "=== checkpoint ===" && cat checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && git show --stat HEAD | head -30
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && git check-ignore players.py legs.py legs_log.md; echo "---"; git log --oneline -5 -- players.py legs.py 2>/dev/null
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+Let me run the arena first to confirm the current baseline behavior:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 600 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py 2>&1 | tail -20
+Baseline confirmed: `levels=3, moves=25, replay_ok=True`.
+
+Now let me analyze the duplication. Comparing the three players and their legs:
+
+- `play_level_1` / `play_level_2` → `solve_toggle_board` = `plan_and_commit(env, search_toggle_solution, _click_xy)`
+- `play_level_3` → `solve_pattern_key_board` = `plan_and_commit(env, discover_pattern_key_clicks, _click_xy)`
+
+The recurring shape `plan_and_commit(env, <planner>, _click_xy)` appears twice — a **coordinate-click board solver** where only the *planner* varies (subset-search vs pixel-decode). Let me extract that as a single well-named leg so the commit-applier binding is written ONCE.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+Now the players.py is already thin, but let me verify it composes cleanly and matches the refactored legs:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && sed -n '/def _click_xy/,/discover_pattern_key_clicks)/p' legs.py
+Players.py is already thin composition (each `play_level_K` is a one-liner calling a named board-solver leg). Now let me append the recurring composition pattern I noticed after level 3 to `legs_log.md`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs_log.md << 'EOF'
+
+## Candidate higher-order leg: solve_click_board (planner-parameterised click board)
+- DEBRIEF comparison after level 3: put the three players side by side and the
+  duplication is not in players.py (all three are one-liners) but INSIDE the
+  named solvers. solve_toggle_board and solve_pattern_key_board were BOTH literally
+  `plan_and_commit(env, <planner>, _click_xy)` — the coordinate-click applier
+  `_click_xy` was bound in TWO places, and every ft09 board reduces to the same
+  shape: "produce a click list, then click it".
+- Extracted that shape ONCE as solve_click_board(env, planner) = plan_and_commit(
+  env, planner, _click_xy). The only per-board part is the planner: a subset
+  SEARCH on clones (search_toggle_solution, levels 1-2) or a pixel DECODE with no
+  search (discover_pattern_key_clicks, level 3). Two planner *flavours*, one
+  commit substrate. solve_toggle_board / solve_pattern_key_board are now thin
+  aliases that just pick the planner; _click_xy is written once.
+- The recurring pattern promoted from candidate to load-bearing:
+    coordinate-click board solver = solve_click_board(env, planner)
+                                   = plan_and_commit(env, planner, _click_xy)
+  i.e. plan_and_commit specialised to the coordinate-click applier. Future
+  ft09-family levels should supply a planner (search or decode) and reuse
+  solve_click_board rather than re-binding _click_xy. Behaviour unchanged
+  (levels=3, moves=25, replay_ok=True): pure refactor, no new clicks.
+EOF
+echo done
+Now let me verify behaviour is unchanged by re-running the arena:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "import ast; ast.parse(open('legs.py').read()); ast.parse(open('players.py').read()); print('syntax ok')" && python gkm_try.py 2>&1 | tail -5
+Behaviour unchanged: `levels=3, moves=25, replay_ok=True`. Let me do a final review of both files to confirm the refactor is clean:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && echo "=== players.py ===" && cat players.py && echo && echo "=== grep plan_and_commit uses ===" && grep -n "plan_and_commit\|_click_xy\|solve_click_board" legs.py
+The refactor is complete and clean. Summary of the debrief work:
+
+## What I did
+
+**Analysis (comparing `play_level_3` to earlier players):** The three players (`play_level_1`, `play_level_2`, `play_level_3`) were already thin one-liners, so the duplication wasn't *in* `players.py` — it was hidden inside the named board-solver legs. Both `solve_toggle_board` and `solve_pattern_key_board` were literally `plan_and_commit(env, <planner>, _click_xy)`, meaning the coordinate-click applier `_click_xy` was bound in **two** places. Every ft09 board reduces to the same shape: *"produce a click list, then click it."*
+
+**Refactor (write each skill ONCE):** Extracted a new well-named leg in `legs.py`:
+- `solve_click_board(env, planner)` = `plan_and_commit(env, planner, _click_xy)` — binds the click-applier once. The only per-board variation is the planner: a subset **SEARCH** on clones (`search_toggle_solution`, levels 1–2) or a pixel **DECODE** with no search (`discover_pattern_key_clicks`, level 3).
+- `solve_toggle_board` / `solve_pattern_key_board` are now thin aliases that just pick the planner and delegate to `solve_click_board`.
+
+Players remain thin composition (unchanged, still one-liners dispatching to the semantically-named solvers).
+
+**Debrief log:** Appended a new section to `legs_log.md` documenting the recurring composition pattern / candidate higher-order leg: *coordinate-click board solver = `solve_click_board(env, planner)` = `plan_and_commit` specialised to the click applier*, with two planner flavours (search vs decode) over one commit substrate.
+
+**Verification (no behaviour change):** `python gkm_try.py` still reports `RESULT levels=3 moves=25 replay_ok=True err=None` — identical to the pre-refactor baseline.

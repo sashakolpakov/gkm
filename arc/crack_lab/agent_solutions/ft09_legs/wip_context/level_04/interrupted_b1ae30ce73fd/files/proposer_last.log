@@ -1,0 +1,7 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat solve.py checkpoint.json auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 600 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py 2>&1 | tail -20

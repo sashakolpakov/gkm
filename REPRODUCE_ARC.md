@@ -66,6 +66,11 @@ operational cheating evidence, not promoted or used to support a result. Promoti
 requires a separately clean
 workspace to pass the current taint check and fresh replay.
 
+Each tagged scratch workspace admits only one orchestrator process at a time via
+an OS-level lock. Checkpoint recording is an upsert by level; loading or saving a
+legacy checkpoint with repeated level numbers keeps the last entry and removes the
+superseded charge from `total_marginal_C`.
+
 ## What should be checked
 
 A reviewer should verify:

@@ -61,6 +61,11 @@ deteriorate when observational progress stalls. Prompt instructions are conseque
 not treated as enforcement; blocking and promotion-time taint checks apply to every
 proposer model.
 
+One tagged scratch workspace admits only one orchestrator process at a time. An
+OS-level lock rejects overlapping runs before artifact seeding, while checkpoint
+recording upserts by level. Legacy repeated level rows are normalized on load or
+save by retaining the last entry and subtracting superseded charges.
+
 Source-Growth Statistic
 -----------------------
 
