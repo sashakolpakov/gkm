@@ -601,6 +601,12 @@ def _load_action_path(value) -> Optional[list]:
     return None
 
 
+def _action_path_key(path) -> tuple:
+    """Hashable cache key for integer and ``[6, x, y]`` replay tokens."""
+    return tuple(tuple(action) if isinstance(action, (list, tuple)) else action
+                 for action in path)
+
+
 def _candidate_paths_from_log(ws: str) -> List[List[int]]:
     txt = _read(os.path.join(ws, "proposer_last.log"))
     paths = []
@@ -743,7 +749,7 @@ def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[in
     failed_glues = 0
     prefix_ok = {}
     for prefix_path, prefix_source in candidates:
-        key = tuple(prefix_path)
+        key = _action_path_key(prefix_path)
         if key not in prefix_ok:
             prefix_ok[key] = _validated_prefix_floor(game, prefix_path, K - 1)
         if not prefix_ok[key]:

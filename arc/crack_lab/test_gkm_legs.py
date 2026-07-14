@@ -208,6 +208,7 @@ def test_action_path_accepts_coordinate_clicks_without_changing_key_paths():
         [6, 12, 34], [6, 0, 63]
     ]
     assert L._load_action_path([[5, 12, 34]]) is None
+    assert L._action_path_key([1, [6, 12, 34], 5]) == (1, (6, 12, 34), 5)
 
 
 def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
