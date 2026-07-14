@@ -1,0 +1,21 @@
+{
+  "game": "sp80",
+  "level": 2,
+  "phase": "after_debrief",
+  "reached": 2,
+  "err": null,
+  "attempt": "after_debrief_f5611fd257a9",
+  "created_at": "2026-07-14T12:43:20.249274+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "blocked_attempts.log",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

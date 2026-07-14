@@ -1,0 +1,21 @@
+{
+  "game": "sp80",
+  "level": 4,
+  "phase": "interrupted",
+  "reached": 3,
+  "err": "interrupted mid-level",
+  "attempt": "interrupted_2e0df23f7b65",
+  "created_at": "2026-07-14T13:23:50.111890+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "blocked_attempts.log",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

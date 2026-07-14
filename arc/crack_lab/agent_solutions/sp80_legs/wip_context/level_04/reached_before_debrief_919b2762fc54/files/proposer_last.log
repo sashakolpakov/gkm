@@ -1,0 +1,1136 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat solve.py players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat checkpoint.json auto_solve_attempts.json 2>/dev/null; echo "---"; timeout 300 python gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -20
+We're at level 3, need to reach level 4. Let me build a probe to study level 4.
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,60p' gkm_arena.py 2>/dev/null | head -80
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '60,180p' gkm_arena.py
+Now let me build a probe to reach level 4 and study its structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe4.py << 'EOF'
+import sys, json
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+env = A.Arena('sp80')
+ck = json.load(open('checkpoint.json'))
+for act in ck['final_path']:
+    if isinstance(act, list):
+        env.step(act[0], act[1], act[2])
+    else:
+        env.step(act)
+print("level now:", env.levels_completed, "terminal:", env.terminal())
+print("actions:", env.actions)
+f = env.frame()
+print("shape:", f.shape)
+print("color counts:", P.color_counts(f))
+EOF
+python /tmp/probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && sed -i '' 's#sys.path.insert(0, .*#sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")#' /tmp/probe4.py && python /tmp/probe4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/show4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+np.set_printoptions(linewidth=200, threshold=100000)
+
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+
+env = mkenv()
+f = env.frame()
+for r in range(64):
+    print("".join(f"{f[r,c]:2d}" for c in range(64)))
+EOF
+python /tmp/show4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/obj4.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+env = mkenv()
+f = env.frame()
+for b in P.connected_components(f, min_area=4):
+    print(f"color={b.color:2d} bbox={b.bbox} size={b.size} area={b.area} centroid=({b.centroid[0]:.1f},{b.centroid[1]:.1f})")
+EOF
+python /tmp/obj4.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/bot.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+env = mkenv(); f = env.frame()
+# column header
+print("    " + "".join(str(c%10) for c in range(64)))
+for r in range(50,60):
+    print(f"{r:2d}: " + "".join(str(int(f[r,c]))[-1] if f[r,c]!=12 else '.' for c in range(64)))
+EOF
+python /tmp/bot.py
+4 Π-sockets at bottom. Let me discover mechanics — test each action.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/act.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+env = mkenv()
+d = P.action_deltas(env, actions=(1,2,3,4,5))
+for a,dd in d.items():
+    print(f"action {a}: count={dd['count']} bbox={dd['bbox']}")
+    if dd['count'] and dd['count']<40:
+        print("   samples:", dd['samples'][:12])
+EOF
+python /tmp/act.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/mv.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def show9(env,label):
+    f=env.frame()
+    import numpy as np
+    for col in [9]:
+        rs,cs=np.where(f==col)
+        if len(rs): print(f"{label}: color{col} rows{rs.min()}-{rs.max()} cols{cs.min()}-{cs.max()}")
+        else: print(f"{label}: color{col} absent")
+env=mkenv(); show9(env,"start")
+for a,name in [(1,"UP"),(1,"UP"),(2,"DOWN"),(3,"LEFT"),(4,"RIGHT")]:
+    env.step(a); show9(env,name)
+EOF
+python /tmp/mv.py
+9-block moves freely in 4 directions (3px/step). Now test select (action 6) and USE (5).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/sel.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def blobs(env):
+    f=env.frame()
+    for b in P.connected_components(f,min_area=4):
+        if b.color in (8,9,4,6):
+            print(f"  c{b.color} bbox{b.bbox}")
+env=mkenv()
+print("BEFORE select:")
+blobs(env)
+# click on the 8 block at rows17-19 cols38-52 -> x=45 y=18
+env.step(6,45,18)
+print("AFTER select at (45,18):")
+blobs(env)
+print("level:",env.levels_completed)
+EOF
+python /tmp/sel.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/down.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def r9(env):
+    f=env.frame(); rs,cs=np.where(f==9)
+    return (rs.min(),rs.max(),cs.min(),cs.max()) if len(rs) else None
+env=mkenv()
+print("start",r9(env),"lvl",env.levels_completed)
+for i in range(20):
+    env.step(2)
+    print(f"down{i+1}",r9(env),"lvl",env.levels_completed,"term",env.terminal())
+    if env.terminal(): break
+EOF
+python /tmp/down.py
+Block stops at row 49 (floor above sockets). Let me check collision between blocks and test USE.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/coll.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def blobs(env):
+    f=env.frame(); out=[]
+    for b in P.connected_components(f,min_area=4):
+        if b.color in (8,9): out.append((b.color,b.bbox))
+    return out
+env=mkenv()
+# active 9 block at rows17-19 cols17-31. There's an 8 block at rows17-19 cols38-52.
+# move 9 right toward it: gap from col31 to col38 = 6, so 2 steps of 3 -> col37, 3rd overlaps
+for i in range(5):
+    env.step(4)
+    print(f"right{i+1}:", blobs(env))
+EOF
+python /tmp/coll.py
+Blocks overlap (9 on top), like level 3. Let me try random exploration to find what triggers reward.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/rand.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+base=mkenv()
+# block centroids for select clicks
+sel_pts=[(45,18),(12,30),(24,30),(49,33),(43,42),(24,18)]
+random.seed(1)
+best=3
+for trial in range(400):
+    env=base.clone()
+    seq=[]
+    for step in range(random.randint(3,14)):
+        r=random.random()
+        if r<0.3:
+            x,y=random.choice(sel_pts); env.step(6,x,y); seq.append(('sel',x,y))
+        else:
+            a=random.choice([1,2,3,4,5]); env.step(a); seq.append(a)
+        if env.levels_completed>3:
+            print("WIN trial",trial,"lvl",env.levels_completed,"seq",seq); best=env.levels_completed; break
+    if env.levels_completed>3: break
+print("done best",best)
+EOF
+python /tmp/rand.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/rand.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+base=mkenv()
+sel_pts=[(45,18),(12,30),(24,30),(49,33),(43,42),(24,18)]
+random.seed(1)
+wins=0; overs=0
+for trial in range(400):
+    env=base.clone()
+    seq=[]
+    for step in range(random.randint(3,14)):
+        if env.terminal(): break
+        r=random.random()
+        if r<0.3:
+            x,y=random.choice(sel_pts); env.step(6,x,y); seq.append(('s',x,y))
+        else:
+            a=random.choice([1,2,3,4,5]); env.step(a); seq.append(a)
+        if env.terminal():
+            if env.levels_completed>3:
+                print("WIN",trial,env.levels_completed,seq); wins+=1
+            else:
+                overs+=1
+            break
+    if env.levels_completed>3:
+        print("WIN(nonterm)",trial,env.levels_completed,seq); wins+=1; break
+print("done wins",wins,"gameovers",overs)
+EOF
+python /tmp/rand.py
+Let me test the socket hypothesis: move a width-9 block down over socket 1 and USE.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/soc.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def blobs(env):
+    f=env.frame(); out=[]
+    for b in P.connected_components(f,min_area=4):
+        if b.color in (8,9): out.append((b.color,b.bbox))
+    return sorted(out)
+env=mkenv()
+# select width-9 block at rows29-31 cols8-16 -> click (12,30)
+env.step(6,12,30)
+print("after select:",blobs(env))
+# push it down to bottom
+for i in range(10):
+    env.step(2)
+print("after down x10:",blobs(env),"lvl",env.levels_completed,"term",env.terminal())
+env.step(5)
+print("after USE:",blobs(env),"lvl",env.levels_completed,"term",env.terminal())
+EOF
+python /tmp/soc.py
+Selecting one point moved TWO width-9 blocks together — they're one object. Let me map the real movable objects.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/objs.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def cells9(env):
+    f=env.frame(); rs,cs=np.where(f==9); return set(zip(rs.tolist(),cs.tolist()))
+def cells4(env):
+    f=env.frame(); rs,cs=np.where(f==4); return sorted(zip(rs.tolist(),cs.tolist()))
+# click points to probe each region
+pts=[(24,18),(45,18),(12,30),(24,30),(49,33),(43,42),(24,3),(24,6)]
+for (x,y) in pts:
+    env=mkenv()
+    env.step(6,x,y)
+    c=cells9(env)
+    if not c:
+        print(f"click({x},{y}): no 9 (nothing selected)"); continue
+    rs=[p[0] for p in c]; cs=[p[1] for p in c]
+    # segment columns into contiguous groups
+    print(f"click({x},{y}): 9 rows{min(rs)}-{max(rs)} cols{min(cs)}-{max(cs)} n={len(c)}")
+EOF
+python /tmp/objs.py
+Objects: A(w15,r17,c17-31), B(w15,r17,c38-52), C(w21,r29,c8-28 with 4-marker hole), D(w12,r32,c44-55), E(w12,r41,c38-49). Let me find what causes game-over.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/go.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+sel_pts=[(45,18),(12,30),(24,30),(49,33),(43,42),(24,18)]
+random.seed(1)
+for trial in range(200):
+    env=mkenv(); seq=[]
+    for step in range(random.randint(3,14)):
+        if env.terminal(): break
+        r=random.random()
+        if r<0.3:
+            x,y=random.choice(sel_pts); env.step(6,x,y); seq.append(('s',x,y))
+        else:
+            a=random.choice([1,2,3,4,5]); env.step(a); seq.append(a)
+        if env.terminal():
+            print("GAMEOVER trial",trial,"seq",seq); break
+EOF
+python /tmp/go.py
+Game-over always after ~5 USEs. Let me test USE-count behavior directly.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/use.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def active(env):
+    f=env.frame(); rs,cs=np.where(f==9)
+    return (rs.min(),rs.max(),cs.min(),cs.max()) if len(rs) else None
+env=mkenv()
+for i in range(8):
+    if env.terminal(): print("terminal at",i); break
+    print(f"before USE#{i+1} active={active(env)} lvl={env.levels_completed}")
+    env.step(5)
+print("final term",env.terminal(),"lvl",env.levels_completed)
+EOF
+python /tmp/use.py
+USE behaves differently when block is at the floor. Let me probe the drop mechanic precisely.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/drop.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import perception as P
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def st(env):
+    f=env.frame()
+    out=[]
+    for b in P.connected_components(f,min_area=4):
+        if b.color in (8,9): out.append((b.color,b.bbox[0],b.bbox[1],b.bbox[3]))
+    return sorted(out), env.levels_completed, env.terminal()
+env=mkenv()
+# Test A at top: single USE
+print("A top USE:")
+e=env.clone(); e.step(5); print("  ->",st(e))
+# Test A moved to bottom then USE
+print("A bottom USE:")
+e=env.clone()
+for _ in range(12): e.step(2)
+print("  at bottom:",st(e))
+e.step(5); print("  after USE:",st(e))
+EOF
+python /tmp/drop.py
+USE at floor "commits" block and advances selection. Let me view the full frame after a commit to see if the block drops into a socket.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/drop2.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def show(env,r0=44,r1=59):
+    f=env.frame()
+    print("    " + "".join(str(c%10) for c in range(64)))
+    for r in range(r0,r1):
+        print(f"{r:2d}: " + "".join(str(int(f[r,c]))[-1] if f[r,c]!=12 else '.' for c in range(64)))
+env=mkenv()
+# align A over socket1 (cols8-16). A is cols17-31, width15. Move left so it covers socket1.
+# move A left: from col17 to align... let's just move A to bottom and left a lot, then USE
+for _ in range(12): env.step(2)  # down
+for _ in range(4): env.step(3)   # left x4 -> cols 17-12 => 5-19
+show(env)
+print("term",env.terminal(),"lvl",env.levels_completed)
+env.step(5)
+print("--- after USE ---")
+show(env)
+print("term",env.terminal(),"lvl",env.levels_completed)
+EOF
+python /tmp/drop2.py
+USE commits the block at its resting column. Let me test the full commit flow for all blocks.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/flow.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def act9(env):
+    f=env.frame(); rs,cs=np.where(f==9)
+    return (rs.min(),rs.max(),cs.min(),cs.max()) if len(rs) else None
+env=mkenv()
+for it in range(6):
+    if env.terminal(): print("terminal");break
+    a=act9(env)
+    print(f"iter{it}: active={a} lvl={env.levels_completed}")
+    if a is None: print("no active block"); break
+    for _ in range(12): env.step(2)
+    if env.terminal(): print("term during down");break
+    env.step(5)
+    print(f"   after commit lvl={env.levels_completed} term={env.terminal()}")
+EOF
+python /tmp/flow.py
+Let me pin down the exact USE budget and whether win is checked per-commit.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/budget.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+# USE at top only, count until terminal
+env=mkenv(); n=0
+while not env.terminal() and n<10:
+    env.step(5); n+=1
+    print(f"USE#{n} term={env.terminal()} lvl={env.levels_completed}")
+EOF
+python /tmp/budget.py
+Model: arrange all blocks via clicks+moves, then a single USE evaluates. Let me random-search arrangements on clones.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/search.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+# blocks: (name, click_x, click_y)
+BLK=[('A',24,18),('B',45,18),('C',18,30),('D',49,33),('E',43,42)]
+def arrange(env, plan):
+    # plan: list of (idx, dx_steps, drop) ; dx negative=left
+    for idx,dx,drop in plan:
+        name,x,y=BLK[idx]
+        env.step(6,x,y)
+        if drop:
+            for _ in range(12): 
+                if env.terminal():return
+                env.step(2)
+        d=4 if dx>0 else 3
+        for _ in range(abs(dx)):
+            if env.terminal():return
+            env.step(d)
+random.seed(0)
+best=None
+for t in range(500):
+    env=mkenv()
+    plan=[]
+    for i in range(5):
+        dx=random.randint(-8,10); drop=random.random()<0.7
+        plan.append((i,dx,drop))
+    random.shuffle(plan)
+    arrange(env,plan)
+    if env.terminal(): continue
+    env.step(5)
+    if env.levels_completed>3:
+        print("WIN t",t,"plan",plan); best=plan; break
+print("done",best)
+EOF
+python /tmp/search.py
+Single-USE column search failed. Let me re-examine the whole board carefully for target markers/outlines.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/full.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+env=mkenv(); f=env.frame()
+sym={1:'#',12:'.',14:'^',4:'4',6:'6',8:'O',9:'@',11:'U'}
+print("    " + "".join(str(c%10) for c in range(64)))
+for r in range(64):
+    print(f"{r:2d}: " + "".join(sym.get(int(f[r,c]),'?') for c in range(64)))
+EOF
+python /tmp/full.py
+Full board clear. C has a gap (two 9-wide parts, spacing 12 — matches socket spacing!). Let me search by socket-coverage score.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/cov.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK=[('A',24,18),('B',45,18),('C',18,30),('D',49,33),('E',43,42)]
+SOCK=[(8,16),(26,34),(38,46),(50,58)]
+def cols_of_blocks(env):
+    f=env.frame()
+    # columns occupied by any 8 or 9 in rows 2-49 (staging area)
+    m=(f==8)|(f==9)
+    cols=set(np.where(m[2:50].any(axis=0))[0].tolist())
+    return cols
+def score(env):
+    cols=cols_of_blocks(env)
+    s=0
+    for a,b in SOCK:
+        if all(c in cols for c in range(a,b+1)): s+=1
+    return s
+def move(env,idx,dx,drop):
+    name,x,y=BLK[idx]
+    env.step(6,x,y)
+    if drop:
+        for _ in range(12):
+            if env.terminal():return
+            env.step(2)
+    d=4 if dx>0 else 3
+    for _ in range(abs(dx)):
+        if env.terminal():return
+        env.step(d)
+random.seed(2)
+best=(-1,None)
+for t in range(800):
+    env=mkenv()
+    plan=[(i,random.randint(-8,10),random.random()<0.5) for i in range(5)]
+    for i,dx,dr in plan: move(env,i,dx,dr)
+    if env.terminal(): continue
+    sc=score(env)
+    if sc>best[0]:
+        best=(sc,plan)
+        print("newbest score",sc,"plan",plan)
+    if sc==4:
+        e=env.clone(); e.step(5)
+        print("  USE-> lvl",e.levels_completed,"term",e.terminal())
+        if e.levels_completed>3:
+            print("WIN"); break
+print("best",best)
+EOF
+python /tmp/cov.py
+Coverage isn't it. Let me test C shifted to exactly align its two 9-wide parts over two sockets, then USE, watching the full frame.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/cexact.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def show(env,r0=44,r1=59):
+    f=env.frame()
+    sym={1:'#',12:'.',14:'^',4:'4',6:'6',8:'O',9:'@',11:'U'}
+    for r in range(r0,r1):
+        print(f"{r:2d}: " + "".join(sym.get(int(f[r,c]),'?') for c in range(2,62)))
+env=mkenv()
+env.step(6,18,30)  # select C
+for _ in range(6): env.step(4)  # right 18px -> parts at 26-34,38-46
+print("C aligned over S2,S3 (still rows29-31):")
+show(env,29,35)
+print("lvl",env.levels_completed)
+e=env.clone(); e.step(5)
+print("after USE lvl",e.levels_completed,"term",e.terminal())
+# now try dropping to floor then USE
+for _ in range(12): env.step(2)
+print("C dropped to floor:")
+show(env,44,59)
+print("lvl",env.levels_completed)
+env.step(5)
+print("after USE lvl",env.levels_completed,"term",env.terminal())
+show(env,44,59)
+EOF
+python /tmp/cexact.py
+Let me brute-force left-edge alignment assignments (park extra block at wall), like level 3's pattern.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/le.py << 'EOF'
+import sys, json, itertools
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+# blocks: name, click point, initial left col
+BLK={'A':(24,18,17),'B':(45,18,38),'C':(18,30,8),'D':(49,33,44),'E':(43,42,38)}
+SOCK_LEFT=[8,26,38,50]
+base=mkenv()
+def left_of(env,click):
+    # returns current left col of selected block after clicking
+    pass
+def set_left(env,name,target):
+    x,y,_=BLK[name]
+    env.step(6,x,y)
+    f=env.frame(); rs,cs=np.where(f==9); cur=cs.min()
+    dx=target-cur
+    step=4 if dx>0 else 3  # confirm right step size below
+    d=4 if dx>0 else 3
+    n=abs(dx)//3
+    act=4 if dx>0 else 3
+    for _ in range(n):
+        if env.terminal(): return
+        env.step(act)
+names=list(BLK)
+wins=[]
+for extra in names:
+    others=[n for n in names if n!=extra]
+    for perm in itertools.permutations(others):
+        env=base.clone()
+        # park extra at far left
+        x,y,_=BLK[extra]; env.step(6,x,y)
+        for _ in range(20):
+            if env.terminal():break
+            env.step(3)
+        for name,sl in zip(perm,SOCK_LEFT):
+            set_left(env,name,sl)
+        if env.terminal(): continue
+        e=env.clone(); e.step(5)
+        if e.levels_completed>3:
+            print("WIN extra",extra,"perm",perm); wins.append((extra,perm))
+print("wins",wins)
+EOF
+python /tmp/le.py
+USE only commits when block is at the floor; I get 4 commits. Let me search commit-based: drop+align each block over a socket, USE each.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/commit.py << 'EOF'
+import sys, json, itertools, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,17,15),'B':(45,18,38,15),'C':(18,30,8,21),'D':(49,33,44,12),'E':(43,42,38,12)}
+SOCK=[(8,16),(26,34),(38,46),(50,58)]
+def commit_block(env,name,target_left):
+    x,y,_,w=BLK[name]
+    env.step(6,x,y)
+    for _ in range(12):
+        if env.terminal():return
+        env.step(2)  # drop
+    f=env.frame(); rs,cs=np.where(f==9)
+    if len(cs)==0: return
+    cur=cs.min(); dx=target_left-cur
+    act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3):
+        if env.terminal():return
+        env.step(act)
+    if not env.terminal(): env.step(5)  # commit
+base=mkenv()
+names=list(BLK)
+def try_assign(perm):
+    # perm: 4 block names -> SOCK[0..3]; target_left so block covers socket
+    env=base.clone()
+    for name,(a,b) in zip(perm,SOCK):
+        w=BLK[name][3]
+        # center block on socket center
+        tl=(a+b)//2 - w//2
+        commit_block(env,name,tl)
+        if env.terminal(): break
+    return env.levels_completed>3, env.terminal(), env.levels_completed
+found=[]
+for combo in itertools.permutations(names,4):
+    win,term,lvl=try_assign(combo)
+    if win:
+        print("WIN",combo); found.append(combo); break
+print("found",found)
+EOF
+python /tmp/commit.py
+Let me search for ANY commit that changes the sockets or top markers (feedback signal).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/feed.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,15),'B':(45,18,15),'C':(18,30,21),'D':(49,33,12),'E':(43,42,12)}
+base=mkenv()
+b0=base.frame().copy()
+sock0=b0[53:59].copy(); mark0=b0[2:8].copy()
+def onecommit(name,tl):
+    env=base.clone()
+    x,y,w=BLK[name]
+    env.step(6,x,y)
+    for _ in range(12): env.step(2)
+    f=env.frame(); cs=np.where(f==9)[1]; cur=cs.min()
+    dx=tl-cur; act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3): env.step(act)
+    if env.terminal(): return None
+    env.step(5)
+    if env.terminal(): return "TERM"
+    f=env.frame()
+    changed=[]
+    if not np.array_equal(f[53:59],sock0): changed.append("SOCK")
+    if not np.array_equal(f[2:8],mark0): changed.append("MARK")
+    return (changed, int(env.levels_completed))
+for name in BLK:
+    for tl in range(2,55,3):
+        r=onecommit(name,tl)
+        if r and r!="TERM" and r[0]:
+            print(name,"left",tl,"->",r)
+print("done")
+EOF
+python /tmp/feed.py
+No feedback from commits on sockets/markers. Let me check whether USE commits at any row, not just the floor.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/userow.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+def act9(env):
+    f=env.frame(); rs,cs=np.where(f==9)
+    return (int(rs.min()),int(rs.max()),int(cs.min()),int(cs.max())) if len(rs) else None
+for ndown in [0,2,4,6,8,10,12]:
+    env=mkenv()
+    for _ in range(ndown): env.step(2)
+    before=act9(env)
+    env.step(5)
+    after9=act9(env)
+    # did it commit? active changed to a different block or stayed same?
+    print(f"down{ndown}: before9={before} after_active={after9} term={env.terminal()}")
+EOF
+python /tmp/userow.py
+Commit works when block is low enough. Let me verify each block's move step, then run a thorough horizontal single-USE search.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/steps.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18),'B':(45,18),'C':(18,30),'D':(49,33),'E':(43,42)}
+def leftcol(env):
+    f=env.frame(); cs=np.where(f==9)[1]; return int(cs.min()) if len(cs) else None
+for name,(x,y) in BLK.items():
+    env=mkenv(); env.step(6,x,y); l0=leftcol(env)
+    env.step(4); l1=leftcol(env)  # right
+    env.step(3); env.step(3); l2=leftcol(env) # two left
+    print(name,"l0",l0,"after R",l1,"after 2L",l2)
+    # also test how far left it can go
+    env2=mkenv(); env2.step(6,x,y)
+    for _ in range(30): env2.step(3)
+    print("   min left",leftcol(env2))
+    env3=mkenv(); env3.step(6,x,y)
+    for _ in range(30): env3.step(4)
+    f=env3.frame(); print("   max right",int(np.where(f==9)[1].max()))
+EOF
+python /tmp/steps.py
+All blocks share a 3px grid (left-col ≡2 mod3), reaching cols 2..61. Let me check if drop-stop-row varies by column (does the floor follow sockets?).
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/floor.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+# select A, move to various left cols, drop, report bottom row
+def test(name,x,y,target_left):
+    env=mkenv(); env.step(6,x,y)
+    f=env.frame(); cur=int(np.where(f==9)[1].min())
+    dx=target_left-cur; act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3): env.step(act)
+    for _ in range(15): env.step(2)
+    f=env.frame(); rs,cs=np.where(f==9)
+    return int(rs.max()),int(cs.min()),int(cs.max())
+for tl in [2,8,17,26,38,50]:
+    print("A target_left",tl,"-> bottomrow,cols",test('A',24,18,tl))
+EOF
+python /tmp/floor.py
+Floor is uniform at row 49; sockets are pure column targets. C's shape (9|gap3|9) exactly matches a socket-pair. Let me exploit that in a focused commit search.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/cfit.py << 'EOF'
+import sys, json, itertools
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,15),'B':(45,18,15),'C':(18,30,21),'D':(49,33,12),'E':(43,42,12)}
+base=mkenv()
+def set_block(env,name,target_left,drop=True):
+    x,y,w=BLK[name]
+    env.step(6,x,y)
+    if drop:
+        for _ in range(12):
+            if env.terminal():return
+            env.step(2)
+    f=env.frame(); cs=np.where(f==9)[1]
+    if len(cs)==0:return
+    cur=int(cs.min()); dx=target_left-cur; act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3):
+        if env.terminal():return
+        env.step(act)
+def run(plan, nuse, drop):
+    # plan: list of (name,left)
+    env=base.clone()
+    for name,left in plan:
+        set_block(env,name,left,drop)
+        if env.terminal():return None
+    for _ in range(nuse):
+        if env.terminal():break
+        env.step(5)
+    return env.levels_completed
+# C covers S2,S3 (left=26) or S3,S4 (left=38)
+results=[]
+singles=['A','B','D','E']
+# case C at 26 (S2,S3): remaining S1(left8),S4(left50)
+for cleft,socks in [(26,[(8,'S1'),(50,'S4')]),(38,[(8,'S1'),(26,'S2')])]:
+    for b1,b2 in itertools.permutations(singles,2):
+        (l1,_),(l2,_)=socks
+        for drop in [True,False]:
+            for nuse in [1,2,3,4]:
+                plan=[('C',cleft),(b1,l1),(b2,l2)]
+                r=run(plan,nuse,drop)
+                if r and r>3:
+                    print("WIN cleft",cleft,"b1",b1,l1,"b2",b2,l2,"drop",drop,"nuse",nuse)
+                    results.append((cleft,b1,b2,drop,nuse))
+print("wins:",results)
+EOF
+python /tmp/cfit.py
+Let me check for autonomous changes / hidden counters by diffing frames across null USEs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/hidden.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+env=mkenv()
+prev=env.frame().copy()
+for i in range(4):
+    env.step(5)
+    f=env.frame()
+    d=np.argwhere(f!=prev)
+    print(f"USE{i+1}: {len(d)} cells changed:", [(int(r),int(c),int(prev[r,c]),int(f[r,c])) for r,c in d])
+    prev=f.copy()
+# also a movement to see counter
+for i in range(3):
+    env=mkenv()
+    for _ in range(i): env.step(2)
+    f=env.frame()
+    print(f"after {i} downs, cell(0,63)=",int(f[0,63]))
+EOF
+python /tmp/hidden.py
+Found a move-counter bar (row 0) but USE-limit=4 is the real budget. Let me run a large horizontal-only left-col search with single & multi USE.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/big.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,15),'B':(45,18,15),'C':(18,30,21),'D':(49,33,12),'E':(43,42,12)}
+NAMES=list(BLK)
+# reachable left-cols: ≡2 mod3, from 2 to (61-w+1)
+def targets(w): return list(range(2,63-w+1,3))
+def set_left(env,name,tl):
+    x,y,w=BLK[name]; env.step(6,x,y)
+    f=env.frame();cs=np.where(f==9)[1]
+    if len(cs)==0:return
+    cur=int(cs.min());dx=tl-cur;act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3):
+        if env.terminal():return
+        env.step(act)
+random.seed(7)
+found=None
+trials=0
+for batch in range(3):
+    base=mkenv()
+    for t in range(1500):
+        trials+=1
+        env=base.clone()
+        for name in NAMES:
+            tl=random.choice(targets(BLK[name][2]))
+            set_left(env,name,tl)
+            if env.terminal():break
+        if env.terminal():continue
+        for u in range(4):
+            if env.terminal():break
+            env.step(5)
+            if env.levels_completed>3:
+                found=('trial',trials,'uses',u+1); break
+        if found:
+            # record positions
+            f=base.clone()
+            print("WIN",found); print(found); break
+    if found:break
+print("done trials",trials,"found",found)
+EOF
+python /tmp/big.py
+WIN found (single USE). Let me re-run to capture the exact winning arrangement.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/big2.py << 'EOF'
+import sys, json, random
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,15),'B':(45,18,15),'C':(18,30,21),'D':(49,33,12),'E':(43,42,12)}
+NAMES=list(BLK)
+def targets(w): return list(range(2,63-w+1,3))
+def set_left(env,name,tl):
+    x,y,w=BLK[name]; env.step(6,x,y)
+    f=env.frame();cs=np.where(f==9)[1]
+    if len(cs)==0:return
+    cur=int(cs.min());dx=tl-cur;act=4 if dx>0 else 3
+    for _ in range(abs(dx)//3):
+        if env.terminal():return
+        env.step(act)
+random.seed(7)
+trials=0; wins=[]
+for batch in range(3):
+    base=mkenv()
+    for t in range(1500):
+        trials+=1
+        plan={name:random.choice(targets(BLK[name][2])) for name in NAMES}
+        env=base.clone()
+        for name in NAMES:
+            set_left(env,name,plan[name])
+            if env.terminal():break
+        if env.terminal():continue
+        for u in range(4):
+            if env.terminal():break
+            env.step(5)
+            if env.levels_completed>3:
+                wins.append((trials,u+1,dict(plan)))
+                print("WIN trial",trials,"uses",u+1,"plan",plan)
+                break
+        if len(wins)>=6: break
+    if len(wins)>=6: break
+print("total wins",len(wins))
+EOF
+python /tmp/big2.py
+Winning plan captured: A→26, B→14, C→32, D→14, E→17, then 1 USE. Let me verify it deterministically and extract the move sequence.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/verify.py << 'EOF'
+import sys, json
+sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry"); sys.path.insert(0, "/Users/sasha/gkm/arc/crack_lab")
+import gkm_arena as A
+import numpy as np
+def mkenv():
+    env = A.Arena('sp80')
+    ck = json.load(open('checkpoint.json'))
+    for act in ck['final_path']:
+        if isinstance(act, list): env.step(act[0],act[1],act[2])
+        else: env.step(act)
+    return env
+BLK={'A':(24,18,15),'B':(45,18,15),'C':(18,30,21),'D':(49,33,12),'E':(43,42,12)}
+PLAN=[('A',26),('B',14),('C',32),('D',14),('E',17)]
+def build(env):
+    actions=[]
+    for name,tl in PLAN:
+        x,y,w=BLK[name]
+        env.step(6,x,y); actions.append([6,x,y])
+        f=env.frame();cur=int(np.where(f==9)[1].min())
+        dx=tl-cur;act=4 if dx>0 else 3
+        for _ in range(abs(dx)//3):
+            env.step(act); actions.append(act)
+    env.step(5); actions.append(5)
+    return actions
+env=mkenv()
+acts=build(env)
+print("lvl after:",env.levels_completed,"term",env.terminal())
+print("num actions:",len(acts))
+print("actions:",acts)
+EOF
+python /tmp/verify.py
+Level 4 reached! The plan maps cleanly to the existing `drive_objects` leg. Let me add `play_level_4` to players.py.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -5
+RESULT shows `levels=4` with `replay_ok=True`. 
+
+The task is complete. Let me summarize what was accomplished:
+
+## Summary
+
+**Goal achieved:** `solve.py` now reaches **level 4** of sp80 (`RESULT levels=4 replay_ok=True`).
+
+### How I discovered level 4's mechanics (all by experiment on clones):
+1. **Structure:** Upper chamber with **5 movable blocks** (color 8; the selected one renders as color 9) over **4 Π-sockets** at the bottom (color 11). Top row is a hidden move-counter bar.
+2. **Avatar/selection:** Action **6 at a pixel** selects the block under the cursor (recolors it 9). Directional actions **1–4** move the selected block 3 px/step in all four directions. Blocks **pass through each other** (selected drawn on top).
+3. **Floor & sockets:** Blocks stop at a uniform floor (row 49) and can never physically reach the sockets — so the sockets are pure **column targets**; only column position matters.
+4. **USE budget:** Action **5 (USE)** commits/evaluates; there's a hard limit (~5th USE ends the game). A single correctly-arranged USE wins — the same idiom as levels 2/3.
+5. **Winning arrangement:** Found by a bounded clone random-search over left-columns (same technique that solved level 3): left-cols **A=26, B=14, C=32, D=14, E=17**, then one USE.
+
+### Implementation:
+This is just a new configuration of the level-2/3 **select-then-drive-then-commit** pattern, so `play_level_4` **reuses the existing `drive_objects` leg** with no new legs added — exactly the intended composition style:
+
+```python
+drive_objects(env, [
+    ((24, 18), [4, 4, 4]),   # A: left 17 -> 26
+    ((45, 18), [3] * 8),     # B: left 38 -> 14
+    ((18, 30), [4] * 8),     # C: left  8 -> 32
+    ((49, 33), [3] * 10),    # D: left 44 -> 14
+    ((43, 42), [3] * 7),     # E: left 38 -> 17
+], commit=[5])
+```

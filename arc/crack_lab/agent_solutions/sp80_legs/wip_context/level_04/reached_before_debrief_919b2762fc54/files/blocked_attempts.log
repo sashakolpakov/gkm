@@ -1,0 +1,4 @@
+[1784029918.251864] bash: 'cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe1.py << \'EOF\'\nimport sys, numpy as np\nsys.path.insert(0, \'/Users/sasha/gkm/arc/crack_lab\')\nimport gkm_arena as A\nimport perception as P\n\n# get an env at start\nenv = A.make_env(\'sp80\') if hasattr(A,\'make_env\') else None\nprint("make_env?", env is not None)\nprint([x for x in dir(A) if not x.startswith(\'_\')])\nEOF\npython /tmp/probe1.py'
+[1784032857.901087] bash: 'cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -5'
+[1784032867.564889] bash: 'cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && ls -la proposer_last.log && wc -c proposer_last.log && head -c 300 proposer_last.log; echo; echo "---probe files---"; ls probe*.py 2>/dev/null | head'
+[1784032873.890545] bash: 'echo hello'

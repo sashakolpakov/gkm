@@ -1,0 +1,569 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat gkm_try.py solve.py players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat legs_log.md checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && timeout 120 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '1,60p' gkm_arena.py 2>/dev/null | head -80; echo ---; ls
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '60,160p' gkm_arena.py
+Now let me build a probe to reach level 3 and inspect its structure.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe3.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab')
+sys.path.insert(0, '.')
+import gkm_arena as A
+import numpy as np
+import perception as P
+
+env = A.Arena('sp80')
+# run level1+2 winning path
+path = [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]
+for a in path:
+    if isinstance(a, list):
+        env.step(a[0], a[1], a[2])
+    else:
+        env.step(a)
+print("levels_completed:", env.levels_completed)
+f = env.frame()
+print("shape", f.shape)
+print("colors", P.color_counts(f))
+print("actions", env.actions)
+np.save('/tmp/lvl3.npy', f)
+EOF
+python /tmp/probe3.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/show.py << 'EOF'
+import numpy as np
+f = np.load('/tmp/lvl3.npy')
+for r in range(64):
+    print(''.join(f"{f[r,c]:X}" for c in range(64)))
+EOF
+python /tmp/show.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe_act.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+def mk():
+    env = A.Arena('sp80')
+    path = [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]
+    for a in path:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+
+env = mk()
+print("initial blobs (8,9):")
+for b in P.connected_components(env.frame(), colors=[8,9], min_area=4):
+    print(" ", b.color, b.bbox, "size", b.size)
+
+# try each action without grab
+print("\n=== deltas no grab ===")
+d = P.action_deltas(env, actions=(1,2,3,4,5))
+for a,dd in d.items():
+    print(a, dd['count'], dd['bbox'])
+EOF
+python /tmp/probe_act.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe_grab.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+import numpy as np
+
+def mk():
+    env = A.Arena('sp80')
+    path = [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]
+    for a in path:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+
+def blocks(env):
+    out=[]
+    for b in P.connected_components(env.frame(), colors=[8,9], min_area=4):
+        out.append((b.color, b.bbox))
+    return out
+
+# grab each block by its centroid, then move right once, see which moves & becomes 9
+tests = [
+    ("blkA 16w r20 c8-23", 15, 21),
+    ("blkB 20w r28 c40-59", 49, 29),
+    ("blkC 24w r32 c8-31", 19, 33),
+    ("blk9 24w r40 c36-59", 47, 41),
+]
+for name,x,y in tests:
+    env=mk()
+    env.step(6,x,y)
+    print(f"\n{name} after grab @({x},{y}):")
+    for c,bb in blocks(env): print("   ",c,bb)
+EOF
+python /tmp/probe_grab.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe_bounds.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+
+def mk():
+    env = A.Arena('sp80')
+    path = [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]
+    for a in path:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+
+def nine(env):
+    for b in P.connected_components(env.frame(), colors=[9], min_area=4):
+        return b.bbox
+
+# grab blockA (16w) and move up until stop
+env=mk(); env.step(6,15,21)
+print("grabbed A:", nine(env))
+prev=None
+for i in range(20):
+    env.step(1)
+    bb=nine(env)
+    if bb==prev: print("UP stopped at", bb, "after", i, "steps"); break
+    prev=bb
+print("final up:", nine(env), "level", env.levels_completed)
+
+env=mk(); env.step(6,15,21)
+prev=None
+for i in range(20):
+    env.step(3)
+    bb=nine(env)
+    if bb==prev: print("LEFT stopped at", bb, "steps", i); break
+    prev=bb
+env2=mk(); env2.step(6,15,21)
+prev=None
+for i in range(20):
+    env2.step(4)
+    bb=nine(env2)
+    if bb==prev: print("RIGHT stopped at", bb, "steps", i); break
+    prev=bb
+EOF
+python /tmp/probe_bounds.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/probe_place.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+
+def mk():
+    env = A.Arena('sp80')
+    path = [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]
+    for a in path:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+
+def blocks(env):
+    d={}
+    for b in P.connected_components(env.frame(), colors=[8,9], min_area=4):
+        w=b.size[1]
+        d.setdefault(w,[]).append(b.bbox)
+    return d
+
+# check left bound of each block reaches 0
+grabs = {'A':(15,21),'B':(49,29),'C':(19,33),'N':(47,41)}
+for name,(x,y) in grabs.items():
+    env=mk(); env.step(6,x,y)
+    for _ in range(20): env.step(3)
+    b9=[b.bbox for b in P.connected_components(env.frame(),colors=[9],min_area=4)][0]
+    print(name,"leftmost",b9)
+EOF
+python /tmp/probe_place.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/lvl2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np, perception as P
+env=A.Arena('sp80')
+for a in [4,4,4,5]: env.step(a)
+print("level",env.levels_completed)
+f=env.frame()
+# print socket rows and block rows compactly
+for r in range(64):
+    row=''.join(f"{f[r,c]:X}" for c in range(64))
+    if set(row)!={'C'} and not all(ch=='1' for ch in row) and not all(ch=='E' for ch in row):
+        print(f"{r:2d} {row}")
+EOF
+python /tmp/lvl2.py
+Let me reverse-engineer the true win rule on level 2 (which I can reach) by sweeping configs.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/sweep2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+
+# grabs by center of each block at level2 start
+# A(12w) cols8-19 row16-19; B(12w) cols28-39 row24-27; C(20w) cols20-39 row36-39
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+widths={'A':12,'B':12,'C':20}
+
+def place(env, name, left):
+    x,y=grabs[name]
+    env.step(6,x,y)
+    for _ in range(16): env.step(3)   # go left to col0
+    for _ in range(left//4): env.step(4)
+
+# but after moving one block, grab points for others still valid? grab is by current cell.
+# The block moved; its grab center changed. Safer: grab by original position only works before moving that block.
+# We place blocks one at a time; each block only grabbed once at its ORIGINAL center. OK since we grab before moving it.
+
+import itertools
+positions=list(range(0,49,8))  # 0..48 step8
+wins=[]
+count=0
+for la in positions:
+    for lb in positions:
+        for lc in range(0,45,8): # C width20 max left 44
+            env=mk2()
+            place(env,'A',la); place(env,'B',lb); place(env,'C',lc)
+            env.step(5)
+            if env.levels_completed>1:
+                wins.append((la,lb,lc))
+            count+=1
+print("tested",count,"wins",len(wins))
+for w in wins[:60]: print(w)
+EOF
+python /tmp/sweep2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/timer.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import numpy as np
+env=A.Arena('sp80')
+for a in [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]:
+    env.step(*a) if isinstance(a,list) else env.step(a)
+print("level",env.levels_completed)
+# count moves until game over on level3, pressing action 5 (harmless?) repeatedly
+i=0
+while not env.terminal():
+    env.step(4)  # move something right
+    i+=1
+    if i>200: break
+print("terminal after",i,"steps, terminal=",env.terminal())
+EOF
+python /tmp/timer.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/sweep2b.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+
+def cur_left(env):
+    b=[bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0]
+    return b.bbox[1]
+
+def place(env,name,left):
+    x,y=grabs[name]
+    env.step(6,x,y)
+    cl=cur_left(env)
+    d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+
+positions=list(range(0,49,8))
+wins=[]
+for la in positions:
+    for lb in positions:
+        for lc in range(0,45,8):
+            env=mk2()
+            place(env,'A',la); place(env,'B',lb); place(env,'C',lc)
+            if env.terminal(): continue
+            env.step(5)
+            if not env.terminal() and env.levels_completed>1:
+                wins.append((la,lb,lc))
+print("wins",len(wins))
+for w in wins: print(w)
+EOF
+python /tmp/sweep2b.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/verify2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+env=mk2()
+for a in [[6,14,18],4,4,4,[6,34,26],4,4,[6,30,38],4,4,5]:
+    env.step(*a) if isinstance(a,list) else env.step(a)
+print("recorded sol level:",env.levels_completed)
+
+# now test my place() reproduces A@20 B@36 C@28
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y); cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+env=mk2()
+place(env,'A',20); place(env,'B',36); place(env,'C',28); 
+print("blocks before use:")
+for b in P.connected_components(env.frame(),colors=[8,9],min_area=4): print(" ",b.color,b.bbox)
+env.step(5)
+print("place-based level:",env.levels_completed)
+EOF
+python /tmp/verify2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/tol2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y); cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+def test(la,lb,lc):
+    env=mk2(); place(env,'A',la); place(env,'B',lb); place(env,'C',lc)
+    if env.terminal(): return None
+    env.step(5); return env.levels_completed>1
+
+print("vary A (B=36,C=28):", [la for la in range(0,49,4) if test(la,36,28)])
+print("vary B (A=20,C=28):", [lb for lb in range(0,49,4) if test(20,lb,28)])
+print("vary C (A=20,B=36):", [lc for lc in range(0,45,4) if test(20,36,lc)])
+EOF
+python /tmp/tol2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/fact2.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y); cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+def test(la,lb,lc):
+    env=mk2(); place(env,'A',la); place(env,'B',lb); place(env,'C',lc)
+    if env.terminal(): return None
+    env.step(5); return env.levels_completed>1
+# factorization checks
+print("A=20,C=24, vary B:", [b for b in range(0,49,4) if test(20,b,24)])
+print("A=20,C=28, vary B:", [b for b in range(0,49,4) if test(20,b,28)])
+print("A=20,B=0, vary C:", [c for c in range(0,45,4) if test(20,0,c)])
+print("A=20,B=8, vary C:", [c for c in range(0,45,4) if test(20,8,c)])
+EOF
+python /tmp/fact2.py
+The timer may confound results. Let me get the complete level-2 winning set with a full step-4 sweep, tracking timeouts separately.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/full2.py << 'EOF'
+import sys, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk2():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5]: env.step(a)
+    return env
+grabs={'A':(13,17),'B':(33,25),'C':(29,37)}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y); cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+    return env.terminal()
+def test(la,lb,lc):
+    env=mk2()
+    if place(env,'A',la) or place(env,'B',lb) or place(env,'C',lc): return 'timeout'
+    env.step(5)
+    if env.terminal(): return 'timeout5'
+    return 'win' if env.levels_completed>1 else 'no'
+t=time.time()
+wins=[]; to=0
+for la in range(0,49,4):
+    for lb in range(0,49,4):
+        for lc in range(0,45,4):
+            r=test(la,lb,lc)
+            if r=='win': wins.append((la,lb,lc))
+            elif r.startswith('timeout'): to+=1
+print("wins",len(wins),"timeouts",to,"time",round(time.time()-t,1))
+for w in wins: print(w)
+EOF
+python /tmp/full2.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/rule2.py << 'EOF'
+wins=[(0,20,28),(4,20,28),(20,0,28),(20,4,28),(20,8,28),(20,12,28),(20,20,28),
+(20,28,28),(20,32,28),(20,36,24),(20,36,28),(36,20,24),(36,20,28)]
+W={'A':12,'B':12,'C':20}
+def span(l,w): return set(range(l,l+w))
+def cov(a,b,c):
+    return span(a,12)|span(b,12)|span(c,20)
+# columns covered in every winner
+inter=None; uni=set()
+for a,b,c in wins:
+    s=cov(a,b,c); uni|=s
+    inter=s if inter is None else inter&s
+print("intersection of covered cols:",sorted(inter))
+print("union:",sorted(uni))
+# also count-covered per column in each winner: check if some columns always covered by exactly k
+EOF
+python /tmp/rule2.py
+The rule depends on exact block positions, not just coverage. Given level-2 had ~0.6% winning density, let me random-search level 3 directly for any winning config.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/rand3.py << 'EOF'
+import sys, random, time
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk3():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+grabs={'A':(15,21),'B':(49,29),'C':(19,33),'N':(47,41)}
+maxl={'A':48,'B':44,'C':40,'N':40}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y)
+    if env.terminal(): return True
+    cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)):
+        env.step(act)
+        if env.terminal(): return True
+    return False
+def test(cfg):
+    env=mk3()
+    for name in ['A','B','C','N']:
+        if place(env,name,cfg[name]): return 'to'
+    env.step(5)
+    if env.terminal(): return 'to'
+    return 'win' if env.levels_completed>2 else 'no'
+random.seed(1)
+t=time.time(); tries=0; found=None
+while tries<600 and time.time()-t<180:
+    cfg={n: random.randrange(0,maxl[n]+1,4) for n in grabs}
+    r=test(cfg); tries+=1
+    if r=='win':
+        found=cfg; break
+print("tries",tries,"found",found,"time",round(time.time()-t,1))
+EOF
+python /tmp/rand3.py
+Found: A=12, B=0, C=28, N=40. Let me verify and capture the exact action sequence.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat > /tmp/verify3.py << 'EOF'
+import sys
+sys.path.insert(0, '/Users/sasha/gkm/arc/crack_lab'); sys.path.insert(0,'.')
+import gkm_arena as A
+import perception as P
+def mk3():
+    env=A.Arena('sp80')
+    for a in [4,4,4,5, [6,14,18],4,4,4, [6,34,26],4,4, [6,30,38],4,4,5]:
+        env.step(*a) if isinstance(a,list) else env.step(a)
+    return env
+grabs={'A':(15,21),'B':(49,29),'C':(19,33),'N':(47,41)}
+def cur_left(env):
+    return [bl for bl in P.connected_components(env.frame(),colors=[9],min_area=4)][0].bbox[1]
+def place(env,name,left):
+    x,y=grabs[name]; env.step(6,x,y); cl=cur_left(env); d=(left-cl)//4
+    act=4 if d>0 else 3
+    for _ in range(abs(d)): env.step(act)
+cfg={'A':12,'B':0,'C':28,'N':40}
+env=mk3()
+base=len(env.path)
+for n in ['A','B','C','N']: place(env,n,cfg[n])
+env.step(5)
+print("level:",env.levels_completed)
+print("moves after L2:",env.path[base:])
+EOF
+python /tmp/verify3.py
+Level 3 reached. This composes existing legs exactly like level 2. Let me add `play_level_3`.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -5
+Level 3 reached with validated replay. Let me update the checkpoint and legs log to persist progress.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python - << 'EOF'
+import json
+fp=[4,4,4,5,[6,14,18],4,4,4,[6,34,26],4,4,[6,30,38],4,4,5,
+    [6,15,21],4,[6,49,29],3,3,3,3,3,3,3,3,3,3,[6,19,33],4,4,4,4,4,[6,47,41],4,5]
+ck={"game":"sp80","reached":3,"total_marginal_C":171,
+    "records":[{"level":1,"marginal_C":131,"reached":True},
+               {"level":2,"marginal_C":40,"reached":True},
+               {"level":3,"marginal_C":22,"reached":True}],
+    "final_path":fp,"validated":True}
+json.dump(ck,open("checkpoint.json","w"))
+print("wrote checkpoint, path len",len(fp))
+EOF
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat >> legs_log.md << 'EOF'
+
+## Level 3 discovery (solved)
+
+**Frame layout (after level 2):** same select-then-drive family as level 2.
+- 3 color-11 ∏-sockets at top (cols 4-15, 24-35, 48-59), unreachable
+  (hard wall keeps blocks at row>=16).
+- FOUR movable blocks (color 8; the selected one turns 9):
+    A (16 wide) rows20-23 cols 8-23  -> grab @ (col15,row21)
+    B (20 wide) rows28-31 cols40-59  -> grab @ (col49,row29)
+    C (24 wide) rows32-35 cols 8-31  -> grab @ (col19,row33)
+    N (24 wide) rows40-43 cols36-59  -> grab @ (col47,row41)
+- Blocks slide 4px/step, pass THROUGH each other, all reach left col 0.
+  Level timer allows ~100 moves before GAME_OVER.
+
+**Mechanics (confirmed identical to level 2):** action 6 = coordinate grab
+(select block under pixel -> turns 9); actions 1..4 move the selected block;
+action 5 = USE commit / win-check (never alters blocks, only commits).
+Alignment is COLUMN-only (rows irrelevant).
+
+**Win rule investigation:** on level 2 I reverse-engineered the winning set by
+a full step-4 clone sweep: 13 winning (A_left,B_left,C_left) configs out of
+2028 (~0.6% density). The rule is NOT pure column-coverage — it depends on the
+exact per-block left positions (e.g. with A=20,C=28 fixed, B wins at
+{0,4,8,12,20,28,32,36} but loses at {16,24,40,44,48}, all giving the same
+covered-column set). Rather than fully derive the predicate, I exploited the
+~0.6% win density: **bounded random-search over left-columns** finds a winner
+fast.
+
+**Level 3 solution (found by random-search, ~250 clone tries, <5s):**
+left-cols A=12, B=0, C=28, N=40, then USE. From start positions that is
+A right x1, B left x10, C right x5, N right x1, USE.
+Winning path (after L2): [[6,15,21],4,[6,49,29],3x10,[6,19,33],4x5,[6,47,41],4,5]
+
+## Legs reused (no new leg needed)
+
+`play_level_3` composes the SAME legs as level 2:
+`grab_and_move(env,x,y,moves)` x4 + `play_fixed_sequence(env,[5])`. The
+select-then-drive idiom generalised straight to a 4-block level, confirming
+`grab_and_move` as the reusable sp80 skill. The reusable *discovery* method
+(bounded random-search over block left-columns exploiting sparse win density)
+is a candidate future leg if a 5th such level appears.
+EOF
+echo done
+Let me confirm the final result once more.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py 2>&1 | tail -3
+Done. **`RESULT levels=3 moves=37 replay_ok=True`** — solve.py now reaches level 3.
+
+## Summary
+
+**Discovery (all via clone experiments on raw frames):**
+- Level 3 is the same **select-then-drive** family as level 2: action `6` is a coordinate grab (selects the block under a pixel → it turns color 9), actions `1–4` move the selected block 4px/step, action `5` is a USE commit/win-check. Alignment is **column-only**; blocks pass through each other and all reach col 0.
+- It has **four** movable blocks (widths 16/20/24/24) over three ∏-sockets, and a ~100-move timer.
+
+**Win-rule insight:** A full step-4 clone sweep of level 2 showed the win predicate depends on *exact per-block positions* (not mere column-coverage), with only ~0.6% of configs winning. Rather than fully derive the predicate for the 4-block level 3 (a 13⁴ space), I exploited that sparse density with a **bounded random-search over block left-columns** — it found a winner in ~250 clone tries (<5s): left-cols **A=12, B=0, C=28, N=40, then USE**.
+
+**Leg reuse (no new legs added):** `play_level_3` composes the exact same legs as level 2 — four `grab_and_move(...)` calls plus `play_fixed_sequence(env,[5])` — confirming `grab_and_move` as the general sp80 skill. Checkpoint and `legs_log.md` updated; replay validates.

@@ -1,0 +1,92 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat legs.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat gkm_try.py solve.py checkpoint.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py
+Baseline confirmed (levels=3, replay_ok=True). Now let me analyze the repetition.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat perception.py | head -30
+The debrief is clear. Both `play_level_2` and `play_level_3` inline the identical **multi-object drive** idiom: a sequence of `grab_and_move` calls followed by a `play_fixed_sequence(env, [5])` (USE commit). This is exactly the candidate higher-order leg already noted in `legs_log.md` as `drive_objects`. Let me promote it to a real leg.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/legs.py
+Now refactor both multi-object players to thin, declarative `drive_objects` compositions:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/players.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py
+Behaviour unchanged: `levels=3 moves=37 replay_ok=True`. Now append the debrief to `legs_log.md`:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat >> legs_log.md << 'EOF'
+
+## DEBRIEF after clearing level 3 — refactor
+
+Comparing `play_level_3` to the earlier players:
+
+- `play_level_1` is thin: a single `bfs_or_fallback(...)` call.
+- `play_level_2` and `play_level_3` were BOTH the *same* skeleton — N
+  `grab_and_move` calls followed by a final `play_fixed_sequence(env, [5])`
+  (USE / commit). Level 2 did it 3×, level 3 did it 4×. Only the declarative
+  data (grab-points + move-plans) differed; the iterate-then-commit control
+  flow was duplicated across the two players.
+
+That "multi-object drive" idiom — the candidate higher-order leg flagged after
+level 2 — is now written ONCE as the leg `drive_objects(env, plan, commit=[5])`.
+Both `play_level_2` and `play_level_3` are now thin composition: each is a
+single `drive_objects(...)` call taking a declarative `plan` list of
+`((x, y), moves)` tuples plus the commit. No behaviour change — `drive_objects`
+grab_and_move's each pair in order then plays the commit, emitting exactly the
+same action stream as the old inline code (verified: `RESULT levels=3 moves=37
+replay_ok=True`).
+
+## New leg added (refactor)
+
+- `drive_objects(env, plan, commit=(5,))`: higher-order multi-object drive.
+  Takes a list of `((x, y), moves)` tuples, `grab_and_move`'s each in turn,
+  then plays the `commit` sequence (default USE). Encapsulates the
+  select-then-drive-then-commit skeleton shared by levels 2 and 3. Composes
+  `grab_and_move` + `play_fixed_sequence`, so no lower-level primitive is
+  re-implemented.
+
+## Recurring composition pattern (candidate higher-order leg)
+
+### Plan-driven object levels (confirmed, levels 2 & 3)
+
+The multi-object-drive candidate from the level-2 debrief is now REALISED as
+`drive_objects`. Across two levels the sp80 "movable blocks over sockets"
+family collapses to a single declarative call:
+
+```
+drive_objects(env, [
+    ((x1, y1), moves1),
+    ((x2, y2), moves2),
+    ...
+], commit=[5])
+```
+
+The player carries only DATA (a plan: where to grab + how to move each block,
+found by bounded random-search over left-columns); all control flow lives in
+the leg. Two levels now share this one leg, so the sp80 player family reduces
+to two skeletons: `bfs_or_fallback` (single-object search) and `drive_objects`
+(plan-driven multi-object). A next candidate higher-order leg would fuse the
+two — auto-choosing search vs. plan by object count — but that abstraction is
+not yet earned (only one single-object level seen). The reusable *discovery*
+method (bounded random-search over block left-columns, exploiting the ~0.6%
+sparse win density) remains the outstanding candidate leg for a future level.
+EOF
+echo done
+Let me verify the final state of the refactored files and re-confirm the result:
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && echo "=== players.py ===" && cat players.py && echo "=== RESULT ===" && python gkm_try.py
+Done. Here's the debrief summary:
+
+## What I found
+
+Comparing `play_level_3` to the earlier players revealed a duplicated skeleton:
+- **`play_level_1`** — already thin (one `bfs_or_fallback` call).
+- **`play_level_2`** and **`play_level_3`** — both inlined the *identical* "multi-object drive" idiom: N `grab_and_move` calls followed by a final `play_fixed_sequence(env, [5])` (USE commit). Level 2 did it 3×, level 3 did it 4×. Only the declarative data (grab-points + move-plans) differed; the iterate-then-commit control flow was copy-pasted between the two players.
+
+## Refactor (behaviour-preserving)
+
+1. **New leg written ONCE** in `legs.py`: `drive_objects(env, plan, commit=(5,))` — takes a list of `((x, y), moves)` tuples, `grab_and_move`s each in turn, then plays the commit. It composes existing legs (`grab_and_move` + `play_fixed_sequence`), so no lower-level primitive is re-implemented.
+2. **Both players are now thin composition** — each is a single `drive_objects(...)` call carrying only a declarative `plan`; all iteration/commit logic lives in the leg.
+3. **`legs_log.md` appended** with the level-3 debrief, the newly-realised leg, and the recurring composition pattern (the multi-object-drive higher-order leg, now promoted from candidate to real). The next outstanding candidate leg — bounded random-search over block left-columns — is noted for a future level.
+
+## Verification
+
+`python gkm_try.py` → `RESULT levels=3 moves=37 replay_ok=True err=None` — identical to the pre-refactor baseline, confirming levels ≥ 3 and no behaviour change (same 37-move action stream, replay-validated).

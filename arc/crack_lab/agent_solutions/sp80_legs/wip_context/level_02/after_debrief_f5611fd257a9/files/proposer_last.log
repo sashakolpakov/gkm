@@ -1,0 +1,30 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat players.py legs.py legs_log.md gkm_try.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat solve.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && python gkm_try.py
+Baseline confirmed (`levels=2`). Now let me analyze the repetition. In `play_level_2`, the pattern `click_select(...)` followed by `play_fixed_sequence(moves)` repeats 3 times — that's a "select-then-drive" skill written inline 3×. Let me refactor it into one named leg.
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/players.py
+Now append the recurring composition pattern to legs_log.md:
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry/legs_log.md
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sp80_opus_cleanretry && cat players.py && echo "=== RUN ===" && python gkm_try.py
+Done. Summary of the debrief refactor:
+
+**What I found comparing the players:**
+- `play_level_1` was already thin (single `bfs_or_fallback(...)` call).
+- `play_level_2` inlined the same **"select-then-drive"** idiom three times: `click_select(...)` immediately followed by `play_fixed_sequence(moves)`.
+
+**Refactor (behaviour-preserving):**
+- Added one new leg to `legs.py`, written ONCE:
+  ```python
+  def grab_and_move(env, x, y, moves):
+      click_select(env, x, y)
+      play_fixed_sequence(env, moves)
+  ```
+- Rewrote `play_level_2` as thin composition — three `grab_and_move` lines plus the final `play_fixed_sequence(env, [5])` (USE/commit). The emitted action stream is identical.
+
+**legs_log.md:**
+- Documented the DEBRIEF/refactor and the new `grab_and_move` leg.
+- Appended the recurring composition pattern I noticed as a candidate higher-order leg: **`drive_objects(env, plan, commit=[5])`** — take a declarative list of `((x, y), moves)` pairs, `grab_and_move` each, then play the commit. This collapses a multi-object level player to a single data-driven `plan`.
+
+**Verification:** `python gkm_try.py` → `RESULT levels=2 moves=15 replay_ok=True err=None` (still levels≥2, same move count, replay valid).

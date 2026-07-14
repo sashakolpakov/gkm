@@ -1,2 +1,2 @@
-=== sp80: reached level 1 | validated=True | total_marginal_C=131 | F=1.620 ===
-per-level marginal novelty: L1:131
+=== sp80: reached level 4 | validated=True | total_marginal_C=286 | F=1.720 ===
+per-level marginal novelty: L1:131, L2:40, L3:81, L4:56

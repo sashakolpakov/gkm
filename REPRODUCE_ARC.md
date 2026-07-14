@@ -1,6 +1,6 @@
 # Reproducing the ARC-AGI-3 promoted artifacts
 
-This guide explains how to replay the promoted `wa30` and `ls20` artifacts.
+This guide explains how to replay the manuscript's promoted `wa30` and `ls20` artifacts.
 It does not rerun the full proposer/discovery process. It replays already
 promoted solver artifacts through the ARC-AGI-3 interface.
 
@@ -46,6 +46,11 @@ python arc/crack_lab/replay_scorecard.py --mode competition
 * `arc/crack_lab/agent_solutions/wa30_legs/`
 * `arc/crack_lab/agent_solutions/ls20_legs/`
 
+The same canonical layout also holds the bounded campaign's partial promoted
+artifacts: `ft09_legs/` through L4, `sp80_legs/` through L4, and `tr87_legs/`
+through L1. Their `checkpoint.json` files contain the independently replayed paths;
+they are not included in the manuscript's complete-history table below.
+
 Each folder holds the promoted `checkpoint.json` (the replay-validated flat
 action path, `reached` level count, and `total_marginal_C`), the shared leg
 library, per-level players, and WIP snapshots.
@@ -65,6 +70,10 @@ records two separate Sonnet commands accessing `env._game`. These are retained a
 operational cheating evidence, not promoted or used to support a result. Promotion
 requires a separately clean
 workspace to pass the current taint check and fresh replay.
+
+Markdown inline-code quotations of rejected commands in a debrief transcript are
+not execution evidence. The scanner still checks executable workspace files and
+actual command records; the rejection ledger records the commands that were blocked.
 
 Each tagged scratch workspace admits only one orchestrator process at a time via
 an OS-level lock. Checkpoint recording is an upsert by level; loading or saving a

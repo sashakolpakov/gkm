@@ -151,6 +151,27 @@ class WorkspaceTainted(RuntimeError):
     """The proposer workspace contains evidence of forbidden source/history use."""
 
 
+def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
+    try:
+        if os.path.getsize(path) > 2_000_000:
+            return None
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            text = f.read().lower()
+    except OSError:
+        return None
+    if os.path.basename(path) == "proposer_last.log":
+        # Debriefs may quote a blocked command as Markdown inline code. The
+        # blocked-attempt ledger is the execution record; a quoted mention in
+        # prose is not evidence that introspection ran.
+        text = re.sub(r"`[^`\n]*`", "", text)
+    if PRIVATE_RUNTIME_RE.search(text):
+        return f"private game/runtime introspection in {display_name}"
+    for marker in SOURCE_TAINT_MARKERS:
+        if marker in text:
+            return f"{marker} in {display_name}"
+    return None
+
+
 def _workspace_taint_reason(ws: str) -> Optional[str]:
     for root, dirs, files in os.walk(ws):
         dirs[:] = [d for d in dirs if d not in SNAPSHOT_SKIP_DIRS]
@@ -158,21 +179,18 @@ def _workspace_taint_reason(ws: str) -> Optional[str]:
             if name == BLOCKED_ATTEMPTS_LOG:
                 continue
             path = os.path.join(root, name)
-            try:
-                if os.path.getsize(path) > 2_000_000:
-                    continue
-                with open(path, "r", encoding="utf-8", errors="ignore") as f:
-                    text = f.read().lower()
-            except OSError:
-                continue
-            if PRIVATE_RUNTIME_RE.search(text):
-                return (
-                    "private game/runtime introspection in "
-                    f"{os.path.relpath(path, ws)}"
-                )
-            for marker in SOURCE_TAINT_MARKERS:
-                if marker in text:
-                    return f"{marker} in {os.path.relpath(path, ws)}"
+            reason = _file_taint_reason(path, os.path.relpath(path, ws))
+            if reason:
+                return reason
+    return None
+
+
+def promoted_artifact_taint_reason(art: str) -> Optional[str]:
+    """Scan canonical promoted evidence without reclassifying forensic WIP."""
+    for name in PROMOTED_FILES:
+        reason = _file_taint_reason(os.path.join(art, name), name)
+        if reason:
+            return reason
     return None
 
 
@@ -516,6 +534,8 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
     art = artifact_dir(game, tag)
     rep = _load_checkpoint(art)
     if rep is None or not rep.validated:
+        if restore_wip:
+            _restore_wip_probes(game, ws, 1, tag, verbose=verbose)
         return None
     for name in PROMOTED_FILES:
         src = os.path.join(art, name)

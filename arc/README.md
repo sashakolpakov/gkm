@@ -15,6 +15,11 @@ sequence of code states and validated replays, not an official benchmark score.
 Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
+The bounded follow-on campaign currently has additional replay-valid partial
+artifacts for `ft09` through L4, `sp80` through L4, and `tr87` through L1. They are
+kept in the same canonical artifact layout but are not part of the manuscript's two
+complete-history table above.
+
 The action totals describe the final replay paths. Exploration used the local
 `Arena.clone()` oracle and was not metered, so these values do not measure official
 ARC-AGI-3 interaction or sample efficiency. The official wrapper provides `reset()`
@@ -44,6 +49,10 @@ not taint a promotion because they never ran. The exception is not retroactive: 
 WIP that predates the guard remains dirty evidence unless execution-time blocking is
 independently recorded. Canonical promoted files are always checked under the current
 taint rules, regardless of their creation date.
+
+Debrief prose may quote a rejected command as Markdown inline code. Such a quotation
+in `proposer_last.log` is not treated as execution evidence; executable workspace
+files and actual command records remain subject to the private-runtime scan.
 
 The separation is motivated by repeated proposer misconduct. During `ft09`, the
 Sonnet API proposer emitted two separate commands that accessed `env._game` and

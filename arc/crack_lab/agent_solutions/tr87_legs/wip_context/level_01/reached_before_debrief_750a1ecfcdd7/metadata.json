@@ -1,0 +1,21 @@
+{
+  "game": "tr87",
+  "level": 1,
+  "phase": "reached_before_debrief",
+  "reached": 1,
+  "err": null,
+  "attempt": "reached_before_debrief_750a1ecfcdd7",
+  "created_at": "2026-07-14T13:48:38.019001+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "blocked_attempts.log",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

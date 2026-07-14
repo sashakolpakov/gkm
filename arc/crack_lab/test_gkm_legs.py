@@ -283,6 +283,30 @@ def test_blocked_attempt_ledger_is_audit_evidence_not_execution_taint(tmp_path):
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
 
+def test_debrief_inline_code_mention_is_not_execution_taint(tmp_path):
+    (tmp_path / "proposer_last.log").write_text(
+        "The blocked `dir(legs)` command was recorded in the ledger.\n"
+    )
+    assert L._workspace_taint_reason(str(tmp_path)) is None
+
+    (tmp_path / "probe.py").write_text("print(dir(env))\n")
+    assert "private game/runtime introspection" in L._workspace_taint_reason(str(tmp_path))
+
+
+def test_promoted_artifact_scan_excludes_forensic_wip(tmp_path):
+    for name in L.PROMOTED_FILES:
+        (tmp_path / name).write_text("clean promoted evidence\n")
+    dirty = tmp_path / "wip_context" / "level_01" / "attempt" / "files"
+    dirty.mkdir(parents=True)
+    (dirty / "probe.py").write_text("print(env._game)\n")
+
+    assert L._workspace_taint_reason(str(tmp_path)) is not None
+    assert L.promoted_artifact_taint_reason(str(tmp_path)) is None
+
+    (tmp_path / "legs.py").write_text("print(env._game)\n")
+    assert "legs.py" in L.promoted_artifact_taint_reason(str(tmp_path))
+
+
 def test_action_path_accepts_coordinate_clicks_without_changing_key_paths():
     assert L._load_action_path([1, 5, 2]) == [1, 5, 2]
     assert L._load_action_path([[6, 12, 34], [6, 0, 63]]) == [
@@ -447,6 +471,25 @@ def test_seed_restores_wip_probes_without_clobbering(tmp_path, monkeypatch):
     (ws2 / "probe_l2.py").write_text("newer scratch state\n")
     L._restore_wip_probes("probetest", str(ws2), 2, verbose=False)
     assert (ws2 / "probe_l2.py").read_text() == "newer scratch state\n"
+
+
+def test_seed_restores_level_one_wip_without_promoted_artifact(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(L, "artifact_dir", lambda game, tag="": str(artifact_root / f"{game}_legs"))
+
+    ws = tmp_path / "attempt"
+    ws.mkdir()
+    (ws / "probe_l1.py").write_text("print('mapped mechanic')\n")
+    (ws / "players.py").write_text("UNVERIFIED candidate\n")
+    L.snapshot_wip_context("unpromoted", str(ws), 1, "not_reached", 0,
+                           "retry later", verbose=False)
+
+    ws2 = tmp_path / "retry"
+    ws2.mkdir()
+    seeded = L.seed_workspace_from_artifact("unpromoted", str(ws2), verbose=False)
+    assert seeded is None
+    assert (ws2 / "probe_l1.py").read_text() == "print('mapped mechanic')\n"
+    assert not (ws2 / "players.py").exists()
 
 
 def test_interrupt_snapshots_and_promotes(tmp_path, monkeypatch):

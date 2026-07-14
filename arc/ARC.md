@@ -47,7 +47,10 @@ represented by one of these promoted artifacts.
 Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-`sp80` remains WIP and is not currently promoted.
+The ongoing bounded campaign has also promoted replay-valid partial endpoints for
+`ft09` through L4 (46 actions), `sp80` through L4 (79 actions), and `tr87` through
+L1 (28 actions). These are operational campaign artifacts, not additions to the
+two complete histories reported in the manuscript table above.
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
@@ -82,10 +85,10 @@ Both published ledgers contain one entry for every replay-validated level. The o
 
 ## Honest limitations
 
-- The current promoted repo artifacts are `wa30` 9/9 and `ls20` 7/7 on the local
-  preview games — not the full ARC-AGI-3 distribution and not a private benchmark
-  score. `sp80` remains WIP unless represented by a promoted artifact. Recovered
-  verified paths in the artifacts are charged as literals and are not compact
+- The manuscript endpoints are `wa30` 9/9 and `ls20` 7/7; the repository also
+  contains the partial campaign endpoints listed above. None is a private benchmark
+  score or evidence about the full ARC-AGI-3 distribution. Recovered verified paths
+  in the artifacts are charged as literals and are not compact
   mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
 - The 596- and 393-action values are final replay paths. Cloned exploratory steps,
   proposer calls, and compute were not counted or normalized.

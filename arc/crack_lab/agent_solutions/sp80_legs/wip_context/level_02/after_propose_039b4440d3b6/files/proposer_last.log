@@ -1,0 +1,7 @@
+API transient error; retry 1/6 after 20s: APIConnectionError: Connection error.
+API transient error; retry 2/6 after 45s: APIConnectionError: Connection error.
+API transient error; retry 3/6 after 90s: APIConnectionError: Connection error.
+API transient error; retry 4/6 after 180s: APIConnectionError: Connection error.
+API transient error; retry 5/6 after 300s: APIConnectionError: Connection error.
+API transient error; retry 6/6 after 300s: APIConnectionError: Connection error.
+API Error: APIConnectionError: Connection error.
