@@ -554,6 +554,22 @@ parameterized ferry batch. Thus a downward marginal trend is not expected in gen
 the profile falls when an empirical policy colimit extends cheaply and rises when the
 domain, compatibility conditions, or retained plan information changes.
 
+To test whether these complete solves depended on per-game architecture, we applied the
+same game-agnostic harness and promotion protocol in short bounded runs and stopped five
+further games at level~4: \texttt{ft09}, \texttt{g50t}, \texttt{r11l}, \texttt{sp80},
+and \texttt{tr87}. Their level-1--4 marginal profiles are respectively
+$(107,2,184,132)$, $(244,100,2,2)$, $(103,449,30,341)$, $(131,40,81,56)$, and
+$(156,241,183,69)$; these additional sawtooth profiles again place low-cost reuse beside
+larger retained changes rather than enforcing monotone decline. A repository-wide taint
+scan found every promoted root clean, and fresh local replay plus an
+\href{https://arcprize.org/scorecards/8852e733-026f-4c85-aa35-e262ad1d654e}{official
+online-API replay} validated all five level-4 endpoints as well as the complete
+\texttt{wa30} and \texttt{ls20} paths. Since one unchanged architecture solved two games
+completely and reached level~4 on five more before the imposed stops, progress beyond
+level~4 now appears primarily to require additional proposer compute, not a different
+or game-specific architecture; this is an operational extrapolation from bounded public
+games, not a proof of benchmark-wide scaling.
+
 This interpretation yields two testable predictions for future games. Repeated layout
 variants under stable mechanics should produce low marginal increments after the first
 successful abstraction. A mechanic change should produce an increment whose source

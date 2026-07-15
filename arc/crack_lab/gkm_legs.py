@@ -221,7 +221,9 @@ def _deduplicate_level_records(rep: Report) -> int:
         kept_reversed.append(record)
     if removed_cost:
         rep.records = list(reversed(kept_reversed))
-        rep.total_marginal_C = max(0, rep.total_marginal_C - removed_cost)
+    # Records are canonical; the cached aggregate may come from an interrupted
+    # or formerly overlapping promotion and must never be trusted independently.
+    rep.total_marginal_C = sum(record.marginal_C for record in rep.records)
     return removed_cost
 
 

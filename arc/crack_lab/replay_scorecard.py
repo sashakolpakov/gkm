@@ -51,6 +51,18 @@ def checkpoint(game: str) -> dict:
         return json.load(f)
 
 
+def decode_action(action) -> tuple[int, dict | None]:
+    """Decode scalar keys and canonical ``[6, x, y]`` replay tokens."""
+    if isinstance(action, (list, tuple)):
+        if len(action) != 3 or int(action[0]) != 6:
+            raise ValueError(f"invalid compound replay action: {action!r}")
+        return 6, {"x": int(action[1]), "y": int(action[2])}
+    action_id = int(action)
+    if not 1 <= action_id <= 7:
+        raise ValueError(f"invalid replay action: {action!r}")
+    return action_id, None
+
+
 def level_segments(game: str, actions) -> list:
     """Split the flat recorded path into per-level action segments by replaying
     it on the LOCAL engine (offline, ~2000 fps). Level boundaries let the remote
@@ -66,7 +78,11 @@ def level_segments(game: str, actions) -> list:
     levels = snap.levels_completed
     segments, start = [], 0
     for i, a in enumerate(actions):
-        snap = env.step(arc.GameAction(a))
+        action_id, data = decode_action(a)
+        snap = env.step(
+            arc.GameAction(action_id),
+            **({"x": data["x"], "y": data["y"]} if data else {}),
+        )
         if snap.levels_completed > levels:
             segments.append(list(actions[start:i + 1]))
             start, levels = i + 1, snap.levels_completed
@@ -96,7 +112,8 @@ def replay(env, segments, engine_action_cls, label: str,
         for attempt in range(1, level_retries + 1):
             failed_at = None
             for i, a in enumerate(seg):
-                fd = env.step(engine_action_cls[f"ACTION{a}"])
+                action_id, data = decode_action(a)
+                fd = env.step(engine_action_cls[f"ACTION{action_id}"], data=data)
                 if fd is None:  # transient API failure; the level is now dirty
                     failed_at = i
                     break

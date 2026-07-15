@@ -11,6 +11,7 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 import gkm_legs as L
 
 
@@ -65,6 +66,49 @@ def test_level_record_upsert_and_legacy_checkpoint_deduplication(tmp_path):
     L._record_level(rep, 3, 190)
     assert [(r.level, r.marginal_C) for r in rep.records] == [(1, 10), (3, 190)]
     assert rep.total_marginal_C == 200
+
+
+def test_checkpoint_normalizes_stale_total_from_unique_records(tmp_path):
+    checkpoint = {
+        "game": "staletotal",
+        "reached": 2,
+        "records": [
+            {"level": 1, "marginal_C": 40, "reached": True},
+            {"level": 2, "marginal_C": 7, "reached": True},
+        ],
+        "total_marginal_C": 12,
+        "final_path": [1, 2],
+        "validated": True,
+    }
+    (tmp_path / L.CHECKPOINT_FILE).write_text(json.dumps(checkpoint))
+
+    rep = L._load_checkpoint(str(tmp_path))
+    assert rep.total_marginal_C == 47
+
+    L._save_checkpoint(str(tmp_path), rep)
+    saved = json.loads((tmp_path / L.CHECKPOINT_FILE).read_text())
+    assert saved["total_marginal_C"] == 47
+
+
+def test_repository_promoted_artifacts_are_clean_and_consistent():
+    artifacts = Path(__file__).with_name("agent_solutions")
+    checked = 0
+    for artifact in sorted(artifacts.glob("*_legs")):
+        checkpoint_path = artifact / L.CHECKPOINT_FILE
+        if not checkpoint_path.exists():
+            continue
+        checkpoint = json.loads(checkpoint_path.read_text())
+        records = checkpoint["records"]
+        levels = [record["level"] for record in records]
+        assert L.promoted_artifact_taint_reason(str(artifact)) is None
+        assert checkpoint["validated"] is True
+        assert checkpoint["final_path"]
+        assert len(levels) == len(set(levels))
+        assert checkpoint["total_marginal_C"] == sum(
+            record["marginal_C"] for record in records
+        )
+        checked += 1
+    assert checked == 8
 
 
 def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
