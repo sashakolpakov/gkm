@@ -20,6 +20,12 @@ literals, reusable solver-leg refactors, and marginal-complexity accounting.
 Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
+The definitive [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
+scores **17.136507936507936%** across all 25 public games: 37/183 levels in
+1456 API actions including resets. One unchanged game-agnostic architecture
+completes `wa30` and `ls20`, reaches L4 on `ft09`, `g50t`, `r11l`, `sp80`, and
+`tr87`, and reaches L1 on `tu93`.
+
 The endpoint claims are replay claims: the action counts are the final validated
 paths, not totals for proposal, search, or cloned lookahead. The historical growth
 charge is computed as the positive net change in each of two files, with an AST
@@ -36,6 +42,13 @@ The replay script is:
 
 ```bash
 python arc/crack_lab/replay_scorecard.py --mode online
+```
+
+The definitive all-game card used:
+
+```bash
+python arc/crack_lab/replay_scorecard.py --mode competition \
+  --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
 ```
 
 Artifact folders:
@@ -55,9 +68,10 @@ The current public artifact claims replay-validated promoted solvers for:
 
 The local harness exposes state cloning for lookahead. The official ARC-AGI-3
 environment wrapper exposes `reset()` and `step()`, not arbitrary state forking.
-Therefore these results are not claims about official interaction efficiency,
-sample efficiency, a private leaderboard, or compute-matched benchmark performance.
-The repository is intended for artifact review, reproduction, and extension.
+The scorecard is an official replay score, but it does not measure discovery
+interaction efficiency, sample efficiency, or compute-matched proposer performance.
+The repository supplies the corresponding artifacts for review, reproduction, and
+extension.
 
 ---
 

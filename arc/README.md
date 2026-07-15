@@ -2,7 +2,8 @@
 
 This subject contains the ARC-AGI-3 program-growth harness, promoted solver
 artifacts, experiment logs, and manuscript. The scientific object is the retained
-sequence of code states and validated replays, not an official benchmark score.
+sequence of code states and validated replays; the official replay score is reported
+separately below.
 
 ## Verified Endpoints
 
@@ -22,6 +23,11 @@ complete-history table above.
 
 `tu93` additionally has a replay-valid L1 artifact. `sc25` retains clean L1 WIP
 only and makes no promoted claim.
+
+The definitive [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
+scores **17.136507936507936%** over all 25 public games (37/183 levels, 1456 API
+actions including resets). It replays the two complete games, the five L4 endpoints,
+and `tu93` L1 using the same game-agnostic architecture.
 
 The action totals describe the final replay paths. Exploration used the local
 `Arena.clone()` oracle and was not metered, so these values do not measure official

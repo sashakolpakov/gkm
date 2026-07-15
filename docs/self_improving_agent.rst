@@ -102,6 +102,13 @@ endpoint table.
 ``tu93`` additionally has a replay-valid L1 artifact. ``sc25`` retains clean L1 WIP
 but no promoted level.
 
+The definitive `Competition-Mode scorecard
+<https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147>`_
+scores **17.136507936507936%** over all 25 public games: 37/183 levels in 1456
+API actions including resets. It replays both complete games, all five L4 endpoints,
+and ``tu93`` L1 with the same game-agnostic architecture. The score measures official
+replay coverage, not the clone-enabled discovery interaction or proposer-compute cost.
+
 The ``ls20`` checkpoint records ``43, 2, 45, 3, 72, 130, 67``. At L2 and L4,
 the thin player entries call unchanged search routines, which makes the small net
 growth values attributable to reuse in those two transitions. Larger entries retain

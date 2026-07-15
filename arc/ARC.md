@@ -56,6 +56,11 @@ histories reported in the manuscript table above.
 The final bounded attempt also promoted `tu93` through L1 (18 actions). `sc25`
 ended at the API usage limit with clean L1 WIP but no promoted level.
 
+The definitive [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
+scores **17.136507936507936%** across all 25 public games: 37/183 levels in 1456
+API actions including resets. It replays every promoted endpoint above with the same
+game-agnostic architecture.
+
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
 
@@ -90,8 +95,9 @@ ended at the API usage limit with clean L1 WIP but no promoted level.
 ## Honest limitations
 
 - The manuscript endpoints are `wa30` 9/9 and `ls20` 7/7; the repository also
-  contains the partial campaign endpoints listed above. None is a private benchmark
-  score or evidence about the full ARC-AGI-3 distribution. Recovered verified paths
+  contains the partial campaign endpoints listed above. The closed official scorecard
+  measures their aggregate replay coverage, but is not evidence about discovery cost
+  or generalization across the full ARC-AGI-3 distribution. Recovered verified paths
   in the artifacts are charged as literals and are not compact
   mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
 - The 596- and 393-action values are final replay paths. Cloned exploratory steps,

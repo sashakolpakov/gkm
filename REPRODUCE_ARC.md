@@ -41,6 +41,17 @@ made once, and the closed scorecard is what the community leaderboard links as
 python arc/crack_lab/replay_scorecard.py --mode competition
 ```
 
+The definitive public card includes every promoted endpoint and was generated with:
+
+```bash
+python arc/crack_lab/replay_scorecard.py --mode competition \
+  --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
+```
+
+It closed as [scorecard `9e166671-0953-42f3-89de-a0fd57d7b147`](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147):
+**17.136507936507936%** over all 25 public games, 37/183 levels, and 1456 API
+actions including one reset for each attempted game.
+
 ## Artifact locations
 
 * `arc/crack_lab/agent_solutions/wa30_legs/`
