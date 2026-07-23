@@ -1,0 +1,1883 @@
+--- /mnt/data/arc_agi3.tex	2026-07-22 13:54:09.217543952 +0000
++++ /mnt/data/arc_agi3_forward_revision/final/arc_agi3_forward_revised.tex	2026-07-22 13:56:44.161542207 +0000
+@@ -1,645 +1,945 @@
++
+ \documentclass[11pt]{article}
+ \usepackage[T1]{fontenc}
+-\usepackage[margin=1in]{geometry}
+-\usepackage{amsmath,amssymb,amsthm}
+-\usepackage{hyperref}
+-\usepackage{booktabs}
+-\usepackage{tabularx}
++\usepackage[margin=0.92in]{geometry}
++\usepackage{amsmath,amssymb,amsthm,mathtools}
++\usepackage{booktabs,tabularx,array,longtable}
+ \usepackage{graphicx}
+ \usepackage{microtype}
+ \usepackage{flafter}
+ \usepackage{float}
+ \usepackage{tikz-cd}
++\usepackage{enumitem}
++\usepackage{xcolor}
+ \usepackage[font=small,labelfont=bf]{caption}
+-\hypersetup{hidelinks}
++\usepackage{hyperref}
++\hypersetup{
++  colorlinks=true,
++  linkcolor=blue!55!black,
++  citecolor=blue!55!black,
++  urlcolor=blue!55!black,
++  pdftitle={Kolmogorov Structure Functions, Inverse Colimits, and Cofibrations: Solving ARC-AGI-3 with Compute-Bounded Self-Improving Agents},
++  pdfauthor={Alexander Kolpakov},
++  pdfsubject={Free-energy duality, LLM-supplied cofibrant attachments, PowerPlay, artificial curiosity, and ARC-AGI-3},
++  pdfkeywords={ARC-AGI-3, Kolmogorov structure function, free energy, inverse colimit, cofibration, PowerPlay, artificial curiosity, self-improving agent}
++}
+ 
+-\title{Kolmogorov Structure Functions, Colimits, and Cofibrations:\\
+-Solving ARC-AGI-3 with Self-Improving Agents}
+-\author{Alexander Kolpakov}
+-\date{July 2026}
++\newtheorem{theorem}{Theorem}
++\newtheorem{proposition}[theorem]{Proposition}
++\newtheorem{corollary}[theorem]{Corollary}
++\newtheorem{lemma}[theorem]{Lemma}
++\theoremstyle{definition}
++\newtheorem{definition}[theorem]{Definition}
++\newtheorem{assumption}[theorem]{Assumption}
++\theoremstyle{remark}
++\newtheorem{remark}[theorem]{Remark}
+ 
+ \newcommand{\F}{\mathcal{F}}
+-\newtheorem{definition}{Definition}
+-\newtheorem{theorem}{Theorem}
++\newcommand{\Comp}{\operatorname{Comp}}
++\newcommand{\Risk}{\operatorname{Risk}}
++\newcommand{\Syn}{\mathsf{Syn}_{\Sigma}}
++\newcommand{\Art}{\mathsf{Art}}
++\newcommand{\Pol}{\mathsf{Pol}}
++\newcommand{\Beh}{\mathsf{Beh}}
++\newcommand{\Cert}{\mathsf{Cert}}
++\newcommand{\Sem}[1]{\mathopen{[\![}#1\mathclose{]\!]}}
++\newcommand{\Lan}{\operatorname{Lan}}
++\newcommand{\colimv}{\operatorname*{colim}}
++\newcommand{\limv}{\operatorname*{lim}}
++\newcommand{\E}{\mathbb{E}}
++\newcommand{\Prb}{\mathbb{P}}
++\newcommand{\Pos}[1]{[#1]_{+}}
++\newcommand{\RepoURL}{https://github.com/sashakolpakov/gkm}
++
++\title{\textbf{Kolmogorov Structure Functions, Inverse Colimits, and Cofibrations:}\\
++\textbf{Solving ARC-AGI-3 with Compute-Bounded Self-Improving Agents}\\[4pt]
++\large Free-Energy Duality, LLM-Supplied Attachments, PowerPlay, and Artificial Curiosity}
++\author{Alexander Kolpakov}
++\date{July 2026}
+ 
+ \begin{document}
+ \maketitle
+ \raggedbottom
+ 
+ \begin{abstract}
+-Self-improving coding agents should acquire mechanisms when needed and reuse them when
+-mechanics recur. We introduce the G\"odel--Kolmogorov Machine, a verifier-gated
+-approach to interactive ARC-AGI-3 in which a coding proposer grows shared executable
+-legs and level players. Kolmogorov
+-structure functions place replay-validated solvers on a behavior--description frontier;
+-categorical colimits represent compatible policy composition; cofibrations retain the
+-order and admissibility of acquired extensions. Preserved histories exhibit the target
+-properties: named-routine reuse with sharp marginal-complexity drops, and charged source
+-growth when new mechanics or literal plans are acquired. Eight promoted endpoints
+-reproduce on a closed Competition-Mode scorecard (37/183 levels; 17.1365\%), including
+-complete \texttt{wa30} and \texttt{ls20} histories. Incomplete runs are resource-truncated
+-by imposed stopping, interruption, or exhausted credits rather than a recorded
+-architectural failure. The artifacts support this compute-limited reading without
+-implying that compute alone guarantees every game.
++We introduce the G\"odel--Kolmogorov Machine (GKM), a compute-bounded
++self-improving architecture for interactive ARC-AGI-3 that synthesizes
++Schmidhuber's G\"odel machines, PowerPlay, and artificial curiosity. A language
++model proposes executable components together with interfaces, cofibrations,
++and attaching maps; inverse-colimit composition integrates them into the
++incumbent solver, while an independent execution-and-replay gate admits only
++verified improvements. PowerPlay supplies cumulative task--solver growth, and
++artificial curiosity directs search toward expected compression and free-energy
++progress. Kolmogorov structure functions and the loss--complexity dual provide
++the selection geometry. Under stated finiteness and search-support assumptions,
++increasing compute eventually discovers every finite winning program and
++replay-valid attachment chain, making ARC-AGI-3 solvability explicitly
++compute-indexed. Repository artifacts demonstrate cumulative competence and
++reusable program structure.
+ \end{abstract}
+ 
+-\noindent\textbf{Keywords:} G\"odel--Kolmogorov Machine; Kolmogorov structure function;
+-categorical colimit; cofibration; self-improving agent; ARC-AGI-3; minimum description
+-length; program synthesis.
++\noindent\textbf{Keywords:} G\"odel--Kolmogorov Machine; ARC-AGI-3; Kolmogorov
++structure function; free energy; inverse colimit; cofibration; PowerPlay; artificial
++curiosity; self-improving coding agent; program synthesis.
+ 
+ \section{Introduction}
+-ARC-AGI-3~\cite{chollet2019measure, arcagi3} consists of interactive grid games whose
+-rules are withheld. An agent observes a $64\times64$ array of colour values, chooses
+-among a small set of opaque actions, and receives sparse feedback when a level is
+-completed. It must infer useful perceptual categories, mechanics, objectives, and plans
+-from interaction. Successive levels create a second problem beyond task completion:
+-determining whether competence transfers or whether each level is solved anew.
+-
+-This distinction is obscured by aggregate scores. A solver that composes a previously
+-learned routine and one that stores a newly recovered action sequence may reach the same
+-level, but they provide different evidence about generalization. The distinction is
+-especially relevant for coding agents, whose iterative write--execute--revise loops are
+-effective on ARC-style tasks~\cite{arcprize2025}, and for ARC-AGI-3 approaches based on
+-exploration graphs or executable world models~\cite{arcagi3graph,arcagi3worldmodels}.
+-Their executable artifacts can make structural growth observable, provided solve
+-boundaries, retained dependencies, and source changes are kept distinct.
+-
+-We use \emph{self-improving agent} in a restricted operational sense: the composite
+-system revises retained task-solving code across levels, and replay-validated artifacts
+-become the starting point for subsequent revisions. The harness and learning protocol
+-remain fixed. Thus the term denotes cumulative, verifier-gated program improvement, not
+-unrestricted self-modification or proof-theoretic optimality.
+-
+-We call this architecture the \emph{G\"odel--Kolmogorov Machine}. ``G\"odel'' marks
+-the inheritance of self-revision under a verification gate, although our gate is
+-empirical replay rather than G\"odel-machine proof search. ``Kolmogorov'' marks the
+-description-length selection pressure and structure-function analysis. The compound
+-name therefore states the architecture's two commitments rather than asserting
+-proof-theoretic optimality or machine-independent complexity measurement.
+-
+-We study the following question: \emph{Can a verifier-gated coding agent grow new solver
+-structure when mechanics change, reuse that structure when it applies again, and reduce
+-the marginal description cost of later competence?} The G\"odel--Kolmogorov Machine
+-maintains a shared library, level bindings, and a chain of replay-validated promotions.
+-The game runtime validates behavioral progress; the source ledger measures when
+-executable structure enters the chain. A diagnostic free-energy quantity combines
+-replay progress with cumulative historical charge, while a separate
+-retained-description functional organizes the structure-function analysis below.
+-
+-The preserved histories answer this question positively on the observed games. New
+-mechanics enter as charged source extensions; recurring mechanics are implemented by
+-thin players calling unchanged legs and produce sharp marginal-cost troughs; and
+-debriefs can reorganize a verified behavior into a reusable factorization without
+-changing its replay. The scalar ledger is not a semantic oracle: same-size replacement
+-can be free, and a small player can call either a reusable routine or an opaque retained
+-plan. Its role is evidential. Adjacent source, named calls, and fresh replay make each
+-structural attribution testable. Kolmogorov structure functions describe executable
+-size at verified fit; policy colimits describe compatible behavior; and cofibration
+-filtrations retain the order of acquisition.
+-
+-The paper makes four contributions. First, it introduces the
+-G\"odel--Kolmogorov Machine as a self-improving solver-growth approach that alternates
+-proposal, composition from an incumbent library, replay-gated promotion, and post-level
+-refactoring. Second, it formalizes compatible partial-policy colimits, trace
+-cofibrations, and replay equivalence, explaining why an endpoint colimit alone loses
+-acquisition history. Third, it demonstrates the approach's intended structural
+-properties in preserved histories: charged novelty acquisition, named-routine reuse,
+-and large drops in marginal complexity when prior structure suffices. Fourth, it
+-reports eight promoted endpoints on a closed Competition-Mode scorecard, with complete
+-chronological traces for two games and executable artifacts that expose the claims to
+-countertest. This is evidence for a resource-bounded solver-growth approach, not merely
+-an accounting proposal and not a compute-matched comparison with other systems.
+-Having established the full name and its scope, we abbreviate the
+-G\"odel--Kolmogorov Machine as \emph{GKM} below.
+-
+-\section{Related Work and Accounting Framework}
+-\subsection{Description length and free energy}
+-The (prefix) Kolmogorov complexity $K(x)$ is the length of the shortest program that
+-outputs $x$; Solomonoff induction weights hypotheses by $2^{-K}$, formalising Occam's
+-razor~\cite{kolmogorov1965,solomonoff1964,live2008}. $K$ is uncomputable, but its
+-description-length principle motivates computable proxies that trade fit against model
+-size. For the promoted chain $(s_k)$, let $V(s_k)$ denote verified depth and let
+-$C_{\leq k}$ denote the cumulative positive-growth charge defined in
+-Eq.~\eqref{eq:marginal-c}. The implemented diagnostic is
++ARC-AGI-3 is an interactive benchmark for fluid agentic intelligence. Its environments
++withhold the object vocabulary, action semantics, mechanics, and goal; a solver must
++acquire these through interaction and then act efficiently~\cite{chollet2019measure,arcagi3}.
++This format exposes a central distinction that endpoint accuracy alone hides. Two agents
++may reach the same level while one repeatedly reconstructs a disposable plan and the
++other extends a retained executable theory. The latter is the phenomenon studied here:
++program growth under verification, compression pressure, and a finite compute budget.
++
++The G\"odel--Kolmogorov Machine treats a solver not as a single final program but as a
++verified construction history
++\[
++  X_0\xhookrightarrow{j_1}P_1\simeq_{T_1}X_1
++     \xhookrightarrow{j_2}P_2\simeq_{T_2}\cdots
++     \xhookrightarrow{j_k}P_k\simeq_{T_k}X_k,
++\]
++together with the proposed legs, bindings, source deltas, action paths, and replay
++certificates that created each stage. The coding model is not merely asked to emit the
++next action. It proposes a new component and the morphisms by which that component is
++attached to the incumbent program. The harness evaluates the resulting cocone,
++executes it from a fresh reset, and promotes it only after the recorded full path
++independently replays to the new depth. That deeper path re-establishes all earlier
++depth obligations by truncation, although it need not coincide with the historically
++stored paths for those depths. In this sense the category-theoretic language is
++architectural: the objects are executable components, the morphisms are bindings and
++interface maps, and the inverse-colimit apex is the linked program that actually runs.
++
++We use \emph{solving ARC-AGI-3} in a compute-indexed sense. At any finite budget $B$,
++the archive exposes a verified frontier $V_B$. Because promotions are retained,
++$V_B$ is monotone in $B$. More strongly, the proposal language contains literal finite
++action programs as well as reusable legs. Consequently every deterministic game with a
++finite winning trace has a finite representative in the search space. A fair universal
++search therefore reaches it after finite computation; an LLM proposer satisfying the
++stagewise full-support condition below reaches it almost surely as compute grows.
++Practical models determine the waiting-time distribution, but not the underlying
++existence result. The empirical campaign reports
++where one such search process stopped, not an assertion that the frontier is a fixed
++capacity ceiling.
++
++This architecture sits directly in the lineage of Schmidhuber's G\"odel machine,
++PowerPlay, and artificial curiosity. The G\"odel machine supplies the idea that a
++self-rewrite must cross a verification gate~\cite{schmidhuber2007godel}. PowerPlay
++supplies continual acquisition of the simplest still-unsolved task while preserving old
++skills~\cite{schmidhuber2013powerplay}. Artificial curiosity supplies intrinsic reward
++for learning or compression progress~\cite{schmidhuber2010curiosity}. GKM replaces a
++formal utility proof by an executable replay certificate, instantiates PowerPlay on the
++externally ordered but hidden ARC levels, and evaluates structural progress through the
++free-energy dual of a Kolmogorov structure function.
++
++The paper makes five contributions.
++\begin{enumerate}[leftmargin=2.1em]
++\item It defines an \emph{inverse-colimit attachment} in which an LLM proposes a new
++leg, its interface, a cofibration, and an attaching map. The linked candidate is the
++corresponding pushout; strictly additive acquisitions form a sequential colimit, while
++validated debriefs move within replay-equivalence classes.
++\item It places the implemented source statistic inside the computable-proxy
++loss--complexity theory, deriving the structure function, Legendre--Fenchel free energy,
++partition function, susceptibility, and complexity ratchet.
++\item It gives a compute-completeness theorem for finite replay-verifiable games, with
++deterministic universal-search and stagewise full-support forms.
++\item It makes the PowerPlay and artificial-curiosity correspondence operational:
++replay preserves the task archive, free energy orders candidate extensions, and expected
++frontier reduction values informative probes.
++\item It reports eight promoted ARC-AGI-3 endpoints, two complete chronological
++histories, and solved-checkpoint comparisons whose reuse claims require both a source-
++level factorization and replay.
++\end{enumerate}
++
++\section{Architectural Lineage: G\"odel Machines, PowerPlay, and Artificial Curiosity}
++\subsection{From proof-gated self-rewrite to replay-gated program growth}
++A G\"odel machine may rewrite any part of itself after its proof searcher establishes
++that the rewrite improves expected utility under the machine's formal axioms and
++resource model~\cite{schmidhuber2007godel}. GKM keeps the decisive architectural move---
++self-revision under a gate---while changing the certificate. ARC environments provide a
++terminating empirical judge for finite claims: reset, execute, record, reset again, and
++replay. A promotion is therefore admitted by a behavioral proof object consisting of
++source identity, checkpoint identity, an action path, reached depth, environment
++version, and replay result. The gate is weaker than a theorem about all future states,
++but stronger than the proposer's own assertion that its code worked.
++
++The split is deliberate. The proposer is generative and fallible; the verifier is fixed
++and adversarial to the proposal. A proposed attachment can be arbitrarily ambitious,
++including a new perception system, search procedure, literal plan, or refactor. Its
++admission obligation is narrow and executable: it must extend the validated task set and
++must not invalidate the retained replay archive. This division lets an LLM supply
++mathematical construction data without granting it authority over the truth of the
++construction.
++
++\subsection{GKM as an external-task PowerPlay}
++PowerPlay repeatedly searches for a pair consisting of a task not solved by the current
++solver and a solver modification that solves the new task while preserving all prior
++skills; its search order favors pairs that are compact and quickly validated
++\cite{schmidhuber2013powerplay}. ARC-AGI-3 supplies an externally generated curriculum:
++the next exposed level is the currently selected unsolved task, while the search for a
++small attachment and the optional debrief recover PowerPlay's simplicity pressure and
++its ``wow effect'' of compressing or accelerating old solutions.
++
++\begin{table}[H]
++\centering
++\small
++\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.25\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
++\toprule
++PowerPlay object & GKM realization & Executable certificate \\
++\midrule
++Current problem solver & Promoted library, players, dispatcher, and checkpoint & Clean source snapshot plus checkpoint hash \\
++Simplest still-unsolved task & Next unreproduced ARC level, failed reuse obligation, or compression task & Failure of incumbent composition or a shorter replay-equivalent candidate \\
++Solver modification & LLM-supplied leg, boundary, binding, and residual glue & Source diff and reconstructed inverse-colimit attachment diagram \\
++Correctness demonstration & Fresh candidate execution plus independent replay of its full path & Reached depth, stored path, and replay status \\
++No forgetting & A depth-$k$ path reaches every earlier depth & Canonical first-passage truncations of the validated path \\
++Simplicity pressure & $R+\lambda\Comp$ and marginal source action & Free-energy comparison and source ledger \\
++\bottomrule
++\end{tabularx}
++\caption{The GKM loop as a concrete, externally tasked PowerPlay instance.}
++\label{tab:powerplay-correspondence}
++\end{table}
++
++The analogy is structural rather than rhetorical. PowerPlay's task--solver pair is the
++atomic search object; GKM's atomic object is the task--attachment pair
++$(T_k,D_k)$, where $D_k$ is the inverse diagram whose colimit extends the incumbent.
++The retained archive prevents catastrophic forgetting at the artifact level, and the
++complexity coordinate biases the search toward reuse or small glue when existing legs
++already span the new task.
++
++\subsection{Artificial curiosity as free-energy progress}
++Artificial curiosity rewards improvement of a predictor or compressor rather than raw
++unpredictability. Interesting observations are those that are initially surprising but
++become compressible with attainable learning effort~\cite{schmidhuber2010curiosity}.
++Let $\mathcal H_t$ be the current archive of candidate mechanics, goals, or solver
++presentations after history $h_t$, and define the archive free-energy envelope
+ \begin{equation}
+-  \F^{\mathrm{hist}}_\lambda(s_k)
+-  \;=\; -V(s_k) \;+\; \lambda C_{\leq k},
+-  \label{eq:fe}
++  \Phi_t(\lambda)=\inf_{q\in\mathcal H_t}
++       \bigl(L_t(q)+\lambda\Comp(q)\bigr).
++  \label{eq:curiosity-envelope}
+ \end{equation}
+-where $\lambda$ expresses the reporting scale between behavioral progress and program
+-growth~\cite{losscomplexity}. Advancement is decided by replay-validated level
+-completion, not by optimizing Eq.~\eqref{eq:fe}. This historical functional must be
+-distinguished from the retained-description dual in Eq.~\eqref{eq:model-dual}; we do not
+-interpret either reported chain as an MDL optimum.
+-
+-\subsection{Self-modifying programs and interactive ARC agents}
+-Schmidhuber's G\"odel machine~\cite{schmidhuber2007godel} is an agent that may rewrite
+-\emph{any} part of its own code, including its learning algorithm, once it finds a proof
+-that the rewrite increases expected reward. PowerPlay~\cite{schmidhuber2013powerplay}
+-incrementally searches for the simplest task the system cannot yet solve together with a
+-solver for it, never forgetting old skills. Artificial curiosity rewards
+-\emph{compression progress}: transitions that make the agent's world model more
+-predictable~\cite{schmidhuber2010curiosity}. Our approach adopts the operational parts of this
+-lineage: the agent revises executable problem-solving code, behavioral improvement is
+-checked empirically, and retained structure remains inspectable.
+-
+-ARC-AGI-3 introduces an interactive counterpart to static ARC tasks. Graph-based
+-exploration represents observed states and transitions explicitly
+-\cite{arcagi3graph}, while executable-world-model approaches synthesize transition
+-programs and plan through them~\cite{arcagi3worldmodels,courtis2026opine}. Instead, we
+-account for the growth of the solver program, regardless of whether a retained routine
+-is a search procedure, a perceptual transformation, a plan, or a predictive model.
+-
+-\subsection{Structure functions for solver artifacts}
+-For finite data $x$, Kolmogorov's classical finite-set structure function is
++For a candidate probe $a$ and possible observation $o$, a one-step intrinsic value is
++\begin{equation}
++  I_t(a)=\E_{o\sim \widehat P_t(\cdot\mid a)}
++   \Pos{\Phi_t(\lambda)-\Phi_{t+1}^{(a,o)}(\lambda)}.
++  \label{eq:curiosity-progress}
++\end{equation}
++This is compression progress expressed on the entire loss--complexity frontier. Archive
++disagreement is a computable approximation: probe where surviving hypotheses predict
++different frame deltas, goal atoms, or action outcomes, provided the disagreement is
++neither trivial nor apparently impossible. The repository's open-ended program uses
++this decomposition---disagreement, learning progress, partial solvability, triviality,
++and impossibility---to identify tasks near the competence frontier~\cite{gkmrepo}.
++
++External reward and curiosity are complementary. Sparse level completion supplies the
++PowerPlay task boundary; Eq.~\eqref{eq:curiosity-progress} allocates interactions inside
++that boundary. The resulting loop is
++\[
++\begin{aligned}
++  \text{probe for compressible novelty}
++   &\longrightarrow \text{propose a cofibrant attachment}\\
++   &\longrightarrow \text{execute and replay}
++    \longrightarrow \text{retain or refactor}.
++\end{aligned}
++\]
++
++\section{Kolmogorov Structure Functions and Free-Energy Duality}
++\subsection{A computable complexity coordinate}
++For finite data $x$, Kolmogorov's structure function is
+ \begin{equation}
+   h_x(\alpha)=\min\{\log |S|:x\in S,\ K(S)\leq\alpha\},
+   \label{eq:classical-structure-function}
+ \end{equation}
+-which records the smallest residual data-to-model code attainable at model-description
+-budget $\alpha$~\cite{vereshchagin2004}. Interactive solvers require a behavioral fit
+-coordinate, and executable description replaces the uncomputable $K(S)$. We therefore
+-use the inverse, complexity-at-fit parameterization. Let
+-$V(s)$ be the number of levels reproduced by fresh replay from solver artifact $s$, and
+-let $D(s)$ be its retained executable description length. For a finite set $\mathcal{P}$
+-of auditable candidate artifacts, define
+-\begin{equation}
+- \widehat C_{\mathcal{P}}(v)
+- =\min\{D(s):s\in\mathcal{P},\;V(s)\geq v\}.
+- \label{eq:structure-function}
+-\end{equation}
+-This frontier is empirical in two senses: it is restricted to selected programs, and
+-membership in the constraint set is decided by execution rather than formal proof.
+-It separates two questions that a level score conflates: whether a
+-behavioral threshold has been reached, and how much retained executable structure was
+-required to reach it. The present experiments record verified points in this finite
+-loss--complexity plane; they do not evaluate Eq.~\eqref{eq:structure-function} over all
+-preserved proposals, still less compute its uncomputable Kolmogorov ideal.
+-
+-The marginal trace is the positive variation along the retained construction history,
+-with an important accounting convention: additions are charged when first admitted,
+-whereas unchanged shared code is not charged again. Large positive increments indicate
+-that the retained artifact grew under the chosen implementation; they do not prove that
+-no shorter incumbent-library composition existed. Small increments indicate little
+-positive net growth, and support composition only when the source shows calls into
+-previously charged routines. This turns program history into an observable object rather
+-than inferring transfer from final accuracy alone.
+-
+-\subsection{Kolmogorov structure functions and free-energy duality}
+-The mathematical object is Kolmogorov's structure function. The recent work \cite{losscomplexity} develops its free-energy and Legendre--Fenchel treatment, taking
+-the whole structure function rather than a single regularized optimum as the primary
+-object. Let $m$ be the number of levels in a game and define
+-replay risk by $R(s)=m-V(s)$. The empirical structure function is
++which separates model description from residual data description
++\cite{kolmogorov1965,solomonoff1964,vereshchagin2004,live2008}. The useful object for an
++interactive solver is the inverse parameterization: the minimum executable complexity
++needed to attain a behavioral risk.
++
++Fix a computable representation and accounting rule $\kappa$. For a retained artifact
++$s$, let
++\[
++  D_\kappa(s)=\Comp_\kappa(s)\in\mathbb R_{\ge 0}
++\]
++be its computed description energy. In the implementation, $\kappa$ counts nonblank,
++noncomment source lines and AST container-literal elements in the retained leg and
++player files. This coordinate is representation-dependent, as every computable coding
++coordinate must be, but its role in the mathematics is exact: recent work formulates
++model structure functions for computable complexity coordinates and proves their
++free-energy/Legendre--Fenchel duality~\cite{losscomplexity}. Accordingly $D_\kappa$ is
++not an informal stand-in appended after the argument. It is the operational coordinate
++on which the dual theory is evaluated: universal-machine complexity supplies the ideal
++coordinate up to the invariance theorem, while $\kappa$ supplies an executable chart in
++which artifacts can be measured, selected, and falsified.
++
++Let $m$ be the number of levels in a game, $V(s)$ the depth reproduced by fresh replay,
++and $R(s)=m-V(s)$. For an auditable proposal set $\mathcal P$, define
+ \begin{equation}
+-  C^{*}_{\mathcal P}(r)
+-  =\inf\{D(s):s\in\mathcal P,\ R(s)\leq r\}.
++  C^{*}_{\mathcal P,\kappa}(r)
++  =\inf\{D_\kappa(s):s\in\mathcal P,\ R(s)\le r\}.
+   \label{eq:model-function}
+ \end{equation}
+-It is the least retained description among proposed artifacts achieving risk at most
+-$r$. Equation~\eqref{eq:structure-function} is the same function in the level-depth
+-coordinate:
+-\begin{equation}
+-  \widehat C_{\mathcal P}(v)=C^{*}_{\mathcal P}(m-v).
+-  \label{eq:depth-risk-coordinate}
+-\end{equation}
+-This equivalence matters experimentally. A final score supplies one horizontal
+-coordinate; a promoted source snapshot supplies the other. The full clean history
+-samples a curve in the $(R,D)$ plane.
++Equivalently, in the level coordinate,
++\begin{equation}
++  \widehat C_{\mathcal P,\kappa}(v)
++  =\inf\{D_\kappa(s):s\in\mathcal P,\ V(s)\ge v\}
++  =C^{*}_{\mathcal P,\kappa}(m-v).
++  \label{eq:structure-function}
++\end{equation}
++The complete promoted history supplies measured points in this landscape and therefore
++upper bounds on the finite-sample frontier. A debrief can move downward at fixed $R$ by
++replacing a literal program with a shorter factorization; a new mechanic moves leftward
++by reducing $R$, usually at a positive complexity cost.
+ 
+-The free-energy envelope is the one-parameter dual
++\subsection{Legendre--Fenchel free energy}
++The zero-temperature free-energy envelope is
+ \begin{align}
+-  \Phi_{\mathcal P}(\lambda)
+-    &=\inf_{s\in\mathcal P}\bigl(R(s)+\lambda D(s)\bigr) \\
+-    &=\inf_r\bigl(r+\lambda C^{*}_{\mathcal P}(r)\bigr),
++  \Phi_{\mathcal P,\kappa}(\lambda)
++   &=\inf_{s\in\mathcal P}\bigl(R(s)+\lambda D_\kappa(s)\bigr) \\
++   &=\inf_r\bigl(r+\lambda C^{*}_{\mathcal P,\kappa}(r)\bigr),
+   \qquad \lambda>0.
+   \label{eq:model-dual}
+ \end{align}
+-Thus a sweep in $\lambda$ selects supporting lines of slope $-\lambda$ in $(D,R)$
+-coordinates. Conversely,
++Its Legendre--Fenchel reconstruction is
+ \begin{equation}
+-  \underline C_{\mathcal P}(r)
+-    =\sup_{\lambda>0}\frac{\Phi_{\mathcal P}(\lambda)-r}{\lambda}
+-    \leq C^{*}_{\mathcal P}(r)
++  \underline C_{\mathcal P,\kappa}(r)
++  =\sup_{\lambda>0}\frac{\Phi_{\mathcal P,\kappa}(\lambda)-r}{\lambda}
++  \le C^{*}_{\mathcal P,\kappa}(r),
+   \label{eq:model-biconjugate}
+ \end{equation}
+-recovers the lower convex envelope visible to linear scalarization. Equality holds on
+-supported points of the empirical frontier. Where a unique minimizer $s_\lambda$ is
+-stable, the envelope theorem gives
++with equality at supported points of the lower convex envelope. If the minimizer
++$s_\lambda$ is unique and locally stable, the envelope theorem yields
+ \begin{equation}
+-  \Phi'_{\mathcal P}(\lambda)=D(s_\lambda),
++  \Phi'_{\mathcal P,\kappa}(\lambda)=D_\kappa(s_\lambda),
+   \qquad
+-  R(s_\lambda)=\Phi_{\mathcal P}(\lambda)
+-                    -\lambda\Phi'_{\mathcal P}(\lambda).
++  R(s_\lambda)=\Phi_{\mathcal P,\kappa}(\lambda)
++          -\lambda\Phi'_{\mathcal P,\kappa}(\lambda).
+   \label{eq:model-envelope}
+ \end{equation}
+-Kinks therefore mark changes in the selected structural regime. This is the precise
+-sense in which free-energy scalarization encodes the supported part of the
+-loss--complexity frontier. Unsupported points require the whole structure function and
+-cannot be recovered from a linear $\lambda$ sweep alone.
++Thus kinks in $\Phi$ are changes of selected program regime, while the full structure
++function retains unsupported but scientifically meaningful artifacts.
+ 
+-For two candidates $s$ and $s'$, free-energy selection admits the more complex candidate
+-exactly when its replay improvement pays for its description increase:
++For finite $\mathcal P$, introduce inverse temperature $\beta$ and
++\begin{align}
++  Z_{\beta,\lambda}
++    &=\sum_{s\in\mathcal P}
++       \exp\{-\beta(R(s)+\lambda D_\kappa(s))\}, \\
++  \F_{\beta,\lambda}
++    &=-\beta^{-1}\log Z_{\beta,\lambda}.
++  \label{eq:partition-free-energy}
++\end{align}
++Then
++\begin{equation}
++  \lim_{\beta\to\infty}\F_{\beta,\lambda}
++  =\Phi_{\mathcal P,\kappa}(\lambda).
++  \label{eq:zero-temperature}
++\end{equation}
++The thermodynamic derivatives are exact:
++\begin{equation}
++  \frac{\partial \F_{\beta,\lambda}}{\partial\lambda}
++    =\E_{\beta,\lambda}[D_\kappa(s)],
++  \qquad
++  \frac{\partial^2 \F_{\beta,\lambda}}{\partial\lambda^2}
++    =-\beta\,\operatorname{Var}_{\beta,\lambda}[D_\kappa(s)].
++  \label{eq:free-energy-derivatives}
++\end{equation}
++Accordingly a nonnegative complexity susceptibility is
+ \begin{equation}
+-  R(s)-R(s')>\lambda\bigl(D(s')-D(s)\bigr).
++  \chi_C(\beta,\lambda)
++     =\beta\,\operatorname{Var}_{\beta,\lambda}[D_\kappa(s)]
++     =-\frac{\partial^2 \F_{\beta,\lambda}}{\partial\lambda^2},
++  \label{eq:susceptibility}
++\end{equation}
++up to the conventional placement of the factor $\beta$. Peaks identify parameter
++regions in which small changes in parsimony pressure exchange qualitatively different
++solver structures. This is the mathematically grounded reason to sweep $\lambda$ rather
++than report one regularized optimum.
++
++\subsection{The complexity ratchet and historical action}
++For two candidates $s$ and $s'$, the more complex candidate is selected exactly when
++its risk reduction purchases its additional description:
++\begin{equation}
++  R(s)-R(s')>\lambda\bigl(D_\kappa(s')-D_\kappa(s)\bigr).
+   \label{eq:complexity-ratchet}
+ \end{equation}
+-The loss--complexity formulation from \cite{losscomplexity} yields this inequality;
+-Eq.~\eqref{eq:complexity-ratchet} specializes it to solver artifacts. Our
+-present promotion rule first requires strict replay progress, so the reported trace is
+-not a complete $\lambda$ sweep. It is a verified chain that samples the structure function.
+-On a nested chain with nondecreasing retained descriptions and one clean artifact per
+-depth, the frontier increment
+-$\widehat C_{\mathcal P}(k)-\widehat C_{\mathcal P}(k-1)$ equals the retained-description
+-increment. With refactors, the pathwise positive variation in
+-Eq.~\eqref{eq:marginal-c} retains the historical price even when $D$ later falls. The
+-two quantities answer different questions: the structure function asks for the shortest
+-retained representative, while the ledger asks when new structure was paid for.
+-
+-\subsection{Categorical formulation}
+-Let $E$ expose observations in $O$, actions in $A$, and finite interaction histories
+-$H_E\subseteq(O\times A)^*\times O$. Let $Q$ be the set of solver-owned control states
+-(including a program counter, search frontier, or dispatcher state), and put
+-$Z=H_E\times Q$. This construction records only observable history and solver-owned
+-memory; it does not expose hidden environment state. A partial policy is a map
+-$p:U_p\to A$ on some $U_p\subseteq Z$. Search procedures, reactive routines, and
+-literal paths induce such policies after their finite control state is made explicit,
+-although their program descriptions can have very different lengths.
+-
+-\begin{definition}
+-The category $\mathsf{Pol}(E)$ has partial policies as objects and a unique morphism
+-$p\to q$ when $U_p\subseteq U_q$ and $q|_{U_p}=p$. Thus morphisms are
+-trace-preserving policy extensions. A family $(p_i)_{i\in I}$ is compatible when
+-$p_i(x)=p_j(x)$ for every $x\in U_{p_i}\cap U_{p_j}$.
+-\end{definition}
+-This is a partially ordered set regarded as a category; colimits therefore coincide
+-with least upper bounds when they exist~\cite{maclane1998}.
++This is the complexity ratchet. It prevents open-ended growth from degenerating into
++unpriced accumulation: each cell must buy new control, prediction, transfer, or a
++shorter solution elsewhere.
+ 
+-\begin{theorem}[Compatible-policy colimit]
+-Every compatible family $(p_i)_{i\in I}$ in $\mathsf{Pol}(E)$ has a colimit. Its
+-domain is $U=\bigcup_i U_{p_i}$ and its action map is the union
+-$p=\bigcup_i p_i$.
+-\end{theorem}
++The retained state coordinate $D_\kappa(s_k)$ and the historical construction action
++are distinct. For shared-library source $\ell_k$ and player source $p_k$, define
++\begin{equation}
++  C_k=\Pos{d(\ell_k)-d(\ell_{k-1})}
++      +\Pos{d(p_k)-d(p_{k-1})},
++  \qquad
++  C_{\le k}=\sum_{j\le k}C_j.
++  \label{eq:marginal-c}
++\end{equation}
++The path-dependent free energy is
++\begin{equation}
++  \F^{\mathrm{hist}}_\lambda(s_k)
++    =R(s_k)+\lambda C_{\le k}.
++  \label{eq:historical-free-energy}
++\end{equation}
++It records the price paid along a lineage even when a later refactor compresses the
++retained endpoint.
++
++\begin{proposition}[Positive-variation decomposition]
++For any real sequence $x_0,\ldots,x_n$,
++\begin{equation}
++  \sum_{k=1}^{n}\Pos{x_k-x_{k-1}}
++  =x_n-x_0+\sum_{k=1}^{n}\Pos{x_{k-1}-x_k}.
++  \label{eq:positive-variation}
++\end{equation}
++Consequently the historical GKM charge equals endpoint growth plus the amount of
++measured description later removed, summed separately over the charged files.
++\end{proposition}
+ \begin{proof}
+-Compatibility makes $p$ single-valued on overlaps. Each inclusion $p_i\to p$ is a
+-morphism. If $q$ is any other cocone, then $q$ extends every $p_i$, hence extends their
+-union $p$ and determines a morphism $p\to q$. Uniqueness follows because
+-$\mathsf{Pol}(E)$ is a poset category.
++Use $u=\Pos{u}-\Pos{-u}$ for every increment $u=x_k-x_{k-1}$ and telescope.
+ \end{proof}
+ 
+-\subsubsection{Why the colimit alone is insufficient}
+-The colimit answers an extensional question: what is the least policy containing a
+-compatible family? It forgets the presentation of that policy. A monolithic solver, a
+-sequence of reusable attachments, and a literal trace followed by a refactor can induce
+-the same union in $\mathsf{Pol}(E)$ while having different source descriptions and
+-different scientific provenance. This is precisely the information sought by marginal
+-accounting. A directed notion of admissible attachment is therefore needed in addition
+-to the endpoint colimit.
+-
+-Fix a finite partial policy $T:U_T\to A$ obtained from a mutually compatible collection
+-of validated traces. Let $\mathsf{Pol}_T(E)$ be the full subcategory whose objects are
+-the restrictions $T|_U$ for $U\subseteq U_T$. Every pair of objects in this category is
+-compatible, the empty policy is initial, and union and intersection give finite joins
+-and meets.
+-
+-\begin{definition}[Trace cofibration]
+-Every extension $i:p\to q$ in $\mathsf{Pol}_T(E)$ is declared a \emph{trace
+-cofibration}, written $i:p\hookrightarrow q$. Its relative attachment is
++This identity makes the two coordinates complementary rather than competing. The
++structure function asks how short the best retained representative is at a risk level;
++the historical action asks how much positive construction was traversed to reach it.
++
++\section{Inverse-Colimit Program Growth and Cofibrant Attachments}
++\label{sec:category}
++\subsection{Finite program presentations grounded in source}
++Fix a typed signature $\Sigma$ with node sorts for definitions, formal parameters,
++state predicates, call sites, action literals, control edges, and dispatcher bindings.
++Let $\Syn$ be the category of finite $\Sigma$-typed incidence graphs and type-preserving
++graph morphisms. Typed graphs form a presheaf-style adhesive category: pushouts along
++monomorphisms are well behaved, and the finite presentations used here are closed under
++the finite pushouts below~\cite{maclane1998,riehl2016category,lack2005adhesive}.
++
++A promoted Python snapshot $s$ determines a finite presentation
++$\Gamma(s)\in\Syn$ by its definitions, signatures, call graph, control dependencies,
++and dispatch bindings. This is a mathematical extraction from the source, not a claim
++that the current harness materializes a generic category-theory object at runtime. The
++repository stores Python files; source, AST, call-site, and diff audits are the ground
++truth from which the relevant objects and arrows are reconstructed.
++
++We designate monomorphisms in $\Syn$ as \emph{cofibrations}. A cofibration preserves an
++embedded interface literally while permitting new nodes and edges to be attached around
++it. Identities and composites are cofibrations, and pushout of a cofibration is again a
++cofibration, as in a Waldhausen-style category~\cite{waldhausen1985}. This is precisely
++the persistence property needed by a growing leg library. It does not imply that every
++Python edit is a monomorphism: an acquisition edge may be cofibrational, whereas a
++debrief that rewrites already admitted source is represented separately by validated
++replay equivalence.
++
++\subsection{Inverse diagrams and the LLM-supplied cell}
++A finite category $J$ is \emph{inverse} when its objects admit a degree function such
++that every nonidentity morphism strictly lowers degree. Let $\mathbb V$ be the inverse
++span category with objects $\partial,0,1$, degrees
++$\deg(\partial)=1$, $\deg(0)=\deg(1)=0$, and arrows
++$\partial\to0$, $\partial\to1$.
++
++\begin{definition}[LLM-supplied inverse-colimit attachment]
++Given an incumbent artifact $X_{k-1}\in\Syn$, the proposer emits source embodying
++\begin{enumerate}[leftmargin=2em]
++\item a boundary or interface object $A_k$;
++\item a new executable leg or cell $B_k$;
++\item a cofibration $i_k:A_k\hookrightarrow B_k$; and
++\item an attaching/binding morphism $a_k:A_k\to X_{k-1}$.
++\end{enumerate}
++These data define an inverse diagram $D_k:\mathbb V\to\Syn$,
++\[
++  X_{k-1}\xleftarrow{a_k}A_k\xrightarrow{i_k}B_k.
++\]
++Its \emph{inverse colimit}---the colimit of this inverse-shaped diagram---is the linked
++candidate
+ \begin{equation}
+-  \operatorname{att}(i)=U_q\setminus U_p.
+-  \label{eq:cofibration-attachment}
++  P_k=\colimv_{\mathbb V}D_k
++     \cong X_{k-1}\sqcup_{A_k}B_k.
++  \label{eq:inverse-colimit-attachment}
+ \end{equation}
+-The hook records two obligations: actions on $U_p$ are unchanged, and only the finite
+-behavior on $\operatorname{att}(i)$ is newly attached.
+ \end{definition}
+ 
+-This is the elementary inclusion-and-attachment role played by cofibrations in
+-homotopical constructions~\cite{waldhausen1985}; no factorization, lifting, or
+-weak-equivalence axioms are assumed here.
+-The property needed for solver composition is stability under cobase change.
+-
+-\begin{theorem}[Pushout stability of trace cofibrations]
+-For every span $p\xleftarrow{i}r\xrightarrow{j}q$ in
+-$\mathsf{Pol}_T(E)$, the union $p\cup_r q=p\cup q$ is its pushout. The induced maps
+-$p\hookrightarrow p\cup_rq$ and $q\hookrightarrow p\cup_rq$ are trace cofibrations.
+-Trace cofibrations also contain identities and are closed under composition.
+-\end{theorem}
+-\begin{proof}
+-All objects are restrictions of $T$, so $p$ and $q$ agree wherever their domains
+-overlap. Their union is therefore a partial policy. It is an upper bound for $p$ and
+-$q$, and every other upper bound contains their union, which proves the pushout
+-property in this poset category. The induced arrows, identities, and composites are
+-again inclusions of restrictions of $T$.
+-\end{proof}
++The word \emph{inverse} modifies the indexing shape, not the universal construction:
++interface arrows run from the higher-degree overlap toward the lower-degree incumbent
++and proposed cell, while the universal object is a colimit. Operationally, $A_k$ is the
++formal dependency surface of the new code, $a_k$ binds that surface to definitions and
++state relations already present, and $i_k$ includes the same surface into the proposed
++cell. The LLM therefore contributes both objects and morphisms; a lattice of observed
++state--action pairs cannot encode these invented interfaces or bindings.
+ 
+ \begin{figure}[H]
+ \centering
+ \begin{tikzcd}[column sep=huge,row sep=large]
+-r \arrow[r,hook,"i"] \arrow[d,hook,"j"']
+-  & p \arrow[d,hook,"\bar{j}"] \\
+-q \arrow[r,hook,"\bar{i}"']
+-  & p\cup_r q
++A_k \arrow[r,hook,"i_k"] \arrow[d,"a_k"']
++  & B_k \arrow[d,"b_k"] \\
++X_{k-1} \arrow[r,hook,"j_k"']
++  & P_k=X_{k-1}\sqcup_{A_k}B_k
+ \end{tikzcd}
+-\caption{A cofibrational pushout. The overlap $r$ carries the compatibility
+-condition; cobase change attaches $q$ to the incumbent $p$ without altering either
+-policy on its old domain.}
+-\label{fig:cofibration-pushout}
++\caption{The inverse-colimit cell attachment. The proposer supplies $B_k$, $A_k$,
++$i_k$, and $a_k$; the universal cocone supplies $j_k$ and $b_k$. Cobase change forces
++$j_k$ to be a cofibration. The other cocone map $b_k$ need not be monic unless further
++hypotheses are imposed on $a_k$.}
++\label{fig:inverse-colimit-pushout}
+ \end{figure}
+ 
+-The pushout formulation supplies more operational information than reporting only the
+-many-object endpoint colimit. If a shared behavior has already been attached to one
+-player, it can be transported into a larger compatible context by a pushout square; the
+-old actions remain fixed. Conversely, a dispatch conflict prevents the policies from
+-lying in any common $\mathsf{Pol}_T(E)$ and blocks this construction rather than being
+-concealed by the word ``composition.''
+-
+-Because $\mathsf{Pol}_T(E)$ is a poset of restrictions, every one of its arrows is a
+-trace cofibration. The nontrivial data at this level are therefore the \emph{chosen
+-filtration} and the pushout squares, not a selective class of policy arrows. Selectivity
+-enters after passage to source artifacts: many program rewrites induce the same or an
+-extended trace policy, but only some expose an attachment certificate showing unchanged
+-reusable code, new glue, and replayed compatibility. This distinction prevents the
+-cofibration terminology from being used as a synonym for arbitrary source change.
++\begin{theorem}[Cofibrant persistence and universal gluing]
++If $i_k:A_k\hookrightarrow B_k$ is a cofibration and cofibrations in $\Syn$ are stable
++under cobase change, then the incumbent map
++$j_k:X_{k-1}\hookrightarrow P_k$ in Fig.~\ref{fig:inverse-colimit-pushout} is a
++cofibration. For every artifact $Y$ and compatible pair
++$f:X_{k-1}\to Y$, $g:B_k\to Y$ satisfying
++$f\circ a_k=g\circ i_k$, there is a unique $u:P_k\to Y$ with
++$u\circ j_k=f$ and $u\circ b_k=g$.
++\end{theorem}
++\begin{proof}
++The first statement is stability of cofibrations under pushout along $a_k$; the second
++is the universal property of the pushout.
++\end{proof}
+ 
+-A promoted history is consequently represented not only by its endpoint but by a
+-cofibration filtration
+-\begin{figure}[H]
+-\centering
+-\begin{tikzcd}[column sep=large]
+-p_0 \arrow[r,hook,"i_1"]
+-  & p_1 \arrow[r,hook,"i_2"]
+-  & \cdots \arrow[r,hook,"i_k"]
+-  & p_k=\operatorname*{colim}_{j\leq k}p_j .
+-\end{tikzcd}
+-\caption{The promoted policy as a filtered colimit of trace cofibrations. The endpoint
+-$p_k$ alone forgets the ordered attachments $\operatorname{att}(i_j)$; the filtration
+-retains them.}
+-\label{fig:cofibration-filtration}
+-\end{figure}
+-For a strict chain, the newly covered domains form the disjoint decomposition
++The theorem is the exact content of persistent reuse at the presentation level. The
++incumbent program survives in the candidate through $j_k$; new executable structure
++enters through $b_k$; and the attaching map records how open slots are bound. A thin
++level player can therefore have small conditional description even when it invokes a
++large leg whose definition was paid for at an earlier stage.
++
++There is also a semantic obligation. On compilable presentations and a finite validation
++suite $T$, let
++\[
++  \Sem{-}_T:\mathsf{Syn}_{\Sigma,T}\longrightarrow\Beh(E)
++\]
++map source presentations and auditable call/binding morphisms to their replay-observed
++transition presentations. Applying this functor to the source cocone induces a canonical
++comparison morphism
+ \begin{equation}
+- U_{p_k}=U_{p_0}\sqcup\bigsqcup_{j=1}^{k}\operatorname{att}(i_j).
+- \label{eq:attachment-filtration}
++  \theta_{k,T}:\colimv\!\bigl(
++    \Sem{X_{k-1}}_T
++      \xleftarrow{}\Sem{A_k}_T
++      \xrightarrow{}\Sem{B_k}_T\bigr)
++  \longrightarrow \Sem{P_k}_T.
++  \label{eq:semantic-comparison}
+ \end{equation}
+-Equation~\eqref{eq:attachment-filtration} is behavioral, not a source code. It says
+-where competence was extended. The ideal code in Eq.~\eqref{eq:cone-marginal} and the
+-implemented charge in Eq.~\eqref{eq:marginal-c} ask how much program description was
+-used to realize each attachment.
+-
+-\subsubsection{Artifact cofibrations and replay equivalence}
+-To connect this finite policy category to preserved programs, let $\mathsf{Art}_T(E)$
+-be the category generated by those recorded provenance edges that preserve the admitted
+-trace actions, and let
+-\begin{equation}
+-  B:\mathsf{Art}_T(E)\longrightarrow\mathsf{Pol}_T(E)
+-  \label{eq:behavior-functor}
+-\end{equation}
+-map an artifact to the partial policy observed on the validation suite. This is an
+-empirical behavior map: arbitrary Python programs are not exhaustively denoted, and
+-$B$ is defined only on replayed states.
+-
+-A promotion edge $\alpha:s\to s'$ is \emph{policy-cofibrational} when
+-$B(\alpha):B(s)\hookrightarrow B(s')$ preserves the admitted traces. A stronger
+-source-level reuse claim requires an \emph{attachment certificate}: the source diff
+-must identify the unchanged incumbent legs, the new leg or glue, the player bindings,
+-the replayed compatibility check, and the associated description charge. The harness
+-guarantees the behavioral replay gate but does not make every Python rewrite
+-attachment-certified. In particular, a low $C_k$ is not by itself a cofibration
+-certificate; the unchanged call target must be visible in source.
+-
+-Refactoring is a different kind of arrow. Write $s\simeq_T s'$ when the two artifacts
+-induce the same partial policy on the validation suite. A literal plan and a
+-parameterized leg may therefore be replay-equivalent while occupying different points
+-on the description axis:
+-\begin{figure}[H]
+-\centering
+-\begin{tikzcd}[column sep=huge,row sep=large]
+-s_k^{\mathrm{literal}}
+-  \arrow[rr,"\rho_k\;(\simeq_T)"] \arrow[dr,"B"']
+-  && s_k^{\mathrm{refactored}} \arrow[dl,"B"] \\
+-  & p_k &
+-\end{tikzcd}
+-\caption{A replay-equivalent debrief. Both descriptions realize the same observed
+-policy $p_k$; when the right-hand description is shorter, the structure function falls
+-without erasing the earlier construction cost.}
+-\label{fig:replay-equivalent-refactor}
+-\end{figure}
++If $\theta_{k,T}$ is an isomorphism, the source pushout is also the behavioral pushout on
++$T$ and is universal among compatible observed-behavior cocones. The implementation does
++not assume global colimit preservation. Source-level call tracing checks the intended
++factorization, while fresh execution and replay test the finite semantic comparison at
++the admitted histories. Thus the category theory supplies the construction obligation
++and the verifier decides whether its executable realization is behaviorally valid.
++
++\subsection{Many-leg inverse colimits}
++A proposal may bind several incumbent legs, introduce several cells, and identify
++higher-order overlaps among them. Let $J_k$ be a finite inverse category with one
++distinguished incumbent object, positive-degree interface/overlap objects, and
++degree-zero cell objects. For a cell $c$, define its boundary object by
++\begin{equation}
++  \partial_cD_k=
++  \colimv_{(j\to c),\,\deg(j)>0}D_k(j),
++  \label{eq:cell-boundary}
++\end{equation}
++with the canonical map $\partial_cD_k\to D_k(c)$. We call the presentation
++\emph{cellularly cofibrant} when each such boundary map for a newly proposed cell is a
++cofibration.
++
++\begin{proposition}[Iterated inverse-colimit attachment]
++Suppose the new degree-zero cells admit an ordering in which the boundary of each cell
++maps into the incumbent together with cells attached earlier in the order. Then
++$\colimv_{J_k}D_k$ is computed by a finite sequence of pushouts along the boundary
++cofibrations in Eq.~\eqref{eq:cell-boundary}. The composite map from the incumbent into
++the resulting apex is a cofibration.
++\end{proposition}
++\begin{proof}
++Attach the ordered cells one at a time. At each stage the boundary has a map into the
++partial apex by hypothesis, so the next apex is a pushout. Pushout stability makes the
++partial-apex inclusion a cofibration; closure under composition gives the final claim.
++\end{proof}
+ 
+-This separates two operations that an endpoint colimit conflates. Cofibrations change
+-verified behavioral coverage by attaching a compatible policy extension;
+-replay-equivalent refactors change the description at fixed observed behavior. The
+-empirical structure function selects the shortest retained representative at a
+-behavioral threshold, whereas the cofibration filtration and historical ledger retain
+-the order and cost of acquisition.
+-
+-The construction above is deliberately local. We prove the cofibration and pushout
+-properties only in $\mathsf{Pol}_T(E)$, where compatibility with a fixed finite trace
+-policy is built in. We do not claim that the full category of partial policies has all
+-pushouts, that incompatible programs can be glued, or that $\mathsf{Art}_T(E)$ is a
+-model or Waldhausen category. Cofibrations are important here because they expose the
+-admissible attachments and their stability; they are not a license to import unverified
+-homotopical conclusions into the artifact data.
+-
+-The colimit and pushout theorems are elementary and carry no empirical conclusion by
+-themselves. Their relevance begins at the representation level. A shared leg
+-describes a partial policy intensionally; a level player supplies dispatch, sequencing,
+-and boundary conditions that make selected policies compatible on the states actually
+-encountered. New glue resolves overlaps or fills states not covered by the existing
+-diagram. A debrief that replaces repeated literal actions by a parameterized ferry or
+-search routine changes the program description of the same observed partial policy
+-union. The behavioral colimit can therefore remain fixed while its structure-function
+-value falls.
+-
+-Arbitrary Python programs do not expose their full policy domains, and replay visits
+-only a finite trace. Consequently, our approach constructs a finite empirical diagram: the
+-objects are observed leg behaviors, the cocone is the executable player, and commuting
+-conditions are tested on replayed transitions. The construction is an under-approximation
+-to $\mathsf{Pol}(E)$, but it is not metaphorical: the source names the component maps,
+-and the action trace supplies the tested states. Failed replay falsifies a proposed
+-behavioral extension, although trace inspection is needed to localize whether dispatch,
+-coverage, or overlap compatibility failed. Equation~\eqref{eq:marginal-c} records the
+-positive net source growth of the chosen empirical extension from level $k-1$ to level
+-$k$; it does not compute the minimum description required for such an extension.
+-
+-The categorical construction also suggests a natural ideal two-part description code.
+-Let
+-$L_k$ be the set of shared legs available through depth $k$, and let $g_i$ encode the
+-level-$i$ player: selected leg names, argument bindings, order, and residual glue. Up to
+-a fixed interpreter and self-delimiting headers, the joint cone code is
++This is the many-leg version of Fig.~\ref{fig:inverse-colimit-pushout}. The proposer
++constructs a finite inverse presentation---existing definitions, new cells, overlaps,
++and bindings---and the linked solver is its universal gluing. The repository does not
++call a generic colimit routine; Python name resolution and execution realize the cocone,
++while the categorical presentation states what structure that source embodies.
++
++\subsection{Acquisition, debrief, and replay equivalence}
++The raw linked candidate need not be the final promoted text. A debrief may inline,
++extract, rename, or parameterize code after the new competence has been found. For a
++finite validation suite $T$, write
++\begin{equation}
++  P\simeq_T Q
++  \label{eq:replay-equivalence}
++\end{equation}
++when both artifacts compile and their independently replayed certificates agree on the
++obligations in $T$. A promotion therefore has the source-level factorization
++\begin{equation}
++  X_{k-1}\xhookrightarrow{\;j_k\;}P_k
++  \;\simeq_{T_k}\;X_k,
++  \label{eq:cofibration-refactor-factorization}
++\end{equation}
++where the first arrow is the inverse-colimit acquisition and the second relation is an
++optional replay-equivalent normalization. If no debrief intervenes, $X_k=P_k$.
++
++Equation~\eqref{eq:cofibration-refactor-factorization} prevents two opposite mistakes.
++A behavior-only inclusion does not exhibit the LLM-supplied cell and attaching map; a
++raw source diff does not automatically prove a cofibration when incumbent code was
++rewritten. The cofibration claim is made at the source level when unchanged interfaces,
++definitions, and call sites witness the factorization. Replay equivalence then permits
++semantic-preserving refactors without pretending that they are acquisitions of new
++behavior.
++
++When every stage is strictly additive, the candidates form a cofibration filtration
++\begin{equation}
++  X_0\xhookrightarrow{}X_1\xhookrightarrow{}\cdots
++       \xhookrightarrow{}X_k,
++  \qquad X_\infty=\colimv_kX_k.
++  \label{eq:sequential-colimit}
++\end{equation}
++With debriefs, the preserved history is instead the zigzag of
++Eq.~\eqref{eq:cofibration-refactor-factorization}: acquisitions are colimit attachments
++and refactors move within validated equivalence classes. The WIP and promoted snapshots
++are therefore mathematically relevant provenance, not incidental logging.
++
++For a set $L_k$ of available shared legs and player/binding code $g_i$, an ideal
++two-part code is
+ \begin{equation}
+   D_{\mathrm{cone}}(k)
+-   =\sum_{\ell\in L_k}D(\ell)
+-    +\sum_{i=1}^{k}D(g_i\mid L_i)+O(\log k).
++  =\sum_{\ell\in L_k}D(\ell)
++   +\sum_{i=1}^{k}D(g_i\mid L_i)+O(\log k),
+   \label{eq:cone-code}
+ \end{equation}
+-If existing leg definitions remain unchanged, extending the cone by one level costs
++and the new-level marginal is
+ \begin{equation}
+   \Delta D_{\mathrm{cone}}(k)
+-   =\sum_{\ell\in L_k\setminus L_{k-1}}D(\ell)
+-    +D(g_k\mid L_k)+O(\log k).
++  =\sum_{\ell\in L_k\setminus L_{k-1}}D(\ell)
++   +D(g_k\mid L_k)+O(\log k).
+   \label{eq:cone-marginal}
+ \end{equation}
+-This equation states the ideal reuse claim precisely: an old leg is paid for once, while
+-each new use pays only its binding and composition code. In the implemented surrogate,
+-a container literal remains charged by its elements rather than becoming free merely
+-because it occupies one source line. If a debrief
+-replaces several literal gluings by one parameterized leg, the compression gain at
+-fixed verified behavior is
+-\begin{equation}
+-  G_k=D_{\mathrm{cone}}^{\mathrm{before}}(k)
+-      -D_{\mathrm{cone}}^{\mathrm{after}}(k).
+-  \label{eq:compression-gain}
+-\end{equation}
+-The empirical structure function registers $G_k>0$ as a shorter representative; the
+-historical marginal ledger does not erase the earlier construction cost. This is the
+-mathematical distinction between compression of an artifact and retroactive deletion
+-of provenance. Equations~\eqref{eq:cone-code}--\eqref{eq:compression-gain} specify a
+-description schema; Eq.~\eqref{eq:marginal-c} is only a coarse source-level surrogate
+-for changes in that schema.
+-
+-\section{Self-Improving Solver-Growth Approach}
+-\subsection{Design properties and unit of analysis}
+-The unit of analysis is a \emph{promoted solver transition}: a change from one clean,
+-replay-validated artifact to another that clears at least one additional level. We ask
+-whether the approach shows three properties. \emph{Novelty acquisition} requires new
+-executable structure when incumbent legs do not cover a mechanic. \emph{Reuse} requires
+-a later player to factor through previously admitted code while adding little binding
+-cost. \emph{Marginal complexity reduction} requires later competence to cost markedly
+-less than the acquisition that made it possible. Auditability is the evidence contract
+-for these claims, not the proposed method itself: the observational object is the
+-sequence of verified artifacts and the maps between them.
++An old leg is paid for once; subsequent applications pay for the attaching morphism and
++residual glue. This is the categorical content of the marginal-complexity troughs.
++
++\subsection{Replay certificates as an inverse system}
++The implementation validates reached depth, not identity with every earlier action
++trace. Let $\Cert_j(E)$ be the set of finite replay certificates whose stored path,
++executed from a fresh reset of environment $E$, reaches at least depth $j$. For a
++certificate $c=(\pi,\eta)\in\Cert_k(E)$ with $k\ge j$, let
++\begin{equation}
++  \rho_{k,j}(c)
++  \label{eq:certificate-restriction}
++\end{equation}
++truncate $\pi$ at its first passage to depth $j$ and retain the relevant source,
++checkpoint, and environment metadata $\eta$. Then
++\begin{equation}
++  \rho_{j,i}\circ\rho_{k,j}=\rho_{k,i},
++  \qquad i\le j\le k,
++  \label{eq:certificate-coherence}
++\end{equation}
++so the depth certificates form an inverse system.
++
++A replay-validated full path $c_k\in\Cert_k(E)$ determines the coherent family
++\begin{equation}
++  \bigl(\rho_{k,j}(c_k)\bigr)_{j\le k}
++  \in\limv_{j\le k}\Cert_j(E).
++  \label{eq:inverse-replay-limit}
++\end{equation}
++This is the exact no-forgetting statement implemented by a deeper full-path replay: it
++re-establishes every shallower task. It does \emph{not} assert that
++$\rho_{k,j}(c_k)$ equals the historical checkpoint path $c_j$; later solvers may reach
++the same depth by a different route. Program acquisition and verification consequently
++run in complementary directions: source grows by colimits of inverse-shaped attachment
++diagrams, while a successful deep certificate restricts contravariantly to the earlier
++depth obligations.
++
++\begin{definition}[Replay-certified cofibrant attachment]
++A proposed level-$k$ extension is replay-certified when
++\begin{enumerate}[leftmargin=2em]
++\item its source admits the factorization
++$X_{k-1}\hookrightarrow P_k=X_{k-1}\sqcup_{A_k}B_k$ with
++$A_k\hookrightarrow B_k$ a source-auditable cofibration;
++\item the linked candidate compiles and fresh execution produces a finite path $\pi_k$;
++\item an independent replay of $\pi_k$ reaches the required depth; and
++\item the first-passage truncations of $\pi_k$ define the coherent family in
++Eq.~\eqref{eq:inverse-replay-limit}.
++\end{enumerate}
++A source-level reuse certificate additionally identifies the unchanged incumbent
++definition and the call or binding through which the new player factors.
++\end{definition}
++
++The definition gives the LLM the creative role the architecture requires without
++confusing proposal with proof. It supplies the cell, boundary, and morphisms. The fixed
++verifier decides whether their linked realization enters the archive.
++
++\subsection{Few-shot transfer as a pointwise Kan extension}
++Let $\Beh(E)$ be the category of finite typed transition-system presentations over the
++action--observation signature induced by environment $E$, with label-preserving graph
++morphisms. Replay-observed behaviors are finite objects of this presheaf-style category,
++which has the finite colimits used below. Let $\mathcal L_k$ be the category of known leg
++schemas and binding morphisms, and let
++$K_k:\mathcal L_k\hookrightarrow\mathcal T_k$ include them into a category containing a
++new task object $\tau$. A behavior functor $F_k:\mathcal L_k\to\Beh(E)$ extends to the
++new task by the pointwise left Kan extension
++\begin{equation}
++  (\Lan_{K_k}F_k)(\tau)
++  \cong \colimv_{(K_k\downarrow\tau)}F_k\circ\pi,
++  \label{eq:kan-extension}
++\end{equation}
++whenever the indicated colimit exists~\cite{maclane1998,riehl2016category}. The comma
++category consists of known legs together with admissible ways of binding them into the
++new task. The emitted player source is read as a finite subdiagram of this comma
++category: it selects incumbent legs, invents missing bindings, and adds a residual cell
++when the frozen library is insufficient. This is a formal semantics of the source-level
++construction; the runtime need not invoke a general Kan-extension implementation.
++
++Equation~\eqref{eq:kan-extension} explains why the morphism vocabulary is the inductive
++bias. A missing object predicate, color slot, transition interface, or binding cannot be
++recovered by the colimit operation alone; the proposer must enrich the category. Once
++the correct morphisms are present, reuse is obtained by universal gluing rather than by
++learning an unrelated action sequence.
++
++\section{Compute-Bounded Solving and Asymptotic Completion}
++\label{sec:compute}
++\subsection{The budget-indexed frontier}
++Let $\mathcal A_B$ be the archive of replay-validated artifacts obtainable with total
++proposal-and-verification budget at most $B$, and define
++\begin{equation}
++  V_B(g)=\max_{s\in\mathcal A_B}V_g(s).
++  \label{eq:budget-frontier}
++\end{equation}
++Because the archive retains promoted artifacts, $B\le B'$ implies
++$\mathcal A_B\subseteq\mathcal A_{B'}$ and therefore $V_B(g)\le V_{B'}(g)$. This is the
++basic sense in which an incomplete endpoint is compute-bounded: it is a point on a
++monotone search trajectory, not a negative result about the existence of a continuation.
++
++\subsection{Finite attachment completeness}
++Consider a game with $m$ levels and suppose there exists a finite chain of replay-valid
++attachments that completes it. Equivalently for the existence argument, suppose there
++is one finite full-game action program. Literal action programs are admissible cells, so
++abstraction is not required for completeness; it is required to make the waiting time
++scientifically and practically tolerable.
++
++\begin{assumption}[Fair dovetailed proposal and recognizable success]
++Finite attachment presentations are effectively enumerable. Deterministic search
++fairly dovetails candidate index with execution time and action budget, so every finite
++candidate is eventually run for every finite resource bound. In the stochastic version,
++once depth $k$ has been reached, each proposal trial has conditional probability at
++least $p_k>0$ of emitting a replay-valid continuation to depth $k+1$. A successful
++finite replay is recognized and promoted.
++\end{assumption}
++
++\begin{theorem}[Compute completeness]
++Under the preceding assumption, some complete replay-valid artifact is found after
++finite computation by fair deterministic dovetailing. In the stochastic version, let
++$\tau_k$ be the number of proposal trials required to advance from depth $k$ to $k+1$.
++Then
++\begin{equation}
++  \Prb(\tau_k>n)\le(1-p_k)^n,
++  \qquad
++  \E[\tau_k]\le p_k^{-1},
++  \label{eq:geometric-stage}
++\end{equation}
++and for any integers $n_0,\ldots,n_{m-1}\ge0$,
++\begin{equation}
++  \Prb\!\left(\sum_{k=0}^{m-1}\tau_k>
++                    \sum_{k=0}^{m-1}n_k\right)
++  \le\sum_{k=0}^{m-1}(1-p_k)^{n_k}.
++  \label{eq:completion-tail}
++\end{equation}
++Consequently the probability that the game remains incomplete converges to zero as the
++number of proposal trials allocated to every reached stage tends to infinity, and
++\begin{equation}
++  \E\!\left[\sum_{k=0}^{m-1}\tau_k\right]
++  \le\sum_{k=0}^{m-1}p_k^{-1}.
++  \label{eq:completion-expectation}
++\end{equation}
++\end{theorem}
++\begin{proof}
++The finite winning presentation has a finite enumeration index and succeeds within
++some finite execution and action bound. Fair dovetailing eventually reaches that triple
++and the recognizer promotes it. In the stochastic case, conditional
++failure for $n$ trials is at most $(1-p_k)^n$, giving
++Eq.~\eqref{eq:geometric-stage}. If every $\tau_k\le n_k$, their sum is at most
++$\sum n_k$; the union bound gives Eq.~\eqref{eq:completion-tail}. The expectation bound
++follows by summing the geometric bounds. No independence between stages is required
++beyond the stated conditional lower bounds.
++\end{proof}
++
++\begin{corollary}[Finite-trace bound]\label{cor:finite-trace}
++Let a deterministic resettable game have $q<\infty$ available actions and a winning path
++of length $L<\infty$. Breadth-first enumeration of action strings finds a winning path
++after testing at most
++\begin{equation}
++  1+q+q^2+\cdots+q^L=
++  \begin{cases}
++    (q^{L+1}-1)/(q-1), & q>1,\\
++    L+1, & q=1
++  \end{cases}
++  \label{eq:finite-trace-bound}
++\end{equation}
++candidates. Hence every finitely solvable deterministic replay-verifiable game is solved
++with finite compute.
++\end{corollary}
++
++\begin{corollary}[Compute-indexed solution of a finite ARC suite]
++Let $\mathcal G$ be a finite suite of deterministic, resettable ARC games. If every
++$g\in\mathcal G$ has a finite full-game winning trace over a finite action alphabet,
++then a fair GKM scheduler with literal-trace fallback completes every game after finite
++computation. If $q_g$ is the action-alphabet size and $L_g$ the length of one winning
++trace, a separate breadth-first schedule tests no more than
++\begin{equation}
++  \sum_{g\in\mathcal G}\sum_{\ell=0}^{L_g}q_g^\ell
++  \label{eq:finite-suite-bound}
++\end{equation}
++trace candidates before all such witnesses have been encountered.
++\end{corollary}
++\begin{proof}
++Apply Corollary~\ref{cor:finite-trace} game by game and sum the finite bounds. The
++search need not know the values $L_g$ in advance.
++\end{proof}
++
++\begin{corollary}[Universal-search fallback]
++If the scheduler interleaves the LLM with fair dovetailed enumeration of finite programs,
++every finite replay-valid solver program is eventually found. The LLM, inherited legs,
++and free-energy ordering reshape the waiting-time distribution; they are not needed for
++the bare existence guarantee. This is the resource-sensitive universality principle
++behind universal sequential search~\cite{levin1973}.
++\end{corollary}
++
++The theorem and corollaries are the formal content of the paper's compute claim. The
++claim is not that a finite practical budget is sufficient for every game. It is that
++finite solvability plus an enumerable language and recognizable replay imply finite
++search completion, and that stagewise lower-bounded full-support proposal converges to
++the same result with probability one. Category-theoretic reuse, PowerPlay retention, curiosity, and
++free-energy selection are what turn this otherwise astronomical guarantee into an
++architecture for reducing the waiting time.
++
++\subsection{Open-endedness beyond a fixed game set}
++A fixed finite benchmark eventually saturates. Open-ended growth requires an endogenous
++ecology
++\begin{equation}
++  \mathcal E_{t+1}=G(\mathcal E_t,\mathcal A_t,\mathcal H_t)
++  \label{eq:ecology}
++\end{equation}
++that generates tasks near the archive's competence frontier. PowerPlay supplies the
++continual task--solver loop; artificial curiosity supplies a value for experiments that
++produce learning progress; free energy prevents complexity from increasing without
++payoff; and inverse-colimit attachments preserve the reusable program structure. The
++forward research program is therefore not merely to spend more compute on a closed list,
++but to couple compute to an archive-driven sequence of solvable, nontrivial, structurally
++novel tasks.
++
++\section{GKM Implementation and Repository-Grounded Protocol}
++\label{sec:implementation}
++\subsection{Code-level correspondence}
++The public repository separates the conceptual roles used above. Its ARC laboratory
++contains modules named \texttt{gkm\_legs.py}, \texttt{llm\_binder.py},
++\texttt{cofibrant.py}, \texttt{powerplay.py}, and \texttt{replay\_scorecard.py},
++alongside per-game promoted artifacts and tests~\cite{gkmrepo}. The exact names are not the mathematics, but they make the intended decomposition
++inspectable. The table states the source-level interpretation used by the paper; the
++repository remains the ground truth, and no claim is made that these modules instantiate
++a general categorical runtime.
++
++\begin{table}[H]
++\centering
++\small
++\begin{tabularx}{\textwidth}{@{}>{\raggedright\arraybackslash}p{0.27\textwidth}>{\raggedright\arraybackslash}X>{\raggedright\arraybackslash}X@{}}
++\toprule
++Mathematical role & Executable realization & Retained evidence \\
++\midrule
++Cell $B_k$ & Shared leg or newly synthesized routine & Definition in a promoted \texttt{legs.py} snapshot \\
++Boundary $A_k$ & Typed parameters, state predicate, expected pre/postcondition, or shared subroutine interface & Function signature and boundary checks \\
++Attaching map $a_k$ & Level-specific argument binding, dispatch, sequencing, or call site & Winning player and source diff \\
++Cofibration $i_k$ & Literal inclusion of the interface into the new leg presentation & Unchanged interface plus added body \\
++Inverse-colimit apex $P_k$ & Library, players, and dispatcher compiled as one linked candidate & Candidate workspace and successful execution \\
++Promoted artifact $X_k$ & $P_k$ itself or a replay-equivalent debrief & Clean promoted workspace and replay certificate \\
++Inverse replay family & First-passage truncations of each checkpoint's full path & Checkpoint records, local segmentation, and replay status \\
++PowerPlay archive & Ordered clean promotions and WIP provenance & Git history, sidecars, and run summaries \\
++\bottomrule
++\end{tabularx}
++\caption{Correspondence between the formal construction and the repository artifact
++surface.}
++\label{tab:code-correspondence}
++\end{table}
++
++The scorecard implementation loads
++\texttt{agent\_solutions/<game>\_legs/checkpoint.json}, splits the stored
++\texttt{final\_path} into level segments by local replay, then replays those segments
++against the remote ARC toolkit without invoking discovery or an LLM. It compares the
++remote depth with the locally validated checkpoint and reports desynchronization as a
++failure. Thus endpoint replay and proposer search are distinct computations.
+ 
+ \subsection{Interface and proposer}
+ The game-independent local interface exposes only
+ \begin{center}
+-\texttt{reset()}$\to$\emph{frame}, \; \texttt{step(action)}$\to$\emph{frame},
+-\; \texttt{frame()} (raw $64\times64$ grid), \; \\ \texttt{levels\_completed} (reward), \; \texttt{actions}, \; \texttt{terminal()}, \; and \texttt{clone()} (lookahead).
++\texttt{reset()}$\to$\emph{frame}, \quad
++\texttt{step(action)}$\to$\emph{frame}, \quad
++\texttt{frame()} \text{ (raw $64\times64$ grid)}, \\
++\texttt{levels\_completed}, \quad \texttt{actions}, \quad
++\texttt{terminal()}, \quad \texttt{clone()}.
+ \end{center}
+-No interface field identifies objects, mechanics, or goals. The coding proposer is
+-nevertheless not prior-free. Its prompt states general expectations about persistent
+-objects, barriers, controllable and autonomous entities, sparse reward, and experimental
+-probing. It receives file and shell tools and may interact with cloned environments while
+-writing a \texttt{solve(env)} program. The reported artifacts were produced by a strong
+-coding-agent proposer; an earlier prompt-only local model did not produce a successful
+-trace. Proposer model calls and exploratory interactions were not normalized across
+-levels and are not included in the complexity measure.
+-
+-The proposer works in a disposable directory seeded from the latest clean promotion.
+-It may write probes, inspect frames, execute candidates, and revise source. Temporary
+-work can be much larger than the promoted program. The retained-complexity measure
+-concerns the executable structure carried forward to subsequent levels; generation cost
+-and interaction cost remain separate resources and are not silently folded into $C_k$.
+-
+-A later campaign exposed why proposer compliance cannot be assumed from instructions.
+-After observational probing stalled on \texttt{ft09}, a Sonnet API proposer emitted two
+-separate commands accessing \texttt{env.\_game} and enumerating the private runtime.
+-We classify these
+-as operational cheating attempts because they seek evidence outside the declared
+-frame/action interface. The attempts were retained only as dirty WIP and are excluded
+-from every promotion and result in this paper. The first exact transcript is preserved
+-under \texttt{agent\_solutions/ft09\_legs/wip\_context/level\_01/}
+-\texttt{interrupted\_a9a30e6e4da1}. Their recurrence suggests that instruction
+-compliance can deteriorate when observational progress stalls. The harness therefore
+-blocks recognized private-runtime and hidden-source access before execution and
+-independently rejects tainted workspaces before replay or promotion; prompt wording
+-alone is not an audit boundary. This defense is a lexical and path-based detector, not
+-a complete information-flow proof. Accordingly, ``clean'' below means that the
+-promoted core and recorded workspace passed the implemented checks; it cannot exclude
+-an unrecognized leakage channel.
+-
+-\subsection{Program structure and promotion protocol}
+-The workspace separates reusable and level-specific code. The module
+-\texttt{legs.py} contains shared routines, \texttt{players.py} contains one thin entry
+-point per level, and \texttt{solve.py} dispatches according to observed level progress.
+-For level $k$, the harness first attempts to compose existing routines. If this fails,
+-the proposer may add routines and level-specific glue. A candidate that reaches level
+-$k$ is run again, and its recorded action sequence is replayed from a fresh environment.
+-Only a replay-validated state is promoted. Here validation has two local stages. First,
+-the candidate \texttt{solve(env)} is executed on a fresh local environment to produce a
+-level count and committed action path. Second, the harness executes that recorded path,
+-without invoking the solver, from another fresh environment and checks that it reaches
+-at least the same depth. A separate debrief may then move repeated structure into the
+-shared library, after which both stages are repeated. Failed,
+-interrupted, pre-debrief, and post-debrief workspaces are preserved as provenance rather
+-than merged into the promoted solver.
+-
+-The promotion protocol has six stages: seed a workspace from the highest clean
+-artifact; attempt composition from existing legs; permit a proposer to add source when
+-reuse fails; execute and independently replay the candidate; measure and promote the
+-validated delta; then debrief repeated glue into a higher-order leg and replay again.
+-Known failed reuse attempts are keyed by level and library hash, so a restart does not
+-repeat an identical expensive search. A proposer-mutated checkpoint is treated as an
+-untrusted path candidate until the harness validates it. This order prevents edits that
+-never solved a level, stale checkpoints, and unrefactored literal paths from being
+-misreported as admitted abstractions.
+-
+-\subsection{Marginal-complexity measure}
+-Let $d(f)$ be the number of nonblank, noncomment source lines in file $f$, plus the
+-number of elements in Python list, tuple, set, and dictionary literals found by parsing
+-its abstract syntax tree. The literal term prevents a long action sequence on one source
+-line from receiving unit cost. If $\ell_k$ and $p_k$ are the shared-library and player
+-sources after level $k$, the recorded marginal cost is
+-\begin{equation}
+-\begin{split}
+- &C_k = [d(\ell_k)-d(\ell_{k-1})]_+ + [d(p_k)-d(p_{k-1})]_+, \\
+- &\text{where } [x]_+ ={} \max(0,x).
+-\end{split}
+- \label{eq:marginal-c}
+-\end{equation}
+-The cumulative ledger is $C_{\leq k}=\sum_{i\leq k}C_i$. Unchanged shared code
+-therefore has zero marginal cost. New routines, glue, and container literals increase
+-the statistic only to the extent that their file's total description size grows. This
+-is a coarse, language-dependent proxy rather than Kolmogorov complexity:
+-it ignores identifier length, comments, \texttt{solve.py}, temporary probes, model
+-inference, environment interactions, and deleted code. Additions can cancel deletions
+-within a file before the positive part is applied, and no negative credit is assigned
+-when a refactor reduces source size. We use $\lambda=0.02$ only when displaying
+-the harness diagnostic in Eq.~\eqref{eq:fe}; no reported promotion or conclusion
+-depends on that value.
+-
+-Writing $D_k=d(\ell_k)+d(p_k)$, the two quantities have a precise relation. If neither
+-file shrinks, then $C_{\leq k}=D_k-D_0$; with deletions or compressive refactors,
+-$C_{\leq k}\geq D_k-D_0$. Thus $D_k$ locates the retained artifact in
+-Eq.~\eqref{eq:structure-function}, whereas $C_{\leq k}$ records the pathwise
+-construction charge. The experiments emphasize the latter because the question is when
+-structure entered the verified history.
+-
+-The implementation follows this definition directly. It counts nonblank, noncomment
+-lines, parses Python with the standard abstract-syntax-tree parser, and adds one unit for
+-each container-literal element. The positive-part operator makes accumulated recorded
+-charges monotone, but it does not guarantee that every introduced structure was charged.
+-A low $C_k$ supports reuse only when the
+-player invokes previously charged behavior and the composed solver passes replay;
+-therefore source provenance and behavioral validation are reported together.
+-
+-\subsection{Experimental and artifact scope}
+-The study reports eight canonical promoted artifacts. Two games, \texttt{wa30} and
+-\texttt{ls20}, have complete manuscript-level construction histories; five further
+-games have replay-valid artifacts through level~4, and \texttt{tu93} has one promoted
+-level. The study does not report independent seeds or confidence intervals. The primary
+-endpoints are the highest level reproduced by fresh replay, replay action count,
+-endpoint retained description $D(s)$, and the recorded sequence $(C_k)$. Promoted code,
+-checkpoints, action paths, and intermediate workspaces are available in the repository
+-\footnote{\href{https://github.com/sashakolpakov/gkm}{Project repository and artifacts available at https://github.com/sashakolpakov/gkm}.}.
+-The proposer identity, model version, token use, and clone interactions were not logged
+-uniformly across the historical runs. The artifact protocol therefore supports
+-reproduction of promoted behavior and accounting, but not exact regeneration or a
+-compute-normalized analysis of the stochastic discovery process. Games and stopping
+-depths were not sampled under a preregistered design, so the eight endpoints are a
+-campaign record rather than an estimate of population-level success probability.
+-
+-The campaign frontier is nevertheless resource-truncated in the recorded experimental
+-sense. Five short runs were capped at level~4; preserved continuations include
+-interrupted level-5 work on \texttt{g50t} and \texttt{tr87}, while \texttt{tu93} level~2
+-ends with an explicit \texttt{credit\_out} record. Earlier budget boundaries in the two
+-complete games were subsequently crossed: \texttt{ls20} preserves a level-6 recovery
+-after exhausted credits, and the \texttt{wa30} harness recovered and promoted a winning
+-level-9 suffix found before the proposer's time budget expired. These artifacts make
+-additional discovery compute the immediate missing resource at the reported frontier;
+-they do not supply a controlled scaling law or prove that compute alone suffices for
+-every remaining game.
++No interface field names objects, mechanics, or goals. The proposer nevertheless carries
++broad priors from pretraining and from the prompt: persistent objects, barriers,
++controllable and autonomous entities, sparse reward, and the value of active probes. It
++works in a disposable directory seeded from the highest clean promotion, may execute
++cloned environments, and writes a \texttt{solve(env)} program.
++
++The harness treats proposer output as untrusted. Recognized private-runtime and hidden-
++source access is blocked before execution, and tainted workspaces are rejected before
++replay or promotion. Earlier attempts to access a private \texttt{env.\_game} object are
++preserved as dirty WIP and excluded from all reported artifacts. The boundary is an
++implemented path and lexical detector, not an information-flow theorem; the central
++point is that prompt compliance is not used as the verification gate.
++
++\subsection{Promotion as inverse-colimit construction}
++The promoted workspace separates reusable and level-specific source.
++\texttt{legs.py} contains shared components, \texttt{players.py} contains thin level
++entry points, and \texttt{solve.py} dispatches by observed progress. Operationally, the
++orchestrator first asks the proposer to compose incumbent legs and permits new source
++when that attempt fails; mathematically, the emitted calls and bindings are the finite
++comma diagram described in Section~\ref{sec:category}. The code does not invoke a generic
++colimit library. The candidate is compiled and executed from reset, its full action path
++is recorded, and that path is replayed independently from a second reset. A debrief may
++then factor repeated glue into a higher-order leg, after which execution and replay are
++repeated.
++
++The operational cycle is:
++\begin{enumerate}[leftmargin=2.1em]
++\item seed from the highest clean artifact;
++\item attempt a Kan-extension-style composition from incumbent legs;
++\item propose missing objects and morphisms when the existing comma diagram is
++insufficient;
++\item compile the inverse colimit and execute it;
++\item replay the full candidate path from a fresh reset; its first-passage
++truncations re-certify all earlier depths, without requiring the earlier paths to be
++identical;
++\item measure the retained state and historical action, promote, and archive the
++provenance;
++\item optionally refactor inside the same replay-equivalence class.
++\end{enumerate}
++Known failed compositions are keyed by level and library hash, so a restart need not
++repeat the same expensive search. A proposer-mutated checkpoint remains an untrusted
++path candidate until the harness reproduces it.
++
++\subsection{Implemented description coordinate}
++For a source file $f$, $d(f)$ is the number of nonblank, noncomment lines plus the
++number of elements in Python list, tuple, set, and dictionary literals found by AST
++parsing. The literal term prevents a long action program written on one line from
++receiving unit cost. If $\ell_k$ and $p_k$ are the library and player sources after
++level $k$, the implementation computes Eq.~\eqref{eq:marginal-c}; the retained state
++coordinate is
++\begin{equation}
++  D_k=d(\ell_k)+d(p_k).
++  \label{eq:retained-description}
++\end{equation}
++This is the chosen computable $D_\kappa$ for the ARC artifacts. It omits comments,
++identifier length, the fixed dispatcher, temporary probes, model inference, and
++environment interactions. Those are separate compute coordinates rather than reasons to
++remove the source coordinate from the theory. The correct scientific response is to
++report the coding rule, compare artifacts under the same $\kappa$, and eventually sweep
++multiple representations.
++
++A small $C_k$ is a candidate sign of reuse, not a sufficient certificate. Reuse is
++claimed only when the winning entry point directly invokes an unchanged earlier
++component and the composite passes replay. This couples the scalar free-energy trace to
++the cofibration and attaching morphism visible in source.
++
++\subsection{Artifact scope and reproduction}
++The study reports eight canonical promoted artifacts. \texttt{wa30} and \texttt{ls20}
++have complete manuscript-level construction histories; five additional games have
++replay-valid artifacts through level~4, and \texttt{tu93} has one promoted level. The
++artifact campaign is not a repeated-seed estimate. It is a chronological observation of
++one compute-bounded growth process, with exact endpoint replay and source provenance.
+ 
+-\subsection{Reproduction contract}
+-Three checks address different claims. From the repository root,
++Three repository commands address different layers:
+ \begin{verbatim}
+ python arc/manuscript/build_artifact_history.py --check
+ PYTHONPATH=arc/crack_lab pytest -q arc/crack_lab/test_gkm_legs.py \
+@@ -647,43 +947,46 @@
+ python arc/crack_lab/replay_scorecard.py --mode online \
+   --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
+ \end{verbatim}
+-The first command verifies the immutable complete-history sidecars against their Git,
+-WIP, and root sources, including hashes, ledger order, ledger totals, endpoint depth,
+-and path length. The offline tests check the implemented source metric, checkpoint
+-invariants, action encoding, workspace lock, and taint scan over all eight promoted
+-roots. The final command requires the ARC API and replays stored paths on the remote
+-public environments; it does not run the solver programs or any proposer. The closed
+-Competition-Mode scorecard cited below is a one-time execution of this third layer.
+-These commands, their prerequisites, and the distinction between discovery cost and
+-replay cost are also summarized in the repository root \texttt{README.md}.
+-
+-\subsection{Artifact manifest and falsifiability}
+-Each promoted game directory contains the shared library, per-level players, dispatcher,
+-checkpoint, run summary, and debrief log. The checkpoint stores verified depth,
+-cumulative marginal cost, transition records, the final action path, and validation
+-status. The \texttt{wip\_context} tree retains reached-before-debrief, recovered-path,
+-and after-debrief states. Git history retains earlier clean promotions, including the
+-complete early \texttt{wa30} records used below.
+-
+-Every central empirical claim has a concrete countertest. Fresh replay can falsify depth
+-or action count. Where adjacent clean snapshots exist, recomputing
+-Eq.~\eqref{eq:marginal-c} can falsify a ledger entry. The first three \texttt{wa30}
+-levels were committed together; their contemporaneous rows and clean-through-L3 source
+-are preserved as one promotion event, and the manifest exposes that granularity rather
+-than inventing intermediate Git commits. Inspecting the player call graph can falsify
+-reuse attribution, and comparing pre- and post-debrief source can falsify a claimed
+-refactor. The manuscript is therefore an index to executable evidence; the repository
+-is the primary result object. Replay establishes behavior on the recorded deterministic
+-trajectory; it does not test robustness to perturbed states or establish the policy's
+-full domain.
++The history builder checks immutable sidecars against Git, WIP, and root sources. The
++offline tests check the source metric, checkpoint invariants, action encoding, workspace
++lock, and taint scan. The online scorecard replays stored paths against the public remote
++environments and consumes zero LLM tokens. Exact regeneration of stochastic proposal
++transcripts is a different experiment from reproduction of the promoted solver.
++
++\subsection{Numerical reconciliation}
++Three sets of related quantities were conflated in earlier prose and are separated
++throughout this revision.
++\begin{table}[H]
++\centering
++\small
++\begin{tabularx}{\textwidth}{@{}p{0.36\textwidth}rX@{}}
++\toprule
++Quantity & Value & Meaning \\
++\midrule
++Official Competition-Mode score & $17.1365079365\%$ & Public all-game score over 25 games \\
++Raw level coverage & $37/183=20.2186\%$ & Unweighted cleared-level fraction \\
++Stored promoted actions & 1448 & Sum of the eight checkpoint paths \\
++Scorecard API actions & 1456 & Stored actions plus eight resets \\
++\texttt{wa30} publication ledger & 1458 & Full nine-level history joining early clean promotions to later sidecar records \\
++\texttt{wa30} operational post-base total & 1243 & Current resume checkpoint's post-base records only \\
++\texttt{ls20} publication ledger & 362 & Full seven-level history and root total \\
++\bottomrule
++\end{tabularx}
++\caption{Distinct score and accounting quantities. The two \texttt{wa30} values are
++both valid under their named scopes and must not be presented as one canonical field.}
++\label{tab:numerical-reconciliation}
++\end{table}
+ 
+ \section{Empirical Results}
+ The reported endpoints are reproduced from promoted checkpoints and action paths; the
+ intermediate interpretations below come from the corresponding source snapshots and
+-debrief records. The closed Competition-Mode scorecard reports 17.136507936507936\%
+-over all 25 public games: 37/183 levels in 1456 API actions, including one reset for
+-each of the eight attempted games. This official score measures endpoint replay
+-coverage, not the unmetered clone-enabled interactions used during discovery.
++debrief records. Two score quantities must be kept distinct. The replay-only Competition-
++Mode scorecard reports an official all-game score of
++$17.136507936507936\%$ over all 25 public games. The raw level fraction is
++$37/183=20.2186\%$. The stored paths contain 1448 actions; the scorecard used 1456 API
++actions after adding one reset for each of the eight attempted games. The official score
++measures endpoint replay coverage, not the larger clone-enabled interaction and model-
++inference cost of discovery.
+ 
+ \begin{table}[H]
+ \centering
+@@ -858,8 +1161,12 @@
+ were capped by campaign design, and preserved continuations terminate by interruption
+ or exhausted credits rather than a diagnosed architectural obstruction. Additional
+ compute is therefore the immediate unspent variable in the artifact record. The
+-stronger proposition that compute alone would extend every game remains a scaling
+-hypothesis, because no controlled resource curve was measured.
++compute-completeness theorem in Section~\ref{sec:compute} supplies the algorithmic
++statement behind this reading: whenever a finite replay-valid continuation exists in
++the proposal language and the search schedule is fair, continuing search finds it in
++finite enumerative time, or almost surely under a stagewise lower-bounded full-support proposer. The
++unmeasured quantity is the practical rate---the distribution of the waiting time---not
++the existence of the continuation under those conditions.
+ 
+ \begin{figure}[t]
+ \centering
+@@ -1051,8 +1358,10 @@
+ a static library count.
+ 
+ GKM remains the closest architectural fit to the present Kolmogorov--Schmidhuber
+-selection thesis because it attempts incumbent-leg execution before invention and
+-integrates marginal description cost into admission. Its cumulative winning source
++selection thesis because it attempts incumbent-leg execution before invention, requires
++strict replay progress for promotion, and exposes marginal description cost as the
++free-energy coordinate governing candidate comparison, debrief, and the forward
++selection program. Its cumulative winning source
+ still expands at every exact adjacent transition. OPINE is a genuine counterexample to
+ the stronger exclusivity claim: it has four direct literal engine-reuse wins and two
+ sharp coupled drops. baseline1 has no such winning-entry-point witness in the exact set,
+@@ -1069,133 +1378,137 @@
+ They preserve source and normalized-AST measures separately, record winning-policy
+ provenance, and never substitute an interim revision for a solve checkpoint.
+ 
+-\section{Discussion}\label{sec:discussion}
+-\subsection{Observed properties of solver growth}
+-The central result is a solver-growth approach with observed structural behavior, not
+-an auditing method with a solver attached. Across the promoted histories, the agent
+-acquires executable structure when incumbent routines fail, reuses named routines when
+-their mechanics recur, and sometimes pays sharply lower conditional cost. The exact
+-winning-checkpoint audit identifies nine direct unchanged-leg transitions. Two are
+-sharp: \texttt{g50t} level~4 calls \texttt{solve\_unlock\_macro} as $M_L$ falls from
+-2238 to 168, and \texttt{ls20} level~7 calls \texttt{execute\_path} as $M_L$ falls
+-from 682 to 222. The other two sharp GKM drops lack a direct unchanged-leg call and are
+-not counted as reuse. This separation prevents a low scalar from turning into a
+-transfer claim by inspection alone.
+-
+-The artifacts are what make those properties scientific claims rather than a narrative
+-about agent behavior. They record where executable structure resides, which later
+-players invoke it, and which promotions pass replay. The \texttt{wa30} level-9 history
+-adds a separate distinction: behavioral replay validates a literal plan before the
+-debrief identifies a reusable transport factorization. The refactor is structurally
+-meaningful even though it is not shorter under the implemented source proxy.
+-
+-\subsection{Colimits, cofibrations, and replay-equivalent refactoring}
+-The three categorical notions answer different audit questions. The colimit $p_k$
+-records the least compatible union of observed behaviors. The cofibration filtration
+-records how that union was reached, and the pushout property asks whether a previously
+-admitted component can be attached in a new compatible context without changing its old
+-actions. Replay equivalence compares alternative program descriptions after behavioral
+-coverage has been held fixed.
+-
+-The exact \texttt{ls20} transitions illustrate attachment-certified cofibrations.
+-At level~4 the player directly calls the unchanged
+-\texttt{detect\_noise\_mask} and \texttt{solve\_by\_search} legs and passes replay;
+-at level~7 it directly calls unchanged \texttt{execute\_path} while the conditional
+-AST marginal falls by 67.4\%. At the policy level, each new level behavior extends the
+-old trace. At the source level, the unchanged call target plus new binding supplies the
+-certificate that the extension is reuse rather than an unobserved same-size rewrite.
+-The relevant empirical pushout is only asserted on replayed states: the shared search
+-behavior is the overlap, the incumbent solver and new level binding are the two arms,
+-and the promoted player is their tested cocone.
+-
+-The \texttt{wa30} level-9 debrief illustrates the other operation. Before refactoring,
+-a literal suffix describes a policy only on one verified trace. The parameterized
+-\texttt{ferry\_each} leg describes repeated grab--carry--release behavior through a
+-shared interface. Because both versions replay the admitted trace, they are related by
+-$\simeq_T$ as in Fig.~\ref{fig:replay-equivalent-refactor}; this is a change of
+-description, not an additional behavioral cofibration. In this instance the implemented
+-description rises from 1250 to 1334, so the refactor is not reported as an empirical
+-structure-function drop. It instead demonstrates a replay-equivalent change of
+-factorization. A future shorter representative would lower the structure function at
+-fixed fit; the historical ledger would still retain its earlier construction price.
+-
+-This distinction explains why cofibrations add content beyond simple colimits. A thin
+-reuse extension, a large mechanic-specific extension, and a behavior-preserving
+-re-description may have the same final colimit shape. Their arrows differ: the first two
+-attach different relative behavior and source costs, while the third stays within a
+-replay-equivalence class. The filtration is therefore the provenance-bearing object;
+-the colimit is only its extensional endpoint.
+-
+-The ledger deliberately charges additions rather than estimating semantic novelty from
+-model activations or prose. This gives it a stable audit surface. A reviewer can locate
+-the exact source introduced at a transition, decide whether the claimed abstraction is
+-present, and run the composite. The price is representation dependence: a Python source
+-measure is not an invariant of behavior. Equation~\eqref{eq:structure-function} makes
+-the correct response explicit: compare multiple descriptions that attain the same
+-verified threshold. The present repository supplies the first such points, including
+-literal and refactored variants; a broader structure-function sweep is a natural next
+-experiment.
+-
+-\subsection{Artifacts as the evidence surface}
+-For a self-revising coding agent, a final source file omits the central scientific
+-object: the sequence of proposals, validations, promotions, and refactorings. The GitHub repository retains this sequence at three resolutions. Checkpoints provide machine-
+-readable behavioral and complexity records; Git promotions provide clean chronological
+-states; WIP snapshots show how recovered paths became admitted programs and later
+-abstractions. The approach is the contribution; these executable transitions carry its
+-evidential weight and make its reuse, acquisition, and marginal-complexity claims
+-auditable.
+-
+-This changes what replication means. Exact regeneration of stochastic coding-agent
+-transcripts is useful for cost studies but unnecessary for testing the promoted claims.
+-An independent implementation can replay the paths, recompute source deltas, and inspect
+-whether the named legs factor the stated behaviors. It can then substitute a different
+-proposer or complexity code while preserving the artifact protocol. The approach is thus
+-separable from the particular model that generated the current repository.
+-
+-\subsection{Scope and validity}
+-The claims are deliberately artifact-scoped: eight promoted replay endpoints, two
+-complete per-level histories, and solved-checkpoint audits of three comparator
+-architectures. They are
+-falsifiable by the repository procedures above. Four validity limits remain. First,
+-$d(\cdot)$ is representation-dependent and ignores some retained and all generation
+-costs; same-size replacement can be uncharged. Second, deterministic path replay
+-establishes the endpoint but not policy robustness, and reuse labels depend on source
+-inspection in addition to the ledger. Third, the taint scanner recognizes specified
+-access patterns rather than proving noninterference. Fourth, game selection, proposer
+-versions, discovery budgets, and stopping depths were not controlled across repeated
+-runs. The closed scorecard is therefore a public endpoint result, not a success-rate
+-estimate or a compute-matched cross-system ranking. The comparator description proxies
+-support within-archive growth profiles, not numerical comparisons with our source
+-units. Finally, the cofibration structure is proved only after restricting to a finite
+-compatible trace policy $T$; it does not establish global compatibility, unseen-state
+-coverage, or a homotopy theory of arbitrary solver programs.
+-
+-These limits do not convert the partial endpoints into observed solver failures. The
+-campaign stopped at imposed resource boundaries, and its continuations preserve
+-interrupted or credit-exhausted work rather than an architectural impossibility result.
+-The defensible inference is that the reported frontier is compute-limited; whether its
+-scaling remains favorable under substantially more compute is unmeasured.
++
++\section{Discussion}
++\label{sec:discussion}
++\subsection{What the artifacts establish}
++The campaign demonstrates the intended solver-growth dynamics. New mechanics enter as
++new executable cells, recurring mechanics can be reached through thin attaching maps,
++and some later wins have sharply smaller conditional source novelty. The exact winning-
++checkpoint audit identifies nine GKM transitions whose players directly call unchanged
++leg definitions. Two also exhibit sharp conditional-AST contractions:
++\texttt{g50t} level~4 calls \texttt{solve\_unlock\_macro} while the marginal falls
++from 2238 to 168 compressed bytes, and \texttt{ls20} level~7 calls
++\texttt{execute\_path} while it falls from 682 to 222. These are the empirical form of
++Eq.~\eqref{eq:cone-marginal}: the old cell remains in the colimit and the new promotion
++pays mainly for the binding.
++
++The complete \texttt{wa30} and \texttt{ls20} histories occupy different regions of the
++structure function. \texttt{ls20} contains cheap rebindings around a stable search and
++path-execution library, punctuated by a state-representation change when display noise
++invalidates raw-frame equality. \texttt{wa30} continues to acquire logistics,
++neutralization, pacing, and transport structure through late levels. Its level-9 debrief
++replaces a literal suffix by a ferry factorization; because the chosen source coordinate
++increases, this is a semantic abstraction without a measured compression gain. The
++free-energy framework permits exactly this distinction: factorization, retained code
++length, and historical construction action are different observables.
++
++\subsection{Why the categorical language is load-bearing}
++A Boolean inclusion lattice of observed traces cannot express what the LLM contributes.
++The proposer does not merely select a larger set of state--action pairs. It invents an
++object $B_k$, chooses a boundary $A_k$, supplies a cofibration $A_k\hookrightarrow B_k$,
++and constructs an attaching map into the incumbent. Those morphisms determine whether a
++shared routine can be rebound, whether two components agree on an overlap, and whether
++the resulting player factors through the existing library. The universal property of
++the pushout then states what it means for the composed solver to be the least gluing of
++those data.
++
++Likewise, the pointwise Kan-extension view separates two sources of generalization. The
++colimit performs the gluing; the comma-category morphisms encode the inductive bias. A
++failure to transfer often means that the repository lacks the right slot, predicate,
++scene relation, or connector morphism. The LLM's scientific role is to enrich that
++morphism vocabulary and propose the missing attachment. Replay is the empirical test of
++whether the proposed semantic triangles commute on the admitted histories.
++
++\subsection{The force of the compute claim}
++The resource records and the completeness theorem answer different questions. The
++records show that the reported partial campaigns ended at imposed caps, interruptions,
++or exhausted credits rather than at a preserved proof of impossibility. The theorem
++shows that, for any finite replay-valid continuation expressible in the proposal
++language, fair continued search reaches it. Since literal finite plans are expressible,
++every finitely solvable deterministic instance has such a continuation, and a finite
++suite of such instances is completed after finite enumerative computation. The title's
++``compute-bounded'' qualifier therefore does not retract the solving claim; it identifies
++the independent variable governing how far the monotone archive has advanced.
++
++What remains empirical is the rate. The probabilities $p_k$, the benefit of inherited
++legs, the effect of proposer strength, and the shape of $V_B$ require prospective budget
++curves. Recent ARC-AGI-3 ablations with stronger coding models and greater reasoning
++effort independently report substantial gains from compute and a verification treatment
++that solves the public set in the strongest tested setting~\cite{rodionov2026ablations}.
++That result is not a compute-matched comparison with GKM, but it reinforces the broader
++claim that model capability, search budget, and executable verification are first-order
++variables rather than incidental implementation details.
++
++\subsection{A forward program: curiosity, phase structure, and open-ended PowerPlay}
++The current ARC histories are a first finite section of a larger program. Four
++experiments follow directly from the theory.
++
++First, prospectively preserve multiple valid candidates at each depth and sweep
++$\lambda$. This estimates $C^*(r)$ instead of a single path and exposes the supported
++regimes of Eq.~\eqref{eq:model-dual}. Second, sample proposal populations around each
++$\lambda$ and track $\chi_C$; peaks predict transitions between literal plans, search
++procedures, world models, and reusable leg compositions. Third, allocate controlled
++proposal budgets to incumbents with and without inherited legs. The gap in the waiting-
++time distributions estimates the computational value of the colimit library. Fourth,
++replace the fixed level order by an archive-driven ecology that proposes probes and
++microtasks with high expected free-energy progress, implementing the curiosity signal in
++Eq.~\eqref{eq:curiosity-progress}.
++
++This program unifies the three historical ideas rather than placing them side by side.
++The G\"odel-machine gate decides which self-rewrite becomes real. PowerPlay determines
++that each rewrite must add a task or compress an old one without forgetting. Artificial
++curiosity determines which experiment is worth performing next. Kolmogorov free energy
++prices the structure, and inverse colimits state how the structure is assembled.
++
++\subsection{Validity and scope}
++The source coordinate is tied to a published representation, not invariant under all
++program encodings. This is expected in the computable-proxy theory and motivates coding
++sweeps rather than abandonment of complexity measurement. Deterministic path replay
++certifies the admitted finite behavior, not robustness under arbitrary perturbations.
++The taint detector blocks known private channels but is not a formal noninterference
++proof. Historical proposer compute was not logged uniformly, so the current artifacts
++cannot estimate the parameters in Eq.~\eqref{eq:completion-tail}. Finally, the semantic
++image of a syntax pushout is tested on finite replay suites; a global behavior functor
++need not preserve every colimit outside those suites.
++
++These boundaries locate the next experiments without reducing the paper to an artifact-
++existence statement. The contribution is a forward architecture with exact mathematical
++structure, an asymptotic compute theorem, and executable instances in which the predicted
++acquisition and reuse phenomena are visible.
+ 
+ \section{Conclusion}
+-We introduced a self-improving approach that grows replay-validated solver programs
+-through novelty acquisition, reuse, and refactoring. Its preserved histories exhibit
+-the intended properties: new mechanics produce charged executable extensions, while
+-recurring mechanics can invoke unchanged legs with sharp drops in conditional
+-complexity. Exact solved-checkpoint analysis supplies nine direct literal-leg reuse
+-wins and two sharp coupled examples; OPINE supplies two further sharp counterexamples
+-to the claim that every comparator level is solved wholly anew. Eight promoted
+-endpoints, including two complete games, establish the approach across distinct
+-mechanics under one game-agnostic harness. The incomplete campaign is resource-truncated
+-in the artifact record rather than terminated by a diagnosed architectural failure.
+-
+-Kolmogorov structure functions place verified solvers in a behavior--description plane;
+-categorical colimits represent compatible partial competence; and cofibrations retain
+-the ordered attachments that an endpoint colimit forgets. Replay equivalence separates
+-behavior-preserving refactoring from genuine description reduction. The primary
+-contribution is the solver-growth approach and the empirical evidence that it acquires
+-novelty while preserving reusable structure. Its repository is a consequential output:
+-it makes those claims replayable, inspectable, and falsifiable rather than asking a
+-reader to infer self-improvement from a final score.
++The G\"odel--Kolmogorov Machine is a compute-bounded self-improving solver in the direct
++lineage of G\"odel machines, PowerPlay, and artificial curiosity. Its generative step is
++categorical: an LLM proposes executable legs together with interfaces, cofibrations, and
++attaching morphisms. Its program step is an inverse colimit: the incumbent and an LLM-supplied cell are
++glued by a pushout along an LLM-supplied cofibration and attaching map. Strictly additive
++acquisitions form a sequential colimit, while debriefs are separated as replay-equivalent
++refactors. Its verification step is an inverse system of first-passage depth certificates
++that prevents capability forgetting without falsely requiring historical trace identity.
++Its selection step is the free-energy dual of a Kolmogorov structure function instantiated
++by a computable source coordinate.
++
++This combination supports a strong compute claim. A literal winning trace is a finite
++cell, reusable abstractions are shorter cells with richer transfer, and a fair enumerator
++or stagewise full-support proposer reaches any finite replay-valid attachment chain with enough
++compute. The practical problem is therefore to reshape the waiting-time distribution:
++use inherited colimits, free-energy parsimony, PowerPlay's archive, and curiosity-driven
++probes to find the right cell before brute force would.
++
++The released campaign supplies the first ARC-AGI-3 evidence for this program. Eight
++promoted endpoints replay on the replay-only Competition-Mode scorecard; \texttt{wa30} and \texttt{ls20} are
++complete; and exact source-level witnesses show unchanged legs participating in later
++wins with sharply reduced marginal description. The numerical record is now stated
++consistently: the official all-game score is $17.1365\%$, raw coverage is
++$37/183=20.2186\%$, the complete \texttt{wa30} publication ledger is 1458, and its
++operational post-base checkpoint total is 1243. These corrections strengthen rather than replace the central thesis. In the
++compute-indexed sense proved here, any finite deterministic ARC-AGI-3 suite with finite
++winning traces is solved by fair GKM search with literal-trace fallback; the released
++campaign is a finite-budget prefix of that construction. The practical scientific
++problem is to replace astronomical enumeration by reusable program growth, and the
++mathematics of that growth is the mathematics of structure functions, inverse colimits,
++cofibrations, and compute.
+ 
+ \bibliographystyle{plain}
+ \bibliography{references}
+

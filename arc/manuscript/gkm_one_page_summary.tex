@@ -1,5 +1,5 @@
-\documentclass[11pt]{article}
-\usepackage[margin=0.62in]{geometry}
+\documentclass[10pt]{article}
+\usepackage[margin=0.45in]{geometry}
 \usepackage[T1]{fontenc}
 \usepackage[utf8]{inputenc}
 \usepackage{lmodern}
@@ -11,24 +11,25 @@
 \usepackage{titlesec}
 
 \setlength{\parindent}{0pt}
-\setlength{\parskip}{3pt}
-\setlist[itemize]{leftmargin=1.2em,itemsep=1pt,topsep=2pt}
-\setlist[enumerate]{leftmargin=1.4em,itemsep=1pt,topsep=2pt}
-\titlespacing*{\section}{0pt}{6pt}{3pt}
-\titlespacing*{\subsection}{0pt}{4pt}{2pt}
+\setlength{\parskip}{1.5pt}
+\setlist[itemize]{leftmargin=1.2em,itemsep=0pt,topsep=1pt}
+\setlist[enumerate]{leftmargin=1.4em,itemsep=0pt,topsep=1pt}
+\titlespacing*{\section}{0pt}{3pt}{1pt}
+\titlespacing*{\subsection}{0pt}{2pt}{1pt}
 
 \titleformat{\section}{\large\bfseries}{\thesection}{0.5em}{}
 \titleformat{\subsection}{\normalsize\bfseries}{\thesubsection}{0.5em}{}
 
 \begin{document}
+\small
 
-{\Large\bfseries GKM: Auditable Self-Improvement for ARC-AGI-3}\hfill {\normalsize Alexander Kolpakov, July 2026}
+{\Large\bfseries The G\"odel--Kolmogorov Machine: Verifier-Gated Self-Improving Solver Growth for ARC-AGI-3}\hfill {\normalsize Alexander Kolpakov, July 2026}
 
 {\small Code and artifacts: \url{https://github.com/sashakolpakov/gkm} \;·\;
 Docs: \url{https://sashakolpakov.github.io/gkm/} \;·\;
 Manuscript: \texttt{arc/manuscript/arc\_agi3.tex}}
 
-\textbf{Claim.} GKM is a verifier-driven program-growth loop for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and retained source states make that growth auditable.
+\textbf{Claim.} The G\"odel--Kolmogorov Machine is a verifier-driven program-growth approach for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and the admission loop tries incumbent-leg composition before new code. Retained source states make the resulting acquisition and reuse claims auditable.
 
 \section*{Setting and objective}
 The local harness exposes \texttt{step(action) -> frame}, \texttt{levels\_completed}, and \texttt{clone()} for lookahead. Clone-enabled exploration is stronger than the official reset/step interface and is not included in replay action totals. A candidate program is promoted only if fresh replay validates more completed levels under
@@ -38,7 +39,7 @@ F(\pi)=R(\pi)+\lambda C(\pi), \qquad R(\pi)=-\operatorname{levels\_completed}(\p
 where historical $C$ is positive net retained-size growth in the library and player files. Unchanged legs add no charge, but additions and deletions within a file can cancel, so source inspection is required to attribute a low value to reuse.
 
 \section*{What is optimized}
-Executable-world-model agents try to build a predictive simulator, verify it, and plan through it. GKM treats a world model as only one possible useful structure. The optimized object is broader: solver-program growth. A promoted artifact may be a probe, perception routine, BFS, planner, reusable leg, literal replay path, or world model. The admission rule is operational: improve replay-verified reward and pay the marginal description-length cost.
+Executable-world-model agents try to build a predictive simulator, verify it, and plan through it. The G\"odel--Kolmogorov Machine treats a world model as only one possible useful structure. The optimized object is broader: solver-program growth. A promoted artifact may be a probe, perception routine, BFS, planner, reusable leg, literal replay path, or world model. The G\"odel--Kolmogorov Machine is therefore closer to a G\"odel/PowerPlay-style self-improving program with a description-length ledger than to a pure model-building agent. We use \textbf{GKM} below only after this full introduction.
 
 \section*{Current promoted artifacts}
 \begin{center}
@@ -50,20 +51,17 @@ Executable-world-model agents try to build a predictive simulator, verify it, an
 
 The level-9 WIP trail is the cleanest audit example. A recovered verified suffix was decoded into five repeated grab--carry--release operations and refactored into \texttt{grab\_carry\_release} and \texttt{ferry\_each}. The promoted player is therefore compact composition rather than an opaque replay; the literal suffix is charged, then the repeated structure is compressed into reusable code.
 
-\textbf{\texttt{ls20}.} The complete net-growth trace is sawtoothed. The two troughs coincide with thin players that call unchanged search routines and pass fresh replay. Larger values retain more source or literal plans. The attribution comes from the code and replay, not from the scalar alone.
+\textbf{\texttt{ls20}.} The harness-native acquisition ledger is sawtoothed. The stricter winning-checkpoint audit independently finds a sharp conditional-AST drop at L7, from 682 to 222 compressed novelty bytes, while the winning player directly calls unchanged \texttt{execute\_path}. Cumulative executable source does not shrink; the attribution comes from marginal and literal-call evidence together.
 
 \section*{Audit trail}
 GKM is meant to leave evidence, not just outputs. Each promoted step is backed by fresh replay, preserved WIP snapshots, a marginal-complexity charge, and a distinction between literal action recovery and reusable refactor. This makes the artifact reviewable: an external evaluator can inspect which information entered through interaction, which code was introduced, what was charged as a literal, and what later became a reusable leg.
 
 \section*{Comparison}
-The ARC-AGI-3 benchmark paper reports public-environment harnesses solving \texttt{ls20}, \texttt{ft09}, and \texttt{vc33}; the paper source available to us does not mention \texttt{wa30}. A graph-exploration baseline evaluates \texttt{ls20} but not \texttt{wa30}; at the 4,000-interaction comparison point it solves 2 levels on \texttt{ls20} and reports that levels 3+ become intractable for exhaustive exploration. The closest comparator is the executable-world-model baseline: it reports \texttt{ls20} 7/7 with both GPT-5.4 and GPT-5.5, and \texttt{wa30} 7/9 with GPT-5.4 versus 4/9 with GPT-5.5. The competitive point is therefore \texttt{wa30} 9/9 replay-validated, plus the audit ledger behind the promoted solver.
+The exact winning-checkpoint test couples conditional AST novelty to direct calls of unchanged definitions. GKM has ten direct leg-reuse wins; \texttt{g50t} L4 and \texttt{ls20} L7 also have half-or-more marginal drops. The new \texttt{ft09} L6 winner directly calls unchanged \texttt{solve\_coupled\_key\_board}, although its conditional AST decline is not sharp. OPINE has four direct engine-reuse wins, with sharp coupled drops at \texttt{lp85} L4 and \texttt{tu93} L3, so it is not solving every level wholly anew. baseline1 has four exact retained-source contractions, but all 18 exact adjacent winning commands are fresh literal action programs and none invokes retained world-model code. Retrodict releases curated memory rather than executable winning checkpoints.
 
 \section*{Next evaluation and collaboration request}
-The next step is a collaboration-grade evaluation: reproduce on more public games, run a compute-matched comparison against graph exploration and executable world models, and harden the leakage/audit protocol. We are looking for collaborators who can help with ARC-AGI-3 evaluation protocol, compute/model access, independent artifact review, private-set or organizer-facing evaluation, and funding for a systematic benchmark run.
+The eight current endpoints span 44/183 locally replayed levels and 1692 stored actions; the published scorecard predates seven clears. The next step is a compute-matched comparison against graph exploration and executable world models, plus independent artifact review and organizer-facing evaluation.
 
-\textbf{Bottom line.} GKM reframes local solver development as an artifact audit. Replay establishes endpoint behavior; checkpoint JSON and retained source establish exactly which growth records are available.
-
-\vspace{2pt}
-{\footnotesize \textbf{Context.} Related ideas include ARC/ARC-AGI, G\"odel machines, PowerPlay, minimum description length, Kolmogorov complexity, and universal AI.}
+\textbf{Bottom line.} GKM treats local solver development as verifier-gated acquisition of reusable program structure. Replay establishes endpoint behavior; checkpoint JSON and retained source expose when novelty was admitted, when prior legs sufficed, and how the solver was refactored.
 
 \end{document}

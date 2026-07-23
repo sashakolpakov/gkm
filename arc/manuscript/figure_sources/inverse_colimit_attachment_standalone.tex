@@ -1,0 +1,13 @@
+\documentclass[border=8pt]{standalone}
+\usepackage{amsmath,amssymb}
+\usepackage{tikz-cd}
+
+\begin{document}
+\begin{tikzcd}[column sep=huge,row sep=large]
+A_k \arrow[r,hook,"i_k"] \arrow[d,"a_k"']
+  & B_k \arrow[d,"b_k"] \\
+X_{k-1} \arrow[r,hook,"j_k"']
+  & P_k=X_{k-1}\sqcup_{A_k}B_k
+\end{tikzcd}
+\end{document}
+

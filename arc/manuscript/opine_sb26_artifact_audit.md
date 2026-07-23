@@ -1,73 +1,54 @@
-# OPINE-World `sb26` Artifact Audit
+# OPINE-World `sb26` Solved-Checkpoint Audit
 
-This is a first artifact-level audit, not a claim about all OPINE-World games.
-The published archive contains 20 retained synthesis snapshots for `sb26`.
-Snapshot ordering and level transitions are taken from its `run_log.txt`.
+This note supersedes the earlier synthesis-revision table. Only the last
+executable engine present *before* each positive-reward action is measured.
+Post-win synthesis is not credited with solving the preceding level.
 
-## What The Artifact Shows
+## Boundary reconstruction
 
-`sb26` is not a clean example of an entirely fresh solver per level. Its final
-`game_engine.py` implements one frame-derived, recursive splice-traversal rule
-which its own comments say covers reward-confirmed levels 1--7. That is real
-within-game structural reuse and must be acknowledged.
+The released `run_log.txt` contains seven positive-reward events. Their
+pre-solve engines are runs 2, 6, 9, 12, 14, 17, and 18:
 
-It is also not a complete learned world model over level transitions. The final
-model identifies the current level by matching against `l<N>_initial.pkl` files;
-on RESET and a solved ACTION5, it returns the corresponding cached entry frame.
-All eight encountered level-entry frames are retained as 8,464-byte pickle
-artifacts. Those bytes are level-specific description cost and cannot be treated
-as free transfer.
+| Solved level | Engine run | Engine zlib bytes | Engine + runtime-data zlib bytes | Winning-plan source |
+| ---: | ---: | ---: | ---: | --- |
+| 1 | 2 | 3,329 | 3,572 | analyzer |
+| 2 | 6 | 7,216 | 7,685 | analyzer |
+| 3 | 9 | 7,743 | 8,436 | analyzer |
+| 4 | 12 | 8,015 | 8,880 | analyzer |
+| 5 | 14 | 9,017 | 10,072 | analyzer |
+| 6 | 17 | 9,827 | 11,124 | analyzer |
+| 7 | 18 | 10,253 | 11,765 | analyzer |
 
-The model itself states that its L8 planner returns `None` pending an observed
-reward board. Thus exact replay on levels 1--7 does not establish predictive
-generalization to the next unseen level.
+The summary claims eight rewards after a repair from another engine log, but
+the released main run log contains no positive-reward event for level 8. No L8
+solve checkpoint is imputed.
 
-## Marginal Code Ledger
+## Retained structure versus winning reuse
 
-The source-token counts exclude comments, whitespace, and Python formatting.
-Additions/removals are token diffs between consecutive synthesis snapshots.
-They are an implementation-level MDL proxy, not machine-independent Kolmogorov
-complexity.
+The later `game_engine.py` contains a recursive splice-traversal rule rather
+than one independent transition table per level. That is literal structural
+retention in the engine. It is not a winning reuse witness: none of the seven
+logged positive-reward action batches came from the synthesized planner.
 
-| Synthesis run | Current level after/at run | Model tokens | Added | Removed |
-| --- | --- | ---: | ---: | ---: |
-| 1 | L1 | 1,760 | 1,760 | 0 |
-| 2 | L1 | 1,796 | 58 | 22 |
-| 3 | L2 | 2,990 | 1,714 | 520 |
-| 4 | L2 | 3,012 | 42 | 20 |
-| 5 | L2 | 3,460 | 452 | 4 |
-| 6 | L2 | 3,768 | 359 | 51 |
-| 7 | L3 | 3,772 | 5 | 1 |
-| 8 | L3 | 3,867 | 119 | 24 |
-| 9--10 | L3--L4 | 3,867 | 0 | 0 |
-| 11 | L4 | 4,315 | 544 | 96 |
-| 12--13 | L4--L5 | 3,976 | 13 | 352 |
-| 14--15 | L5--L6 | 4,093 | 156 | 39 |
-| 16 | L6 | 4,366 | 608 | 335 |
-| 17 | L6 | 4,528 | 182 | 20 |
-| 18 | L7 | 4,528 | 2 | 2 |
-| 19--20 | L8 | 4,643 | 176 | 61 |
+The conditional AST marginal has sharp drops at L3 (7814 to 2416 compressed
+novelty bytes) and L7 (4461 to 2142). Both winning policies came from the
+transient analyzer. The released artifacts therefore contain no direct call
+from a winning executable entry point to the retained splice routine.
 
-The retained code grows from 1,760 to 4,643 tokens (2.64x). A sawtooth is not
-reported by OPINE and cannot be inferred from final solved count. There are
-zero-cost transitions at L3->L4 and L4->L5, but they are intermixed with large
-within-level repair costs; the artifact therefore does not yet demonstrate a
-general monotone transfer curve or a compression ledger.
+The artifact also retains one `l<N>_initial.pkl` entry-state file per observed
+level. These files are legitimate runtime conditioning data, but they belong in
+the executable description whenever the engine loads them.
 
-## Required Controls
+## What is not established
 
-1. Charge every source addition, cache byte, planner patch, and LLM synthesis
-   call to the level that first requires it.
-2. Test the pre-level model on the next level's transitions before allowing any
-   new cache, transition, or planner revision. Report both transition accuracy
-   and planning success.
-3. Plot per-level marginal code/data cost beside exploratory actions and model
-   rewrites. Genuine reuse should reduce these measures after a mechanic is
-   acquired.
-4. Separate in-level dynamics from level-entry/reset dynamics. A cached frame
-   is valid replay data, but it is not a predicted transition.
+Consequently:
 
-Until these controls are supplied across the public archive, the appropriate
-claim is replay-verified, cumulative program synthesis with some demonstrated
-within-game mechanism reuse. Calling it a general world model goes beyond the
-evidence in this artifact.
+- the retained world model’s recursive structure is observable;
+- the complexity of the complete winning policy is not, because the transient
+  analyzer policy is absent from `game_engine.py`; and
+- the monotonically growing runtime bundle is not a cumulative solver
+  contraction.
+
+The hard result for `sb26` is therefore **no executable literal-reuse witness**.
+OPINE’s positive executable reuse cases occur instead at `lp85` L3/L4/L6 and
+`tu93` L3.
