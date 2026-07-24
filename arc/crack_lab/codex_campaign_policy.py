@@ -74,7 +74,7 @@ def _command(row: dict[str, Any], effort: str, *, reserve: int,
         f"--codex-max-campaign-runs={DEFAULT_MAX_RUNS}",
         f"--codex-max-campaign-tokens={DEFAULT_MAX_TOKENS}",
         "--transient-retries=0",
-        f"--tag=cheap_{effort}_screen",
+        f"--tag=budgeted_{effort}_screen",
     ]
     if row["incumbent_kind"] == "cold_start" and not row.get("warm_wip_available"):
         args.append("--fresh")

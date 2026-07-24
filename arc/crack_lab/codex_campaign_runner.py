@@ -44,9 +44,9 @@ def validate_item(
     if "--proposer=codex" not in argv or "--model=gpt-5.6-sol" not in argv:
         raise CampaignPlanError("plan item must pin the isolated Codex proposer and model")
     if "--debrief-policy=never" not in argv:
-        raise CampaignPlanError("cheap campaign items must disable paid debriefs")
+        raise CampaignPlanError("budgeted campaign items must disable paid debriefs")
     if "--transient-retries=0" not in argv:
-        raise CampaignPlanError("cheap campaign items must admit at most one proposal turn")
+        raise CampaignPlanError("budgeted campaign items must admit at most one proposal turn")
     if not any(arg.startswith("--codex-weekly-reserve=") for arg in argv):
         raise CampaignPlanError("plan item has no weekly reserve")
     if not any(arg.startswith("--codex-weekly-headroom=") for arg in argv):

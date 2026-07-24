@@ -1,4 +1,4 @@
-# Cost-aware GPT-5.6 solver campaign
+# Budgeted GPT-5.6 solver campaign
 
 This is the operating record for extending the Gödel–Kolmogorov Machine with
 `gpt-5.6-sol` while protecting the shared seven-day Codex allowance. Displayed

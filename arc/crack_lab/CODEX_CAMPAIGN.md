@@ -17,7 +17,7 @@ price meter for ChatGPT-plan use.
    agent-authored private-runtime introspection, or external-network use invalidates
    the attempt before verification or promotion.
 5. Admit one level and one paid proposal per transaction. Debrief is a distinct paid
-   turn; the cheap campaign disables it.
+   turn; the budgeted campaign disables it.
 6. Promote only after fresh replay validates the complete path to the new depth.
    Failed and interrupted work remains WIP and never becomes a solve checkpoint.
 7. Attempt incumbent legs before invention. Generate `solver_index.md` so the agent
@@ -80,7 +80,7 @@ high. Timed-out full-budget turns remain valid rate observations.
 The wall limit itself is no longer a static per-phase constant. It is sized from each
 arm's replay-validated solve-time distribution so a historically successful solve is
 never truncated (`recommend_minutes`; see the adaptive wall-time section of
-`CHEAP_CAMPAIGN.md`). The dominant effect is raising bounded high escalation from eight
+`BUDGETED_CAMPAIGN.md`). The dominant effect is raising bounded high escalation from eight
 to fourteen minutes, because high continuation solves were observed running to twelve;
 an under-sized cap turns a cheap solve into a total-loss timeout.
 
@@ -106,7 +106,7 @@ agent progress messages and a compact probe index; bulky command output is exclu
 - Promoted artifacts: `arc/crack_lab/agent_solutions/*_legs/`
 - Exact checkpoint audit: `arc/audit_results/gkm-solved-checkpoints.json`
 - Marginal/reuse audit: `arc/audit_results/marginal-literal-reuse.json`
-- Operating strategy: `arc/crack_lab/CHEAP_CAMPAIGN.md`
+- Operating strategy: `arc/crack_lab/BUDGETED_CAMPAIGN.md`
 
 Local status is non-metered:
 

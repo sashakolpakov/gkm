@@ -110,9 +110,9 @@
         "--codex-max-campaign-runs=60",
         "--codex-max-campaign-tokens=32000000",
         "--transient-retries=0",
-        "--tag=cheap_medium_screen"
+        "--tag=budgeted_medium_screen"
       ],
-      "command": "python3 -u arc/crack_lab/gkm_legs.py --game=re86 --max-level=5 --proposer=codex --model=gpt-5.6-sol --minutes=9 --codex-effort=medium --codex-debrief-effort=medium --debrief-policy=never --codex-weekly-reserve=20 --codex-weekly-headroom=7 --codex-max-campaign-runs=60 --codex-max-campaign-tokens=32000000 --transient-retries=0 --tag=cheap_medium_screen",
+      "command": "python3 -u arc/crack_lab/gkm_legs.py --game=re86 --max-level=5 --proposer=codex --model=gpt-5.6-sol --minutes=9 --codex-effort=medium --codex-debrief-effort=medium --debrief-policy=never --codex-weekly-reserve=20 --codex-weekly-headroom=7 --codex-max-campaign-runs=60 --codex-max-campaign-tokens=32000000 --transient-retries=0 --tag=budgeted_medium_screen",
       "effort": "medium",
       "experiment_role": "fresh_frontier_medium_first",
       "external_evidence": {

@@ -40,7 +40,7 @@ Cold L1 acquisition cost 4 displayed allowance points for 3 medium clears and 18
 high clear. Medium produced all four new direct literal-reuse wins. The next-window
 policy therefore starts each fresh continuation on medium and admits at most one
 bounded high rescue after a clean failure. See
-[`crack_lab/CHEAP_CAMPAIGN.md`](crack_lab/CHEAP_CAMPAIGN.md).
+[`crack_lab/BUDGETED_CAMPAIGN.md`](crack_lab/BUDGETED_CAMPAIGN.md).
 Retrospectively, high rescued one of six medium-failed targets at a total charge of
 12 displayed points, which supports using it as a fallback rather than a default.
 
