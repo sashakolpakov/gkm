@@ -39,6 +39,7 @@ from typing import Callable, List, Optional
 
 import gkm_arena as A
 import codex_usage_guard as CUG
+import claude_usage_guard as CLG
 from gkm_solve_agent import discovered_context
 
 # Working-directory root for per-game leg workspaces. Defaults to a repo-relative
@@ -1666,29 +1667,98 @@ def _transient_proposer_failure(ws: str, code_changed: bool = True) -> bool:
     return not code_changed  # said little AND wrote nothing: no real attempt was made
 
 
-def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
+                  guard: bool = False,
+                  ledger_path: Optional[str] = None,
+                  window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
+                  max_turns: Optional[int] = None,
+                  max_wall_minutes: Optional[float] = None,
+                  max_output_tokens: Optional[int] = None,
+                  max_cost_usd: Optional[float] = None,
+                  run_label: Optional[str] = None,
+                  game: Optional[str] = None,
+                  target_level: Optional[int] = None) -> None:
+    """Run one headless Claude Code proposer turn.
+
+    Unlike Codex, the Claude subscription exposes no readable remaining allowance,
+    so ``guard=True`` enforces a LOCAL budget only: a serialized ledger of observed
+    per-turn cost (wall time plus tokens/dollars from ``--output-format json``) with
+    cumulative per-window caps.  There is no live provider read; reactive credit-out
+    still aborts the sequence.  ``guard=False`` keeps the original unmetered behavior.
+    """
     labdir = os.path.dirname(os.path.abspath(__file__))
+    # JSON output lets us meter observed usage; we still persist the human-readable
+    # result text (not the JSON envelope) so the taint gate and path-artifact
+    # extraction keep operating on plain text exactly as before.
     cmd = ["claude", "-p", task, "--allowedTools", "Bash", "Read", "Write", "Edit",
-           "--dangerously-skip-permissions", "--add-dir", labdir, "--output-format", "text"]
+           "--dangerously-skip-permissions", "--add-dir", labdir, "--output-format", "json"]
     if model:
         cmd += ["--model", model]
-    out = err = ""
+
+    ledger = (ledger_path or os.fspath(CLG.DEFAULT_LEDGER)) if guard else None
+    caps = CLG.WindowCaps(
+        max_turns=max_turns, max_output_tokens=max_output_tokens,
+        max_wall_minutes=max_wall_minutes, max_cost_usd=max_cost_usd,
+    ) if guard else None
+    lock = None
+    if guard:
+        try:
+            lock = CLG.campaign_lock(ledger)
+            lock.__enter__()
+            CLG.preflight(caps=caps, window_hours=window_hours, ledger_path=ledger)
+        except CLG.ClaudeUsageGuardError as exc:
+            if lock is not None:
+                lock.__exit__(None, None, None)
+            raise CreditOut(f"Claude campaign guard stopped the run: {exc}") from exc
+
     try:
-        r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True, timeout=minutes * 60)
-        out, err = r.stdout or "", r.stderr or ""
-    except subprocess.TimeoutExpired as ex:
-        # Out of the per-level time budget. Whatever the agent already wrote to the
-        # workspace (legs.py/players.py) persists; let the loop verify that partial
-        # work instead of crashing the whole run.
-        out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
-        print(f"[proposer hit {minutes}min budget; verifying partial work]")
-    # SAFEGUARD: persist the proposer's own output so a credit-out / crash is visible
-    # (previously discarded). And if it reports no-credits, abort the whole sequence.
-    with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
-        fh.write(out + ("\n--- STDERR ---\n" + err if err else ""))
-    blob = (out + " " + err).lower()
-    if any(m in blob for m in _CREDIT_OUT_MARKERS):
-        raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
+        started = time.monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        out = err = ""
+        timed_out = False
+        try:
+            r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True,
+                               timeout=minutes * 60)
+            out, err = r.stdout or "", r.stderr or ""
+        except subprocess.TimeoutExpired as ex:
+            # Out of the per-level time budget. Whatever the agent already wrote to
+            # the workspace (legs.py/players.py) persists; verify that partial work
+            # instead of crashing the whole run.
+            timed_out = True
+            out = (ex.stdout or b"").decode("utf-8", "replace") if isinstance(ex.stdout, bytes) else (ex.stdout or "")
+            err = (ex.stderr or b"").decode("utf-8", "replace") if isinstance(ex.stderr, bytes) else (ex.stderr or "")
+            print(f"[proposer hit {minutes}min budget; verifying partial work]")
+        duration = round(time.monotonic() - started, 3)
+        usage = CLG.parse_claude_json_usage(out)
+        with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+            fh.write(usage["result_text"] + ("\n--- STDERR ---\n" + err if err else ""))
+        blob = (out + " " + err).lower()
+        credit_out = any(m in blob for m in _CREDIT_OUT_MARKERS)
+        if guard:
+            CLG.append_ledger({
+                "event": "claude_exec",
+                "started_at": started_at,
+                "duration_seconds": duration,
+                "run_label": run_label,
+                "workspace": os.path.basename(os.path.abspath(ws)),
+                "proposer": "claude",
+                "model": model or "default",
+                "minutes_limit": minutes,
+                "timed_out": timed_out,
+                "credit_out": credit_out,
+                "game": game,
+                "target_level": target_level,
+                "input_tokens": usage["input_tokens"],
+                "output_tokens": usage["output_tokens"],
+                "total_cost_usd": usage["total_cost_usd"],
+                "num_turns": usage["num_turns"],
+                "usage_reported": usage["usage_reported"],
+            }, ledger)
+        if credit_out:
+            raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
+    finally:
+        if lock is not None:
+            lock.__exit__(None, None, None)
 
 
 def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
@@ -2083,6 +2153,11 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 codex_max_campaign_runs: int = 12,
                 transient_retries: int = _TRANSIENT_RETRIES,
                 codex_ledger: Optional[str] = None,
+                claude_guard: bool = False,
+                claude_ledger: Optional[str] = None,
+                claude_window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
+                claude_max_turns: Optional[int] = None,
+                claude_max_wall_minutes: Optional[float] = None,
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
@@ -2142,6 +2217,22 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     ledger_path=codex_ledger,
                     run_label=f"{game}:L{k}:propose",
                 )
+        elif proposer == "claude" and claude_guard:
+            def propose_fn(w, k):
+                _agent(
+                    w,
+                    _propose_task(game, k, context, _defs(_read(legs_p))),
+                    model,
+                    minutes_per,
+                    guard=True,
+                    ledger_path=claude_ledger,
+                    window_hours=claude_window_hours,
+                    max_turns=claude_max_turns,
+                    max_wall_minutes=claude_max_wall_minutes,
+                    run_label=f"{game}:L{k}:propose",
+                    game=game,
+                    target_level=k,
+                )
         else:
             propose_fn = lambda w, k: _agent(
                 w,
@@ -2166,6 +2257,19 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     max_campaign_runs=codex_max_campaign_runs,
                     ledger_path=codex_ledger,
                     run_label=f"{game}:L{k}:debrief",
+                )
+        elif proposer == "claude" and claude_guard:
+            def debrief_fn(w, k):
+                _agent(
+                    w, _debrief_task(game, k), model, max(10, minutes_per // 2),
+                    guard=True,
+                    ledger_path=claude_ledger,
+                    window_hours=claude_window_hours,
+                    max_turns=claude_max_turns,
+                    max_wall_minutes=claude_max_wall_minutes,
+                    run_label=f"{game}:L{k}:debrief",
+                    game=game,
+                    target_level=k,
                 )
         else:
             debrief_fn = lambda w, k: _agent(
@@ -2434,6 +2538,8 @@ if __name__ == "__main__":
     codex_max_campaign_tokens, codex_max_campaign_runs = 2_000_000, 12
     transient_retries = _TRANSIENT_RETRIES
     codex_ledger = None
+    claude_guard, claude_ledger, claude_max_turns, claude_max_wall_minutes = False, None, None, None
+    claude_window_hours = CLG.DEFAULT_WINDOW_HOURS
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
@@ -2451,6 +2557,11 @@ if __name__ == "__main__":
         elif a.startswith("--codex-max-campaign-runs="): codex_max_campaign_runs = int(a.split("=", 1)[1])
         elif a.startswith("--transient-retries="): transient_retries = int(a.split("=", 1)[1])
         elif a.startswith("--codex-ledger="): codex_ledger = a.split("=", 1)[1]
+        elif a == "--claude-guard": claude_guard = True
+        elif a.startswith("--claude-ledger="): claude_ledger = a.split("=", 1)[1]
+        elif a.startswith("--claude-window-hours="): claude_window_hours = float(a.split("=", 1)[1])
+        elif a.startswith("--claude-max-turns="): claude_max_turns = int(a.split("=", 1)[1])
+        elif a.startswith("--claude-max-wall-minutes="): claude_max_wall_minutes = float(a.split("=", 1)[1])
         elif a == "--fresh": fresh = True
         elif a == "--no-wip-restore": restore_wip = False
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
@@ -2464,7 +2575,12 @@ if __name__ == "__main__":
                 codex_max_campaign_tokens=codex_max_campaign_tokens,
                 codex_max_campaign_runs=codex_max_campaign_runs,
                 transient_retries=transient_retries,
-                codex_ledger=codex_ledger)
+                codex_ledger=codex_ledger,
+                claude_guard=claude_guard,
+                claude_ledger=claude_ledger,
+                claude_window_hours=claude_window_hours,
+                claude_max_turns=claude_max_turns,
+                claude_max_wall_minutes=claude_max_wall_minutes)
 MARGINAL_COMPLEXITY_CONTRACT = {
     "field": "marginal_C",
     "label": "positive net retained-description growth per source file",

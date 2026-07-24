@@ -160,6 +160,39 @@ high comparison. Failures almost always run to the full cap with no early self-a
 clean WIP is resumed on the next turn; an early-abort or shorter-cap-plus-resume lever is
 possible future work and is not evaluated here.
 
+## Second proposer: Claude Code, local budget
+
+The campaign supports a second headless proposer, Claude Code (`--proposer=claude`,
+running `claude -p` on the Claude subscription), alongside Codex. The two are metered
+independently -- separate ledgers and locks -- so they can run concurrently, each
+against its own allowance.
+
+The control models differ because the providers differ. Codex exposes a live seven-day
+allowance (`account/rateLimits/read`), so every Codex turn is pre-gated against a
+reserve. The `claude` CLI exposes **no** readable remaining allowance -- it has 5-hour
+and weekly subscription limits, but no command reads them (`claude --help` offers only
+`agents/doctor/install/mcp/setup-token`). Claude control is therefore a LOCAL budget,
+not a provider read: `claude_usage_guard.py` records each turn's observed cost -- wall
+time, and tokens/dollars parsed from `claude -p --output-format json` -- to
+`runs/claude_campaign_usage.jsonl`, and admission enforces cumulative caps within a
+rolling window. Reactive credit-out still aborts the sequence.
+
+Run a budgeted Claude turn, e.g.:
+
+```sh
+python3 arc/crack_lab/gkm_legs.py --game=<g> --max-level=<k> \
+  --proposer=claude --model=opus --minutes=<m> --debrief-policy=never \
+  --claude-guard --claude-window-hours=5 \
+  --claude-max-turns=<N> --claude-max-wall-minutes=<M>
+python3 arc/crack_lab/claude_usage_guard.py --window-hours 5   # non-metered status
+```
+
+Honest limit: because the subscription allowance is unreadable, the local caps are a
+spend ceiling, not a remaining-allowance gate -- set them conservatively below the real
+5-hour/weekly limit. Covered by `test_claude_usage_guard.py`, including an integration
+test proving a hit cap refuses the turn before any `claude` process spawns, so no
+allowance is spent to enforce the budget.
+
 ## Integrity status
 
 The final audit reports:
