@@ -77,6 +77,13 @@ limit, the policy projects the worst completed-turn point/minute rate and adds o
 displayed point, subject to conservative floors of four points for medium and six for
 high. Timed-out full-budget turns remain valid rate observations.
 
+The wall limit itself is no longer a static per-phase constant. It is sized from each
+arm's replay-validated solve-time distribution so a historically successful solve is
+never truncated (`recommend_minutes`; see the adaptive wall-time section of
+`CHEAP_CAMPAIGN.md`). The dominant effect is raising bounded high escalation from eight
+to fourteen minutes, because high continuation solves were observed running to twelve;
+an under-sized cap turns a cheap solve into a total-loss timeout.
+
 An operator-interrupted duplicate turn remains charged in campaign efficiency but is
 excluded from the rate projection. Extrapolating its two rounded points over 53 seconds
 had produced a false 20-point high requirement. The regression test now proves that

@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import ast
 import json
+import math
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -324,6 +325,95 @@ def _iso_epoch(value: Any) -> Optional[float]:
     return parsed.timestamp()
 
 
+# Pre-adaptive static wall-time caps, kept as the conservative fallback when the
+# ledger has too few replay-validated solves in an arm to size it empirically.
+STATIC_WALL_MINUTES = {
+    ("cold_L1", "medium"): 6,
+    ("cold_L1", "high"): 6,
+    ("continuation_L2+", "medium"): 8,
+    ("continuation_L2+", "high"): 8,
+}
+# An arm needs at least this many replay-validated solves before its own solve-time
+# distribution overrides the static cap.  Below it, thin/noisy evidence is not trusted.
+MIN_SOLVES_TO_SIZE = 3
+# Solve-preserving margin over the slowest observed solve.  Solves cluster against
+# the historical cap (right-censored), so the true tail can exceed what we have seen;
+# the margin decensors without wildly over-allocating.  The user's rule: never
+# truncate good continuation WIP to save a few minutes.
+WALL_SAFETY_FACTOR = 1.15
+# Per-effort floors mirror the headroom floors; the ceiling is a secondary safety cap.
+WALL_MINUTES_FLOOR = {"medium": 5, "high": 6}
+WALL_MINUTES_CEILING = 15
+
+
+def _phase_of_level(level: Any) -> Optional[str]:
+    """Map a target level to the cold-entry vs retained-WIP continuation phase."""
+    if level == 1:
+        return "cold_L1"
+    if isinstance(level, int) and level >= 2:
+        return "continuation_L2+"
+    return None
+
+
+def _validated_solve_minutes(
+    phase: str, effort: str, turns: list[dict[str, Any]]
+) -> list[float]:
+    """Wall minutes of replay-validated proposal solves in one (phase, effort) arm."""
+    minutes = []
+    for turn in turns:
+        if not str(turn.get("run_label") or "").endswith(":propose"):
+            continue
+        if turn.get("solved_target") is not True:
+            continue
+        if turn.get("reasoning_effort") != effort:
+            continue
+        if _phase_of_level(turn.get("target_level")) != phase:
+            continue
+        duration = turn.get("duration_seconds")
+        if isinstance(duration, (int, float)) and duration > 0:
+            minutes.append(float(duration) / 60.0)
+    return minutes
+
+
+def recommend_minutes(
+    phase: Optional[str], effort: str, turns: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Solve-preserving adaptive wall-time for a (phase, effort) arm.
+
+    The binding constraint is that no historically replay-validated solve would
+    have been truncated: the recommendation covers the slowest such solve plus a
+    censoring margin.  With fewer than ``MIN_SOLVES_TO_SIZE`` solves the arm keeps
+    its conservative static cap.  Returns the minutes plus provenance so the plan
+    is auditable and the recommendation is never a bare unexplained number.
+    """
+    static = STATIC_WALL_MINUTES.get((phase, effort), 8)
+    solves = (
+        _validated_solve_minutes(phase, effort, turns)
+        if phase is not None else []
+    )
+    if len(solves) < MIN_SOLVES_TO_SIZE:
+        return {
+            "minutes": static,
+            "basis": "static_fallback",
+            "solve_samples": len(solves),
+            "slowest_solve_minutes": (
+                round(max(solves), 2) if solves else None
+            ),
+        }
+    slowest = max(solves)
+    floor = WALL_MINUTES_FLOOR.get(effort, 5)
+    needed = math.ceil(slowest * WALL_SAFETY_FACTOR)
+    minutes = max(floor, min(WALL_MINUTES_CEILING, needed))
+    # Hard guarantee of the solve-preserving property even if the ceiling binds.
+    minutes = max(minutes, math.ceil(slowest))
+    return {
+        "minutes": minutes,
+        "basis": "empirical_solve_preserving",
+        "solve_samples": len(solves),
+        "slowest_solve_minutes": round(slowest, 2),
+    }
+
+
 def ranked_frontiers(frontiers: list[dict[str, Any]],
                      turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """Apply paid-attempt history and choose a provisional effort for each frontier."""
@@ -369,15 +459,12 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
         if quarantined:
             effort = None
             mode = "quarantined_after_escalation_failure"
-            minutes = 0
         elif "medium" in failed_efforts or "high" in failed_efforts:
             effort = "high"
             mode = "continue_clean_wip"
-            minutes = 8
         elif row["incumbent_kind"] == "cold_start":
             effort = "medium"
             mode = "cold_l1_screen"
-            minutes = 6
         else:
             # Solver size is not evidence that high effort is cheaper.  In the
             # observed window, medium produced every new literal-reuse witness,
@@ -387,7 +474,17 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
             # default.
             effort = "medium"
             mode = "medium_first"
-            minutes = 8
+        # Wall time is sized from this arm's replay-validated solve-time
+        # distribution (solve-preserving), not a static per-phase constant, so a
+        # continuation whose solves historically ran to the old cap is no longer
+        # truncated.  Quarantined frontiers get no turn, hence zero minutes.
+        phase = _phase_of_level(row["next_level"])
+        if effort is None:
+            wall = {"minutes": 0, "basis": "quarantined",
+                    "solve_samples": 0, "slowest_solve_minutes": None}
+        else:
+            wall = recommend_minutes(phase, effort, turns)
+        minutes = wall["minutes"]
         adjusted = (
             -1_000_000.0 if quarantined
             else float(row["priority_score"]) - 0.8 * len(failures)
@@ -404,6 +501,9 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
             "quarantined_after_escalation_failure": quarantined,
             "recommended_effort": effort,
             "recommended_minutes": minutes,
+            "recommended_minutes_basis": wall["basis"],
+            "recommended_minutes_solve_samples": wall["solve_samples"],
+            "slowest_validated_solve_minutes": wall["slowest_solve_minutes"],
             "dispatch_mode": mode,
             "adjusted_priority_score": round(adjusted, 3),
         })

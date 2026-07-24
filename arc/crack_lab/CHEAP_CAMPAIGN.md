@@ -116,6 +116,50 @@ The current run caps are 60 turns and 32 million observed tokens per window. The
 secondary safeguards because timeout token usage is incomplete; live reserve and
 per-turn headroom remain authoritative.
 
+## Adaptive wall-time sizing
+
+Per-turn wall time is no longer a static per-phase constant. It is sized from each
+arm's own replay-validated solve-time distribution so that no historically successful
+solve would have been truncated (`codex_campaign_status.recommend_minutes`, exercised
+by `test_codex_campaign_timeout.py`). Measured over the 59 replay-validated proposal
+turns in the ledger:
+
+| Phase | Effort | Validated solves | Slowest solve | Static cap | Adaptive cap |
+|---|---|---:|---:|---:|---:|
+| cold L1 | medium | 3 | 4.0 min | 6 | **5** |
+| cold L1 | high | 12 | 6.0 min (at cap) | 6 | **7** |
+| continuation L2+ | medium | 8 | 7.5 min | 8 | **9** |
+| continuation L2+ | high | 7 | 12.0 min (at cap) | 8 | **14** |
+
+The rule is `ceil(slowest_validated_solve × 1.15)`, floored at five minutes for medium
+and six for high, capped at a fifteen-minute secondary ceiling, and never below the
+slowest observed solve. An arm with fewer than three validated solves keeps its static
+cap. Every frontier row records the basis, the solve-sample size, and the slowest solve
+so the number is auditable rather than asserted.
+
+The dominant change is continuation high, 8 → 14 minutes. Two of the seven high
+continuation solves used the full twelve minutes; the former eight-minute high
+recommendation would have truncated them, converting a cheap solve into a total-loss
+timeout that charges displayed points for zero levels. An under-sized cap is the most
+expensive outcome, so the correction is to size up. The only reduction is cold medium,
+6 → 5 minutes: its slowest solve was four minutes and its single failure still timed out
+at six without solving, so five loses no observed solve.
+
+This policy does not shorten turns to conserve allowance; it stops wasting whole turns
+on truncated solves. Net displayed-point impact is therefore not a simple saving —
+continuation high and the two censoring-margin arms cost slightly more per admitted
+turn — but the per-turn headroom formula still gates admission, so a longer high turn is
+admitted only when the live allowance is ample.
+
+Honest uncertainty. The samples are small (3 / 12 / 8 / 7 solves), so cold medium is the
+thinnest override. The high arms are right-censored: their solves cluster against the
+historical caps, so the true solve-time tail is unknown and may exceed what was observed;
+the 1.15 margin decensors only modestly, which is a further reason the rule sizes censored
+arms up rather than down. These are per-arm wall-time sizings, not a causal medium-versus-
+high comparison. Failures almost always run to the full cap with no early self-abort, and
+clean WIP is resumed on the next turn; an early-abort or shorter-cap-plus-resume lever is
+possible future work and is not evaluated here.
+
 ## Integrity status
 
 The final audit reports:
