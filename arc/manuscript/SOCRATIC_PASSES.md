@@ -753,3 +753,50 @@ winning model reuse.
 - “Gödel–Kolmogorov Machine” remains established before `GKM`; the title, abstract,
   category-theoretic sections, and conclusion remain consistent with the named
   architecture. The abstract was not lengthened.
+
+## Pass 19: does the reset-window expansion support the methodological claim?
+
+### Questions
+
+1. Are the 23 new clears counted only at replay-valid solve boundaries?
+2. Does the medium/high discussion distinguish cold entry from continuation and avoid
+   treating an adaptively escalated cohort as a randomized experiment?
+3. Did the broader campaign add executable reuse evidence, or only scoreboard depth?
+4. Are the public scorecard and later local artifacts still separated?
+5. Does the taint audit distinguish agent actions from private names printed by an
+   allowed API traceback?
+
+### Checks and decisions
+
+- The promoted frontier contains 67 clears across 23 games; the exact export contains
+  63 winning sources because four early `wa30`/`ls20` levels lack exact source
+  snapshots. Failed turns, same-level edits, and WIP snapshots remain outside both
+  denominators.
+- The manuscript reports cold L1 and continuation L2+ separately. Cold high clears
+  cost 18 displayed points for 12 wins; cold medium cost 4 for 3. Continuation medium
+  cost 39 for 7 wins; continuation high cost 14 for one. Since high continuation was
+  selected after medium failure, the text explicitly withholds a causal effort-price
+  claim. The successful `re86` L4 escalation is reported without generalizing it.
+- The exact adjacent set grows to 39 transitions. Twenty-one conditional AST
+  marginals decrease, six sharply; 14 winning entry points directly call unchanged
+  legs. `ar25` L2 (`622→175`, unchanged `repeat_action`) and `m0r0` L2
+  (`673→265`, unchanged `follow_action_sequence`) add two sharp coupled witnesses.
+  Together with `g50t` L4 and `ls20` L7, the Gödel–Kolmogorov Machine now has four.
+- The closed public card remains 17.1365% with 37/183 raw clears. The current local
+  artifact frontier is separately stated as 67/183 and 2148 stored replay actions.
+  No local promotion is retroactively attributed to the public evaluation.
+- Paid solver work stopped at a 23% post-solve read. Subsequent manuscript and
+  repository work shared the same bucket and reduced the final live read to 18%. The
+  paper states this overrun explicitly: the solver dispatcher respected its 20% floor,
+  while the shared account crossed it during development. Failures remain failures,
+  not evidence of impossibility.
+- The canonical taint audit scans 138 promoted files and 23 promotion chains with zero
+  taint or integrity failures. Codex JSONL is parsed structurally: commands, searches,
+  changed paths, and preserved file contents are evidence of agent action; command
+  output is not. This removes false alarms caused by `_game` appearing in an
+  `env.clone()` traceback while retaining a regression test in which an authored
+  `print(env._game)` command fails.
+- The abstract remains unchanged and compact. Numerical updates occur in the
+  contribution list, artifact scope, endpoint table, bounded-campaign analysis,
+  comparator table, and conclusion, so the paper reads as a single academic
+  manuscript rather than an appended run diary.

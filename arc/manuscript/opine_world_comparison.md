@@ -38,7 +38,7 @@ preceding winning checkpoint.
 
 | System | Exact solved-checkpoint coverage | Conditional AST marginal | Direct literal world-model reuse |
 | --- | --- | --- | --- |
-| GKM | 40 winning sources across 44 claimed clears; 31 exact adjacent transitions | 16 decreases among 29 comparable level-to-level marginals; 4 are half-or-more drops | 10 winning players directly call unchanged leg definitions. The sharp-drop/reuse intersections are `g50t` L4, \(2238\to168\), calling unchanged `solve_unlock_macro`, and `ls20` L7, \(682\to222\), calling unchanged `execute_path`. |
+| GKM | 63 winning sources across 67 claimed clears; 39 exact adjacent transitions | 21 decreases among 39 comparable level-to-level marginals; 6 are half-or-more drops | 14 winning players directly call unchanged leg definitions. Sharp-drop/reuse intersections occur at `ar25` L2, \(622\to175\), `g50t` L4, \(2238\to168\), `ls20` L7, \(682\to222\), and `m0r0` L2, \(673\to265\). |
 | OPINE-World | 153 positive-reward events; 146 with a pre-solve engine and 121 adjacent transitions | 49 decreases among 115 comparable marginals; 14 are half-or-more drops | 4 synthesized-planner wins directly call unchanged engine definitions. Two coincide with sharp drops: `lp85` L4, \(5818\to2550\), and `tu93` L3, \(7091\to2608\). |
 | baseline1 GPT-5.5 xHigh | 160 post-solve retained snapshots for 174 clears; 50 exact winning sources and 18 exact adjacent transitions | 5 decreases among 8 comparable marginals; 0 half-or-more drops | 0. Every exact adjacent winning command is a fresh literal action program: 4 direct-action commands, 6 inline plans, and 8 plans passed to `plan_executor.py`. |
 | Retrodict | 170 solved memory checkpoints; 145 adjacent memory transitions | No executable marginal is identifiable | 0 executable witnesses: the release contains playbook memory and limited scratch Python, not winning executable entry points. |
@@ -64,15 +64,19 @@ log, and `tr87` has the converse mismatch. Missing boundary programs are not
 imputed.
 
 GKM’s cumulative solver grows at every exact adjacent transition, but the
-checkpoint-conditioned AST test supplies the direct evidence. Ten winning
-players call unchanged leg literals. At `g50t` L4 the conditional marginal
+checkpoint-conditioned AST test supplies the direct evidence. Fourteen winning
+players call unchanged leg literals. At `ar25` L2 the conditional marginal
+falls from 622 to 175 while the player calls unchanged `repeat_action`; at
+`g50t` L4 it
 collapses by 92.5% while the winning one-call player invokes unchanged
 `solve_unlock_macro`; at `ls20` L7 it falls by 67.4% while the player invokes
-unchanged `execute_path`. The other two sharp GKM drops, `ft09` L2 and `wa30`
+unchanged `execute_path`; and at `m0r0` L2 it falls from 673 to 265 while the
+player calls unchanged `follow_action_sequence`. The other two sharp GKM drops,
+`ft09` L2 and `wa30`
 L9, have no unchanged direct leg call and are not classified as reuse. This is
 why the marginal screen and literal-call test must be coupled.
 
-The new `ft09` L6 checkpoint is the tenth direct witness: its winning player
+The `ft09` L6 checkpoint is a non-sharp direct witness: its winning player
 calls the literally unchanged `solve_coupled_key_board` acquired at L5. Its
 conditional AST marginal decreases from 5008 to 3730 bytes, so it is reuse but
 not a half-or-more drop under the stated sharpness rule. This distinction also

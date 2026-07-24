@@ -1,7 +1,7 @@
 
 \documentclass[11pt]{article}
 \usepackage[T1]{fontenc}
-\usepackage[margin=0.92in]{geometry}
+\usepackage[margin=0.82in]{geometry}
 \usepackage{amsmath,amssymb,amsthm,mathtools}
 \usepackage{booktabs,tabularx,array,longtable}
 \usepackage{graphicx}
@@ -144,7 +144,7 @@ deterministic universal-search and stagewise full-support forms.
 \item It makes the PowerPlay and artificial-curiosity correspondence operational:
 replay preserves the task archive, free energy orders candidate extensions, and expected
 frontier reduction values informative probes.
-\item It reports eight promoted ARC-AGI-3 endpoints spanning 44 solved levels, two
+\item It reports 23 promoted ARC-AGI-3 endpoints spanning 67 solved levels, two
 complete chronological histories, and solved-checkpoint comparisons whose reuse claims
 require both a source-level factorization and replay.
 \end{enumerate}
@@ -936,10 +936,11 @@ component and the composite passes replay. This couples the scalar free energy t
 the cofibration and attaching morphism visible in source.
 
 \subsection{Artifact scope and reproduction}
-The study reports eight canonical promoted artifacts. \texttt{wa30} and \texttt{ls20}
-have complete manuscript-level construction histories; \texttt{ft09}, \texttt{r11l},
-and \texttt{tr87} reach level~6, \texttt{g50t} reaches level~5, \texttt{sp80} reaches
-level~4, and \texttt{tu93} has one promoted level. The artifact campaign is not a
+The study reports 23 canonical promoted artifacts. \texttt{wa30} and \texttt{ls20}
+have complete manuscript-level construction histories; five further incumbents reach
+levels~4--6; and a cost-controlled \texttt{gpt-5.6-sol} campaign establishes promoted
+frontiers in 15 additional games. Two games, \texttt{bp35} and \texttt{tn36}, have no
+promoted level. The artifact campaign is not a
 repeated-seed estimate. It is a chronological observation of one compute-bounded growth
 process, with exact endpoint replay and source provenance.
 
@@ -949,7 +950,8 @@ python arc/manuscript/build_artifact_history.py --check
 PYTHONPATH=arc/crack_lab pytest -q arc/crack_lab/test_gkm_legs.py \
   arc/crack_lab/test_replay_scorecard.py
 python arc/crack_lab/replay_scorecard.py --mode online \
-  --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
+  --games ar25,cd82,cn04,dc22,ft09,g50t,ka59,lf52,lp85,ls20,m0r0,\
+re86,r11l,s5i5,sb26,sc25,sk48,sp80,su15,tr87,tu93,vc33,wa30
 \end{verbatim}
 The history builder checks immutable sidecars against Git, WIP, and root sources. The
 offline tests check the source metric, checkpoint invariants, action encoding, workspace
@@ -970,8 +972,8 @@ Quantity & Value & Meaning \\
 Official Competition-Mode score & $17.1365079365\%$ & Public all-game score over 25 games \\
 Published-card raw coverage & $37/183=20.2186\%$ & Unweighted fraction at public replay \\
 Published-card stored/API actions & $1448/1456$ & Paths alone / paths plus eight resets \\
-Current local artifact coverage & $44/183=24.0437\%$ & Seven later clears with local replay certificates \\
-Current local stored actions & 1692 & Sum of the eight current checkpoint paths \\
+Current local artifact coverage & $67/183=36.6120\%$ & Thirty later clears with local replay certificates \\
+Current local stored actions & 2148 & Sum of the 23 current checkpoint paths \\
 \texttt{wa30} publication ledger & 1458 & Full nine-level history joining early clean promotions to later sidecar records \\
 \texttt{wa30} operational post-base total & 1243 & Current resume checkpoint's post-base records only \\
 \texttt{ls20} publication ledger & 362 & Full seven-level history and root total \\
@@ -990,35 +992,54 @@ Mode scorecard reports an official all-game score of
 $17.136507936507936\%$ over all 25 public games. At that replay, the raw level fraction
 was $37/183=20.2186\%$; the stored paths contained 1448 actions and the scorecard used
 1456 API actions after eight resets. Subsequent clean promotions raise the local
-artifact frontier to $44/183=24.0437\%$ and 1692 stored actions. These seven additional
+artifact frontier to $67/183=36.6120\%$ and 2148 stored actions. These 30 additional
 clears have independent local replay certificates but are not attributed to the earlier
 public scorecard. Neither scope measures the larger clone-enabled interaction and
 model-inference cost of discovery.
 
-\begin{table}[H]
-\centering
-\small
-\begin{tabularx}{\textwidth}{@{}lrrr>{\raggedright\arraybackslash}X@{}}
+{\scriptsize
+\renewcommand{\arraystretch}{0.88}
+\begin{longtable}{@{}lrrr>{\raggedright\arraybackslash}p{0.43\textwidth}@{}}
+\caption{Canonical promoted endpoints. Actions are stored replay paths and exclude
+scorecard resets. $D(s)=d(\ell)+d(p)$ is recomputed from each endpoint source snapshot;
+it is a retained-size coordinate, not the sum of the historical marginal profile.
+The two complete-game profiles come from manuscript history sidecars; partial profiles
+come directly from root checkpoints.}
+\label{tab:endpoints}\\
 \toprule
 Game & Verified depth & Actions & $D(s)$ & Marginal profile \\
 \midrule
+\endfirsthead
+\toprule
+Game & Verified depth & Actions & $D(s)$ & Marginal profile \\
+\midrule
+\endhead
+\texttt{ar25} & 4 & 102 & 30 & $9,4,9,7$ \\
+\texttt{cd82} & 2 & 11 & 24 & $11,12$ \\
+\texttt{cn04} & 1 & 14 & 13 & $12$ \\
+\texttt{dc22} & 1 & 20 & 50 & $49$ \\
 \texttt{wa30} & 9/9 & 596 & 1334 & $112,78,95,47,405,225,145,204,147$ \\
 \texttt{ls20} & 7/7 & 393 & 397 & $43,2,45,3,72,130,67$ \\
 \texttt{ft09} & 6 & 80 & 602 & $107,2,184,132,177,2$ \\
 \texttt{g50t} & 5 & 203 & 483 & $244,100,2,2,134$ \\
+\texttt{ka59} & 1 & 12 & 27 & $26$ \\
+\texttt{lf52} & 1 & 8 & 117 & $116$ \\
+\texttt{lp85} & 1 & 5 & 11 & $10$ \\
+\texttt{m0r0} & 2 & 38 & 54 & $24,29$ \\
 \texttt{r11l} & 6 & 115 & 1384 & $103,449,30,341,362,98$ \\
+\texttt{re86} & 4 & 171 & 819 & $105,133,237,343$ \\
+\texttt{s5i5} & 1 & 13 & 138 & $137$ \\
+\texttt{sb26} & 1 & 9 & 73 & $72$ \\
+\texttt{sc25} & 1 & 17 & 41 & $40$ \\
+\texttt{sk48} & 1 & 26 & 38 & $37$ \\
 \texttt{sp80} & 4 & 79 & 309 & $131,40,81,56$ \\
+\texttt{su15} & 1 & 7 & 37 & $36$ \\
 \texttt{tr87} & 6 & 208 & 1026 & $156,241,183,69,249,127$ \\
 \texttt{tu93} & 1 & 18 & 255 & $254$ \\
+\texttt{vc33} & 1 & 3 & 56 & $55$ \\
 \bottomrule
-\end{tabularx}
-\caption{Canonical promoted endpoints. Actions are stored replay paths and exclude
-scorecard resets. $D(s)=d(\ell)+d(p)$ is recomputed from each endpoint source snapshot;
-it is a retained-size coordinate, not the sum of the historical marginal profile. The
-two complete-game profiles come from manuscript history sidecars; partial profiles come
-directly from root checkpoints.}
-\label{tab:endpoints}
-\end{table}
+\end{longtable}
+}
 
 The $D(s)$ column supplies the retained-description coordinate required by
 Eq.~\eqref{eq:structure-function}. Each row is one verified point for its own game;
@@ -1150,29 +1171,36 @@ the profile falls when an empirical policy colimit extends cheaply and rises whe
 domain, compatibility conditions, or retained plan information changes.
 
 \subsection{Bounded cross-game campaign}
-To test whether these complete solves depended on per-game architecture, we applied the
-same game-agnostic harness and promotion protocol to five further games. The initial
-bounded run reached level~4 in each; a later
-\texttt{gpt-5.6-sol} campaign extended \texttt{ft09}, \texttt{r11l}, and
-\texttt{tr87} to level~6 and \texttt{g50t} to level~5, while \texttt{sp80} remained at
-level~4. Figure~\ref{fig:bounded-profiles} shows their full retained marginal profiles
-on a common scale. These additional sawtooth profiles place low net-growth
+To test whether the complete solves depended on per-game architecture, we applied the
+same game-agnostic harness and promotion protocol across the suite. The first bounded
+phase reached level~4 in five further games; a later \texttt{gpt-5.6-sol} phase extended
+\texttt{ft09}, \texttt{r11l}, and \texttt{tr87} to level~6 and \texttt{g50t} to
+level~5, while \texttt{sp80} remained at level~4.
+The reset-window campaign then promoted 23 additional clears: 15 games acquired their
+first executable solver, \texttt{ar25} reached level~4, \texttt{cd82} and
+\texttt{m0r0} reached level~2, and \texttt{re86} reached level~4. Only
+\texttt{bp35} and \texttt{tn36} remain without a promoted first level.
+Figure~\ref{fig:bounded-profiles} retains the five multi-level profiles from the first
+portability experiment on a common scale. These sawtooth profiles place low net-growth
 transitions beside larger retained changes rather than enforcing monotone decline. A
 repository-wide taint
 scan found every promoted root clean, and fresh local replay plus an
 \href{https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147}{official
 Competition-Mode replay} validated the earlier level-4 endpoints as well as the complete
-\texttt{wa30} and \texttt{ls20} paths and the promoted \texttt{tu93} level. Every later
+\texttt{wa30} and \texttt{ls20} paths and the then-promoted \texttt{tu93} level. Every later
 promotion has a fresh independent local replay certificate; a new public competition
 card has not yet been claimed. ``Unchanged
 architecture'' here means the same interface, proposer loop, taint boundary, replay
 gate, and promotion rule; the learned solver files are game-specific artifacts. Since
-this protocol solved two games completely and reached levels 4--6 on five more, the
-campaign establishes protocol portability through those observed depths. The expanded
-campaign began its sustained run with 77\% of the weekly allowance available and
-stopped at 32\%, without consuming a reset credit. Three failed clean turns---
-\texttt{sp80} L5, the first \texttt{g50t} L5 attempt, and \texttt{g50t} L6---remain
-unpromoted WIP. Thus the endpoint record is resource-truncated, not a proof of an
+this protocol solved two games completely, reached levels~4--6 in six others, and
+acquired at least one verified level in 23 of 25 games, the campaign establishes
+protocol portability through those observed depths. The reset-window phase began at
+100\% weekly allowance. Paid solver work was frozen when a post-solve read reported
+23\% remaining; subsequent manuscript and repository work, which shares the same Codex
+bucket, reduced the final live reading to 18\%. Thus the solver dispatcher respected
+its predeclared 20\% floor, but the shared account as a whole crossed it during
+development. Failed turns remain unpromoted WIP.
+Thus the endpoint record is resource-truncated, not a proof of an
 architectural ceiling. Additional compute remains the immediate unspent variable. The
 compute-completeness theorem in Section~\ref{sec:compute} supplies the algorithmic
 statement behind this reading: whenever a finite replay-valid continuation exists in
@@ -1180,6 +1208,37 @@ the proposal language and the search schedule is fair, continuing search finds i
 finite enumerative time, or almost surely under a stagewise lower-bounded full-support proposer. The
 unmeasured quantity is the practical rate---the distribution of the waiting time---not
 the existence of the continuation under those conditions.
+
+The reset-window allocation also tests whether stronger reasoning reduces the allowance
+cost of finding compact continuations. Table~\ref{tab:effort-economics} charges failed
+proposal turns to the effort that produced them and separates cold first-level
+acquisition from continuation of a retained solver.
+\begin{table}[H]
+\centering
+\small
+\begin{tabular}{@{}llrrrr@{}}
+\toprule
+Phase & Effort & Attempts & Clears & Displayed points & Points/clear \\
+\midrule
+Cold L1 & medium & 4 & 3 & 4 & 1.333 \\
+Cold L1 & high & 15 & 12 & 18 & 1.500 \\
+Continuation L2+ & medium & 23 & 7 & 39 & 5.571 \\
+Continuation L2+ & high & 7 & 1 & 14 & 14.000 \\
+\bottomrule
+\end{tabular}
+\caption{Descriptive reset-window allowance accounting. Integer-valued displayed
+weekly percentage is the hard cost coordinate because timed-out streams may omit final
+token usage. High continuation attempts are selected after medium failures and are
+therefore a harder, non-randomized cohort; the table is not a causal effort comparison.}
+\label{tab:effort-economics}
+\end{table}
+High reasoning was effective for cold entry and eventually cleared \texttt{re86} L4
+for two displayed points, but the window does not show a general high-effort compression
+advantage. All four new literal-reuse wins, including the sharp coupled transitions
+\texttt{ar25} L2 and \texttt{m0r0} L2, were produced by medium turns. The appropriate
+operational conclusion is consequently phase- and frontier-specific: use medium for
+first continuation search, retain clean WIP, and reserve high for a bounded escalation
+rather than treating it as intrinsically cheaper.
 
 \begin{figure}[t]
 \centering
@@ -1265,11 +1324,12 @@ evidence in the measured exact set.
 System & Exact solve-boundary coverage & Conditional AST marginal &
 Direct literal reuse at the win \\
 \midrule
-GKM & 40 winning sources for 44 clears; 31 adjacent transitions &
-16 decreases among 29 comparable marginals; 4 sharp drops &
-10 winning players directly call unchanged legs. Sharp coupled witnesses:
-\texttt{g50t} L4, $2238\!\to\!168$, and \texttt{ls20} L7,
-$682\!\to\!222$ \\
+GKM & 63 winning sources for 67 clears; 39 adjacent transitions &
+21 decreases among 39 comparable marginals; 6 sharp drops &
+14 winning players directly call unchanged legs. Four sharp coupled witnesses:
+\texttt{ar25} L2, $622\!\to\!175$; \texttt{g50t} L4,
+$2238\!\to\!168$; \texttt{ls20} L7, $682\!\to\!222$; and
+\texttt{m0r0} L2, $673\!\to\!265$ \\
 OPINE-World & 146 pre-solve engines for 153 positive-reward trace events; 121
 adjacent transitions & 49 decreases among 115 comparable marginals; 14 sharp drops &
 4 synthesized-planner wins directly call unchanged engine definitions. Sharp coupled
@@ -1294,11 +1354,14 @@ not performance.}
 \label{tab:audit-axes}
 \end{table}
 
-\paragraph{The four sharp coupled witnesses.}
-Exactly four transitions satisfy both the sharp-drop and literal-call tests:
-GKM \texttt{g50t} L4, $2238\!\to\!168$, calling unchanged
-\texttt{solve\_unlock\_macro}; GKM \texttt{ls20} L7, $682\!\to\!222$, calling
-unchanged \texttt{execute\_path}; OPINE \texttt{lp85} L4,
+\paragraph{The six sharp coupled witnesses.}
+Exactly six transitions satisfy both the sharp-drop and literal-call tests:
+GKM \texttt{ar25} L2, $622\!\to\!175$, calling unchanged
+\texttt{repeat\_action}; GKM \texttt{g50t} L4, $2238\!\to\!168$, calling
+unchanged \texttt{solve\_unlock\_macro}; GKM \texttt{ls20} L7,
+$682\!\to\!222$, calling unchanged \texttt{execute\_path}; GKM
+\texttt{m0r0} L2, $673\!\to\!265$, calling unchanged
+\texttt{follow\_action\_sequence}; OPINE \texttt{lp85} L4,
 $5818\!\to\!2550$, reusing its level-3 planner and three unchanged engine
 definitions; and OPINE \texttt{tu93} L3, $7091\!\to\!2608$, calling three
 unchanged engine definitions. The rows in Table~\ref{tab:audit-axes} report marginal
@@ -1363,13 +1426,15 @@ trajectory. Log length, action count, and provider context are not substitutes.
 
 \paragraph{Relation to the Kolmogorov--Schmidhuber thesis.}
 The hard result is not an architectural slogan. The G\"odel--Kolmogorov Machine has
-ten exact adjacent wins whose
-players directly call unchanged leg literals. Two coincide with sharp marginal drops:
-\texttt{g50t} level~4 calls unchanged \texttt{solve\_unlock\_macro} while $M_L$
-falls from 2238 to 168; \texttt{ls20} level~7 calls unchanged
-\texttt{execute\_path} while $M_L$ falls from 682 to 222. The other two sharp GKM
+14 exact wins whose players directly call unchanged leg literals. Four coincide with
+sharp marginal drops: \texttt{ar25} level~2 calls unchanged
+\texttt{repeat\_action} while $M_L$ falls from 622 to 175; \texttt{g50t} level~4
+calls unchanged \texttt{solve\_unlock\_macro} while $M_L$ falls from 2238 to 168;
+\texttt{ls20} level~7 calls unchanged \texttt{execute\_path} while $M_L$ falls from
+682 to 222; and \texttt{m0r0} level~2 calls unchanged
+\texttt{follow\_action\_sequence} while $M_L$ falls from 673 to 265. The other two sharp GKM
 drops, \texttt{ft09} level~2 and \texttt{wa30} level~9, lack an unchanged direct leg
-call and are not labeled reuse. A new non-sharp witness occurs at \texttt{ft09}
+call and are not labeled reuse. A non-sharp witness occurs at \texttt{ft09}
 level~6: its winning player directly calls the unchanged
 \texttt{solve\_coupled\_key\_board} acquired at level~5, while $M_L$ decreases from
 5008 to 3730. The historical net-growth ledger falls from 177 to 2 on the same
@@ -1515,13 +1580,14 @@ compute. The practical problem is therefore to reshape the waiting-time distribu
 use inherited colimits, free energy parsimony, PowerPlay's archive, and curiosity-driven
 probes to find the right cell before brute force would.
 
-The released campaign supplies the first ARC-AGI-3 evidence for this program. Eight
-promoted endpoints replay; \texttt{wa30} and \texttt{ls20} are complete; and exact
+The released campaign supplies the first ARC-AGI-3 evidence for this program.
+Twenty-three promoted endpoints replay; \texttt{wa30} and \texttt{ls20} are complete;
+and exact
 source-level witnesses show unchanged legs participating in later wins with reduced
-marginal description, including two sharp coupled cases. The numerical record is stated
+marginal description, including four sharp coupled cases. The numerical record is stated
 by scope: the published card's official all-game score is $17.1365\%$ and its raw
-coverage is $37/183=20.2186\%$; seven subsequent locally replayed clears raise the
-current artifact frontier to $44/183=24.0437\%$. The complete \texttt{wa30}
+coverage is $37/183=20.2186\%$; 30 subsequent locally replayed clears raise the
+current artifact frontier to $67/183=36.6120\%$. The complete \texttt{wa30}
 publication ledger is 1458 and its operational post-base checkpoint total is 1243.
 These distinctions strengthen rather than replace the central thesis. In the
 compute-indexed sense proved here, any finite deterministic ARC-AGI-3 suite with finite
@@ -1531,6 +1597,8 @@ problem is to replace astronomical enumeration by reusable program growth, and t
 mathematics of that growth is the mathematics of structure functions, inverse colimits,
 cofibrations, and compute.
 
+{\small
 \bibliographystyle{plain}
 \bibliography{references}
+}
 \end{document}
