@@ -1,0 +1,22 @@
+{
+  "game": "lp85",
+  "level": 1,
+  "phase": "reached_before_debrief",
+  "reached": 1,
+  "err": null,
+  "attempt": "reached_before_debrief_9233ad55d4f5",
+  "created_at": "2026-07-23T11:34:59.114160+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T113319034613Z_lp85_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

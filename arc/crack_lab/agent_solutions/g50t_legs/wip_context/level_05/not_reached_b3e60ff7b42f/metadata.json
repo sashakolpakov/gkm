@@ -1,0 +1,26 @@
+{
+  "game": "g50t",
+  "level": 5,
+  "phase": "not_reached",
+  "reached": 4,
+  "err": null,
+  "attempt": "not_reached_b3e60ff7b42f",
+  "created_at": "2026-07-22T23:00:25.326014+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260722T224820976088Z_g50t_L5_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_bfs_level5.py",
+    "probe_controls_level5.py",
+    "probe_level5.py",
+    "probe_search_level5.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,2 +1,2 @@
-=== r11l: reached level 4 | validated=True | total_marginal_C=923 | F=14.460 ===
-per-level marginal novelty: L1:103, L2:449, L3:30, L4:341
+=== r11l: reached level 6 | validated=True | total_marginal_C=1383 | F=21.660 ===
+per-level marginal novelty: L1:103, L2:449, L3:30, L4:341, L5:362, L6:98

@@ -1,9 +1,16 @@
-# sc25 WIP artifact
+# sc25 legs artifact
 
-No replay-validated level was promoted before the bounded attempt reached the
-API usage limit. The `wip_context/` tree preserves the clean level-1 probes,
-transcript, candidate solver, and credit-out record.
+Latest replay-validated leg-library state promoted by `gkm_legs.py`.
 
-This WIP is restart context, not solver evidence. A future continuation should
-restore its non-promoted probes, then independently replay and pass the taint
-guard before promoting any level.
+- Game: `sc25`
+- Verified through level: 1
+- Replay validated: True
+- Total marginal_C: 40
+- Final path length: 17
+
+Per-level novelty:
+
+- L1: marginal_C=40
+
+Files here are the clean state to resume from. New runs seed the scratch
+workspace from this directory before asking a proposer for the next level.

@@ -1,0 +1,22 @@
+{
+  "game": "m0r0",
+  "level": 1,
+  "phase": "after_propose",
+  "reached": 0,
+  "err": null,
+  "attempt": "after_propose_a21de812dbc4",
+  "created_at": "2026-07-23T12:21:13.016316+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T121818646984Z_m0r0_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "game": "tr87",
+  "level": 6,
+  "phase": "after_propose",
+  "reached": 5,
+  "err": null,
+  "attempt": "after_propose_c345039c2608",
+  "created_at": "2026-07-22T22:33:35.495069+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260722T222711132751Z_tr87_L6_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

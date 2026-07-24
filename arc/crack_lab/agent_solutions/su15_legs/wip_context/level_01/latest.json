@@ -1,0 +1,26 @@
+{
+  "attempt": "debrief_skipped_policy_ecf1abb30a0c",
+  "metadata": {
+    "game": "su15",
+    "level": 1,
+    "phase": "debrief_skipped_policy",
+    "reached": 1,
+    "err": null,
+    "attempt": "debrief_skipped_policy_ecf1abb30a0c",
+    "created_at": "2026-07-23T11:30:43.328650+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T112750990105Z_su15_L1_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

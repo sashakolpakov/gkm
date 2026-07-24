@@ -800,3 +800,39 @@ winning model reuse.
   contribution list, artifact scope, endpoint table, bounded-campaign analysis,
   comparator table, and conclusion, so the paper reads as a single academic
   manuscript rather than an appended run diary.
+
+## Pass 20: does the cost discussion answer the operational question without becoming a run diary?
+
+### Questions
+
+1. Is the current 67-level frontier stated consistently in the manuscript, root
+   README, ARC guides, reproduction guide, and Sphinx chapter?
+2. Does the text distinguish a pooled medium/high comparison from the actual
+   sequential decision—whether high is worth buying after medium fails?
+3. Is high effort sent directly to a large fresh continuation merely because its
+   incumbent source is large?
+4. Does allowance bookkeeping obscure the scientific evidence?
+5. Can a reader identify the exact next experiment without treating an interim WIP
+   revision as a checkpoint?
+
+### Checks and decisions
+
+- All publication-facing documents now state 23 promoted endpoints, 67/183 local
+  levels, 2148 stored actions, and 30 post-card clears. The reproduction guide no
+  longer calls `sc25` WIP-only and enumerates all 21 partial promoted endpoints.
+- The pooled phase table remains because it is the complete descriptive accounting,
+  but it is explicitly non-causal. The decision-relevant retrospective statistic is
+  now separated: six high turns followed a medium failure on the same game/level,
+  one rescued the target (`re86` L4), and the six charged 12 displayed points.
+  Medium may have improved WIP first, so this is an escalation-policy observation,
+  not an intrinsic reasoning-effort estimate.
+- Fresh continuations are now medium-first regardless of retained source size.
+  High receives at most one bounded rescue after a clean medium failure; a second
+  failure quarantines the frontier. The generated next-reset seed is therefore
+  `re86` L5 at medium, not high.
+- The main paper now says only that paid solving stopped in the protected tail and
+  that no solver turn was launched below the 20% reserve. Account-level development
+  traffic is operational bookkeeping and no longer interrupts the argument.
+- The saved plan freezes one seed item. Every later item is regenerated from the
+  live allowance, verified frontier, and charged failures. Only a replay-valid level
+  transition becomes a scientific checkpoint; same-level edits remain WIP.

@@ -1,0 +1,22 @@
+{
+  "game": "cd82",
+  "level": 2,
+  "phase": "reached_before_debrief",
+  "reached": 2,
+  "err": null,
+  "attempt": "reached_before_debrief_5a38e64cc81a",
+  "created_at": "2026-07-23T18:38:06.453478+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T183111920120Z_cd82_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "game": "re86",
+  "level": 4,
+  "phase": "not_reached",
+  "reached": 3,
+  "err": null,
+  "attempt": "not_reached_a6db474071cb",
+  "created_at": "2026-07-24T01:36:05.265150+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260724T011435229606Z_re86_L2_propose.jsonl",
+    "codex_turn_20260724T012210765449Z_re86_L3_propose.jsonl",
+    "codex_turn_20260724T012804233715Z_re86_L4_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_l4.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

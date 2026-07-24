@@ -1,17 +1,20 @@
 {
-  "attempt": "interrupted_baf91b2c732c",
+  "attempt": "after_debrief_bf428e3bffaf",
   "metadata": {
     "game": "g50t",
     "level": 5,
-    "phase": "interrupted",
-    "reached": 4,
-    "err": "interrupted mid-level",
-    "attempt": "interrupted_baf91b2c732c",
-    "created_at": "2026-07-14T16:11:28.519746+00:00",
+    "phase": "after_debrief",
+    "reached": 5,
+    "err": null,
+    "attempt": "after_debrief_bf428e3bffaf",
+    "created_at": "2026-07-22T23:34:33.252839+00:00",
     "files": [
       "auto_solve_attempts.json",
       "blocked_attempts.log",
       "checkpoint.json",
+      "codex_turn_20260722T224820976088Z_g50t_L5_propose.jsonl",
+      "codex_turn_20260722T232027980236Z_g50t_L5_propose.jsonl",
+      "codex_turn_20260722T233236305307Z_g50t_L5_debrief.jsonl",
       "frame0.png",
       "frame0b.jpg",
       "gen_paths.py",
@@ -127,8 +130,13 @@
       "probeX.py",
       "probeY.py",
       "probeZ.py",
+      "probe_bfs_level5.py",
+      "probe_controls_level5.py",
+      "probe_level5.py",
+      "probe_search_level5.py",
       "proposer_last.log",
       "solve.py",
+      "solver_index.md",
       "test_real.py"
     ]
   }

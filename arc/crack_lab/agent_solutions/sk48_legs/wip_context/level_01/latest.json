@@ -1,0 +1,25 @@
+{
+  "attempt": "debrief_skipped_policy_a21d7825c5cc",
+  "metadata": {
+    "game": "sk48",
+    "level": 1,
+    "phase": "debrief_skipped_policy",
+    "reached": 1,
+    "err": null,
+    "attempt": "debrief_skipped_policy_a21d7825c5cc",
+    "created_at": "2026-07-23T11:51:01.708619+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T114616847868Z_sk48_L1_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

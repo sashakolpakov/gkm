@@ -1,6 +1,6 @@
 # Foraging: open-ended evolution under free energy
 
-This domain studies the founding GKM question in its most controllable form: can
+This domain studies the founding Gödel–Kolmogorov Machine question in its most controllable form: can
 **free energy used as a local selection rule** support continued structural
 innovation, rather than collapsing to a single compressed solution? Agents are
 sparse deterministic finite-state automata that play a visible grid-foraging game;

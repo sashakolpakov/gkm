@@ -1,0 +1,22 @@
+{
+  "game": "vc33",
+  "level": 2,
+  "phase": "after_propose",
+  "reached": 1,
+  "err": null,
+  "attempt": "after_propose_9ba072adc384",
+  "created_at": "2026-07-24T01:06:18.904462+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260724T001041843515Z_vc33_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

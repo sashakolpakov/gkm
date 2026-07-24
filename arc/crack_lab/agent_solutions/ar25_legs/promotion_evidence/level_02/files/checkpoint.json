@@ -1,0 +1,1 @@
+{"game": "ar25", "reached": 2, "total_marginal_C": 13, "records": [{"level": 1, "marginal_C": 9, "reached": true}, {"level": 2, "marginal_C": 4, "reached": true}], "final_path": [2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 5, 2, 2, 2, 2, 2, 2, 2, 2], "validated": true}

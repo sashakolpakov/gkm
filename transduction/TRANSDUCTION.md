@@ -1,6 +1,6 @@
 # Transduction: synthesising compact deterministic solvers
 
-This domain asks a sharper version of the GKM question: can a meta-evolutionary
+This domain asks a sharper version of the Gödel–Kolmogorov Machine question: can a meta-evolutionary
 process **synthesise compact deterministic solvers** from observed pattern
 transitions, under the same free-energy selection rule? The evolved object is a
 sparse deterministic **register transducer**; token identities are opaque, so the

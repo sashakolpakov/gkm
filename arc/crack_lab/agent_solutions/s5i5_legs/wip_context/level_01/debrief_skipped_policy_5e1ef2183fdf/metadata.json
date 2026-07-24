@@ -1,0 +1,22 @@
+{
+  "game": "s5i5",
+  "level": 1,
+  "phase": "debrief_skipped_policy",
+  "reached": 1,
+  "err": null,
+  "attempt": "debrief_skipped_policy_5e1ef2183fdf",
+  "created_at": "2026-07-23T11:42:25.515921+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T113852615619Z_s5i5_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

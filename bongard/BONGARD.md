@@ -1,6 +1,6 @@
 # Bongard: concept induction and the emergence of abstraction
 
-This domain applies the GKM free-energy view to **Bongard-style concept induction**:
+This domain applies the Gödel–Kolmogorov Machine free-energy view to **Bongard-style concept induction**:
 given positive and negative example sets over opaque-object sequences, evolve sparse
 deterministic classifiers, and ask when free-energy accounting drives the *emergence
 of reusable abstraction* (encapsulated predicate macros) rather than duplicated rule

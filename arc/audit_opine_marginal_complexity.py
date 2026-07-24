@@ -1,10 +1,13 @@
 #!/usr/bin/env python3
-"""Audit OPINE-World artifacts using an explicit marginal-complexity ledger.
+"""Legacy OPINE synthesis-revision churn diagnostic.
 
-The tool deliberately does not call a carried-forward ``game_engine.py`` free.
-For each synthesis snapshot it measures normalized Python-token growth, then
-charges every level-specific source reference and cache byte to the level named
-by its filename or a nearby ``level_N`` path component.
+This program measures every synthesis snapshot, including failed/interim revisions.
+It must not be used as evidence for a level-to-level solver sawtooth.  Use
+``audit_opine_solved_checkpoints.py`` for the solved-boundary comparison.
+
+For historical reproduction, each synthesis snapshot is token-diffed and every
+level-specific source reference or cache byte is charged to the level named by its
+filename or a nearby ``level_N`` path component.
 """
 
 from __future__ import annotations

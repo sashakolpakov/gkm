@@ -1,0 +1,26 @@
+{
+  "attempt": "after_debrief_9272492e6be6",
+  "metadata": {
+    "game": "ft09",
+    "level": 6,
+    "phase": "after_debrief",
+    "reached": 6,
+    "err": null,
+    "attempt": "after_debrief_9272492e6be6",
+    "created_at": "2026-07-22T23:19:04.800323+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260722T231256228949Z_ft09_L6_propose.jsonl",
+      "codex_turn_20260722T231709287542Z_ft09_L6_debrief.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

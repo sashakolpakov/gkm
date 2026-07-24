@@ -38,6 +38,7 @@ from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 import gkm_arena as A
+import codex_usage_guard as CUG
 from gkm_solve_agent import discovered_context
 
 # Working-directory root for per-game leg workspaces. Defaults to a repo-relative
@@ -93,6 +94,27 @@ def marginal_complexity(legs_before: str, legs_after: str,
             + max(0, description_complexity(players_after) - description_complexity(players_before)))
 
 
+def should_run_debrief(policy: str, *, auto_solved: bool,
+                       pre_debrief_marginal_C: int,
+                       threshold: int = 150) -> bool:
+    """Decide whether a separate paid refactor turn is worth admitting.
+
+    ``adaptive`` never debriefs a literal one-call auto-solve and only pays for
+    a refactor after a substantial acquisition.  This leaves the successful
+    pre-debrief solver as the promotion candidate and avoids spending a weekly
+    point merely to narrate reuse that is already literal in source.
+    """
+    if policy not in {"always", "adaptive", "never"}:
+        raise ValueError("debrief policy must be always, adaptive, or never")
+    if threshold < 0:
+        raise ValueError("debrief threshold must be nonnegative")
+    if policy == "always":
+        return True
+    if policy == "never" or auto_solved:
+        return False
+    return pre_debrief_marginal_C >= threshold
+
+
 def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
     """F = R + lambda*C with R = -levels_reached and C = total marginal novelty."""
     return -float(levels) + lam * float(marginal_C_total)
@@ -125,10 +147,20 @@ SOURCE_TAINT_MARKERS = (
 
 PRIVATE_RUNTIME_RE = re.compile(
     r"\.\s*_(?:game|env|fd|budget)\b"
-    r"|__dict__|inspect\.(?:getsource|getmembers)"
-    r"|\b(?:vars|dir)\s*\("
+    r"|\benv\s*\.\s*__dict__\b"
+    r"|\bvars\s*\(\s*env\b"
     r"|object\.__getattribute__"
     r"|\b(?:getattr|hasattr)\s*\([^,\n]+,\s*['\"]_(?:game|env|fd|budget)\b"
+)
+
+EXTERNAL_NETWORK_RE = re.compile(
+    r"(?:^|[\n;&|])\s*(?:sudo\s+)?(?:curl|wget|lynx|links|nc|ncat|netcat|telnet|ssh|scp|rsync)(?!\s*=)\s+"
+    r"|\b(?:web[_ -]?search|browser\.open|search_query|open_url)\b"
+    r"|\b(?:requests|httpx|aiohttp|urllib\.request|http\.client)\s*\."
+    r"|\bsocket\.(?:create_connection|socket|getaddrinfo|gethostbyname)\b"
+    r"|https?://(?!localhost(?::\d+)?(?:/|\b)|127\.0\.0\.1(?::\d+)?(?:/|\b)|"
+    r"\[?::1\]?(?::\d+)?(?:/|\b))",
+    re.IGNORECASE,
 )
 """Strings that make a proposer workspace inadmissible.
 
@@ -142,30 +174,83 @@ PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT
                   AUTO_SOLVE_LOG)
 """Files that define a verified leg-library state and should survive scratch loss."""
 
-SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache"}
+SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache", ".git"}
 SNAPSHOT_SKIP_FILES = {".orchestrate.lock"}
 BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
+MAX_TAINT_SCAN_BYTES = 50_000_000
 
 
 class WorkspaceTainted(RuntimeError):
     """The proposer workspace contains evidence of forbidden source/history use."""
 
 
+def _codex_log_execution_surface(text: str) -> Optional[str]:
+    """Return agent-authored actions from a Codex JSONL transcript.
+
+    Command output is evidence of what an allowed observation returned, not of
+    what private operation the agent requested. In particular, an exception from
+    the public ``env.clone()`` API can expose private harness field names in a
+    traceback. Commands remain immutable in the same JSONL, and agent-authored
+    workspace files are scanned separately.
+    """
+    values = []
+    parsed = 0
+    nonempty = 0
+    for raw in text.splitlines():
+        if not raw.strip():
+            continue
+        nonempty += 1
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        parsed += 1
+        if not isinstance(event, dict):
+            continue
+        item = event.get("item")
+        if not isinstance(item, dict):
+            continue
+        item_type = item.get("type")
+        if item_type == "command_execution" and isinstance(item.get("command"), str):
+            values.append(item["command"])
+        elif item_type in {"web_search", "file_change"}:
+            # Web-search requests and file-change paths are agent-authored. File
+            # contents themselves are covered by the workspace walk.
+            values.append(json.dumps(item, sort_keys=True))
+    if parsed and parsed == nonempty:
+        return "\n".join(values)
+    return None
+
+
 def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
     try:
-        if os.path.getsize(path) > 2_000_000:
-            return None
+        size = os.path.getsize(path)
+        if size > MAX_TAINT_SCAN_BYTES:
+            return (
+                f"oversized unscanned evidence in {display_name} "
+                f"({size} > {MAX_TAINT_SCAN_BYTES} bytes)"
+            )
         with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read().lower()
+            text = f.read()
     except OSError:
         return None
-    if os.path.basename(path) == "proposer_last.log":
-        # Debriefs may quote a blocked command as Markdown inline code. The
-        # blocked-attempt ledger is the execution record; a quoted mention in
-        # prose is not evidence that introspection ran.
-        text = re.sub(r"`[^`\n]*`", "", text)
+    execution_surface = (
+        _codex_log_execution_surface(text)
+        if os.path.basename(path) == "proposer_last.log" or path.endswith(".jsonl")
+        else None
+    )
+    if execution_surface is not None:
+        text = execution_surface
+    elif os.path.basename(path) == "proposer_last.log":
+        if execution_surface is None:
+            # Legacy prose logs may quote a blocked command as Markdown inline
+            # code. The blocked-attempt ledger is the execution record.
+            text = re.sub(r"`[^`\n]*`", "", text)
+    text = text.lower()
     if PRIVATE_RUNTIME_RE.search(text):
         return f"private game/runtime introspection in {display_name}"
+    if EXTERNAL_NETWORK_RE.search(text):
+        return f"external web/network access in {display_name}"
     for marker in SOURCE_TAINT_MARKERS:
         if marker in text:
             return f"{marker} in {display_name}"
@@ -200,6 +285,75 @@ def assert_workspace_not_tainted(ws: str) -> None:
         raise WorkspaceTainted(
             f"forbidden source/history access tainted proposer workspace: {reason}"
         )
+
+
+def _sha256_file(path: str) -> str:
+    digest = hashlib.sha256()
+    with open(path, "rb") as f:
+        for block in iter(lambda: f.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()
+
+
+def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None:
+    """Freeze a machine-verifiable provenance record for a new promoted level."""
+    evidence_root = os.path.join(art, "promotion_evidence")
+    evidence_dir = os.path.join(evidence_root, f"level_{rep.reached:02d}")
+    os.makedirs(evidence_dir, exist_ok=True)
+
+    transcript_src = os.path.join(ws, "proposer_last.log")
+    transcript_dst = os.path.join(evidence_dir, "proposer_last.log")
+    if os.path.isfile(transcript_src):
+        shutil.copy2(transcript_src, transcript_dst)
+    elif not os.path.exists(transcript_dst):
+        with open(transcript_dst, "w") as f:
+            f.write("")
+
+    codex_transcripts = []
+    codex_evidence_dir = os.path.join(evidence_dir, "codex_turns")
+    for source in sorted(glob.glob(os.path.join(ws, "codex_turn_*.jsonl"))):
+        os.makedirs(codex_evidence_dir, exist_ok=True)
+        name = os.path.basename(source)
+        destination = os.path.join(codex_evidence_dir, name)
+        shutil.copy2(source, destination)
+        codex_transcripts.append({
+            "path": os.path.join("codex_turns", name),
+            "sha256": _sha256_file(destination),
+        })
+
+    parent_manifest = None
+    parent_hash = None
+    prior = sorted(glob.glob(os.path.join(evidence_root, "level_*", "manifest.json")))
+    prior = [path for path in prior if os.path.dirname(path) != evidence_dir]
+    if prior:
+        parent_manifest = os.path.relpath(prior[-1], art)
+        parent_hash = _sha256_file(prior[-1])
+
+    files_dir = os.path.join(evidence_dir, "files")
+    os.makedirs(files_dir, exist_ok=True)
+    file_hashes = {}
+    for name in PROMOTED_FILES:
+        path = os.path.join(art, name)
+        if os.path.isfile(path):
+            evidence_path = os.path.join(files_dir, name)
+            shutil.copy2(path, evidence_path)
+            file_hashes[name] = _sha256_file(evidence_path)
+    manifest = {
+        "schema": 1,
+        "game": game,
+        "level": rep.reached,
+        "validated": bool(rep.validated),
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "parent_manifest": parent_manifest,
+        "parent_manifest_sha256": parent_hash,
+        "promoted_files_sha256": file_hashes,
+        "transcript": "proposer_last.log",
+        "transcript_sha256": _sha256_file(transcript_dst),
+        "codex_transcripts": codex_transcripts,
+        "taint_verdict": "clean",
+    }
+    with open(os.path.join(evidence_dir, "manifest.json"), "w") as f:
+        json.dump(manifest, f, indent=2, sort_keys=True)
 
 
 def _deduplicate_level_records(rep: Report) -> int:
@@ -499,7 +653,11 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
         return 0
     attempts.sort(key=lambda t: t[1], reverse=True)
     attempts.sort(key=lambda t: not t[0])
-    skip = set(PROMOTED_FILES) | {"gkm_try.py"}
+    # Harness-generated templates must come from the current runner, not an old
+    # WIP copy.  Restore only agent-authored probes/context around them.
+    skip = set(PROMOTED_FILES) | {
+        "gkm_try.py", "perception.py", "solver_index.md", "frontier_brief.md",
+    }
     restored = 0
     latest_done = False
     for is_latest, _, attempt, files_dir in attempts:
@@ -507,6 +665,10 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
             if name in skip:
                 continue
             src = os.path.join(files_dir, name)
+            # Local probe execution may leave cache directories inside a preserved
+            # attempt. WIP restoration is intentionally flat and file-only.
+            if not os.path.isfile(src):
+                continue
             dst = os.path.join(ws, name)
             if os.path.exists(dst):
                 if latest_done:
@@ -516,6 +678,15 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
             shutil.copy2(src, dst)
             restored += 1
         latest_done = True
+    # A reviewed scaffold is a level-scoped intervention created after the prior
+    # attempts.  It is deliberately outside immutable attempt snapshots, but is
+    # copied into the clean room and included in the generated frontier brief.
+    scaffold = os.path.join(level_dir, "frontier_scaffold.json")
+    if os.path.isfile(scaffold):
+        dst = os.path.join(ws, "frontier_scaffold.json")
+        if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(scaffold):
+            shutil.copy2(scaffold, dst)
+            restored += 1
     if verbose and restored:
         print(f"restored {restored} WIP probe file(s) for level {level} "
               f"from latest/backfill snapshots")
@@ -573,6 +744,7 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
             src = os.path.join(ws, name)
             if os.path.exists(src):
                 shutil.copy2(src, os.path.join(art, name))
+        _write_promotion_evidence(game, ws, art, rep)
     else:
         # Same verified level: refresh metadata only. Scratch may contain
         # speculative next-level code, so do not overwrite clean solution files.
@@ -1134,6 +1306,49 @@ def bounded_bfs(env, goal_fn, actions: Sequence[int] = (UP, DOWN, LEFT, RIGHT, U
     return None
 
 
+def bounded_replay_bfs(env, goal_fn, action_fn,
+                       key_fn=None, max_states: int = 20000, max_depth: int = 80):
+    """Path-only BFS for games whose deep Arena clones become expensive.
+
+    The queue retains compact action paths, not recursively deep-copied runtime
+    states. Each node is reconstructed from one root clone. ``action_fn(node)``
+    may return integer actions or coordinate tuples such as ``(6, x, y)``.
+    """
+    if key_fn is None:
+        key_fn = lambda e: arr(e.frame()).tobytes()
+
+    def reconstruct(path):
+        node = env.clone()
+        for action in path:
+            if isinstance(action, tuple):
+                node.step(*action)
+            else:
+                node.step(int(action))
+        return node
+
+    start = reconstruct([])
+    q = deque([[]])
+    seen = {key_fn(start)}
+    while q and len(seen) <= max_states:
+        path = q.popleft()
+        node = reconstruct(path)
+        if goal_fn(node, path):
+            return path
+        if len(path) >= max_depth or node.terminal():
+            continue
+        for action in action_fn(node):
+            child_path = path + [action]
+            child = reconstruct(child_path)
+            key = key_fn(child)
+            if key in seen:
+                continue
+            seen.add(key)
+            if goal_fn(child, child_path):
+                return child_path
+            q.append(child_path)
+    return None
+
+
 def level_goal(base_level: int):
     return lambda env, path: env.levels_completed > base_level
 '''
@@ -1171,6 +1386,192 @@ def setup_workspace(game: str, tag: str = "") -> str:
             with open(p, "w") as fh:
                 fh.write(seed)
     return ws
+
+
+def _solver_source_index(ws: str) -> str:
+    """Return a compact navigational index without copying function bodies."""
+    sections = [
+        "# Generated solver source index",
+        "",
+        "Use line ranges to inspect only definitions relevant to the current level.",
+    ]
+    for name in ("players.py", "legs.py", "perception.py", "solve.py"):
+        path = os.path.join(ws, name)
+        source = _read(path)
+        if not source:
+            continue
+        sections.extend(("", f"## {name}"))
+        try:
+            tree = ast.parse(source, filename=name)
+        except SyntaxError as exc:
+            sections.append(f"- parse error: {exc}")
+            continue
+        lines = source.splitlines()
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                continue
+            first_body_line = node.body[0].lineno if getattr(node, "body", None) else node.end_lineno
+            header = " ".join(
+                line.strip()
+                for line in lines[node.lineno - 1:max(node.lineno, first_body_line - 1)]
+            )
+            header = re.sub(r"\s+", " ", header)[:240]
+            doc = (ast.get_docstring(node, clean=True) or "").splitlines()
+            summary = re.sub(r"\s+", " ", doc[0]).strip()[:180] if doc else ""
+            calls = sorted({
+                child.func.id
+                for child in ast.walk(node)
+                if isinstance(child, ast.Call) and isinstance(child.func, ast.Name)
+            })
+            call_note = f"; calls: {', '.join(calls[:10])}" if calls else ""
+            if len(calls) > 10:
+                call_note += f", +{len(calls) - 10}"
+            line_range = f"L{node.lineno}--{node.end_lineno or node.lineno}"
+            description = f" — {summary}" if summary else ""
+            sections.append(
+                f"- {line_range} `{header}`{description}{call_note}"
+            )
+    return "\n".join(sections) + "\n"
+
+
+def _write_solver_source_index(ws: str) -> str:
+    path = os.path.join(ws, "solver_index.md")
+    with open(path, "w") as handle:
+        handle.write(_solver_source_index(ws))
+    return path
+
+
+def _frontier_brief(ws: str, game: str, level: int,
+                    max_chars: int = 6000) -> str:
+    """Distill prior clean WIP narration without copying bulky tool output.
+
+    Codex JSONL command output often contains tens of thousands of pixels, source
+    lines, and repeated probe states.  The agent's own progress messages are a much
+    smaller index into that work.  They remain explicitly unverified hypotheses:
+    the next proposer must reproduce any fact it relies on.
+    """
+    log = os.path.join(ws, "proposer_last.log")
+    messages: List[str] = []
+    if os.path.isfile(log):
+        for raw in _read(log).splitlines():
+            try:
+                event = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            item = event.get("item")
+            if (
+                event.get("type") == "item.completed"
+                and isinstance(item, dict)
+                and item.get("type") == "agent_message"
+                and isinstance(item.get("text"), str)
+            ):
+                text = re.sub(r"\s+", " ", item["text"]).strip()
+                if text:
+                    messages.append(text)
+
+    standard = set(PROMOTED_FILES) | {
+        "gkm_try.py", "perception.py", "solver_index.md", "frontier_brief.md",
+        "proposer_last.log", AUTO_SOLVE_LOG,
+    }
+    probe_files = [
+        name for name in sorted(os.listdir(ws))
+        if os.path.isfile(os.path.join(ws, name))
+        and name not in standard
+        and not name.startswith("codex_turn_")
+        and name.endswith((".py", ".md", ".json", ".txt"))
+    ]
+    if not messages and not probe_files:
+        return ""
+
+    lines = [
+        f"# Unverified frontier brief: {game} level {level}",
+        "",
+        "This is a compact index of the latest clean WIP, not solver evidence.",
+        "Reproduce every observation you rely on with the documented local API.",
+        "Do not reread the full proposer transcript unless a named ambiguity requires it.",
+        "",
+    ]
+    if messages:
+        lines.extend(["## Prior proposer progress", ""])
+        used = 0
+        for message in messages[-12:]:
+            remaining = max_chars - used
+            if remaining <= 0:
+                break
+            clipped = message[:remaining]
+            lines.append(f"- {clipped}")
+            used += len(clipped)
+        lines.append("")
+    if probe_files:
+        lines.extend([
+            "## Preserved local probes",
+            "",
+            *[
+                f"- `{name}` ({os.path.getsize(os.path.join(ws, name))} bytes)"
+                for name in probe_files
+            ],
+            "",
+            "Run or inspect the smallest relevant probe before writing another one.",
+            "",
+        ])
+    return "\n".join(lines)
+
+
+def _write_frontier_brief(ws: str, game: str, level: int) -> Optional[str]:
+    text = _frontier_brief(ws, game, level)
+    path = os.path.join(ws, "frontier_brief.md")
+    if not text:
+        if os.path.exists(path):
+            os.unlink(path)
+        return None
+    with open(path, "w") as handle:
+        handle.write(text)
+    return path
+
+
+def _initialize_codex_workspace_git(ws: str) -> None:
+    """Give Codex a repository boundary at the scratch root.
+
+    Codex routinely runs ``git diff`` before finishing.  Without a local
+    repository, Git walks upward into the real project and can expose unrelated
+    parent metadata.  A tiny local baseline keeps every such read and diff
+    confined to the clean-room workspace while still letting the agent inspect
+    its own edits.
+    """
+    subprocess.run(["git", "init", "--quiet", ws], check=True)
+    subprocess.run(
+        ["git", "-C", ws, "config", "user.name", "GKM clean-room harness"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", ws, "config", "user.email", "gkm-clean-room@invalid"],
+        check=True,
+    )
+    tracked = [
+        name for name in (
+            "gkm_try.py", "perception.py", "legs.py", "players.py", "solve.py",
+            "legs_log.md", "solver_index.md", "frontier_brief.md",
+            "frontier_scaffold.json", CHECKPOINT_FILE, AUTO_SOLVE_LOG,
+        )
+        if os.path.isfile(os.path.join(ws, name))
+    ]
+    if tracked:
+        subprocess.run(["git", "-C", ws, "add", "--", *tracked], check=True)
+        staged = subprocess.run(
+            ["git", "-C", ws, "diff", "--cached", "--quiet"],
+            check=False,
+        )
+        if staged.returncode == 1:
+            subprocess.run(
+                ["git", "-C", ws, "commit", "--quiet", "-m", "verified starting point"],
+                check=True,
+            )
+        elif staged.returncode != 0:
+            raise RuntimeError(f"could not inspect local Codex Git baseline in {ws}")
+    subprocess.run(
+        ["git", "-C", ws, "config", "status.showUntrackedFiles", "no"],
+        check=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1328,35 +1729,257 @@ def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> N
         raise CreditOut(f"proposer reported no credits/quota (see {ws}/proposer_last.log)")
 
 
-def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
-    """Run Codex headlessly as the proposer, writing a transcript as it streams."""
-    labdir = os.path.dirname(os.path.abspath(__file__))
-    cmd = [
+DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
+CODEX_REASONING_EFFORTS = {"medium", "high"}
+
+
+def _codex_command(ws: str, task: str, model: Optional[str],
+                   reasoning_effort: str) -> list[str]:
+    """Build a deterministic, noninteractive and fail-closed Codex invocation."""
+    if reasoning_effort not in CODEX_REASONING_EFFORTS:
+        raise ValueError(
+            f"Codex effort must be one of {sorted(CODEX_REASONING_EFFORTS)}, "
+            f"not {reasoning_effort!r}"
+        )
+    return [
         "codex", "exec",
+        "--json",
+        "--ephemeral",
+        "--ignore-user-config",
+        "--strict-config",
+        "--model", model or DEFAULT_CODEX_MODEL,
+        "--config", f'model_reasoning_effort="{reasoning_effort}"',
+        "--config", 'web_search="disabled"',
+        "--config", "sandbox_workspace_write.network_access=false",
+        "--config", 'approval_policy="never"',
+        "--sandbox", "workspace-write",
         "--cd", ws,
-        "--add-dir", labdir,
         "--skip-git-repo-check",
-        "--dangerously-bypass-approvals-and-sandbox",
         "--color", "never",
         task,
     ]
-    if model:
-        cmd[2:2] = ["--model", model]
-    log_path = os.path.join(ws, "proposer_last.log")
-    with open(log_path, "w") as log:
-        proc = subprocess.Popen(cmd, cwd=ws, stdout=log, stderr=subprocess.STDOUT,
-                                text=True)
+
+
+def _codex_environment() -> dict[str, str]:
+    """Pass authentication and ordinary shell basics, but no API-key secrets."""
+    allowed = {
+        "PATH", "HOME", "CODEX_HOME", "TMPDIR", "TMP", "TEMP", "LANG",
+        "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL",
+        "VIRTUAL_ENV", "SSL_CERT_FILE", "SSL_CERT_DIR",
+    }
+    return {key: value for key, value in os.environ.items() if key in allowed}
+
+
+def _codex_usage_from_jsonl(path: str) -> dict:
+    """Extract the one turn's ID and token counters from a raw JSONL transcript."""
+    result = {
+        "thread_id": None,
+        "input_tokens": 0,
+        "cached_input_tokens": 0,
+        "output_tokens": 0,
+        "reasoning_output_tokens": 0,
+        "usage_reported": False,
+    }
+    try:
+        lines = _read(path).splitlines()
+    except OSError:
+        return result
+    for raw in lines:
         try:
-            proc.wait(timeout=minutes * 60)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+            event = json.loads(raw)
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(event, dict):
+            continue
+        if event.get("type") == "thread.started" and isinstance(event.get("thread_id"), str):
+            result["thread_id"] = event["thread_id"]
+        if event.get("type") != "turn.completed" or not isinstance(event.get("usage"), dict):
+            continue
+        usage = event["usage"]
+        for field in (
+            "input_tokens", "cached_input_tokens", "output_tokens",
+            "reasoning_output_tokens",
+        ):
+            value = usage.get(field)
+            if isinstance(value, int) and value >= 0:
+                result[field] = value
+        result["usage_reported"] = True
+    result["observed_tokens"] = result["input_tokens"] + result["output_tokens"]
+    return result
+
+
+def _stop_process_group(proc: subprocess.Popen, grace_seconds: float = 5.0) -> None:
+    """Terminate the Codex CLI and every shell command it spawned."""
+    if proc.poll() is not None:
+        return
+    try:
+        os.killpg(proc.pid, signal.SIGTERM)
+        proc.wait(timeout=grace_seconds)
+    except (ProcessLookupError, subprocess.TimeoutExpired):
+        if proc.poll() is None:
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
             proc.wait()
-            print(f"[codex proposer hit {minutes}min budget; verifying partial work]")
-        if proc.returncode not in (0, -9):
+
+
+def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
+                 reasoning_effort: str = "medium",
+                 weekly_reserve: int = 80,
+                 weekly_headroom: int = 1,
+                 max_campaign_tokens: int = 2_000_000,
+                 max_campaign_runs: int = 12,
+                 ledger_path: Optional[str] = None,
+                 run_label: Optional[str] = None) -> dict:
+    """Run one metered Codex proposer turn under a serialized campaign guard.
+
+    The raw ``--json`` stream remains in ``proposer_last.log`` so attempted
+    source/runtime/network access is visible to the existing taint gate.  The
+    local token cap is an admission cap rather than a provider-side hard token
+    ceiling; wall time and the live weekly reserve are the hard pre-turn bounds.
+    """
+    if minutes <= 0:
+        raise ValueError("Codex minutes must be positive")
+    chosen_model = model or DEFAULT_CODEX_MODEL
+    ledger = ledger_path or os.fspath(CUG.DEFAULT_LEDGER)
+    cmd = _codex_command(ws, task, chosen_model, reasoning_effort)
+    latest_log_path = os.path.join(ws, "proposer_last.log")
+
+    try:
+        lock = CUG.campaign_lock(ledger)
+        lock.__enter__()
+    except CUG.CodexUsageGuardError as exc:
+        raise CreditOut(f"Codex campaign guard stopped the run: {exc}") from exc
+    try:
+        try:
+            before = CUG.preflight(
+                reserve_percent=weekly_reserve,
+                minimum_headroom_percent=weekly_headroom,
+                max_campaign_tokens=max_campaign_tokens,
+                max_campaign_runs=max_campaign_runs,
+                ledger_path=ledger,
+            )
+        except CUG.CodexUsageGuardError as exc:
+            raise CreditOut(f"Codex campaign guard stopped the run: {exc}") from exc
+
+        started = time.monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", run_label or "turn").strip("_")
+        log_path = os.path.join(ws, f"codex_turn_{stamp}_{safe_label}.jsonl")
+        proc = None
+        timed_out = False
+        interrupted = False
+        launch_error = None
+        try:
+            with open(log_path, "w") as log:
+                proc = subprocess.Popen(
+                    cmd,
+                    cwd=ws,
+                    stdout=log,
+                    stderr=subprocess.STDOUT,
+                    text=True,
+                    env=_codex_environment(),
+                    start_new_session=True,
+                )
+                try:
+                    proc.wait(timeout=minutes * 60)
+                except subprocess.TimeoutExpired:
+                    timed_out = True
+                    _stop_process_group(proc)
+                    print(
+                        f"[codex proposer hit {minutes}min wall-time budget; "
+                        "verifying partial work]"
+                    )
+                except KeyboardInterrupt:
+                    interrupted = True
+                    _stop_process_group(proc)
+        except (OSError, subprocess.SubprocessError) as exc:
+            launch_error = exc
+
+        if os.path.isfile(log_path):
+            shutil.copy2(log_path, latest_log_path)
+        usage = _codex_usage_from_jsonl(log_path)
+        postflight = None
+        postflight_error = None
+        try:
+            postflight = CUG.weekly_allowance(CUG.query_rate_limits()).as_dict()
+        except CUG.CodexUsageGuardError as exc:
+            postflight_error = str(exc)
+
+        allowance_before = before["allowance"]
+        record = {
+            "event": "codex_exec",
+            "started_at": started_at,
+            "duration_seconds": round(time.monotonic() - started, 3),
+            "run_label": run_label,
+            "transcript": os.path.basename(log_path),
+            "workspace": os.path.basename(os.path.abspath(ws)),
+            "model": chosen_model,
+            "reasoning_effort": reasoning_effort,
+            "minutes_limit": minutes,
+            "timed_out": timed_out,
+            "interrupted": interrupted,
+            "returncode": proc.returncode if proc is not None else None,
+            "launch_error": type(launch_error).__name__ if launch_error else None,
+            "weekly_used_before": allowance_before["used_percent"],
+            "weekly_remaining_before": allowance_before["remaining_percent"],
+            "weekly_resets_at": allowance_before["resets_at"],
+            "weekly_used_after": postflight["used_percent"] if postflight else None,
+            "weekly_remaining_after": postflight["remaining_percent"] if postflight else None,
+            "postflight_error": postflight_error,
+            **usage,
+        }
+        CUG.append_ledger(record, ledger)
+
+        if launch_error is not None:
+            raise RuntimeError(f"could not launch Codex CLI: {launch_error}") from launch_error
+        if interrupted:
+            raise KeyboardInterrupt
+        assert proc is not None
+        if not timed_out and proc.returncode != 0:
             txt = _read(log_path).lower()
-            if any(m in txt for m in _CREDIT_OUT_MARKERS):
+            if any(marker in txt for marker in _CREDIT_OUT_MARKERS):
                 raise CreditOut(f"codex reported no credits/quota (see {log_path})")
-            raise RuntimeError(f"codex proposer CLI failed (see {log_path})")
+            raise RuntimeError(
+                f"codex proposer CLI failed with status {proc.returncode} "
+                f"(see {log_path})"
+            )
+        return record
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def _record_codex_level_outcome(turn: Optional[dict], *, ledger_path: Optional[str],
+                                game: str, level: int, reached_before: int,
+                                reached_after: int, path: list,
+                                marginal_C: int) -> None:
+    """Join provider usage to the independently verified level outcome."""
+    if not turn:
+        return
+    ledger = ledger_path or os.fspath(CUG.DEFAULT_LEDGER)
+    outcome = {
+        "event": "codex_level_outcome",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "thread_id": turn.get("thread_id"),
+        "run_label": turn.get("run_label"),
+        "model": turn.get("model"),
+        "reasoning_effort": turn.get("reasoning_effort"),
+        "game": game,
+        "target_level": level,
+        "reached_before": reached_before,
+        "reached_after": reached_after,
+        "solved_target": reached_after >= level,
+        "winning_path_present": bool(path),
+        "winning_marginal_C": marginal_C if reached_after >= level else None,
+        "taint_verdict": "clean",
+    }
+    try:
+        with CUG.campaign_lock(ledger):
+            CUG.append_ledger(outcome, ledger)
+    except CUG.CodexUsageGuardError as exc:
+        print(f"[warning: could not append Codex level outcome: {exc}]")
 
 
 def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
@@ -1376,8 +1999,25 @@ def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
         raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
 
 
+CLEAN_ROOM_INSTRUCTION = (
+    "CLEAN-ROOM BOUNDARY: work only with files in the current workspace and the "
+    "documented observation/action surface exposed by gkm_try.py and perception.py. "
+    "Those local harness and API files are legitimate to inspect. Do not read parent "
+    "directories, prior agents' artifacts, hidden implementations, or underscore-"
+    "prefixed runtime state. Do not use any internet service. Any attempted boundary "
+    "crossing invalidates the entire discovery lineage, even if it does not help."
+    " TOKEN DISCIPLINE: start with solver_index.md, which lists signatures, line "
+    "ranges, docstrings, and direct calls without bodies. Use those ranges instead "
+    "of printing whole files. If frontier_brief.md exists, read it next: it indexes "
+    "the previous clean attempt's unverified observations and preserved probes; "
+    "reproduce any fact you rely on instead of rereading the full transcript. Keep probe "
+    "outputs symbolic and compact. The workspace has its own local Git boundary; "
+    "repository-wide status or diff inspection is unnecessary."
+)
+
+
 def _propose_task(game, K, context, legs_index):
-    return (A.PRECONCEPTIONS + "\n\n" + context +
+    return (CLEAN_ROOM_INSTRUCTION + "\n\n" + A.PRECONCEPTIONS + "\n\n" + context +
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
             f"legs in legs.py: {legs_index or '(none yet)'}.\n"
             f"GOAL: make solve.py reach LEVEL {K}. First run `python gkm_try.py` to see "
@@ -1398,7 +2038,8 @@ def _propose_task(game, K, context, legs_index):
 
 
 def _debrief_task(game, K):
-    return (f"DEBRIEF after clearing {game} level {K}. Compare play_level_{K} to the "
+    return (CLEAN_ROOM_INSTRUCTION + "\n\n" +
+            f"DEBRIEF after clearing {game} level {K}. Compare play_level_{K} to the "
             "earlier players in players.py. Refactor any repeated code into shared, "
             "well-named legs in legs.py (write each skill ONCE) and update the players "
             "to call them; the players should be thin composition. Append the recurring "
@@ -1432,17 +2073,37 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 proposer="claude", tag="",
                 seed_artifact: bool = True,
                 restore_wip: bool = True,
+                codex_effort: str = "medium",
+                codex_debrief_effort: str = "medium",
+                debrief_policy: str = "always",
+                debrief_threshold: int = 150,
+                codex_weekly_reserve: int = 80,
+                codex_weekly_headroom: int = 1,
+                codex_max_campaign_tokens: int = 2_000_000,
+                codex_max_campaign_runs: int = 12,
+                transient_retries: int = _TRANSIENT_RETRIES,
+                codex_ledger: Optional[str] = None,
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
                 verbose=True) -> Report:
-    """Per-level compose->verify->debrief with marginal-C accounting.
+    """Per-level compose->verify->optional-debrief with marginal-C accounting.
 
     propose_fn(ws,K) / verify_fn(game, solve_path)->(levels,path,err) /
     debrief_fn(ws,K) are injectable; defaults use either the Claude Code agent
     (``proposer="claude"``) or opencode (``proposer="opencode"``) as proposer,
     and the real game as verifier (credits needed for either proposer).
     """
+    # Validate before acquiring a workspace lock so a bad campaign command
+    # cannot strand an otherwise reusable scratch directory.
+    should_run_debrief(
+        debrief_policy,
+        auto_solved=False,
+        pre_debrief_marginal_C=0,
+        threshold=debrief_threshold,
+    )
+    if transient_retries < 0:
+        raise ValueError("transient_retries must be nonnegative")
     ws = setup_workspace(game, tag)
     run_lock = _acquire_workspace_lock(ws)
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
@@ -1450,20 +2111,66 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         seed_workspace_from_artifact(game, ws, tag, verbose=verbose, restore_wip=restore_wip)
     elif verbose:
         print("fresh run requested: skipping artifact seed")
+    if proposer == "codex" and propose_fn is None:
+        _write_solver_source_index(ws)
+        starting_checkpoint = _load_checkpoint(ws)
+        next_level = starting_checkpoint.reached + 1 if starting_checkpoint else 1
+        _write_frontier_brief(ws, game, next_level)
+        taint_reason = _workspace_taint_reason(ws)
+        if taint_reason:
+            raise WorkspaceTainted(
+                f"refusing to expose tainted restored context to Codex: {taint_reason}"
+            )
+        _initialize_codex_workspace_git(ws)
     context = discovered_context(game) if propose_fn is None else ""
+    codex_turn_records = {}
     if propose_fn is None:
         agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
-        propose_fn = lambda w, k: _agent(
-            w,
-            _propose_task(game, k, context, _defs(_read(legs_p))),
-            model,
-            minutes_per,
-        )
+        if proposer == "codex":
+            def propose_fn(w, k):
+                codex_turn_records[("propose", k)] = _agent(
+                    w,
+                    _propose_task(game, k, context, _defs(_read(legs_p))),
+                    model,
+                    minutes_per,
+                    reasoning_effort=codex_effort,
+                    weekly_reserve=codex_weekly_reserve,
+                    weekly_headroom=codex_weekly_headroom,
+                    max_campaign_tokens=codex_max_campaign_tokens,
+                    max_campaign_runs=codex_max_campaign_runs,
+                    ledger_path=codex_ledger,
+                    run_label=f"{game}:L{k}:propose",
+                )
+        else:
+            propose_fn = lambda w, k: _agent(
+                w,
+                _propose_task(game, k, context, _defs(_read(legs_p))),
+                model,
+                minutes_per,
+            )
     if debrief_fn is None:
         agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
-        debrief_fn = lambda w, k: _agent(w, _debrief_task(game, k), model, max(10, minutes_per // 2))
+        if proposer == "codex":
+            def debrief_fn(w, k):
+                codex_turn_records[("debrief", k)] = _agent(
+                    w,
+                    _debrief_task(game, k),
+                    model,
+                    max(10, minutes_per // 2),
+                    reasoning_effort=codex_debrief_effort,
+                    weekly_reserve=codex_weekly_reserve,
+                    weekly_headroom=codex_weekly_headroom,
+                    max_campaign_tokens=codex_max_campaign_tokens,
+                    max_campaign_runs=codex_max_campaign_runs,
+                    ledger_path=codex_ledger,
+                    run_label=f"{game}:L{k}:debrief",
+                )
+        else:
+            debrief_fn = lambda w, k: _agent(
+                w, _debrief_task(game, k), model, max(10, minutes_per // 2)
+            )
     verify_fn = verify_fn or run_solve_file
 
     rep = Report(game=game, reached=0)
@@ -1501,7 +2208,23 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     try:
         while rep.reached < max_level:
             K = rep.reached + 1
+            reached_before_level = rep.reached
             legs_b, players_b = _read(legs_p), _read(players_p)
+
+            def record_proposer_outcome(outcome_levels, outcome_path):
+                turn = codex_turn_records.pop(("propose", K), None)
+                _record_codex_level_outcome(
+                    turn,
+                    ledger_path=codex_ledger,
+                    game=game,
+                    level=K,
+                    reached_before=reached_before_level,
+                    reached_after=outcome_levels,
+                    path=outcome_path,
+                    marginal_C=marginal_complexity(
+                        legs_b, _read(legs_p), players_b, _read(players_p)
+                    ),
+                )
 
             # PHASE 0: auto-solve with existing legs (structural reuse, zero proposer cost).
             # Skip when it already failed at this level against this exact legs.py -- a
@@ -1519,16 +2242,30 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 levels, path, err = auto_result
                 if verbose:
                     print(f"level {K}: auto-solved via existing legs")
-                # still debrief: the auto-solve succeeded, but legs_log.md may need an entry
-                try:
-                    debrief_fn(ws, K)
-                    levels2, path2, _ = verify_fn(game, solve_p)
-                except CreditOut as ex:
-                    print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                auto_marginal = marginal_complexity(
+                    legs_b, _read(legs_p), players_b, _read(players_p)
+                )
+                if should_run_debrief(
+                    debrief_policy,
+                    auto_solved=True,
+                    pre_debrief_marginal_C=auto_marginal,
+                    threshold=debrief_threshold,
+                ):
+                    try:
+                        debrief_fn(ws, K)
+                        levels2, path2, _ = verify_fn(game, solve_p)
+                    except CreditOut as ex:
+                        print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                        levels2, path2 = levels, path
+                    phase = "after_auto_solve_debrief"
+                else:
                     levels2, path2 = levels, path
+                    phase = "auto_solve_debrief_skipped"
+                    if verbose:
+                        print(f"level {K}: debrief skipped by {debrief_policy} policy")
                 snapshot_wip_context(
-                    game, ws, K, "after_auto_solve_debrief",
-                    max(levels, levels2), None, tag, verbose=verbose,
+                    game, ws, K, phase, max(levels, levels2), None, tag,
+                    verbose=verbose,
                 )
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
@@ -1557,7 +2294,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 levels, path, err = pre_recovered
                 snapshot_wip_context(game, ws, K, "recovered_existing_path_artifact",
                                      levels, None, tag, verbose=verbose)
-            for attempt in range(0 if pre_recovered is not None else 1 + _TRANSIENT_RETRIES):
+            for attempt in range(0 if pre_recovered is not None else 1 + transient_retries):
                 try:
                     propose_fn(ws, K)
                     assert_workspace_not_tainted(ws)
@@ -1582,15 +2319,17 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 _save_checkpoint(ws, rep)
                 if recovered is not None:
                     levels, path, err = recovered
+                    record_proposer_outcome(levels, path)
                     snapshot_wip_context(game, ws, K, "recovered_path_artifact",
                                          levels, None, tag, verbose=verbose)
                     break
                 snapshot_wip_context(game, ws, K, "after_propose", rep.reached, None, tag, verbose=verbose)
                 levels, path, err = verify_fn(game, solve_p)
+                record_proposer_outcome(levels, path)
                 if levels >= K:
                     break
                 code_changed = (_read(legs_p) != legs_b or _read(players_p) != players_b)
-                if attempt < _TRANSIENT_RETRIES and _transient_proposer_failure(ws, code_changed):
+                if attempt < transient_retries and _transient_proposer_failure(ws, code_changed):
                     if verbose:
                         print(f"level {K}: transient proposer failure (see proposer_last.log); retrying")
                     continue
@@ -1605,21 +2344,42 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 name: _read(os.path.join(ws, name))
                 for name in ("legs.py", "players.py", "solve.py", "legs_log.md")
             }
-            try:
-                debrief_fn(ws, K)
-                levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
-            except CreditOut as ex:
-                print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+            pre_debrief_marginal = marginal_complexity(
+                legs_b, _read(legs_p), players_b, _read(players_p)
+            )
+            run_debrief = should_run_debrief(
+                debrief_policy,
+                auto_solved=False,
+                pre_debrief_marginal_C=pre_debrief_marginal,
+                threshold=debrief_threshold,
+            )
+            if not run_debrief:
                 levels2, path2 = levels, path
-                snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
+                snapshot_wip_context(
+                    game, ws, K, "debrief_skipped_policy", levels, None, tag,
+                    verbose=verbose,
+                )
+                if verbose:
+                    print(
+                        f"level {K}: debrief skipped by {debrief_policy} policy "
+                        f"(pre-debrief marginal_C={pre_debrief_marginal})"
+                    )
             else:
-                snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
-                if levels2 < levels:
-                    for name, text in files_before_debrief.items():
-                        with open(os.path.join(ws, name), "w") as f:
-                            f.write(text)
-                    if verbose:
-                        print(f"level {K}: debrief regressed solve ({levels2} < {levels}); restored pre-debrief files")
+                try:
+                    debrief_fn(ws, K)
+                    levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
+                except CreditOut as ex:
+                    print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                    levels2, path2 = levels, path
+                    snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
+                else:
+                    snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
+                    if levels2 < levels:
+                        for name, text in files_before_debrief.items():
+                            with open(os.path.join(ws, name), "w") as f:
+                                f.write(text)
+                        if verbose:
+                            print(f"level {K}: debrief regressed solve ({levels2} < {levels}); restored pre-debrief files")
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
             Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
@@ -1668,6 +2428,12 @@ if __name__ == "__main__":
     import sys
     game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
     fresh, restore_wip = False, True
+    codex_effort, codex_debrief_effort, codex_weekly_reserve = "medium", "medium", 80
+    debrief_policy, debrief_threshold = "always", 150
+    codex_weekly_headroom = 1
+    codex_max_campaign_tokens, codex_max_campaign_runs = 2_000_000, 12
+    transient_retries = _TRANSIENT_RETRIES
+    codex_ledger = None
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
@@ -1675,11 +2441,30 @@ if __name__ == "__main__":
         elif a.startswith("--max-level="): maxl = int(a.split("=", 1)[1])
         elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
         elif a.startswith("--tag="): tag = a.split("=", 1)[1]
+        elif a.startswith("--codex-effort="): codex_effort = a.split("=", 1)[1]
+        elif a.startswith("--codex-debrief-effort="): codex_debrief_effort = a.split("=", 1)[1]
+        elif a.startswith("--debrief-policy="): debrief_policy = a.split("=", 1)[1]
+        elif a.startswith("--debrief-threshold="): debrief_threshold = int(a.split("=", 1)[1])
+        elif a.startswith("--codex-weekly-reserve="): codex_weekly_reserve = int(a.split("=", 1)[1])
+        elif a.startswith("--codex-weekly-headroom="): codex_weekly_headroom = int(a.split("=", 1)[1])
+        elif a.startswith("--codex-max-campaign-tokens="): codex_max_campaign_tokens = int(a.split("=", 1)[1])
+        elif a.startswith("--codex-max-campaign-runs="): codex_max_campaign_runs = int(a.split("=", 1)[1])
+        elif a.startswith("--transient-retries="): transient_retries = int(a.split("=", 1)[1])
+        elif a.startswith("--codex-ledger="): codex_ledger = a.split("=", 1)[1]
         elif a == "--fresh": fresh = True
         elif a == "--no-wip-restore": restore_wip = False
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
                 minutes_per=minutes, tag=tag, seed_artifact=not fresh,
-                restore_wip=restore_wip)
+                restore_wip=restore_wip, codex_effort=codex_effort,
+                codex_debrief_effort=codex_debrief_effort,
+                debrief_policy=debrief_policy,
+                debrief_threshold=debrief_threshold,
+                codex_weekly_reserve=codex_weekly_reserve,
+                codex_weekly_headroom=codex_weekly_headroom,
+                codex_max_campaign_tokens=codex_max_campaign_tokens,
+                codex_max_campaign_runs=codex_max_campaign_runs,
+                transient_retries=transient_retries,
+                codex_ledger=codex_ledger)
 MARGINAL_COMPLEXITY_CONTRACT = {
     "field": "marginal_C",
     "label": "positive net retained-description growth per source file",

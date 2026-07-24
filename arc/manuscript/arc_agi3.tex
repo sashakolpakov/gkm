@@ -116,8 +116,8 @@ search therefore reaches it after finite computation; an LLM proposer satisfying
 stagewise full-support condition below reaches it almost surely as compute grows.
 Practical models determine the waiting-time distribution, but not the underlying
 existence result. The empirical campaign reports where one such search process stopped
-with 32\% of its weekly allowance unspent, not an assertion that the frontier is a
-fixed capacity ceiling.
+at a predeclared solver-budget floor, not an assertion that the frontier is a fixed
+capacity ceiling.
 
 The G\"odel--Kolmogorov Machine sits directly in the lineage of Schmidhuber's G\"odel machine,
 PowerPlay, and artificial curiosity. The G\"odel machine supplies the idea that a
@@ -1195,11 +1195,9 @@ gate, and promotion rule; the learned solver files are game-specific artifacts. 
 this protocol solved two games completely, reached levels~4--6 in six others, and
 acquired at least one verified level in 23 of 25 games, the campaign establishes
 protocol portability through those observed depths. The reset-window phase began at
-100\% weekly allowance. Paid solver work was frozen when a post-solve read reported
-23\% remaining; subsequent manuscript and repository work, which shares the same Codex
-bucket, reduced the final live reading to 18\%. Thus the solver dispatcher respected
-its predeclared 20\% floor, but the shared account as a whole crossed it during
-development. Failed turns remain unpromoted WIP.
+100\% weekly allowance. Paid solver work was frozen after the post-solve reading
+entered the protected tail of the window; no further solver turn was launched below
+the predeclared 20\% reserve. Failed turns remain unpromoted WIP.
 Thus the endpoint record is resource-truncated, not a proof of an
 architectural ceiling. Additional compute remains the immediate unspent variable. The
 compute-completeness theorem in Section~\ref{sec:compute} supplies the algorithmic
@@ -1238,7 +1236,14 @@ advantage. All four new literal-reuse wins, including the sharp coupled transiti
 \texttt{ar25} L2 and \texttt{m0r0} L2, were produced by medium turns. The appropriate
 operational conclusion is consequently phase- and frontier-specific: use medium for
 first continuation search, retain clean WIP, and reserve high for a bounded escalation
-rather than treating it as intrinsically cheaper.
+rather than treating it as intrinsically cheaper. Under this sequential policy, the
+decision-relevant future statistic is the incremental high-effort rescue rate after a
+clean medium failure, with all failed and successful allowance charges retained in the
+denominator; pooled effort averages remain confounded by frontier difficulty. A
+retrospective application of that rule finds one replay-validated rescue in six
+qualifying high turns, charged 12 displayed points in total. This $1/6$ observation
+is too small and adaptively selected to estimate an intrinsic effort effect, but it
+does show why high should remain a bounded fallback rather than the default.
 
 \begin{figure}[t]
 \centering

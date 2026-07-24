@@ -1,0 +1,24 @@
+{
+  "game": "sp80",
+  "level": 5,
+  "phase": "after_propose",
+  "reached": 4,
+  "err": null,
+  "attempt": "after_propose_5d8d3ae6d18f",
+  "created_at": "2026-07-23T18:22:59.481928+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260722T223524492725Z_sp80_L5_propose.jsonl",
+    "codex_turn_20260723T181322060959Z_sp80_L5_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level5.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

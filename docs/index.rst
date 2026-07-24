@@ -1,10 +1,13 @@
-GKM: Auditable Program-Growth Experiments
-==========================================
+Gödel--Kolmogorov Machine: Verifier-Gated Program-Growth Experiments
+=====================================================================
 
-This documentation summarizes the manuscripts, experiment notes, and executable
-artifacts in the repository. Claims differ by subject: some domains perform explicit
-lambda sweeps over finite model classes, while the ARC study reports a retained
-program-growth history and replay-validated endpoints.
+This documentation summarizes the Gödel--Kolmogorov Machine manuscripts,
+experiment notes, and executable artifacts in the repository. The
+Gödel--Kolmogorov Machine couples verifier-gated program revision to
+description-length selection. Claims differ by subject: some domains perform
+explicit lambda sweeps over finite model classes, while the ARC study reports a
+retained program-growth history and replay-validated endpoints. Later pages use
+``GKM`` only as an abbreviation for the fully named architecture.
 
 Subject directories
 -------------------

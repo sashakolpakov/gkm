@@ -1,0 +1,27 @@
+{
+  "attempt": "debrief_skipped_policy_a5707bcc29b9",
+  "metadata": {
+    "game": "ar25",
+    "level": 4,
+    "phase": "debrief_skipped_policy",
+    "reached": 4,
+    "err": null,
+    "attempt": "debrief_skipped_policy_a5707bcc29b9",
+    "created_at": "2026-07-23T19:16:10.621537+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T190039983388Z_ar25_L2_propose.jsonl",
+      "codex_turn_20260723T190445338122Z_ar25_L3_propose.jsonl",
+      "codex_turn_20260723T191223040391Z_ar25_L4_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

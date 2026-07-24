@@ -1,0 +1,24 @@
+{
+  "game": "tn36",
+  "level": 1,
+  "phase": "after_propose",
+  "reached": 0,
+  "err": null,
+  "attempt": "after_propose_7ac041ad2575",
+  "created_at": "2026-07-23T18:12:28.627013+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T120124605694Z_tn36_L1_propose.jsonl",
+    "codex_turn_20260723T180427745276Z_tn36_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

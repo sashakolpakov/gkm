@@ -1,0 +1,25 @@
+{
+  "attempt": "debrief_skipped_policy_fd8e0b0a3755",
+  "metadata": {
+    "game": "cn04",
+    "level": 1,
+    "phase": "debrief_skipped_policy",
+    "reached": 1,
+    "err": null,
+    "attempt": "debrief_skipped_policy_fd8e0b0a3755",
+    "created_at": "2026-07-23T12:18:12.029588+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T121438454542Z_cn04_L1_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

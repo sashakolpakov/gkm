@@ -1,0 +1,22 @@
+{
+  "game": "cd82",
+  "level": 3,
+  "phase": "credit_out",
+  "reached": 2,
+  "err": "Codex campaign guard stopped the run: timed out waiting for codex app-server request 1",
+  "attempt": "credit_out_4fa5c84a2233",
+  "created_at": "2026-07-23T18:43:58.466282+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T183111920120Z_cd82_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

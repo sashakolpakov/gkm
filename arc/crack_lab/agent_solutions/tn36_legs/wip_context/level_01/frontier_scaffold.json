@@ -1,0 +1,21 @@
+{
+  "version": "tn36-l1-time-isolation-v2",
+  "created_at": "2026-07-24T11:52:25Z",
+  "basis": "One medium and one high clean failure preserved under this level; no promoted solver.",
+  "objective": "Resolve whether the board evolves by action count, wall clock, or shared animation before attempting another coordinate policy.",
+  "required_first_checks": [
+    "Read frontier_brief.md and run the preserved compact probe on separately created environments.",
+    "Compare no-op, integer action, and coordinate action sequences at matched action counts and elapsed times.",
+    "Record the full documented env.actions schema once; do not repeatedly recalibrate arbitrary coordinate scales."
+  ],
+  "search_change": [
+    "Use fresh environments rather than sibling clones when testing temporal isolation.",
+    "Build the state key from the two cyan component locations, the board occupancy quotient, and the remaining action-budget indicator.",
+    "Only after the transition clock is identified, search short action sequences under the observed 61-action budget."
+  ],
+  "known_unverified_observations": [
+    "The frame contains a large alternating board, two cyan components, lower glyphs, and a separate magenta object.",
+    "Previous coordinate probes changed only the one-pixel action-budget indicator.",
+    "Apparent cyan motion correlated with elapsed probing and affected later clones, so clone-local causality was not established."
+  ]
+}

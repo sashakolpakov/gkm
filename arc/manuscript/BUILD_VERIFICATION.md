@@ -1,10 +1,10 @@
 # Build verification
 
-Verified in the integrated repository on 2026-07-23.
+Verified in the integrated repository on 2026-07-24.
 
 ## Documents
 
-- `arc_agi3.pdf`: 25 pages, as reported by the final LaTeX log.
+- `arc_agi3.pdf`: 24 pages, as reported by the final LaTeX log.
 - `gkm_one_page_summary.pdf`: one page.
 - `figure_sources/inverse_colimit_attachment_standalone.pdf`: one page.
 - Abstract: 113 words after LaTeX stripping with `detex`; no displayed mathematics
@@ -30,10 +30,11 @@ reproductions, not falsely reported as pixel-identical copies.
 ## Repository checks
 
 - `python arc/manuscript/build_artifact_history.py --check`: passed.
-- Focused replay, checkpoint, campaign-control, and literal-reuse suite: 53 tests passed.
-- Canonical taint scan: 48 promoted files, zero hits. Every manifest-backed GPT-5.6
-  promotion chain has zero taint and integrity hits. Strict complete-lineage mode
-  separately records missing manifests for older pre-manifest artifacts.
+- Focused replay, checkpoint, campaign-control, taint, and literal-reuse suite:
+  87 tests passed.
+- Canonical taint scan: 138 promoted files, zero hits. All 23 promotion-chain
+  summaries have zero taint and integrity hits; older pre-manifest artifacts are
+  reported with zero manifests rather than assigned invented ancestry.
 - `python3 -m sphinx -W -b html docs docs/_build/html`: passed.
 - `python -m py_compile arc/manuscript/scripts/generate_figures.py`: passed.
 

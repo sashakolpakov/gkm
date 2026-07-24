@@ -1,17 +1,18 @@
 {
-  "attempt": "credit_out_eb358f0f929a",
+  "attempt": "debrief_skipped_policy_7516e4d7e8df",
   "metadata": {
     "game": "sc25",
     "level": 1,
-    "phase": "credit_out",
-    "reached": 0,
-    "err": "api proposer reported no credits/quota (see /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_sc25_opus/proposer_last.log)",
-    "attempt": "credit_out_eb358f0f929a",
-    "created_at": "2026-07-14T18:25:45.191766+00:00",
+    "phase": "debrief_skipped_policy",
+    "reached": 1,
+    "err": null,
+    "attempt": "debrief_skipped_policy_7516e4d7e8df",
+    "created_at": "2026-07-23T11:57:09.959212+00:00",
     "files": [
       "auto_solve_attempts.json",
       "blocked_attempts.log",
       "checkpoint.json",
+      "codex_turn_20260723T115108575012Z_sc25_L1_propose.jsonl",
       "gkm_try.py",
       "legs.py",
       "legs_log.md",
@@ -60,7 +61,8 @@
       "probeY.py",
       "probeZ.py",
       "proposer_last.log",
-      "solve.py"
+      "solve.py",
+      "solver_index.md"
     ]
   }
 }

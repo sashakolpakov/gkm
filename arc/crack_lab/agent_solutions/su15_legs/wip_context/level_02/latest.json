@@ -1,0 +1,28 @@
+{
+  "attempt": "not_reached_1f219ef87394",
+  "metadata": {
+    "game": "su15",
+    "level": 2,
+    "phase": "not_reached",
+    "reached": 1,
+    "err": null,
+    "attempt": "not_reached_1f219ef87394",
+    "created_at": "2026-07-24T00:10:35.010219+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T112750990105Z_su15_L1_propose.jsonl",
+      "codex_turn_20260723T232134086386Z_su15_L2_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md",
+      "symbolic_probe_l2.py"
+    ]
+  }
+}

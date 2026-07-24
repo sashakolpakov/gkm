@@ -1,13 +1,18 @@
-# GKM: Auditable Program-Growth Experiments
+# Gödel–Kolmogorov Machine: Auditable Program-Growth Experiments
 
-GKM is a collection of verifier-driven program-growth experiments. In the
-ARC-AGI-3 study, a proposer writes solver code and the simulator validates promoted
-behavior by fresh replay. A source-size ledger records positive net growth of the
-retained library and player files.
+The Gödel–Kolmogorov Machine is a collection of verifier-driven program-growth
+experiments. In the ARC-AGI-3 study, the Gödel–Kolmogorov Machine uses a proposer
+to write solver code and a simulator to validate promoted behavior by fresh replay.
+A source-size ledger records positive net growth of the retained library and player
+files.
 
 The result is not only a solved-level count, but an audit trail of how competence
 was acquired: promoted solver code, replay validation, WIP snapshots, charged
 literals, reusable solver-leg refactors, and marginal-complexity accounting.
+The name Gödel–Kolmogorov Machine joins verifier-gated self-revision with
+description-length selection; it does not claim proof-search optimality or exact
+Kolmogorov complexity. After this full introduction, the repository uses **GKM**
+as its abbreviation.
 
 ## Current replay-validated ARC-AGI-3 artifacts
 
@@ -20,11 +25,17 @@ literals, reusable solver-leg refactors, and marginal-complexity accounting.
 Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The definitive [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
-scores **17.136507936507936%** across all 25 public games: 37/183 levels in
-1456 API actions including resets. One unchanged game-agnostic architecture
-completes `wa30` and `ls20`, reaches L4 on `ft09`, `g50t`, `r11l`, `sp80`, and
-`tr87`, and reaches L1 on `tu93`.
+The published [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
+scores **17.136507936507936%** across all 25 public games. Separately, the
+card's unweighted raw coverage is **37/183 = 20.2186%**. Its stored paths contain
+1448 actions; it used 1456 API actions after one reset per attempted game.
+Subsequent clean local promotions raise current artifact coverage to
+**67/183 = 36.6120%** and 2148 stored actions across 23 promoted game endpoints.
+One unchanged game-agnostic architecture completes `wa30` and `ls20`; reaches L6
+on `ft09`, `r11l`, and `tr87`; L5 on `g50t`; L4 on `ar25`, `re86`, and `sp80`;
+L2 on `cd82` and `m0r0`; and L1 on twelve further games. Only `bp35` and `tn36`
+remain without a promoted level. The 30 post-card clears have independent local
+replay certificates but are not attributed to the closed card.
 
 The endpoint claims are replay claims: the action counts are the final validated
 paths, not totals for proposal, search, or cloned lookahead. The historical growth
@@ -51,20 +62,32 @@ python arc/crack_lab/replay_scorecard.py --mode competition \
   --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
 ```
 
-Artifact folders:
-
-- [`wa30_legs`](arc/crack_lab/agent_solutions/wa30_legs/)
-- [`ls20_legs`](arc/crack_lab/agent_solutions/ls20_legs/)
+All current endpoint folders are under
+[`arc/crack_lab/agent_solutions/`](arc/crack_lab/agent_solutions/). The complete
+publication histories for `wa30` and `ls20` are additionally indexed under
+[`arc/manuscript/artifact_history/`](arc/manuscript/artifact_history/).
 
 ## Exact claim
 
-The current public artifact claims replay-validated promoted solvers for:
+The two complete published histories are:
 
 - `wa30`: 9/9 levels, a 596-action validated replay, and the complete published
   ledger `112, 78, 95, 47, 405, 225, 145, 204, 147`, totaling 1458. Its unchanged
-  operational checkpoint retains only the records accumulated after its resume base.
+  operational checkpoint retains only the records accumulated after its resume base,
+  totaling 1243 under that narrower scope.
 - `ls20`: 7/7 levels and a 393-action validated replay, with a complete seven-entry
   growth ledger totaling 362.
+
+The broader local claim is exactly the 23-endpoint, 67-level frontier above. Its
+solved-checkpoint audit contains 63 exact winning sources, 39 exact adjacent
+transitions, 21 decreasing conditional AST marginals, six half-or-more drops,
+14 direct calls to unchanged legs, and four transitions coupling literal reuse to
+a sharp drop. Failed turns and within-level revisions are excluded.
+
+The current cost policy starts fresh continuations with GPT-5.6-sol medium and uses
+high only as one headroom-bounded rescue after medium fails. The retrospective ledger
+contains one replay-validated rescue in six qualifying high turns, at 12 displayed
+allowance points total; it does not support high-by-default continuation.
 
 The local harness exposes state cloning for lookahead. The official ARC-AGI-3
 environment wrapper exposes `reset()` and `step()`, not arbitrary state forking.
@@ -130,7 +153,7 @@ self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
 | [`transduction/README.md`](transduction/README.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
 | [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | reports linked in the hub |
 | [`cone/README.md`](cone/README.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
-| [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
+| [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [manuscript/reproduction bundle](arc/manuscript/README.md), [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
 
 ## Tests
 

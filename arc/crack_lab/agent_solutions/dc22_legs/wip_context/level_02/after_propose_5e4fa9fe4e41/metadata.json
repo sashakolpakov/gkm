@@ -1,0 +1,23 @@
+{
+  "game": "dc22",
+  "level": 2,
+  "phase": "after_propose",
+  "reached": 1,
+  "err": null,
+  "attempt": "after_propose_5e4fa9fe4e41",
+  "created_at": "2026-07-23T23:21:27.256073+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T225527698736Z_dc22_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level2.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

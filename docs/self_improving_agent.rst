@@ -1,11 +1,16 @@
-ARC-AGI-3 Program-Growth Audit
-================================
+The Gödel--Kolmogorov Machine on ARC-AGI-3
+===========================================
 
-This chapter documents the ARC-AGI-3 artifact study. A coding proposer writes
-level solvers, a local simulator validates promoted behavior by replay, and the
-repository retains the source and intermediate states needed to inspect growth.
-The study concerns artifact provenance. It is not an official ARC-AGI-3
-sample-efficiency or leaderboard evaluation.
+This chapter documents the Gödel--Kolmogorov Machine as a self-improving
+solver-growth approach for ARC-AGI-3. In the Gödel--Kolmogorov Machine, a coding
+proposer writes level solvers, a local simulator validates promoted behavior by
+replay, and incumbent legs are tried before new code is requested. The name
+Gödel--Kolmogorov Machine joins verifier-gated self-revision with
+description-length selection; it does not assert proof-search optimality. The
+abbreviation ``GKM`` is used below only after this full introduction. Artifact
+provenance is the evidence contract for acquisition and reuse, not the method's
+identity. The study is not an official ARC-AGI-3 sample-efficiency or leaderboard
+evaluation.
 
 Interface Scope
 ---------------
@@ -94,20 +99,38 @@ Promoted Endpoints
 
 .. include:: generated/arc_artifacts.rst
 
-The bounded follow-on campaign also retains replay-valid partial artifacts for
-``ft09``, ``sp80``, ``g50t``, ``tr87``, and ``r11l`` through L4. They use the same
-promotion and WIP layout but are not part of the manuscript's two complete-history
-endpoint table.
+The expanded campaign retains 23 replay-valid endpoints. In addition to the two
+complete games, ``ft09``, ``r11l``, and ``tr87`` reach L6; ``g50t`` reaches L5;
+``ar25``, ``re86``, and ``sp80`` reach L4; ``cd82`` and ``m0r0`` reach L2; and
+12 games reach L1. ``bp35`` and ``tn36`` have no promoted level. Every counted
+endpoint uses the same promotion and WIP layout, but only ``wa30`` and ``ls20``
+have complete manuscript sidecar histories.
 
-``tu93`` additionally has a replay-valid L1 artifact. ``sc25`` retains clean L1 WIP
-but no promoted level.
-
-The definitive `Competition-Mode scorecard
+The published `Competition-Mode scorecard
 <https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147>`_
-scores **17.136507936507936%** over all 25 public games: 37/183 levels in 1456
-API actions including resets. It replays both complete games, all five L4 endpoints,
-and ``tu93`` L1 with the same game-agnostic architecture. The score measures official
-replay coverage, not the clone-enabled discovery interaction or proposer-compute cost.
+scores **17.136507936507936%** over all 25 public games. Its distinct unweighted
+raw coverage is **37/183 = 20.2186%**; its stored paths contain 1448 actions and
+the scorecard used 1456 API actions after eight resets. Subsequent local promotions
+raise artifact coverage to **67/183 = 36.6120%** and 2148 stored replay actions.
+Those 30 clears replay independently but have not been folded into the earlier
+public scorecard. Neither number measures clone-enabled discovery interaction or
+proposer-compute cost.
+
+The reset-window campaign began at 100% weekly allowance and froze paid solving in
+the protected tail; no solver turn was launched below the predeclared 20% reserve.
+Failures are charged to their reasoning-effort arm. Cold L1 acquisition cost 4 displayed points
+for 3 medium clears and 18 points for 12 high clears. Retained-solver continuations
+cost 39 points for 7 medium clears and 14 points for one high clear. The high
+continuations were escalations of medium failures, so these are not matched cohorts.
+They do show that high was highly effective for broad cold entry but did not establish
+a general cost or compression advantage on hard continuations. The final bounded high
+escalation cleared ``re86`` L4 for two displayed points. The resulting policy starts
+fresh continuations on medium, retains clean WIP, and permits one high rescue after a
+medium failure when live headroom remains. High's incremental rescue yield and total
+charged points—not pooled effort averages—are the decision-relevant measurements.
+Retrospectively, one of six qualifying high-after-medium turns rescued its target;
+those six turns charged 12 displayed points. This is a small, adaptively selected
+sample, but it favors a bounded fallback over high-by-default continuation.
 
 The ``ls20`` checkpoint records ``43, 2, 45, 3, 72, 130, 67``. At L2 and L4,
 the thin player entries call unchanged search routines, which makes the small net
@@ -120,7 +143,8 @@ The complete published ``wa30`` ledger is
 sidecar maps these entries to the clean early Git promotions, preserved later
 promotion states, and final nine-level artifact. The root checkpoint is still the
 unchanged operational resume state, so its record list contains only the transitions
-retained after its resume base.
+retained after its resume base and totals 1243 under that narrower scope; the complete
+publication history totals 1458.
 
 Prior and Source Audit
 ----------------------
@@ -140,27 +164,100 @@ blind nine-level mechanic induction.
 Mathematical Scope
 ------------------
 
-The manuscript places retained artifacts in a finite behavior-description plane and
-uses compatible partial policies to formalize leg composition. This is a framework
-for posing audits. The current ARC experiments do not compute a Kolmogorov structure
-function, perform a complete lambda sweep, or establish a free-energy optimum. The
-compatible-policy colimit is an elementary union theorem; empirical value must come
-from concrete factorization and replay, not from the theorem alone.
+The manuscript places retained artifacts in a finite behavior--description plane and
+models source growth by inverse-shaped diagrams of typed interfaces, executable cells,
+and attaching maps. Their colimit is a pushout. Monomorphic interface inclusions are
+designated cofibrations, so cobase change preserves the incumbent source presentation;
+an optional debrief is treated separately as a replay-equivalent refactor. A finite
+replay semantics supplies the empirical comparison map rather than assuming that
+execution preserves arbitrary source colimits globally.
+
+The compute-completeness result is conditional on deterministic finite games, finite
+winning traces, recognizable replay, fair dovetailed search, or the stated stagewise
+full-support proposer bound. It is an existence result, not a practical waiting-time
+estimate. The current ARC experiments sample a computable complexity coordinate but do
+not estimate the full Kolmogorov structure function, perform a complete lambda sweep,
+or establish a free-energy optimum.
 
 Comparator Scope
 ----------------
 
-OPINE-World publishes an executable transition model and cached level-entry states.
-Conditioning a transition model on observed initial state does not disqualify it as a
-world model. The defensible artifact-level distinction is narrower: OPINE does not
-publish the same charged leg/glue reuse ledger, and its wa30 archive shows substantial
-retained source growth. Complexity units and evaluation conditions differ, so this is
-not a compute-matched ranking and does not show that OPINE is ``not a world model``.
+The common unit is the retained state that actually cleared a level. Interim
+synthesis revisions, repeated same-level commits, and within-level notebook edits
+are excluded. The resulting comparison separates cumulative executable size,
+conditional novelty, operational reuse, and descriptive memory.
+
+The cross-system marginal is the zlib-9 length of normalized top-level AST
+statements in the current winning program that are not literal members of the
+preceding winning program. A half-or-more decrease is a sharp drop. It is
+attributed to reuse only when the winning entry point directly calls a named
+definition whose normalized AST is unchanged from the preceding winning
+checkpoint.
+
+.. list-table:: Solved-checkpoint-only evidence
+   :header-rows: 1
+   :widths: 14 23 25 38
+
+   * - System
+     - Boundary coverage
+     - Conditional AST marginal
+     - Direct literal reuse
+   * - GKM
+     - 63 exact winning sources across 67 clears; 39 exact adjacent transitions
+     - 21 of 39 comparable marginals decrease; 6 fall by at least half
+     - Fourteen winning players directly call unchanged leg literals. Four
+       transitions couple such a call to a sharp drop: ``ar25`` L2, ``g50t`` L4,
+       ``ls20`` L7, and ``m0r0`` L2.
+   * - OPINE-World
+     - 146 pre-solve engines for 153 positive-reward trace events; 121 adjacent
+       transitions
+     - 49 of 115 comparable marginals decrease; 14 fall by at least half
+     - Four synthesized-planner wins directly call unchanged engine literals.
+       ``lp85`` L4 and ``tu93`` L3 couple such calls to sharp drops.
+   * - baseline1 GPT-5.5 xHigh
+     - 160 post-solve snapshots for 174 clears; 50 exact winning sources and
+       18 exact adjacent transitions
+     - 5 of 8 comparable marginals decrease; none falls by half
+     - Zero. All 18 exact adjacent winning commands are fresh literal action
+       programs and invoke no retained world-model definition.
+   * - Retrodict
+     - 170 solved memory checkpoints
+     - No executable marginal is released
+     - Zero executable witnesses. The released checkpoints contain curated
+       playbook memory and limited scratch Python, not winning entry points.
+
+The exact winning-entry-point test is asymmetric: OPINE has hard
+level-to-level executable reuse; baseline1 does not, and Retrodict does not
+release an executable winning entry point on which to run the test. GKM has the
+strongest literal-leg evidence in the measured exact set.
+
+The blanket claim that OPINE solves every level anew is false: ``lp85`` L4 uses
+the identical winning planner literal from L3 and directly calls three unchanged
+engine definitions while its conditional marginal falls from 5818 to 2550.
+``tu93`` L3 is a second sharp-drop/reuse witness. baseline1's four exact
+cumulative authored-source contractions remain real artifact contractions, but
+they are not reuse witnesses under the winning-entry-point rule. Retrodict
+supports memory transfer only. GKM has the largest number of direct literal-leg
+wins in the measured exact set and integrates reuse-first execution with
+marginal description accounting.
+
+One non-sharp direct witness is ``ft09`` L6: its winning player calls the unchanged
+``solve_coupled_key_board`` acquired at L5. The conditional AST marginal falls
+from 5008 to 3730 bytes, which is a decrease but not a half-or-more drop. Its
+historical two-unit ``marginal_C`` charge is a different source-growth statistic.
+
+Machine-readable results are retained in ``arc/audit_results/``. The coupled
+test is ``audit_marginal_literal_reuse.py``. The boundary analyzers are
+``audit_gkm_solved_checkpoints.py``,
+``audit_baseline1_artifacts.py``, ``audit_opine_solved_checkpoints.py``, and
+``audit_retrodict_artifacts.py``.
 
 Reproduction
 ------------
 
-The promoted paths and artifact locations are documented in ``REPRODUCE_ARC.md``.
+The manuscript and figure sources are documented in ``arc/manuscript/README.md`` and
+build with ``make -C arc/manuscript``. The promoted paths and artifact locations are
+documented in ``REPRODUCE_ARC.md``.
 The replay procedure tests endpoint behavior. Reproducing the stochastic proposer
 history, cloned exploration budget, and externally hosted model calls is a separate
 experiment not supplied by the current artifact replay.

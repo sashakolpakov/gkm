@@ -47,19 +47,31 @@ represented by one of these promoted artifacts.
 Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The ongoing bounded campaign has also promoted replay-valid partial endpoints for
-`ft09` through L4 (46 actions), `sp80` through L4 (79 actions), `g50t` through L4
-(145 actions), `tr87` through L4 (126 actions), and `r11l` through L4 (45 actions).
+The expanded campaign has promoted 23 replay-valid endpoints. In addition to the
+complete games, `ft09`, `r11l`, and `tr87` reach L6; `g50t` reaches L5; `ar25`,
+`re86`, and `sp80` reach L4; `cd82` and `m0r0` reach L2; and 12 games reach L1.
 These are operational campaign artifacts, not additions to the two complete
 histories reported in the manuscript table above.
 
-The final bounded attempt also promoted `tu93` through L1 (18 actions). `sc25`
-ended at the API usage limit with clean L1 WIP but no promoted level.
-
-The definitive [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
+The published [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
 scores **17.136507936507936%** across all 25 public games: 37/183 levels in 1456
-API actions including resets. It replays every promoted endpoint above with the same
-game-agnostic architecture.
+API actions including resets. Subsequent local promotions bring the current artifact
+frontier to 67/183 levels and 2148 stored replay actions. Those 30 clears are locally
+replay-validated but require a new competition replay before any new public score is
+claimed.
+
+The cost-controlled GPT-5.6-sol extension used medium and high reasoning on
+non-randomized frontiers. High successfully rescued `re86` L4 after medium failed,
+but medium produced the campaign's new literal-reuse witnesses and was substantially
+cheaper on the realized L2+ cohort. This supports a sequential operating rule, not an
+intrinsic model ranking: medium first for a fresh continuation, then at most one
+headroom-bounded high rescue. The live weekly reserve is checked before every paid
+turn, and failures remain WIP rather than solved checkpoints. Retrospectively, high
+rescued one of six medium-failed targets at a total charge of 12 displayed points.
+To reduce paid rediscovery, resumed clean rooms receive a compact unverified frontier
+brief distilled from their own clean WIP, without raw command output. The two remaining
+cold starts now have materially changed versioned scaffolds: time-isolation before
+search for `tn36`, and symbolic phase/macro search for `bp35`.
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.

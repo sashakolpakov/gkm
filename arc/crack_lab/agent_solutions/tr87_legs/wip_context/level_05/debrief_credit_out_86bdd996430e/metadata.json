@@ -1,0 +1,21 @@
+{
+  "game": "tr87",
+  "level": 5,
+  "phase": "debrief_credit_out",
+  "reached": 5,
+  "err": "Codex campaign guard stopped the run: weekly Codex allowance is 83% remaining, at or below the configured 85% reserve",
+  "attempt": "debrief_credit_out_86bdd996430e",
+  "created_at": "2026-07-22T21:38:19.068508+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260722T213319902143Z_tr87_L5_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

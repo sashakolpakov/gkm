@@ -1,0 +1,26 @@
+{
+  "attempt": "not_reached_a7d296055061",
+  "metadata": {
+    "game": "cn04",
+    "level": 2,
+    "phase": "not_reached",
+    "reached": 1,
+    "err": null,
+    "attempt": "not_reached_a7d296055061",
+    "created_at": "2026-07-23T22:01:34.054978+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T215204666020Z_cn04_L2_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_level2.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

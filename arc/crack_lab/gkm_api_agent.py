@@ -73,12 +73,24 @@ PRIVATE_RUNTIME_RE = re.compile(
     r"|\b(?:getattr|hasattr)\s*\([^,\n]+,\s*['\"]_(?:game|env|fd|budget)\b"
 )
 
+EXTERNAL_NETWORK_RE = re.compile(
+    r"(?:^|[\n;&|])\s*(?:sudo\s+)?(?:curl|wget|lynx|links|nc|ncat|netcat|telnet|ssh|scp|rsync)(?!\s*=)\s+"
+    r"|\b(?:web[_ -]?search|browser\.open|search_query|open_url)\b"
+    r"|\b(?:requests|httpx|aiohttp|urllib\.request|http\.client)\s*\."
+    r"|\bsocket\.(?:create_connection|socket|getaddrinfo|gethostbyname)\b"
+    r"|https?://(?!localhost(?::\d+)?(?:/|\b)|127\.0\.0\.1(?::\d+)?(?:/|\b)|"
+    r"\[?::1\]?(?::\d+)?(?:/|\b))",
+    re.IGNORECASE,
+)
+
 
 def _forbidden_source_reference(text: str) -> Optional[str]:
     """Return the forbidden marker when a tool command tries to read source/history."""
     lowered = text.lower()
     if PRIVATE_RUNTIME_RE.search(lowered):
         return "private game/runtime introspection"
+    if EXTERNAL_NETWORK_RE.search(lowered):
+        return "external web/network access"
     for marker in FORBIDDEN_SOURCE_PATTERNS:
         if marker.lower() in lowered:
             return marker

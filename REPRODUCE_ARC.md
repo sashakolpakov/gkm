@@ -41,7 +41,8 @@ made once, and the closed scorecard is what the community leaderboard links as
 python arc/crack_lab/replay_scorecard.py --mode competition
 ```
 
-The definitive public card includes every promoted endpoint and was generated with:
+The published public card captured the promoted endpoints available at that time and
+was generated with:
 
 ```bash
 python arc/crack_lab/replay_scorecard.py --mode competition \
@@ -49,22 +50,43 @@ python arc/crack_lab/replay_scorecard.py --mode competition \
 ```
 
 It closed as [scorecard `9e166671-0953-42f3-89de-a0fd57d7b147`](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147):
-**17.136507936507936%** over all 25 public games, 37/183 levels, and 1456 API
-actions including one reset for each attempted game.
+**17.136507936507936%** over all 25 public games. Raw level coverage on that card is
+the separate quantity **37/183 = 20.2186%**. Its stored promoted paths contain 1448
+actions; the scorecard used 1456 API actions after one reset for each of the eight
+attempted games. Subsequent clean local promotions raise current artifact coverage to
+**67/183 = 36.6120%** and 2148 stored actions across 23 game endpoints; the 30
+post-card clears require a new competition replay before any new public score is
+claimed.
+
+## Rebuild the manuscript and figures
+
+The integrated manuscript bundle is under `arc/manuscript/`. Its default target
+regenerates both empirical figures, compiles the standalone inverse-colimit diagram,
+and builds the 25-page paper through BibTeX:
+
+```bash
+python -m pip install -r arc/manuscript/requirements-figures.txt
+make -C arc/manuscript
+```
+
+The plotting script validates the expected PNG geometry. Exact pixels additionally
+depend on the pinned Matplotlib 3.10.8 and bundled DejaVu fonts; later compatible
+Matplotlib releases may produce byte-different files with the same data and geometry.
+See [`arc/manuscript/README.md`](arc/manuscript/README.md) for the source inventory and
+verification boundary.
 
 ## Artifact locations
 
 * `arc/crack_lab/agent_solutions/wa30_legs/`
 * `arc/crack_lab/agent_solutions/ls20_legs/`
 
-The same canonical layout also holds the bounded campaign's partial promoted
-artifacts: `ft09_legs/`, `sp80_legs/`, `g50t_legs/`, `tr87_legs/`, and
-`r11l_legs/`, each through L4. Their `checkpoint.json` files contain the independently
-replayed paths; they are not included in the manuscript's complete-history table
-below.
-
-`tu93_legs/` is promoted through L1. `sc25_legs/` contains WIP only and must not be
-treated as replay-validated solver evidence.
+The same canonical layout holds 21 partial endpoints: `ft09`, `r11l`, and `tr87`
+through L6; `g50t` through L5; `ar25`, `re86`, and `sp80` through L4; `cd82` and
+`m0r0` through L2; and `cn04`, `dc22`, `ka59`, `lf52`, `lp85`, `s5i5`, `sb26`,
+`sc25`, `sk48`, `su15`, `tu93`, and `vc33` through L1. Their `checkpoint.json`
+files contain independently replayed paths. `bp35` and `tn36` contain unsuccessful
+WIP but no promoted checkpoint and are not counted. Only `wa30` and `ls20` have
+complete manuscript sidecar histories.
 
 Each folder holds the promoted `checkpoint.json` (the replay-validated flat
 action path, `reached` level count, and `total_marginal_C`), the shared leg

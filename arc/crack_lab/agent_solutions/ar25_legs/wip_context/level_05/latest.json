@@ -1,0 +1,35 @@
+{
+  "attempt": "interrupted_duplicate_policy_correction_54dc0d65fac0",
+  "metadata": {
+    "game": "ar25",
+    "level": 5,
+    "phase": "interrupted_duplicate_policy_correction",
+    "reached": 4,
+    "err": "operator stopped duplicate high attempt after quarantine-policy bug",
+    "attempt": "interrupted_duplicate_policy_correction_54dc0d65fac0",
+    "created_at": "2026-07-23T21:39:34.363423+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260723T113048978234Z_ar25_L1_propose.jsonl",
+      "codex_turn_20260723T190039983388Z_ar25_L2_propose.jsonl",
+      "codex_turn_20260723T190445338122Z_ar25_L3_propose.jsonl",
+      "codex_turn_20260723T191223040391Z_ar25_L4_propose.jsonl",
+      "codex_turn_20260723T191619458056Z_ar25_L5_propose.jsonl",
+      "codex_turn_20260723T192426831349Z_ar25_L5_propose.jsonl",
+      "codex_turn_20260723T193235167184Z_ar25_L5_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_current.py",
+      "probe_l5.py",
+      "probe_level5.py",
+      "probe_rewards.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

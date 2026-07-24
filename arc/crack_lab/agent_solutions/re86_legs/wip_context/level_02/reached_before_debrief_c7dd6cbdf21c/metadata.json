@@ -1,0 +1,22 @@
+{
+  "game": "re86",
+  "level": 2,
+  "phase": "reached_before_debrief",
+  "reached": 2,
+  "err": null,
+  "attempt": "reached_before_debrief_c7dd6cbdf21c",
+  "created_at": "2026-07-24T01:22:02.283473+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260724T011435229606Z_re86_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

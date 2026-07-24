@@ -1,0 +1,28 @@
+{
+  "attempt": "not_reached_c81732e01fb8",
+  "metadata": {
+    "game": "g50t",
+    "level": 6,
+    "phase": "not_reached",
+    "reached": 5,
+    "err": null,
+    "attempt": "not_reached_c81732e01fb8",
+    "created_at": "2026-07-23T22:55:20.911105+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260722T233544122714Z_g50t_L6_propose.jsonl",
+      "codex_turn_20260723T224711446000Z_g50t_L6_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_level6.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md",
+      "wip_glue_notes.md"
+    ]
+  }
+}

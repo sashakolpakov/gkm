@@ -1,0 +1,1221 @@
+{
+  "admit_next_turn": false,
+  "allowance": {
+    "limit_id": "codex",
+    "plan_type": "plus",
+    "remaining_percent": 18,
+    "reset_credits_available": 0,
+    "resets_at": 1785410771,
+    "resets_at_iso": "2026-07-30T11:26:11+00:00",
+    "source": "cached_live_rate_limit_read",
+    "used_percent": 82,
+    "window_duration_mins": 10080,
+    "window_name": "primary"
+  },
+  "causal_conclusion": "not_identified",
+  "causal_reason": "the existing medium and high turns differ in frontier difficulty; pooled points-per-clear and solver-size medians do not identify an intrinsic effort effect",
+  "cold_screen_cohort": [],
+  "decision_rule_after_cohort": "start every fresh continuation on medium; after a clean failure, allow one high rescue only if the live reserve plus empirical high headroom remains; charge failures and successes alike; quarantine after medium plus high both fail; paid debriefs remain disabled",
+  "effort_efficiency": {
+    "high": {
+      "displayed_points_on_successes": 39,
+      "displayed_points_per_solved_level": 3.684,
+      "displayed_points_per_wall_minute": 0.346,
+      "displayed_weekly_points": 70,
+      "failed_levels": 12,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 31,
+      "solved_levels": 19,
+      "success_only_points_per_solved_level": 2.053,
+      "timed_out_turns": 15,
+      "turns_with_missing_token_usage": 16,
+      "unknown_outcomes": 0
+    },
+    "medium": {
+      "displayed_points_on_successes": 17,
+      "displayed_points_per_solved_level": 4.182,
+      "displayed_points_per_wall_minute": 0.245,
+      "displayed_weekly_points": 46,
+      "failed_levels": 17,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 28,
+      "solved_levels": 11,
+      "success_only_points_per_solved_level": 1.545,
+      "timed_out_turns": 17,
+      "turns_with_missing_token_usage": 17,
+      "unknown_outcomes": 0
+    }
+  },
+  "high_rescue_summary": {
+    "details": [
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 1
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "cd82",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "ar25",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "ar25",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "m0r0",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "re86",
+        "rescued": true,
+        "target_level": 4
+      }
+    ],
+    "displayed_points_per_rescue": 12.0,
+    "displayed_weekly_points": 12,
+    "qualifying_high_attempts": 6,
+    "replay_validated_rescues": 1,
+    "rescue_rate": 0.167
+  },
+  "initial_queue": [
+    {
+      "argv": [
+        "python3",
+        "-u",
+        "arc/crack_lab/gkm_legs.py",
+        "--game=re86",
+        "--max-level=5",
+        "--proposer=codex",
+        "--model=gpt-5.6-sol",
+        "--minutes=8",
+        "--codex-effort=medium",
+        "--codex-debrief-effort=medium",
+        "--debrief-policy=never",
+        "--codex-weekly-reserve=20",
+        "--codex-weekly-headroom=6",
+        "--codex-max-campaign-runs=60",
+        "--codex-max-campaign-tokens=32000000",
+        "--transient-retries=0",
+        "--tag=cheap_medium_screen"
+      ],
+      "command": "python3 -u arc/crack_lab/gkm_legs.py --game=re86 --max-level=5 --proposer=codex --model=gpt-5.6-sol --minutes=8 --codex-effort=medium --codex-debrief-effort=medium --debrief-policy=never --codex-weekly-reserve=20 --codex-weekly-headroom=6 --codex-max-campaign-runs=60 --codex-max-campaign-tokens=32000000 --transient-retries=0 --tag=cheap_medium_screen",
+      "effort": "medium",
+      "experiment_role": "fresh_frontier_medium_first",
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "game": "re86",
+      "minutes": 8,
+      "required_headroom_percent": 6,
+      "target_level": 5,
+      "warm_wip_available": true
+    }
+  ],
+  "local_window": {
+    "cached_input_tokens": 8832512,
+    "input_tokens": 9980702,
+    "observed_tokens": 10138932,
+    "output_tokens": 158230,
+    "reasoning_output_tokens": 85628,
+    "runs": 49
+  },
+  "next_frontiers": [
+    {
+      "adjusted_priority_score": 1.328,
+      "current_level": 4,
+      "dispatch_mode": "medium_first",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 0,
+      "failed_efforts": [],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "re86",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 4,
+      "next_level": 5,
+      "paid_attempts_at_frontier": 0,
+      "priority_score": 1.328,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "medium",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 20126,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 10,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 1.19,
+      "current_level": 0,
+      "dispatch_mode": "cold_l1_screen",
+      "external_artifact_ceiling": 7,
+      "external_evidence": {
+        "Retrodict": 7,
+        "baseline1": 7
+      },
+      "failed_attempts_at_frontier": 0,
+      "failed_efforts": [],
+      "frontier_scaffold_created_at": "2026-07-24T11:52:25Z",
+      "frontier_scaffold_version": "tn36-l1-time-isolation-v2",
+      "game": "tn36",
+      "incumbent_kind": "cold_start",
+      "levels_to_external_ceiling": 7,
+      "next_level": 1,
+      "paid_attempts_at_frontier": 0,
+      "priority_score": 2.19,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "medium",
+      "recommended_minutes": 6,
+      "solver_source_bytes": 0,
+      "superseded_attempts_at_frontier": 2,
+      "top_level_definitions": 0,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.99,
+      "current_level": 0,
+      "dispatch_mode": "cold_l1_screen",
+      "external_artifact_ceiling": 7,
+      "external_evidence": {
+        "Retrodict": 7,
+        "baseline1": 6
+      },
+      "failed_attempts_at_frontier": 0,
+      "failed_efforts": [],
+      "frontier_scaffold_created_at": "2026-07-24T12:05:53Z",
+      "frontier_scaffold_version": "bp35-l1-symbolic-phase-v3",
+      "game": "bp35",
+      "incumbent_kind": "cold_start",
+      "levels_to_external_ceiling": 7,
+      "next_level": 1,
+      "paid_attempts_at_frontier": 0,
+      "priority_score": 1.99,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "medium",
+      "recommended_minutes": 6,
+      "solver_source_bytes": 0,
+      "superseded_attempts_at_frontier": 2,
+      "top_level_definitions": 0,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.107,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "lp85",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 7,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.907,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1022,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 2,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.103,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 6,
+      "external_evidence": {
+        "Retrodict": 6,
+        "baseline1": 6
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "cn04",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 5,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.903,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1078,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 3,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.077,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 7,
+      "external_evidence": {
+        "Retrodict": 7,
+        "baseline1": 7
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "ka59",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 6,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.877,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1400,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 3,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.057,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 6,
+      "external_evidence": {
+        "Retrodict": 6,
+        "baseline1": 6
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "sc25",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 5,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.857,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1675,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 4,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.049,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "sk48",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 7,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.849,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1776,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 4,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.041,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 5,
+      "external_evidence": {
+        "Retrodict": 4,
+        "baseline1": 5
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "dc22",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 4,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.841,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1886,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 4,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.04,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 9,
+      "external_evidence": {
+        "Retrodict": 9,
+        "baseline1": 9
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "su15",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 8,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.84,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 1909,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 2,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": 0.022,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 7,
+      "external_evidence": {
+        "Retrodict": 7,
+        "baseline1": 7
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "vc33",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 6,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.822,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 2160,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 2,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -0.026,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "sb26",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 7,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.774,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 2918,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 2,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -0.033,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 10,
+      "external_evidence": {
+        "Retrodict": 5,
+        "baseline1": 10
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "lf52",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 9,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.767,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 3040,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 5,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -0.081,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "s5i5",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 7,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.719,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 3917,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 3,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -0.201,
+      "current_level": 1,
+      "dispatch_mode": "continue_clean_wip",
+      "external_artifact_ceiling": 9,
+      "external_evidence": {
+        "Retrodict": 9,
+        "baseline1": 9
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "tu93",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 8,
+      "next_level": 2,
+      "paid_attempts_at_frontier": 1,
+      "priority_score": 0.599,
+      "quarantined_after_escalation_failure": false,
+      "recommended_effort": "high",
+      "recommended_minutes": 8,
+      "solver_source_bytes": 6695,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 7,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -1000000.0,
+      "current_level": 4,
+      "dispatch_mode": "quarantined_after_escalation_failure",
+      "external_artifact_ceiling": 8,
+      "external_evidence": {
+        "Retrodict": 8,
+        "baseline1": 8
+      },
+      "failed_attempts_at_frontier": 3,
+      "failed_efforts": [
+        "high",
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "ar25",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 4,
+      "next_level": 5,
+      "paid_attempts_at_frontier": 3,
+      "priority_score": 3.373,
+      "quarantined_after_escalation_failure": true,
+      "recommended_effort": null,
+      "recommended_minutes": 0,
+      "solver_source_bytes": 1860,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 5,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -1000000.0,
+      "current_level": 2,
+      "dispatch_mode": "quarantined_after_escalation_failure",
+      "external_artifact_ceiling": 6,
+      "external_evidence": {
+        "Retrodict": 6,
+        "baseline1": 6
+      },
+      "failed_attempts_at_frontier": 2,
+      "failed_efforts": [
+        "high",
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "cd82",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 4,
+      "next_level": 3,
+      "paid_attempts_at_frontier": 2,
+      "priority_score": 1.779,
+      "quarantined_after_escalation_failure": true,
+      "recommended_effort": null,
+      "recommended_minutes": 0,
+      "solver_source_bytes": 1241,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 4,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -1000000.0,
+      "current_level": 5,
+      "dispatch_mode": "quarantined_after_escalation_failure",
+      "external_artifact_ceiling": 7,
+      "external_evidence": {
+        "Retrodict": 7,
+        "baseline1": 7
+      },
+      "failed_attempts_at_frontier": 2,
+      "failed_efforts": [
+        "high"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "g50t",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 2,
+      "next_level": 6,
+      "paid_attempts_at_frontier": 2,
+      "priority_score": 1.647,
+      "quarantined_after_escalation_failure": true,
+      "recommended_effort": null,
+      "recommended_minutes": 0,
+      "solver_source_bytes": 20352,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 24,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -1000000.0,
+      "current_level": 2,
+      "dispatch_mode": "quarantined_after_escalation_failure",
+      "external_artifact_ceiling": 6,
+      "external_evidence": {
+        "Retrodict": 6,
+        "baseline1": 6
+      },
+      "failed_attempts_at_frontier": 2,
+      "failed_efforts": [
+        "high",
+        "medium"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "m0r0",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 4,
+      "next_level": 3,
+      "paid_attempts_at_frontier": 2,
+      "priority_score": 1.743,
+      "quarantined_after_escalation_failure": true,
+      "recommended_effort": null,
+      "recommended_minutes": 0,
+      "solver_source_bytes": 1473,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 3,
+      "warm_wip_available": true
+    },
+    {
+      "adjusted_priority_score": -1000000.0,
+      "current_level": 4,
+      "dispatch_mode": "quarantined_after_escalation_failure",
+      "external_artifact_ceiling": 6,
+      "external_evidence": {
+        "Retrodict": 6,
+        "baseline1": 5
+      },
+      "failed_attempts_at_frontier": 2,
+      "failed_efforts": [
+        "high"
+      ],
+      "frontier_scaffold_created_at": null,
+      "frontier_scaffold_version": null,
+      "game": "sp80",
+      "incumbent_kind": "promoted",
+      "levels_to_external_ceiling": 2,
+      "next_level": 5,
+      "paid_attempts_at_frontier": 2,
+      "priority_score": 2.094,
+      "quarantined_after_escalation_failure": true,
+      "recommended_effort": null,
+      "recommended_minutes": 0,
+      "solver_source_bytes": 9101,
+      "superseded_attempts_at_frontier": 0,
+      "top_level_definitions": 12,
+      "warm_wip_available": true
+    }
+  ],
+  "not_before_epoch": 1785410771,
+  "phase": "hold_for_weekly_reset",
+  "reserve_percent": 20,
+  "solver_quality_by_effort": {
+    "high": {
+      "checkpoint_details": [
+        {
+          "completed_level": 6,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4799,
+          "pre_debrief_acquisition_charge": 127,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5008,
+          "pre_debrief_acquisition_charge": 159,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ft09",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3730,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1751,
+          "pre_debrief_acquisition_charge": 118,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6193,
+          "pre_debrief_acquisition_charge": 429,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3404,
+          "pre_debrief_acquisition_charge": 107,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ar25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 622,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1857,
+          "pre_debrief_acquisition_charge": 105,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1984,
+          "pre_debrief_acquisition_charge": 137,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1535,
+          "pre_debrief_acquisition_charge": 72,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 874,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sc25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1131,
+          "pre_debrief_acquisition_charge": 40,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1307,
+          "pre_debrief_acquisition_charge": 55,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 613,
+          "pre_debrief_acquisition_charge": 11,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cn04",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 710,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 673,
+          "pre_debrief_acquisition_charge": 24,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1058,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1758,
+          "pre_debrief_acquisition_charge": 116,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3408,
+          "pre_debrief_acquisition_charge": 343,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 19,
+      "literal_reuse_wins": 1,
+      "median_conditional_ast_zlib_bytes": 1751.0,
+      "median_pre_debrief_acquisition_charge": 72.0,
+      "sharp_drop_with_literal_reuse_wins": 0,
+      "sharp_marginal_drop_wins": 0,
+      "solved_levels": 19
+    },
+    "medium": {
+      "checkpoint_details": [
+        {
+          "completed_level": 5,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6598,
+          "pre_debrief_acquisition_charge": 249,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1183,
+          "pre_debrief_acquisition_charge": 36,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lp85",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 698,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ka59",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 810,
+          "pre_debrief_acquisition_charge": 26,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 344,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 175,
+          "pre_debrief_acquisition_charge": 4,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 196,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 181,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 265,
+          "pre_debrief_acquisition_charge": 29,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1853,
+          "pre_debrief_acquisition_charge": 133,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2687,
+          "pre_debrief_acquisition_charge": 237,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 11,
+      "literal_reuse_wins": 4,
+      "median_conditional_ast_zlib_bytes": 698.0,
+      "median_pre_debrief_acquisition_charge": 26.0,
+      "sharp_drop_with_literal_reuse_wins": 2,
+      "sharp_marginal_drop_wins": 2,
+      "solved_levels": 11
+    }
+  },
+  "window_effort_efficiency": {
+    "high": {
+      "displayed_points_on_successes": 14,
+      "displayed_points_per_solved_level": 2.462,
+      "displayed_points_per_wall_minute": 0.274,
+      "displayed_weekly_points": 32,
+      "failed_levels": 9,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 22,
+      "solved_levels": 13,
+      "success_only_points_per_solved_level": 1.077,
+      "timed_out_turns": 10,
+      "turns_with_missing_token_usage": 11,
+      "unknown_outcomes": 0
+    },
+    "medium": {
+      "displayed_points_on_successes": 14,
+      "displayed_points_per_solved_level": 4.3,
+      "displayed_points_per_wall_minute": 0.235,
+      "displayed_weekly_points": 43,
+      "failed_levels": 17,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 27,
+      "solved_levels": 10,
+      "success_only_points_per_solved_level": 1.4,
+      "timed_out_turns": 17,
+      "turns_with_missing_token_usage": 17,
+      "unknown_outcomes": 0
+    }
+  },
+  "window_solver_quality_by_effort": {
+    "high": {
+      "checkpoint_details": [
+        {
+          "completed_level": 1,
+          "game": "ar25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 622,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1857,
+          "pre_debrief_acquisition_charge": 105,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1984,
+          "pre_debrief_acquisition_charge": 137,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1535,
+          "pre_debrief_acquisition_charge": 72,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 874,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sc25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1131,
+          "pre_debrief_acquisition_charge": 40,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1307,
+          "pre_debrief_acquisition_charge": 55,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 613,
+          "pre_debrief_acquisition_charge": 11,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cn04",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 710,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 673,
+          "pre_debrief_acquisition_charge": 24,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1058,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1758,
+          "pre_debrief_acquisition_charge": 116,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3408,
+          "pre_debrief_acquisition_charge": 343,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 13,
+      "literal_reuse_wins": 0,
+      "median_conditional_ast_zlib_bytes": 1131.0,
+      "median_pre_debrief_acquisition_charge": 49.0,
+      "sharp_drop_with_literal_reuse_wins": 0,
+      "sharp_marginal_drop_wins": 0,
+      "solved_levels": 13
+    },
+    "medium": {
+      "checkpoint_details": [
+        {
+          "completed_level": 1,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1183,
+          "pre_debrief_acquisition_charge": 36,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lp85",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 698,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ka59",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 810,
+          "pre_debrief_acquisition_charge": 26,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 344,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 175,
+          "pre_debrief_acquisition_charge": 4,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 196,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 181,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 265,
+          "pre_debrief_acquisition_charge": 29,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1853,
+          "pre_debrief_acquisition_charge": 133,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2687,
+          "pre_debrief_acquisition_charge": 237,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 10,
+      "literal_reuse_wins": 4,
+      "median_conditional_ast_zlib_bytes": 521.0,
+      "median_pre_debrief_acquisition_charge": 19.0,
+      "sharp_drop_with_literal_reuse_wins": 2,
+      "sharp_marginal_drop_wins": 2,
+      "solved_levels": 10
+    }
+  }
+}

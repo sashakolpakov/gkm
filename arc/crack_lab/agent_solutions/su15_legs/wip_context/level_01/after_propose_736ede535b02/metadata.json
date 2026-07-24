@@ -1,0 +1,23 @@
+{
+  "game": "su15",
+  "level": 1,
+  "phase": "after_propose",
+  "reached": 0,
+  "err": null,
+  "attempt": "after_propose_736ede535b02",
+  "created_at": "2026-07-23T11:30:43.302795+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T112750990105Z_su15_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "game": "r11l",
+  "level": 6,
+  "phase": "after_debrief",
+  "reached": 6,
+  "err": null,
+  "attempt": "after_debrief_685c4175e10e",
+  "created_at": "2026-07-23T00:11:29.284118+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T000339388329Z_r11l_L6_propose.jsonl",
+    "codex_turn_20260723T000948585199Z_r11l_L6_debrief.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}
