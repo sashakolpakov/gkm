@@ -1,13 +1,13 @@
 {
-  "attempt": "not_reached_8fc825f3454e",
+  "attempt": "not_reached_482e80b81a8c",
   "metadata": {
     "game": "dc22",
     "level": 2,
     "phase": "not_reached",
     "reached": 1,
     "err": null,
-    "attempt": "not_reached_8fc825f3454e",
-    "created_at": "2026-07-23T23:21:27.273487+00:00",
+    "attempt": "not_reached_482e80b81a8c",
+    "created_at": "2026-07-24T21:19:35.925263+00:00",
     "files": [
       "auto_solve_attempts.json",
       "checkpoint.json",
@@ -19,8 +19,7 @@
       "players.py",
       "probe_level2.py",
       "proposer_last.log",
-      "solve.py",
-      "solver_index.md"
+      "solve.py"
     ]
   }
 }

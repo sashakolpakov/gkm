@@ -1581,7 +1581,8 @@ def _initialize_codex_workspace_git(ws: str) -> None:
 # markers that mean "no credits / rate-limited" -- the whole run should abort, not
 # silently churn out empty proposals against a dead API.
 _CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
-                       "rate limit", "insufficient", "quota", "not logged in", "please run /login")
+                       "rate limit", "insufficient", "quota", "not logged in", "please run /login",
+                       "spend limit", "usage-credits")
 
 
 def _raise_keyboard_interrupt(signum, frame):
@@ -1667,6 +1668,24 @@ def _transient_proposer_failure(ws: str, code_changed: bool = True) -> bool:
     return not code_changed  # said little AND wrote nothing: no real attempt was made
 
 
+# The headless `claude -p` proposer must run as a standalone SUBSCRIPTION session, not
+# billed against API/Console dollars (a separate org spend cap unrelated to the
+# subscription's session/weekly allowance).  Two things route it to the wrong pool: an
+# API key in the environment, and the CLAUDE_CODE_* variables that mark this process as
+# a child of the parent Claude Code session.  Strip both so the CLI authenticates with
+# the logged-in subscription, mirroring how `_codex_environment` isolates Codex.
+_CLAUDE_STRIP_ENV = ("ANTHROPIC_API_KEY", "ANTHROPIC_AUTH_TOKEN", "ANTHROPIC_BASE_URL")
+_CLAUDE_STRIP_ENV_PREFIXES = ("CLAUDE_CODE_",)
+
+
+def _claude_subscription_env() -> dict:
+    return {
+        key: value for key, value in os.environ.items()
+        if key not in _CLAUDE_STRIP_ENV
+        and not any(key.startswith(prefix) for prefix in _CLAUDE_STRIP_ENV_PREFIXES)
+    }
+
+
 def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                   guard: bool = False,
                   ledger_path: Optional[str] = None,
@@ -1718,7 +1737,8 @@ def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         timed_out = False
         try:
             r = subprocess.run(cmd, cwd=ws, capture_output=True, text=True,
-                               timeout=minutes * 60)
+                               timeout=minutes * 60,
+                               env=_claude_subscription_env())
             out, err = r.stdout or "", r.stderr or ""
         except subprocess.TimeoutExpired as ex:
             # Out of the per-level time budget. Whatever the agent already wrote to

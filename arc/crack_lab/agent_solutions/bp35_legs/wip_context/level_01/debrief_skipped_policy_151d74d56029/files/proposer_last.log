@@ -1,0 +1,24 @@
+**`RESULT levels=1 moves=17 replay_ok=True`** — clean, verified after removing all scratch probes.
+
+## What bp35 actually is
+
+The prior frontier's framing ("clear the yellow components, search phase layouts") was wrong, which is why raw-frame BFS never converged. It isn't a tile-clearing puzzle — it's a **vertical climb**, and the "phase changes" were the world scrolling.
+
+Discovered entirely by clone experiment:
+
+- **Band lattice.** The 64×64 frame is a 6px lattice. Sampling `(3+6i, 15+6j)` gives a 10×7 symbolic grid; everything else is wall texture. Row 63 is a move counter (one pixel per action) — not state.
+- **Fixed camera.** The avatar always renders on band row 6. The world scrolls down by however many bands it just gained.
+- **Anti-gravity.** After every action the avatar rises through open cells until blocked. Height is bought by opening the cell *overhead* — one click can pay for 3–4 bands.
+- **Click semantics.** `env.step(6, x=col_px, y=row_px)` (x=column, y=row — the reversed order is a silent no-op). It removes a colour‑14 block anywhere on screen; any other click burns a move for nothing.
+- **Rising kill floor.** Rises one band per two moves, starting ~8 bands below. Contact kills — verified by watching the avatar get engulfed at move 24. This is the real budget.
+- **Win.** A colour‑7 prize appears on the avatar's row at the tower top; stepping onto it fires the reward.
+
+## Dense progress measure
+
+**Bands gained per move.** `climb_tower` enumerates, for each sideways-reachable column, the cost (walk + clicks) and the resulting rise, then takes the best ratio. That's what keeps the ascent ahead of the floor: 16 bands in 15 moves, then 2 steps onto the prize.
+
+## Library
+
+`legs.py` holds observation legs (`band_grid`, `avatar_column`, `moves_used`, `find_symbol`), action primitives (`click_cell`, `run_plan`), planners (`climb_plans`, `walk_plan`), and composites (`climb_tower`, `reach_prize`, `climb_to_prize`). No level‑1 constants leak in — `play_level_1` is one `climb_to_prize(env)` call. Mechanics and reuse notes are written up in `legs_log.md`.
+
+One caveat on generality: `climb_tower` is greedy on ratio, not a search. It happened to be optimal here because every rise was forced, but a later level with a trap column would need lookahead. The observation legs should survive that unchanged.

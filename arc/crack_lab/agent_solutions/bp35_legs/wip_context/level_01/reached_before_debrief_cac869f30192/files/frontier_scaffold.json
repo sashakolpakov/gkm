@@ -1,0 +1,23 @@
+{
+  "version": "bp35-l1-symbolic-phase-v3",
+  "created_at": "2026-07-24T12:05:53Z",
+  "basis": "Two clean high-effort failures preserved under this level; no promoted solver.",
+  "objective": "Avoid repeating raw-frame breadth-first search and turn the observed phase changes into a compact symbolic controller.",
+  "required_first_checks": [
+    "Read frontier_brief.md and run the smallest preserved probe before creating a new probe.",
+    "Reconfirm env.actions and one representative coordinate click on a fresh clone.",
+    "Separate avatar position, revealed yellow-tile set, and phase/layout index in the state key."
+  ],
+  "search_change": [
+    "Search over macro actions: move to the next horizontal trigger and click the currently visible yellow components.",
+    "Use phase/layout transitions as progress; do not key on the 64-pixel action-history row.",
+    "Do not retain thousands of full Arena clones: local reproduction showed recursive deepcopy dominating for more than two minutes. Retain compact paths/keys and reconstruct a node from one root clone when expanding it.",
+    "Cap each symbolic search before writing solver code, and preserve the best path plus frontier statistics."
+  ],
+  "known_unverified_observations": [
+    "Actions 3 and 4 move a small avatar horizontally in six-pixel increments.",
+    "Coordinate action 6 removes a clicked yellow component and reveals traversable cells.",
+    "Moving right across a trigger changes the visible yellow layout; clearing only the initial yellow set does not win.",
+    "The preserved 30k-state BFS produced no reward/frontier output before manual termination because repeated full-clone deepcopy dominated runtime."
+  ]
+}

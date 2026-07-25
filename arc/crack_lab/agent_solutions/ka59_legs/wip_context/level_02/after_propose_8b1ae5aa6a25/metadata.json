@@ -1,0 +1,22 @@
+{
+  "game": "ka59",
+  "level": 2,
+  "phase": "after_propose",
+  "reached": 1,
+  "err": null,
+  "attempt": "after_propose_8b1ae5aa6a25",
+  "created_at": "2026-07-24T21:19:27.348969+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T115716871347Z_ka59_L1_propose.jsonl",
+    "codex_turn_20260723T222220511053Z_ka59_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py"
+  ]
+}

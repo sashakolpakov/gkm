@@ -1,13 +1,13 @@
 {
-  "attempt": "not_reached_1f219ef87394",
+  "attempt": "not_reached_0f05853fd5fd",
   "metadata": {
     "game": "su15",
     "level": 2,
     "phase": "not_reached",
     "reached": 1,
     "err": null,
-    "attempt": "not_reached_1f219ef87394",
-    "created_at": "2026-07-24T00:10:35.010219+00:00",
+    "attempt": "not_reached_0f05853fd5fd",
+    "created_at": "2026-07-24T21:19:38.702294+00:00",
     "files": [
       "auto_solve_attempts.json",
       "checkpoint.json",
@@ -21,7 +21,6 @@
       "probe.py",
       "proposer_last.log",
       "solve.py",
-      "solver_index.md",
       "symbolic_probe_l2.py"
     ]
   }

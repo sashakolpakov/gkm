@@ -1,0 +1,23 @@
+`RESULT levels=2 moves=60 replay_ok=True err=None`
+
+## What bp35 L2 is
+
+Same 6px band lattice and same climb/click verbs as L1 — every observation leg transferred with zero edits. Three things genuinely changed, all established by clone experiment:
+
+- **Off-palette colour flipped meaning.** L1's win object was colour 7; L2's colour-15 objects are *hazards*. Stepping into one sideways is a silent no-op (solid), but coming to rest directly *under* one kills — each renders 4px tall inside its band with colour-9/11 "legs" hanging into the band below.
+- **The win is height, not contact.** No goal cell is ever touched; the level fires after ~27 bands of ascent.
+- **Being engulfed doesn't set `terminal()`.** Burning idle moves from the L2 start showed the floor starts 7 bands below and rises one band per two moves, engulfing the avatar on move 14 — the avatar just vanishes from the frame. `avatar_column(...) is None` is the liveness test.
+
+Also: a single click can lift the avatar 7 bands, and the world scrolls by that much, so L1's precompute-then-run column plans addressed stale cells. Every new action leg re-reads the frame per step.
+
+## Why greedy failed and what replaced it
+
+At 21 bands the avatar sits in a one-wide shaft whose only overhead block opens into a hazard-capped chamber — a guaranteed kill. The fatal option costs 1 move; the correct detour to the neighbouring shaft costs 11, so height-per-move picked death every time.
+
+The fix keeps the same dense measure (**bands gained**) but promotes it from a greedy score to a search key: `climb_search` runs best-first on accumulated height with move count only breaking ties. Notably, I did **not** teach the library to tell prizes from hazards — `climb_macros` just drops successors whose clone died, so the hazard model stays out of the alphabet entirely.
+
+New legs: `band_shift`, `act`/`run_actions`/`click_action`, `walk_to`, `climb_macros`, `climb_search`, `climb_by_search`. `play_level_2` is one `climb_by_search(env)` call; 800 expansions solves it in ~13s.
+
+One latent bug fixed along the way: `run_plan`, `climb_tower` and `reach_prize` all tested `env.levels_completed` for truthiness, so they no-oped from L2 onward — `climb_to_prize` returned `True` having taken zero actions. They're now level-relative.
+
+Scratch probes removed; findings written up in `legs_log.md` with a reuse note for L3.
