@@ -87,6 +87,9 @@ def main() -> int:
     ap.add_argument("--max-turns", type=int, default=30)
     ap.add_argument("--max-wall-minutes", type=float, default=280.0)
     ap.add_argument("--ledger", default=str(CLG.DEFAULT_LEDGER))
+    ap.add_argument("--fresh-window", action="store_true",
+                    help="operator confirms the allowance window has reset; bypass a "
+                         "stale trailing credit-out on the first turn")
     args = ap.parse_args()
     skip = {x for x in args.skip.split(",") if x}
 
@@ -106,10 +109,12 @@ def main() -> int:
         return 0
 
     outcomes = []
+    fresh = args.fresh_window
     for game, before, target, _eff in plan:
-        if window_exhausted(args.ledger):
+        if not fresh and window_exhausted(args.ledger):
             print("CREDIT-OUT detected before turn; window exhausted. Stopping.", flush=True)
             break
+        fresh = False  # the operator's fresh-window assertion covers only the first turn
         print(f"=== {game}: L{before} -> attempt L{before+1}..L{target} ===", flush=True)
         try:
             proc = subprocess.run(_argv(game, target, args), cwd=REPO)
