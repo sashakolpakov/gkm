@@ -60,6 +60,50 @@ def window_exhausted(ledger: str) -> bool:
     return duration < 15 and tokens in (0, None) and not last.get("timed_out")
 
 
+class CampaignSafetyError(RuntimeError):
+    """A promoted artifact is tainted, or a post-turn audit failed."""
+
+
+def _taint_gate() -> None:
+    """Uniform with codex_campaign_runner: refuse to continue if any promoted
+    artifact shows forbidden source/history/runtime access -- a weaselled solve.
+    Weaker proposers cheat when a task is too hard; this catches it every turn.
+    """
+    proc = subprocess.run(
+        [sys.executable, "arc/audit_submission_taint.py",
+         "arc/crack_lab/agent_solutions"],
+        cwd=REPO, text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+        check=False,
+    )
+    try:
+        result = json.loads(proc.stdout)
+    except json.JSONDecodeError as exc:
+        raise CampaignSafetyError("taint gate returned non-JSON output") from exc
+    if proc.returncode != 0 or result.get("automated_verdict") != "PASS":
+        raise CampaignSafetyError(
+            f"post-turn taint gate FAILED (verdict={result.get('automated_verdict')}); "
+            "a run is tainted"
+        )
+
+
+def _refresh_solver_audits() -> None:
+    """Refresh exact-checkpoint and marginal/reuse audits after a promotion."""
+    for argv in (
+        [sys.executable, "arc/audit_gkm_solved_checkpoints.py",
+         "arc/crack_lab/agent_solutions",
+         "--csv", "arc/audit_results/gkm-solved-checkpoints.csv",
+         "--json", "arc/audit_results/gkm-solved-checkpoints.json"],
+        [sys.executable, "arc/audit_marginal_literal_reuse.py",
+         "--reuse-non-gkm-from-json", "arc/audit_results/marginal-literal-reuse.json",
+         "--json", "arc/audit_results/marginal-literal-reuse.json"],
+    ):
+        proc = subprocess.run(argv, cwd=REPO, text=True, stdout=subprocess.PIPE,
+                              stderr=subprocess.STDOUT, check=False)
+        if proc.returncode != 0:
+            raise CampaignSafetyError(
+                f"post-win solver audit failed: {' '.join(argv)}\n{proc.stdout}")
+
+
 def _argv(game: str, target: int, args) -> list[str]:
     return [
         sys.executable, "-u", "arc/crack_lab/gkm_legs.py",
@@ -122,8 +166,21 @@ def main() -> int:
         except Exception as exc:  # a single game crash must not kill the sweep
             rc = -1
             print(f"[warning: {game} run raised {type(exc).__name__}: {exc}]", flush=True)
+        # Taint gate every turn (uniform with codex_campaign_runner): a weaselled,
+        # source/history-reading "solve" stops the campaign immediately for review.
+        try:
+            _taint_gate()
+        except CampaignSafetyError as exc:
+            after = reached(game)
+            outcomes.append({"game": game, "before": before, "after": after,
+                             "result": "taint_stop", "detail": str(exc)})
+            print(f"!!! TAINT GATE FAILED after {game}: {exc}; STOPPING for review.",
+                  flush=True)
+            break
         after = reached(game)
         gained = after - before
+        if gained > 0:
+            _refresh_solver_audits()
         outcomes.append({"game": game, "before": before, "after": after,
                          "gained": gained, "returncode": rc})
         marker = f"+{gained} level(s)" if gained > 0 else "no gain"
