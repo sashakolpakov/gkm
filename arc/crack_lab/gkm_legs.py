@@ -1762,6 +1762,7 @@ def _claude_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 "run_label": run_label,
                 "workspace": os.path.basename(os.path.abspath(ws)),
                 "proposer": "claude",
+                "billing_pool": "subscription",  # sanitized env -> Team subscription
                 "model": model or "default",
                 "minutes_limit": minutes,
                 "timed_out": timed_out,
@@ -2072,21 +2073,81 @@ def _record_codex_level_outcome(turn: Optional[dict], *, ledger_path: Optional[s
         print(f"[warning: could not append Codex level outcome: {exc}]")
 
 
-def _api_agent(ws: str, task: str, model: Optional[str], minutes: int) -> None:
+def _api_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
+               guard: bool = False,
+               ledger_path: Optional[str] = None,
+               window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
+               max_cost_usd: Optional[float] = None,
+               max_turns: Optional[int] = None,
+               max_wall_minutes: Optional[float] = None,
+               run_label: Optional[str] = None,
+               game: Optional[str] = None,
+               target_level: Optional[int] = None) -> None:
     """Run the Messages-API agentic loop (gkm_api_agent) as the proposer.
 
-    Bills against ANTHROPIC_API_KEY Console credits -- a separate pool from the
-    Claude Code CLI subscription, so it works as a credit-out fallback."""
+    Bills ANTHROPIC_API_KEY Console dollars -- a pool separate from the Claude
+    subscription (``_claude_agent``).  ``guard=True`` meters each turn's OBSERVED
+    dollar cost (tokens x model price) to an API ledger and refuses once a rolling
+    per-window dollar cap is reached; there is no provider balance read, so the cap
+    is a spend ceiling.  ``guard=False`` keeps the original unmetered behavior.
+    """
     import gkm_api_agent
-    _ensure_anthropic_api_key()
+    ledger = (ledger_path or os.fspath(CLG.DEFAULT_API_LEDGER)) if guard else None
+    caps = CLG.WindowCaps(
+        max_cost_usd=max_cost_usd, max_turns=max_turns,
+        max_wall_minutes=max_wall_minutes,
+    ) if guard else None
+    lock = None
+    if guard:
+        try:
+            lock = CLG.campaign_lock(ledger)
+            lock.__enter__()
+            CLG.preflight(caps=caps, window_hours=window_hours, ledger_path=ledger,
+                          event="api_exec")
+        except CLG.ClaudeUsageGuardError as exc:
+            if lock is not None:
+                lock.__exit__(None, None, None)
+            raise CreditOut(f"API campaign guard stopped the run: {exc}") from exc
+
     try:
-        gkm_api_agent.run_agent(ws, task, model=model, minutes=minutes)
-    except Exception as ex:
-        with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
-            fh.write(_redact_secrets(f"API Error: {type(ex).__name__}: {ex}\n"))
-    blob = _read(os.path.join(ws, "proposer_last.log")).lower()
-    if any(m in blob for m in _CREDIT_OUT_MARKERS):
-        raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
+        started = time.monotonic()
+        started_at = datetime.now(timezone.utc).isoformat()
+        usage: dict = {}
+        try:
+            _ensure_anthropic_api_key()
+            gkm_api_agent.run_agent(ws, task, model=model, minutes=minutes,
+                                    usage_out=usage)
+        except Exception as ex:
+            with open(os.path.join(ws, "proposer_last.log"), "w") as fh:
+                fh.write(_redact_secrets(f"API Error: {type(ex).__name__}: {ex}\n"))
+        duration = round(time.monotonic() - started, 3)
+        blob = _read(os.path.join(ws, "proposer_last.log")).lower()
+        credit_out = any(m in blob for m in _CREDIT_OUT_MARKERS)
+        if guard:
+            CLG.append_ledger({
+                "event": "api_exec",
+                "started_at": started_at,
+                "duration_seconds": duration,
+                "run_label": run_label,
+                "workspace": os.path.basename(os.path.abspath(ws)),
+                "proposer": "api",
+                "billing_pool": "api_console",
+                "model": usage.get("model") or model or "default",
+                "minutes_limit": minutes,
+                "credit_out": credit_out,
+                "game": game,
+                "target_level": target_level,
+                "input_tokens": usage.get("input_tokens"),
+                "output_tokens": usage.get("output_tokens"),
+                "cache_read_input_tokens": usage.get("cache_read_input_tokens"),
+                "total_cost_usd": usage.get("total_cost_usd"),
+                "usage_reported": bool(usage),
+            }, ledger)
+        if credit_out:
+            raise CreditOut(f"api proposer reported no credits/quota (see {ws}/proposer_last.log)")
+    finally:
+        if lock is not None:
+            lock.__exit__(None, None, None)
 
 
 CLEAN_ROOM_INSTRUCTION = (
@@ -2178,6 +2239,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 claude_window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
                 claude_max_turns: Optional[int] = None,
                 claude_max_wall_minutes: Optional[float] = None,
+                api_guard: bool = False,
+                api_ledger: Optional[str] = None,
+                api_window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
+                api_max_cost_usd: Optional[float] = None,
+                api_max_turns: Optional[int] = None,
+                api_max_wall_minutes: Optional[float] = None,
                 propose_fn: Optional[Callable] = None,
                 verify_fn: Optional[Callable] = None,
                 debrief_fn: Optional[Callable] = None,
@@ -2253,6 +2320,23 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     game=game,
                     target_level=k,
                 )
+        elif proposer == "api" and api_guard:
+            def propose_fn(w, k):
+                _agent(
+                    w,
+                    _propose_task(game, k, context, _defs(_read(legs_p))),
+                    model,
+                    minutes_per,
+                    guard=True,
+                    ledger_path=api_ledger,
+                    window_hours=api_window_hours,
+                    max_cost_usd=api_max_cost_usd,
+                    max_turns=api_max_turns,
+                    max_wall_minutes=api_max_wall_minutes,
+                    run_label=f"{game}:L{k}:propose",
+                    game=game,
+                    target_level=k,
+                )
         else:
             propose_fn = lambda w, k: _agent(
                 w,
@@ -2287,6 +2371,20 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     window_hours=claude_window_hours,
                     max_turns=claude_max_turns,
                     max_wall_minutes=claude_max_wall_minutes,
+                    run_label=f"{game}:L{k}:debrief",
+                    game=game,
+                    target_level=k,
+                )
+        elif proposer == "api" and api_guard:
+            def debrief_fn(w, k):
+                _agent(
+                    w, _debrief_task(game, k), model, max(10, minutes_per // 2),
+                    guard=True,
+                    ledger_path=api_ledger,
+                    window_hours=api_window_hours,
+                    max_cost_usd=api_max_cost_usd,
+                    max_turns=api_max_turns,
+                    max_wall_minutes=api_max_wall_minutes,
                     run_label=f"{game}:L{k}:debrief",
                     game=game,
                     target_level=k,
@@ -2560,6 +2658,8 @@ if __name__ == "__main__":
     codex_ledger = None
     claude_guard, claude_ledger, claude_max_turns, claude_max_wall_minutes = False, None, None, None
     claude_window_hours = CLG.DEFAULT_WINDOW_HOURS
+    api_guard, api_ledger, api_max_cost_usd, api_max_turns, api_max_wall_minutes = False, None, None, None, None
+    api_window_hours = CLG.DEFAULT_WINDOW_HOURS
     for a in sys.argv[1:]:
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
@@ -2582,6 +2682,12 @@ if __name__ == "__main__":
         elif a.startswith("--claude-window-hours="): claude_window_hours = float(a.split("=", 1)[1])
         elif a.startswith("--claude-max-turns="): claude_max_turns = int(a.split("=", 1)[1])
         elif a.startswith("--claude-max-wall-minutes="): claude_max_wall_minutes = float(a.split("=", 1)[1])
+        elif a == "--api-guard": api_guard = True
+        elif a.startswith("--api-ledger="): api_ledger = a.split("=", 1)[1]
+        elif a.startswith("--api-window-hours="): api_window_hours = float(a.split("=", 1)[1])
+        elif a.startswith("--api-max-cost-usd="): api_max_cost_usd = float(a.split("=", 1)[1])
+        elif a.startswith("--api-max-turns="): api_max_turns = int(a.split("=", 1)[1])
+        elif a.startswith("--api-max-wall-minutes="): api_max_wall_minutes = float(a.split("=", 1)[1])
         elif a == "--fresh": fresh = True
         elif a == "--no-wip-restore": restore_wip = False
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
@@ -2600,7 +2706,13 @@ if __name__ == "__main__":
                 claude_ledger=claude_ledger,
                 claude_window_hours=claude_window_hours,
                 claude_max_turns=claude_max_turns,
-                claude_max_wall_minutes=claude_max_wall_minutes)
+                claude_max_wall_minutes=claude_max_wall_minutes,
+                api_guard=api_guard,
+                api_ledger=api_ledger,
+                api_window_hours=api_window_hours,
+                api_max_cost_usd=api_max_cost_usd,
+                api_max_turns=api_max_turns,
+                api_max_wall_minutes=api_max_wall_minutes)
 MARGINAL_COMPLEXITY_CONTRACT = {
     "field": "marginal_C",
     "label": "positive net retained-description growth per source file",

@@ -35,6 +35,41 @@ BASH_TIMEOUT_S = 600        # gkm_try.py BFS verifications can take minutes
 TOOL_OUTPUT_CAP = 20000     # chars per tool result kept in context
 API_TRANSIENT_RETRIES = 6
 API_TRANSIENT_BACKOFF_S = (20, 45, 90, 180, 300, 300)
+
+# First-party per-MTok pricing (input, output USD) for observed-cost metering of the
+# API proposer, which -- unlike claude -p -- returns only token counts, not dollars.
+# Cache reads bill ~0.1x input; cache writes ~1.25x input (5-minute TTL).
+MODEL_PRICES_USD_PER_MTOK = {
+    "claude-opus-4-8": (5.0, 25.0),
+    "claude-opus-4-7": (5.0, 25.0),
+    "claude-sonnet-5": (3.0, 15.0),
+    "claude-sonnet-4-6": (3.0, 15.0),
+    "claude-haiku-4-5": (1.0, 5.0),
+    "claude-fable-5": (10.0, 50.0),
+}
+
+
+def observed_cost_usd(usage: dict, model_id: Optional[str]) -> Optional[float]:
+    """Dollar cost of accumulated token usage, or None for an unpriced model."""
+    price = MODEL_PRICES_USD_PER_MTOK.get(model_id or "")
+    if price is None:
+        return None
+    in_rate, out_rate = price
+    scale = 1e-6
+    cost = (
+        usage.get("input_tokens", 0) * in_rate
+        + usage.get("output_tokens", 0) * out_rate
+        + usage.get("cache_read_input_tokens", 0) * in_rate * 0.1
+        + usage.get("cache_creation_input_tokens", 0) * in_rate * 1.25
+    ) * scale
+    return round(cost, 6)
+
+
+def _accumulate_usage(acc: dict, usage) -> None:
+    if usage is None:
+        return
+    for key in acc:
+        acc[key] += getattr(usage, key, 0) or 0
 BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 
 TOOLS = [
@@ -260,7 +295,8 @@ def _run_editor(ws: str, inp: dict) -> tuple[str, bool]:
 
 
 def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40,
-              client=None, log_path: Optional[str] = None) -> str:
+              client=None, log_path: Optional[str] = None,
+              usage_out: Optional[dict] = None) -> str:
     """Drive the agentic loop until the model stops calling tools or the time
     budget runs out. Returns the transcript (also written to ``log_path``)."""
     if client is None:
@@ -270,6 +306,8 @@ def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40
     log_path = log_path or os.path.join(ws, "proposer_last.log")
     deadline = time.monotonic() + minutes * 60
     messages = [{"role": "user", "content": task}]
+    usage_acc = {"input_tokens": 0, "output_tokens": 0,
+                 "cache_creation_input_tokens": 0, "cache_read_input_tokens": 0}
     log = open(log_path, "w")
 
     def emit(text: str) -> None:
@@ -314,6 +352,7 @@ def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40
                     break
             if response is None:
                 break
+            _accumulate_usage(usage_acc, getattr(response, "usage", None))
             tool_uses = []
             for block in response.content:
                 if block.type == "text" and block.text:
@@ -351,4 +390,8 @@ def run_agent(ws: str, task: str, model: Optional[str] = None, minutes: int = 40
             messages.append({"role": "user", "content": results})
     finally:
         log.close()
+    if usage_out is not None:
+        usage_out.update(usage_acc)
+        usage_out["model"] = model_id
+        usage_out["total_cost_usd"] = observed_cost_usd(usage_acc, model_id)
     return open(log_path).read()

@@ -144,3 +144,52 @@ def test_claude_agent_guard_refuses_at_cap_without_spawning(tmp_path):
     # Preflight fired before any subprocess: no proposer transcript was written,
     # proving no `claude` turn (and no allowance) was spent to hit the cap.
     assert not (ws / "proposer_last.log").exists()
+
+
+# --- API proposer dollar guard (second provider, separate pool) ------------
+
+import gkm_api_agent
+
+
+def test_api_observed_cost_computation():
+    # Opus 4.8 = $5/$25 per MTok; cache reads bill 0.1x input.
+    u = {"input_tokens": 100_000, "output_tokens": 20_000,
+         "cache_read_input_tokens": 500_000, "cache_creation_input_tokens": 0}
+    assert abs(gkm_api_agent.observed_cost_usd(u, "claude-opus-4-8") - 1.25) < 1e-6
+    assert abs(gkm_api_agent.observed_cost_usd(u, "claude-haiku-4-5") - 0.25) < 1e-6
+    assert gkm_api_agent.observed_cost_usd(u, "no-such-model") is None
+
+
+def test_window_records_event_selects_api_exec():
+    recs = [
+        _rec(1000.0, 60),  # claude_exec
+        {"event": "api_exec", "started_at": 1000.0, "duration_seconds": 60,
+         "total_cost_usd": 2.0},
+    ]
+    api = C.window_records(recs, window_hours=5, now=1000.0, event="api_exec")
+    assert len(api) == 1 and api[0]["total_cost_usd"] == 2.0
+    assert len(C.window_records(recs, window_hours=5, now=1000.0)) == 1  # default claude
+
+
+def test_preflight_dollar_cap_on_api_exec(tmp_path):
+    led = tmp_path / "api.jsonl"
+    C.append_ledger({"event": "api_exec", "started_at": time.time(),
+                     "duration_seconds": 60, "total_cost_usd": 5.0}, led)
+    with pytest.raises(ClaudeUsageGuardError):
+        C.preflight(caps=WindowCaps(max_cost_usd=5.0), ledger_path=led, event="api_exec")
+
+
+def test_api_agent_guard_refuses_at_dollar_cap_without_spawning(tmp_path):
+    led = tmp_path / "api.jsonl"
+    C.append_ledger({"event": "api_exec", "started_at": time.time(),
+                     "duration_seconds": 60, "total_cost_usd": 6.0}, led)
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    with pytest.raises(gkm_legs.CreditOut):
+        gkm_legs._api_agent(
+            str(ws), "task", "sonnet", 5, guard=True,
+            ledger_path=str(led), max_cost_usd=5.0, window_hours=5,
+        )
+    # Budget preflight fired before the API key check and before run_agent:
+    # no transcript, so no API dollars were spent to enforce the cap.
+    assert not (ws / "proposer_last.log").exists()

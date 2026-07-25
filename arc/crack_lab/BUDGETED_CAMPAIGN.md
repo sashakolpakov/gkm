@@ -193,6 +193,24 @@ spend ceiling, not a remaining-allowance gate -- set them conservatively below t
 test proving a hit cap refuses the turn before any `claude` process spawns, so no
 allowance is spent to enforce the budget.
 
+The **API proposer** (`--proposer=api`, the Messages-API loop `gkm_api_agent`) is the
+separate-pool sibling: it bills `ANTHROPIC_API_KEY` Console dollars, not the
+subscription. It is metered the same way but by DOLLARS -- `gkm_api_agent` accumulates
+per-turn token usage and prices it (first-party per-MTok rates), and the guard enforces
+a rolling dollar cap from an independent `runs/api_campaign_usage.jsonl` ledger:
+
+```sh
+python3 arc/crack_lab/gkm_legs.py --game=<g> --max-level=<k> \
+  --proposer=api --model=sonnet --minutes=<m> --debrief-policy=never \
+  --api-guard --api-window-hours=5 --api-max-cost-usd=<D> [--api-max-turns=<N>]
+```
+
+The two Claude pools are fully separate -- subscription (`--proposer=claude`, turn/wall
+caps) and API dollars (`--proposer=api`, dollar cap) -- with independent ledgers and
+locks, so they can run concurrently and never share a budget. A hit dollar cap refuses
+before the API loop runs (no dollars spent to enforce it); see the API tests in
+`test_claude_usage_guard.py`.
+
 ## Integrity status
 
 The final audit reports:

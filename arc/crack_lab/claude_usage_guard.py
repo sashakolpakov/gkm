@@ -30,6 +30,7 @@ from typing import Any, Dict, Iterable, Optional
 
 
 DEFAULT_LEDGER = Path(__file__).resolve().parent / "runs" / "claude_campaign_usage.jsonl"
+DEFAULT_API_LEDGER = Path(__file__).resolve().parent / "runs" / "api_campaign_usage.jsonl"
 # Claude's shorter subscription bucket is five hours; the operator can widen the
 # rolling window to the weekly horizon (168h) for a second, longer-horizon guard.
 DEFAULT_WINDOW_HOURS = 5.0
@@ -164,13 +165,18 @@ class WindowCaps:
 
 
 def window_records(records: Iterable[Dict[str, Any]], *, window_hours: float,
-                   now: Optional[float] = None) -> list[Dict[str, Any]]:
-    """Claude proposer turns whose start falls within the rolling window."""
+                   now: Optional[float] = None,
+                   event: str = "claude_exec") -> list[Dict[str, Any]]:
+    """Proposer turns of the given event kind whose start falls within the window.
+
+    Defaults to ``claude_exec`` (the subscription proposer); pass ``api_exec`` to
+    meter the API proposer's dollar-billed turns from its own ledger.
+    """
     now = time.time() if now is None else now
     cutoff = now - window_hours * 3600.0
     result = []
     for record in records:
-        if record.get("event") != "claude_exec":
+        if record.get("event") != event:
             continue
         started = _epoch_of(record.get("started_at"))
         if started is None or started >= cutoff:
@@ -200,16 +206,19 @@ def window_totals(records: Iterable[Dict[str, Any]]) -> Dict[str, Any]:
 
 def preflight(*, caps: WindowCaps, window_hours: float = DEFAULT_WINDOW_HOURS,
               ledger_path: Path | str = DEFAULT_LEDGER,
-              now: Optional[float] = None) -> Dict[str, Any]:
-    """Admit a Claude turn only if every configured local cap has headroom.
+              now: Optional[float] = None,
+              event: str = "claude_exec") -> Dict[str, Any]:
+    """Admit a proposer turn only if every configured local cap has headroom.
 
     There is no provider allowance read; this sums the durable ledger over the
     rolling window and refuses once a cap is reached.  It is a spend ceiling, not
-    a remaining-allowance gate, because the subscription allowance is unreadable.
+    a remaining-allowance gate.  ``event`` selects the proposer: ``claude_exec``
+    (subscription, turn/wall caps) or ``api_exec`` (API key, dollar cap).
     """
     if window_hours <= 0:
         raise ValueError("window_hours must be positive")
-    current = window_records(read_ledger(ledger_path), window_hours=window_hours, now=now)
+    current = window_records(read_ledger(ledger_path), window_hours=window_hours,
+                             now=now, event=event)
     totals = window_totals(current)
     if caps.max_turns is not None and totals["turns"] >= caps.max_turns:
         raise ClaudeUsageGuardError(
