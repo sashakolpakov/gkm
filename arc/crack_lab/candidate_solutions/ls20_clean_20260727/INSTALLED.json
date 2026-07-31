@@ -1,0 +1,20 @@
+{
+  "schema": 2,
+  "game": "ls20",
+  "installed_at": "2026-07-28T01:30:55Z",
+  "canonical_path": "arc/crack_lab/agent_solutions/ls20_legs",
+  "checkpoint_sha256": "45fe024db49bc66b6b61a91102a7abb8e16418824071a22f8b336bf94c89eaf6",
+  "tree_sha256_before_install": "b27a8876b33c318c1e1c3b2fb013321b63acc7d5208445c69fda326fda11ebac",
+  "exact_winning_sources": "7/7",
+  "exact_action_boundaries": "8/8",
+  "promotion_manifests": "7/7",
+  "taint_verdict": "PASS",
+  "superseded_artifact": {
+    "status": "purged_after_verified_replacement",
+    "purged_at": "2026-07-29T14:32:38Z",
+    "reason": "The historical replay-valid lineage had no per-level promotion manifests; the installed clean lineage has all seven exact boundaries.",
+    "reached": 7,
+    "checkpoint_sha256": "cc2ca8d4ca3ea5331f8e4f2f87a072a32974a87fd1e734936864f9aa8ddb1639",
+    "tree_sha256": "eb2f337a1f0d6d956b4b1df39bbb4e2da671f6290fac56a83350b3d98fe825b3"
+  }
+}

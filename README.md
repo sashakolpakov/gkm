@@ -41,7 +41,7 @@ campaign, its milestones, and release gates is
 [`arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md).
 Machine-readable promoted artifacts and audit outputs live under
 [`arc/crack_lab/agent_solutions/`](arc/crack_lab/agent_solutions/) and
-[`arc/crack_lab/audit_results/`](arc/crack_lab/audit_results/).
+[`arc/audit_results/`](arc/audit_results/).
 The automatic policy uses clean retries at one unchanged frontier as its
 game-independent complexity coordinate for both effort escalation and the
 later independent observation-only sidecar role. At hard frontiers, a separate
@@ -95,7 +95,7 @@ winning-source boundary. Earlier nonuniform histories remain superseded provenan
 not inputs to these canonical ledgers.
 
 Do not infer a live campaign total from this historical pair. Current solved-boundary
-statistics are regenerated in `arc/crack_lab/audit_results/`; the campaign plan
+statistics are regenerated in `arc/audit_results/`; the campaign plan
 defines the uniform budget, escalation, taint, replay, and promotion policy.
 
 The local harness exposes state cloning for lookahead. The official ARC-AGI-3

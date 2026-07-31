@@ -1,0 +1,28 @@
+{
+  "schema": 2,
+  "game": "tn36",
+  "installed_at": "2026-07-29T15:39:43Z",
+  "canonical_path": "arc/crack_lab/agent_solutions/tn36_legs",
+  "checkpoint_sha256": "96de1d4248417859c1657fdaea537c02b7af1c221dd87c4fc9f91ea05403c0d6",
+  "tree_sha256_after_install": "8610ef72c7607d4061a70a7e8183c29eff2dc12833df12a27ae92c01a7287001",
+  "reached": 7,
+  "actions": 131,
+  "exact_winning_sources": "7/7",
+  "exact_action_boundaries": "7/7",
+  "promotion_manifests": "7/7",
+  "taint_verdict": "PASS",
+  "action_protocol": {
+    "checkpoint_and_retained_transcript_verdict": "PASS",
+    "out_of_range_findings": 0,
+    "complete_host_call_log": false,
+    "strict_host_call_log_deferred_to_contiguous_campaign": true
+  },
+  "superseded_artifact": {
+    "status": "purged_after_verified_replacement",
+    "reason": "The historical L1 acquisition transcript contained six affirmative out-of-range coordinate calls; the new zero-seed lineage has seven clean exact boundaries.",
+    "reached": 7,
+    "actions": 125,
+    "checkpoint_sha256": "0cd8762e6e021a148f6446c3b2388821fb89c3a8c3393601882b97ec71ed9821",
+    "tree_sha256": "5a34ae69fe02e899d2ce0d6c2e3e08f893ad4a323af6320912e4541a6b6cc813"
+  }
+}

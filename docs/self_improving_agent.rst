@@ -27,7 +27,7 @@ The local ``Arena`` supplies:
 ``clone()`` is a strong simulator oracle. Search routines can fork a state and
 evaluate actions without spending steps on the retained trajectory. The official
 ARC-AGI-3 environment wrapper documents ``reset()`` and ``step()`` but not arbitrary
-state forking. Accordingly, the reported 596 and 393 actions are final replay-path
+state forking. Accordingly, the reported 597 and 365 actions are final replay-path
 lengths. They exclude cloned exploration, failed trials, proposer calls, and compute.
 
 The local interface does not label game objects or goals. That fact should not be
@@ -171,8 +171,7 @@ The numerical comparison is generated rather than duplicated here. See
 ``arc/manuscript/generated/comparator_stats.md`` for the current table and
 ``arc/manuscript/opine_world_comparison.md`` for scope, caveats, and interpretation.
 Its reproduction entry point is ``arc/manuscript/scripts/reproduce_manuscript.py``;
-the underlying machine-readable audits are retained under ``arc/audit_results/``
-and ``arc/crack_lab/audit_results/``.
+the underlying machine-readable audits are retained under ``arc/audit_results/``.
 
 Reproduction
 ------------

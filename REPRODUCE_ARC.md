@@ -121,7 +121,7 @@ validated the same frozen endpoint set. The schema-v2 release receipt binds the
 claimed boundaries, hashes, manifests, and audit verdicts. For the campaign and its
 release gates, use
 [`arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md)
-and the machine-readable audit outputs under `arc/crack_lab/audit_results/`.
+and the machine-readable audit outputs under `arc/audit_results/`.
 
 ## Rebuild the manuscript and figures
 
@@ -154,8 +154,10 @@ library, per-level players, and WIP snapshots.
 
 The manuscript's compact clean-history index is under
 `arc/manuscript/artifact_history/`. It contains complete published ledgers and
-hashed clean core files; the full dirty restart context remains in each artifact's
-`wip_context/` tree. Verify the index without changing an artifact:
+hashed clean core files. During active acquisition, restart context remains in each
+artifact's `wip_context/` tree; the publication release uses the compact schema-v2
+tree, and terminal cleanup may remove mutable WIP after every release consumer is
+bound to the frozen receipt. Verify the index without changing an artifact:
 
 ```bash
 python arc/manuscript/build_artifact_history.py --check

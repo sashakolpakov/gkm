@@ -1,0 +1,16 @@
+{
+  "schema": 2,
+  "game": "wa30",
+  "installed_at": "2026-07-28T00:50:21Z",
+  "canonical_artifact": "../../agent_solutions/wa30_legs",
+  "checkpoint_sha256": "2841757eb37dd671620ba8f4603635078af0b36c01979fbf02b726447d3b1222",
+  "superseded_artifact": {
+    "status": "purged_after_verified_replacement",
+    "purged_at": "2026-07-29T14:32:38Z",
+    "reason": "The historical replay-valid lineage lacked exact L1-L3 acquisition boundaries; the installed clean lineage has all nine exact boundaries.",
+    "reached": 9,
+    "actions": 596,
+    "checkpoint_sha256": "1c4cb97de493a8613206e7a34a7537d3a1240b2e9377359d58983f05a2f7104a",
+    "tree_sha256": "389d59d5b38dd48ea047e747b8b52b17ab5fb14a405b8ae36ba33011c42b0f31"
+  }
+}

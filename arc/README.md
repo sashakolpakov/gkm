@@ -130,11 +130,12 @@ compliance can deteriorate when a proposer stops making progress.
   canonical campaign, audit, scorecard, release, and supervisor plan.
 - [`manuscript/arc_agi3.tex`](manuscript/arc_agi3.tex): scholarly manuscript.
 - [`manuscript/README.md`](manuscript/README.md): reproducible paper/figure build and
-  forward-revision sources.
+  empirical tables, figures, and review sources.
 - [`crack_lab/`](crack_lab/): harness and chronological findings.
 - [`crack_lab/agent_solutions/`](crack_lab/agent_solutions/): promoted artifacts.
 - [`manuscript/artifact_history/`](manuscript/artifact_history/): compact clean-history
-  sidecar; the original dirty WIP remains under each artifact.
+  sidecar; mutable acquisition WIP is retained only until the final schema-v2 freeze
+  and release-consumer audit.
 - [`../REPRODUCE_ARC.md`](../REPRODUCE_ARC.md): replay procedure.
 
 Run focused tests from the repository root:

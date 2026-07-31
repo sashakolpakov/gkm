@@ -167,8 +167,10 @@ def detail_markdown(artifact: Artifact) -> str:
             "",
             "The complete ledger and clean-source hashes are in "
             f"`arc/manuscript/artifact_history/{artifact.game}/manifest.json`. "
-            "The artifact root and `wip_context` retain the final clean replay state and "
-            "the original dirty continuation evidence, respectively.",
+            "During active acquisition, the artifact root and `wip_context` retain "
+            "the clean replay state and restart evidence. Publication authority comes "
+            "from the compact schema-v2 release and its frozen receipt; terminal "
+            "cleanup may prune mutable WIP after all release consumers are bound.",
             f"The `{MARGINAL_COMPLEXITY_CONTRACT['field']}` field is "
             f"{MARGINAL_COMPLEXITY_CONTRACT['label']}; "
             f"{MARGINAL_COMPLEXITY_CONTRACT['limitation']}.",
