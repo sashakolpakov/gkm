@@ -1231,10 +1231,32 @@ def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
     }
     if not isinstance(workspace, str) or not isinstance(transcript, str):
         return result
-    path = HERE / "runs" / "scratch" / workspace / transcript
+    # ``gkm_legs`` seals the authoritative transcript outside the proposer-
+    # writable workspace before that workspace may be retired.  Retry
+    # accounting must follow the sealed copy; otherwise ordinary cleanup turns
+    # a completed clean attempt back into an unknown outcome and silently
+    # lowers the escalation coordinate.  Accept only single path components so
+    # a malformed ledger entry cannot escape either transcript root.
+    if (
+        not workspace
+        or Path(workspace).name != workspace
+        or not transcript
+        or Path(transcript).name != transcript
+    ):
+        return result
+    scratch = HERE / "runs" / "scratch"
+    protected = scratch / ".proposer_transcripts" / workspace / transcript
+    live = scratch / workspace / transcript
+    path = protected if protected.exists() else live
     if not path.exists():
         return result
-    for raw in path.read_text(encoding="utf-8", errors="ignore").splitlines():
+    try:
+        raw_transcript = _read_stable_regular(path).decode(
+            "utf-8", errors="ignore"
+        )
+    except OSError:
+        return result
+    for raw in raw_transcript.splitlines():
         try:
             event = json.loads(raw)
         except json.JSONDecodeError:

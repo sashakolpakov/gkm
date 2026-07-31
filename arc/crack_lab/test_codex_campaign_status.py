@@ -301,6 +301,53 @@ def test_completed_clean_failure_is_one_retry(tmp_path, monkeypatch):
     assert turn["retry_increment"] == 1
 
 
+def test_completed_clean_failure_uses_protected_transcript_after_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    protected = (
+        tmp_path
+        / "runs"
+        / "scratch"
+        / ".proposer_transcripts"
+        / "retired-ws"
+    )
+    protected.mkdir(parents=True)
+    (protected / "clean.jsonl").write_text(
+        json.dumps({"type": "thread.started", "thread_id": "clean"})
+        + "\n"
+        + json.dumps({"type": "turn.completed", "usage": {}})
+        + "\n"
+    )
+    records = [
+        {
+            "event": "codex_exec",
+            "thread_id": "clean",
+            "workspace": "retired-ws",
+            "transcript": "clean.jsonl",
+            "run_label": "lf52:L9:propose",
+            "game": "lf52",
+            "target_level": 9,
+            "reasoning_effort": "medium",
+            "timed_out": False,
+            "interrupted": False,
+            "failure_class": None,
+        },
+        {
+            "event": "codex_level_outcome",
+            "thread_id": "clean",
+            "game": "lf52",
+            "target_level": 9,
+            "solved_target": False,
+            "taint_verdict": "clean",
+        },
+    ]
+    turn = S.joined_turns(records)[0]
+    assert turn["transcript_complete"] is True
+    assert turn["clean_no_progress"] is True
+    assert turn["retry_increment"] == 1
+
+
 def test_audited_legacy_binding_correction_can_authorize_one_retry(
     tmp_path, monkeypatch
 ):
