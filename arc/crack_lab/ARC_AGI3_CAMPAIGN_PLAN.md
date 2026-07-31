@@ -25,8 +25,9 @@ The primary objective is:
 > Solve and replay-promote all **183/183** levels in the authoritative ARC API
 > inventory, with a clean and auditable acquisition lineage, then publish the
 > result through a full online shakedown, one definitive Competition-Mode
-> scorecard and the ARC-AGI Community Leaderboard submission, followed—only
-> after the author's explicit release—by the manuscript reproduction work.
+> scorecard and the ARC-AGI Community Leaderboard submission, with the
+> manuscript and downstream documentation maintained as a separately verified
+> empirical/reproduction surface.
 
 The previously paused goal—continue in bounded waves and report near 90%—is now
 a milestone inside this larger objective, not a stopping condition.
@@ -47,36 +48,30 @@ explanatory comments or publish the obsolete July score while this update is
 being assembled. A later 183/183 completion triggers a separately audited
 refresh. Contiguous-runner implementation, pilots, and launch remain last.
 
-**Post-submission human gate, 2026-07-30:** after the complete benchmark payload
-has been submitted under the exact `gkm-submission` branch rules and its remote
-title, body, YAML, README, links, version entry, checks, and scorecard have been
-reopened and verified, stop and report. Do not begin any manuscript script,
-figure, table, prose, or PDF update until the human author explicitly releases
-this gate.
+**Reordered execution directive, 2026-07-31:** the author explicitly released
+and moved the conservative manuscript/downstream-documentation phase ahead of
+the final 183/183 remainder. That phase is complete: the 25-game marginal table,
+empirical figures, three Socratic passes, Sphinx documentation, PDFs, tests, and
+integrity manifest were regenerated and verified without changing the
+theoretical core. The separately frozen v2.0 181/183 benchmark payload was also
+published and remotely reopened. Neither checkpoint substitutes for the final
+183/183 release.
 
-The required order is:
+The remaining required order is:
 
-1. Freeze the strongest current canonical set and make every winning boundary
-   and promotion artifact uniform or explicitly
-   account for any irrecoverable historical exception; freeze and audit the
-   release set.
-2. Run the complete 25-game ONLINE shakedown and one definitive Competition-Mode
-   scorecard for that frozen set.
-3. Update PR #37 once, with a self-contained `GKM submission summary` and the
-   complete solver-production account: fixed infrastructure, model-authored
-   solver code, session-level supervision, auxiliary analysis, verification,
-   promotion, final percentages, and definitive scorecard. Do not organize the
-   submission around one solver routine.
-4. Reopen and verify every remote benchmark surface, report the completed
-   payload, and enter the post-submission human gate. Manuscript work is
-   forbidden while this gate is closed.
-5. After explicit human release, extend the manuscript reproduction suite and
-   make only the conservative local empirical updates defined in section 8.2.
-6. Continue the separate `lf52` remainder to 183/183 and repeat the freeze,
-   online, Competition, and PR delta gates for the final complete set.
-7. Launch the fully automated supervisor for a separate clean contiguous
-    campaign using the final successful policy. This contiguous lineage
-    never weakens or silently replaces the canonical result.
+1. Preserve the verified manuscript/downstream bundle and frozen v2.0 181/183
+   release as immutable checkpoints.
+2. Continue the exact `lf52` remainder to 183/183 under the retry-complexity
+   policy.
+3. Freeze the complete canonical set, make every winning boundary and promotion
+   artifact uniform, and pass the full release audit.
+4. Run the complete 25-game ONLINE shakedown and one definitive Competition-Mode
+   scorecard for the 183/183 frozen set.
+5. Append the complete release as a new leaderboard version, update PR #37's
+   title/body/README/YAML/links atomically, and reopen every remote surface.
+6. Launch the fully automated supervisor for a separate clean contiguous
+   campaign using the final successful policy. This contiguous lineage never
+   weakens or silently replaces the canonical result.
 
 **Goal-level scheduler invariant:** one journal-derived quantity—the number
 `n` of settled clean no-progress retries at the unchanged exact frontier—must
@@ -1437,9 +1432,9 @@ The release must regenerate:
 
 ### 8.2 Conservative empirical manuscript update
 
-This section is queued behind the post-submission human gate in section 1.
-None of its scripts, figures, tables, prose, or PDF outputs may be changed
-before the author explicitly releases that gate.
+The author explicitly advanced this phase on 2026-07-31. The conservative
+update and downstream-documentation pass are complete and verified; later
+changes remain subject to the same evidence and parsimony rules below.
 
 The theoretical development is frozen for this release. Do not rewrite the
 definitions, structure-function/free-energy derivations, inverse-colimit and
@@ -1616,10 +1611,13 @@ The final manuscript acknowledgments must include this one-line credit:
 GitHub CLI authentication is already configured.  Do not reauthenticate or
 replace credentials because a sandboxed `gh auth status` probe is misleading;
 use the existing authenticated mutation path and verify every remote change.
-The leaderboard branch's update contract must be followed exactly:
+The leaderboard branch's update contract must be followed exactly. The verified
+v2.0 payload already preserves v1.0 and records the 181/183 release; the final
+183/183 payload must preserve both and append a new version rather than rewrite
+their historical scorecards:
 
-- preserve the historical v1.0 entry and append one new v2.0 entry under
-  `versions`;
+- preserve the historical v1.0 and v2.0 entries and append one new complete
+  release entry under `versions`;
 - for ARC-AGI-3, provide `scorecard_url` and `set: public`; do not add a
   forbidden numeric `score`;
 - omit optional public `cost` unless the schema later makes it mandatory;
@@ -3057,16 +3055,15 @@ The overall program is complete when:
 - [ ] the complete sawtooth/reuse table is regenerated without inferred gaps;
 - [ ] the 25-game ONLINE shakedown passes;
 - [ ] the definitive Competition card is closed and verified;
-- [ ] the manuscript, figures, tables, checksums, and PDF reproduce;
-- [ ] the manuscript retains Alexander Kolpakov as sole author, while the
+- [x] the manuscript, figures, tables, checksums, and PDF reproduce;
+- [x] the manuscript retains Alexander Kolpakov as sole author, while the
       Community Leaderboard metadata lists OpenAI GPT-5.6 (the model, not
       OpenAI as a company) as a submission author;
-- [ ] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
+- [x] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
 - [ ] PR #37 title, body, YAML, README, links, and scorecard are updated;
-- [ ] every submitted benchmark surface is reopened remotely, the completed
-      payload is reported, and the post-submission human gate is entered;
-- [ ] no manuscript artifact is changed before the author explicitly releases
-      that gate;
+- [x] the frozen v2.0 benchmark surfaces were reopened remotely and verified;
+- [x] the author explicitly reordered and released the conservative
+      manuscript/downstream phase before the final 183/183 remainder;
 - [ ] the production contiguous scheduler, deterministic journal replay
       auditor, immutable audit receipt, and genuine S06/S07 adversary paths
       pass through the unified reproduction/conformance suite;
