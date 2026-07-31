@@ -1,0 +1,28 @@
+# Per-level players. Each play_level_K(env) ONLY composes legs from legs.py.
+from legs import *  # noqa
+
+
+def play_level_1(env):
+    make_small_segments_color_5(env)
+    click_largest_color_9_submit_disc(env)
+
+
+def play_level_2(env):
+    frame = turn_on_outer_rows_of_right_segment_panel(env)
+    if frame is not None:
+        click_largest_color_9_submit_disc(env, frame)
+
+
+def play_level_3(env):
+    if encode_reacquisition_route_through_barrier(env):
+        click_largest_color_9_submit_disc(env)
+
+
+def play_level_4(env):
+    if reacquire_max_scaled_agent_and_route_to_socket(env):
+        click_largest_color_9_submit_disc(env)
+
+
+def play_level_5(env):
+    if encode_route_resize_rotate_and_acquire_socket(env):
+        click_largest_color_9_submit_disc(env)

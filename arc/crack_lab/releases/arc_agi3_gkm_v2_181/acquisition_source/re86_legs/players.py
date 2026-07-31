@@ -1,0 +1,34 @@
+# Per-level players. Each play_level_K(env) ONLY composes legs from legs.py.
+from legs import *  # noqa
+
+
+def play_level_1(env):
+    align_colored_crosses_to_ring_axes(env)
+
+
+def play_level_2(env):
+    align_selected_outlines_to_ring_markers(env)
+
+
+def play_level_3(env):
+    cover_ring_markers_with_selected_shapes(env)
+
+
+def play_level_4(env):
+    repaint_selected_shapes_to_cover_colored_ring_markers(env)
+
+
+def play_level_5(env):
+    paint_shapes_at_swatches_to_cover_ring_markers(env)
+
+
+def play_level_6(env):
+    deform_selected_shapes_to_colored_ring_axes(env)
+
+
+def play_level_7(env):
+    deform_and_repaint_selected_shapes_to_colored_markers(env)
+
+
+def play_level_8(env):
+    weave_repainted_outlines_through_crossing_rectangles(env)

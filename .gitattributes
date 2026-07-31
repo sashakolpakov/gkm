@@ -1,0 +1,2 @@
+# Frozen, content-addressed proposer transcripts must remain byte-exact.
+arc/crack_lab/releases/**/transcripts/*.log -whitespace

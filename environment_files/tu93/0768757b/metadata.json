@@ -1,0 +1,21 @@
+{
+  "game_id": "tu93-0768757b",
+  "title": "TU93",
+  "default_fps": 30,
+  "tags": [
+    "keyboard_click"
+  ],
+  "baseline_actions": [
+    19,
+    16,
+    34,
+    42,
+    123,
+    80,
+    14,
+    23,
+    111
+  ],
+  "local_dir": "/Users/sasha/gkm/environment_files/tu93/0768757b",
+  "date_downloaded": "2026-07-14T15:07:35.252622+00:00"
+}

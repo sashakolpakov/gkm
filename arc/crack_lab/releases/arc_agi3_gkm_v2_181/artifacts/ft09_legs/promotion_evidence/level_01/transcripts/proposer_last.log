@@ -1,0 +1,239 @@
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && ls -la
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat gkm_try.py legs.py legs_log.md players.py solve.py auto_solve_attempts.json
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat perception.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && timeout 120 python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py 2>&1 | tail -20
+$ cd /Users/sasha/gkm/arc/crack_lab && ls && sed -n '1,60p' gkm_arena.py 2>/dev/null | head -80
+$ cd /Users/sasha/gkm/arc/crack_lab && sed -n '60,180p' gkm_arena.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.Arena('ft09')
+print('actions', env.actions)
+print('levels', env.levels_completed)
+f = env.frame()
+print('shape', f.shape)
+import numpy as np
+print('colors', np.unique(f, return_counts=True))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A
+env = A.Arena('ft09')
+f = env.frame()
+for r in range(64):
+    print(''.join('%X'%v for v in f[r]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+f = env.frame()
+# cells seem 6 wide starting col4, gap 2, so cols: 4,12,20 ... and rows 2,10,18...
+# Let's detect tile grid by looking at non-5 blocks
+# print block signatures per 6x6 with borders every 8
+for rr in range(2,62,8):
+    row=[]
+    for cc in range(4,62,8):
+        block=f[rr:rr+6,cc:cc+6]
+        u=np.unique(block)
+        # summarize
+        if len(u)==1:
+            row.append('%X'%u[0])
+        else:
+            row.append('*')
+    print(rr, row)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+f = env.frame()
+def show(r0,c0,h,w):
+    for r in range(r0,r0+h):
+        print(''.join('%X'%v for v in f[r,c0:c0+w]))
+    print()
+print('LEFT special tile r10-15 c12-17')
+show(10,12,6,6)
+# also the other left region rows36-57 c4-27 (there is a second left grid!)
+print('lower-left grid r36-57')
+show(36,4,22,24)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+f = env.frame()
+print('RIGHT board r32-61 c32-63')
+for r in range(32,62):
+    print(''.join('%X'%v for v in f[r,32:64]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+f = env.frame()
+for r in range(64):
+    print('%2d '%r+''.join('%X'%v for v in f[r,0:32]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+base=env.frame().copy()
+# try clicking centers of tiles across the grid, record any change / level
+import perception as P
+tests=[(14,15),(15,14),(46,15),(15,46),(46,46),(7,7)]
+for (x,y) in tests:
+    c=env.clone(); c.step(6,x,y)
+    d=P.frame_delta(base,c.frame())
+    print('x=%d y=%d lvl=%d changed=%d bbox=%s'%(x,y,c.levels_completed,d['count'],d['bbox']))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+import perception as P
+env = A.Arena('ft09')
+base=env.frame().copy()
+found=[]
+for y in range(0,64,3):
+  for x in range(0,64,3):
+    c=env.clone(); c.step(6,x,y)
+    d=P.frame_delta(base,c.frame())
+    if d['count']>0 or c.levels_completed>0:
+        found.append((x,y,c.levels_completed,d['count']))
+print('num found',len(found))
+for t in found[:40]: print(t)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+import perception as P
+env = A.Arena('ft09')
+base=env.frame().copy()
+c=env.clone(); c.step(6,36,36)
+d=P.frame_delta(base,c.frame())
+print('bbox',d['bbox'])
+print('samples',d['samples'][:20])
+# show region around top-left tile of board
+f=c.frame()
+print('after click top-left board tile:')
+for r in range(32,50):
+    print(''.join('%X'%v for v in f[r,32:52]))
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+base=env.frame().copy()
+c=env.clone(); c.step(6,36,36)
+f=c.frame()
+diff=np.argwhere(base!=f)
+for (r,col) in diff:
+    if not (36<=r<=41 and 36<=col<=41):
+        print(r,col,base[r,col],'->',f[r,col])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+c=env.clone()
+def tilecolor(f):
+    return f[38,38]
+for i in range(6):
+    print('click',i,'tilecolor',tilecolor(c.frame()),'counter',c.frame()[63,62])
+    c.step(6,36,36)
+print('final',tilecolor(c.frame()),c.frame()[63,62])
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+c=env.clone()
+# target bottom-left: tiles to set to 8: (r0,c0),(r1,c0),(r1,c2),(r2,c2)
+clicks=[(38,38),(38,46),(54,46),(54,54)]
+for (x,y) in clicks:
+    c.step(6,x,y)
+print('lvl',c.levels_completed)
+f=c.frame()
+print('bottom bar row63 unique',np.unique(f[63],return_counts=True))
+# show board tiles summary
+for rr in [38,46,54]:
+    row=[]
+    for cc in [38,46,54]:
+        row.append('%X'%f[rr,cc])
+    print(row)
+"
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np, itertools
+env = A.Arena('ft09')
+ys=[38,46,54]; xs=[38,46,54]
+tiles=[(x,y) for y in ys for x in xs if not(x==46 and y==46)]
+found=None
+for combo in itertools.product([0,1],repeat=8):
+    c=env.clone()
+    for bit,(x,y) in zip(combo,tiles):
+        if bit: c.step(6,x,y)
+    if c.levels_completed>0:
+        found=combo; break
+print('found',found)
+" 
+I found a winning combination. Let me build a general, reusable leg around the discovered mechanic (toggle-tiles board with a hidden target) and verify.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python -c "
+import sys; sys.path.insert(0,'/Users/sasha/gkm/arc/crack_lab')
+import gkm_arena as A, numpy as np
+env = A.Arena('ft09')
+base=env.frame().copy()
+# cluster clickable tiles by changed-region bbox (rows<62)
+from collections import defaultdict
+tiles={}
+for y in range(0,64,2):
+  for x in range(0,64,2):
+    c=env.clone(); c.step(6,x,y)
+    d=np.argwhere(base!=c.frame())
+    d=[(r,cc) for r,cc in d if r<62]
+    if not d: continue
+    rs=[p[0] for p in d]; cs=[p[1] for p in d]
+    key=(min(rs),min(cs),max(rs),max(cs))
+    tiles.setdefault(key,(x,y))
+print('num tiles',len(tiles))
+for k in sorted(tiles): print(k,tiles[k])
+"
+[edit] create /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/legs.py
+[edit] str_replace /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus/players.py
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && python gkm_try.py 2>&1 | tail -5
+Solved — `RESULT levels=1 moves=4 replay_ok=True`. Let me record the debrief.
+$ cd /Users/sasha/gkm/arc/crack_lab/runs/scratch/gkm_legs_ws_ft09_opus && cat >> legs_log.md <<'EOF'
+
+## ft09 level 1 — toggle-tile board
+- Only action is coordinate click env.step(6,x,y); x=col, y=row.
+- Interactive region = a framed 3x3 board (right side). Each surrounding tile
+  toggles color 9<->8 on click; center tile is a fixed icon (non-clickable).
+- A hidden target subset of tiles must be set; completing it raises the level.
+  Matching a visible reference grid was NOT the rule — found by subset search.
+- Legs added: discover_toggle_tiles (cluster clicks by changed-region bbox,
+  ignoring bottom status bar), search_toggle_solution (subset search fewest
+  clicks first on clones), solve_toggle_board (commit found clicks). 4 moves.
+EOF
+echo done
+Done. Level 1 is solved and replay-validated.
+
+## Summary
+
+**Where I started:** `RESULT levels=0`. The game `ft09` exposes only a coordinate-click action `env.step(6, x, y)`.
+
+**What I discovered (by probing clones only):**
+- The frame is a set of colored tiles on background color 5, with a status bar (color 12) on the bottom row.
+- Scanning clicks across the grid showed that **only a framed 3×3 board on the right side is interactive** (`x`=col, `y`=row, cols/rows ~36–57).
+- Each of the **8 surrounding tiles toggles between color 9 and 8** on click; the **center tile is a fixed icon** and doesn't respond. Each toggle also nudges the bottom status bar (a count of "8" tiles).
+- My first hypothesis (make the board match a visible reference grid) was **wrong** — matching a left grid did not complete the level. So I brute-forced the 2⁸ tile subsets on clones and found the winning configuration `(1,0,0,1,1,1,0,0)`, i.e. a hidden target pattern.
+
+**What I built (reusable legs in `legs.py`):**
+- `discover_toggle_tiles` — probes clicks and clusters them into independent toggle tiles by the bounding box of cells they change (ignoring the bottom status bar). Fully generic to any coordinate-click board.
+- `search_toggle_solution` — searches tile-click subsets fewest-clicks-first on clones until `levels_completed` rises.
+- `solve_toggle_board` — commits the found clicks on the real env.
+
+`play_level_1` simply composes `solve_toggle_board`. No level-specific logic is inline — the player just calls the general leg, so this skill will reuse directly if later levels are reconfigurations of the same toggle-board mechanic.
+
+**Result:** `RESULT levels=1 moves=4 replay_ok=True`.
