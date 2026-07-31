@@ -701,6 +701,14 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
             ),
         ],
     )
+    real_popen = L.subprocess.Popen
+    popen_calls = []
+
+    def recording_popen(*args, **kwargs):
+        popen_calls.append(kwargs.copy())
+        return real_popen(*args, **kwargs)
+
+    monkeypatch.setattr(L.subprocess, "Popen", recording_popen)
     binding = L.CCS.exact_frontier_binding(
         tmp_path / "missing_artifact",
         game="fake",
@@ -730,6 +738,8 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
     assert record["reasoning_effort"] == "medium"
     assert record["frontier_sha256"] == binding["frontier_sha256"]
     assert record["surviving_process_group"] is False
+    assert len(popen_calls) == 1
+    assert popen_calls[0]["stdin"] is L.subprocess.DEVNULL
     assert json.loads(ledger.read_text())["run_label"] == "fake:L1:propose"
     immutable = ws / record["transcript"]
     assert immutable.is_file()

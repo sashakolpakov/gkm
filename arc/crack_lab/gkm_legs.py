@@ -3323,6 +3323,14 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 proc = subprocess.Popen(
                     cmd,
                     cwd=ws,
+                    # The task is already the final argv element.  Inheriting
+                    # the supervisor PTY makes ``codex exec`` also probe that
+                    # stream and prepend the non-JSON diagnostic ``Reading
+                    # additional input from stdin...`` to an otherwise strict
+                    # JSONL acquisition transcript.  A closed stdin preserves
+                    # the immutable transcript schema and prevents accidental
+                    # operator input from entering the proposer lineage.
+                    stdin=subprocess.DEVNULL,
                     stdout=log,
                     stderr=subprocess.STDOUT,
                     text=True,
