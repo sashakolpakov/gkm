@@ -39,80 +39,64 @@ Replay-validated leg-library states are promoted automatically into
 represented by one of these promoted artifacts.
 
 <!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
-| Game | Verified levels | Replay actions | Published ledger charge |
+| Scope | Verified levels | Stored replay actions | Ledger charge |
 |---|---:|---:|---:|
-| `wa30` | 9/9 | 596 | 1458 |
-| `ls20` | 7/7 | 393 | 362 |
+| Frozen v2 release (25 games) | 181/183 | 7001 | — |
+| `wa30` uniform history | 9/9 | 597 | 318 |
+| `ls20` uniform history | 7/7 | 365 | 760 |
 
-Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The expanded campaign has promoted 23 replay-valid endpoints. In addition to the
-complete games, `ft09`, `r11l`, and `tr87` reach L6; `g50t` reaches L5; `ar25`,
-`re86`, and `sp80` reach L4; `cd82` and `m0r0` reach L2; and 12 games reach L1.
-These are operational campaign artifacts, not additions to the two complete
-histories reported in the manuscript table above.
-
-The published [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
-scores **17.136507936507936%** across all 25 public games: 37/183 levels in 1456
-API actions including resets. Subsequent local promotions bring the current artifact
-frontier to 67/183 levels and 2148 stored replay actions. Those 30 clears are locally
-replay-validated but require a new competition replay before any new public score is
-claimed.
-
-The cost-controlled GPT-5.6-sol extension used medium and high reasoning on
-non-randomized frontiers. High successfully rescued `re86` L4 after medium failed,
-but medium produced the campaign's new literal-reuse witnesses and was substantially
-cheaper on the realized L2+ cohort. This supports a sequential operating rule, not an
-intrinsic model ranking: medium first for a fresh continuation, then at most one
-headroom-bounded high rescue. The live weekly reserve is checked before every paid
-turn, and failures remain WIP rather than solved checkpoints. Retrospectively, high
-rescued one of six medium-failed targets at a total charge of 12 displayed points.
-To reduce paid rediscovery, resumed clean rooms receive a compact unverified frontier
-brief distilled from their own clean WIP, without raw command output. The two remaining
-cold starts now have materially changed versioned scaffolds: time-isolation before
-search for `tn36`, and symbolic phase/macro search for `bp35`.
+The frozen v2 [Competition-Mode scorecard](https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb)
+scores **98.11664037825032%** across all 25 public games. Its distinct raw coverage
+is **181/183 = 98.907103825137%**, from 7001 stored actions and 7069 API actions
+including resets. The campaign status, uniform proposer budget and escalation policy,
+taint rules, audit gates, and release order are maintained in
+[`crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md).
+Machine-readable current evidence is regenerated under `crack_lab/audit_results/`.
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
 
-- On `wa30` the agent found useful level tactics: freeze the target region
+- Historical `wa30` development found useful level tactics: freeze the target region
   at level start; complement an autonomous helper by taking the *farthest* objects; and
   the *asymmetric carry collision* (a carried object can enter a wall cell the avatar
   cannot) that makes the L3 relay geometrically possible. **Honest audit:** the priors
   of those runs were not fully neutral — distilled from earlier human play, they named
   the carry mechanic and hinted relay-at-a-boundary. The priors have since been
   **neutralized** (generic world-priors only; no mechanic recipes, no verb names).
-  A later neutral-prior run independently reached L1, but the complete L1-L9 lineage
-  remains prior-contaminated and must not be described as mechanic-blind.
-- The **same game-agnostic agent** transferred to `ls20` (a different mechanic) with no
+  That lineage is now explicitly superseded. The canonical L1--L9 artifact is a fresh,
+  uniform reacquisition with a replay-validated promotion manifest at every boundary;
+  this removes the splice from the canonical ledger without making clone-enabled
+  discovery an official-interface efficiency result.
+- The **same universal producer** transferred to `ls20` (a different mechanic) with no
   code change. Notably, ls20 got **no mechanic-name leak** (its interaction probe emitted
   only `move`), and the shared priors were wa30-flavored — *wrong* for ls20's
   transform-tile mechanic — yet the agent discovered the real mechanic itself (a generic
   clone-BFS over game state). This supports cross-game reuse of the harness, subject to
   the stronger clone-enabled interface; it is not an official sample-efficiency result.
-- Under the enforced leg library, the promoted `ls20` net-growth trace is a
-  **sawtooth**, not monotone: `43 → 2` and `45 → 3` are leg-reuse drops, while `45`,
-  `72`, `130` are novelty spikes at mechanic transitions (drifting-HUD noise mask,
-  recovered plan artifacts, the combination-lock/display family); L7 drops back to
-  `67` by reusing part of the L6 lock/display understanding while adding fog-of-war
-  mapping. The troughs are consistent with reuse because the corresponding source calls
-  unchanged search legs and replay succeeds. The numbers alone do not detect novelty.
+- In the uniform `ls20` reacquisition, the harness-native net-growth trace is
+  `40, 54, 86, 114, 138, 170, 158`. The stricter exact-boundary trace is
+  `737, 247, 259, 270, 289, 299, 292` compressed novelty bytes. Its sharp L2 drop is
+  coupled to a direct call of the unchanged `follow_cardinal_runs` leg; later levels
+  retain that leg while adding larger literal route programs, and L7 falls slightly.
+  The broader 181-boundary release supplies the repeated peaks and troughs; the
+  scalar values alone never certify reuse.
 - The complete promoted `wa30` record is
-  `112, 78, 95, 47, 405, 225, 145, 204, 147` at L1--L9. The manuscript audit sidecar
-  maps the early clean Git promotions, the later preserved promotion states, and the
-  final nine-level artifact to this ledger. The root checkpoint remains the unchanged
-  operational resume state, so its own record list is shorter than the published history.
+  `43, 20, 32, 50, 39, 23, 28, 34, 49` at L1--L9. The manuscript audit sidecar maps
+  nine sequential promotion manifests and their exact core-file hashes to this
+  318-unit ledger.
 
 ## Honest limitations
 
-- The manuscript endpoints are `wa30` 9/9 and `ls20` 7/7; the repository also
-  contains the partial campaign endpoints listed above. The closed official scorecard
-  measures their aggregate replay coverage, but is not evidence about discovery cost
-  or generalization across the full ARC-AGI-3 distribution. Recovered verified paths
-  in the artifacts are charged as literals and are not compact
+- The manuscript table covers all 25 frozen release endpoints; `wa30` 9/9 and `ls20`
+  7/7 additionally supply complete uniform construction histories. The closed official
+  scorecard measures aggregate replay coverage, but is not evidence about discovery
+  cost or generalization beyond the public ARC-AGI-3 distribution. Recovered verified
+  paths in the artifacts are charged as literals and are not compact
   mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
-- The 596- and 393-action values are final replay paths. Cloned exploratory steps,
+- The 597- and 365-action values are final replay paths. Cloned exploratory steps,
   proposer calls, and compute were not counted or normalized.
 - The net-growth statistic can undercount replacement because additions and deletions
   within a file cancel before the positive part is taken. A future gross-diff ledger

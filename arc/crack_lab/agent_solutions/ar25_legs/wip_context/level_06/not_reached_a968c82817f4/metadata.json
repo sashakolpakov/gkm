@@ -1,0 +1,27 @@
+{
+  "game": "ar25",
+  "level": 6,
+  "phase": "not_reached",
+  "reached": 5,
+  "err": null,
+  "attempt": "not_reached_a968c82817f4",
+  "created_at": "2026-07-26T16:10:32.803603+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T152944360310Z_ar25_L6_propose.jsonl",
+    "codex_turn_20260726T154526339210Z_ar25_L6_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_bfs.py",
+    "probe_exhaustive.py",
+    "probe_level6.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

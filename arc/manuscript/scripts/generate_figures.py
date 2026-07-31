@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """Regenerate figures used by the Gödel--Kolmogorov Machine manuscript.
 
-The numerical inputs below are the values reported in the manuscript's empirical
-ledger tables.  The rendering parameters are pinned to reproduce the delivered
-PNG geometry under Matplotlib 3.10.8:
+Numerical inputs are read from the replay-validated campaign checkpoints rather
+than duplicated in this script.  The rendering parameters are pinned to
+reproduce the delivered PNG geometry under Matplotlib 3.10.8:
 
 * figures/ls20_sawtooth.png: 1728 x 912 pixels
 * figures/bounded_campaign_profiles.png: 2034 x 1072 pixels
+* figures/marginal_complexity_profiles.png: 2448 x 912 pixels
 
 The script also emits PDF versions for vector reuse.
 """
@@ -14,9 +15,15 @@ The script also emits PDF versions for vector reuse.
 from __future__ import annotations
 
 import argparse
+import os
 import struct
 from pathlib import Path
 from typing import Final, Mapping, Sequence
+
+import json
+
+# Stabilize PDF CreationDate metadata unless the caller pins another epoch.
+os.environ.setdefault("SOURCE_DATE_EPOCH", "0")
 
 import matplotlib
 
@@ -27,21 +34,14 @@ import matplotlib.pyplot as plt  # noqa: E402
 
 DPI: Final[int] = 240
 
-LS20_LEVELS: Final[tuple[int, ...]] = (1, 2, 3, 4, 5, 6, 7)
-LS20_CHARGES: Final[tuple[int, ...]] = (43, 2, 45, 3, 72, 130, 67)
-
-BOUNDED_LEVELS: Final[tuple[int, ...]] = (1, 2, 3, 4, 5, 6)
-BOUNDED_PROFILES: Final[Mapping[str, tuple[int, ...]]] = {
-    "ft09": (107, 2, 184, 132, 177, 2),
-    "g50t": (244, 100, 2, 2, 134),
-    "r11l": (103, 449, 30, 341, 362, 98),
-    "sp80": (131, 40, 81, 56),
-    "tr87": (156, 241, 183, 69, 249, 127),
-}
+BOUNDED_GAMES: Final[tuple[str, ...]] = (
+    "ft09", "g50t", "r11l", "sp80", "tr87",
+)
 
 EXPECTED_PNG_SIZES: Final[Mapping[str, tuple[int, int]]] = {
     "ls20_sawtooth.png": (1728, 912),
     "bounded_campaign_profiles.png": (2034, 1072),
+    "marginal_complexity_profiles.png": (2448, 912),
 }
 
 
@@ -59,6 +59,15 @@ def _parse_args() -> argparse.Namespace:
         help="Directory receiving PNG and PDF outputs (default: figures).",
     )
     parser.add_argument(
+        "--solutions-dir",
+        type=Path,
+        default=Path("../crack_lab/agent_solutions"),
+        help=(
+            "Directory containing <game>_legs/checkpoint.json files "
+            "(default: ../crack_lab/agent_solutions from manuscript cwd)."
+        ),
+    )
+    parser.add_argument(
         "--skip-size-check",
         action="store_true",
         help="Do not verify the expected PNG pixel dimensions.",
@@ -66,17 +75,25 @@ def _parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def _validate_data() -> None:
-    if len(LS20_LEVELS) != len(LS20_CHARGES):
-        raise ValueError("ls20 levels and charges must have equal length")
-    if sum(LS20_CHARGES) != 362:
-        raise ValueError("ls20 charge ledger must sum to 362")
-
-    for game, profile in BOUNDED_PROFILES.items():
-        if not profile or len(profile) > len(BOUNDED_LEVELS):
-            raise ValueError(
-                f"{game} has invalid profile length {len(profile)}"
-            )
+def _load_profile(solutions_dir: Path, game: str) -> tuple[int, ...]:
+    path = solutions_dir / f"{game}_legs" / "checkpoint.json"
+    payload = json.loads(path.read_text())
+    if payload.get("game") != game:
+        raise ValueError(f"{path}: game field is not {game!r}")
+    if not payload.get("validated"):
+        raise ValueError(f"{path}: checkpoint is not replay validated")
+    records = payload.get("records")
+    if not isinstance(records, list) or not records:
+        raise ValueError(f"{path}: missing non-empty records list")
+    levels = [int(record["level"]) for record in records]
+    if levels != list(range(1, len(records) + 1)):
+        raise ValueError(f"{path}: records are not consecutive from level 1")
+    if any(not record.get("reached") for record in records):
+        raise ValueError(f"{path}: contains a non-promoted record")
+    charges = tuple(int(record["marginal_C"]) for record in records)
+    if sum(charges) != int(payload["total_marginal_C"]):
+        raise ValueError(f"{path}: marginal charge total does not match records")
+    return charges
 
 
 def _set_common_axes(ax: plt.Axes, levels: Sequence[int]) -> None:
@@ -101,35 +118,42 @@ def _save_pair(
     fig.savefig(pdf_path, **save_kwargs)
 
 
-def make_ls20_sawtooth(output_dir: Path) -> None:
+def make_ls20_sawtooth(
+    output_dir: Path, charges: Sequence[int],
+) -> None:
     """Create the seven-level ls20 historical marginal-charge profile."""
+    levels = tuple(range(1, len(charges) + 1))
     fig, ax = plt.subplots(figsize=(7.2, 3.8))
     ax.plot(
-        LS20_LEVELS,
-        LS20_CHARGES,
+        levels,
+        charges,
         marker="o",
         linewidth=1.8,
     )
-    _set_common_axes(ax, LS20_LEVELS)
+    _set_common_axes(ax, levels)
     fig.tight_layout()
     _save_pair(fig, output_dir, "ls20_sawtooth", tight_bbox=False)
     plt.close(fig)
 
 
-def make_bounded_campaign_profiles(output_dir: Path) -> None:
+def make_bounded_campaign_profiles(
+    output_dir: Path, profiles: Mapping[str, Sequence[int]],
+) -> None:
     """Create the shared-scale profiles for the bounded campaign."""
     fig, ax = plt.subplots(figsize=(8.6, 4.6))
 
-    for game, charges in BOUNDED_PROFILES.items():
+    for game, charges in profiles.items():
+        levels = tuple(range(1, len(charges) + 1))
         ax.plot(
-            BOUNDED_LEVELS[: len(charges)],
+            levels,
             charges,
             marker="o",
             linewidth=1.5,
             label=game,
         )
 
-    _set_common_axes(ax, BOUNDED_LEVELS)
+    max_level = max(len(charges) for charges in profiles.values())
+    _set_common_axes(ax, tuple(range(1, max_level + 1)))
     ax.legend(
         ncol=5,
         loc="upper center",
@@ -142,6 +166,49 @@ def make_bounded_campaign_profiles(output_dir: Path) -> None:
         output_dir,
         "bounded_campaign_profiles",
         tight_bbox=True,
+    )
+    plt.close(fig)
+
+
+def make_marginal_complexity_profiles(
+    output_dir: Path, profiles: Mapping[str, Sequence[int]],
+) -> None:
+    """Contrast the strongest raw sawtooth with the two uniform histories.
+
+    ``su15`` is selected mechanically by direction reversals in the stored
+    ledger.  It is shown as a scalar-shape comparison, not as a source-coupled
+    reuse witness.  ``wa30`` and ``ls20`` are the complete uniform promotion
+    histories used for the manuscript's source-level case studies.
+    """
+    order = ("su15", "wa30", "ls20")
+    fig, axes = plt.subplots(1, 3, figsize=(10.2, 3.8))
+    colors = {"su15": "#6a3d9a", "wa30": "#c23b22", "ls20": "#007c91"}
+    subtitles = {
+        "su15": "strongest raw oscillation",
+        "wa30": "uniform sawtooth history",
+        "ls20": "uniform coupled-reuse case",
+    }
+    for ax, game in zip(axes, order):
+        charges = profiles[game]
+        levels = tuple(range(1, len(charges) + 1))
+        ax.plot(
+            levels,
+            charges,
+            marker="o",
+            linewidth=1.8,
+            color=colors[game],
+        )
+        ax.set_title(f"{game}: {subtitles[game]}", fontsize=9)
+        ax.set_xlabel("Promoted level")
+        ax.set_xticks(levels)
+        ax.grid(True, alpha=0.25)
+    axes[0].set_ylabel(r"Marginal description charge $C_k$")
+    fig.tight_layout()
+    _save_pair(
+        fig,
+        output_dir,
+        "marginal_complexity_profiles",
+        tight_bbox=False,
     )
     plt.close(fig)
 
@@ -175,17 +242,31 @@ def main() -> int:
     args = _parse_args()
     output_dir: Path = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
+    solutions_dir: Path = args.solutions_dir
+    ls20_charges = _load_profile(solutions_dir, "ls20")
+    bounded_profiles = {
+        game: _load_profile(solutions_dir, game)
+        for game in BOUNDED_GAMES
+    }
+    comparison_profiles = {
+        game: _load_profile(solutions_dir, game)
+        for game in ("su15", "wa30", "ls20")
+    }
 
     # Ignore user matplotlibrc files so the paper's defaults remain reproducible.
     plt.rcdefaults()
-    _validate_data()
-    make_ls20_sawtooth(output_dir)
-    make_bounded_campaign_profiles(output_dir)
+    make_ls20_sawtooth(output_dir, ls20_charges)
+    make_bounded_campaign_profiles(output_dir, bounded_profiles)
+    make_marginal_complexity_profiles(output_dir, comparison_profiles)
 
     if not args.skip_size_check:
         _verify_png_sizes(output_dir)
 
-    for stem in ("ls20_sawtooth", "bounded_campaign_profiles"):
+    for stem in (
+        "ls20_sawtooth",
+        "bounded_campaign_profiles",
+        "marginal_complexity_profiles",
+    ):
         print(output_dir / f"{stem}.png")
         print(output_dir / f"{stem}.pdf")
     return 0

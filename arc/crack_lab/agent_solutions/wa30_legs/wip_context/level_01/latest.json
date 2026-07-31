@@ -1,0 +1,30 @@
+{
+  "attempt": "interrupted_ecdf50632693",
+  "metadata": {
+    "game": "wa30",
+    "level": 1,
+    "phase": "interrupted",
+    "reached": 0,
+    "err": "interrupted mid-level",
+    "attempt": "interrupted_ecdf50632693",
+    "created_at": "2026-07-27T20:10:15.738475+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "codex_turn_20260727T195740355218Z_wa30_L1_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_interactions.py",
+      "probe_level1.py",
+      "probe_placement.py",
+      "probe_solution.py",
+      "probe_tiles.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md",
+      "verify_planner.py"
+    ]
+  }
+}

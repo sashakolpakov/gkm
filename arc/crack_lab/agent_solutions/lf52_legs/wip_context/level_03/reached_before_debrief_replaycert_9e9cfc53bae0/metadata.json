@@ -1,0 +1,27 @@
+{
+  "attempt": "reached_before_debrief_replaycert_9e9cfc53bae0",
+  "created_at": "2026-07-26T22:04:15.784342+00:00",
+  "err": null,
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "solve.py",
+    "solver_index.md"
+  ],
+  "game": "lf52",
+  "level": 3,
+  "phase": "reached_before_debrief",
+  "reached": 3,
+  "reconstruction": {
+    "certification_kind": "historical_exact_boundary",
+    "certification_manifest": "../../../reconstruction_evidence/level_03/manifest.json",
+    "certification_manifest_sha256": "34cd100dc3ec382bdf63679d32166d2df98c52410fc19cd24feba86951e49574",
+    "fresh_replay_successes": 2,
+    "historical_exact_boundary": true
+  }
+}

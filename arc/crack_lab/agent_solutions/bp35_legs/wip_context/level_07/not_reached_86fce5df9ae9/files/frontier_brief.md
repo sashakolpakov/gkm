@@ -1,0 +1,160 @@
+# Unverified frontier brief: bp35 level 7
+
+This is a compact index of the latest clean WIP, not solver evidence.
+Reproduce every observation you rely on with the documented local API.
+Do not reread the full proposer transcript unless a named ambiguity requires it.
+
+## Verified parent budget
+
+- Exact parent boundary: level 6 at 196 actions.
+- Remaining real-action budget under the harness cap: 404 of 600.
+- This budget is verifier evidence. If it is insufficient, optimize earlier composed legs rather than searching an uncommittable suffix.
+
+## Prior proposer progress
+
+- The clear-selection second pass has expanded 61 fresh states and retained 279 distinct configurations, but still has not reduced distance or reached the lower region. It is broader than the selected-support branch but remains flat so far.
+- At 121 expansions the deselected return remains at distance 18 with no lower-room state. I’m continuing to the explicit 420-parent bound, but there is no suffix candidate yet.
+- The clear-return milestone must persist after the next selection; the previous ranking lost it as soon as a gravity switch was clicked. I’ve made “returned while deselected” a durable observational phase token, so pass-two gravity and support actions remain on the leading frontier.
+- The durable clear-return search has checked 41 pass-two parents and 219 distinct states. It is no longer starving gravity-selected continuations, but there is still no lower-room or distance improvement at this checkpoint.
+- At 121 durable pass-two expansions the metric remains flat. This is now a substantive falsification test rather than a ranking artifact; I’m continuing the finite bound while watching only for reward, target distance below 18, or a safe world-row crossing.
+- The clear-return state becomes physically identical to the original after the next selection, so further loop depth adds no capability; I stopped that branch. A preserved context probe has a distinct route explicitly labeled `below_barrier`; I’m replaying it fresh to see whether it reaches a genuinely different region before launching any new search.
+- A key affordance still needs explicit testing: actions 6 and 7 may be press/release coordinates, not independent clicks. I had tested action 6 on the shaft hazard followed by a coordinate-less 7; I’m now replaying matched `(6,x,y) → (7,x,y)` gestures on the visible hazard and target before the fatal descent.
+- The matched click/activate gestures on the visible hazard and target are now falsified: they neither changed those objects nor made the shaft descent survivable. I’m dropping that branch and focusing next on the autonomous-object timing and reachable-region transition, where the remaining unexplained behavior sits.
+- The room geometry confirms the lethal move is a physical fall through the right-hand barrier gap, not contact with the visible target. I’m isolating support persistence and the per-turn movement of the dark objects now; those determine whether the descent can be staged safely.
+- A useful mechanic is now verified: support presses are LIFO-held, not permanent toggles. Two supports can remain expanded together; each action `7` releases exactly the most recently held press. The level-7 seed therefore carries a real stack of staged supports and gravity presses, which the earlier frame-only searches were incorrectly collapsing.
+- The LIFO effect is broader than support selection: the sixth release after the seed reverses an earlier horizontal step. This points to action `7` being a general rewind/undo operation, with the dark one-cell objects as likely non-rewound actors. I’m verifying exactly which state rewinds before searching again.
+- The first shaft excursion exposed a much stronger signal than the old distance score: after rewinding the excursion, the two “descent” moves no longer produce the expected death in the branch probe. I’m checking the level counter on that exact branch now—it may already be the missing winning transition, hidden because the compact summary omitted reward.
+
+## Preserved local probes
+
+- `frontier_scaffold.json` (2713 bytes)
+- `probe_l7.py` (3702 bytes)
+- `probe_l7_cleanroom.py` (1627 bytes)
+- `probe_l7_combos.py` (2270 bytes)
+- `probe_l7_control_insertions.py` (2362 bytes)
+- `probe_l7_decoded_trace.py` (1873 bytes)
+- `probe_l7_direct_bfs.py` (5179 bytes)
+- `probe_l7_direct_contexts.py` (4012 bytes)
+- `probe_l7_direct_small_insertions.py` (3650 bytes)
+- `probe_l7_excursion_compact.py` (2808 bytes)
+- `probe_l7_fast_fresh_search.py` (16116 bytes)
+- `probe_l7_final_search.py` (4310 bytes)
+- `probe_l7_fresh_graph.py` (13577 bytes)
+- `probe_l7_fresh_macro.py` (5222 bytes)
+- `probe_l7_frontier.py` (5840 bytes)
+- `probe_l7_hazard_setup.py` (3163 bytes)
+- `probe_l7_initial_missing.py` (2230 bytes)
+- `probe_l7_isolated_paths.py` (3526 bytes)
+- `probe_l7_macro.py` (5092 bytes)
+- `probe_l7_mechanics_compact.py` (4347 bytes)
+- `probe_l7_missing_action.py` (3261 bytes)
+- `probe_l7_opening_repro.py` (5297 bytes)
+- `probe_l7_origin_variants.py` (3380 bytes)
+- `probe_l7_patterns.py` (1583 bytes)
+- `probe_l7_phase_search.py` (3917 bytes)
+- `probe_l7_pocket_search.py` (3970 bytes)
+- `probe_l7_raw_search.py` (8997 bytes)
+- `probe_l7_release_insertions.py` (1750 bytes)
+- `probe_l7_repeat.py` (2083 bytes)
+- `probe_l7_reproduce.py` (6001 bytes)
+- `probe_l7_search.py` (1116 bytes)
+- `probe_l7_second_pass.py` (1492 bytes)
+- `probe_l7_seed_controls.py` (2036 bytes)
+- `probe_l7_seed_wait.py` (1473 bytes)
+- `probe_l7_selected_fast.py` (4235 bytes)
+- `probe_l7_selected_macros.py` (8079 bytes)
+- `probe_l7_selected_search.py` (4362 bytes)
+- `probe_l7_shaft_stage.py` (1751 bytes)
+- `probe_l7_stack_search.py` (7329 bytes)
+- `probe_l7_stage_focus.py` (3579 bytes)
+- `probe_l7_states.py` (4333 bytes)
+- `probe_l7_symbolic.py` (2889 bytes)
+- `probe_l7_target_chamber.py` (4311 bytes)
+- `probe_l7_top_search.py` (6959 bytes)
+- `probe_l7_top_variants.py` (12210 bytes)
+- `probe_l7_trace.py` (17009 bytes)
+- `probe_l7_upper_clone_search.py` (6836 bytes)
+- `probe_l7_wait_repro.py` (1765 bytes)
+- `probe_l7_worldmap.py` (4448 bytes)
+- `probe_level7.py` (5105 bytes)
+- `probe_level7_alt.py` (2444 bytes)
+- `probe_level7_alt_support.py` (2389 bytes)
+- `probe_level7_alternate_stage.py` (5237 bytes)
+- `probe_level7_altfinal.py` (1867 bytes)
+- `probe_level7_band47_subsets.py` (2309 bytes)
+- `probe_level7_barrier.py` (2261 bytes)
+- `probe_level7_best_trace.py` (4024 bytes)
+- `probe_level7_bestfirst.py` (4108 bytes)
+- `probe_level7_bfs.py` (3806 bytes)
+- `probe_level7_branch3345.py` (1181 bytes)
+- `probe_level7_branch3345_fast.py` (2410 bytes)
+- `probe_level7_branch40_center.py` (2849 bytes)
+- `probe_level7_branch40_supports.py` (2745 bytes)
+- `probe_level7_candidate_trace.py` (3378 bytes)
+- `probe_level7_chain_supports.py` (3513 bytes)
+- `probe_level7_clean.py` (1976 bytes)
+- `probe_level7_collapse_trace.py` (3370 bytes)
+- `probe_level7_continue.py` (11576 bytes)
+- `probe_level7_controls.py` (1908 bytes)
+- `probe_level7_coordinate_decode.py` (2936 bytes)
+- `probe_level7_cross_supports.py` (3574 bytes)
+- `probe_level7_cycle.py` (8142 bytes)
+- `probe_level7_decode_frontiers.py` (4820 bytes)
+- `probe_level7_decoded_end_moves.py` (4312 bytes)
+- `probe_level7_decoded_stage.py` (3638 bytes)
+- `probe_level7_dual_stage.py` (3682 bytes)
+- `probe_level7_early_decode.py` (2514 bytes)
+- `probe_level7_endgame_options.py` (8835 bytes)
+- `probe_level7_equal_variant.py` (2702 bytes)
+- `probe_level7_extra_switch.py` (4941 bytes)
+- `probe_level7_first_supports.py` (3677 bytes)
+- `probe_level7_fresh_search.py` (3766 bytes)
+- `probe_level7_gap_scan.py` (2631 bytes)
+- `probe_level7_greedy2.py` (3059 bytes)
+- `probe_level7_greedy_chain.py` (4318 bytes)
+- `probe_level7_hazard.py` (2588 bytes)
+- `probe_level7_high_left.py` (3536 bytes)
+- `probe_level7_high_room.py` (3431 bytes)
+- `probe_level7_initial_combos.py` (2584 bytes)
+- `probe_level7_landing_insertions.py` (3490 bytes)
+- `probe_level7_leading_support.py` (2434 bytes)
+- `probe_level7_live_search.py` (4858 bytes)
+- `probe_level7_macro.py` (2995 bytes)
+- `probe_level7_macro_live.py` (8406 bytes)
+- `probe_level7_macro_search2.py` (5577 bytes)
+- `probe_level7_macros.py` (3165 bytes)
+- `probe_level7_move_insertions.py` (2418 bytes)
+- `probe_level7_multirun_test.py` (1184 bytes)
+- `probe_level7_no_control.py` (6026 bytes)
+- `probe_level7_no_switch_progress.py` (2597 bytes)
+- `probe_level7_observe.py` (2524 bytes)
+- `probe_level7_occluded.py` (2100 bytes)
+- `probe_level7_opening_pairs.py` (2525 bytes)
+- `probe_level7_opening_recovery.py` (4453 bytes)
+- `probe_level7_parallel_search.py` (8235 bytes)
+- `probe_level7_persistent_beam.py` (7972 bytes)
+- `probe_level7_preserved_chain.py` (3812 bytes)
+- `probe_level7_progress.py` (5879 bytes)
+- `probe_level7_raw_switch.py` (1756 bytes)
+- `probe_level7_replay_best.py` (4295 bytes)
+- `probe_level7_reuse.py` (918 bytes)
+- `probe_level7_reward_recovery.py` (6175 bytes)
+- `probe_level7_right_landing.py` (3333 bytes)
+- `probe_level7_room2.py` (1455 bytes)
+- `probe_level7_scaffold_replay.py` (4973 bytes)
+- `probe_level7_search.py` (1024 bytes)
+- `probe_level7_shift_trace.py` (2502 bytes)
+- `probe_level7_stage19_support.py` (2004 bytes)
+- `probe_level7_stage24_branches.py` (3699 bytes)
+- `probe_level7_stage_boundaries.py` (3519 bytes)
+- `probe_level7_stage_extra.py` (4625 bytes)
+- `probe_level7_stages.py` (5000 bytes)
+- `probe_level7_start_all.py` (2156 bytes)
+- `probe_level7_switches.py` (2368 bytes)
+- `probe_level7_tail.py` (5609 bytes)
+- `probe_level7_tail_search.py` (3505 bytes)
+- `probe_level7_transitions.py` (3150 bytes)
+- `probe_level7_two_macros.py` (6007 bytes)
+- `probe_prefix_goals.py` (1359 bytes)
+
+Run or inspect the smallest relevant probe before writing another one.

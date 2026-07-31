@@ -1,0 +1,36 @@
+{
+  "attempt": "debrief_skipped_policy_c9a0c1bc0bf6",
+  "metadata": {
+    "game": "su15",
+    "level": 6,
+    "phase": "debrief_skipped_policy",
+    "reached": 6,
+    "err": null,
+    "attempt": "debrief_skipped_policy_c9a0c1bc0bf6",
+    "created_at": "2026-07-26T04:30:06.043303+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260726T034610021053Z_su15_L3_propose.jsonl",
+      "codex_turn_20260726T035412073340Z_su15_L4_propose.jsonl",
+      "codex_turn_20260726T041453845007Z_su15_L5_propose.jsonl",
+      "codex_turn_20260726T042039736655Z_su15_L6_propose.jsonl",
+      "frontier_brief.md",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_dots.py",
+      "probe_level4.py",
+      "probe_level5.py",
+      "probe_level5_sequences.py",
+      "probe_level6.py",
+      "probe_route.py",
+      "probe_search.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

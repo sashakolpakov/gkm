@@ -1,2 +1,2 @@
-=== vc33: reached level 1 | validated=True | total_marginal_C=55 | F=0.100 ===
-per-level marginal novelty: L1:55
+=== vc33: reached level 7 | validated=True | total_marginal_C=981 | F=12.620 ===
+per-level marginal novelty: L1:55, L2:46, L3:87, L4:144, L5:167, L6:87, L7:395

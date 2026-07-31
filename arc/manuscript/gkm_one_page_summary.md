@@ -2,7 +2,14 @@
 
 *Alexander Kolpakov, July 2026* — code and artifacts: <https://github.com/sashakolpakov/gkm> · docs: <https://sashakolpakov.github.io/gkm/> · manuscript: [`arc_agi3.tex`](arc_agi3.tex)
 
+*Frozen July 2026 manuscript snapshot; live campaign status is maintained in
+[`../crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](../crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md).*
+
 **Claim.** The Gödel–Kolmogorov Machine is a verifier-driven program-growth approach for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and the admission loop prefers incumbent-leg composition before new code. Retained source states make the resulting acquisition and reuse claims auditable.
+
+The producer is universal across the benchmark: every game uses the same proposer
+contract, Arena interface, blank scaffold, complexity coordinate, and replay gate.
+The executable programs it learns and promotes are game- and level-dependent.
 
 The local harness exposes `step(action) -> frame`, `levels_completed`, and `clone()` for lookahead. Clone-enabled exploration is stronger than the official reset/step interface and is not included in replay action totals. A candidate program is promoted only if fresh replay validates more completed levels under:
 
@@ -17,27 +24,48 @@ where historical `C` is positive net retained-size growth in the library and pla
 **Current promoted artifacts.**
 
 <!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
-| Game | Verified levels | Replay actions | Published ledger charge |
+| Scope | Verified levels | Stored replay actions | Ledger charge |
 |---|---:|---:|---:|
-| `wa30` | 9/9 | 596 | 1458 |
-| `ls20` | 7/7 | 393 | 362 |
+| Frozen v2 release (25 games) | 181/183 | 7001 | — |
+| `wa30` uniform history | 9/9 | 597 | 318 |
+| `ls20` uniform history | 7/7 | 365 | 760 |
 
-Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-Twenty-one partial artifacts extend the same protocol. The deepest are `ft09`,
-`r11l`, and `tr87` at L6; `g50t` at L5; and `ar25`, `re86`, and `sp80` at L4.
-Across all 23 endpoints the current local frontier is 67/183 levels with 2148
-stored replay actions. The last published scorecard predates 30 of those clears.
+The frozen v2 release reaches 181/183 levels across all 25 games with 7001 stored
+replay actions; only `lf52` L9--L10 remain. Its all-game ONLINE shakedown preceded a
+definitive Competition-Mode replay scoring 98.11664037825032%; raw level coverage is
+the separate quantity 181/183 = 98.907103825137%.
 
-On `wa30`, GKM records a logistics game built around carry, helpers, handoffs, neutralisation, and delivery. The solver discovers and preserves reusable structure: freezing target regions before delivered objects overwrite them, complementing autonomous helpers instead of competing with them, exploiting asymmetric carry collision at wall boundaries, neutralising agents that undo delivery, and refactoring repeated transport into ferry legs. The level-9 WIP trail is especially useful for audit: a recovered verified suffix was decoded into five repeated grab-carry-release operations and refactored into `grab_carry_release` and `ferry_each`, so the promoted player is compact composition rather than an opaque replay.
+On `wa30`, GKM records a logistics game built around carry, helpers, handoffs,
+neutralisation, and delivery. Its fresh canonical reacquisition has nine sequential
+promotion manifests, a 597-action replay, and per-level charges
+`43, 20, 32, 50, 39, 23, 28, 34, 49`. The superseded exploratory lineage remains
+available for historical comparison but is not spliced into this ledger.
 
-On `ls20`, the harness-native acquisition ledger is sawtoothed. The stricter winning-checkpoint audit independently finds a sharp conditional-AST drop at L7, from 682 to 222 compressed novelty bytes, while the winning player directly calls the unchanged `execute_path` leg. The cumulative executable solver does not shrink; the attribution comes from the marginal and literal call together.
+On `ls20`, the uniform ledger is `40, 54, 86, 114, 138, 170, 158`. The stricter
+winning-checkpoint audit finds a sharp conditional-AST drop at L2, from 737 to 247
+compressed novelty bytes, while the winning player directly calls the unchanged
+`follow_cardinal_runs` leg. The later exact marginals rise through 299 before dipping
+to 292 at L7. The cumulative executable solver need not shrink; attribution comes
+from the conditional marginal and literal call together.
 
 **Audit trail.** GKM is meant to leave evidence, not just outputs. Each promoted step is backed by fresh replay, preserved WIP snapshots, a marginal-complexity charge, and a distinction between literal action recovery and reusable refactor. This makes the artifact reviewable: an external evaluator can inspect which information entered through interaction, which code was introduced, what was charged as a literal, and what later became a reusable leg.
 
-**Comparison.** The exact winning-checkpoint test couples conditional AST novelty to direct calls of unchanged definitions. GKM has 14 direct leg-reuse wins; `ar25` L2, `g50t` L4, `ls20` L7, and `m0r0` L2 also have half-or-more marginal drops. The `ft09` L6 winner directly calls unchanged `solve_coupled_key_board`, although its conditional AST decline is not sharp. OPINE has four direct engine-reuse wins, with sharp coupled drops at `lp85` L4 and `tu93` L3, so it is not solving every level wholly anew. baseline1 has four exact retained-source contractions, but all 18 exact adjacent winning commands are fresh literal action programs and none invokes retained world-model code. Retrodict releases curated memory rather than executable winning checkpoints.
+**Comparison.** The exact winning-checkpoint test couples conditional AST novelty to
+direct calls of unchanged definitions. Of the 181 admitted boundaries, 180 retain
+the exact historical acquisition source needed by this test. They contain 57 hard
+direct-reuse witnesses, including 14 with half-or-more marginal drops. OPINE has
+four direct engine-reuse wins, with sharp coupled drops at `lp85` L4 and `tu93` L3,
+so it is not solving every level wholly anew. baseline1 has four exact retained-source
+contractions, but the released exact adjacent winning commands provide no coupled
+unchanged-world-model witness. Retrodict releases curated memory rather than
+executable winning checkpoints.
 
-**Current limitation and request.** This is not yet a private ARC-AGI-3 leaderboard result and not yet a compute-matched head-to-head. The next step is to turn the current artifact into a collaboration-grade evaluation: reproduce on more public games, run a compute-matched comparison against graph exploration and executable world models, and harden the leakage/audit protocol. We are looking for collaborators who can help with one or more of: ARC-AGI-3 evaluation protocol, compute/model access, independent artifact review, private-set or organizer-facing evaluation, and funding for a systematic benchmark run.
+**Current limitation and request.** This is not yet a private ARC-AGI-3 result or a
+compute-matched head-to-head. The natural next tests are an independently reviewed
+artifact audit, a private-set evaluation, and a compute-matched comparison against
+graph exploration and executable world models.
 
 **Bottom line.** GKM treats local solver development as verifier-gated acquisition of reusable program structure. Replay establishes endpoint behavior; checkpoint JSON and retained source expose when novelty was admitted, when prior legs sufficed, and how the solver was refactored.

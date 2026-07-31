@@ -1,2 +1,2 @@
-=== sb26: reached level 1 | validated=True | total_marginal_C=72 | F=0.440 ===
-per-level marginal novelty: L1:72
+=== sb26: reached level 8 | validated=True | total_marginal_C=843 | F=8.860 ===
+per-level marginal novelty: L1:72, L2:121, L3:2, L4:2, L5:147, L6:152, L7:220, L8:127

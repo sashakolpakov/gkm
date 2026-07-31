@@ -1,2 +1,2 @@
-=== s5i5: reached level 1 | validated=True | total_marginal_C=137 | F=1.740 ===
-per-level marginal novelty: L1:137
+=== s5i5: reached level 8 | validated=True | total_marginal_C=693 | F=5.860 ===
+per-level marginal novelty: L1:137, L2:197, L3:74, L4:49, L5:39, L6:51, L7:83, L8:63

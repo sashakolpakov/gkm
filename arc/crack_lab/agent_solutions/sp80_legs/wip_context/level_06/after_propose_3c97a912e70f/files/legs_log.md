@@ -1,0 +1,222 @@
+# Legs Log for sp80
+
+## Level 1 discovery (solved)
+
+**Frame layout:**
+- Row 0: color-14 top border (timer depletes right-to-left)
+- Rows 1-7, cols 36-39: color-4 (3 rows) + color-6 (4 rows) target/indicator object (static)
+- Rows 16-19, cols 12-31: color-9 moveable block (4 rows × 20 cols)
+- Rows 52-59: two color-11 U-shaped goal structures
+  - Left: posts at cols 16-19 and 24-27, bottom bar rows 56-59
+  - Right: posts at cols 40-43 and 48-51, bottom bar rows 56-59
+- Rows 60-63: color-1 bottom border
+
+**Actions discovered:**
+- Action 1 = UP: moves 9-block up 4 pixels (stops at rows 12-15)
+- Action 2 = DOWN: moves 9-block down 4 pixels (stops at rows 44-47)
+- Action 3 = LEFT: moves 9-block left 4 pixels (stops at cols 0-19)
+- Action 4 = RIGHT: moves 9-block right 4 pixels (stops at cols 44-63)
+- Action 5 = USE: conditionally completes level (no visible change until win)
+- Action 6 = no effect (timer only)
+
+**Win condition:** After 3 RIGHT moves (block at rows 16-19, cols 24-43), USE (action 5) completes level 1.
+
+**Winning path:** [4, 4, 4, 5]
+
+## Legs added to legs.py
+
+- `play_fixed_sequence(env, sequence)`: plays a fixed list of actions
+- `bfs_win(env, ...)`: BFS over full-frame hash to find winning path
+- `bfs_win_compact(env, key_fn, ...)`: BFS with custom key function
+- `make_bbox_key(color)`: factory that returns a compact BFS key function
+  tracking the bounding box (row_min, row_max, col_min, col_max) of all
+  pixels with the given color value; returns None when the color is absent.
+- `bfs_or_fallback(env, key_fn, fallback, ...)`: tries `bfs_win_compact`;
+  plays the discovered path, or *fallback* if BFS finds nothing.
+
+## Level 2 discovery (solved)
+
+**Frame layout (after level 1):**
+- 3 color-11 sockets (∏, top-bar + hanging posts) at top, unreachable.
+- 3 movable blocks: A (12 wide, cols8-19), B (12 wide, cols28-39),
+  C (20 wide, cols20-39). One block is coloured 9 (selected), rest 8.
+- color 4/6 bottom-right = static level decoration.
+
+**Key mechanic — action 6 is a COORDINATE action:** `env.step(6, x, y)`
+selects/grabs the block whose cell is at (x=col, y=row); it turns 9 and the
+directional actions 1..4 then move THAT block. So any block can be driven.
+- Blocks move 4px/step, pass THROUGH each other, bounded to rows 16..51.
+- Sockets are decoration: a hard wall keeps blocks at row>=16 (never reach them).
+- Action 5 (USE) is the commit and cycles selection; without a final USE no
+  configuration wins (verified by exhaustive column sweep).
+
+**Win condition (found by exhaustive clone sweep + USE):** put a 12-wide block
+at cols 20-31 and the 20-wide block C at cols 28-47, then press USE. Row is
+irrelevant (as in level 1, alignment is column-only). Winning drive used:
+A->cols20-31 (right x3), B->cols36-47 (right x2), C->cols28-47 (right x2), USE.
+
+## New leg added
+
+- `click_select(env, x, y)`: coordinate interaction — `env.step(6, x, y)` to
+  grab the object under a pixel so 1..4 move it. Recorded as [6, x, y].
+
+`play_level_2` composes `click_select` + `play_fixed_sequence` (moves + USE).
+
+## DEBRIEF after clearing level 2 — refactor
+
+Comparing `play_level_2` to the earlier `play_level_1`:
+
+- `play_level_1` is already thin: a single `bfs_or_fallback(...)` call.
+- `play_level_2` inlined the same two-step idiom **three times**:
+
+  ```
+  click_select(env, x, y)          # grab a block
+  play_fixed_sequence(env, moves)  # drive it with 1..4
+  ```
+
+That "select-then-drive" idiom is now written ONCE as the leg
+`grab_and_move(env, x, y, moves)` (= `click_select` + `play_fixed_sequence`).
+`play_level_2` is now thin composition: three `grab_and_move` lines plus a
+final `play_fixed_sequence(env, [5])` (USE / commit). No behaviour change —
+`grab_and_move` emits exactly the same action stream as the old inline code.
+
+## New leg added (refactor)
+
+- `grab_and_move(env, x, y, moves)`: select-then-drive. Grabs the object under
+  pixel (x, y) via the coordinate action (6), then plays a fixed list of
+  directional moves on it. Encapsulates the idiom repeated 3× in `play_level_2`.
+
+## Recurring composition pattern (candidate higher-order leg)
+
+### Multi-object drive (new observation, level 2)
+
+For levels with several independently-movable objects, the player is a *list
+of (grab-point, move-plan) pairs* followed by a commit:
+
+```
+plan = [((x1, y1), moves1),
+        ((x2, y2), moves2),
+        ...]
+for (x, y), moves in plan:
+    grab_and_move(env, x, y, moves)
+play_fixed_sequence(env, [USE])
+```
+
+Candidate higher-order leg: `drive_objects(env, plan, commit=[5])` — take a
+list of `((x, y), moves)` tuples, `grab_and_move` each in turn, then play the
+commit sequence. A player collapses to a single declarative `plan` (WHERE to
+grab + HOW to move each object) with all iteration/commit logic in the leg.
+
+### Single-object search (level 1)
+
+Every single-object level player follows the same three-step skeleton:
+
+```
+key_fn  = make_bbox_key(<moveable-object color>)
+path    = bfs_win_compact(env, key_fn, ...)          # search
+play    = path if path else <hardcoded fallback>
+play_fixed_sequence(env, play)
+```
+
+`bfs_or_fallback(env, key_fn, fallback, …)` encapsulates this pattern.
+A player becomes a single line: choose *what* to track (the color) and
+*what* to do if search fails (the fallback); all search-and-play logic
+lives once in the leg.  Future players should default to this leg and only
+reach for lower-level primitives when the state key or win condition is
+more complex than a single-color bounding box.
+
+## Level 3 discovery (solved)
+
+**Frame layout (after level 2):** same select-then-drive family as level 2.
+- 3 color-11 ∏-sockets at top (cols 4-15, 24-35, 48-59), unreachable
+  (hard wall keeps blocks at row>=16).
+- FOUR movable blocks (color 8; the selected one turns 9):
+    A (16 wide) rows20-23 cols 8-23  -> grab @ (col15,row21)
+    B (20 wide) rows28-31 cols40-59  -> grab @ (col49,row29)
+    C (24 wide) rows32-35 cols 8-31  -> grab @ (col19,row33)
+    N (24 wide) rows40-43 cols36-59  -> grab @ (col47,row41)
+- Blocks slide 4px/step, pass THROUGH each other, all reach left col 0.
+  Level timer allows ~100 moves before GAME_OVER.
+
+**Mechanics (confirmed identical to level 2):** action 6 = coordinate grab
+(select block under pixel -> turns 9); actions 1..4 move the selected block;
+action 5 = USE commit / win-check (never alters blocks, only commits).
+Alignment is COLUMN-only (rows irrelevant).
+
+**Win rule investigation:** on level 2 I reverse-engineered the winning set by
+a full step-4 clone sweep: 13 winning (A_left,B_left,C_left) configs out of
+2028 (~0.6% density). The rule is NOT pure column-coverage — it depends on the
+exact per-block left positions (e.g. with A=20,C=28 fixed, B wins at
+{0,4,8,12,20,28,32,36} but loses at {16,24,40,44,48}, all giving the same
+covered-column set). Rather than fully derive the predicate, I exploited the
+~0.6% win density: **bounded random-search over left-columns** finds a winner
+fast.
+
+**Level 3 solution (found by random-search, ~250 clone tries, <5s):**
+left-cols A=12, B=0, C=28, N=40, then USE. From start positions that is
+A right x1, B left x10, C right x5, N right x1, USE.
+Winning path (after L2): [[6,15,21],4,[6,49,29],3x10,[6,19,33],4x5,[6,47,41],4,5]
+
+## Legs reused (no new leg needed)
+
+`play_level_3` composes the SAME legs as level 2:
+`grab_and_move(env,x,y,moves)` x4 + `play_fixed_sequence(env,[5])`. The
+select-then-drive idiom generalised straight to a 4-block level, confirming
+`grab_and_move` as the reusable sp80 skill. The reusable *discovery* method
+(bounded random-search over block left-columns exploiting sparse win density)
+is a candidate future leg if a 5th such level appears.
+
+## DEBRIEF after clearing level 3 — refactor
+
+Comparing `play_level_3` to the earlier players:
+
+- `play_level_1` is thin: a single `bfs_or_fallback(...)` call.
+- `play_level_2` and `play_level_3` were BOTH the *same* skeleton — N
+  `grab_and_move` calls followed by a final `play_fixed_sequence(env, [5])`
+  (USE / commit). Level 2 did it 3×, level 3 did it 4×. Only the declarative
+  data (grab-points + move-plans) differed; the iterate-then-commit control
+  flow was duplicated across the two players.
+
+That "multi-object drive" idiom — the candidate higher-order leg flagged after
+level 2 — is now written ONCE as the leg `drive_objects(env, plan, commit=[5])`.
+Both `play_level_2` and `play_level_3` are now thin composition: each is a
+single `drive_objects(...)` call taking a declarative `plan` list of
+`((x, y), moves)` tuples plus the commit. No behaviour change — `drive_objects`
+grab_and_move's each pair in order then plays the commit, emitting exactly the
+same action stream as the old inline code (verified: `RESULT levels=3 moves=37
+replay_ok=True`).
+
+## New leg added (refactor)
+
+- `drive_objects(env, plan, commit=(5,))`: higher-order multi-object drive.
+  Takes a list of `((x, y), moves)` tuples, `grab_and_move`'s each in turn,
+  then plays the `commit` sequence (default USE). Encapsulates the
+  select-then-drive-then-commit skeleton shared by levels 2 and 3. Composes
+  `grab_and_move` + `play_fixed_sequence`, so no lower-level primitive is
+  re-implemented.
+
+## Recurring composition pattern (candidate higher-order leg)
+
+### Plan-driven object levels (confirmed, levels 2 & 3)
+
+The multi-object-drive candidate from the level-2 debrief is now REALISED as
+`drive_objects`. Across two levels the sp80 "movable blocks over sockets"
+family collapses to a single declarative call:
+
+```
+drive_objects(env, [
+    ((x1, y1), moves1),
+    ((x2, y2), moves2),
+    ...
+], commit=[5])
+```
+
+The player carries only DATA (a plan: where to grab + how to move each block,
+found by bounded random-search over left-columns); all control flow lives in
+the leg. Two levels now share this one leg, so the sp80 player family reduces
+to two skeletons: `bfs_or_fallback` (single-object search) and `drive_objects`
+(plan-driven multi-object). A next candidate higher-order leg would fuse the
+two — auto-choosing search vs. plan by object count — but that abstraction is
+not yet earned (only one single-object level seen). The reusable *discovery*
+method (bounded random-search over block left-columns, exploiting the ~0.6%
+sparse win density) remains the outstanding candidate leg for a future level.

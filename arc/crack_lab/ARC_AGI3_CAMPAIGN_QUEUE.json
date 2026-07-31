@@ -1,0 +1,3573 @@
+{
+  "admit_next_turn": true,
+  "allowance": {
+    "limit_id": "codex",
+    "plan_type": "business",
+    "remaining_percent": 100,
+    "reset_credits_available": 0,
+    "resets_at": null,
+    "resets_at_iso": null,
+    "source": "live_rate_limit_read",
+    "used_percent": 0,
+    "window_duration_mins": 10080,
+    "window_name": "unlimited"
+  },
+  "canonical_progress": {
+    "percent": 98.9071,
+    "remaining_levels": 2,
+    "solved_levels": 181,
+    "total_levels": 183
+  },
+  "causal_conclusion": "not_identified",
+  "causal_reason": "the existing medium and high turns differ in frontier difficulty; pooled points-per-clear and solver-size medians do not identify an intrinsic effort effect",
+  "cold_screen_cohort": [],
+  "cost_control_enabled": false,
+  "cost_control_mode": "disabled_provider_unlimited",
+  "decision_rule_after_cohort": "reconstruct retry_complexity_n from settled clean exact-frontier outcomes; project n through the single versioned medium-high-xhigh-max allocation/WIP/sidecar table; promotion resets n; taint, infrastructure, blocker, rate-limit, and containment outcomes do not increment it",
+  "effort_efficiency": {
+    "high": {
+      "displayed_points_on_successes": 39,
+      "displayed_points_per_solved_level": 0.639,
+      "displayed_points_per_wall_minute": 0.073,
+      "displayed_weekly_points": 39,
+      "failed_levels": 0,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 71,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 61,
+      "solved_levels": 61,
+      "success_only_points_per_solved_level": 0.639,
+      "timed_out_turns": 5,
+      "turns_with_missing_token_usage": 5,
+      "unknown_outcomes": 0
+    },
+    "max": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 4,
+      "infrastructure_turns_excluded": 2,
+      "non_solver_turns_excluded": 96,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 61,
+      "solved_levels": 57,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 1,
+      "turns_with_missing_token_usage": 1,
+      "unknown_outcomes": 0
+    },
+    "medium": {
+      "displayed_points_on_successes": 17,
+      "displayed_points_per_solved_level": 0.378,
+      "displayed_points_per_wall_minute": 0.045,
+      "displayed_weekly_points": 17,
+      "failed_levels": 1,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 77,
+      "observed_tokens_are_complete": true,
+      "proposal_attempts": 46,
+      "solved_levels": 45,
+      "success_only_points_per_solved_level": 0.378,
+      "timed_out_turns": 0,
+      "turns_with_missing_token_usage": 0,
+      "unknown_outcomes": 0
+    },
+    "xhigh": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 0,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 45,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 17,
+      "solved_levels": 17,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 1,
+      "turns_with_missing_token_usage": 1,
+      "unknown_outcomes": 0
+    }
+  },
+  "high_rescue_summary": {
+    "details": [
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 1
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "cd82",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "ar25",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "ar25",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "m0r0",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 2,
+        "game": "re86",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 1
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": false,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lp85",
+        "rescued": true,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "cn04",
+        "rescued": false,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "ka59",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "ka59",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "ka59",
+        "rescued": true,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "ka59",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sc25",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sc25",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": false,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "dc22",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "dc22",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "dc22",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "dc22",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "su15",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "su15",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "su15",
+        "rescued": false,
+        "target_level": 8
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "vc33",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "vc33",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "vc33",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sb26",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sb26",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "s5i5",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "s5i5",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "s5i5",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tu93",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "ar25",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "m0r0",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "g50t",
+        "rescued": true,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "cn04",
+        "rescued": false,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "m0r0",
+        "rescued": true,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "g50t",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 1
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "m0r0",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": true,
+        "target_level": 2
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "s5i5",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "g50t",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "s5i5",
+        "rescued": true,
+        "target_level": 8
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 8
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sp80",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 8
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sp80",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sb26",
+        "rescued": true,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 9
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sc25",
+        "rescued": true,
+        "target_level": 3
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sc25",
+        "rescued": false,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "cn04",
+        "rescued": true,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 4
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "re86",
+        "rescued": false,
+        "target_level": 9
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "cn04",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "bp35",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 5
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "su15",
+        "rescued": false,
+        "target_level": 9
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "dc22",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "lf52",
+        "rescued": false,
+        "target_level": 7
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "sk48",
+        "rescued": false,
+        "target_level": 6
+      },
+      {
+        "displayed_weekly_points_used": 0,
+        "game": "tn36",
+        "rescued": false,
+        "target_level": 1
+      }
+    ],
+    "displayed_points_per_rescue": 0.343,
+    "displayed_weekly_points": 12,
+    "qualifying_high_attempts": 91,
+    "replay_validated_rescues": 35,
+    "rescue_rate": 0.385
+  },
+  "initial_queue": [
+    {
+      "argv": [
+        "python3",
+        "-u",
+        "arc/crack_lab/gkm_legs.py",
+        "--game=lf52",
+        "--max-level=9",
+        "--proposer=codex",
+        "--model=gpt-5.6-sol",
+        "--minutes=20",
+        "--codex-effort=high",
+        "--codex-debrief-effort=medium",
+        "--codex-allocation-policy=drain",
+        "--debrief-policy=never",
+        "--codex-weekly-reserve=0",
+        "--codex-weekly-headroom=1",
+        "--codex-max-campaign-runs=-1",
+        "--codex-max-campaign-tokens=-1",
+        "--transient-retries=0",
+        "--tag=arc_agi3_n1_continue_clean_wip",
+        "--seed-mode=verified_parent",
+        "--wip-mode=restore_clean_same_frontier",
+        "--expected-parent-reached=8",
+        "--expected-parent-action-count=544",
+        "--expected-parent-checkpoint-sha256=012c16003532e29aed48415f1e32a7d93cd6ea5ec416e1fcba508321d4e5fcc0",
+        "--expected-parent-source-tree-sha256=78b75838851de104a2ee6b472b494841977f26d52b3aa1fcce8c5bfcc7e00ff6",
+        "--expected-frontier-sha256=bfdb2431f0d070b06dc0686f3265aa264f94f7e89cde3026d5aba98c19b28438"
+      ],
+      "command": "python3 -u arc/crack_lab/gkm_legs.py --game=lf52 --max-level=9 --proposer=codex --model=gpt-5.6-sol --minutes=20 --codex-effort=high --codex-debrief-effort=medium --codex-allocation-policy=drain --debrief-policy=never --codex-weekly-reserve=0 --codex-weekly-headroom=1 --codex-max-campaign-runs=-1 --codex-max-campaign-tokens=-1 --transient-retries=0 --tag=arc_agi3_n1_continue_clean_wip --seed-mode=verified_parent --wip-mode=restore_clean_same_frontier --expected-parent-reached=8 --expected-parent-action-count=544 --expected-parent-checkpoint-sha256=012c16003532e29aed48415f1e32a7d93cd6ea5ec416e1fcba508321d4e5fcc0 --expected-parent-source-tree-sha256=78b75838851de104a2ee6b472b494841977f26d52b3aa1fcce8c5bfcc7e00ff6 --expected-frontier-sha256=bfdb2431f0d070b06dc0686f3265aa264f94f7e89cde3026d5aba98c19b28438",
+      "cost_control_enabled": false,
+      "dispatch_mode": "continue_clean_wip",
+      "effort": "high",
+      "experiment_role": "retry_n1_continue_clean_wip",
+      "external_evidence": {
+        "Retrodict": 5,
+        "baseline1": 10
+      },
+      "frontier_binding_schema": 1,
+      "frontier_sha256": "bfdb2431f0d070b06dc0686f3265aa264f94f7e89cde3026d5aba98c19b28438",
+      "game": "lf52",
+      "lineage_input_mode": "verified_parent+restore_clean_same_frontier",
+      "max_campaign_runs": -1,
+      "max_campaign_tokens": -1,
+      "minutes": 20,
+      "parent_action_count": 544,
+      "parent_checkpoint_sha256": "012c16003532e29aed48415f1e32a7d93cd6ea5ec416e1fcba508321d4e5fcc0",
+      "parent_source_tree_sha256": "78b75838851de104a2ee6b472b494841977f26d52b3aa1fcce8c5bfcc7e00ff6",
+      "policy_projection": {
+        "auxiliary_parallelism": 0,
+        "dispatch_mode": "continue_clean_wip",
+        "effort": "high",
+        "minutes": 20,
+        "n": 1,
+        "wip_mode": "restore_clean_same_frontier"
+      },
+      "reached": 8,
+      "recommended_auxiliary_parallelism": 0,
+      "required_headroom_percent": 1,
+      "retry_complexity_n": 1,
+      "seed_mode": "verified_parent",
+      "target_level": 9,
+      "warm_wip_available": true,
+      "wip_mode": "restore_clean_same_frontier"
+    }
+  ],
+  "local_window": {
+    "cached_input_tokens": 1696837376,
+    "input_tokens": 1744185007,
+    "observed_tokens": 1752532559,
+    "output_tokens": 8347552,
+    "reasoning_output_tokens": 5161764,
+    "runs": 455
+  },
+  "next_frontiers": [
+    {
+      "adjusted_priority_score": 1.741,
+      "authoritative_level_count": 10,
+      "current_level": 8,
+      "dispatch_mode": "continue_clean_wip",
+      "exact_bound_turns_at_frontier": 6,
+      "external_evidence": {
+        "Retrodict": 5,
+        "baseline1": 10
+      },
+      "failed_attempts_at_frontier": 1,
+      "failed_efforts": [
+        "medium"
+      ],
+      "frontier_binding_schema": 1,
+      "frontier_scaffold_created_at": "2026-07-29T00:10:41Z",
+      "frontier_scaffold_version": "lf52-l9-host-admitted-prefix-compression-530-v1",
+      "frontier_sha256": "bfdb2431f0d070b06dc0686f3265aa264f94f7e89cde3026d5aba98c19b28438",
+      "game": "lf52",
+      "game_level_history_turns": 41,
+      "incumbent_kind": "promoted",
+      "infrastructure_turns_at_frontier": 0,
+      "levels_to_authoritative_completion": 2,
+      "next_level": 9,
+      "non_solver_turns_at_frontier": 5,
+      "paid_attempts_at_frontier": 1,
+      "parent_action_count": 544,
+      "parent_checkpoint_sha256": "012c16003532e29aed48415f1e32a7d93cd6ea5ec416e1fcba508321d4e5fcc0",
+      "parent_source_tree_sha256": "78b75838851de104a2ee6b472b494841977f26d52b3aa1fcce8c5bfcc7e00ff6",
+      "priority_score": 2.541,
+      "quarantined_after_escalation_failure": false,
+      "reached": 8,
+      "recommended_auxiliary_parallelism": 0,
+      "recommended_effort": "high",
+      "recommended_minutes": 20,
+      "recommended_minutes_basis": "versioned_exact_frontier_clean_retry_ladder",
+      "recommended_minutes_solve_samples": null,
+      "recommended_wip_mode": "restore_clean_same_frontier",
+      "retry_complexity_n": 1,
+      "retry_history_authority": "exact_parent_bound_only",
+      "slowest_validated_solve_minutes": null,
+      "solver_source_bytes": 21478,
+      "superseded_attempts_at_frontier": 8,
+      "target_level": 9,
+      "top_level_definitions": 26,
+      "unbound_legacy_turns_for_game_level": 27,
+      "warm_wip_available": true
+    }
+  ],
+  "not_before_epoch": null,
+  "phase": "run_initial_item_then_adapt",
+  "reserve_percent": 0,
+  "solver_quality_by_effort": {
+    "high": {
+      "checkpoint_details": [
+        {
+          "completed_level": 6,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4799,
+          "pre_debrief_acquisition_charge": 127,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5008,
+          "pre_debrief_acquisition_charge": 159,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ft09",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3730,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1751,
+          "pre_debrief_acquisition_charge": 118,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6193,
+          "pre_debrief_acquisition_charge": 429,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3404,
+          "pre_debrief_acquisition_charge": 107,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ar25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 622,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1857,
+          "pre_debrief_acquisition_charge": 105,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1984,
+          "pre_debrief_acquisition_charge": 137,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1535,
+          "pre_debrief_acquisition_charge": 72,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2164,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sc25",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1131,
+          "pre_debrief_acquisition_charge": 40,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1307,
+          "pre_debrief_acquisition_charge": 55,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 613,
+          "pre_debrief_acquisition_charge": 11,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "cn04",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 710,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 673,
+          "pre_debrief_acquisition_charge": 24,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1058,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1758,
+          "pre_debrief_acquisition_charge": 116,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3408,
+          "pre_debrief_acquisition_charge": 343,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 186,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 177,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 192,
+          "pre_debrief_acquisition_charge": 6,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 213,
+          "pre_debrief_acquisition_charge": 8,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 193,
+          "pre_debrief_acquisition_charge": 6,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 301,
+          "pre_debrief_acquisition_charge": 25,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 4,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 275,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 239,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 279,
+          "pre_debrief_acquisition_charge": 14,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 900,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 512,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 604,
+          "pre_debrief_acquisition_charge": 71,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 716,
+          "pre_debrief_acquisition_charge": 96,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 885,
+          "pre_debrief_acquisition_charge": 107,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1517,
+          "pre_debrief_acquisition_charge": 95,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3143,
+          "pre_debrief_acquisition_charge": 377,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1456,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1722,
+          "pre_debrief_acquisition_charge": 144,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1796,
+          "pre_debrief_acquisition_charge": 121,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1602,
+          "pre_debrief_acquisition_charge": 119,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2196,
+          "pre_debrief_acquisition_charge": 217,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1941,
+          "pre_debrief_acquisition_charge": 197,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1051,
+          "pre_debrief_acquisition_charge": 74,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3613,
+          "pre_debrief_acquisition_charge": 68,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1786,
+          "pre_debrief_acquisition_charge": 105,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 584,
+          "pre_debrief_acquisition_charge": 144,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2528,
+          "pre_debrief_acquisition_charge": 88,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 868,
+          "pre_debrief_acquisition_charge": 30,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 75,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 899,
+          "pre_debrief_acquisition_charge": 43,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 339,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 503,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 521,
+          "pre_debrief_acquisition_charge": 50,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 534,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 343,
+          "pre_debrief_acquisition_charge": 23,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 386,
+          "pre_debrief_acquisition_charge": 28,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 684,
+          "pre_debrief_acquisition_charge": 34,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1099,
+          "pre_debrief_acquisition_charge": 63,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2080,
+          "pre_debrief_acquisition_charge": 147,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 295,
+          "pre_debrief_acquisition_charge": 17,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 376,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 61,
+      "literal_reuse_wins": 13,
+      "median_conditional_ast_zlib_bytes": 900.0,
+      "median_pre_debrief_acquisition_charge": 49.0,
+      "sharp_drop_with_literal_reuse_wins": 3,
+      "sharp_marginal_drop_wins": 5,
+      "solved_levels": 61
+    },
+    "max": {
+      "checkpoint_details": [
+        {
+          "completed_level": 7,
+          "game": "vc33",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3437,
+          "pre_debrief_acquisition_charge": 370,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 376,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1091,
+          "pre_debrief_acquisition_charge": 102,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 337,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 6,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 568,
+          "pre_debrief_acquisition_charge": 128,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 5,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3028,
+          "pre_debrief_acquisition_charge": 96,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2028,
+          "pre_debrief_acquisition_charge": 205,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 573,
+          "pre_debrief_acquisition_charge": 35,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2364,
+          "pre_debrief_acquisition_charge": 273,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 243,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1992,
+          "pre_debrief_acquisition_charge": 344,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2164,
+          "pre_debrief_acquisition_charge": 123,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 274,
+          "pre_debrief_acquisition_charge": 55,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1526,
+          "pre_debrief_acquisition_charge": 97,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1056,
+          "pre_debrief_acquisition_charge": 53,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 259,
+          "pre_debrief_acquisition_charge": 86,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 270,
+          "pre_debrief_acquisition_charge": 114,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 289,
+          "pre_debrief_acquisition_charge": 138,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 299,
+          "pre_debrief_acquisition_charge": 170,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3708,
+          "pre_debrief_acquisition_charge": 307,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 576,
+          "pre_debrief_acquisition_charge": 209,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 7,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 292,
+          "pre_debrief_acquisition_charge": 158,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1899,
+          "pre_debrief_acquisition_charge": 325,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2895,
+          "pre_debrief_acquisition_charge": 166,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1554,
+          "pre_debrief_acquisition_charge": 79,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 9,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1418,
+          "pre_debrief_acquisition_charge": 277,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 28,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 41,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2028,
+          "pre_debrief_acquisition_charge": 132,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2203,
+          "pre_debrief_acquisition_charge": 181,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4968,
+          "pre_debrief_acquisition_charge": 256,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5533,
+          "pre_debrief_acquisition_charge": 262,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5378,
+          "pre_debrief_acquisition_charge": 215,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1758,
+          "pre_debrief_acquisition_charge": 25,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1602,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "lf52",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 157,
+          "pre_debrief_acquisition_charge": 90,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 1,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1525,
+          "pre_debrief_acquisition_charge": 22,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1981,
+          "pre_debrief_acquisition_charge": 65,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1714,
+          "pre_debrief_acquisition_charge": 149,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2196,
+          "pre_debrief_acquisition_charge": 104,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ft09",
+          "literal_reuse": null,
+          "marginal_ast_zlib_bytes": null,
+          "pre_debrief_acquisition_charge": 78,
+          "sharp_marginal_drop": null
+        },
+        {
+          "completed_level": 2,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1450,
+          "pre_debrief_acquisition_charge": 23,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4565,
+          "pre_debrief_acquisition_charge": 201,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": null,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2672,
+          "pre_debrief_acquisition_charge": 31,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1288,
+          "pre_debrief_acquisition_charge": 24,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "r11l",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 4144,
+          "pre_debrief_acquisition_charge": 172,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5008,
+          "pre_debrief_acquisition_charge": 191,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ft09",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3730,
+          "pre_debrief_acquisition_charge": 253,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6285,
+          "pre_debrief_acquisition_charge": 226,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2011,
+          "pre_debrief_acquisition_charge": 42,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2296,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 5,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6193,
+          "pre_debrief_acquisition_charge": 196,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5346,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 274,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3028,
+          "pre_debrief_acquisition_charge": 156,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 56,
+      "literal_reuse_wins": 15,
+      "median_conditional_ast_zlib_bytes": 1758.0,
+      "median_pre_debrief_acquisition_charge": 104.0,
+      "sharp_drop_with_literal_reuse_wins": 3,
+      "sharp_marginal_drop_wins": 6,
+      "solved_levels": 57
+    },
+    "medium": {
+      "checkpoint_details": [
+        {
+          "completed_level": 5,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6598,
+          "pre_debrief_acquisition_charge": 249,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1183,
+          "pre_debrief_acquisition_charge": 36,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lp85",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 698,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ka59",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 810,
+          "pre_debrief_acquisition_charge": 26,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 344,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 175,
+          "pre_debrief_acquisition_charge": 4,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 196,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 181,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 265,
+          "pre_debrief_acquisition_charge": 29,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1853,
+          "pre_debrief_acquisition_charge": 133,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2687,
+          "pre_debrief_acquisition_charge": 237,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1940,
+          "pre_debrief_acquisition_charge": 108,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 195,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 227,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 4,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "su15",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1433,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3486,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1246,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1506,
+          "pre_debrief_acquisition_charge": 87,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1868,
+          "pre_debrief_acquisition_charge": 167,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "vc33",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1392,
+          "pre_debrief_acquisition_charge": 87,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1073,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 952,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 958,
+          "pre_debrief_acquisition_charge": 51,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1792,
+          "pre_debrief_acquisition_charge": 148,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 4,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1302,
+          "pre_debrief_acquisition_charge": 73,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 186,
+          "pre_debrief_acquisition_charge": 2,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 6,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1440,
+          "pre_debrief_acquisition_charge": 92,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 212,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 8,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 210,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 9,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 210,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 498,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "cd82",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 520,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 574,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 198,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 198,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "cn04",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 245,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2297,
+          "pre_debrief_acquisition_charge": 175,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5655,
+          "pre_debrief_acquisition_charge": 215,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3904,
+          "pre_debrief_acquisition_charge": 151,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 250,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 358,
+          "pre_debrief_acquisition_charge": 114,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5378,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ls20",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 737,
+          "pre_debrief_acquisition_charge": 40,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 247,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": true
+        }
+      ],
+      "exact_checkpoint_coverage": 45,
+      "literal_reuse_wins": 20,
+      "median_conditional_ast_zlib_bytes": 737.0,
+      "median_pre_debrief_acquisition_charge": 39.0,
+      "sharp_drop_with_literal_reuse_wins": 5,
+      "sharp_marginal_drop_wins": 7,
+      "solved_levels": 45
+    },
+    "xhigh": {
+      "checkpoint_details": [
+        {
+          "completed_level": 3,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 511,
+          "pre_debrief_acquisition_charge": 41,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 35,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 314,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 199,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2418,
+          "pre_debrief_acquisition_charge": 44,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1160,
+          "pre_debrief_acquisition_charge": 83,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1649,
+          "pre_debrief_acquisition_charge": 300,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 8,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2870,
+          "pre_debrief_acquisition_charge": 238,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 325,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2203,
+          "pre_debrief_acquisition_charge": 74,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4968,
+          "pre_debrief_acquisition_charge": 130,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5533,
+          "pre_debrief_acquisition_charge": 290,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 31,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 129,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 17,
+      "literal_reuse_wins": 5,
+      "median_conditional_ast_zlib_bytes": 986.0,
+      "median_pre_debrief_acquisition_charge": 54.0,
+      "sharp_drop_with_literal_reuse_wins": 1,
+      "sharp_marginal_drop_wins": 1,
+      "solved_levels": 17
+    }
+  },
+  "window_effort_efficiency": {
+    "high": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 0,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 59,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 42,
+      "solved_levels": 42,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 1,
+      "turns_with_missing_token_usage": 1,
+      "unknown_outcomes": 0
+    },
+    "max": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 4,
+      "infrastructure_turns_excluded": 2,
+      "non_solver_turns_excluded": 96,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 61,
+      "solved_levels": 57,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 1,
+      "turns_with_missing_token_usage": 1,
+      "unknown_outcomes": 0
+    },
+    "medium": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 1,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 60,
+      "observed_tokens_are_complete": true,
+      "proposal_attempts": 35,
+      "solved_levels": 34,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 0,
+      "turns_with_missing_token_usage": 0,
+      "unknown_outcomes": 0
+    },
+    "xhigh": {
+      "displayed_points_on_successes": 0,
+      "displayed_points_per_solved_level": 0.0,
+      "displayed_points_per_wall_minute": 0.0,
+      "displayed_weekly_points": 0,
+      "failed_levels": 0,
+      "infrastructure_turns_excluded": 0,
+      "non_solver_turns_excluded": 45,
+      "observed_tokens_are_complete": false,
+      "proposal_attempts": 17,
+      "solved_levels": 17,
+      "success_only_points_per_solved_level": 0.0,
+      "timed_out_turns": 1,
+      "turns_with_missing_token_usage": 1,
+      "unknown_outcomes": 0
+    }
+  },
+  "window_solver_quality_by_effort": {
+    "high": {
+      "checkpoint_details": [
+        {
+          "completed_level": 2,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 186,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 177,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 192,
+          "pre_debrief_acquisition_charge": 6,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 213,
+          "pre_debrief_acquisition_charge": 8,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 193,
+          "pre_debrief_acquisition_charge": 6,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 301,
+          "pre_debrief_acquisition_charge": 25,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 4,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 275,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 239,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 279,
+          "pre_debrief_acquisition_charge": 14,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 900,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 512,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 604,
+          "pre_debrief_acquisition_charge": 71,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 716,
+          "pre_debrief_acquisition_charge": 96,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 885,
+          "pre_debrief_acquisition_charge": 107,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1517,
+          "pre_debrief_acquisition_charge": 95,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3143,
+          "pre_debrief_acquisition_charge": 377,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1456,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1722,
+          "pre_debrief_acquisition_charge": 144,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1796,
+          "pre_debrief_acquisition_charge": 121,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1602,
+          "pre_debrief_acquisition_charge": 119,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2196,
+          "pre_debrief_acquisition_charge": 217,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1941,
+          "pre_debrief_acquisition_charge": 197,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1051,
+          "pre_debrief_acquisition_charge": 74,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3613,
+          "pre_debrief_acquisition_charge": 68,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1786,
+          "pre_debrief_acquisition_charge": 105,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 584,
+          "pre_debrief_acquisition_charge": 144,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2528,
+          "pre_debrief_acquisition_charge": 88,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "m0r0",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 868,
+          "pre_debrief_acquisition_charge": 30,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 75,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 899,
+          "pre_debrief_acquisition_charge": 43,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 339,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 503,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 521,
+          "pre_debrief_acquisition_charge": 50,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 534,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 343,
+          "pre_debrief_acquisition_charge": 23,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 386,
+          "pre_debrief_acquisition_charge": 28,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "wa30",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 684,
+          "pre_debrief_acquisition_charge": 34,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1099,
+          "pre_debrief_acquisition_charge": 63,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2080,
+          "pre_debrief_acquisition_charge": 147,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 295,
+          "pre_debrief_acquisition_charge": 17,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 376,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 42,
+      "literal_reuse_wins": 12,
+      "median_conditional_ast_zlib_bytes": 644.0,
+      "median_pre_debrief_acquisition_charge": 41.0,
+      "sharp_drop_with_literal_reuse_wins": 3,
+      "sharp_marginal_drop_wins": 5,
+      "solved_levels": 42
+    },
+    "max": {
+      "checkpoint_details": [
+        {
+          "completed_level": 7,
+          "game": "vc33",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3437,
+          "pre_debrief_acquisition_charge": 370,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 376,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "g50t",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1091,
+          "pre_debrief_acquisition_charge": 102,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 2,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 337,
+          "pre_debrief_acquisition_charge": 12,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 6,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 568,
+          "pre_debrief_acquisition_charge": 128,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 5,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3028,
+          "pre_debrief_acquisition_charge": 96,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2028,
+          "pre_debrief_acquisition_charge": 205,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 573,
+          "pre_debrief_acquisition_charge": 35,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2364,
+          "pre_debrief_acquisition_charge": 273,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 243,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1992,
+          "pre_debrief_acquisition_charge": 344,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2164,
+          "pre_debrief_acquisition_charge": 123,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 274,
+          "pre_debrief_acquisition_charge": 55,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1526,
+          "pre_debrief_acquisition_charge": 97,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "sk48",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1056,
+          "pre_debrief_acquisition_charge": 53,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 259,
+          "pre_debrief_acquisition_charge": 86,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 270,
+          "pre_debrief_acquisition_charge": 114,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 289,
+          "pre_debrief_acquisition_charge": 138,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 299,
+          "pre_debrief_acquisition_charge": 170,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3708,
+          "pre_debrief_acquisition_charge": 307,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 576,
+          "pre_debrief_acquisition_charge": 209,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 7,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 292,
+          "pre_debrief_acquisition_charge": 158,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "dc22",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1899,
+          "pre_debrief_acquisition_charge": 325,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2895,
+          "pre_debrief_acquisition_charge": 166,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1554,
+          "pre_debrief_acquisition_charge": 79,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 9,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1418,
+          "pre_debrief_acquisition_charge": 277,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 28,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 41,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2028,
+          "pre_debrief_acquisition_charge": 132,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2203,
+          "pre_debrief_acquisition_charge": 181,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4968,
+          "pre_debrief_acquisition_charge": 256,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5533,
+          "pre_debrief_acquisition_charge": 262,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5378,
+          "pre_debrief_acquisition_charge": 215,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1758,
+          "pre_debrief_acquisition_charge": 25,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1602,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "lf52",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 157,
+          "pre_debrief_acquisition_charge": 90,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 1,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1525,
+          "pre_debrief_acquisition_charge": 22,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1981,
+          "pre_debrief_acquisition_charge": 65,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1714,
+          "pre_debrief_acquisition_charge": 149,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2196,
+          "pre_debrief_acquisition_charge": 104,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ft09",
+          "literal_reuse": null,
+          "marginal_ast_zlib_bytes": null,
+          "pre_debrief_acquisition_charge": 78,
+          "sharp_marginal_drop": null
+        },
+        {
+          "completed_level": 2,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1450,
+          "pre_debrief_acquisition_charge": 23,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4565,
+          "pre_debrief_acquisition_charge": 201,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": null,
+          "pre_debrief_acquisition_charge": 21,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2672,
+          "pre_debrief_acquisition_charge": 31,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1288,
+          "pre_debrief_acquisition_charge": 24,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "r11l",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 4144,
+          "pre_debrief_acquisition_charge": 172,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ft09",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5008,
+          "pre_debrief_acquisition_charge": 191,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ft09",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 3730,
+          "pre_debrief_acquisition_charge": 253,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6285,
+          "pre_debrief_acquisition_charge": 226,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2011,
+          "pre_debrief_acquisition_charge": 42,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2296,
+          "pre_debrief_acquisition_charge": 20,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 5,
+          "game": "r11l",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 6193,
+          "pre_debrief_acquisition_charge": 196,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tr87",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5346,
+          "pre_debrief_acquisition_charge": 9,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sp80",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 274,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "lf52",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3028,
+          "pre_debrief_acquisition_charge": 156,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 56,
+      "literal_reuse_wins": 15,
+      "median_conditional_ast_zlib_bytes": 1758.0,
+      "median_pre_debrief_acquisition_charge": 104.0,
+      "sharp_drop_with_literal_reuse_wins": 3,
+      "sharp_marginal_drop_wins": 6,
+      "solved_levels": 57
+    },
+    "medium": {
+      "checkpoint_details": [
+        {
+          "completed_level": 3,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1940,
+          "pre_debrief_acquisition_charge": 108,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "lp85",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 195,
+          "pre_debrief_acquisition_charge": 5,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 227,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ka59",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 4,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "su15",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1433,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3486,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "su15",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1246,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 3,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1506,
+          "pre_debrief_acquisition_charge": 87,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "vc33",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1868,
+          "pre_debrief_acquisition_charge": 167,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "vc33",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 1392,
+          "pre_debrief_acquisition_charge": 87,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1073,
+          "pre_debrief_acquisition_charge": 49,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 952,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 958,
+          "pre_debrief_acquisition_charge": 51,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1792,
+          "pre_debrief_acquisition_charge": 148,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 4,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1302,
+          "pre_debrief_acquisition_charge": 73,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 186,
+          "pre_debrief_acquisition_charge": 2,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 6,
+          "game": "tu93",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1440,
+          "pre_debrief_acquisition_charge": 92,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 212,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 8,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 210,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 9,
+          "game": "tu93",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 210,
+          "pre_debrief_acquisition_charge": 3,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 498,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "cd82",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 520,
+          "pre_debrief_acquisition_charge": 37,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 574,
+          "pre_debrief_acquisition_charge": 46,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 198,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 198,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 3,
+          "game": "cn04",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 245,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2297,
+          "pre_debrief_acquisition_charge": 175,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5655,
+          "pre_debrief_acquisition_charge": 215,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 8,
+          "game": "sb26",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 3904,
+          "pre_debrief_acquisition_charge": 151,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "cn04",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 250,
+          "pre_debrief_acquisition_charge": 13,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 358,
+          "pre_debrief_acquisition_charge": 114,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5378,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "ls20",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 737,
+          "pre_debrief_acquisition_charge": 40,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "ls20",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 247,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": true
+        }
+      ],
+      "exact_checkpoint_coverage": 34,
+      "literal_reuse_wins": 16,
+      "median_conditional_ast_zlib_bytes": 844.5,
+      "median_pre_debrief_acquisition_charge": 47.5,
+      "sharp_drop_with_literal_reuse_wins": 3,
+      "sharp_marginal_drop_wins": 5,
+      "solved_levels": 34
+    },
+    "xhigh": {
+      "checkpoint_details": [
+        {
+          "completed_level": 3,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 511,
+          "pre_debrief_acquisition_charge": 41,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 189,
+          "pre_debrief_acquisition_charge": 7,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "cd82",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 35,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 32,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "m0r0",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 314,
+          "pre_debrief_acquisition_charge": 77,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "ar25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 199,
+          "pre_debrief_acquisition_charge": 10,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "bp35",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2418,
+          "pre_debrief_acquisition_charge": 44,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "s5i5",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1160,
+          "pre_debrief_acquisition_charge": 83,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 7,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 1649,
+          "pre_debrief_acquisition_charge": 300,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "sp80",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 486,
+          "pre_debrief_acquisition_charge": 39,
+          "sharp_marginal_drop": true
+        },
+        {
+          "completed_level": 8,
+          "game": "re86",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2870,
+          "pre_debrief_acquisition_charge": 238,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "sc25",
+          "literal_reuse": true,
+          "marginal_ast_zlib_bytes": 325,
+          "pre_debrief_acquisition_charge": 54,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 4,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 2203,
+          "pre_debrief_acquisition_charge": 74,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 5,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 4968,
+          "pre_debrief_acquisition_charge": 130,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 6,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 5533,
+          "pre_debrief_acquisition_charge": 290,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 1,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 986,
+          "pre_debrief_acquisition_charge": 31,
+          "sharp_marginal_drop": false
+        },
+        {
+          "completed_level": 2,
+          "game": "tn36",
+          "literal_reuse": false,
+          "marginal_ast_zlib_bytes": 923,
+          "pre_debrief_acquisition_charge": 129,
+          "sharp_marginal_drop": false
+        }
+      ],
+      "exact_checkpoint_coverage": 17,
+      "literal_reuse_wins": 5,
+      "median_conditional_ast_zlib_bytes": 986.0,
+      "median_pre_debrief_acquisition_charge": 54.0,
+      "sharp_drop_with_literal_reuse_wins": 1,
+      "sharp_marginal_drop_wins": 1,
+      "solved_levels": 17
+    }
+  }
+}

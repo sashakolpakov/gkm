@@ -1,2 +1,2 @@
-=== sc25: reached level 1 | validated=True | total_marginal_C=40 | F=-0.200 ===
-per-level marginal novelty: L1:40
+=== sc25: reached level 6 | validated=True | total_marginal_C=336 | F=0.720 ===
+per-level marginal novelty: L1:40, L2:14, L3:17, L4:54, L5:97, L6:114

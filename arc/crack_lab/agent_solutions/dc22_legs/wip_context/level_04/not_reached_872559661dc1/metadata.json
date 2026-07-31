@@ -1,0 +1,30 @@
+{
+  "game": "dc22",
+  "level": 4,
+  "phase": "not_reached",
+  "reached": 3,
+  "err": null,
+  "attempt": "not_reached_872559661dc1",
+  "created_at": "2026-07-26T03:02:13.489429+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T023815910091Z_dc22_L3_propose.jsonl",
+    "codex_turn_20260726T025310282428Z_dc22_L4_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_bfs.py",
+    "probe_direct.py",
+    "probe_level3.py",
+    "probe_observe.py",
+    "probe_sequence.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md",
+    "wip_glue_notes.md"
+  ]
+}

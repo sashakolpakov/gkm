@@ -2,47 +2,47 @@
   "schema_version": 1,
   "game": "ls20",
   "verified_through_level": 7,
-  "final_replay_actions": 393,
-  "final_public_commit": "875e5b868a6b0b6c230945704bb54ff1a0fb9d50",
+  "final_replay_actions": 365,
+  "final_public_commit": null,
   "metric": "positive net retained-description growth per source file",
   "ledger": [
     {
       "level": 1,
-      "marginal_C": 43,
-      "evidence": "final checkpoint record L1"
+      "marginal_C": 40,
+      "evidence": "fresh clean promotion L1"
     },
     {
       "level": 2,
-      "marginal_C": 2,
-      "evidence": "final checkpoint record L2"
+      "marginal_C": 54,
+      "evidence": "fresh clean promotion L2"
     },
     {
       "level": 3,
-      "marginal_C": 45,
-      "evidence": "final checkpoint record L3"
+      "marginal_C": 86,
+      "evidence": "fresh clean promotion L3"
     },
     {
       "level": 4,
-      "marginal_C": 3,
-      "evidence": "final checkpoint record L4"
+      "marginal_C": 114,
+      "evidence": "fresh clean promotion L4"
     },
     {
       "level": 5,
-      "marginal_C": 72,
-      "evidence": "final checkpoint record L5"
+      "marginal_C": 138,
+      "evidence": "fresh clean promotion L5"
     },
     {
       "level": 6,
-      "marginal_C": 130,
-      "evidence": "final checkpoint record L6"
+      "marginal_C": 170,
+      "evidence": "fresh clean promotion L6"
     },
     {
       "level": 7,
-      "marginal_C": 67,
-      "evidence": "final checkpoint record L7"
+      "marginal_C": 158,
+      "evidence": "fresh clean promotion L7"
     }
   ],
-  "total_marginal_C": 362,
+  "total_marginal_C": 760,
   "promotions": [
     {
       "schema_version": 1,
@@ -50,18 +50,27 @@
       "through_level": 1,
       "replay_validated": true,
       "source_observed_reached": 1,
-      "embedded_checkpoint_actions": null,
-      "embedded_checkpoint_records": null,
-      "clean_core_digest": "295500c118ae",
+      "embedded_checkpoint_actions": 13,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 40,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "5734d397137d",
       "source": {
-        "kind": "wip",
-        "value": "level_01/after_debrief_b2872b134107",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_01",
+        "prefix": "",
+        "manifest_sha256": "ba0835583ce34f3ed3a070a4f09752cdd5ad1bb41f2ecb85523ce9a53ab74d34"
       },
       "files": {
-        "legs.py": "ab6a44c231a6e83396c63c6aa40a90953d1f9fff1d9672c1e3051241708a12dd",
-        "legs_log.md": "c2b58ec1b489534ad8324a31985d8d4d9c881be0fb4444a829a83b16858a2240",
-        "players.py": "5054f368d0345e3f751220b7aabdbafee3306e4a837a8322eedb5214f72d172f",
+        "auto_solve_attempts.json": "a9b2a504a1c081e33c121f0249625c2332cb966540f9a05596801f1562ee849a",
+        "checkpoint.json": "0997067634c1ba9080565f6b2b8f33c93726be6d847e31c1dae74c4c95b9ddc1",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "f681e0b96333e8c1a7489320a3d993daa7ac638ebcffab2df30d4f32768d84b1",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -75,26 +84,28 @@
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
           "reached": true
         }
       ],
-      "clean_core_digest": "922606b5b399",
+      "clean_core_digest": "cec738866d07",
       "source": {
-        "kind": "wip",
-        "value": "level_03/not_reached_a547893d6480",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_02",
+        "prefix": "",
+        "manifest_sha256": "43ca2f1f1561b73b8fdc33e486a2fce62040783eb55151abf912092dbe16ee7f"
       },
       "files": {
-        "checkpoint.json": "858f9da8bcd3104fc2c85eb3248e49b51a258eeed7e30a1f7620ca1ae3d1cfab",
-        "legs.py": "ab6a44c231a6e83396c63c6aa40a90953d1f9fff1d9672c1e3051241708a12dd",
-        "legs_log.md": "de3e0c0f3b48ae557eda29e3c3a2fcd2536e1d7934b955afbfe8453931cb0956",
-        "players.py": "148c638df76c8307c10eacfe1fca15ee61b7e74ddceed2bd9fd30c115bc1928c",
+        "auto_solve_attempts.json": "722433ff38d9455712d2a099f67c78b7a65d17bd84cb8e8b3ba56fb6f1c221eb",
+        "checkpoint.json": "d27a4c59bde0cdcf5f37809f926250ea43806c33f4712be9bb843ad24563fb8b",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "d574f49a0858db2a5f578498aa9e4a1c337832f98e35739525dd763520f9826a",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -104,30 +115,37 @@
       "through_level": 3,
       "replay_validated": true,
       "source_observed_reached": 3,
-      "embedded_checkpoint_actions": 58,
+      "embedded_checkpoint_actions": 101,
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 86,
           "reached": true
         }
       ],
-      "clean_core_digest": "fed3d49752e1",
+      "clean_core_digest": "f7b8022e81bd",
       "source": {
-        "kind": "wip",
-        "value": "level_03/after_debrief_2b9bd3a82595",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_03",
+        "prefix": "",
+        "manifest_sha256": "2f674eb9a22a04cf304e397a1e2c6aa2ec9ba6a644069e482c1f45105abf311b"
       },
       "files": {
-        "checkpoint.json": "858f9da8bcd3104fc2c85eb3248e49b51a258eeed7e30a1f7620ca1ae3d1cfab",
-        "legs.py": "14d9b53fecdf8c957cc09082e74263ab37e207103c04309ea55cea00aecc0a1c",
-        "legs_log.md": "109412ed298ddd0e6ceec9579893a1f3a2cb098191f595fa53fafc452bc2ab69",
-        "players.py": "f8925372997410fc2943d56b1f075bf240a1529aeb433599941d6639f873d9e6",
+        "auto_solve_attempts.json": "a1718b807cf4b0697d342c82e89abbc42e52379bf3271aa18969f745c75d2a08",
+        "checkpoint.json": "0cd02f48895c6e27afc5b40cc95ae5f83fad3f81e25696d626642e62f5ce1db3",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "c63f01109f82e6e400628e00b40d15584697e66f9ed84e1c169adbbf9473e082",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -137,35 +155,42 @@
       "through_level": 4,
       "replay_validated": true,
       "source_observed_reached": 4,
-      "embedded_checkpoint_actions": 97,
+      "embedded_checkpoint_actions": 150,
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
           "reached": true
         },
         {
           "level": 3,
-          "marginal_C": 45,
+          "marginal_C": 86,
+          "reached": true
+        },
+        {
+          "level": 4,
+          "marginal_C": 114,
           "reached": true
         }
       ],
-      "clean_core_digest": "d4a4e30fe9fb",
+      "clean_core_digest": "d3381fbb4e64",
       "source": {
-        "kind": "wip",
-        "value": "level_04/after_debrief_7738f07791ee",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_04",
+        "prefix": "",
+        "manifest_sha256": "34a824ce843fd08de200cd5062fba573a0a8af80941ec9a54e4f77472925211c"
       },
       "files": {
-        "checkpoint.json": "a7b7bf3ab4bf80f0b223f33140436e5d59f4611c682cc422b11b0b2d68ee36eb",
-        "legs.py": "900f49d4cb77924719afe8b92c0e269bd4a43b63d4859ceda1a6badc69041659",
-        "legs_log.md": "364641e738bf0b243a4022a055ba1a237f9685b6042515fc02e30939278fb456",
-        "players.py": "7372a8ad208466b7adc5717fefd474ada8d9b8e16ed621aae1ddfceceab65608",
+        "auto_solve_attempts.json": "7e2cec8ee59dcc16555cd960bdaf7a6c4b54286edf45389045feae0d299a526f",
+        "checkpoint.json": "4a98da2da2e524c565ade6f569030d334fc7f16e301fae99683b66578fd58963",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "e69ec474ef019f838a6ad4377c7a6c4635ed4185dcb43deca1dd0a911da2d308",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -175,46 +200,47 @@
       "through_level": 5,
       "replay_validated": true,
       "source_observed_reached": 5,
-      "embedded_checkpoint_actions": 140,
+      "embedded_checkpoint_actions": 208,
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
           "reached": true
         },
         {
           "level": 3,
-          "marginal_C": 45,
+          "marginal_C": 86,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 3,
+          "marginal_C": 114,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 72,
+          "marginal_C": 138,
           "reached": true
         }
       ],
-      "clean_core_digest": "2bbc052f1e1e",
+      "clean_core_digest": "5103c8b6265c",
       "source": {
-        "kind": "wip",
-        "value": "level_05/after_debrief_878509461d47",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_05",
+        "prefix": "",
+        "manifest_sha256": "bf9b89e006d770d71824afaad6c365ce4ac88f390a09e4c4ce096913d229407a"
       },
       "files": {
-        "auto_solve_attempts.json": "1429720cacc876bdf4a63f1efdb6c151e1d7abb49091cc073f882d7add603738",
-        "checkpoint.json": "7b3b29a902f26b1bfc37cd7614b8616b21834e26da76bf10b7130a5946f720bf",
-        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
-        "legs_log.md": "6f3bbc5d0ecce2f90de57a448f6c44856cc724c0671c98e6bc1e957c1714ff29",
-        "players.py": "7a6494d637437921a3da642a8a304d3d0353b97d569194e61f3326f93e4cb8a5",
+        "auto_solve_attempts.json": "dca1efc26f96d696425bdac79f30eee794ad29e2657e7a243cf86f151e5c412f",
+        "checkpoint.json": "1acc5be6a61ed964a0e6a48643d845c33f41e2a12b234553d827e1c6994415c7",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "5388d4ef2f5d87367f300727f7def16d24bf3f32e5c23f53f04015018b2a2dd6",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -224,51 +250,52 @@
       "through_level": 6,
       "replay_validated": true,
       "source_observed_reached": 6,
-      "embedded_checkpoint_actions": 328,
+      "embedded_checkpoint_actions": 298,
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
           "reached": true
         },
         {
           "level": 3,
-          "marginal_C": 45,
+          "marginal_C": 86,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 3,
+          "marginal_C": 114,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 72,
+          "marginal_C": 138,
           "reached": true
         },
         {
           "level": 6,
-          "marginal_C": 0,
+          "marginal_C": 170,
           "reached": true
         }
       ],
-      "clean_core_digest": "0e1447b424c5",
+      "clean_core_digest": "1627bc27df47",
       "source": {
-        "kind": "wip",
-        "value": "level_06/recovered_after_credit_out_52480755b3fc",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_06",
+        "prefix": "",
+        "manifest_sha256": "57b6600b802bb33f1f5522e9c06366a9b1be7ec0e310bd7dcb6223e0511594e7"
       },
       "files": {
-        "auto_solve_attempts.json": "05174c1b38d1fcd559980662b12c676b7606c8d06fa83f84b75b4e37ada4f8ae",
-        "checkpoint.json": "5d72df8e75d70e713b867e61cbce2bb80bf5f498e66e51f39f5f6407b8a0a3c6",
-        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
-        "legs_log.md": "35ab73dd36738c86adcd757595b04e14b5e259ce79097a01861a463a7b540260",
-        "players.py": "96053f7f9a9bb735132220b2a76fbfef610b5ff3da1e731c8e4d26a529730642",
+        "auto_solve_attempts.json": "c0c2f4de5a1e2d6c32cd829954a52294dfefc74f52d9b4f9351d5dbc41f1b3fd",
+        "checkpoint.json": "8b8ecf3b49b93adf4c55a1afafc631f50a5e1d36e9cb40049c98aff880e619d1",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "330a82d10e44cc9f0e6a5985414c6901be49e6929746ecb19f75c79ff5549f7a",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -278,56 +305,57 @@
       "through_level": 7,
       "replay_validated": true,
       "source_observed_reached": 7,
-      "embedded_checkpoint_actions": 393,
+      "embedded_checkpoint_actions": 365,
       "embedded_checkpoint_records": [
         {
           "level": 1,
-          "marginal_C": 43,
+          "marginal_C": 40,
           "reached": true
         },
         {
           "level": 2,
-          "marginal_C": 2,
+          "marginal_C": 54,
           "reached": true
         },
         {
           "level": 3,
-          "marginal_C": 45,
+          "marginal_C": 86,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 3,
+          "marginal_C": 114,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 72,
+          "marginal_C": 138,
           "reached": true
         },
         {
           "level": 6,
-          "marginal_C": 130,
+          "marginal_C": 170,
           "reached": true
         },
         {
           "level": 7,
-          "marginal_C": 67,
+          "marginal_C": 158,
           "reached": true
         }
       ],
-      "clean_core_digest": "e80c0675a625",
+      "clean_core_digest": "0c984af73a22",
       "source": {
-        "kind": "current",
-        "value": ".",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_07",
+        "prefix": "",
+        "manifest_sha256": "6638aa31e8fd7785c1e3c481d7dd339e45406af1f8462f1d007f64589a28bb4c"
       },
       "files": {
-        "auto_solve_attempts.json": "4f08f9e136b89d964a0f88003c87b3f03063e14929ed3f0df3198f00859099b9",
-        "checkpoint.json": "cc2ca8d4ca3ea5331f8e4f2f87a072a32974a87fd1e734936864f9aa8ddb1639",
-        "legs.py": "d869cb4c5e4f85e5f7c22d46be75cafaec6dae27709de6df16352b674c5eaba0",
-        "legs_log.md": "477af066568e3fe8b6bfca82acc57cff8f6daa5a53ff53ef4519cf33e7c445d4",
-        "players.py": "7042b503d8905037ecbf5dd4c70b014c1f95a788ae8b822758b18107c6e8fc0e",
+        "auto_solve_attempts.json": "24a40e6ca1a1de6e70d2779da8a8a1b3b9949bb6f4bfa6ecd1cd0d7b445b195c",
+        "checkpoint.json": "45fe024db49bc66b6b61a91102a7abb8e16418824071a22f8b336bf94c89eaf6",
+        "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "156f796d0e5b7cea67a683be1cd8c666aba1daed8ee75f828dd1411c212adc9b",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     }

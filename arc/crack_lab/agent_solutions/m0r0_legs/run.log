@@ -1,2 +1,2 @@
-=== m0r0: reached level 2 | validated=True | total_marginal_C=53 | F=-0.940 ===
-per-level marginal novelty: L1:24, L2:29
+=== m0r0: reached level 6 | validated=True | total_marginal_C=357 | F=1.140 ===
+per-level marginal novelty: L1:24, L2:29, L3:159, L4:27, L5:46, L6:72

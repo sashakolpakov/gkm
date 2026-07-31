@@ -4,12 +4,12 @@ This matrix records how implementation facts constrain the manuscript. "Ground t
 
 | Topic | Repository source or code surface | Ground-truth observation | Manuscript consequence |
 |---|---|---|---|
-| Published complete artifacts | Root `README.md`, generated ARC artifact status | `wa30` is 9/9 with 596 replay actions and complete ledger 1458; `ls20` is 7/7 with 393 replay actions and ledger 362 | Both complete histories remain headline empirical evidence |
-| Broader campaign | Root `README.md`, Competition-Mode scorecard | Same game-agnostic architecture reaches `ft09`, `g50t`, `r11l`, `sp80`, `tr87` level 4 and `tu93` level 1 | Eight endpoints and the bounded campaign remain in the paper |
-| Official score | Root `README.md` and linked Competition-Mode scorecard | Official all-game score is `17.136507936507936%` across 25 public games | Report as the official score, not as `37/183` |
-| Raw coverage | Generated endpoint table / manuscript history | 37 of 183 levels are cleared | Report separately as `20.2186%` |
-| Replay action accounting | Checkpoint paths and scorecard | Stored paths total 1448; scorecard API calls total 1456 including eight resets | Distinguish stored actions from API actions |
-| `wa30` accounting scopes | Root generated artifact status and manuscript sidecar/history builder | Full publication ledger totals 1458; operational checkpoint retains post-base records totaling 1243 | Name both scopes explicitly; do not force one canonical total |
+| Frozen release | Schema-v2 release receipt and generated ARC artifact status | 181 of 183 authoritative levels are admitted across all 25 games; only `lf52` L9--L10 are unclaimed | Report the receipt-bound release, not the mutable campaign workspace |
+| Universal producer | Proposer contract, Arena, blank scaffold, complexity ledger, replay gate | The producer and admission system are shared across all games; learned executable outputs are game- and level-dependent | Do not confuse output specialization with a non-general producer |
+| Official score | Root `README.md` and linked Competition-Mode scorecard | Official all-game score is `98.11664037825032%` across 25 public games | Report separately from raw level coverage |
+| Raw coverage | Release receipt and generated endpoint table | 181 of 183 levels are cleared | Report separately as `98.907103825137%` |
+| Replay action accounting | Certified checkpoint paths and scorecard | Stored paths total 7001; scorecard API calls total 7069 including resets | Distinguish stored actions from API actions |
+| Uniform histories | Manuscript sidecars/history builder | `wa30` is 9/9 with 597 replay actions and ledger 318; `ls20` is 7/7 with 365 replay actions and ledger 760 | Use these histories for levelwise scalar profiles and exact source interpretation |
 | Source metric | Root `README.md`; `gkm_legs.py`/metric tests; manuscript history builder | Per file: nonblank, noncomment lines plus AST container-literal elements; additions and deletions in the same file are netted before the positive part | Use the exact implemented `d(f)` and historical charge formula |
 | Meaning of low marginal charge | Root `README.md` | A low scalar is evidence of reuse only with a source diff and replay witness | Require an unchanged invoked component plus successful replay |
 | Replay semantics | `replay_scorecard.py` | Load checkpoint `final_path`, segment by local replay, replay remotely without LLM discovery, compare reached depth, fail on desynchronization | Treat scorecard evidence as endpoint replay, not discovery efficiency |

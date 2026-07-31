@@ -1,0 +1,26 @@
+# Unverified frontier brief: m0r0 level 4
+
+This is a compact index of the latest clean WIP, not solver evidence.
+Reproduce every observation you rely on with the documented local API.
+Do not reread the full proposer transcript unless a named ambiguity requires it.
+
+## Prior proposer progress
+
+- I’ll stay inside the workspace and use only the indexed harness/perception surface. I’ll first inspect `solver_index.md`, then reproduce any useful frontier observations, run the baseline, and build compact clone probes for level 4 before editing the leg library and player.
+- The baseline reliably reaches level 4 (`levels=3` completed, 130 moves). I’m now inspecting only the indexed leg/player ranges plus the local harness entry points needed to clone and observe that exact state; the first probes will identify movable objects and action semantics from compact deltas.
+- The experiments identify two 5×5 avatars (colour 10). Up/down moves both together; left/right are mirrored (one moves left as the other moves right, or both move inward). Action 5 and an unparameterized action 6 do nothing here. The 3×3 centre object is the likely reunion target, so the dense measure is the pair’s combined distance to that centre; I’m testing the existing “reunite mirrored pair” mechanic via bounded four-key search.
+- A four-key search exhausts the observable movement graph without completing the level, so simple reunion is insufficient. The remaining likely mechanic is contextual selection: action 6 is coordinate-based, and its selection can be visually silent. I’m now selecting each avatar and the centre separately, then comparing subsequent movement; this specifically tests hidden selection state rather than treating the initial no-op as definitive.
+- The coarse map shows two mirrored rooms connected through a narrow centre, with four patterned pockets. The pair begins as one selected group; clicking the centre deselects it (colour 10→1), which explains why direct movement alone cannot solve the state graph. I’m testing deselect-then-select on each avatar to determine whether they can be staged independently—exactly the kind of reachability/cooperation constraint this layout suggests.
+- Reproducing the earlier levels confirms the real reward condition: it fires at the collision/reunion move, not merely from reaching a decorative tile. Level 4’s pure movement graph cannot collide, so I’m enumerating its reachable pair configurations and recording the closest verified staging state. That will expose which barrier prevents reunion and where a contextual toggle must be tested.
+- The checker patterns are solid barriers, not selectable agents. Coordinate clicks only toggle the linked pair active/inactive depending on whether the click hits it or the centre; they do not move barriers. Since there are just 37 movement configurations, I can now exhaustively add the bounded contextual surface—use plus centre/avatar clicks at every reachable state—without a large search.
+- The contextual search is broader than the 37-state movement graph because click-location markers are observationally distinct, and replay reconstruction is costing more than expected. I’m capping that probe now and will replace it with direct-clone enumeration keyed by gameplay objects rather than cursor pixels, preserving the hidden active/inactive colour state while avoiding irrelevant marker combinations.
+- Action 5 is now ruled out in every one of the 37 reachable contexts: it never changes the next gameplay transition. The unresolved mechanic is coordinate selection, so I’m reproducing one known level-3 selection step from scratch to pin down exactly how selected versus inactive objects are encoded and whether clicking a portal/background could control something other than the pair.
+- The level-3 reproduction resolves the ambiguity: clicking the centre does not deselect into “nothing”—it selects the tiny colour-9 agent, while selected objects render invisibly against their region. The 20-pixel horizontal delta was that 3×3 agent moving. I’m now revealing it again after each move and searching its own bounded reachability graph toward the frozen mirrored pair; this is the missing cooperative agent.
+- The attempted contact proves the tiny agent is a movable blocker: when pushed into a frozen avatar it stays put, so it cannot merge with them. This explains the impossible 37-state graph. I’m switching to the correct dense subgoals: move the blocker into a side pocket, reselect the pair, then minimize pair separation. The next search keys both visible and temporarily invisible object positions, so it will preserve the selected blocker’s location instead of collapsing those states.
+- The joint BFS is correct but still too clone-heavy at 5,000 states. I’m stopping it at the time cap and reducing it to a two-phase search that matches the verified mechanic: enumerate the tiny blocker’s small reachable set once, then test pair reunion from each cleared placement. This avoids repeated normalization clones and should be both faster and easier to turn into a minimal reusable leg.
+
+## Preserved local probes
+
+- `probe_level4.py` (10916 bytes)
+
+Run or inspect the smallest relevant probe before writing another one.

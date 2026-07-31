@@ -43,6 +43,8 @@ def _source_files(game: str, source: PromotionSource) -> dict[str, bytes]:
         return result
     if source.kind == "wip":
         root = artifact / "wip_context" / source.source / "files"
+    elif source.kind == "promotion":
+        root = artifact / "promotion_evidence" / source.source / "files"
     elif source.kind == "current":
         root = artifact
     else:
@@ -65,6 +67,68 @@ def _promotion_payload(game: str, source: PromotionSource) -> tuple[dict[str, by
     if not required.issubset(files):
         missing = ", ".join(sorted(required - files.keys()))
         raise ValueError(f"{game} through L{source.through_level}: missing {missing}")
+    source_descriptor: dict[str, object] = {
+        "kind": source.kind,
+        "value": source.source,
+        "prefix": source.prefix,
+    }
+    if source.kind == "promotion":
+        evidence_root = (
+            SOLUTIONS
+            / f"{game}_legs"
+            / "promotion_evidence"
+            / source.source
+        )
+        manifest_path = evidence_root / "manifest.json"
+        manifest_bytes = manifest_path.read_bytes()
+        manifest = json.loads(manifest_bytes)
+        declared_files = manifest.get("promoted_files_sha256")
+        if (
+            manifest.get("schema") != 1
+            or manifest.get("game") != game
+            or manifest.get("level") != source.through_level
+            or manifest.get("validated") is not True
+            or manifest.get("taint_verdict") != "clean"
+            or not isinstance(declared_files, dict)
+            or set(declared_files) != set(CORE_FILES)
+            or set(files) != set(CORE_FILES)
+        ):
+            raise ValueError(
+                f"{game} through L{source.through_level}: invalid uniform "
+                "promotion manifest"
+            )
+        for name, data in files.items():
+            if hashlib.sha256(data).hexdigest() != declared_files[name]:
+                raise ValueError(
+                    f"{game} through L{source.through_level}: promotion "
+                    f"manifest hash mismatch for {name}"
+                )
+        if source.through_level == 1:
+            if (
+                manifest.get("parent_manifest") is not None
+                or manifest.get("parent_manifest_sha256") is not None
+            ):
+                raise ValueError(f"{game} L1 has a forged promotion parent")
+        else:
+            expected_parent = (
+                f"promotion_evidence/level_{source.through_level - 1:02d}"
+                "/manifest.json"
+            )
+            parent_path = (
+                SOLUTIONS / f"{game}_legs" / expected_parent
+            )
+            if (
+                manifest.get("parent_manifest") != expected_parent
+                or hashlib.sha256(parent_path.read_bytes()).hexdigest()
+                != manifest.get("parent_manifest_sha256")
+            ):
+                raise ValueError(
+                    f"{game} through L{source.through_level}: broken "
+                    "promotion-manifest chain"
+                )
+        source_descriptor["manifest_sha256"] = hashlib.sha256(
+            manifest_bytes
+        ).hexdigest()
     digest = _digest(files)
     checkpoint = json.loads(files["checkpoint.json"]) if "checkpoint.json" in files else None
     source_observed_reached = None
@@ -78,6 +142,21 @@ def _promotion_payload(game: str, source: PromotionSource) -> tuple[dict[str, by
                 f"{game} through L{source.through_level}: WIP metadata reached only "
                 f"L{source_observed_reached}"
             )
+    elif source.kind == "promotion":
+        if checkpoint is None:
+            raise ValueError(
+                f"{game} through L{source.through_level}: promotion has no "
+                "checkpoint"
+            )
+        source_observed_reached = int(checkpoint["reached"])
+        if (
+            source_observed_reached != source.through_level
+            or checkpoint.get("validated") is not True
+        ):
+            raise ValueError(
+                f"{game} through L{source.through_level}: promotion "
+                "checkpoint is not the exact validated boundary"
+            )
     elif source.kind == "current" and checkpoint is not None:
         source_observed_reached = int(checkpoint["reached"])
     metadata = {
@@ -89,7 +168,7 @@ def _promotion_payload(game: str, source: PromotionSource) -> tuple[dict[str, by
         "embedded_checkpoint_actions": len(checkpoint["final_path"]) if checkpoint else None,
         "embedded_checkpoint_records": checkpoint["records"] if checkpoint else None,
         "clean_core_digest": digest,
-        "source": {"kind": source.kind, "value": source.source, "prefix": source.prefix},
+        "source": source_descriptor,
         "files": {
             name: hashlib.sha256(data).hexdigest() for name, data in sorted(files.items())
         },

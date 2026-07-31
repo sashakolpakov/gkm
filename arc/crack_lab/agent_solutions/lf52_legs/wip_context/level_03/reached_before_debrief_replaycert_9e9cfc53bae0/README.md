@@ -1,0 +1,5 @@
+# Replay-certified historical exact boundary
+
+This snapshot exposes the preserved lf52 level 3 winning source to the exact-checkpoint audit. It was copied from the cited historical source and certified by deterministic replay; no proposer or debrief was run to create it.
+
+Certification: `../../../reconstruction_evidence/level_03/manifest.json`

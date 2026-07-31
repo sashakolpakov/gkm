@@ -1,2 +1,2 @@
-=== su15: reached level 1 | validated=True | total_marginal_C=36 | F=-0.280 ===
-per-level marginal novelty: L1:36
+=== su15: reached level 9 | validated=True | total_marginal_C=1213 | F=15.260 ===
+per-level marginal novelty: L1:36, L2:95, L3:77, L4:377, L5:54, L6:77, L7:2, L8:292, L9:203

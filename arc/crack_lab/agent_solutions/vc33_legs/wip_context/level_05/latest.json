@@ -1,0 +1,30 @@
+{
+  "attempt": "debrief_skipped_policy_3cd31fe6ca23",
+  "metadata": {
+    "game": "vc33",
+    "level": 5,
+    "phase": "debrief_skipped_policy",
+    "reached": 5,
+    "err": null,
+    "attempt": "debrief_skipped_policy_3cd31fe6ca23",
+    "created_at": "2026-07-26T05:42:38.303545+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260726T051308660669Z_vc33_L3_propose.jsonl",
+      "codex_turn_20260726T051952663096Z_vc33_L4_propose.jsonl",
+      "codex_turn_20260726T053615081226Z_vc33_L5_propose.jsonl",
+      "frontier_brief.md",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_level4.py",
+      "probe_level5.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

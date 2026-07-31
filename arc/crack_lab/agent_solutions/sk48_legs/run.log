@@ -1,2 +1,2 @@
-=== sk48: reached level 1 | validated=True | total_marginal_C=37 | F=-0.260 ===
-per-level marginal novelty: L1:37
+=== sk48: reached level 8 | validated=True | total_marginal_C=360 | F=-0.800 ===
+per-level marginal novelty: L1:37, L2:39, L3:21, L4:35, L5:78, L6:97, L7:53, L8:0

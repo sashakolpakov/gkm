@@ -31,6 +31,8 @@ Manuscript: \texttt{arc/manuscript/arc\_agi3.tex}}
 
 \textbf{Claim.} The G\"odel--Kolmogorov Machine is a verifier-driven program-growth approach for local ARC-AGI-3 games. A coding proposer grows solver structure, the simulator validates promoted behavior by replay, and the admission loop tries incumbent-leg composition before new code. Retained source states make the resulting acquisition and reuse claims auditable.
 
+The producer is universal across the benchmark: each game uses the same proposer contract, Arena interface, blank scaffold, complexity coordinate, and replay gate. Its learned executable outputs are game- and level-dependent.
+
 \section*{Setting and objective}
 The local harness exposes \texttt{step(action) -> frame}, \texttt{levels\_completed}, and \texttt{clone()} for lookahead. Clone-enabled exploration is stronger than the official reset/step interface and is not included in replay action totals. A candidate program is promoted only if fresh replay validates more completed levels under
 \[
@@ -51,16 +53,16 @@ Executable-world-model agents try to build a predictive simulator, verify it, an
 
 The level-9 WIP trail is the cleanest audit example. A recovered verified suffix was decoded into five repeated grab--carry--release operations and refactored into \texttt{grab\_carry\_release} and \texttt{ferry\_each}. The promoted player is therefore compact composition rather than an opaque replay; the literal suffix is charged, then the repeated structure is compressed into reusable code.
 
-\textbf{\texttt{ls20}.} The harness-native acquisition ledger is sawtoothed. The stricter winning-checkpoint audit independently finds a sharp conditional-AST drop at L7, from 682 to 222 compressed novelty bytes, while the winning player directly calls unchanged \texttt{execute\_path}. Cumulative executable source does not shrink; the attribution comes from marginal and literal-call evidence together.
+\textbf{\texttt{ls20}.} The uniform acquisition ledger is $40,54,86,114,138,170,158$. The stricter winning-checkpoint audit finds a sharp conditional-AST drop at L2, from 737 to 247 compressed novelty bytes, while the winning player directly calls unchanged \texttt{follow\_cardinal\_runs}. Cumulative executable source does not shrink; the attribution comes from marginal and literal-call evidence together.
 
 \section*{Audit trail}
 GKM is meant to leave evidence, not just outputs. Each promoted step is backed by fresh replay, preserved WIP snapshots, a marginal-complexity charge, and a distinction between literal action recovery and reusable refactor. This makes the artifact reviewable: an external evaluator can inspect which information entered through interaction, which code was introduced, what was charged as a literal, and what later became a reusable leg.
 
 \section*{Comparison}
-The exact winning-checkpoint test couples conditional AST novelty to direct calls of unchanged definitions. GKM has 14 direct leg-reuse wins; \texttt{ar25} L2, \texttt{g50t} L4, \texttt{ls20} L7, and \texttt{m0r0} L2 also have half-or-more marginal drops. The \texttt{ft09} L6 winner directly calls unchanged \texttt{solve\_coupled\_key\_board}, although its conditional AST decline is not sharp. OPINE has four direct engine-reuse wins, with sharp coupled drops at \texttt{lp85} L4 and \texttt{tu93} L3, so it is not solving every level wholly anew. baseline1 has four exact retained-source contractions, but all 18 exact adjacent winning commands are fresh literal action programs and none invokes retained world-model code. Retrodict releases curated memory rather than executable winning checkpoints.
+The exact winning-checkpoint test couples conditional AST novelty to direct calls of unchanged definitions. Of 181 admitted boundaries, 180 retain exact historical acquisition source. GKM has 57 direct leg-reuse wins, 14 coupled to half-or-more marginal drops. OPINE has four direct engine-reuse wins, two coupled to sharp drops. baseline1 has no coupled unchanged-world-model witness in its released exact adjacent commands. Retrodict releases curated memory rather than executable winning checkpoints.
 
 \section*{Next evaluation and collaboration request}
-The 23 current endpoints span 67/183 locally replayed levels and 2148 stored actions; the published scorecard predates 30 clears. The next step is a compute-matched comparison against graph exploration and executable world models, plus independent artifact review and organizer-facing evaluation.
+The frozen v2 release spans 181/183 levels across all 25 games and 7001 stored actions. Its definitive Competition-Mode replay scores 98.11664037825032\%; the distinct raw coverage is 98.907103825137\%. The next step is a compute-matched comparison against graph exploration and executable world models, plus independent artifact review and private-set evaluation.
 
 \textbf{Bottom line.} GKM treats local solver development as verifier-gated acquisition of reusable program structure. Replay establishes endpoint behavior; checkpoint JSON and retained source expose when novelty was admitted, when prior legs sufficed, and how the solver was refactored.
 

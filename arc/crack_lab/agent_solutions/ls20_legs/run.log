@@ -1,2 +1,2 @@
-=== ls20: reached level 7 | validated=True | total_marginal_C=362 | F=0.240 ===
-per-level marginal novelty: L1:43, L2:2, L3:45, L4:3, L5:72, L6:130, L7:67
+=== ls20: reached level 7 | validated=True | total_marginal_C=760 | F=8.200 ===
+per-level marginal novelty: L1:40, L2:54, L3:86, L4:114, L5:138, L6:170, L7:158

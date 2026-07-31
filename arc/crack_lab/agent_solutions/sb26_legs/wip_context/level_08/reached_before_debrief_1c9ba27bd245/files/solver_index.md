@@ -1,0 +1,43 @@
+# Generated solver source index
+
+Use line ranges to inspect only definitions relevant to the current level.
+
+## players.py
+- L5--6 `def play_level_1(env):`; calls: copy_visible_color_code
+- L9--10 `def play_level_2(env):`; calls: copy_visible_color_code_into_diagram
+- L13--14 `def play_level_3(env):`; calls: copy_visible_color_code_into_diagram
+- L17--18 `def play_level_4(env):`; calls: copy_visible_color_code_into_diagram
+- L21--22 `def play_level_5(env):`; calls: copy_repeated_code_into_nested_diagram
+- L25--26 `def play_level_6(env):`; calls: factor_visible_code_into_parallel_diagrams
+- L29--30 `def play_level_7(env):`; calls: factor_visible_code_into_recursive_diagrams
+
+## legs.py
+- L10--31 `def observe_visible_color_code(env):` — Read the visible code, its palette, and the remaining diagram blobs.; calls: connected_components, sorted
+- L34--83 `def copy_visible_color_code(env, click_action=6, submit_action=5):` — Copy an ordered top color code into central slots using a bottom palette.; calls: RuntimeError, int, len, max, min, observe_visible_color_code, round, sorted, zip
+- L86--185 `def copy_visible_color_code_into_diagram( env, click_action=6, submit_action=5, max_assignments=6000 ):` — Place a visible color code into diagram cells, discovering their order.; calls: RuntimeError, enumerate, find_assignment, int, len, min, observe_visible_color_code, round, set, sorted, +3
+- L188--216 `def read_consumable_palette_and_target(frame, blobs):` — Read palette tile instances and the visible code they must express.; calls: int, sorted, tuple
+- L219--224 `def blob_click_position(blob):` — Return the integer click coordinates for a perceived blob.; calls: int, round
+- L227--246 `def execute_click_plan_with_clone_verification( env, choices, failure_message, click_action=6, submit_action=5, ):` — Prove a prepared source-to-slot click plan on a clone, then commit it.; calls: RuntimeError, place_and_submit
+- L249--280 `def place_palette_plan_with_clone_verification( env, palette_tiles, slots, colors, failure_message, click_action=6, submit_action=5, ):` — Place a consumable palette plan after proving it on an environment clone.; calls: blob_click_position, execute_click_plan_with_clone_verification, zip
+- L283--361 `def copy_repeated_code_into_nested_diagram( env, click_action=6, submit_action=5 ):` — Factor a repeated code block into parent call cells and a child row.; calls: Counter, RuntimeError, connected_components, int, len, place_palette_plan_with_clone_verification, range, read_consumable_palette_and_target, round, sorted, +1
+- L364--466 `def factor_visible_code_into_parallel_diagrams( env, click_action=6, submit_action=5 ):` — Split a preorder color code across a parent and several child diagrams.; calls: Counter, RuntimeError, connected_components, len, permutations, place_palette_plan_with_clone_verification, read_consumable_palette_and_target, sorted, tuple
+- L469--626 `def factor_visible_code_into_recursive_diagrams( env, click_action=6, submit_action=5 ):` — Fill mutually named diagrams with literal and recursive-call tiles.; calls: Counter, RuntimeError, any, assignments, blob_click_position, connected_components, enumerate, execute_click_plan_with_clone_verification, expanded, len, +4
+
+## perception.py
+- L23--36 `class Blob:`; calls: dataclass
+- L39--40 `def arr(frame) -> np.ndarray:`
+- L43--45 `def color_counts(frame) -> Dict[int, int]:`; calls: arr, int, zip
+- L48--79 `def connected_components(frame, colors: Optional[Iterable[int]] = None, min_area: int = 1) -> List[Blob]:`; calls: Blob, arr, int, len, max, min, range, sorted, sum
+- L82--89 `def block_signatures(frame, cell: int = 4) -> Dict[Tuple[int, int], Tuple[int, ...]]:` — Partition a frame into fixed cells and return each cell's color signature.; calls: arr, int, range, sorted, tuple
+- L92--110 `def object_candidates(frame, cell: int = 4, min_area: int = 4) -> List[dict]:` — A compact, game-agnostic object list from color components and cell signatures.; calls: arr, block_signatures, connected_components
+- L113--123 `def frame_delta(before, after) -> dict:`; calls: arr, int, len, zip
+- L126--133 `def action_deltas(env, actions: Sequence[int] = ACTIONS) -> Dict[int, dict]:`; calls: arr, frame_delta, int
+- L136--142 `def replay(env, actions: Sequence[int]):`; calls: int
+- L145--153 `def path_result(env, actions: Sequence[int]) -> dict:`; calls: bool, color_counts, int, len, object_candidates, replay
+- L156--161 `def changed_signature(env, actions: Sequence[int], cell: int = 4):`; calls: block_signatures, replay, set, sorted
+- L164--186 `def bounded_bfs(env, goal_fn, actions: Sequence[int] = (UP, DOWN, LEFT, RIGHT, USE), key_fn=None, max_states: int = 20000, max_depth: int = 80):` — Generic clone BFS over observational keys. Use small max_states first.; calls: arr, deque, goal_fn, int, key_fn, len
+- L189--229 `def bounded_replay_bfs(env, goal_fn, action_fn, key_fn=None, max_states: int = 20000, max_depth: int = 80):` — Path-only BFS for games whose deep Arena clones become expensive.; calls: action_fn, arr, deque, goal_fn, int, isinstance, key_fn, len, reconstruct
+- L232--233 `def level_goal(base_level: int):`
+
+## solve.py
+- L3--13 `def solve(env): # dispatch to the per-level player for the current level, in a loop`; calls: fn, getattr

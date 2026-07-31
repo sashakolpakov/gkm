@@ -1,0 +1,33 @@
+# Minimal offline execution image for model-authored workspace probes.
+#
+# This role is deliberately separate from the proposer worker.  It contains no
+# ARC bridge, Arena client, campaign input, export helper, or credential-facing
+# code.  The host backend mounts one immutable declared workspace snapshot at
+# /probe and captures both streams directly through an attached Docker CLI.
+FROM docker.io/library/python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+
+ARG ARC_AGI3_PROBE_RECIPE_SHA256
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+RUN case "${ARC_AGI3_PROBE_RECIPE_SHA256}" in \
+      "" | *[!0-9a-f]* ) exit 64 ;; \
+      * ) ;; \
+    esac \
+    && test "${#ARC_AGI3_PROBE_RECIPE_SHA256}" -eq 64
+
+LABEL org.gkm.arc-agi3.role="workspace-probe" \
+      org.gkm.arc-agi3.probe-recipe-sha256="${ARC_AGI3_PROBE_RECIPE_SHA256}" \
+      org.gkm.arc-agi3.probe-base-digest="sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7" \
+      org.gkm.arc-agi3.probe-content-policy="python-stdlib-only-no-copy-v1"
+
+RUN mkdir -p /probe \
+    && chown 65534:65534 /probe \
+    && chmod 0555 /probe
+
+USER 65534:65534
+WORKDIR /probe
+ENTRYPOINT ["/usr/local/bin/python3", "-I"]

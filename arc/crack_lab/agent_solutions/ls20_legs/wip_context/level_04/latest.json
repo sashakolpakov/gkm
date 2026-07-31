@@ -1,21 +1,35 @@
 {
-  "attempt": "after_debrief_7738f07791ee",
+  "attempt": "debrief_skipped_policy_ab179f3dfcca",
   "metadata": {
     "game": "ls20",
     "level": 4,
-    "phase": "after_debrief",
+    "phase": "debrief_skipped_policy",
     "reached": 4,
     "err": null,
-    "attempt": "after_debrief_7738f07791ee",
-    "created_at": "2026-07-05T12:49:05.818313+00:00",
+    "attempt": "debrief_skipped_policy_ab179f3dfcca",
+    "created_at": "2026-07-27T22:57:11.622951+00:00",
     "files": [
+      "auto_solve_attempts.json",
       "checkpoint.json",
+      "codex_turn_20260727T213900505311Z_ls20_L3_propose.jsonl",
+      "codex_turn_20260727T221047794474Z_ls20_L3_propose.jsonl",
+      "codex_turn_20260727T223333244349Z_ls20_L4_propose.jsonl",
+      "frontier_brief.md",
       "gkm_try.py",
       "legs.py",
       "legs_log.md",
+      "perception.py",
       "players.py",
+      "probe_level.py",
+      "probe_level4.py",
+      "probe_level4_path.py",
+      "probe_level4_reach.py",
+      "probe_level4_specials.py",
+      "probe_level4_transfer.py",
       "proposer_last.log",
-      "solve.py"
+      "search_level4.py",
+      "solve.py",
+      "solver_index.md"
     ]
   }
 }

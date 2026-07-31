@@ -1,0 +1,23 @@
+{
+  "game": "sb26",
+  "level": 8,
+  "phase": "after_debrief",
+  "reached": 8,
+  "err": null,
+  "attempt": "after_debrief_1939376b8fcb",
+  "created_at": "2026-07-27T08:52:21.545786+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T084643830164Z_sb26_L8_propose.jsonl",
+    "codex_turn_20260727T085005849299Z_sb26_L8_debrief.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

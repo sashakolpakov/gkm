@@ -1,0 +1,27 @@
+{
+  "attempt": "reached_before_debrief_replaycert_21295b40faf3",
+  "created_at": "2026-07-26T22:04:15.784342+00:00",
+  "err": null,
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "solve.py",
+    "solver_index.md"
+  ],
+  "game": "sb26",
+  "level": 4,
+  "phase": "reached_before_debrief",
+  "reached": 4,
+  "reconstruction": {
+    "certification_kind": "historical_exact_boundary",
+    "certification_manifest": "../../../reconstruction_evidence/level_04/manifest.json",
+    "certification_manifest_sha256": "54d9674087557cca0137857848019e31fff58da27069d5da730f8d17de41f5eb",
+    "fresh_replay_successes": 2,
+    "historical_exact_boundary": true
+  }
+}

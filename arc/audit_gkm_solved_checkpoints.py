@@ -2,11 +2,15 @@
 """Measure GKM executable complexity only at replay-validated winning sources.
 
 For ordinary proposer wins, ``reached_before_debrief`` is the exact source present
-when replay first cleared the level.  Post-win debrief code is excluded.  Auto-solve
-wins predate a dedicated pre-debrief snapshot, but their winning source is exactly
-reconstructible: the harness starts from the preceding retained source and appends a
-deterministic one-call ``play_level_K`` stub before verification.  The successful
-called leg is preserved in the subsequent auto-solve artifact.
+when replay first cleared the level.  An orphaned proposer whose parent harness exits
+after the winning turn is independently replayed before the harness writes
+``recovered_existing_workspace_solver``; that snapshot is the same exact
+pre-promotion winning boundary.  Post-win debrief code is excluded.  Auto-solve wins
+predate a dedicated pre-debrief snapshot, but their winning source is exactly
+reconstructible: the harness starts from the preceding retained source (including
+the unchanged source when debrief was skipped) and appends a deterministic one-call
+``play_level_K`` stub before verification.  The successful called leg is preserved
+in the subsequent auto-solve artifact whether or not a paid debrief ran.
 
 Failed proposals and every other interim snapshot are excluded.  Missing historical
 winning artifacts are reported as gaps, never imputed from the final promoted files.
@@ -26,11 +30,21 @@ from audit_baseline1_artifacts import canonical_ast_bundle, canonical_bundle
 
 
 SOURCE_FILES = ("legs.py", "players.py", "solve.py")
+DIRECT_WINNING_PHASES = {
+    "reached_before_debrief",
+    "recovered_existing_workspace_solver",
+}
 RETAINED_PHASE_PRIORITY = (
     "after_debrief",
     "after_auto_solve_debrief",
+    "auto_solve_debrief_skipped",
+    "debrief_skipped_policy",
     "debrief_credit_out",
 )
+AUTO_SOLVE_WINNING_PHASES = {
+    "after_auto_solve_debrief",
+    "auto_solve_debrief_skipped",
+}
 
 
 @dataclass
@@ -125,12 +139,18 @@ def exact_snapshot(
     game_dir: Path, level: int
 ) -> tuple[dict, dict[str, bytes]] | None:
     """Return the exact executable sources present at the winning verification."""
-    direct = latest_snapshot(game_dir, level, {"reached_before_debrief"})
+    direct = latest_snapshot(game_dir, level, DIRECT_WINNING_PHASES)
     if direct is not None:
         metadata, files_root = direct
         return metadata, source_files(files_root)
 
-    auto = latest_snapshot(game_dir, level, {"after_auto_solve_debrief"})
+    # Whether a paid debrief ran is irrelevant to the acquisition boundary.
+    # In both phases the harness has already independently verified the
+    # deterministic one-call player that auto-solve appended.  Reconstruct that
+    # same pre-verification source from the retained parent and the recorded
+    # called leg; do not require a debrief merely to make an exact checkpoint
+    # measurable.
+    auto = latest_snapshot(game_dir, level, AUTO_SOLVE_WINNING_PHASES)
     if auto is None or level <= 1:
         return None
     auto_metadata, auto_files_root = auto
@@ -254,7 +274,10 @@ def summarize(rows: list[Checkpoint], gaps: dict[str, list[int]]) -> dict:
         "games": len(games),
         "solved_checkpoints_with_exact_source_snapshot": len(rows),
         "captured_pre_debrief_winning_sources": sum(
-            row.phase == "reached_before_debrief" for row in rows
+            row.phase in DIRECT_WINNING_PHASES for row in rows
+        ),
+        "captured_orphan_recovery_winning_sources": sum(
+            row.phase == "recovered_existing_workspace_solver" for row in rows
         ),
         "deterministically_reconstructed_auto_solve_winning_sources": sum(
             row.phase == "reconstructed_auto_solve_boundary" for row in rows

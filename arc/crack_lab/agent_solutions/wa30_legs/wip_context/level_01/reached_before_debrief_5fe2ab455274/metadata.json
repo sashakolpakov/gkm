@@ -1,0 +1,23 @@
+{
+  "game": "wa30",
+  "level": 1,
+  "phase": "reached_before_debrief",
+  "reached": 1,
+  "err": null,
+  "attempt": "reached_before_debrief_5fe2ab455274",
+  "created_at": "2026-07-26T22:19:50.661076+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T220819103153Z_wa30_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

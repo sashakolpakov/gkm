@@ -1,0 +1,23 @@
+{
+  "attempt": "auto_solve_debrief_skipped_73a4d46e0508",
+  "metadata": {
+    "game": "lf52",
+    "level": 3,
+    "phase": "auto_solve_debrief_skipped",
+    "reached": 3,
+    "err": null,
+    "attempt": "auto_solve_debrief_skipped_73a4d46e0508",
+    "created_at": "2026-07-26T07:09:11.805405+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

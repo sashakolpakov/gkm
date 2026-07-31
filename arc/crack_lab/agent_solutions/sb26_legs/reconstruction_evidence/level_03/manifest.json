@@ -1,0 +1,36 @@
+{
+  "certification_kind": "historical_exact_boundary",
+  "certified_files_sha256": {
+    "legs.py": "c2aa65895bb580a100a2ab5ba19c77b17e54f1ea3bdc8a7ea6380121d493f0ab",
+    "parent_checkpoint.json": "821f400f0078fe30ce29e8989ab25737bd54758b168dece451043f20187b5718",
+    "players.py": "a8562d3693f254f568501636d434724a3b50151800baa4e97c1f134b05a87987",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "created_at": "2026-07-26T22:04:15.784342+00:00",
+  "eligible_for_exact_checkpoint_audit": true,
+  "game": "sb26",
+  "historical_audit_policy": "include",
+  "historical_exact_boundary": true,
+  "level": 3,
+  "note": "Historical auto-solve source was captured before any debrief; source hashes equal the clean L3 promotion manifest.",
+  "replay": {
+    "boundary_prefix_actions": 39,
+    "boundary_prefix_sha256": "e8df3213a91db8042075882d4f8f17a2e87852f399726de5c49825643cc56a83",
+    "deterministic": true,
+    "fresh_replay_attempts": 2,
+    "fresh_replay_successes": 2,
+    "mode": "recorded_path_on_fresh_arena",
+    "source": "arc/crack_lab/agent_solutions/sb26_legs/promotion_evidence/level_03/files/checkpoint.json",
+    "source_sha256": "50f1be162c3a2d310b4ea5d9f75fdeadbb75a1baf1f2b58cac5a183495b1d106"
+  },
+  "schema": "gkm.replay-boundary-certification/v1",
+  "source_origin": "arc/crack_lab/agent_solutions/sb26_legs/wip_context/level_03/auto_solve_debrief_skipped_247704c5568e",
+  "source_origin_lineage": "arc/crack_lab/agent_solutions/sb26_legs/promotion_evidence/level_03/manifest.json",
+  "source_origin_lineage_sha256": "6a48f5c5f410b42452f31a1eb3d768a25afd74a84cb7ee8c4b2871bfd8842666",
+  "source_origin_metadata_sha256": "df2aa94e54eca4fe80fbd1f6ba2fe340b6a99fcfcc89f83cd2515efb6f754dd5",
+  "taint": {
+    "checker": "gkm_legs.promoted_artifact_taint_reason",
+    "reason": null,
+    "verdict": "clean"
+  }
+}

@@ -119,6 +119,7 @@ def test_preflight_none_caps_never_raise(tmp_path):
         C.append_ledger(_rec(time.time(), 600), led)
     out = C.preflight(caps=WindowCaps(), ledger_path=led)  # every cap None
     assert out["remaining"]["turns"] is None
+    assert out["cost_control_enabled"] is False
 
 
 def test_preflight_old_records_do_not_count(tmp_path):

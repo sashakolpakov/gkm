@@ -1,0 +1,26 @@
+{
+  "game": "sb26",
+  "level": 2,
+  "phase": "reached_before_debrief",
+  "reached": 2,
+  "err": null,
+  "attempt": "reached_before_debrief_dc9d4088b273",
+  "created_at": "2026-07-26T06:22:47.156481+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260724T010627396820Z_sb26_L2_propose.jsonl",
+    "codex_turn_20260726T061818701322Z_sb26_L2_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level2.py",
+    "proposer_last.log",
+    "search_level2.py",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

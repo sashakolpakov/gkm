@@ -805,7 +805,7 @@ winning model reuse.
 
 ### Questions
 
-1. Is the current 67-level frontier stated consistently in the manuscript, root
+1. Was the then-current 67-level frontier stated consistently in the manuscript, root
    README, ARC guides, reproduction guide, and Sphinx chapter?
 2. Does the text distinguish a pooled medium/high comparison from the actual
    sequential decision—whether high is worth buying after medium fails?
@@ -817,7 +817,7 @@ winning model reuse.
 
 ### Checks and decisions
 
-- All publication-facing documents now state 23 promoted endpoints, 67/183 local
+- At that revision, all publication-facing documents stated 23 promoted endpoints, 67/183 local
   levels, 2148 stored actions, and 30 post-card clears. The reproduction guide no
   longer calls `sc25` WIP-only and enumerates all 21 partial promoted endpoints.
 - The pooled phase table remains because it is the complete descriptive accounting,
@@ -836,3 +836,130 @@ winning model reuse.
 - The saved plan freezes one seed item. Every later item is regenerated from the
   live allowance, verified frontier, and charged failures. Only a replay-valid level
   transition becomes a scientific checkpoint; same-level edits remain WIP.
+
+## Pass 21: is the independent side expert being described as it actually ran?
+
+### Questions
+
+1. Was the exploratory side expert an `ultra` headless proposer turn?
+2. Did its independence imply container or process isolation?
+3. What objective quantity should trigger the role in a contiguous rerun?
+4. Can side-expert findings enter WIP or promotion by assertion?
+5. Are prospective contiguous safeguards being attributed retrospectively?
+
+### Checks and decisions
+
+- No model/effort field was exposed for either exploratory expert. Both were
+  already-running in-session audit subagents manually reassigned to private-copy
+  `bp35` and `lf52` analysis. The manuscript therefore does not call them
+  `ultra`.
+- The private copies prevented intentional live-WIP writes, and every Arena
+  launch repeated the workspace taint check, but the agents shared the host
+  filesystem/process boundary. Container isolation is a prospective contiguous
+  improvement, not a fact about the exploratory run.
+- The automatic policy uses one game-independent operational complexity
+  coordinate: clean no-progress retries at the exact unchanged frontier. It
+  drives medium/high/xhigh/max escalation and, after the first clean max
+  failure, eligibility for one independent sidecar; failure of the following
+  max reset/continuation pair permits two distinct sidecars when capacity is
+  otherwise idle. This retry coordinate is not called Kolmogorov complexity.
+- Side-expert diagnoses are search-routing hypotheses. Paths, patches,
+  abstractions, and hints remain quarantined until exact-parent provenance,
+  taint, and fresh-replay admission; the expert has no promotion authority.
+- The contiguous design separately requires a minimal input manifest,
+  manifest-pinned model/effort, journaled assignment/usage, process isolation,
+  and a recorded self-challenge. The text labels these as prospective and does
+  not retrofit them onto the exploratory lineage.
+
+## Pass 22: does every final empirical claim follow from the frozen release?
+
+### Questions
+
+1. Are coverage, action, score, taint, replay, hash, and manifest claims bound to one
+   immutable release rather than the mutable campaign workspace?
+2. Does the manuscript accidentally claim exact historical acquisition source for all
+   181 admitted boundaries?
+3. Is benchmark-wide generality stated at the producer level without denying that the
+   learned outputs specialize by game and level?
+4. Did the release update require any change to the theoretical definitions or proofs?
+
+### Checks and decisions
+
+- The empirical bundle is bound to release commit
+  `9235ed26627140460efa1f6ca5e4041470cddc14` and schema-v2 receipt
+  `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
+  Receipt verification passes for 181 claimed boundaries, with only `lf52` L9--L10
+  explicitly unclaimed.
+- The paper reports the official Competition score (98.11664037825032%), raw coverage
+  (181/183 = 98.907103825137%), stored path actions (7001), and API calls (7069) as
+  distinct quantities.
+- The source-coupled audit has 180 exact historical winning checkpoints, not 181:
+  `ft09` L2 is omitted from that denominator rather than reconstructed. Endpoint
+  replay and source-history comparison therefore retain separate scopes.
+- The producer is described as universal because the proposer contract, Arena,
+  blank scaffold, complexity coordinate, and replay gate are fixed across all games.
+  Its promoted executable outputs are correctly described as game- and
+  level-dependent.
+- No theoretical definition, categorical construction, structure-function argument,
+  or completeness proof was changed for the release update. Only method/empirical
+  scope, results, tables, figures, and reproduction text changed.
+
+## Pass 23: which profile actually supports the sawtooth and reuse claims?
+
+### Questions
+
+1. Which game has the strongest checkpoint-recorded oscillation under an explicit,
+   reproducible criterion?
+2. Is that game also the strongest historically source-coupled example?
+3. Are `wa30` and `ls20` being asked to support claims their evidence cannot bear?
+4. Does a small scalar charge get mislabeled as semantic reuse?
+
+### Checks and decisions
+
+- Counting sign reversals between successive nonzero marginal changes ranks `su15`
+  first: its profile `36,95,77,377,54,77,2,292,203` reverses direction at all seven
+  comparable internal turns. It is shown as the strongest raw oscillation.
+- `su15` was rejected as the primary source-coupled history because the frozen score
+  release does not preserve one uniform exact acquisition-source sidecar for every
+  level. The figure and caption state this limitation explicitly.
+- `wa30` is retained as the strongest complete uniform-history sawtooth:
+  `43,20,32,50,39,23,28,34,49`, with one sequential manifest per level. Its adjacent
+  entry points use newly named level-specific routines, so the text does not invent a
+  strict direct-call witness.
+- `ls20` is retained as the clean source-coupled case. Its harness-native profile rises
+  through L6 and dips at L7, while the separate exact conditional-AST profile falls
+  sharply from 737 to 247 bytes at L2 and directly calls unchanged
+  `follow_cardinal_runs`.
+- The all-game table labels its values as checkpoint-recorded harness-native charges.
+  It explicitly says that the scalar alone is not a reuse certificate; `pending` and
+  nonexistent levels are not encoded as zero.
+
+## Pass 24: is the final revision parsimonious and reproducible downstream?
+
+### Questions
+
+1. Did the release update grow into a theoretical rewrite or a second narrative paper?
+2. Can one generator reproduce the all-game TeX, Markdown, JSON, and Sphinx tables?
+3. Do the root guides, ARC guides, manuscript companion, and Sphinx chapter agree on
+   universality and the frozen endpoint?
+4. Do the final documents build without hiding table, citation, or layout failures?
+5. Is Alexander Kolpakov still the sole manuscript author?
+
+### Checks and decisions
+
+- The revision keeps the abstract/theory architecture intact and limits release-driven
+  edits to empirical scope, methods needed to interpret the evidence, numerical
+  reconciliation, figures, tables, discussion, conclusion, and reproduction commands.
+  A broader theoretical or conceptual rewrite was rejected as unnecessary.
+- `generate_empirical_tables.py` validates the 25-game/183-level inventory and emits
+  the four downstream table formats from the same frozen checkpoints. Unit tests cover
+  inventory, totals, missing-level semantics, and sawtooth ranking.
+- Publication-facing README, ARC, reproduction, one-page, ground-truth, and Sphinx
+  files now use the same 181/183 release facts and the same producer-level universality
+  statement. Older numerical passages remain only in explicitly historical editorial
+  records and provenance diffs.
+- The schema-v2 reproduction pass succeeds; 183 manuscript tests pass; strict Sphinx
+  HTML builds with warnings treated as errors; the main PDF builds to 26 pages and the
+  companion to one page with no warning/undefined/box match in their final logs.
+- `arc_agi3.tex` retains exactly `Alexander Kolpakov` in both `\\author{}` and
+  `pdfauthor`; OpenAI appears only in a one-line acknowledgment for GPT-5.6-sol access.

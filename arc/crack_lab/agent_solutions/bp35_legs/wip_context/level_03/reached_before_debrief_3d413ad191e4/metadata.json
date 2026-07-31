@@ -1,0 +1,32 @@
+{
+  "game": "bp35",
+  "level": 3,
+  "phase": "reached_before_debrief",
+  "reached": 3,
+  "err": null,
+  "attempt": "reached_before_debrief_3d413ad191e4",
+  "created_at": "2026-07-25T19:51:20.202915+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260723T122119780472Z_bp35_L1_propose.jsonl",
+    "codex_turn_20260723T182305462371Z_bp35_L1_propose.jsonl",
+    "codex_turn_20260725T160537607202Z_bp35_L3_propose.jsonl",
+    "codex_turn_20260725T194301402579Z_bp35_L3_propose.jsonl",
+    "frontier_brief.md",
+    "frontier_scaffold.json",
+    "gkm_try.py",
+    "l1_probe.py",
+    "l1_search.py",
+    "legs.py",
+    "legs_log.md",
+    "p3.py",
+    "perception.py",
+    "players.py",
+    "probe.py",
+    "probes3.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

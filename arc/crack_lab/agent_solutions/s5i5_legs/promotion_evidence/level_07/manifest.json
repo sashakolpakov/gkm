@@ -1,0 +1,70 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260724T014418622804Z_s5i5_L2_propose.jsonl",
+      "sha256": "b84b6202e5978db632fd12f313d97392e92b0d6166cde2f9ad6bd0986f904b45"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T080918976645Z_s5i5_L2_propose.jsonl",
+      "sha256": "d1501206dde3867adccb7f1033d08646d6ad58fa6dfd78ea9a44b5eb2d3fb5d6"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T081448163194Z_s5i5_L3_propose.jsonl",
+      "sha256": "4429708aacf21198fc067bd68f38b766cfc730b9823e9f168e9116fe5076c092"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T082554132476Z_s5i5_L3_propose.jsonl",
+      "sha256": "c18b7747457f4461278de917a650fa05661ad1b299a97b761ecca7bb74351d57"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T082933920161Z_s5i5_L4_propose.jsonl",
+      "sha256": "3b5a9b5ab139b1e491168dff51184aaa965f2df3ef13ddf80d6b79689b7c6e0f"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T083502631817Z_s5i5_L5_propose.jsonl",
+      "sha256": "2d6ebe04c4dc8eb53aab053a95441ad7f42f9a7901bd11ab11431ff03ae27cf4"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T084109942177Z_s5i5_L6_propose.jsonl",
+      "sha256": "9fdf19c6a07a271e5a765c8d891c60645cbb57d4e144ff43b2e88c4bb618aa87"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T084702759070Z_s5i5_L7_propose.jsonl",
+      "sha256": "7cb97d0c0713029c3fc48c187ee27909d6da2c3aa2e0a87e828b40246e2f9539"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T085811384322Z_s5i5_L7_propose.jsonl",
+      "sha256": "574c73da169a30ed83ed9662dbc89306e55ef150783cc32025e6d838b9e8fe77"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T181049889731Z_s5i5_L7_propose.jsonl",
+      "sha256": "18e71a64d4813b93a6890a4292dbfdc0c1fca8bd818b70d48dbef2683af1e215"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T220542798882Z_s5i5_L7_propose.jsonl",
+      "sha256": "810e7d8d497b31c97c087c54c8e14c8cf65d376d38546e21f2962244e7b8e212"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T225527113017Z_s5i5_L7_propose.jsonl",
+      "sha256": "aa4caa697bcf8d168b1d7a7d041bff2d8f2e131d12181c0a0257ed08c9d5f335"
+    }
+  ],
+  "created_at": "2026-07-26T23:05:20.091079+00:00",
+  "game": "s5i5",
+  "level": 7,
+  "parent_manifest": "promotion_evidence/level_06/manifest.json",
+  "parent_manifest_sha256": "2a8a95ebe41e4d0e93f4fb6067a93ff2fb7e89cf9209ee0521fab7ba0313dfb0",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "82163b10c394ed479e8bf02d21ee0c3f5b2525730623299791d443453e6d01f2",
+    "checkpoint.json": "49547bc80d402271794b6a56b50b6b600ca3b05b42bcd98df48e232fe7fa5493",
+    "legs.py": "bd39107749ccf8cb292f24fc6d7bda629fd76823e3cab6438492783952d9b60a",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "87d0f5ffe860f78fb72d913c378149229198f950ced69f84ccea77e3d0dc5351",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "aa4caa697bcf8d168b1d7a7d041bff2d8f2e131d12181c0a0257ed08c9d5f335",
+  "validated": true
+}

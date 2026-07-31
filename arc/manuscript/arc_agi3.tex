@@ -144,8 +144,8 @@ deterministic universal-search and stagewise full-support forms.
 \item It makes the PowerPlay and artificial-curiosity correspondence operational:
 replay preserves the task archive, free energy orders candidate extensions, and expected
 frontier reduction values informative probes.
-\item It reports 23 promoted ARC-AGI-3 endpoints spanning 67 solved levels, two
-complete chronological histories, and solved-checkpoint comparisons whose reuse claims
+\item It reports a frozen 25-game release spanning 181 of 183 levels, two complete
+uniform chronological histories, and solved-checkpoint comparisons whose reuse claims
 require both a source-level factorization and replay.
 \end{enumerate}
 
@@ -875,6 +875,56 @@ controllable and autonomous entities, sparse reward, and the value of active pro
 works in a disposable directory seeded from the highest clean promotion, may execute
 cloned environments, and writes a \texttt{solve(env)} program.
 
+For persistent frontiers, the active campaign also introduced an independent
+observation-only side expert. This was a role escalation, not an
+\texttt{ultra}-effort setting: the exploratory implementation reassigned an in-session
+audit subagent whose model/effort field was not exposed. The expert received a private
+copy of the exact parent and admitted clean same-frontier WIP, pursued a question
+deliberately distinct from the live proposer, and experimented only through the public
+Arena interface. It shared the host process/filesystem boundary, so its workspace was
+taint-checked at every Arena launch and it could write only to the private copy.
+Findings returned through the session were hypotheses, not promotions. Any path, patch,
+or abstraction derived from them still required exact-parent provenance, a clean taint
+verdict, and fresh replay before admission to the solver lineage.
+
+The planned contiguous replication makes that tactic scheduler-controlled and
+game-independent. After medium, high, xhigh, and the first max turn all end as clean
+no-progress at one exact frontier, otherwise-idle capacity may run one independent
+side expert (\(n=5\)); failure of the subsequent max reset/continuation pair permits
+two distinct complexity assignments (\(n\geq7\)). Assignment classes are mechanism induction, state
+representation, exact planning, and prefix compression, never game names or remembered
+solutions. The scheduler allocates auxiliary capacity but does not author a
+game-specific brief: each assignment must bind an authenticated same-frontier
+\texttt{NATIVE\_SIDECAR\_REQUEST} emitted by the native proposer or a request
+inside an admitted supervisory handoff. Manual, scheduler-authored, stale,
+cross-frontier, and substituted requests are rejected. The contiguous role uses a minimal container input manifest, a separately
+pinned model/effort, journaled usage, and quarantine-only output. These prospective
+controls must not be read backward as properties of the exploratory sidecars.
+At the same complexity-gated stage, the contiguous design may schedule a distinct
+supervisory proposer. It receives only an immutable, hash-bound allowlist of the exact
+frontier, the exact-parent and selected admitted-WIP solver-source snapshots, cited
+native-proposer observations, and admitted side-expert evidence. Its
+schema-validated \texttt{SUPERVISORY\_HANDOFF} must state the unresolved obligation,
+cite the observations on which each hypothesis depends, propose bounded falsification
+tests, record rejected alternatives and caveats, and include a Socratic challenge to
+its own recommendation. It may include a typed same-frontier sidecar request, but that
+request does not allocate capacity and remains subject to the deterministic scheduler.
+The role cannot choose the game, effort, concurrency, WIP
+policy, or promotion, and cannot mutate a solver. Its output remains quarantined until
+the native proposer reproduces every cited source observation through the public
+interface and the host verifier admits the resulting candidate by ordinary replay. At
+most one such role is active per
+frontier; a later round requires newly admitted evidence or a complete scheduler-defined
+reset/continuation pair, rather than a retry-count increment alone. Thus the deterministic
+scheduler,
+native proposer, side expert, supervisory proposer, and host verifier have separate
+receipt-bound authorities; every winning boundary must disclose whether its acquisition
+attempt was exposed to an admitted supervisory handoff.
+The clean retry count is the single operational complexity coordinate for both
+medium-to-max effort escalation and max-plus-sidecar role escalation. It measures
+repeated failure of stronger searches at an unchanged verified boundary; it is not
+presented as an estimator of Kolmogorov complexity.
+
 The harness treats proposer output as untrusted. Recognized private-runtime and hidden-
 source access is blocked before execution, and tainted workspaces are rejected before
 replay or promotion. Earlier attempts to access a private \texttt{env.\_game} object are
@@ -936,32 +986,34 @@ component and the composite passes replay. This couples the scalar free energy t
 the cofibration and attaching morphism visible in source.
 
 \subsection{Artifact scope and reproduction}
-The study reports 23 canonical promoted artifacts. \texttt{wa30} and \texttt{ls20}
-have complete manuscript-level construction histories; five further incumbents reach
-levels~4--6; and a cost-controlled \texttt{gpt-5.6-sol} campaign establishes promoted
-frontiers in 15 additional games. Two games, \texttt{bp35} and \texttt{tn36}, have no
-promoted level. The artifact campaign is not a
+The frozen release reports one canonical promoted artifact for each of the 25 public
+games and reaches 181 of 183 levels; only \texttt{lf52} levels~9--10 remain outside
+the claimed prefix. \texttt{wa30} and \texttt{ls20} additionally have complete
+manuscript-level uniform construction histories. The artifact campaign is not a
 repeated-seed estimate. It is a chronological observation of one compute-bounded growth
 process, with exact endpoint replay and source provenance.
+Universality is at the producer level: the same proposer contract, Arena surface,
+blank scaffold, complexity coordinate, and replay gate generate every artifact. The
+learned output is necessarily game- and level-dependent solver code; specialization of
+that output is not a different architecture.
 
 Three repository commands address different layers:
 \begin{verbatim}
 python arc/manuscript/build_artifact_history.py --check
-PYTHONPATH=arc/crack_lab pytest -q arc/crack_lab/test_gkm_legs.py \
-  arc/crack_lab/test_replay_scorecard.py
-python arc/crack_lab/replay_scorecard.py --mode online \
-  --games ar25,cd82,cn04,dc22,ft09,g50t,ka59,lf52,lp85,ls20,m0r0,\
-re86,r11l,s5i5,sb26,sc25,sk48,sp80,su15,tr87,tu93,vc33,wa30
+RELEASE_ROOT=/path/to/arc_agi3_gkm_v2_181/artifacts \
+RELEASE_RECEIPT=/path/to/arc_agi3_gkm_v2_181/receipts/\
+140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  make -C arc/manuscript reproduce
+python arc/crack_lab/replay_scorecard.py --mode online
 \end{verbatim}
-The history builder checks immutable sidecars against Git, WIP, and root sources. The
-offline tests check the source metric, checkpoint invariants, action encoding, workspace
-lock, and taint scan. The online scorecard replays stored paths against the public remote
-environments and consumes zero LLM tokens. Exact regeneration of stochastic proposal
-transcripts is a different experiment from reproduction of the promoted solver.
+The history builder checks the two immutable uniform sidecars. The unified reproduction
+entry point regenerates taint, action, source/reuse, table, figure, and document outputs.
+The online scorecard replays stored paths against the public remote environments and
+consumes zero LLM tokens. Exact regeneration of stochastic proposal transcripts is a
+different experiment from reproduction of the promoted solver.
 
 \subsection{Numerical reconciliation}
-Three sets of related quantities were conflated in earlier prose and are separated
-throughout this revision.
+Related score and accounting quantities are separated throughout this revision.
 \begin{table}[H]
 \centering
 \small
@@ -969,120 +1021,62 @@ throughout this revision.
 \toprule
 Quantity & Value & Meaning \\
 \midrule
-Official Competition-Mode score & $17.1365079365\%$ & Public all-game score over 25 games \\
-Published-card raw coverage & $37/183=20.2186\%$ & Unweighted fraction at public replay \\
-Published-card stored/API actions & $1448/1456$ & Paths alone / paths plus eight resets \\
-Current local artifact coverage & $67/183=36.6120\%$ & Thirty later clears with local replay certificates \\
-Current local stored actions & 2148 & Sum of the 23 current checkpoint paths \\
-\texttt{wa30} publication ledger & 1458 & Full nine-level history joining early clean promotions to later sidecar records \\
-\texttt{wa30} operational post-base total & 1243 & Current resume checkpoint's post-base records only \\
-\texttt{ls20} publication ledger & 362 & Full seven-level history and root total \\
+Official Competition-Mode score & $98.1166403783\%$ & Public all-game score over 25 games \\
+Frozen-release raw coverage & $181/183=98.9071038251\%$ & Unweighted verified level fraction \\
+Frozen-release stored/API actions & $7001/7069$ & Immutable paths / official scorecard calls \\
+\texttt{wa30} uniform publication ledger & 318 & Nine fresh sequential promotion boundaries \\
+\texttt{ls20} uniform publication ledger & 760 & Seven fresh sequential promotion boundaries \\
 \bottomrule
 \end{tabularx}
-\caption{Distinct score and accounting quantities. The two \texttt{wa30} values are
-both valid under their named scopes and must not be presented as one canonical field.}
+\caption{Distinct score and accounting quantities for the frozen v2 release. The
+official ARC score and raw level fraction use different aggregations. The 68-call gap
+between stored paths and the scorecard comprises 25 initial resets and 43 calls from a
+transient \texttt{vc33} connection-reset recovery.}
 \label{tab:numerical-reconciliation}
 \end{table}
 
 \section{Empirical Results}
 The reported endpoints are reproduced from promoted checkpoints and action paths; the
-intermediate interpretations below come from the corresponding source snapshots and
-debrief records. Two score quantities must be kept distinct. The replay-only Competition-
-Mode scorecard reports an official all-game score of
-$17.136507936507936\%$ over all 25 public games. At that replay, the raw level fraction
-was $37/183=20.2186\%$; the stored paths contained 1448 actions and the scorecard used
-1456 API actions after eight resets. Subsequent clean promotions raise the local
-artifact frontier to $67/183=36.6120\%$ and 2148 stored actions. These 30 additional
-clears have independent local replay certificates but are not attributed to the earlier
-public scorecard. Neither scope measures the larger clone-enabled interaction and
-model-inference cost of discovery.
+intermediate interpretations below come from corresponding source snapshots and debrief
+records. The definitive replay-only Competition-Mode scorecard reports an official
+all-game score of $98.11664037825032\%$ over all 25 public games. Its frozen raw
+coverage is $181/183=98.907103825137\%$; the stored paths contain 7001 actions and the
+scorecard records 7069 API calls. Neither quantity measures the larger clone-enabled
+interaction and model-inference cost of discovery.
 
-{\scriptsize
-\renewcommand{\arraystretch}{0.88}
-\begin{longtable}{@{}lrrr>{\raggedright\arraybackslash}p{0.43\textwidth}@{}}
-\caption{Canonical promoted endpoints. Actions are stored replay paths and exclude
-scorecard resets. $D(s)=d(\ell)+d(p)$ is recomputed from each endpoint source snapshot;
-it is a retained-size coordinate, not the sum of the historical marginal profile.
-The two complete-game profiles come from manuscript history sidecars; partial profiles
-come directly from root checkpoints.}
-\label{tab:endpoints}\\
-\toprule
-Game & Verified depth & Actions & $D(s)$ & Marginal profile \\
-\midrule
-\endfirsthead
-\toprule
-Game & Verified depth & Actions & $D(s)$ & Marginal profile \\
-\midrule
-\endhead
-\texttt{ar25} & 4 & 102 & 30 & $9,4,9,7$ \\
-\texttt{cd82} & 2 & 11 & 24 & $11,12$ \\
-\texttt{cn04} & 1 & 14 & 13 & $12$ \\
-\texttt{dc22} & 1 & 20 & 50 & $49$ \\
-\texttt{wa30} & 9/9 & 596 & 1334 & $112,78,95,47,405,225,145,204,147$ \\
-\texttt{ls20} & 7/7 & 393 & 397 & $43,2,45,3,72,130,67$ \\
-\texttt{ft09} & 6 & 80 & 602 & $107,2,184,132,177,2$ \\
-\texttt{g50t} & 5 & 203 & 483 & $244,100,2,2,134$ \\
-\texttt{ka59} & 1 & 12 & 27 & $26$ \\
-\texttt{lf52} & 1 & 8 & 117 & $116$ \\
-\texttt{lp85} & 1 & 5 & 11 & $10$ \\
-\texttt{m0r0} & 2 & 38 & 54 & $24,29$ \\
-\texttt{r11l} & 6 & 115 & 1384 & $103,449,30,341,362,98$ \\
-\texttt{re86} & 4 & 171 & 819 & $105,133,237,343$ \\
-\texttt{s5i5} & 1 & 13 & 138 & $137$ \\
-\texttt{sb26} & 1 & 9 & 73 & $72$ \\
-\texttt{sc25} & 1 & 17 & 41 & $40$ \\
-\texttt{sk48} & 1 & 26 & 38 & $37$ \\
-\texttt{sp80} & 4 & 79 & 309 & $131,40,81,56$ \\
-\texttt{su15} & 1 & 7 & 37 & $36$ \\
-\texttt{tr87} & 6 & 208 & 1026 & $156,241,183,69,249,127$ \\
-\texttt{tu93} & 1 & 18 & 255 & $254$ \\
-\texttt{vc33} & 1 & 3 & 56 & $55$ \\
-\bottomrule
-\end{longtable}
-}
+\input{generated/marginal_complexity_by_level.tex}
 
-The $D(s)$ column supplies the retained-description coordinate required by
-Eq.~\eqref{eq:structure-function}. Each row is one verified point for its own game;
-values across games are descriptive rather than a shared frontier because the risks,
-level counts, and mechanics differ. The historical profiles answer a different,
-path-dependent question about when source growth was charged.
+Table~\ref{tab:all-marginal-complexities} supplies the retained-description coordinate
+$D(s)$ required by Eq.~\eqref{eq:structure-function}, the stored replay path length,
+and one $C_k$ cell for every promoted level. Values across games are descriptive rather
+than a shared frontier because the risks, level counts, and mechanics differ. The two
+\texttt{lf52} cells marked pending are explicit gaps rather than imputed zeros.
 
 \subsection{The \texttt{wa30} artifact}
 The promoted \texttt{wa30} checkpoint records nine levels reached, successful fresh
-replay, and a 596-action path. Its solver is not solely an action trace. Early player
-entries call movement, interaction, and relay routines; levels~5--8 compose transport,
-neutralization, courier-yield, and target-filling routines; and level~9 is represented
-as five calls through a shared \texttt{ferry\_each} interface. The preserved level-9
-history is particularly informative: a verified 61-action suffix first appears as a
-literal plan and is subsequently represented as repeated grab--carry--release
-operations through \texttt{grab\_carry\_release} and \texttt{ferry\_each}.
+replay, and a 597-action path. Its fresh reacquisition uses one named logistics routine
+per level over shared movement and interaction primitives. The routines expose
+transport, courier staging, interception, recovery, and target-filling structure rather
+than storing a single opaque flat path, but the strict direct-call test does not count
+those indirect primitives as an adjacent-level hard-reuse witness.
 
 The canonical manuscript history supplies a value for every level:
 \begin{equation}
-  (C_1,\ldots,C_9)=(112,78,95,47,405,225,145,204,147).
+  (C_1,\ldots,C_9)=(43,20,32,50,39,23,28,34,49).
   \label{eq:wa30-ledger}
 \end{equation}
-The first four records are retained in the clean
-July 2 promotions, and the remaining records are retained in the successive deep
-promotions through level~9. Git commits \texttt{15c0a049}, \texttt{0ccea257},
-\texttt{875e5b86}, and \texttt{07a1885} make the progression directly inspectable.
-The current root checkpoint is deliberately an operational resume artifact and contains
-only its post-base records (1243 units); the sidecar joins those records to the earlier
-clean Git evidence to form the complete 1458-unit publication ledger.
-The large level-5 increment is followed by lower but still substantial costs because
-later levels continue to add logistics structure rather than becoming simple layout
-variants. Levels~6--8 nevertheless share a higher-order ``neutralize, then deliver''
-shape, while the level-9 debrief factors a recovered suffix into a reusable ferry batch.
-This is a replay-equivalent abstraction, but not a measured reduction under the coarse
-source proxy: $D$ changes from 1250 before debrief to 1334 afterwards because the new
-general routines are charged. The observed complexity drops below are drops in the
-marginal cost of later promotions, not an absolute-size claim about this refactor.
+Each value is bound to a sequential replay-validated promotion manifest containing the
+exact winning source and parent-manifest hash. The profile drops from 43 to 20, rises
+through 50, falls to 23, and rises again to 49. The corresponding exact conditional-AST
+profile is \(899,339,503,521,534,343,386,684,1313\) compressed bytes. These alternating
+decreases and novelty increases are observable dynamics, but \texttt{wa30} supplies no
+strict coupled witness because its adjacent winning entry points call newly named
+level-specific routines. The claim is therefore a measured sawtooth, not an unsupported
+attribution of every trough to reuse.
 
-The historical record also contains a neutral-prior level-1 replication with cost 181
-and a Sonnet-produced replication with cost 164. These replications are evidence that
-the carry mechanic can be rediscovered under different proposer conditions; they are
-not substituted into the main chronological trace. The reported value 112 belongs to
-the promoted progression used for the complete ledger.
+The earlier nonuniform \texttt{wa30} lineage remains archived as superseded provenance.
+It is useful for studying development history, but none of its ledger entries is
+substituted into the uniform canonical trace.
 
 \begin{table}[t]
 \centering
@@ -1091,35 +1085,31 @@ the promoted progression used for the complete ledger.
 \toprule
 Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 \\
 \midrule
-$C_k$ & 112 & 78 & 95 & 47 & 405 & 225 & 145 & 204 & 147 \\
+$C_k$ & 43 & 20 & 32 & 50 & 39 & 23 & 28 & 34 & 49 \\
 \bottomrule
 \end{tabular}
-\caption{Complete \texttt{wa30} marginal record recovered from clean promoted
-artifacts in Git history.}
+\caption{Complete uniform \texttt{wa30} marginal record from nine sequential,
+replay-validated promotion manifests.}
 \label{tab:wa30-ledger}
 \end{table}
 
 \subsection{The \texttt{ls20} artifact}
 The promoted \texttt{ls20} checkpoint records seven levels reached, successful fresh
-replay, a 393-action path, and a complete seven-entry marginal ledger totaling 362
-units. Its early levels are sliding-track puzzles rather than the transport tasks in
-\texttt{wa30}. The first solver uses full-frame search. When display noise makes raw
-frames unsuitable as search keys, the level-3 solver introduces a masking routine;
-level~4 reuses that routine with three units of player glue. Levels~5--7 retain verified
-plans recovered during proposal, including routines associated in the debriefs with a
-combination display, energy management, moving hazards, and partial observability.
+replay, a 365-action path, and a complete seven-entry marginal ledger totaling 760
+units. Every winning player directly calls the unchanged
+\texttt{follow\_cardinal\_runs} leg with a level-specific compact route. This makes the
+reuse relation literal and inspectable while still charging the growing route data.
 
 \subsection{The marginal ledger accounting}
-Table~\ref{tab:marg} and Fig.~\ref{fig:ls20-sawtooth} show the complete
-\texttt{ls20} harness-native acquisition trace. Its low entries guided source
-inspection, but this historical charge includes the promotion/debrief path and is not
-the exact winning-checkpoint marginal of Eq.~\eqref{eq:conditional-ast}. Under the
-stricter test, the level-4 winning player directly calls the unchanged
-\texttt{detect\_noise\_mask} and \texttt{solve\_by\_search} legs; the missing exact
-level-2 source prevents comparison of $M_3$ with $M_4$. The complete late sequence does
-supply a coupled witness at level~7: $M_L$ falls from 682 to 222 compressed bytes and
-the winning player directly calls unchanged \texttt{execute\_path}. Thus the scalar
-ledger remains a search map, while exact marginal and literal call provide the reuse
+Table~\ref{tab:marg} and Fig.~\ref{fig:marginal-profiles} show the complete uniform
+\texttt{ls20} harness-native acquisition trace. This historical charge is distinct
+from the exact winning-checkpoint marginal of Eq.~\eqref{eq:conditional-ast}. Under
+the stricter test, \(M_L\) falls sharply from 737 bytes at L1 to 247 at L2 while the
+winning player directly calls unchanged \texttt{follow\_cardinal\_runs}; this is a
+coupled complexity-drop and literal-reuse witness. Later exact marginals are
+\(259,270,289,299,292\): novelty accumulates in the route literals while the same leg
+remains unchanged, followed by a small L7 decrease. Thus the scalar ledger remains a
+search map, while the exact conditional marginal and literal call provide the reuse
 certificate.
 
 \begin{table}[t]
@@ -1129,11 +1119,11 @@ certificate.
 \toprule
 Level & 1 & 2 & 3 & 4 & 5 & 6 & 7 \\
 \midrule
-$C_k$ & 43 & 2 & 45 & 3 & 72 & 130 & 67 \\
-$C_{\leq k}$ & 43 & 45 & 90 & 93 & 165 & 295 & 362 \\
+$C_k$ & 40 & 54 & 86 & 114 & 138 & 170 & 158 \\
+$C_{\leq k}$ & 40 & 94 & 180 & 294 & 432 & 602 & 760 \\
 \bottomrule
 \end{tabular}
-\caption{Complete harness-native acquisition ledger for the promoted \texttt{ls20}
+\caption{Complete uniform acquisition ledger for the promoted \texttt{ls20}
 artifact. Complexity units follow Eq.~\eqref{eq:marginal-c}; they are distinct from
 the exact winning-checkpoint marginal in Eq.~\eqref{eq:conditional-ast}.}
 \label{tab:marg}
@@ -1142,64 +1132,49 @@ the exact winning-checkpoint marginal in Eq.~\eqref{eq:conditional-ast}.}
 \begin{figure}[t]
 \centering
 % Generated by scripts/generate_figures.py
-\includegraphics[width=0.72\textwidth]{figures/ls20_sawtooth.png}
-\caption{Harness-native marginal charge across the seven promoted \texttt{ls20}
-levels. The low entries localize candidate reuse; the exact solved-checkpoint test
-independently certifies direct unchanged-leg calls and a sharp level-7 drop.}
-\label{fig:ls20-sawtooth}
+\includegraphics[width=0.98\textwidth]{figures/marginal_complexity_profiles.png}
+\caption{Three checkpoint-recorded marginal profiles. \texttt{su15} has the strongest
+raw oscillation (seven direction reversals in seven successive nonzero transitions),
+but the scalar shape alone is not a reuse claim. \texttt{wa30} is the strongest
+complete uniform-history sawtooth, while \texttt{ls20} supplies the source-coupled
+unchanged-leg witness discussed in the text.}
+\label{fig:marginal-profiles}
 \end{figure}
 
 \subsection{Interpretation of the complete histories}
-The two games give complementary profiles. In \texttt{ls20}, the historical low-cost
-bindings at levels~2 and~4 suggest the ideal colimit-extension case; exact source
-coverage directly verifies the unchanged level-4 calls but is missing at level~2.
-Level~3 changes the effective state representation because a drifting display
-invalidates raw-frame identity; the cost increase is therefore attached to a new
-quotient of observation space, not merely a longer route. Levels~5--7 contain explicit
-plan information, while the exact level-7 checkpoint nevertheless reuses unchanged
-\texttt{execute\_path} at sharply reduced conditional AST novelty.
+The two uniform games give complementary profiles. In \texttt{ls20}, the
+harness-native charge rises through L6 because each compact route contributes retained
+literal information, then decreases slightly at L7. The exact conditional-AST measure
+answers a different question: it falls sharply at L2 while the winning player directly
+calls the unchanged \texttt{follow\_cardinal\_runs} leg. In \texttt{wa30}, the
+harness-native ledger alternates three times, but its adjacent entry points call newly
+named level-specific routines; it is therefore a complete measured sawtooth without a
+strict coupled direct-call witness. A downward marginal trend is not expected in
+general: the profile can fall when an empirical policy colimit extends cheaply and rise
+when compatibility conditions or retained plan information change.
 
-The \texttt{wa30} sequence tests a different regime. Level~1 establishes movement,
-interaction, transport, and perception. Level~2 adds an autonomous helper; level~3
-adds asymmetric relay across a barrier; and level~4 reuses the helper--relay mechanism,
-producing the early drop from 95 to 47. Level~5 requires live-frame courier pacing and
-is the largest increment in the complete trace. Levels~6--8 vary the agent that must be
-neutralized and the delivery topology, but the debrief identifies a shared two-stage
-control shape. Level~9 first enters as a verified suffix and is then factored into a
-parameterized ferry batch. Thus a downward marginal trend is not expected in general:
-the profile falls when an empirical policy colimit extends cheaply and rises when the
-domain, compatibility conditions, or retained plan information changes.
+Across all checkpoint ledgers, \texttt{su15} is the most visibly oscillatory profile.
+It is retained in Fig.~\ref{fig:marginal-profiles} as a descriptive scalar example, not
+promoted to the main source-coupled case study: the frozen score release certifies its
+endpoint paths, while the manuscript does not preserve a uniform exact acquisition-
+source sidecar for every \texttt{su15} level. This distinction prevents post-hoc source
+reconstruction from being mistaken for historical complexity dynamics.
 
 \subsection{Bounded cross-game campaign}
 To test whether the complete solves depended on per-game architecture, we applied the
-same game-agnostic harness and promotion protocol across the suite. The first bounded
-phase reached level~4 in five further games; a later \texttt{gpt-5.6-sol} phase extended
-\texttt{ft09}, \texttt{r11l}, and \texttt{tr87} to level~6 and \texttt{g50t} to
-level~5, while \texttt{sp80} remained at level~4.
-The reset-window campaign then promoted 23 additional clears: 15 games acquired their
-first executable solver, \texttt{ar25} reached level~4, \texttt{cd82} and
-\texttt{m0r0} reached level~2, and \texttt{re86} reached level~4. Only
-\texttt{bp35} and \texttt{tn36} remain without a promoted first level.
-Figure~\ref{fig:bounded-profiles} retains the five multi-level profiles from the first
-portability experiment on a common scale. These sawtooth profiles place low net-growth
-transitions beside larger retained changes rather than enforcing monotone decline. A
-repository-wide taint
-scan found every promoted root clean, and fresh local replay plus an
-\href{https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147}{official
-Competition-Mode replay} validated the earlier level-4 endpoints as well as the complete
-\texttt{wa30} and \texttt{ls20} paths and the then-promoted \texttt{tu93} level. Every later
-promotion has a fresh independent local replay certificate; a new public competition
-card has not yet been claimed. ``Unchanged
-architecture'' here means the same interface, proposer loop, taint boundary, replay
-gate, and promotion rule; the learned solver files are game-specific artifacts. Since
-this protocol solved two games completely, reached levels~4--6 in six others, and
-acquired at least one verified level in 23 of 25 games, the campaign establishes
-protocol portability through those observed depths. The reset-window phase began at
-100\% weekly allowance. Paid solver work was frozen after the post-solve reading
-entered the protected tail of the window; no further solver turn was launched below
-the predeclared 20\% reserve. Failed turns remain unpromoted WIP.
-Thus the endpoint record is resource-truncated, not a proof of an
-architectural ceiling. Additional compute remains the immediate unspent variable. The
+same universal producer and promotion protocol across the suite. The resulting learned
+programs are game- and level-dependent, but their production contract is unchanged.
+The frozen release promotes at least one boundary in every game, completes 24 games,
+and reaches \texttt{lf52} 8/10. Figure~\ref{fig:bounded-profiles} retains the five
+multi-level profiles from the first portability experiment, now extended to their
+frozen frontiers on a common scale. These profiles place low net-growth transitions
+beside larger retained changes rather than enforcing monotone decline.
+
+The receipt-bound payload passed local taint, action-protocol, source replay, path
+replay, hash, and manifest checks, a full 25-game ONLINE shakedown, and the definitive
+\href{https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb}{official
+Competition-Mode replay}. Failed attempts remain outside the release tree. Thus the
+two-level remainder is resource-truncated, not a proof of an architectural ceiling. The
 compute-completeness theorem in Section~\ref{sec:compute} supplies the algorithmic
 statement behind this reading: whenever a finite replay-valid continuation exists in
 the proposal language and the search schedule is fair, continuing search finds it in
@@ -1249,8 +1224,8 @@ does show why high should remain a bounded fallback rather than the default.
 \centering
 % Generated by scripts/generate_figures.py
 \includegraphics[width=0.92\textwidth]{figures/bounded_campaign_profiles.png}
-\caption{Marginal profiles for the five bounded runs, read directly from canonical
-root checkpoints. Curves end at each current verified frontier (levels 4--6). A shared ordinate preserves cross-game
+\caption{Marginal profiles for the five bounded runs, read directly from frozen
+checkpoints. Curves end at each verified frontier (levels 6--7). A shared ordinate preserves cross-game
 magnitude. Low points measure small positive net source growth; they constitute reuse
 evidence only where the corresponding player invokes previously charged routines and
 fresh replay succeeds.}
@@ -1264,25 +1239,64 @@ increment whose source diff localizes to new state representation, control, or g
 provided offsetting deletions do not hide it under Eq.~\eqref{eq:marginal-c}. A scalar
 score makes neither prediction inspectable; the promoted transition history does.
 
+\input{generated/comparator_stats.tex}
 \section{Artifact-Level Comparison}
 \subsection{Contemporary ARC-AGI-3 systems}
-The ARC-AGI-3 report lists
-public-environment harnesses solving \texttt{ls20}, \texttt{ft09}, and \texttt{vc33};
-its paper source does not mention \texttt{wa30}~\cite{arcagi3}. The graph-exploration
-baseline evaluates \texttt{ls20} but not \texttt{wa30}; at its 4{,}000-interaction
-comparison point it solves 2 levels on \texttt{ls20} and reports that levels~3+ become
-intractable for exhaustive exploration~\cite{arcagi3graph}. The closest comparator is
-the executable-world-model baseline, which reports \texttt{ls20} 7/7 with both of its
-models and \texttt{wa30} 7/9 versus 4/9 depending on the
-model~\cite{arcagi3worldmodels}. These figures establish neither an advantage nor a
-disadvantage for our approach because proposer models, interaction budgets, and evaluation
-conditions differ. The useful point of comparison is artifact scope: our harness adds a
-source-growth ledger and intermediate refactoring history to its promoted replays.
+ARC Prize separates verified model evaluation from the public community track for
+domain-specific harnesses. Public-track scores are self-reported by default; a server
+scorecard validates submitted action replay, but does not by itself audit what
+information produced the policy. The Foundation therefore cautions against treating a
+public harness score as a held-out generalization result~\cite{arcagi3,arcprize2026policy}.
+We consequently compare performance, replay, epistemic provenance, and solver-growth
+evidence as distinct claims.
+
+The graph-exploration baseline belongs to the six-game preview generation, not the
+current 25-game public set. It officially solved 12 of 25 private preview levels; after
+the authors corrected a disclosed reset-handling bug, five private reruns ranged from
+14 to 19, with median 17. At the paper's 4{,}000-interaction comparison point it solves
+two \texttt{ls20} levels and reports that levels~3+ become intractable for exhaustive
+exploration~\cite{arcagi3graph}. It is a useful historical private-set baseline, but
+its non-learning within-level graph is not a cross-level executable skill trajectory.
+
+The original executable-world-model study reports \texttt{ls20} 7/7 with both tested
+models and \texttt{wa30} 7/9 versus 4/9 depending on the model
+\cite{arcagi3worldmodels}. Its follow-up v1.6 verification agent, using
+GPT-5.6-sol, reports all 183 public levels solved at both xHigh and max effort, with
+98.97 and 98.77 RHAE respectively; its textual agent also solves 183/183 at max
+\cite{rodionov2026ablations}. The authors explicitly call this public-set saturation:
+the model postdates the public games, visual recognition remains a contamination
+possibility, and no semi-private or fully private result is reported. They also disclose
+and exclude earlier development runs in which agents recovered the true game ID, used
+web search, or opened a second unscored client. The current paper documents Docker
+isolation, hidden identifiers, restricted service egress, and a published checksummed
+run archive. This is materially stronger provenance evidence than a score alone, but
+the latest archive has not yet been reduced to exact solve-boundary description
+marginals.
+
+OPINE-World reports 20/25 games, 160/183 levels, and 78.4 RHAE on one public run per
+game~\cite{courtis2026opine}. Its reported frames-only Docker configuration excludes
+the game source, and its paper reports a transcript audit for source, web, and credential
+access. The released main logs reconstruct 153 positive-reward events rather than the
+160-level headline without crossing into summary/report layers. Its frames-only
+harness recomputes a Beta posterior over induced object-type/action consistency from
+the cumulative cross-level replay buffer and exposes Thompson-ranked uncertain
+dynamics to the analyzer. This Bayesian diagnostic guides exploration but does not
+itself choose actions. The executable sawtooth claim is narrower: among
+\OPINEComparable{} comparable adjacent engine marginals, \OPINEDecreases{} decrease
+and \OPINESharpDrops{} decrease by at least one half, but the
+\OPINEUncoupledSharp{} uncoupled sharp drops accompany transient analyzer wins whose
+executable policies were not retained. Only \OPINECoupledWitnesses{} sharp drops are
+coupled to a synthesized winning planner that
+directly invokes unchanged earlier engine definitions: \texttt{lp85} level~4
+and \texttt{tu93} level~3. OPINE therefore has extensive cross-level data and hypothesis reuse,
+but only these two released boundaries certify the narrower
+Kolmogorov--Schmidhuber executable path.
 
 \subsection{Solved checkpoints as the common unit}
 We also examined the released artifacts of OPINE-World~\cite{courtis2026opine},
-the GPT-5.5 xHigh \texttt{baseline1} run~\cite{arcagi3worldmodels}, and
-Retrodict~\cite{brown2026retrodict}. The comparison uses one rule throughout: the
+the GPT-5.5 xHigh \texttt{baseline1} run~\cite{arcagi3worldmodels}, and the
+Retrodict v1 artifact set~\cite{brown2026retrodict}. The comparison uses one rule
+throughout: the
 checkpoint for level $L$ is the program or memory state present when $L$ was actually
 cleared. A later retained snapshot is equivalent only if no measured component changed
 after the winning action. Interim synthesis rounds, repeated same-level Git commits,
@@ -1294,7 +1308,9 @@ $D(S_L)$ measures the retained solver at the $L$th clear. The conditional acquis
 cost measures what was added since $S_{L-1}$. An operational reuse witness shows that
 the later clear actually invoked an unchanged earlier component. Finally, notebook,
 transcript, and context length describe agent memory, not executable solver complexity.
-Compression of one quantity does not imply compression of the others.
+Compression of one quantity does not imply compression of the others. Retained
+observations, posterior counts, notes, transcripts, and proposer/action trajectories
+are admissible broad reuse, but do not alone establish an executable solver sawtooth.
 
 To compare conditional novelty without treating same-size replacement as free, let
 $A(P_L)$ be the multiset of normalized top-level AST statements in the exact winning
@@ -1312,12 +1328,18 @@ sharp marginal drop. A drop is attributed to reuse only if the winning entry poi
 directly calls a named definition whose normalized AST is identical in $P_{L-1}$.
 Equation~\eqref{eq:conditional-ast} is a computable conditional-description upper
 bound, not machine-independent Kolmogorov complexity; its values are compared only
-within an artifact lineage.
+within an artifact lineage. Thus the narrow Kolmogorov--Schmidhuber witness requires
+four things at once: exact adjacent winning executable states, a conditional
+description relative to the preceding win, a sharp reduction, and an actual call from
+the later winning entry point into unchanged preceding-win machinery. A direct call
+without a sharp drop is hard executable reuse, but not a coupled sawtooth witness.
 
 The result is asymmetric. OPINE-World has hard level-to-level reuse under the exact
-winning-entry-point test; \texttt{baseline1} does not, and Retrodict does not release
-the executable checkpoints needed to pass it. GKM supplies the strongest literal-leg
-evidence in the measured exact set.
+winning-entry-point test; the audited GPT-5.5 \texttt{baseline1} lineage does not, and
+the Retrodict v1 artifact set does not release the executable checkpoints needed to
+pass it. These statements do not impute the same solve-boundary result to baseline1
+v1.6 or Retrodict v2. GKM supplies the strongest literal-leg evidence in the measured
+exact set.
 
 \begin{table}[H]
 \centering
@@ -1329,121 +1351,140 @@ evidence in the measured exact set.
 System & Exact solve-boundary coverage & Conditional AST marginal &
 Direct literal reuse at the win \\
 \midrule
-GKM & 63 winning sources for 67 clears; 39 adjacent transitions &
-21 decreases among 39 comparable marginals; 6 sharp drops &
-14 winning players directly call unchanged legs. Four sharp coupled witnesses:
-\texttt{ar25} L2, $622\!\to\!175$; \texttt{g50t} L4,
-$2238\!\to\!168$; \texttt{ls20} L7, $682\!\to\!222$; and
-\texttt{m0r0} L2, $673\!\to\!265$ \\
-OPINE-World & 146 pre-solve engines for 153 positive-reward trace events; 121
-adjacent transitions & 49 decreases among 115 comparable marginals; 14 sharp drops &
-4 synthesized-planner wins directly call unchanged engine definitions. Sharp coupled
-witnesses: \texttt{lp85} L4, $5818\!\to\!2550$, and \texttt{tu93} L3,
-$7091\!\to\!2608$ \\
-\texttt{baseline1} & 160 post-solve snapshots for 174 clears; 50 exact winning
-sources and 18 exact adjacent transitions &
-5 decreases among 8 comparable marginals; no sharp drop &
-0. The 18 winning commands are fresh action programs: 4 direct actions, 6 inline
-plans, and 8 plans passed to \texttt{plan\_executor.py} \\
-Retrodict & 170 solved memory checkpoints; 145 memory transitions &
-No executable marginal is released &
-0 executable witnesses: released checkpoints contain playbook memory, not winning
-entry points \\
+GKM & \GKMExactWins{} exact winning checkpoints; \GKMExactAdjacent{} adjacent
+transitions &
+\GKMDecreases{} decreases among \GKMComparable{} comparable marginals;
+\GKMSharpDrops{} sharp drops &
+\GKMHardReuse{} winning players directly call unchanged legs;
+\GKMCoupledWitnesses{} are sharp coupled witnesses \\
+OPINE-World & \OPINEExactWins{} pre-solve engines for
+\OPINETraceSolveEvents{} positive-reward trace
+events; \OPINEExactAdjacent{} adjacent transitions &
+\OPINEDecreases{} decreases among \OPINEComparable{} comparable marginals;
+\OPINESharpDrops{} sharp drops &
+\OPINEHardReuse{} synthesized-planner wins directly call unchanged engine definitions.
+Sharp coupled
+witnesses: \texttt{lp85} L4 and \texttt{tu93} L3 \\
+\texttt{baseline1} & \BaselineOneRetainedCheckpoints{} post-solve snapshots for
+\BaselineOneReportedClears{} clears; \BaselineOneExactWins{} exact winning sources and
+\BaselineOneExactAdjacent{} exact adjacent transitions &
+\BaselineOneDecreases{} decreases among \BaselineOneComparable{} comparable
+marginals; \BaselineOneSharpDrops{} sharp drops &
+\BaselineOneHardReuse{}. The \BaselineOneExactAdjacent{} winning commands are fresh
+action programs: \BaselineOneDirectLiteralWins{} direct actions,
+\BaselineOneInlineLiteralWins{} inline plans, and
+\BaselineOneExecutorLiteralWins{} plans passed to \texttt{plan\_executor.py} \\
+Retrodict v1 & \RetrodictRetainedCheckpoints{} solved memory checkpoints;
+\RetrodictMemoryTransitions{} memory transitions; \RetrodictExactWins{} exact
+executable winning checkpoints &
+\RetrodictMemoryContractions{} memory contractions, but
+\RetrodictExactAdjacent{} executable adjacent and \RetrodictComparable{} comparable
+marginals &
+\RetrodictHardReuse{} executable witnesses: released checkpoints contain playbook
+memory, not winning entry points \\
 \bottomrule
 \end{tabularx}
 \caption{Solved-checkpoint-only comparison. A marginal comparison $M_L$ versus
 $M_{L-1}$ requires the corresponding consecutive exact winning sources. A literal
 reuse witness requires a direct call from the winning entry point; retained but
 uninvoked definitions do not qualify. Counts describe released artifact coverage,
-not performance.}
+not performance. The GKM row is the active-campaign snapshot frozen at
+2026-07-26 21:02 CEST.}
 \label{tab:audit-axes}
 \end{table}
 
-\paragraph{The six sharp coupled witnesses.}
-Exactly six transitions satisfy both the sharp-drop and literal-call tests:
-GKM \texttt{ar25} L2, $622\!\to\!175$, calling unchanged
-\texttt{repeat\_action}; GKM \texttt{g50t} L4, $2238\!\to\!168$, calling
-unchanged \texttt{solve\_unlock\_macro}; GKM \texttt{ls20} L7,
-$682\!\to\!222$, calling unchanged \texttt{execute\_path}; GKM
-\texttt{m0r0} L2, $673\!\to\!265$, calling unchanged
-\texttt{follow\_action\_sequence}; OPINE \texttt{lp85} L4,
-$5818\!\to\!2550$, reusing its level-3 planner and three unchanged engine
-definitions; and OPINE \texttt{tu93} L3, $7091\!\to\!2608$, calling three
-unchanged engine definitions. The rows in Table~\ref{tab:audit-axes} report marginal
+\paragraph{The eleven sharp coupled witnesses.}
+\begingroup\footnotesize\sloppy
+Exactly \GKMCoupledWitnesses{} GKM and \OPINECoupledWitnesses{} OPINE
+transitions satisfy both the sharp-drop and literal-call tests:
+\CoupledWitnessEnumeration. The rows in Table~\ref{tab:audit-axes} report marginal
 screens and literal reuse separately so that a contraction alone cannot be promoted
 to a transfer claim.
+\endgroup
 
 \subsection{What the comparator artifacts establish}
-The 153 positive-reward events are the coverage of the released main traces, not a
+The \OPINETraceSolveEvents{} positive-reward events are the coverage of the released
+main traces, not a
 recalculation of OPINE's reported 160-level result: \texttt{s5i5} lacks a summary,
 \texttt{sb26} has a repaired summary with one more reward than its main log, and
 \texttt{tr87} has the converse mismatch. We report these gaps rather than impute
 solve-boundary programs.
-Only four measured positive-reward traces were emitted by the synthesized planner:
-\texttt{lp85} levels~3, 4, and~6 and \texttt{tu93} level~3. All four directly call
+Only \OPINEHardReuse{} measured positive-reward traces were emitted by the synthesized
+planner:
+\texttt{lp85} levels~3, 4, and~6 and \texttt{tu93} level~3. All
+\OPINEHardReuse{} directly call
 engine definitions that are literal matches to the preceding winning checkpoint.
-Two are sharp marginal drops. At \texttt{lp85} level~4, the normalized
+\OPINECoupledWitnesses{} are sharp marginal drops. At \texttt{lp85} level~4, the normalized
 \texttt{planner} itself is identical to the level-3 winner and directly calls unchanged
 \texttt{\_cross\_components}, \texttt{\_cursor\_pairs}, and
-\texttt{\_square\_blocks}; $M_L$ falls from 5818 to 2550 compressed bytes. At
+\texttt{\_square\_blocks}. At
 \texttt{tu93} level~3, the winning planner directly calls unchanged
 \texttt{\_find\_player}, \texttt{\_goal\_topleft}, and
-\texttt{transition\_function}; $M_L$ falls from 7091 to 2608. These are executable
+\texttt{transition\_function}. These are executable
 world-model reuse, not merely retention.
 
-The other 12 sharp OPINE drops occur on analyzer-solved levels. The retained
+The other \OPINEAnalyzerOrUnknownWins{} analyzer/unknown wins include the
+\OPINEUncoupledSharp{} uncoupled sharp OPINE drops. The retained
 \texttt{game\_engine.py} can contract or remain identical while the transient winning
 policy changes; \texttt{tr87} level~6 and \texttt{tu93} level~8 have zero retained
 engine novelty but no released executable analyzer entry point. Those cases are not
-counted as literal solver reuse. The four synthesized-planner witnesses nevertheless
-falsify the categorical claim that OPINE solves every level wholly anew.
+counted as literal solver reuse. The \OPINEHardReuse{} synthesized-planner witnesses
+nevertheless falsify the categorical claim that OPINE solves every level wholly anew.
+\OPINEHardReuse{} of \OPINEExactAdjacent{} is
+a lower bound under the deliberately narrow retained-entry-point test, not an estimate
+of total operational reuse: OPINE's cumulative replay, analyzer session and notes,
+shared hypotheses, and normally inherited engine all cross level boundaries. The
+reported configuration leaves autonomous planning off, however, and the analyzer's
+use of its model-backed planner tool is conditional. Because the transient winning
+analyzer entry points were not retained, the audit neither credits nor denies their
+causal dependence on those priors.
 
 The \texttt{baseline1} result requires a finer timing distinction. Its Git snapshot is
 taken only at the start of the next agent iteration. The level-completion prompt asks
 the agent to stop real actions but permits it to prepare deliverables, including
-further Python edits, before that snapshot. Thus the 11 authored-source/AST
-contractions between adjacent post-solve retained states are only a diagnostic
-denominator. We aligned all 174 real clears to client or guarded-executor output and
-then inspected file changes through the end of each winning Codex turn. Fifty of the
-160 retained snapshots have no post-win Python edit; only 18 adjacent transitions have
-exact endpoints on both sides. Four strict authored-source contractions survive:
-\texttt{ar25} levels~4--5 ($-1025$ compressed source bytes), \texttt{cd82}
-levels~5--6 ($-15$), \texttt{lp85} levels~6--7 ($-221$), and \texttt{sb26}
-levels~6--7 ($-8$). All four also contract after AST normalization.
+further Python edits, before that snapshot. Retained-source contractions between
+adjacent post-solve states are therefore only a diagnostic denominator. We aligned
+all \BaselineOneReportedClears{} real clears to client or guarded-executor output and
+then inspected file changes through the end of each winning Codex turn.
+\BaselineOneExactWins{} of the \BaselineOneRetainedCheckpoints{} retained snapshots
+have no post-win Python edit; only \BaselineOneExactAdjacent{} adjacent transitions
+have exact endpoints on both sides. \BaselineOneExactAuthoredContractions{} strict
+authored-source contractions survive, and all also contract after AST normalization.
 
-They are retained-artifact contractions, not demonstrated solver reuse. Across all 18
+They are retained-artifact contractions, not demonstrated solver reuse. Across all
+\BaselineOneExactAdjacent{}
 exact adjacent transitions, the command that produces the real clear invokes no
-retained world-model definition. Four are direct action commands, six contain inline
-literal plans, and eight pass literal plans to the generic
+retained world-model definition. \BaselineOneDirectLiteralWins{} are direct action
+commands, \BaselineOneInlineLiteralWins{} contain inline literal plans, and
+\BaselineOneExecutorLiteralWins{} pass literal plans to the generic
 \texttt{plan\_executor.py}. The four contracting workspaces retain 18--23 unchanged
 core definitions, but uninvoked code is not part of the winning entry point. The
 conditional AST marginal decreases in five of the eight transitions for which
 successive marginals can be compared; none decreases by half. The baseline1 artifacts
 therefore supply no coupled marginal-drop/literal-reuse witness under this test.
 
-Retrodict demonstrates a third phenomenon. Its traces reconstruct curated memory at
-every solve boundary, and that memory repeatedly expands and contracts as the playbook
-is rewritten. Yet 23 of 25 selected runs retain no substantive scratch Python at any
-solve checkpoint. The two exceptions, \texttt{cn04} and \texttt{r11l}, exhibit three
-scratch expansions and no scratch contraction. Thus the released artifacts support
-memory reuse across context resets, not a Kolmogorov proxy for an executable solver
-trajectory. Log length, action count, and provider context are not substitutes.
+The Retrodict v1 artifacts demonstrate a third phenomenon. Their traces reconstruct
+curated memory at every solve boundary, and that memory repeatedly expands and
+contracts as the playbook is rewritten. Nearly all selected runs retain no
+substantive scratch Python at any solve checkpoint; the exceptions,
+\texttt{cn04} and \texttt{r11l}, show scratch expansion but no scratch contraction.
+Thus that release supports memory reuse across context resets, not a
+Kolmogorov proxy for an executable solver trajectory. Retrodict v2 also deliberately
+reuses observations, action trajectories, and a playbook, so the categorical claim
+that it has no reuse would be false. Those are admissible experience reuse, but the
+release does not expose a per-level executable winning entry point from which to
+measure a coupled conditional-description sawtooth. Log length, action count, and
+provider context are not substitutes.
 
 \paragraph{Relation to the Kolmogorov--Schmidhuber thesis.}
 The hard result is not an architectural slogan. The G\"odel--Kolmogorov Machine has
-14 exact wins whose players directly call unchanged leg literals. Four coincide with
-sharp marginal drops: \texttt{ar25} level~2 calls unchanged
-\texttt{repeat\_action} while $M_L$ falls from 622 to 175; \texttt{g50t} level~4
-calls unchanged \texttt{solve\_unlock\_macro} while $M_L$ falls from 2238 to 168;
-\texttt{ls20} level~7 calls unchanged \texttt{execute\_path} while $M_L$ falls from
-682 to 222; and \texttt{m0r0} level~2 calls unchanged
-\texttt{follow\_action\_sequence} while $M_L$ falls from 673 to 265. The other two sharp GKM
-drops, \texttt{ft09} level~2 and \texttt{wa30} level~9, lack an unchanged direct leg
-call and are not labeled reuse. A non-sharp witness occurs at \texttt{ft09}
+\GKMHardReuse{} exact wins whose players directly call unchanged leg literals.
+\GKMCoupledWitnesses{} coincide with sharp marginal drops and are enumerated above.
+The other \GKMUncoupledSharp{} sharp GKM drops lack an unchanged direct leg call and are not labeled
+reuse. A non-sharp witness occurs at \texttt{ft09}
 level~6: its winning player directly calls the unchanged
-\texttt{solve\_coupled\_key\_board} acquired at level~5, while $M_L$ decreases from
-5008 to 3730. The historical net-growth ledger falls from 177 to 2 on the same
-transition, but that statistic is not substituted for the conditional AST marginal.
+\texttt{solve\_coupled\_key\_board} acquired at level~5 with a non-sharp decrease in
+$M_L$. The historical net-growth ledger is not substituted for the conditional AST marginal.
 This joint test is stronger than either a size curve or a static library count.
 
 GKM remains the closest architectural fit to the present Kolmogorov--Schmidhuber
@@ -1452,9 +1493,13 @@ strict replay progress for promotion, and exposes marginal description cost as t
 free energy coordinate governing candidate comparison, debrief, and the forward
 selection program. Its cumulative winning source
 still expands at every exact adjacent transition. OPINE is a genuine counterexample to
-the stronger exclusivity claim: it has four direct literal engine-reuse wins and two
-sharp coupled drops. baseline1 has no such winning-entry-point witness in the exact set,
-and Retrodict exposes memory rather than executable solver checkpoints.
+the stronger exclusivity claim: it has \OPINEHardReuse{} direct literal
+engine-reuse wins and \OPINECoupledWitnesses{} sharp coupled drops. The audited
+GPT-5.5 baseline1 lineage has no such
+winning-entry-point witness in the exact set, and Retrodict v1 exposes memory rather
+than executable solver checkpoints. Failing to cite Kolmogorov or Schmidhuber is not
+itself a defect: the operational questions are whether acquisition cost is measured and
+whether later wins actually invoke retained earlier structure.
 
 The analyzers and machine-readable rows are produced by:
 \begin{quote}\small
@@ -1465,7 +1510,13 @@ The analyzers and machine-readable rows are produced by:
 \path{arc/audit_marginal_literal_reuse.py}
 \end{quote}
 They preserve source and normalized-AST measures separately, record winning-policy
-provenance, and never substitute an interim revision for a solve checkpoint.
+provenance, and never substitute an interim revision for a solve checkpoint. The
+semiautomated reproduction entry point is
+\path{arc/manuscript/scripts/reproduce_manuscript.py}; it recomputes the local GKM
+rows, checksum-pins or rebuilds comparator rows, regenerates the figures and
+\path{generated/comparator_stats.tex}, runs the audit/figure tests, and can rebuild
+the PDF. Its latest machine-readable report is
+\path{arc/manuscript/reproduction_report.json}.
 
 
 \section{Discussion}
@@ -1474,23 +1525,21 @@ provenance, and never substitute an interim revision for a solve checkpoint.
 The campaign demonstrates the intended solver-growth dynamics. New mechanics enter as
 new executable cells, recurring mechanics can be reached through thin attaching maps,
 and some later wins have sharply smaller conditional source novelty. The exact winning-
-checkpoint audit identifies nine GKM transitions whose players directly call unchanged
-leg definitions. Two also exhibit sharp conditional-AST contractions:
-\texttt{g50t} level~4 calls \texttt{solve\_unlock\_macro} while the marginal falls
-from 2238 to 168 compressed bytes, and \texttt{ls20} level~7 calls
-\texttt{execute\_path} while it falls from 682 to 222. These are the empirical form of
+checkpoint audit identifies \GKMHardReuse{} GKM transitions whose players directly
+call unchanged leg definitions. \GKMCoupledWitnesses{} also exhibit sharp
+conditional-AST contractions, as enumerated in the artifact comparison. These are the
+empirical form of
 Eq.~\eqref{eq:cone-marginal}: the old cell remains in the colimit and the new promotion
 pays mainly for the binding.
 
 The complete \texttt{wa30} and \texttt{ls20} histories occupy different regions of the
-structure function. \texttt{ls20} contains cheap rebindings around a stable search and
-path-execution library, punctuated by a state-representation change when display noise
-invalidates raw-frame equality. \texttt{wa30} continues to acquire logistics,
-neutralization, pacing, and transport structure through late levels. Its level-9 debrief
-replaces a literal suffix by a ferry factorization; because the chosen source coordinate
-increases, this is a semantic abstraction without a measured compression gain. The
-free energy framework permits exactly this distinction: factorization, retained code
-length, and historical construction action are different observables.
+structure function. \texttt{ls20} reuses one unchanged execution leg at every level;
+its exact conditional-AST novelty falls sharply at L2 even though the harness-native
+ledger later rises with retained route information. \texttt{wa30} has a complete
+alternating harness-native profile but no strict adjacent direct-call witness under the
+declared test. The free energy framework permits exactly this distinction: scalar
+charge, source factorization, retained code length, and historical construction action
+are different observables.
 
 \subsection{Why the categorical language is load-bearing}
 A Boolean inclusion lattice of observed traces cannot express what the LLM contributes.
@@ -1585,15 +1634,15 @@ compute. The practical problem is therefore to reshape the waiting-time distribu
 use inherited colimits, free energy parsimony, PowerPlay's archive, and curiosity-driven
 probes to find the right cell before brute force would.
 
-The released campaign supplies the first ARC-AGI-3 evidence for this program.
-Twenty-three promoted endpoints replay; \texttt{wa30} and \texttt{ls20} are complete;
-and exact
-source-level witnesses show unchanged legs participating in later wins with reduced
-marginal description, including four sharp coupled cases. The numerical record is stated
-by scope: the published card's official all-game score is $17.1365\%$ and its raw
-coverage is $37/183=20.2186\%$; 30 subsequent locally replayed clears raise the
-current artifact frontier to $67/183=36.6120\%$. The complete \texttt{wa30}
-publication ledger is 1458 and its operational post-base checkpoint total is 1243.
+The released campaign supplies ARC-AGI-3 evidence for this program. All 25 promoted
+endpoints replay, covering 181 of 183 levels, and exact source-level witnesses show
+unchanged legs participating in later wins with reduced marginal description, including
+\GKMCoupledWitnesses{} sharp coupled GKM cases in the acquisition-history audit. The
+definitive Competition card reports $98.11664037825032\%$; the distinct raw verified
+coverage is $181/183=98.907103825137\%$, with 7001 stored path actions and 7069
+official API calls. The uniform \texttt{wa30} and \texttt{ls20} histories give complete
+ledgers of 318 and 760 respectively, each with one sequential promotion manifest per
+level.
 These distinctions strengthen rather than replace the central thesis. In the
 compute-indexed sense proved here, any finite deterministic ARC-AGI-3 suite with finite
 winning traces is solved by fair GKM search with literal-trace fallback; the released
@@ -1601,6 +1650,9 @@ campaign is a finite-budget prefix of that construction. The practical scientifi
 problem is to replace astronomical enumeration by reusable program growth, and the
 mathematics of that growth is the mathematics of structure functions, inverse colimits,
 cofibrations, and compute.
+
+\paragraph{Acknowledgment.}
+We thank OpenAI for providing access to GPT-5.6-sol.
 
 {\small
 \bibliographystyle{plain}

@@ -1,0 +1,86 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260723T112750990105Z_su15_L1_propose.jsonl",
+      "sha256": "f6d5ae91b7361dbebbc914340dbb70f0cea47843ef9eb37c12e6f82bb5c22748"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260723T232134086386Z_su15_L2_propose.jsonl",
+      "sha256": "b0658a5670e6b195736b860e3a7e4c19eafa1b9008888ed4c6c2efb4e1b45fde"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T033851717672Z_su15_L2_propose.jsonl",
+      "sha256": "c0c543ed836c2b7019f6372c02823127f2a63bbf96e6ffd232954795b2ba9649"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T034610021053Z_su15_L3_propose.jsonl",
+      "sha256": "52c7a2d69c01b7d0667e1005b7261247483100abe1bd41965b6ddaf3e3e2a3f5"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T035412073340Z_su15_L4_propose.jsonl",
+      "sha256": "3e2c7cb280f99b1bb379a9c7d232cff36a4267e4d5057c8042cb9d3d21fbb01c"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T040416925182Z_su15_L4_propose.jsonl",
+      "sha256": "5b2b76e7191b28f7327d180decf8bf2e6c23f4c4df814c537f566489f9813135"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T041453845007Z_su15_L5_propose.jsonl",
+      "sha256": "2cbf27f297236a784e5788a67c9c188d2a46d3d9a0b98cfa0494365755fed6e0"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T042039736655Z_su15_L6_propose.jsonl",
+      "sha256": "5994373df3695598d6dad466a9c83a5b333b3f1d2cca572e570ef444b20e7aef"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T043716087702Z_su15_L8_propose.jsonl",
+      "sha256": "9b72673403a6056f455f9fff5a02b7505b2e278d3e2f08382e9cfdc38c230dd6"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T045237707055Z_su15_L8_propose.jsonl",
+      "sha256": "be5f07dd48a77543ab73d291ea903c3916595f1ce7e5944fb5868aae0df6659c"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T130815846743Z_su15_L8_propose.jsonl",
+      "sha256": "42b2e03f214908977cea7ae58ab2806e598c7fd6eb75ac6be64aa107d9d2d99a"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T153449799339Z_su15_L8_propose.jsonl",
+      "sha256": "6c6d435a9deb8d1bd6cfa81b8a7b3c8c320ebd3f890e440725450e8e2c8e37af"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T005654787851Z_su15_L8_propose.jsonl",
+      "sha256": "2cf85ad72ded28309a6fca5c7e07a39f640169e6b552c92a77cc700048fcdeea"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T124551865117Z_su15_L8_propose.jsonl",
+      "sha256": "12a45240346a68fa71a7912d01943b68d90fe70975386f3790bb8e628e04f6e0"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T140710042462Z_su15_L8_propose.jsonl",
+      "sha256": "c44b67d63b9ac8dd06999bbf9bc0af2b4dd5700286807901711c9c73740ad166"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T143414521254Z_su15_L8_debrief.jsonl",
+      "sha256": "1a892e69bbc5eadc66ef5246fa6be170d75a4e59a5e30075c4a001b5634479b3"
+    }
+  ],
+  "created_at": "2026-07-27T14:44:53.260257+00:00",
+  "game": "su15",
+  "level": 8,
+  "parent_manifest": "promotion_evidence/level_07/manifest.json",
+  "parent_manifest_sha256": "49107356a2afad87690ff654f3d9a8ea9ed4e435cefbd845bf46769f07ba72a2",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "43f50f29dc9d958473f527fe5170956be4fe94ba38da90e926d13f9ccb56f31a",
+    "checkpoint.json": "5addc1cdd79e295f4c949f4d4ce10f63376cc81731fad193828c56a1ba8fff6c",
+    "legs.py": "269d2a8bdff8e7be4b419e60415bf478e01a327d87da8f9dd519f5b978d4399f",
+    "legs_log.md": "ac2fefb4a46766653239e0cc6fc7fc0c54902838dcfaf5205d021703ce5dd62f",
+    "players.py": "b77464d5d4d72b8a2b70d92e921fdb2c4a18869b514927cdd5ef4eda7dfffc7c",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "1a892e69bbc5eadc66ef5246fa6be170d75a4e59a5e30075c4a001b5634479b3",
+  "validated": true
+}

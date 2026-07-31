@@ -1,0 +1,70 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260724T001041843515Z_vc33_L2_propose.jsonl",
+      "sha256": "ba808e413757c73fdb1e65e7f002722d1fdcd859045a2c5834cdcd30e0911eb0"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T050820220328Z_vc33_L2_propose.jsonl",
+      "sha256": "a0582c77fc9e5f62512bf94a2430710ac33337ca32c55a58d2a5d867d3d73511"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T051308660669Z_vc33_L3_propose.jsonl",
+      "sha256": "a50e8934eb16e6ac0c8d00cd37eef2baf1a0fc177d89ec97edfc6442482b2bf9"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T051952663096Z_vc33_L4_propose.jsonl",
+      "sha256": "d65973814aa9531e0d24cfd6146fad899e3ebcee73bb3e71969539c9b0c5b7f0"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T053101434195Z_vc33_L4_propose.jsonl",
+      "sha256": "58d961b2f8348e2df13f757257a8f718a3d5e620b1a7530d591c939b23abe6cd"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T053615081226Z_vc33_L5_propose.jsonl",
+      "sha256": "c3a8556de1acb614cb2e1eafb8868e90f863f577221172e86dfcb4ed365c1a57"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T054249549112Z_vc33_L6_propose.jsonl",
+      "sha256": "8cd1e8cc65851ece8db00869d7842220d3113ebfa4b78bf6f94c7519579be8c1"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T054957461451Z_vc33_L7_propose.jsonl",
+      "sha256": "71bb5adb3da76166c7dc78c07851b555295d53fd1b38159416e9847760a6636e"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T060237603071Z_vc33_L7_propose.jsonl",
+      "sha256": "84d8d2aedcd0a25f2c11700a5311f95293f3892ffb447597fa9db596a99a68fd"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T123803580882Z_vc33_L7_propose.jsonl",
+      "sha256": "2e4a8f1014ca710b4b2be80984f39444031dc44a57245091aa13141d5e9aa090"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T004218849140Z_vc33_L7_propose.jsonl",
+      "sha256": "bd43753887042f44e613c7f427457c313088399dca922b187a404e64f530d3c8"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T011156869010Z_vc33_L7_debrief.jsonl",
+      "sha256": "49657a1f4c0092ac3b1d66d444ba7ac75405c00e675d08327727a9d3ac57d2d7"
+    }
+  ],
+  "created_at": "2026-07-27T01:19:37.850525+00:00",
+  "game": "vc33",
+  "level": 7,
+  "parent_manifest": "promotion_evidence/level_06/manifest.json",
+  "parent_manifest_sha256": "3db438ac94b0c04b68fa309af1fd3c1c680ffe8b8be8ce807dae3627d5f55eda",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "5a6940d38d1c285cadade62762d04bb488621d1dd0a8bdfc8226b6a2469c41d8",
+    "checkpoint.json": "1cf2b1843b33c08fe6a5d543021eafaa28f3ecbf494c40f0e21c098356d2ebf4",
+    "legs.py": "5c13d459eace379386cb56294845da1081d48f35fdb41c3d5e2367c5119efd57",
+    "legs_log.md": "19baddd6b5eba19cc2b0042673fe711ff84563e81f8fb913d63323498f4493de",
+    "players.py": "6975b2d2a28397300b116ea0da1c74aa7429827f92a15316ad18f723e8c95da2",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "49657a1f4c0092ac3b1d66d444ba7ac75405c00e675d08327727a9d3ac57d2d7",
+  "validated": true
+}

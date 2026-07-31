@@ -1,0 +1,23 @@
+{
+  "game": "sc25",
+  "level": 3,
+  "phase": "after_propose",
+  "reached": 2,
+  "err": null,
+  "attempt": "after_propose_c3189153f280",
+  "created_at": "2026-07-26T01:13:32.312788+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T010431634414Z_sc25_L3_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level3.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

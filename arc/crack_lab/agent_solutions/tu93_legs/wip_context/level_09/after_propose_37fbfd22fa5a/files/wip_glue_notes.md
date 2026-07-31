@@ -1,0 +1,1 @@
+- L4: direct replay of `checkpoint.json` + `proposer_last.log` failed: prefix_len=47, suffix_len=19, observed_levels=3, observed_moves=66, err=None. Treat these as potentially cofibrant pieces, not as a proven composition; a bridge/morphism may be needed or the suffix may need rederivation.

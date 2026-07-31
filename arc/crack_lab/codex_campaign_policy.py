@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Build a cost-aware post-reset Codex campaign without starting model turns.
+"""Build the exact-frontier ARC-AGI-3 Codex campaign queue.
 
-The policy treats displayed weekly-percentage changes as the hard cost signal.
-Provider token counters are retained for diagnosis, but timed-out Codex streams can
-omit ``turn.completed`` and therefore report zero tokens.  Recommendations are
-deliberately sequential: medium gets the first attempt at every fresh continuation;
-high gets at most one bounded rescue attempt after a clean medium failure.
+One journal-reconstructed coordinate, ``retry_complexity_n``, selects effort,
+soft allocation, WIP mode, and auxiliary eligibility through
+``codex_campaign_status.retry_policy``.  Paid-turn, timeout, transcript, and
+branch counts are diagnostic only and must never steer dispatch.  Explicit
+provider ``unlimited`` semantics disable every cost cutoff uniformly while
+retaining scheduling, taint, replay, provenance, and containment controls.
 """
 
 from __future__ import annotations
@@ -26,13 +27,50 @@ DEFAULT_MAX_RUNS = 60
 DEFAULT_MAX_TOKENS = 32_000_000
 
 
+def lineage_input_modes(
+    row: dict[str, Any], *, minutes: int
+) -> tuple[str, str]:
+    """Project the exact retry coordinate onto explicit seed/WIP inputs."""
+    n = row.get("retry_complexity_n")
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        raise ValueError(
+            "frontier has no valid journal-derived retry_complexity_n"
+        )
+    policy = Status.retry_policy(n)
+    if minutes != policy["minutes"]:
+        raise ValueError(
+            "turn allocation does not match retry policy: "
+            f"n={n} requires {policy['minutes']} minutes, got {minutes}"
+        )
+    seed_mode = (
+        "zero_seed"
+        if row.get("incumbent_kind") == "cold_start"
+        and int(row.get("current_level") or 0) == 0
+        else "verified_parent"
+    )
+    wip_mode = str(policy["wip_mode"])
+    if (
+        wip_mode == "restore_clean_same_frontier"
+        and row.get("warm_wip_available") is not True
+    ):
+        raise ValueError(
+            "retry policy requires clean same-frontier WIP, but none is "
+            "eligible"
+        )
+    return seed_mode, wip_mode
+
+
 def required_headroom(effort: str, minutes: int,
                       turns: list[dict[str, Any]]) -> int:
     """Return an empirical worst-rate allowance bound plus one displayed point."""
-    if effort not in {"medium", "high"}:
-        raise ValueError("effort must be medium or high")
+    if effort not in {"medium", "high", "xhigh", "max"}:
+        raise ValueError("effort must be medium, high, xhigh, or max")
     if minutes <= 0:
         raise ValueError("minutes must be positive")
+    # This value is ignored when the provider explicitly reports an unlimited
+    # pool, but keeping a positive placeholder preserves the plan schema.
+    if effort in {"xhigh", "max"}:
+        return 1
     rates = []
     for turn in turns:
         if turn.get("reasoning_effort") != effort:
@@ -56,9 +94,65 @@ def required_headroom(effort: str, minutes: int,
     return max(floor, math.ceil(max(rates) * minutes) + 1)
 
 
-def _command(row: dict[str, Any], effort: str, *, reserve: int,
-             turns: list[dict[str, Any]], minutes: int = 6) -> dict[str, Any]:
-    headroom = required_headroom(effort, minutes, turns)
+def _command(
+    row: dict[str, Any],
+    effort: str,
+    *,
+    reserve: int,
+    turns: list[dict[str, Any]],
+    minutes: int,
+    unlimited: bool,
+) -> dict[str, Any]:
+    binding = Status.validate_frontier_binding({
+        field: row.get(field)
+        for field in (
+            *Status.FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    })
+    if (
+        binding["target_level"] != row.get("next_level")
+        or binding["reached"] != row.get("current_level")
+    ):
+        raise ValueError(
+            "frontier binding disagrees with advertised campaign frontier"
+        )
+    n = row.get("retry_complexity_n")
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        raise ValueError(
+            "frontier has no valid journal-derived retry_complexity_n"
+        )
+    policy = Status.retry_policy(n)
+    if effort != policy["effort"] or minutes != policy["minutes"]:
+        raise ValueError(
+            "requested command does not match retry policy: "
+            f"n={n} requires {policy['effort']}/{policy['minutes']}"
+        )
+    advertised = {
+        "recommended_effort": policy["effort"],
+        "recommended_minutes": policy["minutes"],
+        "recommended_wip_mode": policy["wip_mode"],
+        "recommended_auxiliary_parallelism": policy[
+            "auxiliary_parallelism"
+        ],
+        "dispatch_mode": policy["dispatch_mode"],
+    }
+    for key, value in advertised.items():
+        if key in row and row[key] != value:
+            raise ValueError(
+                f"frontier {key} disagrees with retry policy: "
+                f"{row[key]!r} != {value!r}"
+            )
+    headroom = 1 if unlimited else required_headroom(
+        effort, minutes, turns
+    )
+    effective_reserve = 0 if unlimited else reserve
+    max_runs = -1 if unlimited else DEFAULT_MAX_RUNS
+    max_tokens = -1 if unlimited else DEFAULT_MAX_TOKENS
+    seed_mode, wip_mode = lineage_input_modes(row, minutes=minutes)
     args = [
         "python3", "-u", "arc/crack_lab/gkm_legs.py",
         f"--game={row['game']}",
@@ -68,24 +162,51 @@ def _command(row: dict[str, Any], effort: str, *, reserve: int,
         f"--minutes={minutes}",
         f"--codex-effort={effort}",
         "--codex-debrief-effort=medium",
+        "--codex-allocation-policy=drain",
         "--debrief-policy=never",
-        f"--codex-weekly-reserve={reserve}",
+        f"--codex-weekly-reserve={effective_reserve}",
         f"--codex-weekly-headroom={headroom}",
-        f"--codex-max-campaign-runs={DEFAULT_MAX_RUNS}",
-        f"--codex-max-campaign-tokens={DEFAULT_MAX_TOKENS}",
+        f"--codex-max-campaign-runs={max_runs}",
+        f"--codex-max-campaign-tokens={max_tokens}",
         "--transient-retries=0",
-        f"--tag=budgeted_{effort}_screen",
+        f"--tag=arc_agi3_n{n}_{policy['dispatch_mode']}",
+        f"--seed-mode={seed_mode}",
+        f"--wip-mode={wip_mode}",
+        f"--expected-parent-reached={binding['reached']}",
+        (
+            "--expected-parent-action-count="
+            f"{binding['parent_action_count']}"
+        ),
+        (
+            "--expected-parent-checkpoint-sha256="
+            f"{binding['parent_checkpoint_sha256']}"
+        ),
+        (
+            "--expected-parent-source-tree-sha256="
+            f"{binding['parent_source_tree_sha256']}"
+        ),
+        f"--expected-frontier-sha256={binding['frontier_sha256']}",
     ]
-    if row["incumbent_kind"] == "cold_start" and not row.get("warm_wip_available"):
-        args.append("--fresh")
     return {
+        **binding,
         "game": row["game"],
         "target_level": row["next_level"],
         "effort": effort,
         "minutes": minutes,
+        "retry_complexity_n": n,
+        "dispatch_mode": policy["dispatch_mode"],
+        "recommended_auxiliary_parallelism": policy[
+            "auxiliary_parallelism"
+        ],
+        "cost_control_enabled": not unlimited,
+        "max_campaign_runs": max_runs,
+        "max_campaign_tokens": max_tokens,
         "required_headroom_percent": headroom,
         "external_evidence": row.get("external_evidence", {}),
         "warm_wip_available": bool(row.get("warm_wip_available")),
+        "seed_mode": seed_mode,
+        "wip_mode": wip_mode,
+        "lineage_input_mode": f"{seed_mode}+{wip_mode}",
         "argv": args,
         "command": shlex.join(args),
     }
@@ -177,49 +298,74 @@ def high_rescue_summary(turns: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
+def unlimited_escalation(
+    retry_complexity_n: int, recommended_minutes: int
+) -> tuple[str, int, str]:
+    """Return the one policy row for an unlimited exact frontier.
+
+    ``recommended_minutes`` is retained only to reject stale callers; it may
+    not enlarge or shrink the versioned retry table.
+    """
+    policy = Status.retry_policy(retry_complexity_n)
+    if recommended_minutes not in {0, policy["minutes"]}:
+        raise ValueError(
+            "advertised minutes disagree with retry policy: "
+            f"n={retry_complexity_n} requires {policy['minutes']}, "
+            f"got {recommended_minutes}"
+        )
+    return (
+        str(policy["effort"]),
+        int(policy["minutes"]),
+        f"retry_n{retry_complexity_n}_{policy['dispatch_mode']}",
+    )
+
+
 def adaptive_campaign_item(
     report: dict[str, Any], *, reserve: int
 ) -> dict[str, Any] | None:
-    """Build the next item from fresh artifacts and charged effort outcomes."""
+    """Build the next item from fresh exact-frontier retry evidence."""
     frontiers = report.get("frontiers", [])
     turns = report.get("turns", [])
     if not isinstance(frontiers, list):
         return None
-    untouched_cold = next(
-        (
-            row for row in frontiers
-            if row.get("incumbent_kind") == "cold_start"
-            and int(row.get("paid_attempts_at_frontier") or 0) == 0
-        ),
-        None,
+    unlimited = (
+        (report.get("allowance") or {}).get("window_name") == "unlimited"
     )
-    if untouched_cold is not None:
-        effort = choose_exploitation_effort(
-            report.get("window_effort_efficiency")
-            or report.get("effort_efficiency", {}),
-            report.get("window_solver_quality_by_effort")
-            or report.get("solver_quality_by_effort", {}),
-        )
-        if effort is None:
-            return None
-        item = _command(
-            untouched_cold, effort, reserve=reserve, turns=turns, minutes=6
-        )
-        item["experiment_role"] = f"cold_L1_exploitation_{effort}"
-        return item
-    eligible = [
+    candidates = [
         row for row in frontiers
-        if not row.get("quarantined_after_escalation_failure")
+        if int(row.get("current_level") or 0)
+        < int(row.get("authoritative_level_count") or 0)
     ]
-    if not eligible:
+    if not candidates:
         return None
-    row = eligible[0]
-    effort = str(row.get("recommended_effort") or "medium")
-    minutes = int(row.get("recommended_minutes") or 8)
-    item = _command(
-        row, effort, reserve=reserve, turns=turns, minutes=minutes
+    for row in candidates:
+        n = row.get("retry_complexity_n")
+        if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+            raise ValueError(
+                "frontier is missing journal-derived retry_complexity_n"
+            )
+    candidates.sort(key=lambda row: (
+        int(row["retry_complexity_n"]),
+        -float(row.get("adjusted_priority_score")
+               or row.get("priority_score") or 0.0),
+        str(row.get("game") or ""),
+    ))
+    row = candidates[0]
+    n = int(row["retry_complexity_n"])
+    policy = Status.retry_policy(n)
+    effort, minutes, role = unlimited_escalation(
+        n, int(row.get("recommended_minutes") or 0)
     )
-    item["experiment_role"] = f"ranked_frontier_{effort}"
+    item = _command(
+        row,
+        effort,
+        reserve=reserve,
+        turns=turns,
+        minutes=minutes,
+        unlimited=unlimited,
+    )
+    item["experiment_role"] = role
+    item["policy_projection"] = policy
     return item
 
 
@@ -230,40 +376,32 @@ def initial_queue(report: dict[str, Any], *, reserve: int) -> list[dict[str, Any
     changes the frontier ranking.  The runner rebuilds all later items from fresh
     artifacts and a fresh allowance read.
     """
-    eligible = [
-        row for row in report.get("frontiers", [])
-        if not row.get("quarantined_after_escalation_failure")
-    ]
-    if not eligible:
-        return []
-    row = eligible[0]
-    effort = str(row.get("recommended_effort") or "medium")
-    minutes = int(row.get("recommended_minutes") or 8)
-    item = _command(
-        row, effort, reserve=reserve, turns=report.get("turns", []),
-        minutes=minutes,
-    )
-    if effort == "high" and "medium" in row.get("failed_efforts", []):
-        item["experiment_role"] = "bounded_high_rescue_after_medium_failure"
-    else:
-        item["experiment_role"] = f"fresh_frontier_{effort}_first"
-    return [item]
+    item = adaptive_campaign_item(report, reserve=reserve)
+    return [item] if item is not None else []
 
 
 def cold_screen_cohort(report: dict[str, Any], *, reserve: int,
                        cohort_size: int = 4) -> list[dict[str, Any]]:
-    """Pair similar cold L1 frontiers across medium and high reasoning."""
+    """Historical helper: project unsolved cold roots through the n=0 row."""
     cold = [
         row for row in report.get("frontiers", [])
         if row.get("incumbent_kind") == "cold_start"
-        and row.get("paid_attempts_at_frontier", 0) == 0
+        and row.get("retry_complexity_n") == 0
     ][:cohort_size]
     cohort = []
-    # Alternation keeps each arm represented among the highest-consensus games.
-    for index, row in enumerate(cold):
-        effort = "medium" if index % 2 == 0 else "high"
-        item = _command(row, effort, reserve=reserve, turns=report.get("turns", []))
-        item["experiment_role"] = f"cold_L1_{effort}"
+    unlimited = (
+        (report.get("allowance") or {}).get("window_name") == "unlimited"
+    )
+    for row in cold:
+        item = _command(
+            row,
+            "medium",
+            reserve=reserve,
+            turns=report.get("turns", []),
+            minutes=15,
+            unlimited=unlimited,
+        )
+        item["experiment_role"] = "retry_n0_fresh_frontier"
         cohort.append(item)
     return cohort
 
@@ -272,6 +410,7 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
                   cohort_size: int = 4) -> dict[str, Any]:
     queue = initial_queue(report, reserve=reserve)
     allowance = report.get("allowance") or {}
+    unlimited = allowance.get("window_name") == "unlimited"
     remaining = allowance.get("remaining_percent")
     maximum_headroom = max(
         (row["required_headroom_percent"] for row in queue), default=0
@@ -280,6 +419,9 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
     if not queue:
         phase = "no_eligible_frontier"
         admit = False
+    elif unlimited:
+        phase = "run_initial_item_then_adapt"
+        admit = True
     elif not isinstance(remaining, int):
         phase = "allowance_unknown"
         admit = False
@@ -296,10 +438,17 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
     return {
         "phase": phase,
         "admit_next_turn": admit,
-        "reserve_percent": reserve,
+        "reserve_percent": 0 if unlimited else reserve,
+        "cost_control_enabled": not unlimited,
+        "cost_control_mode": (
+            "disabled_provider_unlimited"
+            if unlimited
+            else "finite_provider_allowance"
+        ),
         "allowance": allowance,
         "not_before_epoch": allowance.get("resets_at") if not admit else None,
         "local_window": report.get("local_window"),
+        "canonical_progress": report.get("canonical_progress"),
         "effort_efficiency": report.get("effort_efficiency", {}),
         "window_effort_efficiency": report.get("window_effort_efficiency", {}),
         "solver_quality_by_effort": report.get("solver_quality_by_effort", {}),
@@ -314,10 +463,11 @@ def policy_report(report: dict[str, Any], *, reserve: int = DEFAULT_RESERVE,
             "intrinsic effort effect"
         ),
         "decision_rule_after_cohort": (
-            "start every fresh continuation on medium; after a clean failure, "
-            "allow one high rescue only if the live reserve plus empirical high "
-            "headroom remains; charge failures and successes alike; quarantine "
-            "after medium plus high both fail; paid debriefs remain disabled"
+            "reconstruct retry_complexity_n from settled clean exact-frontier "
+            "outcomes; project n through the single versioned medium-high-"
+            "xhigh-max allocation/WIP/sidecar table; promotion resets n; "
+            "taint, infrastructure, blocker, rate-limit, and containment "
+            "outcomes do not increment it"
         ),
         "initial_queue": queue,
         # Kept empty so older readers do not mistake the completed cold-L1 screen

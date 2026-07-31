@@ -14,9 +14,12 @@ human-preconception system prompt, (3) the verify-by-reward evolution loop.
 """
 from __future__ import annotations
 import copy
+import os
 import re
 import subprocess
 import sys
+import signal
+import threading
 import time
 from typing import Optional
 
@@ -25,6 +28,16 @@ import numpy as np
 import llm_binder
 from lab import make_env
 from arcengine import ActionInput, GameAction as EA
+
+DEFAULT_STEP_CAP = 600
+FRAME_SIDE = 64
+PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = (
+    "GKM_PUBLIC_ACTION_PROTOCOL_VIOLATION"
+)
+
+
+class PublicActionProtocolViolation(ValueError):
+    """A solver attempted an action outside the public ARC interface."""
 
 
 def propose_text(prompt: str, proposer: str = "ollama", model: Optional[str] = None,
@@ -43,12 +56,24 @@ def propose_text(prompt: str, proposer: str = "ollama", model: Optional[str] = N
     return llm_binder.ollama_text(prompt, num_predict=1600, timeout=600,
                                   **({} if model is None else {"model": model}))
 
-_NAME = {1: "ACTION1", 2: "ACTION2", 3: "ACTION3", 4: "ACTION4", 5: "ACTION5", 6: "ACTION6"}
+_NAME = {
+    1: "ACTION1",
+    2: "ACTION2",
+    3: "ACTION3",
+    4: "ACTION4",
+    5: "ACTION5",
+    6: "ACTION6",
+    7: "ACTION7",
+}
 
 
 class _Budget:
     """Caps TOTAL engine steps (real + lookahead) so a runaway agent can't hang."""
-    def __init__(self, cap): self.cap = cap; self.used = 0
+    def __init__(self, cap):
+        self.cap = cap
+        self.used = 0
+        self.protocol_violation = None
+
     def tick(self):
         self.used += 1
         if self.used > self.cap:
@@ -83,12 +108,12 @@ class Arena:
         out = []
         for action in available:
             name = getattr(action, "name", str(action))
-            match = re.search(r"(?:ACTION)?([1-6])$", name)
+            match = re.search(r"(?:ACTION)?([1-7])$", name)
             if match:
                 out.append(int(match.group(1)))
-            elif isinstance(action, int) and 1 <= action <= 6:
+            elif isinstance(action, int) and 1 <= action <= 7:
                 out.append(action)
-        return tuple(out) or (1, 2, 3, 4, 5, 6)
+        return tuple(out) or (1, 2, 3, 4, 5, 6, 7)
 
     @property
     def levels_completed(self) -> int:
@@ -100,17 +125,79 @@ class Arena:
     def frame(self) -> np.ndarray:
         return np.asarray(self._fd.frame[-1])
 
+    def _reject_action(self, message: str):
+        # Root and every clone share this budget object.  The latch therefore
+        # survives a solver catching the exception on a disposable clone.
+        # Emit the marker directly to the inherited process descriptor before
+        # raising.  Returning it only through ``run_program()`` is insufficient:
+        # a probe can catch the exception or print only ``type(error)`` and
+        # thereby hide the violation from the host-owned proposer transcript.
+        # The Codex campaign monitor watches this descriptor-backed transcript
+        # live and invalidates the complete turn on the first marker.
+        if getattr(self._budget, "protocol_violation", None) is None:
+            record = (
+                f"{PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER}: {message}\n"
+            ).encode("utf-8", errors="replace")
+            try:
+                os.write(sys.stderr.fileno(), record)
+            except (AttributeError, OSError, ValueError):
+                # Some embedded test/runtime stderr objects have no usable file
+                # descriptor.  Preserve a best-effort visible fallback while
+                # the shared in-memory latch remains authoritative in-process.
+                print(
+                    f"{PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER}: {message}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+        self._budget.protocol_violation = message
+        raise PublicActionProtocolViolation(message)
+
     def step(self, a, x: Optional[int] = None, y: Optional[int] = None) -> np.ndarray:
+        """Apply one public ARC action after strict protocol validation.
+
+        ACTION6 coordinates are positions in the returned 64x64 observation,
+        not coordinates in an implementation-defined world outside that
+        observation.  Validate before charging either the local budget or the
+        engine so a rejected call has no gameplay effect.
+        """
         if isinstance(a, (list, tuple)):
-            if len(a) != 3 or int(a[0]) != 6:
-                raise ValueError("compound action must be [6, x, y]")
-            a, x, y = int(a[0]), int(a[1]), int(a[2])
+            if x is not None or y is not None:
+                self._reject_action(
+                    "compound coordinate action cannot also pass x or y"
+                )
+            if (
+                len(a) != 3
+                or a[0] != 6
+                or any(
+                    not isinstance(value, int) or isinstance(value, bool)
+                    for value in a
+                )
+            ):
+                self._reject_action("compound action must be [6, x, y]")
+            a, x, y = a
         else:
-            a = int(a)
+            if not isinstance(a, int) or isinstance(a, bool):
+                self._reject_action("action must be an integer in 1..7")
+        if a not in (1, 2, 3, 4, 5, 6, 7):
+            self._reject_action("action must be 1..7")
+        if a == 6:
+            if (
+                not isinstance(x, int)
+                or isinstance(x, bool)
+                or not isinstance(y, int)
+                or isinstance(y, bool)
+                or not (0 <= x < FRAME_SIDE)
+                or not (0 <= y < FRAME_SIDE)
+            ):
+                self._reject_action(
+                    "coordinate action requires integer x,y in 0..63"
+                )
+            data = {"x": x, "y": y}
+        else:
+            if x is not None or y is not None:
+                self._reject_action("coordinates are valid only for action 6")
+            data = {}
         self._budget.tick()
-        if a not in (1, 2, 3, 4, 5, 6):
-            raise ValueError("action must be 1..6")
-        data = {"x": int(x or 0), "y": int(y or 0)} if a == 6 else {}
         self._fd = self._game.perform_action(
             ActionInput(id=EA[_NAME[a]], data=data), raw=True
         )
@@ -177,9 +264,11 @@ API = """Write a Python function with EXACTLY this signature (no other top-level
 collections, heapq):
   env.reset() -> np.ndarray            # 64x64 int frame; also resets the run
   env.frame() -> np.ndarray            # current 64x64 frame
-  env.step(a) -> np.ndarray            # commit key action a; advances the
+  env.step(a) -> np.ndarray            # commit key action a in {1,2,3,4,5,7};
+                                       #   advances the
                                        #   REAL run (costs one move) and returns the new frame
-  env.step(6, x, y) -> np.ndarray      # commit coordinate action; replay token [6,x,y]
+  env.step(6, x, y) -> np.ndarray      # commit coordinate action; x,y are integer
+                                       #   screen positions 0..63; replay token [6,x,y]
   env.clone() -> env                   # a COPY for SAFE lookahead; stepping the clone
                                        #   does NOT affect the real env -- use it to learn
                                        #   the rules and to plan, then commit on the real env
@@ -188,7 +277,9 @@ collections, heapq):
   env.actions -> tuple                 # action IDs available in the current game
 
 Discover perception and rules from the frames via clones, then act on env. Keep total
-work bounded (a few hundred real moves). Output ONE ```python code block.
+work bounded (a few hundred real moves). Any action outside this exact public
+grammar invalidates the complete proposer turn, even if your code catches the
+exception. Output ONE ```python code block.
 
 PERFORMANCE: env.clone()/env.step() cost ~300 calls/second and you have a few minutes.
 So avoid EXHAUSTIVE GLOBAL search, but DO use BOUNDED per-subgoal search/lookahead
@@ -239,7 +330,7 @@ def _compile(code: str):
         return None, f"{type(exc).__name__}: {exc}".strip()[:160]
 
 
-def run_program(game, solve, step_cap=600, time_cap=600):
+def run_program(game, solve, step_cap=DEFAULT_STEP_CAP, time_cap=600):
     """Run the agent program on a fresh real env; return (levels, path)."""
     env = Arena(game, _budget=_Budget(step_cap * 400))
     started = time.time()
@@ -253,10 +344,49 @@ def run_program(game, solve, step_cap=600, time_cap=600):
         return orig(a, x, y)
     env.step = guarded
     err = None
+    alarm_enabled = (
+        time_cap is not None
+        and time_cap > 0
+        and hasattr(signal, "setitimer")
+        and threading.current_thread() is threading.main_thread()
+    )
+    old_handler = None
+    old_timer = None
+    if alarm_enabled:
+        def wall_timeout(_signum, _frame):
+            raise TimeoutError("program wall-time cap")
+
+        old_handler = signal.getsignal(signal.SIGALRM)
+        signal.signal(signal.SIGALRM, wall_timeout)
+        old_timer = signal.setitimer(signal.ITIMER_REAL, float(time_cap))
     try:
         solve(env)
+    except KeyboardInterrupt:
+        if os.environ.get("GKM_SANITIZE_PROPOSER_INTERRUPTS") == "1":
+            err = "KeyboardInterrupt: proposer probe interrupted"
+        else:
+            raise
     except Exception as exc:
         err = f"{type(exc).__name__}: {exc}".strip()[:160]
+    finally:
+        if alarm_enabled:
+            signal.setitimer(signal.ITIMER_REAL, 0)
+            signal.signal(signal.SIGALRM, old_handler)
+            if old_timer and old_timer[0] > 0:
+                elapsed = time.time() - started
+                signal.setitimer(
+                    signal.ITIMER_REAL,
+                    max(1e-6, old_timer[0] - elapsed),
+                    old_timer[1],
+                )
+    protocol_violation = getattr(
+        getattr(env, "_budget", None), "protocol_violation", None
+    )
+    if protocol_violation is not None:
+        err = (
+            f"{PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER}: "
+            f"{protocol_violation}"
+        )[:160]
     return env.levels_completed, list(env.path), err
 
 

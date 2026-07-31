@@ -1,0 +1,44 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260727T222409316911Z_sk48_L8_propose.jsonl",
+      "sha256": "c4858d68f12113353ed5e4f5d78e2dbe85739ee5481187c333f33c8eda09bdc3"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260728T012546497211Z_sk48_L8_propose.jsonl",
+      "sha256": "5493c7dba76a65936a4a8c47616004e8fac4d804103bbee02048be7c2158bee9"
+    }
+  ],
+  "created_at": "2026-07-28T02:31:54.681977+00:00",
+  "game": "sk48",
+  "level": 8,
+  "parent_manifest": "promotion_evidence/level_07/manifest.json",
+  "parent_manifest_sha256": "abbad5689c3704c838fdaa7475e0a4e9151b8fc21783e914b227dd990d0e8cc2",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "4ba756d0a4cd5d835afd1d1ffc08c7e6f26689fd3082c4d6cf5e64d37375487f",
+    "checkpoint.json": "95aae23436ec16abb07522106ae24b75bcdb6dbb070edab1e5ed4fd5efbda348",
+    "legs.py": "09e62867105cc844d45e1872f2133533111c77caed74d5b3ce11364b1d5345ec",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "69940502823a90e6407a46c713c55727aa311d708b6660a5f2766db69d0d6352",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "5493c7dba76a65936a4a8c47616004e8fac4d804103bbee02048be7c2158bee9",
+  "validated": true,
+  "accounting_correction": {
+    "corrected_at": "2026-07-28T02:35:53Z",
+    "reason": "fresh-prefix recovery restored winning source before marginal baseline capture",
+    "method": "gkm_legs.marginal_complexity from immutable L7 promotion source to exact L8 promoted source",
+    "old_marginal_C": 0,
+    "new_marginal_C": 461,
+    "old_total_marginal_C": 360,
+    "new_total_marginal_C": 821,
+    "parent_legs_sha256": "81ef681b687b806007fdeee07d8cf82abab118ced48ce144c823b3ebee5a03b7",
+    "parent_players_sha256": "db43ba2ea350919086a47fed31ced4b7e009555881d25763565c872567977d8b",
+    "promoted_legs_sha256": "09e62867105cc844d45e1872f2133533111c77caed74d5b3ce11364b1d5345ec",
+    "promoted_players_sha256": "69940502823a90e6407a46c713c55727aa311d708b6660a5f2766db69d0d6352",
+    "corrected_checkpoint_sha256": "95aae23436ec16abb07522106ae24b75bcdb6dbb070edab1e5ed4fd5efbda348"
+  }
+}

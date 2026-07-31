@@ -1,0 +1,630 @@
+{
+  "schema": 1,
+  "release": {
+    "commit": "9235ed26627140460efa1f6ca5e4041470cddc14",
+    "receipt_sha256": "140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681",
+    "online_scorecard": "https://arcprize.org/scorecards/e293eeae-c0de-4263-a916-0a40ad282cbc",
+    "competition_scorecard": "https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb",
+    "official_score_percent": 98.11664037825032,
+    "raw_levels": 181,
+    "authoritative_levels": 183,
+    "stored_actions": 7001,
+    "official_api_actions": 7069
+  },
+  "measurement": "checkpoint-recorded positive net retained-description growth per legs.py and players.py, including the container-literal surcharge",
+  "games": [
+    {
+      "game": "ar25",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 269,
+      "retained_description": 67,
+      "total_marginal_C": 66,
+      "marginals": [
+        9,
+        4,
+        9,
+        7,
+        7,
+        10,
+        10,
+        10
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.5
+    },
+    {
+      "game": "bp35",
+      "reached": 9,
+      "total_levels": 9,
+      "actions": 393,
+      "retained_description": 1280,
+      "total_marginal_C": 1279,
+      "marginals": [
+        210,
+        174,
+        108,
+        102,
+        44,
+        128,
+        174,
+        79,
+        260
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.2
+    },
+    {
+      "game": "cd82",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 91,
+      "retained_description": 174,
+      "total_marginal_C": 173,
+      "marginals": [
+        11,
+        12,
+        41,
+        35,
+        37,
+        37
+      ],
+      "direction_reversals": 2,
+      "normalized_total_variation": 0.926829268292683
+    },
+    {
+      "game": "cn04",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 210,
+      "retained_description": 96,
+      "total_marginal_C": 95,
+      "marginals": [
+        12,
+        12,
+        32,
+        13,
+        13,
+        13
+      ],
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.21875
+    },
+    {
+      "game": "dc22",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 540,
+      "retained_description": 851,
+      "total_marginal_C": 650,
+      "marginals": [
+        49,
+        71,
+        96,
+        107,
+        2,
+        325
+      ],
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.4953846153846153
+    },
+    {
+      "game": "ft09",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 80,
+      "retained_description": 602,
+      "total_marginal_C": 604,
+      "marginals": [
+        107,
+        2,
+        184,
+        132,
+        177,
+        2
+      ],
+      "direction_reversals": 4,
+      "normalized_total_variation": 3.0380434782608696
+    },
+    {
+      "game": "g50t",
+      "reached": 7,
+      "total_levels": 7,
+      "actions": 361,
+      "retained_description": 673,
+      "total_marginal_C": 672,
+      "marginals": [
+        244,
+        100,
+        2,
+        2,
+        134,
+        88,
+        102
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.778688524590164
+    },
+    {
+      "game": "ka59",
+      "reached": 7,
+      "total_levels": 7,
+      "actions": 342,
+      "retained_description": 159,
+      "total_marginal_C": 158,
+      "marginals": [
+        26,
+        25,
+        13,
+        20,
+        4,
+        21,
+        49
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.653061224489796
+    },
+    {
+      "game": "lf52",
+      "reached": 8,
+      "total_levels": 10,
+      "actions": 544,
+      "retained_description": 1419,
+      "total_marginal_C": 1418,
+      "marginals": [
+        116,
+        119,
+        2,
+        217,
+        96,
+        352,
+        307,
+        209
+      ],
+      "direction_reversals": 5,
+      "normalized_total_variation": 2.428977272727273
+    },
+    {
+      "game": "lp85",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 93,
+      "retained_description": 49,
+      "total_marginal_C": 48,
+      "marginals": [
+        10,
+        5,
+        5,
+        3,
+        6,
+        8,
+        6,
+        5
+      ],
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.5
+    },
+    {
+      "game": "ls20",
+      "reached": 7,
+      "total_levels": 7,
+      "actions": 365,
+      "retained_description": 761,
+      "total_marginal_C": 760,
+      "marginals": [
+        40,
+        54,
+        86,
+        114,
+        138,
+        170,
+        158
+      ],
+      "direction_reversals": 1,
+      "normalized_total_variation": 0.8352941176470589
+    },
+    {
+      "game": "m0r0",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 230,
+      "retained_description": 358,
+      "total_marginal_C": 357,
+      "marginals": [
+        24,
+        29,
+        159,
+        27,
+        46,
+        72
+      ],
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.9622641509433962
+    },
+    {
+      "game": "r11l",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 115,
+      "retained_description": 1384,
+      "total_marginal_C": 1383,
+      "marginals": [
+        103,
+        449,
+        30,
+        341,
+        362,
+        98
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 3.0311804008908685
+    },
+    {
+      "game": "re86",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 600,
+      "retained_description": 1873,
+      "total_marginal_C": 1872,
+      "marginals": [
+        105,
+        133,
+        237,
+        343,
+        343,
+        176,
+        297,
+        238
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.7055393586005831
+    },
+    {
+      "game": "s5i5",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 329,
+      "retained_description": 694,
+      "total_marginal_C": 693,
+      "marginals": [
+        137,
+        197,
+        74,
+        49,
+        39,
+        51,
+        83,
+        63
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.4314720812182742
+    },
+    {
+      "game": "sb26",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 124,
+      "retained_description": 844,
+      "total_marginal_C": 843,
+      "marginals": [
+        72,
+        121,
+        2,
+        2,
+        147,
+        152,
+        220,
+        127
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.1772727272727272
+    },
+    {
+      "game": "sc25",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 144,
+      "retained_description": 337,
+      "total_marginal_C": 336,
+      "marginals": [
+        40,
+        14,
+        17,
+        54,
+        97,
+        114
+      ],
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.105263157894737
+    },
+    {
+      "game": "sk48",
+      "reached": 8,
+      "total_levels": 8,
+      "actions": 506,
+      "retained_description": 822,
+      "total_marginal_C": 821,
+      "marginals": [
+        37,
+        39,
+        21,
+        35,
+        78,
+        97,
+        53,
+        461
+      ],
+      "direction_reversals": 4,
+      "normalized_total_variation": 1.1887201735357917
+    },
+    {
+      "game": "sp80",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 151,
+      "retained_description": 403,
+      "total_marginal_C": 402,
+      "marginals": [
+        131,
+        40,
+        81,
+        56,
+        39,
+        55
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.450381679389313
+    },
+    {
+      "game": "su15",
+      "reached": 9,
+      "total_levels": 9,
+      "actions": 170,
+      "retained_description": 1214,
+      "total_marginal_C": 1213,
+      "marginals": [
+        36,
+        95,
+        77,
+        377,
+        54,
+        77,
+        2,
+        292,
+        203
+      ],
+      "direction_reversals": 7,
+      "normalized_total_variation": 3.1220159151193636
+    },
+    {
+      "game": "tn36",
+      "reached": 7,
+      "total_levels": 7,
+      "actions": 131,
+      "retained_description": 1034,
+      "total_marginal_C": 1033,
+      "marginals": [
+        28,
+        41,
+        132,
+        138,
+        202,
+        270,
+        222
+      ],
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.0740740740740742
+    },
+    {
+      "game": "tr87",
+      "reached": 6,
+      "total_levels": 6,
+      "actions": 208,
+      "retained_description": 218,
+      "total_marginal_C": 1025,
+      "marginals": [
+        156,
+        241,
+        183,
+        69,
+        249,
+        127
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.244979919678715
+    },
+    {
+      "game": "tu93",
+      "reached": 9,
+      "total_levels": 9,
+      "actions": 195,
+      "retained_description": 647,
+      "total_marginal_C": 646,
+      "marginals": [
+        254,
+        68,
+        148,
+        73,
+        2,
+        92,
+        3,
+        3,
+        3
+      ],
+      "direction_reversals": 4,
+      "normalized_total_variation": 2.326771653543307
+    },
+    {
+      "game": "vc33",
+      "reached": 7,
+      "total_levels": 7,
+      "actions": 213,
+      "retained_description": 982,
+      "total_marginal_C": 981,
+      "marginals": [
+        55,
+        46,
+        87,
+        144,
+        167,
+        87,
+        395
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.3113924050632912
+    },
+    {
+      "game": "wa30",
+      "reached": 9,
+      "total_levels": 9,
+      "actions": 597,
+      "retained_description": 319,
+      "total_marginal_C": 318,
+      "marginals": [
+        43,
+        20,
+        32,
+        50,
+        39,
+        23,
+        28,
+        34,
+        49
+      ],
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.12
+    }
+  ],
+  "sawtooth_ranking": [
+    {
+      "game": "su15",
+      "direction_reversals": 7,
+      "normalized_total_variation": 3.1220159151193636
+    },
+    {
+      "game": "lf52",
+      "direction_reversals": 5,
+      "normalized_total_variation": 2.428977272727273
+    },
+    {
+      "game": "ft09",
+      "direction_reversals": 4,
+      "normalized_total_variation": 3.0380434782608696
+    },
+    {
+      "game": "tu93",
+      "direction_reversals": 4,
+      "normalized_total_variation": 2.326771653543307
+    },
+    {
+      "game": "sk48",
+      "direction_reversals": 4,
+      "normalized_total_variation": 1.1887201735357917
+    },
+    {
+      "game": "r11l",
+      "direction_reversals": 3,
+      "normalized_total_variation": 3.0311804008908685
+    },
+    {
+      "game": "tr87",
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.244979919678715
+    },
+    {
+      "game": "bp35",
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.2
+    },
+    {
+      "game": "sb26",
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.1772727272727272
+    },
+    {
+      "game": "wa30",
+      "direction_reversals": 3,
+      "normalized_total_variation": 2.12
+    },
+    {
+      "game": "g50t",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.778688524590164
+    },
+    {
+      "game": "re86",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.7055393586005831
+    },
+    {
+      "game": "ka59",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.653061224489796
+    },
+    {
+      "game": "ar25",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.5
+    },
+    {
+      "game": "sp80",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.450381679389313
+    },
+    {
+      "game": "s5i5",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.4314720812182742
+    },
+    {
+      "game": "vc33",
+      "direction_reversals": 3,
+      "normalized_total_variation": 1.3113924050632912
+    },
+    {
+      "game": "m0r0",
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.9622641509433962
+    },
+    {
+      "game": "lp85",
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.5
+    },
+    {
+      "game": "dc22",
+      "direction_reversals": 2,
+      "normalized_total_variation": 1.4953846153846153
+    },
+    {
+      "game": "cd82",
+      "direction_reversals": 2,
+      "normalized_total_variation": 0.926829268292683
+    },
+    {
+      "game": "cn04",
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.21875
+    },
+    {
+      "game": "sc25",
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.105263157894737
+    },
+    {
+      "game": "tn36",
+      "direction_reversals": 1,
+      "normalized_total_variation": 1.0740740740740742
+    },
+    {
+      "game": "ls20",
+      "direction_reversals": 1,
+      "normalized_total_variation": 0.8352941176470589
+    }
+  ],
+  "figure_selection": {
+    "strongest_raw_shape": "su15",
+    "manuscript_primary": "wa30",
+    "reason": "su15 has the strongest raw oscillation, but wa30 is the strongest complete uniform promotion-history example with one audited sidecar per level; ls20 supplies the coupled unchanged-leg reuse example"
+  }
+}

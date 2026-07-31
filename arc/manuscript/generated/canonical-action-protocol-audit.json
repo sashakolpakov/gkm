@@ -1,0 +1,28 @@
+{
+  "verdict": "PASS",
+  "boundaries": 181,
+  "release_gate": {
+    "authoritative_levels": 183,
+    "canonical_tree_sha256": "57a280ca033a166b15f31334303bdd2725f5e6fbf3ef88d4fdca906857cc0d7a",
+    "claimed_inventory_sha256": "4927a00bb5570da8b9869ecc8502a650c05290867391f96cce25e0f5a28fd198",
+    "claimed_levels": 181,
+    "control_contract_sha256": "c6463d46c20fa62c52d91422f547c1139ba35205e915cc43d254e074abb0cf7b",
+    "evidence_sha256": "b1bcc17fb0033549e0d4973762d8508cfd2f30b3d2bb1425e889378f0df1fb63",
+    "games": 25,
+    "inventory_sha256": "31144058543d7d30fa695cb0a9df410c3711d25c21264dc8c41a86efeeece5ab",
+    "kind": "partial_campaign_freeze",
+    "receipt": "/private/tmp/gkm-release-9235ed2/arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json",
+    "status": "PASS",
+    "unclaimed_boundaries": [
+      {
+        "game": "lf52",
+        "level": 9
+      },
+      {
+        "game": "lf52",
+        "level": 10
+      }
+    ],
+    "verifier_sha256": "070610f9c0b8063ed241fc0aae03bbda1ff2573ad2621f73c1f73fa1b2da3bd5"
+  }
+}

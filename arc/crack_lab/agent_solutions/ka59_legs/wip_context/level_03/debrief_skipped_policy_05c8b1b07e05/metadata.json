@@ -1,0 +1,22 @@
+{
+  "game": "ka59",
+  "level": 3,
+  "phase": "debrief_skipped_policy",
+  "reached": 3,
+  "err": null,
+  "attempt": "debrief_skipped_policy_05c8b1b07e05",
+  "created_at": "2026-07-25T23:53:33.293935+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260725T234754162227Z_ka59_L3_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "game": "wa30",
+  "level": 5,
+  "phase": "after_propose",
+  "reached": 4,
+  "err": null,
+  "attempt": "after_propose_751fa477fccc",
+  "created_at": "2026-07-26T23:10:32.013127+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T220819103153Z_wa30_L1_propose.jsonl",
+    "codex_turn_20260726T221951654466Z_wa30_L2_propose.jsonl",
+    "codex_turn_20260726T222701900532Z_wa30_L3_propose.jsonl",
+    "codex_turn_20260726T224105345322Z_wa30_L4_propose.jsonl",
+    "codex_turn_20260726T225441780500Z_wa30_L5_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

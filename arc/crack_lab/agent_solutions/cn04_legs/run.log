@@ -1,2 +1,2 @@
-=== cn04: reached level 1 | validated=True | total_marginal_C=12 | F=-0.760 ===
-per-level marginal novelty: L1:12
+=== cn04: reached level 6 | validated=True | total_marginal_C=95 | F=-4.100 ===
+per-level marginal novelty: L1:12, L2:12, L3:32, L4:13, L5:13, L6:13

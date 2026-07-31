@@ -2,76 +2,160 @@
   "schema_version": 1,
   "game": "wa30",
   "verified_through_level": 9,
-  "final_replay_actions": 596,
-  "final_public_commit": "07a188544d10d57850d81c6bcf65b82bdd12f52c",
+  "final_replay_actions": 597,
+  "final_public_commit": null,
   "metric": "positive net retained-description growth per source file",
   "ledger": [
     {
       "level": 1,
-      "marginal_C": 112,
-      "evidence": "15c0a049 FINDINGS and clean L1-L3 source"
+      "marginal_C": 43,
+      "evidence": "fresh clean promotion L1"
     },
     {
       "level": 2,
-      "marginal_C": 78,
-      "evidence": "15c0a049 FINDINGS and clean L1-L3 source"
+      "marginal_C": 20,
+      "evidence": "fresh clean promotion L2"
     },
     {
       "level": 3,
-      "marginal_C": 95,
-      "evidence": "15c0a049 FINDINGS and clean L1-L3 source"
+      "marginal_C": 32,
+      "evidence": "fresh clean promotion L3"
     },
     {
       "level": 4,
-      "marginal_C": 47,
-      "evidence": "0ccea257 FINDINGS and clean L1-L4 source"
+      "marginal_C": 50,
+      "evidence": "fresh clean promotion L4"
     },
     {
       "level": 5,
-      "marginal_C": 405,
-      "evidence": "level_05 after-debrief snapshot and later checkpoint"
+      "marginal_C": 39,
+      "evidence": "fresh clean promotion L5"
     },
     {
       "level": 6,
-      "marginal_C": 225,
-      "evidence": "level_06 after-debrief snapshot and later checkpoint"
+      "marginal_C": 23,
+      "evidence": "fresh clean promotion L6"
     },
     {
       "level": 7,
-      "marginal_C": 145,
-      "evidence": "level_07 after-debrief snapshot and later checkpoint"
+      "marginal_C": 28,
+      "evidence": "fresh clean promotion L7"
     },
     {
       "level": 8,
-      "marginal_C": 204,
-      "evidence": "level_08 after-debrief snapshot and later checkpoint"
+      "marginal_C": 34,
+      "evidence": "fresh clean promotion L8"
     },
     {
       "level": 9,
-      "marginal_C": 147,
-      "evidence": "07a1885 final promoted checkpoint"
+      "marginal_C": 49,
+      "evidence": "fresh clean promotion L9"
     }
   ],
-  "total_marginal_C": 1458,
+  "total_marginal_C": 318,
   "promotions": [
+    {
+      "schema_version": 1,
+      "game": "wa30",
+      "through_level": 1,
+      "replay_validated": true,
+      "source_observed_reached": 1,
+      "embedded_checkpoint_actions": 32,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "0275bcd71875",
+      "source": {
+        "kind": "promotion",
+        "value": "level_01",
+        "prefix": "",
+        "manifest_sha256": "0a0ec3aaf265ac2d6624aeb1cee38923d24697f8441a1b11ff97cbc38f15f19b"
+      },
+      "files": {
+        "auto_solve_attempts.json": "a9b2a504a1c081e33c121f0249625c2332cb966540f9a05596801f1562ee849a",
+        "checkpoint.json": "11fa73ad740f7d25f4d9d1fbf5750fef7937b02cb9d9e9e25c6b56fbec69449b",
+        "legs.py": "82ef39abfa8f99e47b04a97e8530843f249325404d445514d04a20052affbabd",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "f197485a4429782d1729bdb5ff731fa0954f09f42591718d2fa9cb41accf3f81",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
+    {
+      "schema_version": 1,
+      "game": "wa30",
+      "through_level": 2,
+      "replay_validated": true,
+      "source_observed_reached": 2,
+      "embedded_checkpoint_actions": 90,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 20,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "992c33022ce7",
+      "source": {
+        "kind": "promotion",
+        "value": "level_02",
+        "prefix": "",
+        "manifest_sha256": "75cf509ab5dc71ccde57608d12200506a5cb691e5e5c7583c82c51073fa11b8a"
+      },
+      "files": {
+        "auto_solve_attempts.json": "e3d33de23164e069cd4c39a68e7b5427901fe5b3a69d814e29f90dc6322a8f7c",
+        "checkpoint.json": "718cc4229e971205a24a74ccb08a73bff6d5f5eb9f3282e042788d37ef261dff",
+        "legs.py": "8adf0798fb1ec0f66fc10964c4d3fea8d2847b45f04945ec6d3ea355c94ca5dc",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "c75b57e35d6d2b29d204123f4fbcaa46080e657aa1def22a376a95c4926e3ee3",
+        "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+      }
+    },
     {
       "schema_version": 1,
       "game": "wa30",
       "through_level": 3,
       "replay_validated": true,
-      "source_observed_reached": null,
-      "embedded_checkpoint_actions": null,
-      "embedded_checkpoint_records": null,
-      "clean_core_digest": "1375bb5000aa",
+      "source_observed_reached": 3,
+      "embedded_checkpoint_actions": 170,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "3d66210cf3a2",
       "source": {
-        "kind": "git",
-        "value": "15c0a04911bfdc6b03d4649a3a5b3b9a072ce0b4",
-        "prefix": "crack_lab/agent_solutions/wa30_legs"
+        "kind": "promotion",
+        "value": "level_03",
+        "prefix": "",
+        "manifest_sha256": "32da82e214e4eee1bd76f54a5f572315fdeb6be5b2fbc32f52124f8135d834e5"
       },
       "files": {
-        "legs.py": "779c40277a925e15905cb59ab2960739fae92ec5fdd0b336d81cc703b99e8f3f",
-        "legs_log.md": "8f2f5d03e79565763181ad309eaa7d0313f71adaea79493b2f1f018e80a2d7b1",
-        "players.py": "d7190ec0c0e1b9209bdad6602ddf463e950b7d66b43b758698a130ad54173742",
+        "auto_solve_attempts.json": "c6fe80115cf30e77da3b425c69796f123b4b7b46719f4221f02739d8510926d2",
+        "checkpoint.json": "5328625829f1f4abd3012760ab6ce0eb19c17d947303523721793167dde0e0ba",
+        "legs.py": "3d66562702b0ec23d760a74932c34f648064bfed3fe97fcd3e4f08f17cfddbdf",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "6c7b29d7411b1383c6c3926be423129b0a89d9091891f8934055d7cf7df70ea7",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -80,19 +164,43 @@
       "game": "wa30",
       "through_level": 4,
       "replay_validated": true,
-      "source_observed_reached": null,
-      "embedded_checkpoint_actions": null,
-      "embedded_checkpoint_records": null,
-      "clean_core_digest": "5c543f87c358",
+      "source_observed_reached": 4,
+      "embedded_checkpoint_actions": 245,
+      "embedded_checkpoint_records": [
+        {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
+          "level": 2,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
+          "reached": true
+        },
+        {
+          "level": 4,
+          "marginal_C": 50,
+          "reached": true
+        }
+      ],
+      "clean_core_digest": "b5d93fb323f9",
       "source": {
-        "kind": "git",
-        "value": "0ccea2572ea7990f1573ac34bfbc5d83bd688bd7",
-        "prefix": "arc/crack_lab/agent_solutions/wa30_legs"
+        "kind": "promotion",
+        "value": "level_04",
+        "prefix": "",
+        "manifest_sha256": "cfa0bc9cc5fb4f8eb387e074b4bee39ee3975b8cc7af31e460946be164d43249"
       },
       "files": {
-        "legs.py": "e1b000b6febd81d51d1ce60cc114b30d0216c90515f7decc127cd95e45bdd2ba",
-        "legs_log.md": "4c4c7d7c20b39161245358f1181bc35b4cde6482d7446b9d896dd64e26b0efce",
-        "players.py": "5b43fbb64b8e16a51a67156e64b9f9cf55e98991ad2e6fd624ce4eaadf3b65ec",
+        "auto_solve_attempts.json": "d876fd0816e9f77e52da5a77a91a7184dfab578b8a82d32076bc5362b2b15817",
+        "checkpoint.json": "31dab9fee51ca6983e0fea298219f507ba9f7c431fc5c8b39ceb4894a33b5669",
+        "legs.py": "d4d92be0e5de4f2dd0e24b84b2aed46f5a78d940c7dda1c88b812eff3ba96955",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "0c311a64922cc56e9d7a4cf5165482d5f9f23d0febe8568addd423c7e361a463",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -102,31 +210,47 @@
       "through_level": 5,
       "replay_validated": true,
       "source_observed_reached": 5,
-      "embedded_checkpoint_actions": 230,
+      "embedded_checkpoint_actions": 357,
       "embedded_checkpoint_records": [
         {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
           "level": 2,
-          "marginal_C": 30,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 87,
+          "marginal_C": 50,
+          "reached": true
+        },
+        {
+          "level": 5,
+          "marginal_C": 39,
           "reached": true
         }
       ],
-      "clean_core_digest": "f259f3c2e7dd",
+      "clean_core_digest": "d82decd67229",
       "source": {
-        "kind": "wip",
-        "value": "level_05/after_debrief_353f8a9c7fa1",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_05",
+        "prefix": "",
+        "manifest_sha256": "92be265d3cc65118494498ac7db2bb532618766f33bb9e042bfdb157e99cb697"
       },
       "files": {
-        "auto_solve_attempts.json": "2bac0ac3a15b8c3983c929ca0feda1abc3fdc8548e46983090dd146fc57ccdee",
-        "checkpoint.json": "fde44dbdaca0d3cae9243b58a01b512ef852fb1be8c6143f93e99c89ec934af0",
-        "legs.py": "44085093c479270d1a96f62d948e2ff554ceda2b52d1c54dd068357f43b5d609",
-        "legs_log.md": "8213980317b7ecc6de8313ff9c881ec4bf6d075963e94710592d11e84cfe3b01",
-        "players.py": "a74942b35ecb52afd3a6cdc432950ffb6ae618ac64a1fb61b9f44fbd822e2ad2",
+        "auto_solve_attempts.json": "d61a2fce8e44162811e84b70ffd90ef647606722ab1f6db037fd04d1bb540357",
+        "checkpoint.json": "fff9b488a9851580c2a0cb353caf9b4dfcde075561f0c1556c786b4fe113917f",
+        "legs.py": "8f16468c3908114886d2b4b9411ded1ef2defcde4f5dcd79ae25583d1784666d",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "53ef8ccbede07fac242ac17df4b475d2771f3d0573236ccb682424319c52c3f3",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -136,36 +260,52 @@
       "through_level": 6,
       "replay_validated": true,
       "source_observed_reached": 6,
-      "embedded_checkpoint_actions": 354,
+      "embedded_checkpoint_actions": 411,
       "embedded_checkpoint_records": [
         {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
           "level": 2,
-          "marginal_C": 30,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 87,
+          "marginal_C": 50,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 405,
+          "marginal_C": 39,
+          "reached": true
+        },
+        {
+          "level": 6,
+          "marginal_C": 23,
           "reached": true
         }
       ],
-      "clean_core_digest": "54c810b5f769",
+      "clean_core_digest": "25d4ef3783fc",
       "source": {
-        "kind": "wip",
-        "value": "level_06/after_debrief_2ebd8c25d36e",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_06",
+        "prefix": "",
+        "manifest_sha256": "7ea9e8b9153ed662b557fca8555c43ef01dd5435f691f11cb7f0e48f1e01ec18"
       },
       "files": {
-        "auto_solve_attempts.json": "f34cb7462a01bcbd50b5bc3a47a52db54698eb51672a7ff25bef3780fd580df5",
-        "checkpoint.json": "d8b0ff9885d9ccf1bcf27ce1a8c076af4e863898dff0318e0411f77eaa470e63",
-        "legs.py": "34a40e0052d83c671f21db134ebad80d19ee54a7be477c693b5735a014786576",
-        "legs_log.md": "a950a1c6f6d4259ddfd691db438f827be78aee3b5a79849ee3ab6dd8ce34cbd9",
-        "players.py": "8e7bed2d47a718b2874bdf69a053df2a262cd8320f9cbe149cfaf7ba5afa3be2",
+        "auto_solve_attempts.json": "f947e64272cd15911707487b31e3534ca979a547b225c5fc998a042907f3ad7b",
+        "checkpoint.json": "95f503066f5b55626c7478c96cf995653e321aca821ff5aef91733237d323b08",
+        "legs.py": "ded752f0d99e8e29eca7ad1f22cd0be1353811a5535d3b919861b6f406927935",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "4ace32874c4e34e7b00505376a85b1157e3adce536beb8efcf2481cb8a3ee921",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -175,41 +315,57 @@
       "through_level": 7,
       "replay_validated": true,
       "source_observed_reached": 7,
-      "embedded_checkpoint_actions": 401,
+      "embedded_checkpoint_actions": 480,
       "embedded_checkpoint_records": [
         {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
           "level": 2,
-          "marginal_C": 30,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 87,
+          "marginal_C": 50,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 405,
+          "marginal_C": 39,
           "reached": true
         },
         {
           "level": 6,
-          "marginal_C": 225,
+          "marginal_C": 23,
+          "reached": true
+        },
+        {
+          "level": 7,
+          "marginal_C": 28,
           "reached": true
         }
       ],
-      "clean_core_digest": "e53b12af2672",
+      "clean_core_digest": "7425fe143a4e",
       "source": {
-        "kind": "wip",
-        "value": "level_07/after_debrief_d408ab2ee2f6",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_07",
+        "prefix": "",
+        "manifest_sha256": "d25c6970453b6eb8431c1bdf3c6d040157d98b0e3a9e45d0fe40943e9184e456"
       },
       "files": {
-        "auto_solve_attempts.json": "4956772b65d18bffa863bddc423d21a5ff713b19b6e7f9763189d9d50c21a79c",
-        "checkpoint.json": "637d0f90801af362861914685855ffc34a6220b7473a24bcae6cf68bdc80dbce",
-        "legs.py": "abbe224bd6621eb753331caf20cbdf74db9188421fc69845b45fb273cd44cb16",
-        "legs_log.md": "55d77e6e4bd4ba87297b3aa83af1ad5ae25860655c54897616e4dc09ee2829ab",
-        "players.py": "418f194a6a7671a27077b381ce40657980aa494eeca49e3eb89f2b11fe0397eb",
+        "auto_solve_attempts.json": "d2f31710e110ae230085d805be5281d3f5be0fbf70d281f9b06cd63b48f3a364",
+        "checkpoint.json": "b70d1df66aed01918a59105523457ebef3c2e20fb371aed9003e6a879d824c02",
+        "legs.py": "be6bff8be3087865ae87a976043338b3b422053588308dc85a9bd71f93117e69",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "3fe551bc93d516d8fd8570a643a7a319b8a058997e3051372293ea3c367e3741",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -219,46 +375,62 @@
       "through_level": 8,
       "replay_validated": true,
       "source_observed_reached": 8,
-      "embedded_checkpoint_actions": 466,
+      "embedded_checkpoint_actions": 587,
       "embedded_checkpoint_records": [
         {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
           "level": 2,
-          "marginal_C": 30,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 87,
+          "marginal_C": 50,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 405,
+          "marginal_C": 39,
           "reached": true
         },
         {
           "level": 6,
-          "marginal_C": 225,
+          "marginal_C": 23,
           "reached": true
         },
         {
           "level": 7,
-          "marginal_C": 145,
+          "marginal_C": 28,
+          "reached": true
+        },
+        {
+          "level": 8,
+          "marginal_C": 34,
           "reached": true
         }
       ],
-      "clean_core_digest": "e6e2d7284e85",
+      "clean_core_digest": "b5c1a54ae3f3",
       "source": {
-        "kind": "wip",
-        "value": "level_08/after_debrief_54edb89a013b",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_08",
+        "prefix": "",
+        "manifest_sha256": "b25ab40ac925c459aacef7492e36a84c39c0459030ef40414a7f5ed244c656a9"
       },
       "files": {
-        "auto_solve_attempts.json": "f989551684aeaaebe8dff398d3bdd406c47ca509ef9de52359a5ffb97a266bdf",
-        "checkpoint.json": "8306fc23d8707ac2659aee92b24b5439d0e9acf4798f3a28e2e580b591a092f2",
-        "legs.py": "c7a3aabdfc28e9c9236be2db75578bbdda392ac70e93e839beee8748064318e8",
-        "legs_log.md": "906ec96fad266194879148e2cef6a3d0973e3c6cfc458b81a49e90f6bc9570fb",
-        "players.py": "670a68f389e05d8157d762d22264682b472ab4d9db90feff2949d78b69ca2ab4",
+        "auto_solve_attempts.json": "35b89bd40f57c16410c163ccb470cb0c21bb1f209112a906bbf64698efe772f5",
+        "checkpoint.json": "4facb6b94bec4a94602a85949089eead1f1e8475892015d86230e2c4f9ac9ba9",
+        "legs.py": "7822d4c52fc9c0ad867b0f38e831cc4b75cc98267638234e560d7a05c0dadfca",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "ac16995933c19c3881202e66604838337467331d4f392de1244663d0d436e319",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     },
@@ -268,56 +440,67 @@
       "through_level": 9,
       "replay_validated": true,
       "source_observed_reached": 9,
-      "embedded_checkpoint_actions": 596,
+      "embedded_checkpoint_actions": 597,
       "embedded_checkpoint_records": [
         {
+          "level": 1,
+          "marginal_C": 43,
+          "reached": true
+        },
+        {
           "level": 2,
-          "marginal_C": 30,
+          "marginal_C": 20,
+          "reached": true
+        },
+        {
+          "level": 3,
+          "marginal_C": 32,
           "reached": true
         },
         {
           "level": 4,
-          "marginal_C": 87,
+          "marginal_C": 50,
           "reached": true
         },
         {
           "level": 5,
-          "marginal_C": 405,
+          "marginal_C": 39,
           "reached": true
         },
         {
           "level": 6,
-          "marginal_C": 225,
+          "marginal_C": 23,
           "reached": true
         },
         {
           "level": 7,
-          "marginal_C": 145,
+          "marginal_C": 28,
           "reached": true
         },
         {
           "level": 8,
-          "marginal_C": 204,
+          "marginal_C": 34,
           "reached": true
         },
         {
           "level": 9,
-          "marginal_C": 147,
+          "marginal_C": 49,
           "reached": true
         }
       ],
-      "clean_core_digest": "dafb10d8e80f",
+      "clean_core_digest": "6798a4b39e5b",
       "source": {
-        "kind": "current",
-        "value": ".",
-        "prefix": ""
+        "kind": "promotion",
+        "value": "level_09",
+        "prefix": "",
+        "manifest_sha256": "0560285272ce50693f26abac0d00e026f12610e46ed47d807ec2bda7e75cfddf"
       },
       "files": {
-        "auto_solve_attempts.json": "5fc25557dac4ffb0f8ef0d4ffdd4dee83fae68a002b005f15271f55311dca495",
-        "checkpoint.json": "1c4cb97de493a8613206e7a34a7537d3a1240b2e9377359d58983f05a2f7104a",
-        "legs.py": "891cd35a4688776c51b9b86560c8e72bfd6319b38fae70d9c25ed983e65274b0",
-        "legs_log.md": "b2f9e35431befaae33acee0d02e4131372585e72f87d871c7de8b0acca28b642",
-        "players.py": "00b5b871c453b17aec9e8294d75573b0081b03c3ed088f047b2d8e2f993cad6c",
+        "auto_solve_attempts.json": "d86715199fa987c13063dae31c8e9d9544cef15541424c9b4187b1d7b661acd9",
+        "checkpoint.json": "2841757eb37dd671620ba8f4603635078af0b36c01979fbf02b726447d3b1222",
+        "legs.py": "cc576ff2152debdbe9ad61646d834f7dbf17fbac7d83b9a65192ce2d311ccc8d",
+        "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+        "players.py": "da30176a3c52da3b017986215398495ccba0c4d590cf32926a24628e000f0ef7",
         "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
       }
     }

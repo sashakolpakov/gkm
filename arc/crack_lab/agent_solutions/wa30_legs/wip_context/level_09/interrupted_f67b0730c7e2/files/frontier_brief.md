@@ -1,0 +1,106 @@
+# Unverified frontier brief: wa30 level 9
+
+This is a compact index of the latest clean WIP, not solver evidence.
+Reproduce every observation you rely on with the documented local API.
+Do not reread the full proposer transcript unless a named ambiguity requires it.
+
+## Prior proposer progress
+
+- I’ll stay strictly inside the current workspace and use only the indexed harness/perception surface. I’ll begin with `solver_index.md`, then `frontier_brief.md` if present, and reproduce any inherited observations with bounded clone probes before relying on them.
+- The frontier records an unverified near-solution and points to small preserved probes. I’ll now establish the real baseline with the required harness run; after that I’ll inspect only the indexed slices and the smallest relevant level-9 probes.
+- Baseline is confirmed: `levels=8`, `moves=600`, ending on the real move/time cap, so level 9 is the only blocker. I’m checking the current dispatch and level-9 leg now, then I’ll reproduce the compact structural/action observations on a level-9 clone.
+- The preserved entry probe is stale in one practical way: importing `gkm_try.py` immediately consumes the single run on the current failing solver, so its second inspection never executes. I’ll use the same documented arena entry point shown by `gkm_try.py`, but stop dispatch after level 8; this gives a pristine level-9 state without running the failing leg. First I’m extracting only the small existing reach/helper definitions and candidate paths.
+- The clean probe verifies the avatar and actions directly: color-14 is the controlled object; actions `1/2/3/4` move it up/down/left/right by one tile, while `5` is contextual interaction. Both color-12 and color-15 agents advance on every action. The current leg spends 60 directed actions and then idles into the hard 69-action level budget, so the fix must improve allocation/timing rather than add steps. I’m now replaying the frontier’s strongest compact candidates from the pristine clone and measuring the eight target slots as a dense progress signal.
+- The replay exposed the real constraint: the current first eight legs enter level 9 after 553 actions, leaving only 47 real actions before the 600-action cap. The inherited 69-action clone route does fill all eight visual slots at turn 69, but it cannot be committed. I’m checking whether the 22-action discrepancy comes from avoidable waiting in the established legs or whether level 9 itself has a genuinely shorter cooperative schedule.
+- The 22-action discrepancy is explained by the local validated checkpoint: its first eight-level route is more efficient than the current composed legs. The checkpoint is 600 actions because it also preserves a failed 69-action level-9 tail. I’ll reproduce its exact level handoff index, then search from that pristine state; the eventual fix will replace the failed tail with a verified winning one rather than discard the optimized prefix.
+
+## Preserved local probes
+
+- `probe5_candidates.py` (1216 bytes)
+- `probe5_structure.py` (1413 bytes)
+- `probe8_candidates.py` (4200 bytes)
+- `probe8_combo.py` (3142 bytes)
+- `probe8_combo_finish.py` (1783 bytes)
+- `probe8_current_tail.py` (1896 bytes)
+- `probe8_entry.py` (1367 bytes)
+- `probe8_fast_finish.py` (1475 bytes)
+- `probe8_lower_manual.py` (1541 bytes)
+- `probe8_minimize.py` (2312 bytes)
+- `probe8_optimized_tail.py` (1506 bytes)
+- `probe8_reposition.py` (2565 bytes)
+- `probe8_reverse_finish.py` (1688 bytes)
+- `probe8_reverse_idle.py` (1498 bytes)
+- `probe8_reverse_search.py` (2709 bytes)
+- `probe8_reverse_stage.py` (1789 bytes)
+- `probe8_third_minimize.py` (750 bytes)
+- `probe8_trace.py` (2423 bytes)
+- `probe9.py` (13826 bytes)
+- `probe9_actual_candidates.py` (4474 bytes)
+- `probe9_actual_mutations.py` (2597 bytes)
+- `probe9_actual_ports.py` (8832 bytes)
+- `probe9_alt.py` (2466 bytes)
+- `probe9_below_pick.py` (2167 bytes)
+- `probe9_best_mutations.py` (3689 bytes)
+- `probe9_best_short_verify.py` (1522 bytes)
+- `probe9_best_trace.py` (1409 bytes)
+- `probe9_candidate.py` (3993 bytes)
+- `probe9_clean_candidates.py` (5001 bytes)
+- `probe9_clean_entry.py` (1689 bytes)
+- `probe9_combined_variants.py` (1477 bytes)
+- `probe9_context.py` (1760 bytes)
+- `probe9_courier.py` (1563 bytes)
+- `probe9_current.py` (19683 bytes)
+- `probe9_delay_dismiss.py` (1711 bytes)
+- `probe9_delete_one.py` (4252 bytes)
+- `probe9_early_dismiss.py` (1691 bytes)
+- `probe9_entry.py` (2521 bytes)
+- `probe9_exact_finish_search.py` (2766 bytes)
+- `probe9_fast_suffix.py` (2641 bytes)
+- `probe9_handoff.py` (1261 bytes)
+- `probe9_idle_initial.py` (803 bytes)
+- `probe9_minimize_win.py` (774 bytes)
+- `probe9_phase_dismiss_search.py` (3116 bytes)
+- `probe9_picksearch.py` (3443 bytes)
+- `probe9_picksearch_finish.py` (2098 bytes)
+- `probe9_pickstate.py` (1320 bytes)
+- `probe9_position_beam.py` (3824 bytes)
+- `probe9_position_nine.py` (2668 bytes)
+- `probe9_position_orders.py` (4810 bytes)
+- `probe9_position_ten.py` (2629 bytes)
+- `probe9_prefix_shortcuts.py` (3955 bytes)
+- `probe9_reroute.py` (2385 bytes)
+- `probe9_reverse.py` (2306 bytes)
+- `probe9_reverse_combined.py` (3521 bytes)
+- `probe9_right_depot.py` (4919 bytes)
+- `probe9_search.py` (13865 bytes)
+- `probe9_short_finish_search.py` (2557 bytes)
+- `probe9_short_idle.py` (1246 bytes)
+- `probe9_short_pick.py` (2248 bytes)
+- `probe9_short_place_search.py` (2668 bytes)
+- `probe9_short_position_orders.py` (4072 bytes)
+- `probe9_short_stage.py` (1658 bytes)
+- `probe9_short_tail_search.py` (3249 bytes)
+- `probe9_stage_endings.py` (2062 bytes)
+- `probe9_stage_finish_beam.py` (934 bytes)
+- `probe9_stageports.py` (2512 bytes)
+- `probe9_structure_compact.py` (1760 bytes)
+- `probe9_suffix.py` (2795 bytes)
+- `probe9_tail_beam_wide.py` (4004 bytes)
+- `probe9_thieftrace.py` (1222 bytes)
+- `probe9_three_stage.py` (1392 bytes)
+- `probe9_top_second.py` (1428 bytes)
+- `probe9_turn55_beam.py` (1043 bytes)
+- `probe9_two_stage_beam.py` (3205 bytes)
+- `probe9_two_staged_trace.py` (1635 bytes)
+- `probe9_upper_local_actual.py` (2009 bytes)
+- `probe9_upper_pick.py` (2236 bytes)
+- `probe9_variants.py` (3719 bytes)
+- `probe9_verify.py` (7540 bytes)
+- `probe_cumulative.py` (826 bytes)
+- `probe_current_solver.py` (519 bytes)
+- `probe_minimize_segments.py` (3388 bytes)
+- `probe_pair_minimize.py` (4700 bytes)
+- `probe_solver_timing.py` (980 bytes)
+- `wip_glue_notes.md` (642 bytes)
+
+Run or inspect the smallest relevant probe before writing another one.

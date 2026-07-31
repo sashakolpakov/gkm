@@ -6,6 +6,11 @@ to write solver code and a simulator to validate promoted behavior by fresh repl
 A source-size ledger records positive net growth of the retained library and player
 files.
 
+GKM is universal at the producer level: every public game uses the same fixed
+proposer contract, Arena interface, blank scaffold, complexity coordinate, and replay
+gate. Its learned executable outputs are necessarily game- and level-dependent; that
+specialization is what the universal producer generates and promotes.
+
 The result is not only a solved-level count, but an audit trail of how competence
 was acquired: promoted solver code, replay validation, WIP snapshots, charged
 literals, reusable solver-leg refactors, and marginal-complexity accounting.
@@ -17,25 +22,35 @@ as its abbreviation.
 ## Current replay-validated ARC-AGI-3 artifacts
 
 <!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
-| Game | Verified levels | Replay actions | Published ledger charge |
+| Scope | Verified levels | Stored replay actions | Ledger charge |
 |---|---:|---:|---:|
-| `wa30` | 9/9 | 596 | 1458 |
-| `ls20` | 7/7 | 393 | 362 |
+| Frozen v2 release (25 games) | 181/183 | 7001 | — |
+| `wa30` uniform history | 9/9 | 597 | 318 |
+| `ls20` uniform history | 7/7 | 365 | 760 |
 
-Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The published [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
-scores **17.136507936507936%** across all 25 public games. Separately, the
-card's unweighted raw coverage is **37/183 = 20.2186%**. Its stored paths contain
-1448 actions; it used 1456 API actions after one reset per attempted game.
-Subsequent clean local promotions raise current artifact coverage to
-**67/183 = 36.6120%** and 2148 stored actions across 23 promoted game endpoints.
-One unchanged game-agnostic architecture completes `wa30` and `ls20`; reaches L6
-on `ft09`, `r11l`, and `tr87`; L5 on `g50t`; L4 on `ar25`, `re86`, and `sp80`;
-L2 on `cd82` and `m0r0`; and L1 on twelve further games. Only `bp35` and `tn36`
-remain without a promoted level. The 30 post-card clears have independent local
-replay certificates but are not attributed to the closed card.
+The frozen v2 [Competition-Mode scorecard](https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb)
+scores **98.11664037825032%** across all 25 public games. Its distinct unweighted
+coverage is **181/183 = 98.907103825137%**. The certified paths contain 7001 actions;
+the scorecard used 7069 API actions including resets. The corresponding
+[ONLINE shakedown](https://arcprize.org/scorecards/e293eeae-c0de-4263-a916-0a40ad282cbc)
+preceded the definitive Competition replay. The single source of truth for the
+campaign, its milestones, and release gates is
+[`arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](arc/crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md).
+Machine-readable promoted artifacts and audit outputs live under
+[`arc/crack_lab/agent_solutions/`](arc/crack_lab/agent_solutions/) and
+[`arc/crack_lab/audit_results/`](arc/crack_lab/audit_results/).
+The automatic policy uses clean retries at one unchanged frontier as its
+game-independent complexity coordinate for both effort escalation and the
+later independent observation-only sidecar role. At hard frontiers, a separate
+supervisory proposer may turn authenticated native/sidecar evidence into a
+quarantined tactical handoff, but cannot select work or promote a solver; see
+[`REPRODUCE_ARC.md`](REPRODUCE_ARC.md) for the machine-readable policy check.
+The scheduler may allocate a sidecar slot but cannot write its tactical brief:
+every contiguous sidecar must be bound to an authenticated same-frontier
+native-proposer request or an admitted supervisory handoff.
 
 The endpoint claims are replay claims: the action counts are the final validated
 paths, not totals for proposal, search, or cloned lookahead. The historical growth
@@ -55,14 +70,13 @@ The replay script is:
 python arc/crack_lab/replay_scorecard.py --mode online
 ```
 
-The definitive all-game card used:
+The definitive all-game card used the complete frozen release:
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode competition \
-  --games wa30,ls20,ft09,g50t,r11l,sp80,tr87,tu93
+python arc/crack_lab/replay_scorecard.py --mode competition
 ```
 
-All current endpoint folders are under
+Canonical endpoint folders are under
 [`arc/crack_lab/agent_solutions/`](arc/crack_lab/agent_solutions/). The complete
 publication histories for `wa30` and `ls20` are additionally indexed under
 [`arc/manuscript/artifact_history/`](arc/manuscript/artifact_history/).
@@ -71,23 +85,18 @@ publication histories for `wa30` and `ls20` are additionally indexed under
 
 The two complete published histories are:
 
-- `wa30`: 9/9 levels, a 596-action validated replay, and the complete published
-  ledger `112, 78, 95, 47, 405, 225, 145, 204, 147`, totaling 1458. Its unchanged
-  operational checkpoint retains only the records accumulated after its resume base,
-  totaling 1243 under that narrower scope.
-- `ls20`: 7/7 levels and a 393-action validated replay, with a complete seven-entry
-  growth ledger totaling 362.
+- `wa30`: 9/9 levels, a 597-action validated replay, and the uniform clean
+  reacquisition ledger `43, 20, 32, 50, 39, 23, 28, 34, 49`, totaling 318.
+- `ls20`: 7/7 levels, a 365-action validated replay, and the uniform clean
+  reacquisition ledger `40, 54, 86, 114, 138, 170, 158`, totaling 760.
 
-The broader local claim is exactly the 23-endpoint, 67-level frontier above. Its
-solved-checkpoint audit contains 63 exact winning sources, 39 exact adjacent
-transitions, 21 decreasing conditional AST marginals, six half-or-more drops,
-14 direct calls to unchanged legs, and four transitions coupling literal reuse to
-a sharp drop. Failed turns and within-level revisions are excluded.
+Every entry is tied to its own replay-validated promotion manifest and exact
+winning-source boundary. Earlier nonuniform histories remain superseded provenance,
+not inputs to these canonical ledgers.
 
-The current cost policy starts fresh continuations with GPT-5.6-sol medium and uses
-high only as one headroom-bounded rescue after medium fails. The retrospective ledger
-contains one replay-validated rescue in six qualifying high turns, at 12 displayed
-allowance points total; it does not support high-by-default continuation.
+Do not infer a live campaign total from this historical pair. Current solved-boundary
+statistics are regenerated in `arc/crack_lab/audit_results/`; the campaign plan
+defines the uniform budget, escalation, taint, replay, and promotion policy.
 
 The local harness exposes state cloning for lookahead. The official ARC-AGI-3
 environment wrapper exposes `reset()` and `step()`, not arbitrary state forking.

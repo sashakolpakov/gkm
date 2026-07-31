@@ -1,2 +1,2 @@
-=== lf52: reached level 1 | validated=True | total_marginal_C=116 | F=1.320 ===
-per-level marginal novelty: L1:116
+=== lf52: reached level 8 | validated=True | total_marginal_C=1418 | F=20.360 ===
+per-level marginal novelty: L1:116, L2:119, L3:2, L4:217, L5:96, L6:352, L7:307, L8:209

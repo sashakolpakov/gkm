@@ -8,41 +8,64 @@ Gödel–Kolmogorov Machine is used in full here before the abbreviation **GKM**
 adopted below. The scientific object is the retained sequence of code states and
 validated replays; the official replay score is reported separately.
 
+The producer is universal across the benchmark: it retains the same proposer
+contract, Arena interface, blank scaffold, complexity coordinate, and replay gate.
+Its promoted solver programs are learned separately for each game and level.
+
 ## Verified Endpoints
 
 <!-- BEGIN GENERATED: ARC_ARTIFACT_STATUS -->
-| Game | Verified levels | Replay actions | Published ledger charge |
+| Scope | Verified levels | Stored replay actions | Ledger charge |
 |---|---:|---:|---:|
-| `wa30` | 9/9 | 596 | 1458 |
-| `ls20` | 7/7 | 393 | 362 |
+| Frozen v2 release (25 games) | 181/183 | 7001 | — |
+| `wa30` uniform history | 9/9 | 597 | 318 |
+| `ls20` uniform history | 7/7 | 365 | 760 |
 
-Both published ledgers contain one entry for every replay-validated level. The operational checkpoint may retain only records accumulated after its resume base; the manuscript sidecar supplies the complete audited history. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
+The frozen release contains one checkpoint record for every promoted level. The generated all-game marginal table is `arc/manuscript/generated/marginal_complexity_by_level.md`. The `wa30` and `ls20` rows additionally have one uniform, audited history sidecar per level. `marginal_C` means positive net retained-description growth per source file. Additions and deletions within the same file are netted before the positive part, so same-size replacement can receive zero.
 <!-- END GENERATED: ARC_ARTIFACT_STATUS -->
 
-The expanded campaign contains 23 replay-valid endpoints. Beyond the two complete
-games, `ft09`, `r11l`, and `tr87` reach L6; `g50t` reaches L5; `ar25`, `re86`,
-and `sp80` reach L4; `cd82` and `m0r0` reach L2; and 12 games reach L1. `bp35`
-and `tn36` have no promoted level. Only `wa30` and `ls20` have complete
-manuscript sidecar histories.
+The generated table above is the frozen published-manuscript scope, not the live
+campaign frontier. Live coverage, milestones, budget semantics, artifact-uniformity
+work, scorecard release gates, and the automated straight-line rerun are defined in
+the single [campaign master plan](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md). Machine-readable
+checkpoint and comparison outputs live under [`audit_results/`](audit_results/).
+The replaceable runtime scheduler snapshot is
+[`crack_lab/ARC_AGI3_CAMPAIGN_QUEUE.json`](crack_lab/ARC_AGI3_CAMPAIGN_QUEUE.json);
+it is generated from the master policy and is not a second source of truth.
+Mutable counts are not duplicated here.
 
-The published [Competition-Mode scorecard](https://arcprize.org/scorecards/9e166671-0953-42f3-89de-a0fd57d7b147)
-scores **17.136507936507936%** over all 25 public games. The distinct unweighted
-coverage represented by that card is **37/183 = 20.2186%**. The card's stored paths
-contained 1448 actions and used 1456 API actions after eight resets. The subsequently
-extended local artifacts contain **67/183 = 36.6120%** raw level coverage and 2148
-stored replay actions. Those 30 additional clears have independent local replay
-certificates but are not silently attributed to the earlier public scorecard.
+The contiguous scheduler uses exact-frontier clean retry count as one
+game-independent operational complexity coordinate. It drives both the
+medium/high/xhigh/max effort ladder and, after the first clean max failure, an
+independent observation-only sidecar when capacity is otherwise idle. The
+sidecar is a separate agent role—not an `ultra` effort label—and has no direct
+WIP or promotion authority. The scheduler allocates capacity but authors no
+game-specific sidecar brief: dispatch requires an authenticated same-frontier
+native-proposer request or an admitted supervisory handoff. At the same
+hard-frontier stage, a separately
+isolated supervisory proposer may synthesize authenticated native/sidecar
+evidence into a Socratically challenged tactical handoff. It cannot choose the
+game, effort, allocation, WIP mode, or promotion. At most one is active per
+frontier, and another round requires new admitted evidence or a complete
+scheduler-defined reset/continuation pair. Every source observation cited by
+the handoff must be reproduced by the receiving native proposer through the
+public Arena surface; only ordinary candidate replay tests the proposed tactic.
+The deterministic scheduler, native proposer, side expert,
+supervisory proposer, and host verifier have distinct receipt-bound roles.
+Their policy projections and adversarial tests are reproduced by the commands
+in [`../REPRODUCE_ARC.md`](../REPRODUCE_ARC.md).
 
-The latest 49-turn GPT-5.6-sol campaign does not establish that high reasoning is
-intrinsically cheaper: its continuation turns were selected after medium failures.
-Cold L1 acquisition cost 4 displayed allowance points for 3 medium clears and 18 for
-12 high clears; L2+ continuation cost 39 points for 7 medium clears and 14 for one
-high clear. Medium produced all four new direct literal-reuse wins. The next-window
-policy therefore starts each fresh continuation on medium and admits at most one
-bounded high rescue after a clean failure. See
-[`crack_lab/BUDGETED_CAMPAIGN.md`](crack_lab/BUDGETED_CAMPAIGN.md).
-Retrospectively, high rescued one of six medium-failed targets at a total charge of
-12 displayed points, which supports using it as a fallback rather than a default.
+The frozen v2 [Competition-Mode scorecard](https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb)
+scores **98.11664037825032%** over all 25 public games. Its distinct unweighted
+coverage is **181/183 = 98.907103825137%**. The certified paths contain 7001 actions,
+and the card used 7069 API actions including resets. The all-game
+[ONLINE shakedown](https://arcprize.org/scorecards/e293eeae-c0de-4263-a916-0a40ad282cbc)
+preceded this definitive Competition replay.
+
+GKM is universal at the producer level: all games share the fixed proposer contract,
+Arena interface, blank scaffold, complexity coordinate, and replay gate. The
+executable programs retained by that producer are game- and level-dependent learned
+outputs, not a different hand-authored system for each game.
 
 The action totals describe the final replay paths. Exploration used the local
 `Arena.clone()` oracle and was not metered, so these values do not measure official
@@ -56,48 +79,29 @@ Use source provenance and replay, not the scalar alone, to assess reuse.
 
 ## Solved-Checkpoint Comparator Audit
 
-The cross-system audit uses only retained states that actually cleared a level.
-Interim synthesis revisions, repeated same-level commits, and notebook edits are
-excluded.
-
-| System | Exact boundary object | Conditional AST marginal | Direct literal reuse |
-|---|---|---|---|
-| GKM | 63 winning sources across 67 clears; 39 adjacent transitions | 21/39 comparable marginals decrease; 6 fall by at least half | 14 winning players directly call unchanged leg literals; `ar25` L2, `g50t` L4, `ls20` L7, and `m0r0` L2 couple this reuse to sharp drops |
-| OPINE-World | 146 pre-solve engines for 153 trace solves; 121 adjacent transitions | 49/115 decrease; 14 fall by at least half | 4 synthesized-planner wins directly call unchanged engine literals; `lp85` L4 and `tu93` L3 couple this reuse to sharp drops |
-| baseline1 GPT-5.5 xHigh | 160 retained snapshots for 174 clears; 50 exact winning sources and 18 adjacent transitions | 5/8 comparable marginals decrease; none falls by half | 0: every exact adjacent winning command is a fresh literal action program |
-| Retrodict | 170 solved memory checkpoints | No executable marginal is released | 0 executable witnesses; the released object is curated memory |
-
-Under the exact winning-entry-point test, OPINE has hard level-to-level
-executable reuse; baseline1 does not, and Retrodict lacks the executable
-checkpoint needed to test it. GKM has the strongest literal-leg evidence in
-the measured exact set.
-
-The literal-call test changes the earlier cumulative-size interpretation.
-baseline1 still has four exact retained authored-source/AST contractions, but
-none is demonstrated solver reuse: the winning commands invoke no retained
-world-model definition. OPINE supplies two hard counterexamples to the claim
-that it solves every level wholly anew. GKM supplies four sharp-drop/reuse
-intersections and ten further direct unchanged-leg wins. Its cumulative
-executable source nevertheless grows at every exact adjacent transition.
-
-The machine-readable results and analyzers are under [`audit_results/`](audit_results/).
-The coupled test is `audit_marginal_literal_reuse.py`; the system-specific boundary
-reconstructions remain in the `audit_*_artifacts.py` and
-`audit_*_solved_checkpoints.py` scripts.
+The cross-system audit excludes interim synthesis revisions, repeated same-level
+commits, and notebook edits. Its generated statistics are
+[`manuscript/generated/comparator_stats.md`](manuscript/generated/comparator_stats.md);
+the exact schema and raw-artifact reproduction protocol are documented in
+[`manuscript/opine_world_comparison.md`](manuscript/opine_world_comparison.md).
+The machine-readable rows and analyzers are under
+[`audit_results/`](audit_results/) and the `audit_*` scripts. This README does not
+copy their changing counts.
 
 ## Provenance
 
-The complete `wa30` run was not mechanic-blind. Earlier source inspection and human
-play informed carry/relay priors that entered the main development lineage. A later
-neutral-prior run independently validates level 1 only; it does not retroactively make
-the nine-level lineage blind. The `ls20` run did not receive an `ls20` mechanic name,
-but it still used the stronger clone-enabled local harness.
+The canonical `wa30` and `ls20` artifacts are fresh, uniform reacquisitions. Each level
+has its own replay-validated promotion manifest, exact winning-source boundary, parent
+manifest link, and core-file hashes. Their canonical ledgers are respectively
+`43, 20, 32, 50, 39, 23, 28, 34, 49` (318 total) and
+`40, 54, 86, 114, 138, 170, 158` (760 total). Earlier `wa30` work was informed by
+human play and mechanic-specific priors; it is preserved only as explicitly
+superseded provenance and is not spliced into the uniform reacquisition.
 
-The complete published `wa30` ledger is
-`112, 78, 95, 47, 405, 225, 145, 204, 147` for L1--L9. The current checkpoint is an
-operational resume file and therefore retains only its post-base records, totaling 1243;
-the manuscript sidecar indexes the complete 1458-unit ledger, the clean promotion events,
-and their file hashes.
+Passing the source/environment taint audit does not turn these into official
+interaction-efficiency evaluations: both reacquisitions still use the stronger
+clone-enabled local harness, and discovery interactions are not included in replay
+action totals.
 
 The proposer blocks hidden-source and private-runtime inspection before execution.
 Rejected tool inputs are preserved verbatim in `blocked_attempts.log` within WIP but do
@@ -122,6 +126,8 @@ compliance can deteriorate when a proposer stops making progress.
 ## Entry Points
 
 - [`ARC.md`](ARC.md): detailed domain guide and experiment history.
+- [`crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md):
+  canonical campaign, audit, scorecard, release, and supervisor plan.
 - [`manuscript/arc_agi3.tex`](manuscript/arc_agi3.tex): scholarly manuscript.
 - [`manuscript/README.md`](manuscript/README.md): reproducible paper/figure build and
   forward-revision sources.

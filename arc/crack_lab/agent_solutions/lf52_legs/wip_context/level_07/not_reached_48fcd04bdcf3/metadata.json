@@ -1,0 +1,25 @@
+{
+  "game": "lf52",
+  "level": 7,
+  "phase": "not_reached",
+  "reached": 6,
+  "err": null,
+  "attempt": "not_reached_48fcd04bdcf3",
+  "created_at": "2026-07-27T17:44:41.399242+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T170316598532Z_lf52_L7_propose.jsonl",
+    "codex_turn_20260727T172050015678Z_lf52_L7_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level7.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "attempt": "debrief_skipped_policy_e054ec1a2bb1",
+  "metadata": {
+    "game": "cd82",
+    "level": 4,
+    "phase": "debrief_skipped_policy",
+    "reached": 4,
+    "err": null,
+    "attempt": "debrief_skipped_policy_e054ec1a2bb1",
+    "created_at": "2026-07-26T14:59:07.585206+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260726T145216997482Z_cd82_L4_propose.jsonl",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_l4.py",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

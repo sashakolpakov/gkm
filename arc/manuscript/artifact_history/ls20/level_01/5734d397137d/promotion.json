@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "game": "ls20",
+  "through_level": 1,
+  "replay_validated": true,
+  "source_observed_reached": 1,
+  "embedded_checkpoint_actions": 13,
+  "embedded_checkpoint_records": [
+    {
+      "level": 1,
+      "marginal_C": 40,
+      "reached": true
+    }
+  ],
+  "clean_core_digest": "5734d397137d",
+  "source": {
+    "kind": "promotion",
+    "value": "level_01",
+    "prefix": "",
+    "manifest_sha256": "ba0835583ce34f3ed3a070a4f09752cdd5ad1bb41f2ecb85523ce9a53ab74d34"
+  },
+  "files": {
+    "auto_solve_attempts.json": "a9b2a504a1c081e33c121f0249625c2332cb966540f9a05596801f1562ee849a",
+    "checkpoint.json": "0997067634c1ba9080565f6b2b8f33c93726be6d847e31c1dae74c4c95b9ddc1",
+    "legs.py": "b620bb140d1bb6fe18d9bb03313812028a2394b60bc8eb74cebfbdb6f5a00afc",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "f681e0b96333e8c1a7489320a3d993daa7ac638ebcffab2df30d4f32768d84b1",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  }
+}

@@ -1,0 +1,31 @@
+{
+  "game": "sb26",
+  "level": 5,
+  "phase": "after_propose",
+  "reached": 4,
+  "err": null,
+  "attempt": "after_propose_4434ff4e637d",
+  "created_at": "2026-07-26T06:53:00.592703+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260724T010627396820Z_sb26_L2_propose.jsonl",
+    "codex_turn_20260726T061818701322Z_sb26_L2_propose.jsonl",
+    "codex_turn_20260726T062308616149Z_sb26_L5_propose.jsonl",
+    "codex_turn_20260726T063759572501Z_sb26_L5_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_l5.py",
+    "probe_level2.py",
+    "probe_progression.py",
+    "probe_rule.py",
+    "proposer_last.log",
+    "search_level2.py",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

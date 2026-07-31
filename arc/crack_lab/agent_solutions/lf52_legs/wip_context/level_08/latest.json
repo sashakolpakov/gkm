@@ -1,0 +1,29 @@
+{
+  "attempt": "debrief_skipped_policy_8108832618a3",
+  "metadata": {
+    "game": "lf52",
+    "level": 8,
+    "phase": "debrief_skipped_policy",
+    "reached": 8,
+    "err": null,
+    "attempt": "debrief_skipped_policy_8108832618a3",
+    "created_at": "2026-07-28T01:22:58.563156+00:00",
+    "files": [
+      "auto_solve_attempts.json",
+      "checkpoint.json",
+      "codex_turn_20260727T234210398662Z_lf52_L7_propose.jsonl",
+      "codex_turn_20260728T002337902153Z_lf52_L8_propose.jsonl",
+      "frontier_brief.md",
+      "gkm_try.py",
+      "legs.py",
+      "legs_log.md",
+      "perception.py",
+      "players.py",
+      "probe_level8.py",
+      "probe_level8_views.png",
+      "proposer_last.log",
+      "solve.py",
+      "solver_index.md"
+    ]
+  }
+}

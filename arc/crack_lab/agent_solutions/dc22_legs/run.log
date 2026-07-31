@@ -1,2 +1,2 @@
-=== dc22: reached level 1 | validated=True | total_marginal_C=49 | F=-0.020 ===
-per-level marginal novelty: L1:49
+=== dc22: reached level 6 | validated=True | total_marginal_C=650 | F=7.000 ===
+per-level marginal novelty: L1:49, L2:71, L3:96, L4:107, L5:2, L6:325

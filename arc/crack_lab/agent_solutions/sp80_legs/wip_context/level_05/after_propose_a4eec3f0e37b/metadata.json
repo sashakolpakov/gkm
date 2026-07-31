@@ -1,0 +1,32 @@
+{
+  "game": "sp80",
+  "level": 5,
+  "phase": "after_propose",
+  "reached": 4,
+  "err": null,
+  "attempt": "after_propose_a4eec3f0e37b",
+  "created_at": "2026-07-26T23:06:12.858510+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.hold",
+    "checkpoint.json",
+    "codex_turn_20260722T223524492725Z_sp80_L5_propose.jsonl",
+    "codex_turn_20260723T181322060959Z_sp80_L5_propose.jsonl",
+    "codex_turn_20260726T144308770383Z_sp80_L5_propose.jsonl",
+    "codex_turn_20260726T224612065691Z_sp80_L5_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_known_sensitivity.py",
+    "probe_level5.py",
+    "probe_level5_hypotheses.py",
+    "probe_projection_rule.py",
+    "probe_win_sets.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

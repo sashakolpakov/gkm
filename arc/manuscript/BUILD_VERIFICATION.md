@@ -1,43 +1,53 @@
 # Build verification
 
-Verified in the integrated repository on 2026-07-24.
+Verified in the integrated repository on 2026-07-31 against frozen release commit
+`9235ed26627140460efa1f6ca5e4041470cddc14` and schema-v2 receipt
+`140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
 
 ## Documents
 
-- `arc_agi3.pdf`: 24 pages, as reported by the final LaTeX log.
-- `gkm_one_page_summary.pdf`: one page.
-- `figure_sources/inverse_colimit_attachment_standalone.pdf`: one page.
-- Abstract: 113 words after LaTeX stripping with `detex`; no displayed mathematics
-  or benchmark arithmetic.
-- The final logs contain no undefined citation/reference, overfull/underfull box, or
-  LaTeX/package warning.
+- `arc_agi3.pdf`: 26 pages, 1,058,219 bytes.
+- `gkm_one_page_summary.pdf`: one page, 180,307 bytes.
+- The final logs contain no warning, undefined citation/reference,
+  overfull/underfull box, or multiply-defined-label match.
+- The manuscript byline and PDF metadata name Alexander Kolpakov solely.
 
-The canonical paper introduces “Gödel–Kolmogorov Machine” five times before defining
-`GKM` after the contribution list. The abstract uses only the full name.
+## Frozen empirical endpoint
 
-## Figures
+- 25 games, 181/183 admitted boundaries, and 7001 stored replay actions.
+- Official Competition-Mode score: 98.11664037825032% in 7069 API calls.
+- Distinct raw coverage: 181/183 = 98.907103825137%.
+- Release verification: 181 exact boundaries; zero taint, action-protocol,
+  replay, hash, manifest, or promotion-chain failures; `lf52` L9--L10 are the
+  only explicitly unclaimed boundaries.
+- Exact historical acquisition source is retained for 180 admitted boundaries;
+  `ft09` L2 is excluded from source-coupled marginal comparisons rather than
+  reconstructed post hoc.
 
-The integrated build used Matplotlib 3.10.9 and regenerated:
+## Tables and figures
 
-- `figures/ls20_sawtooth.png`: 1728 × 912 pixels;
-- `figures/bounded_campaign_profiles.png`: 2034 × 1072 pixels.
-
-The generator's numerical inputs and geometry checks pass. The supplied bundle pinned
-Matplotlib 3.10.8; its raster files are byte-identical only under that pinned rendering
-environment. The 3.10.9 integration outputs are therefore treated as data-and-geometry
-reproductions, not falsely reported as pixel-identical copies.
+- `generated/marginal_complexity_by_level.{md,tex,json}` and
+  `docs/generated/marginal_complexity_by_level.rst` contain all 25 games and one
+  explicit cell for every authoritative level.
+- `figures/marginal_complexity_profiles.png`: 2448 x 912 pixels. It distinguishes
+  the strongest raw oscillation (`su15`), strongest complete uniform-history
+  sawtooth (`wa30`), and strict source-coupled reuse example (`ls20`).
+- `figures/ls20_sawtooth.png`: 1728 x 912 pixels.
+- `figures/bounded_campaign_profiles.png`: 2034 x 1072 pixels.
 
 ## Repository checks
 
-- `python arc/manuscript/build_artifact_history.py --check`: passed.
-- Focused replay, checkpoint, campaign-control, taint, and literal-reuse suite:
-  87 tests passed.
-- Canonical taint scan: 138 promoted files, zero hits. All 23 promotion-chain
-  summaries have zero taint and integrity hits; older pre-manifest artifacts are
-  reported with zero manifests rather than assigned invented ancestry.
-- `python3 -m sphinx -W -b html docs docs/_build/html`: passed.
-- `python -m py_compile arc/manuscript/scripts/generate_figures.py`: passed.
+- Unified release-bound manuscript reproduction: passed.
+- Manuscript test target: 185 tests passed.
+- Sphinx 9.1.0 strict HTML build (`-W`): passed.
+- Main paper and one-page PDF builds: passed.
+- Current source audit: 180 exact wins, 154 exact adjacent transitions, 153
+  comparable marginals, 70 decreases, 23 sharp drops, 57 hard direct-reuse
+  witnesses, and 14 coupled sharp-drop-plus-reuse witnesses.
 
-The integration did not rerun the remote ARC scorecard or stochastic discovery
-campaign. Those operations require the ARC service and credentials; the manuscript
-build and offline artifact gates do not. See `../../REPRODUCE_ARC.md` for that boundary.
+## Scope
+
+The release receipt certifies endpoint reproduction, evidence integrity, and the
+declared audit boundary. It does not reproduce stochastic discovery transcripts,
+measure clone-enabled search interaction, or turn the harness-native scalar ledger
+into a semantic reuse certificate.

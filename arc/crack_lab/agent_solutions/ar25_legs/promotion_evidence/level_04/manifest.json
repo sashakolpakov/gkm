@@ -17,7 +17,7 @@
   "game": "ar25",
   "level": 4,
   "parent_manifest": "promotion_evidence/level_03/manifest.json",
-  "parent_manifest_sha256": "6c7f66a99ab45af2f7ffb3d3305f3af6b89f3ac7d335a97bfb9f238e55ef1867",
+  "parent_manifest_sha256": "76219c303a7d7c3e7941ff59f8c04a4c995bf43b26d716ccd149116fc4cac0d1",
   "promoted_files_sha256": {
     "auto_solve_attempts.json": "fa39066e73fa7967933deaff108a7311a0534ba02b46eeb1687dad27cb3a02a9",
     "checkpoint.json": "d9c1d1bdb20beeb5041f71670f2c900c1ae672a866b5704377fd16b3a60cbe16",

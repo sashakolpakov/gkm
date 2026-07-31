@@ -1,0 +1,23 @@
+{
+  "game": "tn36",
+  "level": 2,
+  "phase": "debrief_skipped_policy",
+  "reached": 2,
+  "err": null,
+  "attempt": "debrief_skipped_policy_d7b3f9a8c019",
+  "created_at": "2026-07-29T11:50:04.838272+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260729T105930041745Z_tn36_L1_propose.jsonl",
+    "codex_turn_20260729T111725782489Z_tn36_L2_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

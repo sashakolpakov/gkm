@@ -1,0 +1,26 @@
+{
+  "game": "sk48",
+  "level": 5,
+  "phase": "not_reached",
+  "reached": 4,
+  "err": null,
+  "attempt": "not_reached_9bec59447f73",
+  "created_at": "2026-07-27T13:21:10.643412+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T123528572499Z_sk48_L5_propose.jsonl",
+    "codex_turn_20260727T130109193088Z_sk48_L5_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level5.py",
+    "proposer_last.log",
+    "search_level5.py",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

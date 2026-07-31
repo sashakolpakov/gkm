@@ -1,0 +1,26 @@
+{
+  "game": "lp85",
+  "level": 3,
+  "phase": "not_reached",
+  "reached": 2,
+  "err": null,
+  "attempt": "not_reached_280fb09ed278",
+  "created_at": "2026-07-25T21:57:14.345536+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260725T214813439163Z_lp85_L3_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "model_l3.py",
+    "perception.py",
+    "players.py",
+    "probe_l3.py",
+    "proposer_last.log",
+    "reward_l3.py",
+    "search_l3.py",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

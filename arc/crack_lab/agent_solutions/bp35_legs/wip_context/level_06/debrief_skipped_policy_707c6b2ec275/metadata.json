@@ -1,0 +1,33 @@
+{
+  "game": "bp35",
+  "level": 6,
+  "phase": "debrief_skipped_policy",
+  "reached": 6,
+  "err": null,
+  "attempt": "debrief_skipped_policy_707c6b2ec275",
+  "created_at": "2026-07-27T08:45:27.106711+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T224855774786Z_bp35_L6_propose.jsonl",
+    "codex_turn_20260726T231342370139Z_bp35_L6_propose.jsonl",
+    "codex_turn_20260727T081007301556Z_bp35_L6_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level6.py",
+    "probe_level6_barrier.py",
+    "probe_level6_bfs.py",
+    "probe_level6_finish.py",
+    "probe_level6_macro.py",
+    "probe_level6_tail.py",
+    "probe_level6_timeline.py",
+    "probe_stage.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

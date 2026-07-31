@@ -16,6 +16,7 @@ import fcntl
 import json
 import os
 import queue
+import stat
 import subprocess
 import threading
 import time
@@ -33,6 +34,29 @@ DEFAULT_LEDGER = Path(__file__).resolve().parent / "runs" / "codex_campaign_usag
 
 class CodexUsageGuardError(RuntimeError):
     """The live allowance cannot be read or a configured budget is exhausted."""
+
+
+def _open_unaliased_regular(
+    path: Path, *, flags: int, mode: int = 0o600
+):
+    """Open a host-owned accounting file without following inode aliases."""
+    try:
+        descriptor = os.open(
+            path,
+            flags | getattr(os, "O_NOFOLLOW", 0),
+            mode,
+        )
+    except OSError as exc:
+        raise CodexUsageGuardError(
+            f"accounting path must be an unaliased regular file: {path}"
+        ) from exc
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        os.close(descriptor)
+        raise CodexUsageGuardError(
+            f"accounting path must be an unaliased regular file: {path}"
+        )
+    return descriptor
 
 
 @dataclass(frozen=True)
@@ -196,6 +220,30 @@ def weekly_allowance(snapshot: Dict[str, Any]) -> WeeklyAllowance:
                 rate_limit.get("planType") if isinstance(rate_limit.get("planType"), str) else None,
             ))
     if not candidates:
+        # Business workspaces can report an explicitly unlimited Codex pool
+        # without percentage windows.  This is distinct from a malformed or
+        # shorter-window-only response: the provider positively asserts both
+        # unlimited credits and that no spend control has been reached.
+        for limit_id, rate_limit in buckets.items():
+            if not isinstance(rate_limit, dict):
+                continue
+            credits = rate_limit.get("credits")
+            if (
+                isinstance(credits, dict)
+                and credits.get("unlimited") is True
+                and rate_limit.get("spendControlReached") is False
+            ):
+                plan_type = rate_limit.get("planType")
+                return WeeklyAllowance(
+                    limit_id=str(limit_id),
+                    window_name="unlimited",
+                    used_percent=0,
+                    remaining_percent=100,
+                    resets_at=None,
+                    window_duration_mins=WEEK_MINUTES,
+                    plan_type=plan_type if isinstance(plan_type, str) else None,
+                    reset_credits_available=reset_count,
+                )
         raise CodexUsageGuardError(
             "the Codex rate-limit response contained no seven-day window; "
             "refusing to guess from a shorter bucket"
@@ -215,10 +263,23 @@ def weekly_allowance(snapshot: Dict[str, Any]) -> WeeklyAllowance:
 
 def read_ledger(path: Path | str = DEFAULT_LEDGER) -> list[Dict[str, Any]]:
     ledger = Path(path)
+    if ledger.parent.is_symlink() or (
+        ledger.parent.exists() and not ledger.parent.is_dir()
+    ):
+        raise CodexUsageGuardError(
+            f"accounting root must be a regular host directory: {ledger.parent}"
+        )
+    if ledger.is_symlink():
+        raise CodexUsageGuardError(
+            f"accounting path must be an unaliased regular file: {ledger}"
+        )
     if not ledger.exists():
         return []
+    descriptor = _open_unaliased_regular(ledger, flags=os.O_RDONLY)
+    with os.fdopen(descriptor, "r", encoding="utf-8") as handle:
+        lines = handle.read().splitlines()
     records = []
-    for line_number, raw in enumerate(ledger.read_text().splitlines(), 1):
+    for line_number, raw in enumerate(lines, 1):
         if not raw.strip():
             continue
         try:
@@ -233,24 +294,69 @@ def read_ledger(path: Path | str = DEFAULT_LEDGER) -> list[Dict[str, Any]]:
 
 
 @contextmanager
-def campaign_lock(path: Path | str = DEFAULT_LEDGER):
+def campaign_lock(path: Path | str = DEFAULT_LEDGER,
+                  wait_seconds: float = 0.0):
     """Fail closed if another paid campaign turn is already in flight.
 
     The lock covers live preflight, ``codex exec``, postflight, and ledger append.
     This prevents two independent per-game orchestrators from admitting turns
     against the same stale allowance and local-budget snapshot.
     """
+    if wait_seconds < 0:
+        raise ValueError("wait_seconds must be nonnegative")
     ledger = Path(path)
     ledger.parent.mkdir(parents=True, exist_ok=True)
+    if ledger.parent.is_symlink() or not ledger.parent.is_dir():
+        raise CodexUsageGuardError(
+            f"accounting root must be a regular host directory: {ledger.parent}"
+        )
     lock_path = Path(f"{ledger}.lock")
-    handle = lock_path.open("a+", encoding="utf-8")
+    descriptor = _open_unaliased_regular(
+        lock_path, flags=os.O_RDWR | os.O_CREAT
+    )
+    handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+    deadline = time.monotonic() + wait_seconds
     try:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError as exc:
+                if time.monotonic() >= deadline:
+                    raise CodexUsageGuardError(
+                        f"another Codex campaign turn holds {lock_path}; "
+                        "refusing a concurrent run"
+                    ) from exc
+                time.sleep(min(0.1, max(0.01, deadline - time.monotonic())))
+        yield
+    finally:
         try:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError as exc:
-            raise CodexUsageGuardError(
-                f"another Codex campaign turn holds {lock_path}; refusing a concurrent run"
-            ) from exc
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
+
+@contextmanager
+def ledger_append_lock(path: Path | str = DEFAULT_LEDGER):
+    """Serialize only the short durable append operation.
+
+    Unlimited campaigns may run model turns concurrently because they have no
+    shared cost-admission decision.  Their JSONL records still need a small
+    critical section so concurrent appends cannot interleave.
+    """
+    ledger = Path(path)
+    ledger.parent.mkdir(parents=True, exist_ok=True)
+    if ledger.parent.is_symlink() or not ledger.parent.is_dir():
+        raise CodexUsageGuardError(
+            f"accounting root must be a regular host directory: {ledger.parent}"
+        )
+    lock_path = Path(f"{ledger}.append.lock")
+    descriptor = _open_unaliased_regular(
+        lock_path, flags=os.O_RDWR | os.O_CREAT
+    )
+    handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+    try:
+        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
         yield
     finally:
         try:
@@ -263,22 +369,43 @@ def append_ledger(record: Dict[str, Any],
                   path: Path | str = DEFAULT_LEDGER) -> None:
     """Append one durable JSON record.
 
-    Callers running a model turn must hold :func:`campaign_lock` across the
-    whole transaction.  The record is flushed and fsynced before the lock is
-    released so a crash cannot silently erase a completed paid turn.
+    A short append-only lock protects JSONL integrity for concurrent unlimited
+    turns.  Finite-budget callers additionally hold :func:`campaign_lock`
+    across their whole admission/model/record transaction.
     """
     ledger = Path(path)
     ledger.parent.mkdir(parents=True, exist_ok=True)
     line = json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n"
-    with ledger.open("a", encoding="utf-8") as handle:
-        handle.write(line)
-        handle.flush()
-        os.fsync(handle.fileno())
+    with ledger_append_lock(ledger):
+        descriptor = _open_unaliased_regular(
+            ledger, flags=os.O_WRONLY | os.O_APPEND | os.O_CREAT
+        )
+        with os.fdopen(descriptor, "a", encoding="utf-8") as handle:
+            handle.write(line)
+            handle.flush()
+            os.fsync(handle.fileno())
 
 
 def current_window_records(records: Iterable[Dict[str, Any]],
                            allowance: WeeklyAllowance) -> list[Dict[str, Any]]:
     """Select this window's turns despite small provider reset-epoch jitter."""
+    if allowance.resets_at is None and allowance.window_name == "unlimited":
+        cutoff = datetime.now(timezone.utc).timestamp() - WEEK_MINUTES * 60
+        selected = []
+        for record in records:
+            if record.get("event") != "codex_exec":
+                continue
+            value = record.get("started_at")
+            if not isinstance(value, str):
+                continue
+            try:
+                started = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            except ValueError:
+                continue
+            if started.timestamp() >= cutoff:
+                selected.append(record)
+        return selected
+
     def same_window(value: Any) -> bool:
         return bool(
             isinstance(value, int)
@@ -313,13 +440,20 @@ def preflight(*, reserve_percent: int, max_campaign_tokens: int,
               max_campaign_runs: int, minimum_headroom_percent: int = 1,
               ledger_path: Path | str = DEFAULT_LEDGER,
               snapshot: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
+    allowance = weekly_allowance(snapshot or query_rate_limits())
+    records = current_window_records(read_ledger(ledger_path), allowance)
+    totals = local_window_totals(records)
+    if allowance.window_name == "unlimited":
+        return {
+            "allowance": allowance.as_dict(),
+            "local_window": totals,
+            "cost_control_enabled": False,
+            "note": "provider reports limit=None/unlimited; cost controls bypassed",
+        }
     if not 0 <= reserve_percent <= 100:
         raise ValueError("reserve_percent must be between 0 and 100")
     if minimum_headroom_percent < 1:
         raise ValueError("minimum_headroom_percent must be positive")
-    allowance = weekly_allowance(snapshot or query_rate_limits())
-    records = current_window_records(read_ledger(ledger_path), allowance)
-    totals = local_window_totals(records)
     if allowance.remaining_percent <= reserve_percent:
         raise CodexUsageGuardError(
             f"weekly Codex allowance is {allowance.remaining_percent}% remaining, "
@@ -341,7 +475,11 @@ def preflight(*, reserve_percent: int, max_campaign_tokens: int,
             "local campaign token cap reached "
             f"({totals['observed_tokens']}/{max_campaign_tokens})"
         )
-    return {"allowance": allowance.as_dict(), "local_window": totals}
+    return {
+        "allowance": allowance.as_dict(),
+        "local_window": totals,
+        "cost_control_enabled": True,
+    }
 
 
 def _parser() -> argparse.ArgumentParser:

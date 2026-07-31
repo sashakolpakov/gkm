@@ -1,0 +1,22 @@
+{
+  "game": "cn04",
+  "level": 3,
+  "phase": "recovered_path_artifact",
+  "reached": 3,
+  "err": null,
+  "attempt": "recovered_path_artifact_9547f7e19855",
+  "created_at": "2026-07-27T08:16:43.998186+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T080512100891Z_cn04_L3_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -3,10 +3,10 @@
 Latest replay-validated leg-library state promoted by `gkm_legs.py`.
 
 - Game: `sp80`
-- Verified through level: 4
+- Verified through level: 6
 - Replay validated: True
-- Total marginal_C: 308
-- Final path length: 79
+- Total marginal_C: 402
+- Final path length: 151
 
 Per-level novelty:
 
@@ -14,6 +14,8 @@ Per-level novelty:
 - L2: marginal_C=40
 - L3: marginal_C=81
 - L4: marginal_C=56
+- L5: marginal_C=39
+- L6: marginal_C=55
 
 Files here are the clean state to resume from. New runs seed the scratch
 workspace from this directory before asking a proposer for the next level.

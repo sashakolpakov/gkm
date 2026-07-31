@@ -1,0 +1,28 @@
+{
+  "game": "su15",
+  "level": 4,
+  "phase": "after_propose",
+  "reached": 3,
+  "err": null,
+  "attempt": "after_propose_573a5a6796c3",
+  "created_at": "2026-07-26T04:04:12.823417+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T034610021053Z_su15_L3_propose.jsonl",
+    "codex_turn_20260726T035412073340Z_su15_L4_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_dots.py",
+    "probe_level4.py",
+    "probe_route.py",
+    "probe_search.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,58 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260729T105930041745Z_tn36_L1_propose.jsonl",
+      "sha256": "b0f9147cb1aa7dcd12e52375bf738bf87b0dd19677ced05870fc9bd183bb2355"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T111725782489Z_tn36_L2_propose.jsonl",
+      "sha256": "6d4d4d096dce9eb482f220af6868622db09d3881f206f58ab0d239637b089923"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T115009129876Z_tn36_L3_propose.jsonl",
+      "sha256": "56d3ad2f55d757594d1f8534459809df23cc535521ab8a2e4255b9926291055c"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T120948528131Z_tn36_L4_propose.jsonl",
+      "sha256": "5b75398a8d13cb8d9158cadefc8a4a26c9d5b1d37affe9602abfb766ae8f655d"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T125051301174Z_tn36_L4_debrief.jsonl",
+      "sha256": "1cee1e43d78fc7c151493388c54c62fac5338152000fc94fa0da34099a010bee"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T125429240402Z_tn36_L5_propose.jsonl",
+      "sha256": "aab22f5cd39c2aa5b7307e44841fa0c8b2162042e26888a75598f757f44bdfb5"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T131254960284Z_tn36_L5_debrief.jsonl",
+      "sha256": "e26ac8ceee5993095ff3952a088bbe1c5741a7f4a686c4a453de5bc6120d9d6d"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T131759404028Z_tn36_L6_propose.jsonl",
+      "sha256": "dc3b711ba3ff4f9bbba59f788cf948c98bc6aabca337cdce09897c4217df2587"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260729T140933004666Z_tn36_L6_debrief.jsonl",
+      "sha256": "f29c4300392ca7220f214fcc7ed777589a699768cc2a6c60ac009c30d1259e5d"
+    }
+  ],
+  "created_at": "2026-07-29T14:14:25.692298+00:00",
+  "game": "tn36",
+  "level": 6,
+  "parent_manifest": "promotion_evidence/level_05/manifest.json",
+  "parent_manifest_sha256": "3f70bb705141fced566cd4cf539ad886ccab11725ddb13de52fd6d09be3ca951",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "49583aa72633e2d35bb18dc5364feacc12c7399d726713ca4ff52a7b369f3f34",
+    "checkpoint.json": "5d489c482bc731fe81e7fd3ceda3ed74cf15c3e353a0a21da2ab7595a2650241",
+    "legs.py": "1a944ebfc35cd7b0fbe6b280b720ea0a0c59b281d42603748cdd736449ad836c",
+    "legs_log.md": "944d73e75d7f476dce0e614035ecf24d42bcf1d82e46f93ed5087757c083885e",
+    "players.py": "5e180ba32e2bdbf367f3b2cc708bb0cea47e93a388f160d86d51ff9c433fd7d3",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "f29c4300392ca7220f214fcc7ed777589a699768cc2a6c60ac009c30d1259e5d",
+  "validated": true
+}

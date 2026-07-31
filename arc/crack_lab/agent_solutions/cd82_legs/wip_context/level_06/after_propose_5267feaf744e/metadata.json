@@ -1,0 +1,22 @@
+{
+  "game": "cd82",
+  "level": 6,
+  "phase": "after_propose",
+  "reached": 5,
+  "err": null,
+  "attempt": "after_propose_5267feaf744e",
+  "created_at": "2026-07-26T15:48:47.182427+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T153825311775Z_cd82_L6_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,0 +1,42 @@
+{
+  "certification_kind": "historical_exact_boundary",
+  "certified_files_sha256": {
+    "legs.py": "d9686a5331dfdf4db6bf0690df2d3b240efa5187f611d2c52cdf3e8aeb72ed4a",
+    "parent_checkpoint.json": "85fdcfffa6ba0cd8ee6085dc5c1587bee2be05d4c64a93c4499441e4d80310e8",
+    "players.py": "55a005fda2b2939dc4a10f652209c817a1e04f6cb61810b743fc1f34fdd7e511",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "created_at": "2026-07-26T22:04:15.784342+00:00",
+  "eligible_for_exact_checkpoint_audit": true,
+  "game": "lf52",
+  "historical_audit_policy": "include",
+  "historical_exact_boundary": true,
+  "level": 3,
+  "note": "Historical auto-solve source was captured before any debrief; source hashes equal the clean L3 promotion manifest. The source itself reproduced the same 87-action win from its preserved parent checkpoint.",
+  "replay": {
+    "boundary_prefix_actions": 87,
+    "boundary_prefix_sha256": "9e9cfc53bae0d4672152621745f871be7c0325029f4405d9c8dc60895bba611c",
+    "deterministic": true,
+    "fresh_replay_attempts": 2,
+    "fresh_replay_successes": 2,
+    "mode": "promoted_source_execution_and_recorded_path_on_fresh_arena",
+    "preserved_source_execution": {
+      "attempts": 1,
+      "boundary_prefix_actions": 87,
+      "boundary_prefix_sha256": "9e9cfc53bae0d4672152621745f871be7c0325029f4405d9c8dc60895bba611c",
+      "successes": 1
+    },
+    "source": "arc/crack_lab/agent_solutions/lf52_legs/promotion_evidence/level_03/files/checkpoint.json",
+    "source_sha256": "387ab3c06145faae5a4bc93f6fd6ca96c3dbb9e24dd77c8a6f897de0fcf55f17"
+  },
+  "schema": "gkm.replay-boundary-certification/v1",
+  "source_origin": "arc/crack_lab/agent_solutions/lf52_legs/wip_context/level_03/auto_solve_debrief_skipped_73a4d46e0508",
+  "source_origin_lineage": "arc/crack_lab/agent_solutions/lf52_legs/promotion_evidence/level_03/manifest.json",
+  "source_origin_lineage_sha256": "2541348de87b19de882b19ca9474e7bc1da63dec77fbb5d636a4987db212eccc",
+  "source_origin_metadata_sha256": "f4fdcef2ddb13b7a0f324066c9eece1e35ed7ed5fbfa0fe61ff2afe45132bc4e",
+  "taint": {
+    "checker": "gkm_legs.promoted_artifact_taint_reason",
+    "reason": null,
+    "verdict": "clean"
+  }
+}

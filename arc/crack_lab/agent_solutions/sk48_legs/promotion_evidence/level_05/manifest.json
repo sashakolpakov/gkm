@@ -1,0 +1,46 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260727T123528572499Z_sk48_L5_propose.jsonl",
+      "sha256": "a7d79b293386b80f633c8a4708f1bc2fcbfff6725922d4c50677cdb350cfee11"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T130109193088Z_sk48_L5_propose.jsonl",
+      "sha256": "5426a3e27cb84bc896c4c6bf0bf46a00652b7983ea799af94e5e2a5f9f649660"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T134152247626Z_sk48_L5_propose.jsonl",
+      "sha256": "39be3a7b81ce25be57b645b7cd5511fd82f5a7d116780b74ff49bfea0e5c9f38"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T141256682641Z_sk48_L5_propose.jsonl",
+      "sha256": "4451130841e3971983397b78c409121bb1becd34470d37e3d5c6a99f898e0101"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T151125463429Z_sk48_L5_propose.jsonl",
+      "sha256": "12219d3c5c788b5351c1eb3216adcaa057b2a3b08413b4e616be637a5df9ec16"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T162002375136Z_sk48_L5_propose.jsonl",
+      "sha256": "79c20af1df72670b559c5f2d1a37e60195605458d5707f09c6225d38424ab2de"
+    }
+  ],
+  "created_at": "2026-07-27T18:43:39.026643+00:00",
+  "game": "sk48",
+  "level": 5,
+  "parent_manifest": "promotion_evidence/level_04/manifest.json",
+  "parent_manifest_sha256": "84513ae3f301adf696864bb8b8b15e4204021ae9ecff36072e85275ecd983bdc",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "6748e4b2257667e9ac1fa0dff0d15ae01330247a45aff5e75930d5ba2b461df9",
+    "checkpoint.json": "64ab75062ae084a70e912a2f6ec2a8e8d368a1be43a1c351917c04ec91830b41",
+    "legs.py": "26cb29ff78b733c4a5b72279ea65d3be1f833d6881ddac78ecfd747bdb871618",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "b321f1b70a584a4803ff611b3102157d8266a19ad3f61fc42b069b08b92b12de",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "12219d3c5c788b5351c1eb3216adcaa057b2a3b08413b4e616be637a5df9ec16",
+  "validated": true
+}

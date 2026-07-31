@@ -1,0 +1,24 @@
+{
+  "game": "sc25",
+  "level": 5,
+  "phase": "debrief_skipped_policy",
+  "reached": 5,
+  "err": null,
+  "attempt": "debrief_skipped_policy_1ba322010cdb",
+  "created_at": "2026-07-27T10:20:27.600154+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T094916102118Z_sc25_L5_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level5.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

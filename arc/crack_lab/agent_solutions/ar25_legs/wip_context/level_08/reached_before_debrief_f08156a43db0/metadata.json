@@ -1,0 +1,22 @@
+{
+  "game": "ar25",
+  "level": 8,
+  "phase": "reached_before_debrief",
+  "reached": 8,
+  "err": null,
+  "attempt": "reached_before_debrief_f08156a43db0",
+  "created_at": "2026-07-26T19:24:55.288296+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T191918001716Z_ar25_L8_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

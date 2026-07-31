@@ -1,0 +1,26 @@
+**`RESULT levels=5 moves=234 replay_ok=True`** — target reached.
+
+## What level 5 turned out to be
+
+Same family as levels 1–4 (movable outline shapes, 3×3 ring markers, lattice step 3), but with a mechanic that broke the level‑4 leg:
+
+- **3 selectable shapes** (USE cycles): X radius 11 @ (42,24), diamond radius 9 @ (18,30), plus radius 14 @ (33,54) — the plus starts clipped off the right edge.
+- **10 ring markers**: four of colour 8, six of colour 9. Two were hidden under the plus at level start.
+- **5 paint stations** (colours 8, 9, 10, 11, 14).
+
+The new mechanic: **a shape repaints when *any of its cells* touches a swatch — not when its centre enters the station.** With shapes this large, a naive "walk to the station, then walk to the target" route repaints the shape several times en route. My first plan placed all three shapes correctly and still failed, because the X had brushed the colour‑11 swatch on the last leg of its journey. So the *route* has to be searched, not just the placement.
+
+## The new leg
+
+`paint_shapes_at_swatches_to_cover_ring_markers` in `legs.py`, composed by `players.play_level_5`:
+
+1. **Survey with shapes parked.** Push every shape off the board in each of the 4 directions and union the ring/swatch detections — this recovers markers occluded at the start frame.
+2. **Per-shape geometry.** Park the *other* shapes, then read which cells stop being the shape colour across the 4 moves. Mirror-complete only offsets that would fall outside the frame, so clipped shapes (the plus) are recovered without assuming a shape taxonomy.
+3. **BFS over `(centre, paint colour)`** on the lattice, where each centre carries its swatch-contact colour transition. States touching two swatches at once are forbidden.
+4. Pick, per shape, the cheapest reachable state whose covered marker set is non-empty and monochromatic in its own paint colour; search for a combination covering all markers.
+
+Two geometry bugs worth noting, both found by probing rather than reasoning:
+- Counting only cells that vacate *to background* misses shape cells sitting on a marker (they revert to ring colour), which silently truncated the plus's lower arm.
+- Measuring a shape while the others are on the board loses cells to overlap.
+
+The leg found a 61-move solution; my hand-routed plan had taken 77.

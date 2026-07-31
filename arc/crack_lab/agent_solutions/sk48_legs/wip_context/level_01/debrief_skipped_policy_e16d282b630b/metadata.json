@@ -1,0 +1,22 @@
+{
+  "game": "sk48",
+  "level": 1,
+  "phase": "debrief_skipped_policy",
+  "reached": 1,
+  "err": null,
+  "attempt": "debrief_skipped_policy_e16d282b630b",
+  "created_at": "2026-07-27T20:05:23.037240+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T195622541986Z_sk48_L1_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

@@ -1,4 +1,14 @@
 {
+  "boundary_correction": {
+    "corrected_at": "2026-07-27T19:07:02.545191+00:00",
+    "exact_path_length": 67,
+    "method": "first replay prefix whose levels_completed >= 3",
+    "original_checkpoint_sha256": "fa8009a137972566b0a2db9e317db4c60318511a9b150f02850ad18988b5e0a5",
+    "original_path_length": 76,
+    "reason": "promotion retained actions after the first exact L3 boundary",
+    "replay_validated": true,
+    "schema": 1
+  },
   "codex_transcripts": [
     {
       "path": "codex_turns/codex_turn_20260723T190039983388Z_ar25_L2_propose.jsonl",
@@ -16,7 +26,7 @@
   "parent_manifest_sha256": "068803b478c3845bf6ad96b7541ec104d3db0b0501b4ad81bc652af7396c07fd",
   "promoted_files_sha256": {
     "auto_solve_attempts.json": "724dcd6afb12b2627d40a8d8b7d5bee87292d40a1380587b37bff7c1d307dfa8",
-    "checkpoint.json": "fa8009a137972566b0a2db9e317db4c60318511a9b150f02850ad18988b5e0a5",
+    "checkpoint.json": "ce1b434ff0faccab7b9cb88e0d7a2c38f9a5154e9fe62416a5f21405dd54a374",
     "legs.py": "38c3dd9ef71e9b5efccd0bbe8030c48459ad3fb60e36ab5b856eb37544f68c02",
     "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
     "players.py": "162e94a2ef56da645dff7913348dac9dc2764777ed719974e284b9d82610e465",

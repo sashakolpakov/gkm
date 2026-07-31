@@ -1,0 +1,66 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260723T113319034613Z_lp85_L1_propose.jsonl",
+      "sha256": "ff103d40d3ac30d3a3196cf1cfadc959c19becf5fc91c6b83fe6e6e7ebc6c340"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260723T214356559948Z_lp85_L2_propose.jsonl",
+      "sha256": "fcbf601b76432d9bc586ade4e129e31feee6f3edc1aa60273a8794bb0c3c53e1"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T214618010392Z_lp85_L2_propose.jsonl",
+      "sha256": "d68e0b99af90651bb45842c58925a1ebb7ade55eed66351f7b2937ac21512a29"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T214813439163Z_lp85_L3_propose.jsonl",
+      "sha256": "c2281638515fd4e25c50137071ae4af50c1b7eb8522ce65320925376fd4eefc9"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T215741423202Z_lp85_L3_propose.jsonl",
+      "sha256": "0874058b844d40f1a8673de6465eb651288f53bf8943f72a861a6c121a540c1e"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T220201356510Z_lp85_L4_propose.jsonl",
+      "sha256": "e28ca43215d8ba0085ff7a181da459ae3224d422a8900379a1a01bf496df4e56"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T221107453492Z_lp85_L4_propose.jsonl",
+      "sha256": "d9009815c58693fdb2fb1dc83edc2c563ce3f2d77e76264d7c9a99ec9e817eb3"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T222455924683Z_lp85_L5_propose.jsonl",
+      "sha256": "a27a189e03e8ccd4d1c47c5670dc0f37f017b58e1cefc78971e8d1bdf9357e58"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T223446898018Z_lp85_L5_propose.jsonl",
+      "sha256": "fb3c5d3f530e29cce4b5dec626b500499fd38bdc9d2b9aa9644abe0941e44554"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T224154492453Z_lp85_L6_propose.jsonl",
+      "sha256": "155e2a2b8c7c8936ad01f7c1d39fe15d9a071062979a986a13ef5c8f06575197"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T225100032457Z_lp85_L6_propose.jsonl",
+      "sha256": "f8139fd9bdb649a126addcca2ad58ffb2daa94aea80d519010a366f253f43f3a"
+    }
+  ],
+  "created_at": "2026-07-25T23:04:56.390958+00:00",
+  "game": "lp85",
+  "level": 6,
+  "parent_manifest": "promotion_evidence/level_05/manifest.json",
+  "parent_manifest_sha256": "9158becc421f141287b764d165c59a5550b382fe69c598e3fc381fe30b2f3f8d",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "e216e11e20723c0211fc0a1d9551f4abd4841018c073f7d3f9cd5d92ddd09962",
+    "checkpoint.json": "5d28a3ffa3d86f84734b85b0b455cfd03ef68fff50e8ef128282aeef6bca7dac",
+    "legs.py": "869d8180dd1823f044fd64763fb68a8eba98879a25895d9359fd3bd81f49089d",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "8922de1ae7f34b8ebebfb490ebb7afb21e4d063a7793dbf373f13deac3c5f14f",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "f8139fd9bdb649a126addcca2ad58ffb2daa94aea80d519010a366f253f43f3a",
+  "validated": true
+}

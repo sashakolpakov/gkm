@@ -1,0 +1,23 @@
+{
+  "game": "bp35",
+  "level": 5,
+  "phase": "after_propose",
+  "reached": 4,
+  "err": null,
+  "attempt": "after_propose_838d38ea4ac0",
+  "created_at": "2026-07-26T16:17:41.382447+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T160238811171Z_bp35_L5_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level5.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

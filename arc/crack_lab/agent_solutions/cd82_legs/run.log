@@ -1,2 +1,2 @@
-=== cd82: reached level 2 | validated=True | total_marginal_C=23 | F=-1.540 ===
-per-level marginal novelty: L1:11, L2:12
+=== cd82: reached level 6 | validated=True | total_marginal_C=173 | F=-2.540 ===
+per-level marginal novelty: L1:11, L2:12, L3:41, L4:35, L5:37, L6:37

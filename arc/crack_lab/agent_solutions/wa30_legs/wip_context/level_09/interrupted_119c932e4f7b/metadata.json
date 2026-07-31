@@ -1,0 +1,31 @@
+{
+  "game": "wa30",
+  "level": 9,
+  "phase": "interrupted",
+  "reached": 8,
+  "err": "interrupted mid-level",
+  "attempt": "interrupted_119c932e4f7b",
+  "created_at": "2026-07-27T20:16:50.335223+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260727T195740355218Z_wa30_L1_propose.jsonl",
+    "codex_turn_20260727T201042004609Z_wa30_L9_propose.jsonl",
+    "frontier_brief.md",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_interactions.py",
+    "probe_level1.py",
+    "probe_level9_entry.py",
+    "probe_placement.py",
+    "probe_solution.py",
+    "probe_tiles.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md",
+    "verify_planner.py"
+  ]
+}

@@ -1,0 +1,25 @@
+{
+  "game": "dc22",
+  "level": 3,
+  "phase": "not_reached",
+  "reached": 2,
+  "err": null,
+  "attempt": "not_reached_5d51aa51491d",
+  "created_at": "2026-07-26T02:47:18.668688+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T023815910091Z_dc22_L3_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_bfs.py",
+    "probe_level3.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md",
+    "wip_glue_notes.md"
+  ]
+}

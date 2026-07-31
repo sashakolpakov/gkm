@@ -1,2 +1,2 @@
-=== bp35: reached level 2 | validated=True | total_marginal_C=384 | F=5.680 ===
-per-level marginal novelty: L1:210, L2:174
+=== bp35: reached level 9 | validated=True | total_marginal_C=1279 | F=16.580 ===
+per-level marginal novelty: L1:210, L2:174, L3:108, L4:102, L5:44, L6:128, L7:174, L8:79, L9:260

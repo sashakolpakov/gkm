@@ -1,0 +1,24 @@
+{
+  "game": "bp35",
+  "level": 6,
+  "phase": "not_reached",
+  "reached": 5,
+  "err": null,
+  "attempt": "not_reached_72cc3c2bef92",
+  "created_at": "2026-07-26T23:08:58.809391+00:00",
+  "files": [
+    "auto_solve_attempts.json",
+    "checkpoint.json",
+    "codex_turn_20260726T224855774786Z_bp35_L6_propose.jsonl",
+    "gkm_try.py",
+    "legs.py",
+    "legs_log.md",
+    "perception.py",
+    "players.py",
+    "probe_level6.py",
+    "probe_stage.py",
+    "proposer_last.log",
+    "solve.py",
+    "solver_index.md"
+  ]
+}

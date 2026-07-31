@@ -1,0 +1,78 @@
+{
+  "codex_transcripts": [
+    {
+      "path": "codex_turns/codex_turn_20260723T115716871347Z_ka59_L1_propose.jsonl",
+      "sha256": "2f2b65aded78035fcd0c61d9e5f2808fdf132a28d34c62fc31436d4fd0f2e3b5"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260723T222220511053Z_ka59_L2_propose.jsonl",
+      "sha256": "c9967179bf8b22fd011470fbae61e4e21f0b335086b900f1efd37deed0c78dde"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T234055816832Z_ka59_L2_propose.jsonl",
+      "sha256": "0044566f5f2427612b4c2b1fa7da8e9fb9b919f57461ad06cb85f8e394e4a9f8"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T234754162227Z_ka59_L3_propose.jsonl",
+      "sha256": "bfe4bc3f07351890b6c5205f3ad558dad69ad9a219cd4d4cbb8705085d50b62b"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260725T235339569935Z_ka59_L4_propose.jsonl",
+      "sha256": "89a160e4a94f29014c6b2e7931d6b29c65e1dc74190a3e878c82558cfc70ba46"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T000246130030Z_ka59_L4_propose.jsonl",
+      "sha256": "d4ed4cd6d9838bc6892c8b4c24b9a8c957450cc0c4ce6d80b089b60cc718fdbe"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T001358941241Z_ka59_L5_propose.jsonl",
+      "sha256": "514458bf0bb43613313d25e4a81f2a809db07ed7e7034bc3a33f82d37e39fb28"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T001730048244Z_ka59_L6_propose.jsonl",
+      "sha256": "93f6ddf5eabd4e3fb99a2234550706e168948709ff09bf76a48f230f08b2b1c0"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T002635448926Z_ka59_L6_propose.jsonl",
+      "sha256": "1f73f9125adadb4c65f16f2c73a1ee5cdf3b384e3594189b9cccd9dabcb2d940"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T003450997847Z_ka59_L7_propose.jsonl",
+      "sha256": "9fd25e5aaf603f8145fdcf7cf8e00935b247a48a1758c9db7160565e60532801"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T004356874445Z_ka59_L7_propose.jsonl",
+      "sha256": "ee4d10c96b04bcc355aa8398fc6688cec432421013a059b68cb53f410a7d0c68"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T095552754597Z_ka59_L7_propose.jsonl",
+      "sha256": "8ccdc9e8179882932306230750735496bdce02a333423689b74c83d8d18065f5"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260726T212913714348Z_ka59_L7_propose.jsonl",
+      "sha256": "a9ffced73192aae44bc490ac33884e2cd0812292f3aab50b467e0c18a0d3d531"
+    },
+    {
+      "path": "codex_turns/codex_turn_20260727T005452284128Z_ka59_L7_propose.jsonl",
+      "sha256": "f58295a1a1ead6985091009b75507b2b7aa41c4d22783a77a40fcee2ac70ab2a"
+    }
+  ],
+  "created_at": "2026-07-27T01:32:56.739466+00:00",
+  "game": "ka59",
+  "level": 7,
+  "parent_manifest": "promotion_evidence/level_06/manifest.json",
+  "parent_manifest_sha256": "ddcf676da08d1c8cf67ebce1261400d65dd3245f065f459d209e81463e6dafb4",
+  "promoted_files_sha256": {
+    "auto_solve_attempts.json": "098b694dd47da7485cd4ea77752632bc97d46389f22bcebaaec7172918537525",
+    "checkpoint.json": "1a1f3d43f3f7ae6a21f9dd812cecae0b647b4136d87524b731ae93a1415165dd",
+    "legs.py": "0cb31430e566cb4833c662db1351ca6039cff793f6dda34d3e60feb59650a335",
+    "legs_log.md": "8a59694b4966fabbe92a5aba517fa91b3be596c7dd694eadeb95a78930371ea2",
+    "players.py": "50c6253479984f485113ad83922d0a6ddee9f4d01f3eb48b9b94c810d711612d",
+    "solve.py": "01b451007511bbfe5cfe424e0bcc4525ca9138ada2cd48b5de762306968c1af6"
+  },
+  "schema": 1,
+  "taint_verdict": "clean",
+  "transcript": "proposer_last.log",
+  "transcript_sha256": "f58295a1a1ead6985091009b75507b2b7aa41c4d22783a77a40fcee2ac70ab2a",
+  "validated": true
+}
