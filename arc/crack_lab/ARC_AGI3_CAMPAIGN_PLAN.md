@@ -1242,14 +1242,20 @@ but it must set both `historical_source_boundary=false` and
 
 The native Codex launcher closes proposer stdin with `DEVNULL`; the complete
 task is already bound in argv. Inheriting the supervisor PTY is forbidden
-because Codex may otherwise prepend `Reading additional input from stdin...`
-to its `--json` stream, both admitting an unintended operator-input channel
-and making the immutable acquisition transcript non-strict JSON. The focused
-launcher regression asserts the closed descriptor. A winning turn produced by
-an older launcher with that diagnostic may retain release-replay evidence, but
-it cannot supply historical marginal authority and must be reacquired from its
-exact parent under the corrected launcher before the final uniform lineage is
-frozen.
+because it admits an unintended operator-input channel. Codex identifies the
+closed descriptor as a piped stream and can still emit the deterministic
+`Reading additional input from stdin...` diagnostic. The corrected launcher
+therefore seals stdout as the strict JSONL acquisition transcript and seals
+stderr as a separate immutable diagnostic sideband. Both files are scanned for
+taint and action-protocol markers, reopened after complete process-group
+quiescence, hashed into the turn ledger, and copied into promotion evidence;
+failure to reopen either half invalidates the complete generation. Focused
+regressions assert the closed descriptor, strict JSON stdout, sealed sideband,
+and fail-closed sideband taint handling. A winning turn produced by an older
+launcher that merged this diagnostic into JSONL may retain release-replay
+evidence, but it cannot supply historical marginal authority and must be
+reacquired from its exact parent under the corrected launcher before the final
+uniform lineage is frozen.
 
 The `bp35` L7 exploratory promotion illustrates this distinction. Its exact
 196-action L6 parent and 256-action L7 boundary replay cleanly, and both the

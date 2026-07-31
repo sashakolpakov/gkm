@@ -529,9 +529,13 @@ def _protected_transcript_taint_reason(ws: str) -> Optional[str]:
     files and an unsafe resumable WIP snapshot.
     """
     transcript_root = _protected_codex_transcript_dir(ws)
-    for path in sorted(
+    protected_paths = (
         glob.glob(os.path.join(transcript_root, "codex_turn_*.jsonl"))
-    ):
+        + glob.glob(
+            os.path.join(transcript_root, "codex_turn_*.stderr.log")
+        )
+    )
+    for path in sorted(protected_paths):
         reason = _file_taint_reason(
             path,
             os.path.join(
@@ -615,6 +619,12 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
     protected_sources = sorted(glob.glob(
         os.path.join(_protected_codex_transcript_dir(ws), "codex_turn_*.jsonl")
     ))
+    protected_diagnostics = sorted(glob.glob(
+        os.path.join(
+            _protected_codex_transcript_dir(ws),
+            "codex_turn_*.stderr.log",
+        )
+    ))
     transcript_src = (
         protected_sources[-1]
         if protected_sources
@@ -641,6 +651,19 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
             destination, _read_single_link_regular(source)
         )
         codex_transcripts.append({
+            "path": os.path.join("codex_turns", name),
+            "sha256": _sha256_file(destination),
+        })
+
+    codex_diagnostics = []
+    for source in protected_diagnostics:
+        os.makedirs(codex_evidence_dir, exist_ok=True)
+        name = os.path.basename(source)
+        destination = os.path.join(codex_evidence_dir, name)
+        _atomic_host_write(
+            destination, _read_single_link_regular(source)
+        )
+        codex_diagnostics.append({
             "path": os.path.join("codex_turns", name),
             "sha256": _sha256_file(destination),
         })
@@ -674,6 +697,7 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
         "transcript": "proposer_last.log",
         "transcript_sha256": _sha256_file(transcript_dst),
         "codex_transcripts": codex_transcripts,
+        "codex_diagnostics": codex_diagnostics,
         "taint_verdict": "clean",
     }
     _atomic_host_write(
@@ -3307,6 +3331,9 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         log_name = f"codex_turn_{stamp}_{safe_label}.jsonl"
         log_path = os.path.join(transcript_root, log_name)
         workspace_log_path = os.path.join(ws, log_name)
+        diagnostics_name = f"codex_turn_{stamp}_{safe_label}.stderr.log"
+        diagnostics_path = os.path.join(transcript_root, diagnostics_name)
+        workspace_diagnostics_path = os.path.join(ws, diagnostics_name)
         proc = None
         timed_out = False
         allocation_expired = False
@@ -3314,12 +3341,15 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         protocol_violation = False
         launch_error = None
         transcript_bytes = None
+        diagnostics_bytes = None
         transcript_evidence_error = None
         surviving_process_group = False
         process_group_quiesced = True
         process_group_stop_attempted = False
         try:
-            with open(log_path, "w") as log:
+            with open(log_path, "w") as log, open(
+                diagnostics_path, "w"
+            ) as diagnostics_log:
                 proc = subprocess.Popen(
                     cmd,
                     cwd=ws,
@@ -3332,7 +3362,11 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     # operator input from entering the proposer lineage.
                     stdin=subprocess.DEVNULL,
                     stdout=log,
-                    stderr=subprocess.STDOUT,
+                    # Keep CLI diagnostics in a separately sealed sideband so
+                    # the authoritative event stream remains strict JSONL.
+                    # Both streams are scanned and hashed before this turn can
+                    # authorize WIP reuse or promotion.
+                    stderr=diagnostics_log,
                     text=True,
                     env=_codex_environment(),
                     start_new_session=True,
@@ -3341,6 +3375,8 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     deadline = time.monotonic() + minutes * 60
                     scan_offset = 0
                     scan_carry = b""
+                    diagnostics_scan_offset = 0
+                    diagnostics_scan_carry = b""
                     while proc.poll() is None:
                         (
                             marker_found,
@@ -3349,7 +3385,16 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                         ) = _scan_transcript_protocol_marker(
                             log_path, scan_offset, scan_carry
                         )
-                        if marker_found:
+                        (
+                            diagnostics_marker_found,
+                            diagnostics_scan_offset,
+                            diagnostics_scan_carry,
+                        ) = _scan_transcript_protocol_marker(
+                            diagnostics_path,
+                            diagnostics_scan_offset,
+                            diagnostics_scan_carry,
+                        )
+                        if marker_found or diagnostics_marker_found:
                             protocol_violation = True
                             process_group_stop_attempted = True
                             process_group_quiesced = _stop_process_group(proc)
@@ -3398,8 +3443,19 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     ) = _scan_transcript_protocol_marker(
                         log_path, scan_offset, scan_carry
                     )
+                    (
+                        diagnostics_marker_found,
+                        diagnostics_scan_offset,
+                        diagnostics_scan_carry,
+                    ) = _scan_transcript_protocol_marker(
+                        diagnostics_path,
+                        diagnostics_scan_offset,
+                        diagnostics_scan_carry,
+                    )
                     protocol_violation = (
-                        protocol_violation or marker_found
+                        protocol_violation
+                        or marker_found
+                        or diagnostics_marker_found
                     )
                 except KeyboardInterrupt:
                     interrupted = True
@@ -3432,17 +3488,36 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         if transcript_evidence_error is None:
             try:
                 transcript_bytes = _read_single_link_regular(log_path)
+                diagnostics_bytes = _read_single_link_regular(
+                    diagnostics_path
+                )
             except (OSError, WorkspaceTainted) as exc:
                 transcript_evidence_error = exc
+                # The event stream and diagnostic sideband form one evidence
+                # pair.  Never report either half as sealed when the other
+                # could not be reopened byte-exactly after process quiescence.
+                transcript_bytes = None
+                diagnostics_bytes = None
             else:
                 _atomic_host_write(workspace_log_path, transcript_bytes)
                 _atomic_host_write(latest_log_path, transcript_bytes)
+                _atomic_host_write(
+                    workspace_diagnostics_path, diagnostics_bytes
+                )
+                _atomic_host_write(
+                    os.path.join(ws, "proposer_last.stderr.log"),
+                    diagnostics_bytes,
+                )
                 protocol_violation = (
                     protocol_violation
                     or A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER.encode(
                         "utf-8"
                     )
                     in transcript_bytes
+                    or A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER.encode(
+                        "utf-8"
+                    )
+                    in diagnostics_bytes
                 )
         usage = (
             _codex_usage_from_jsonl(workspace_log_path)
@@ -3487,6 +3562,7 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
             "target_level": target_level,
             **(validated_frontier_binding or {}),
             "transcript": log_name,
+            "diagnostics": diagnostics_name,
             "workspace": os.path.basename(os.path.abspath(ws)),
             "model": chosen_model,
             "reasoning_effort": reasoning_effort,
@@ -3542,6 +3618,16 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
             "protected_transcript_sha256": (
                 hashlib.sha256(transcript_bytes).hexdigest()
                 if transcript_bytes is not None
+                else None
+            ),
+            "protected_diagnostics_status": (
+                "sealed"
+                if diagnostics_bytes is not None
+                else "unavailable"
+            ),
+            "protected_diagnostics_sha256": (
+                hashlib.sha256(diagnostics_bytes).hexdigest()
+                if diagnostics_bytes is not None
                 else None
             ),
             "protected_transcript_error": (

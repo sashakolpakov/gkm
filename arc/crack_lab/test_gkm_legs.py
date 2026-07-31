@@ -693,7 +693,8 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
             sys.executable,
             "-c",
             (
-                "import json; "
+                "import json,sys; "
+                "print('Reading additional input from stdin...', file=sys.stderr); "
                 "print(json.dumps({'type':'thread.started','thread_id':'fake'})); "
                 "print(json.dumps({'type':'turn.completed','usage':"
                 "{'input_tokens':80,'cached_input_tokens':50,'output_tokens':20,"
@@ -740,15 +741,28 @@ def test_codex_agent_records_offline_fake_turn(tmp_path, monkeypatch):
     assert record["surviving_process_group"] is False
     assert len(popen_calls) == 1
     assert popen_calls[0]["stdin"] is L.subprocess.DEVNULL
+    assert popen_calls[0]["stderr"] is not L.subprocess.STDOUT
     assert json.loads(ledger.read_text())["run_label"] == "fake:L1:propose"
     immutable = ws / record["transcript"]
     assert immutable.is_file()
+    assert all(json.loads(line) for line in immutable.read_text().splitlines())
     assert (ws / "proposer_last.log").read_bytes() == immutable.read_bytes()
     protected = (
         tmp_path / ".proposer_transcripts" / "ws" / record["transcript"]
     )
     assert protected.is_file()
     assert protected.read_bytes() == immutable.read_bytes()
+    diagnostics = ws / record["diagnostics"]
+    protected_diagnostics = (
+        tmp_path / ".proposer_transcripts" / "ws" / record["diagnostics"]
+    )
+    assert diagnostics.read_text() == "Reading additional input from stdin...\n"
+    assert protected_diagnostics.read_bytes() == diagnostics.read_bytes()
+    assert (ws / "proposer_last.stderr.log").read_bytes() == diagnostics.read_bytes()
+    assert record["protected_diagnostics_status"] == "sealed"
+    assert record["protected_diagnostics_sha256"] == L._sha256_file(
+        str(protected_diagnostics)
+    )
 
     L._record_codex_level_outcome(
         record,
@@ -1744,6 +1758,9 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     protected_dir = Path(L._protected_codex_transcript_dir(str(ws)))
     protected_dir.mkdir(parents=True)
     (protected_dir / name).write_bytes(protected_bytes)
+    diagnostics_name = name.removesuffix(".jsonl") + ".stderr.log"
+    diagnostics_bytes = b"deterministic CLI diagnostic\n"
+    (protected_dir / diagnostics_name).write_bytes(diagnostics_bytes)
 
     rep = L.Report(
         game="protectedtranscript",
@@ -1765,6 +1782,10 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     assert (
         evidence / manifest["codex_transcripts"][0]["path"]
     ).read_bytes() == protected_bytes
+    assert len(manifest["codex_diagnostics"]) == 1
+    assert (
+        evidence / manifest["codex_diagnostics"][0]["path"]
+    ).read_bytes() == diagnostics_bytes
 
 
 def test_tainted_workspace_cannot_promote_artifact(tmp_path, monkeypatch):
@@ -3122,4 +3143,38 @@ def test_snapshot_wip_reopens_host_owned_protocol_transcript(
         )
     assert not (
         artifact_root / "protectedpoison_legs" / "wip_context"
+    ).exists()
+
+
+def test_snapshot_wip_reopens_host_owned_diagnostics_sideband(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "scratch" / "workspace"
+    workspace.mkdir(parents=True)
+    protected = (
+        workspace.parent / ".proposer_transcripts" / workspace.name
+    )
+    protected.mkdir(parents=True)
+    (protected / "codex_turn_poison.stderr.log").write_text(
+        f"{L.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER}: invalid action\n"
+    )
+
+    assert L._protected_transcript_taint_reason(str(workspace)) is not None
+    with pytest.raises(L.WorkspaceTainted, match="protocol violation"):
+        L.snapshot_wip_context(
+            "diagnosticpoison",
+            str(workspace),
+            1,
+            "interrupted",
+            reached=0,
+            verbose=False,
+        )
+    assert not (
+        artifact_root / "diagnosticpoison_legs" / "wip_context"
     ).exists()
