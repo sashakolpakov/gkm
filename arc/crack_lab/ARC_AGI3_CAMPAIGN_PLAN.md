@@ -57,6 +57,13 @@ theoretical core. The separately frozen v2.0 181/183 benchmark payload was also
 published and remotely reopened. Neither checkpoint substitutes for the final
 183/183 release.
 
+The frozen v2.0 evidence remains byte-exact at commit `9235ed26` and under
+`arc/crack_lab/releases/arc_agi3_gkm_v2_181/`. On 2026-07-31 its release branch
+was merged into `master` at `e8927fc6`, so the two origin histories are now
+reconciled while the receipt-bound release tip remains immutable. Its partial
+receipt verifies 181 claimed boundaries and names only `lf52` L9--L10 as
+unclaimed.
+
 The remaining required order is:
 
 1. Preserve the verified manuscript/downstream bundle and frozen v2.0 181/183
