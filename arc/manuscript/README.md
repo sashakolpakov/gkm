@@ -18,10 +18,8 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
   the inverse-colimit attachment diagram, which also appears inline in the paper.
 - `requirements-figures.txt`: the Matplotlib version used for the delivered figure
   geometry.
-- `development_memo.md`, `socratic_development_audit.md`, and
-  `repo_ground_truth_matrix.md`: the editorial, mathematical, and code-to-claim record.
-- `arc_agi3_original_to_forward_revised.diff`: provenance diff supplied with the
-  forward revision. The canonical repository filename remains `arc_agi3.tex`.
+- `SOCRATIC_PASSES.md` and `repo_ground_truth_matrix.md`: the current review and
+  code-to-claim records. Repository history preserves superseded editorial drafts.
 - `BUILD_VERIFICATION.md`: results and limits of the repository integration checks.
 - `SHA256SUMS.txt`: integrity manifest for the integrated source deliverables.
 

@@ -422,8 +422,8 @@ fidelity correction made in Pass 12.
 
 - A single boundary rule now governs every system: retain the program or memory state
   that actually cleared the level. Failed/interim revisions are excluded. The previous
-  OPINE all-revision profile is retained only as historical diagnostic code and is no
-  longer manuscript evidence for a solved-level sawtooth.
+  OPINE all-revision profile was removed after the solved-boundary audit superseded it;
+  it is not manuscript evidence for a solved-level sawtooth.
 - GKM has 33 exact winning sources across 37 clears; exact per-level source is absent
   for `ls20` L2 and `wa30` L1--L3 and is reported as missing rather than imputed.
   Twenty-four adjacent winning-source transitions all expand in compressed source.
