@@ -11,6 +11,9 @@ Verified in the integrated repository on 2026-07-31 against frozen release commi
 - The final logs contain no warning, undefined citation/reference,
   overfull/underfull box, or multiply-defined-label match.
 - The manuscript byline and PDF metadata name Alexander Kolpakov solely.
+- The ignored local PDFs are build products, not checksum-manifest inputs, because
+  pdfTeX embeds build-time metadata. `SHA256SUMS.txt` covers the canonical sources,
+  generated empirical tables/figures, reports, and audit outputs instead.
 
 ## Frozen empirical endpoint
 

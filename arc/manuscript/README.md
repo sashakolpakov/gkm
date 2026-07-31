@@ -21,7 +21,10 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
 - `SOCRATIC_PASSES.md` and `repo_ground_truth_matrix.md`: the current review and
   code-to-claim records. Repository history preserves superseded editorial drafts.
 - `BUILD_VERIFICATION.md`: results and limits of the repository integration checks.
-- `SHA256SUMS.txt`: integrity manifest for the integrated source deliverables.
+- `SHA256SUMS.txt`: integrity manifest for the integrated source deliverables and
+  generated empirical evidence. It deliberately excludes the ignored local paper PDFs,
+  whose TeX metadata records the build time; their page/diagnostic checks are recorded
+  in `BUILD_VERIFICATION.md`.
 
 ## Build
 
