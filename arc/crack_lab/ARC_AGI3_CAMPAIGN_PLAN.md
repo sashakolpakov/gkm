@@ -1240,6 +1240,17 @@ reconstruction may still prove release replay when its applicable gates pass,
 but it must set both `historical_source_boundary=false` and
 `posthoc_acquisition_marginal_admissible=false`.
 
+The native Codex launcher closes proposer stdin with `DEVNULL`; the complete
+task is already bound in argv. Inheriting the supervisor PTY is forbidden
+because Codex may otherwise prepend `Reading additional input from stdin...`
+to its `--json` stream, both admitting an unintended operator-input channel
+and making the immutable acquisition transcript non-strict JSON. The focused
+launcher regression asserts the closed descriptor. A winning turn produced by
+an older launcher with that diagnostic may retain release-replay evidence, but
+it cannot supply historical marginal authority and must be reacquired from its
+exact parent under the corrected launcher before the final uniform lineage is
+frozen.
+
 The `bp35` L7 exploratory promotion illustrates this distinction. Its exact
 196-action L6 parent and 256-action L7 boundary replay cleanly, and both the
 retained pre-debrief and promoted post-debrief sources reproduce the same
