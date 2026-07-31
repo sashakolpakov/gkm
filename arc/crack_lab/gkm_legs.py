@@ -28,16 +28,21 @@ import glob
 import hashlib
 import json
 import os
+from pathlib import Path
 import re
 import shutil
 import signal
+import stat
 import subprocess
+import tempfile
+import threading
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Callable, List, Optional
 
 import gkm_arena as A
+import codex_campaign_status as CCS
 import codex_usage_guard as CUG
 import claude_usage_guard as CLG
 from gkm_solve_agent import discovered_context
@@ -49,6 +54,37 @@ SCRATCH = os.environ.get(
     "GKM_SCRATCH",
     str(_Path(__file__).resolve().parent / "runs" / "scratch"),
 )
+ENVIRONMENT_FILES = _Path(__file__).resolve().parents[2] / "environment_files"
+
+
+def authoritative_level_target(
+    game: str, environments: Path | str = ENVIRONMENT_FILES
+) -> int:
+    """Read one game's public authoritative level count from toolkit metadata."""
+    root = Path(environments)
+    counts = set()
+    paths = sorted((root / game).glob("*/metadata.json"))
+    if not paths:
+        raise ValueError(
+            f"game is absent from authoritative toolkit metadata: {game!r}"
+        )
+    for path in paths:
+        try:
+            payload = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(f"invalid authoritative metadata: {path}") from exc
+        actions = payload.get("baseline_actions")
+        if not isinstance(actions, list) or not actions:
+            raise ValueError(
+                f"missing authoritative baseline_actions: {path}"
+            )
+        counts.add(len(actions))
+    if len(counts) != 1:
+        raise ValueError(
+            f"conflicting authoritative level counts for {game}: "
+            f"{sorted(counts)}"
+        )
+    return counts.pop()
 
 
 def _loc(code: str) -> int:
@@ -124,9 +160,29 @@ def free_energy(levels: int, marginal_C_total: int, lam: float = 0.02) -> float:
 CHECKPOINT_FILE = "checkpoint.json"
 """Filename for per-level marginal-C checkpoint (enables cross-run resume)."""
 
+
+def _valid_replay_action(action: object) -> bool:
+    """Return whether ``action`` is accepted by the local public Arena bridge."""
+    if isinstance(action, int) and not isinstance(action, bool):
+        return 1 <= action <= 7 and action != 6
+    return (
+        isinstance(action, (list, tuple))
+        and len(action) == 3
+        and action[0] == 6
+        and not isinstance(action[0], bool)
+        and all(
+            isinstance(value, int) and not isinstance(value, bool)
+            for value in action[1:]
+        )
+        and all(0 <= value < A.FRAME_SIDE for value in action[1:])
+    )
+
+
 AUTO_SOLVE_LOG = "auto_solve_attempts.json"
 """Per-level record of failed auto-solve attempts, keyed by (level, legs-hash), so a
 relaunch does not re-pay a long BFS that already failed against the same legs."""
+AUTO_SOLVE_MAX_CANDIDATES = 6
+AUTO_SOLVE_CANDIDATE_SECONDS = 10
 
 ARC_GAME_SOURCE_NAMES = tuple(
     f"{game}.py" for game in (
@@ -144,7 +200,13 @@ SOURCE_TAINT_MARKERS = (
     "/agent_solutions/",
     "source reveals",
     "actual game source",
-) + ARC_GAME_SOURCE_NAMES
+)
+
+ARC_GAME_SOURCE_RE = re.compile(
+    r"(?<![a-z0-9_])(?:"
+    + "|".join(re.escape(name) for name in ARC_GAME_SOURCE_NAMES)
+    + r")(?![a-z0-9_])"
+)
 
 PRIVATE_RUNTIME_RE = re.compile(
     r"\.\s*_(?:game|env|fd|budget)\b"
@@ -163,12 +225,30 @@ EXTERNAL_NETWORK_RE = re.compile(
     r"\[?::1\]?(?::\d+)?(?:/|\b))",
     re.IGNORECASE,
 )
+HOST_PROCESS_INTROSPECTION_RE = re.compile(
+    r"(?:^|[\n;&|'\"|])\s*(?:sudo\s+)?"
+    r"(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)"
+    r"(?:\s|$)",
+    re.IGNORECASE,
+)
+OPERATIONAL_PROCESS_MONITORING_RE = re.compile(
+    r"(?:ps|pgrep)\b[^\n]*\|\s*rg\s+['\"][^'\"]*"
+    r"[A-Za-z0-9_.-]+\.py(?:\s|['\"])"
+    r"|\bpgrep\s+-[A-Za-z]*f[A-Za-z]*\s+"
+    r"['\"][A-Za-z0-9_.-]+\.py"
+    r"(?:\s+[A-Za-z0-9_.-]+)*['\"]",
+    re.IGNORECASE,
+)
+HOST_PROCESS_COMMAND_WORD_RE = re.compile(
+    r"\b(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)\b",
+    re.IGNORECASE,
+)
 """Strings that make a proposer workspace inadmissible.
 
 The arena may execute the hidden game implementation internally, but the
-proposer must not inspect source files or earlier solution history. If any
-agent-authored workspace file records such an access, the harness refuses to
-verify or promote the attempt.
+proposer must not inspect source files or solution history outside its admitted
+same-lineage WIP. If any agent-authored workspace file records such an access,
+the harness refuses to verify or promote the attempt.
 """
 
 PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT_FILE,
@@ -179,6 +259,9 @@ SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache", ".git"}
 SNAPSHOT_SKIP_FILES = {".orchestrate.lock"}
 BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 MAX_TAINT_SCAN_BYTES = 50_000_000
+MAX_RECOVERY_PATH_CANDIDATES = 24
+MAX_RECOVERY_PREFIX_CANDIDATES = 6
+MAX_RECOVERY_GLUE_ATTEMPTS = 72
 
 
 class WorkspaceTainted(RuntimeError):
@@ -196,20 +279,35 @@ def _codex_log_execution_surface(text: str) -> Optional[str]:
     """
     values = []
     parsed = 0
-    nonempty = 0
+    diagnostics = []
+    passive_event_types = {
+        "thread.started",
+        "turn.started",
+        "turn.completed",
+    }
+    passive_item_types = {"agent_message", "reasoning"}
     for raw in text.splitlines():
         if not raw.strip():
             continue
-        nonempty += 1
         try:
             event = json.loads(raw)
         except json.JSONDecodeError:
+            # Codex CLI diagnostics are outside structured item events. Keep
+            # scanning their own text as agent-visible/action-adjacent evidence,
+            # but never let their count force us to scan JSON-escaped tool
+            # output as though it were an authored command.
+            diagnostics.append(raw)
             continue
         parsed += 1
         if not isinstance(event, dict):
+            # A parseable but unrecognized record must not make the whole file
+            # look like a trusted Codex transcript while hiding its text.
+            values.append(raw)
             continue
         item = event.get("item")
         if not isinstance(item, dict):
+            if event.get("type") not in passive_event_types:
+                values.append(raw)
             continue
         item_type = item.get("type")
         if item_type == "command_execution" and isinstance(item.get("command"), str):
@@ -218,9 +316,95 @@ def _codex_log_execution_surface(text: str) -> Optional[str]:
             # Web-search requests and file-change paths are agent-authored. File
             # contents themselves are covered by the workspace walk.
             values.append(json.dumps(item, sort_keys=True))
-    if parsed and parsed == nonempty:
-        return "\n".join(values)
+        elif item_type not in passive_item_types:
+            # Future or malformed item schemas are ambiguous. Scan their exact
+            # record fail-closed instead of silently dropping a possible
+            # agent-authored command.
+            values.append(raw)
+    # `codex exec --json` can emit many plain-text diagnostics over a long or
+    # concatenated turn (model refresh and failed apply-patch messages are
+    # common). Command output remains JSON-escaped inside structured events.
+    # Scan the diagnostics themselves, without falling back to tool output.
+    if parsed:
+        return "\n".join(values + diagnostics)
     return None
+
+
+def _codex_protocol_self_report(text: str) -> bool:
+    """Detect an explicit agent admission that its own turn is invalid.
+
+    The descriptor-level arena marker is the primary authority.  This narrow
+    fallback covers older/current transcripts in which a probe caught the
+    public-action exception and printed only ``type(error)`` while the agent
+    still explicitly reported that it had attempted an out-of-frame action.
+    Hypothetical policy discussion is intentionally not enough: the message
+    must say the turn/generation *is* invalidated, admit an attempted action,
+    and identify the 64x64 coordinate violation.
+    """
+
+    for raw in text.splitlines():
+        try:
+            event = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(event, dict):
+            continue
+        item = event.get("item")
+        if (
+            not isinstance(item, dict)
+            or item.get("type") != "agent_message"
+            or not isinstance(item.get("text"), str)
+        ):
+            continue
+        message = item["text"].lower()
+        invalidated = re.search(
+            r"\b(?:turn|generation)\s+(?:is\s+|was\s+)?invalidated\b",
+            message,
+        )
+        attempted = re.search(
+            r"\b(?:i|probe|solver|turn|generation)\b"
+            r"[^.\n]{0,120}\b(?:attempted|issued|sent|called)\b"
+            r"|\battempted\s+action\b",
+            message,
+        )
+        coordinate_fault = (
+            "out-of-frame" in message
+            or "out of frame" in message
+            or (
+                "outside" in message
+                and ("0..63" in message or "64x64" in message)
+            )
+            or (
+                "coordinate" in message
+                and ("0..63" in message or "64x64" in message)
+            )
+        )
+        if invalidated and attempted and coordinate_fault:
+            return True
+    return False
+
+
+def _has_forbidden_host_process_command(text: str) -> bool:
+    """Classify each host-process command, never a transcript as one blob.
+
+    A narrow own-worker ``pgrep``/``ps | rg`` is informational.  It must not
+    mask a separate broad query or process-control command elsewhere in the
+    same turn.
+    """
+    for host_match in HOST_PROCESS_INTROSPECTION_RE.finditer(text):
+        word_match = HOST_PROCESS_COMMAND_WORD_RE.search(
+            text, host_match.start(), host_match.end()
+        )
+        if word_match is None:
+            return True
+        command = word_match.group(0).lower()
+        allowed = OPERATIONAL_PROCESS_MONITORING_RE.match(
+            text, word_match.start()
+        )
+        if command in {"ps", "pgrep"} and allowed is not None:
+            continue
+        return True
+    return False
 
 
 def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
@@ -231,10 +415,32 @@ def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
                 f"oversized unscanned evidence in {display_name} "
                 f"({size} > {MAX_TAINT_SCAN_BYTES} bytes)"
             )
-        with open(path, "r", encoding="utf-8", errors="ignore") as f:
-            text = f.read()
+        raw = Path(path).read_bytes()
     except OSError:
         return None
+    # Binary probe artifacts are observations, not an execution surface.  Their
+    # container metadata commonly embeds specification/vendor URLs (for example
+    # PNG XMP names Matplotlib and W3C), which is not evidence of network access.
+    # Agent-authored commands remain covered by the immutable JSONL transcript.
+    # Scan only strict UTF-8 text; never silently mine printable fragments from
+    # an otherwise binary container.
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        return None
+    if A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER in text:
+        return f"public action protocol violation in {display_name}"
+    if (
+        (
+            os.path.basename(path) == "proposer_last.log"
+            or path.endswith(".jsonl")
+        )
+        and _codex_protocol_self_report(text)
+    ):
+        return (
+            "self-reported public action protocol violation in "
+            f"{display_name}"
+        )
     execution_surface = (
         _codex_log_execution_surface(text)
         if os.path.basename(path) == "proposer_last.log" or path.endswith(".jsonl")
@@ -252,9 +458,17 @@ def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
         return f"private game/runtime introspection in {display_name}"
     if EXTERNAL_NETWORK_RE.search(text):
         return f"external web/network access in {display_name}"
+    if (
+        execution_surface is not None
+        and _has_forbidden_host_process_command(text)
+    ):
+        return f"host process introspection in {display_name}"
     for marker in SOURCE_TAINT_MARKERS:
         if marker in text:
             return f"{marker} in {display_name}"
+    source_match = ARC_GAME_SOURCE_RE.search(text)
+    if source_match:
+        return f"{source_match.group(0)} in {display_name}"
     return None
 
 
@@ -281,7 +495,7 @@ def promoted_artifact_taint_reason(art: str) -> Optional[str]:
 
 
 def assert_workspace_not_tainted(ws: str) -> None:
-    reason = _workspace_taint_reason(ws)
+    reason = _workspace_or_protected_taint_reason(ws)
     if reason:
         raise WorkspaceTainted(
             f"forbidden source/history access tainted proposer workspace: {reason}"
@@ -296,27 +510,136 @@ def _sha256_file(path: str) -> str:
     return digest.hexdigest()
 
 
+def _protected_codex_transcript_dir(ws: str) -> str:
+    """Return the host-owned transcript directory paired with one workspace."""
+    workspace = os.path.abspath(ws)
+    return os.path.join(
+        os.path.dirname(workspace),
+        ".proposer_transcripts",
+        os.path.basename(workspace),
+    )
+
+
+def _protected_transcript_taint_reason(ws: str) -> Optional[str]:
+    """Scan host-owned Codex transcripts paired with one proposer workspace.
+
+    The live transcript is deliberately outside the proposer-writable
+    workspace.  Persistence and promotion gates must nevertheless reopen it:
+    otherwise a caught public-action violation can leave apparently clean probe
+    files and an unsafe resumable WIP snapshot.
+    """
+    transcript_root = _protected_codex_transcript_dir(ws)
+    for path in sorted(
+        glob.glob(os.path.join(transcript_root, "codex_turn_*.jsonl"))
+    ):
+        reason = _file_taint_reason(
+            path,
+            os.path.join(
+                ".proposer_transcripts", os.path.basename(path)
+            ),
+        )
+        if reason:
+            return reason
+    return None
+
+
+def _workspace_or_protected_taint_reason(ws: str) -> Optional[str]:
+    """Return the first taint reason across writable and host-owned evidence."""
+    return (
+        _workspace_taint_reason(ws)
+        or _protected_transcript_taint_reason(ws)
+    )
+
+
+def _read_single_link_regular(path: str) -> bytes:
+    """Read an unchanged, single-linked regular file without following links.
+
+    Merely checking the pathname before ``open`` leaves a rename/unlink race:
+    the process can retain an open descriptor after archive cleanup has removed
+    the directory entry.  Evidence is admissible only when the pathname still
+    resolves to the same single-linked inode after the complete read.
+    """
+    before = os.lstat(path)
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or not stat.S_ISREG(opened.st_mode)
+            or before.st_nlink != 1
+            or opened.st_nlink != 1
+            or (before.st_dev, before.st_ino) != (opened.st_dev, opened.st_ino)
+        ):
+            raise WorkspaceTainted(
+                f"refusing aliased/non-regular evidence source: {path}"
+            )
+        chunks = []
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            chunks.append(block)
+        payload = b"".join(chunks)
+        final_descriptor = os.fstat(descriptor)
+        final_path = os.lstat(path)
+        stable_identity = (
+            (opened.st_dev, opened.st_ino)
+            == (final_descriptor.st_dev, final_descriptor.st_ino)
+            == (final_path.st_dev, final_path.st_ino)
+        )
+        stable_content = (
+            opened.st_size == final_descriptor.st_size == len(payload)
+            and opened.st_mtime_ns == final_descriptor.st_mtime_ns
+        )
+        if (
+            not stable_identity
+            or not stable_content
+            or final_descriptor.st_nlink != 1
+            or final_path.st_nlink != 1
+        ):
+            raise WorkspaceTainted(
+                f"evidence source changed or was unlinked while read: {path}"
+            )
+        return payload
+    finally:
+        os.close(descriptor)
+
+
 def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None:
     """Freeze a machine-verifiable provenance record for a new promoted level."""
     evidence_root = os.path.join(art, "promotion_evidence")
     evidence_dir = os.path.join(evidence_root, f"level_{rep.reached:02d}")
     os.makedirs(evidence_dir, exist_ok=True)
 
-    transcript_src = os.path.join(ws, "proposer_last.log")
+    protected_sources = sorted(glob.glob(
+        os.path.join(_protected_codex_transcript_dir(ws), "codex_turn_*.jsonl")
+    ))
+    transcript_src = (
+        protected_sources[-1]
+        if protected_sources
+        else os.path.join(ws, "proposer_last.log")
+    )
     transcript_dst = os.path.join(evidence_dir, "proposer_last.log")
     if os.path.isfile(transcript_src):
-        shutil.copy2(transcript_src, transcript_dst)
+        _atomic_host_write(
+            transcript_dst, _read_single_link_regular(transcript_src)
+        )
     elif not os.path.exists(transcript_dst):
-        with open(transcript_dst, "w") as f:
-            f.write("")
+        _atomic_host_write(transcript_dst, b"")
 
     codex_transcripts = []
     codex_evidence_dir = os.path.join(evidence_dir, "codex_turns")
-    for source in sorted(glob.glob(os.path.join(ws, "codex_turn_*.jsonl"))):
+    codex_sources = protected_sources or sorted(
+        glob.glob(os.path.join(ws, "codex_turn_*.jsonl"))
+    )
+    for source in codex_sources:
         os.makedirs(codex_evidence_dir, exist_ok=True)
         name = os.path.basename(source)
         destination = os.path.join(codex_evidence_dir, name)
-        shutil.copy2(source, destination)
+        _atomic_host_write(
+            destination, _read_single_link_regular(source)
+        )
         codex_transcripts.append({
             "path": os.path.join("codex_turns", name),
             "sha256": _sha256_file(destination),
@@ -353,8 +676,10 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
         "codex_transcripts": codex_transcripts,
         "taint_verdict": "clean",
     }
-    with open(os.path.join(evidence_dir, "manifest.json"), "w") as f:
-        json.dump(manifest, f, indent=2, sort_keys=True)
+    _atomic_host_write(
+        os.path.join(evidence_dir, "manifest.json"),
+        json.dumps(manifest, indent=2, sort_keys=True).encode("utf-8"),
+    )
 
 
 def _deduplicate_level_records(rep: Report) -> int:
@@ -394,6 +719,45 @@ def _record_level(rep: Report, level: int, marginal_C: int,
     rep.total_marginal_C += marginal_C
 
 
+def _atomic_host_write(path: str, payload: bytes) -> None:
+    """Atomically replace one host-owned file without following aliases."""
+    parent = os.path.dirname(os.path.abspath(path))
+    if os.path.islink(parent) or not os.path.isdir(parent):
+        raise WorkspaceTainted(
+            f"unsafe host-write directory: {parent}"
+        )
+    try:
+        metadata = os.lstat(path)
+    except FileNotFoundError:
+        metadata = None
+    if metadata is not None and (
+        not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1
+    ):
+        raise WorkspaceTainted(
+            f"refusing aliased/non-regular host-write target: {path}"
+        )
+    descriptor, temporary = tempfile.mkstemp(prefix=".host-write.", dir=parent)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        directory = os.open(
+            parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        try:
+            os.fsync(directory)
+        finally:
+            os.close(directory)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
+
+
 def _save_checkpoint(ws: str, rep: Report) -> None:
     """Persist the Report so a later restart restores the full marginal-C history."""
     _deduplicate_level_records(rep)
@@ -406,33 +770,143 @@ def _save_checkpoint(ws: str, rep: Report) -> None:
         "final_path": rep.final_path,
         "validated": rep.validated,
     }
-    with open(os.path.join(ws, CHECKPOINT_FILE), "w") as f:
-        json.dump(data, f)
+    payload = json.dumps(
+        data, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    _atomic_host_write(os.path.join(ws, CHECKPOINT_FILE), payload)
 
 
 def _load_checkpoint(ws: str) -> Optional[Report]:
-    """Restore a checkpoint from a previous run, or None."""
+    """Restore a structurally valid host checkpoint, or return ``None``.
+
+    Proposer workspaces are not a checkpoint trust boundary.  A proposer may
+    leave a path-only or partially written ``checkpoint.json`` behind; recovery
+    harvests its path separately.  Never construct ``Report`` from such bytes:
+    malformed field types used to survive the old three-key test and fail later
+    with ``KeyError``/``TypeError`` in scheduling or accounting.
+    """
     path = os.path.join(ws, CHECKPOINT_FILE)
     if not os.path.exists(path):
         return None
-    with open(path) as f:
-        data = json.load(f)
-    rep = Report(
-        game=data["game"],
-        reached=data["reached"],
-        total_marginal_C=data["total_marginal_C"],
-        records=[LevelRecord(**r) for r in data.get("records", [])],
-        final_path=data.get("final_path", []),
-        validated=data.get("validated", False),
-    )
+    try:
+        with open(path) as f:
+            data = json.load(f)
+    except (OSError, json.JSONDecodeError):
+        return None
+    # The proposer can legitimately emit ``checkpoint.json`` as an untrusted
+    # winning-path artifact.  Only the harness writes the richer resumable
+    # Report schema.  A path-only file must remain available to
+    # ``recover_discovered_path_artifact`` without crashing checkpoint adoption
+    # or being mistaken for trusted accounting/provenance state.
+    required = {
+        "game",
+        "reached",
+        "total_marginal_C",
+        "records",
+        "final_path",
+        "validated",
+    }
+    if not isinstance(data, dict) or set(data) != required:
+        return None
+    game = data["game"]
+    reached = data["reached"]
+    total = data["total_marginal_C"]
+    records = data["records"]
+    final_path = data["final_path"]
+    validated = data["validated"]
+    if (
+        not isinstance(game, str)
+        or not game
+        or not isinstance(reached, int)
+        or isinstance(reached, bool)
+        or reached < 0
+        or not isinstance(total, int)
+        or isinstance(total, bool)
+        or total < 0
+        or not isinstance(records, list)
+        or not isinstance(final_path, list)
+        or not isinstance(validated, bool)
+    ):
+        return None
+    parsed_records = []
+    for record in records:
+        if not isinstance(record, dict) or set(record) != {
+            "level", "marginal_C", "reached"
+        }:
+            return None
+        level = record["level"]
+        marginal = record["marginal_C"]
+        record_reached = record["reached"]
+        if (
+            not isinstance(level, int)
+            or isinstance(level, bool)
+            or not 1 <= level <= reached
+            or not isinstance(marginal, int)
+            or isinstance(marginal, bool)
+            or marginal < 0
+            or not isinstance(record_reached, bool)
+        ):
+            return None
+        parsed_records.append(
+            LevelRecord(
+                level=level,
+                marginal_C=marginal,
+                reached=record_reached,
+            )
+        )
+    if not all(_valid_replay_action(action) for action in final_path):
+        return None
+    if reached == 0 and (records or final_path or total):
+        return None
+    if validated and reached > 0:
+        if not final_path:
+            return None
+        if any(not record.reached for record in parsed_records):
+            return None
+    try:
+        rep = Report(
+            game=game,
+            reached=reached,
+            total_marginal_C=total,
+            records=parsed_records,
+            final_path=final_path,
+            validated=validated,
+        )
+    except (TypeError, ValueError):
+        return None
     _deduplicate_level_records(rep)
     return rep
 
 
+def _open_unaliased_lock(path: str, *, create: bool = True):
+    """Open a host lock without following or accepting an inode alias."""
+    flags = os.O_RDWR | getattr(os, "O_NOFOLLOW", 0)
+    if create:
+        flags |= os.O_CREAT
+    try:
+        descriptor = os.open(path, flags, 0o600)
+    except OSError as exc:
+        raise RuntimeError(
+            f"lock must be an unaliased regular host file: {path}"
+        ) from exc
+    metadata = os.fstat(descriptor)
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        os.close(descriptor)
+        raise RuntimeError(
+            f"lock must be an unaliased regular host file: {path}"
+        )
+    return os.fdopen(descriptor, "r+", encoding="utf-8")
+
+
 def _acquire_workspace_lock(ws: str):
     """Hold an exclusive process lock for one orchestrator per scratch workspace."""
+    workspace = Path(ws)
+    if workspace.is_symlink() or not workspace.is_dir():
+        raise RuntimeError(
+            f"workspace lock root must be a regular host directory: {ws}"
+        )
     path = os.path.join(ws, ".orchestrate.lock")
-    lock = open(path, "a+")
+    lock = _open_unaliased_lock(path)
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -445,6 +919,40 @@ def _acquire_workspace_lock(ws: str):
     return lock
 
 
+def _acquire_lineage_lock(game: str):
+    """Allow only one writer for a game within one artifact lineage root.
+
+    Workspace locks prevent two processes from sharing an identically tagged
+    scratch directory.  They do not prevent different tags from racing to
+    promote the same ``<game>_legs`` artifact.  The lineage lock is rooted
+    beside that artifact, so canonical and deliberately isolated candidate
+    reacquisitions remain independent while duplicate canonical writers fail
+    before seeding or proposing.
+    """
+    artifact = artifact_dir(game)
+    lock_dir = os.path.join(os.path.dirname(artifact), ".campaign_locks")
+    os.makedirs(lock_dir, exist_ok=True)
+    lock_root = Path(lock_dir)
+    if lock_root.is_symlink() or not lock_root.is_dir():
+        raise RuntimeError(
+            f"lineage lock root must be a regular host directory: {lock_dir}"
+        )
+    path = os.path.join(lock_dir, f"{game}.lock")
+    lock = _open_unaliased_lock(path)
+    try:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except BlockingIOError:
+        lock.close()
+        raise RuntimeError(
+            f"another orchestrator is already writing the {game} artifact lineage"
+        )
+    lock.seek(0)
+    lock.truncate()
+    lock.write(f"pid={os.getpid()}\nartifact={artifact}\n")
+    lock.flush()
+    return lock
+
+
 def _release_workspace_lock(lock) -> None:
     fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     lock.close()
@@ -452,7 +960,12 @@ def _release_workspace_lock(lock) -> None:
 
 def _adopt_workspace_checkpoint(game: str, ws: str, rep: Report,
                                 verbose: bool = True) -> Report:
-    """Accept a proposer-updated checkpoint only after independent replay validation."""
+    """Recognize a candidate path without adopting proposer bookkeeping.
+
+    ``recover_discovered_path_artifact`` independently replays checkpoint path
+    candidates immediately after this call.  Records, cached marginal totals,
+    ``validated``, and reached values remain exclusively host-owned.
+    """
     ws_rep = _load_checkpoint(ws)
     if ws_rep is None or ws_rep.game != game:
         return rep
@@ -460,18 +973,205 @@ def _adopt_workspace_checkpoint(game: str, ws: str, rep: Report,
         return rep
     if not A.validate(game, ws_rep.final_path, ws_rep.reached):
         return rep
-    if (ws_rep.reached, len(ws_rep.final_path)) == (rep.reached, len(rep.final_path)):
-        return rep
     if verbose:
-        print(f"adopted proposer checkpoint: reached={ws_rep.reached} "
-              f"path_len={len(ws_rep.final_path)}")
-    return ws_rep
+        print(
+            "recognized replay-valid proposer path candidate without "
+            f"adopting checkpoint accounting: claimed_reached={ws_rep.reached} "
+            f"path_len={len(ws_rep.final_path)}"
+        )
+    return rep
 
 
 def artifact_dir(game: str, tag: str = "") -> str:
     """Stable, repo-visible storage for the latest verified leg-library artifact."""
     labdir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(labdir, "agent_solutions", f"{game}_legs")
+    root = os.environ.get("GKM_ARTIFACTS_ROOT")
+    if root:
+        root = os.path.abspath(root)
+    else:
+        root = os.path.join(labdir, "agent_solutions")
+    return os.path.join(root, f"{game}_legs")
+
+
+def _workspace_has_unpromoted_solver_source(
+    game: str, ws: str, tag: str = ""
+) -> bool:
+    """Whether restored/interrupted source differs from the promoted parent."""
+    art = artifact_dir(game, tag)
+    for name in ("legs.py", "players.py", "solve.py"):
+        workspace_path = os.path.join(ws, name)
+        promoted_path = os.path.join(art, name)
+        if not os.path.isfile(workspace_path):
+            continue
+        if not os.path.isfile(promoted_path):
+            return True
+        if _read(workspace_path) != _read(promoted_path):
+            return True
+    return False
+
+
+def _frontier_marginal_baseline(
+    game: str,
+    ws: str,
+    reached: int,
+    tag: str = "",
+) -> tuple[str, str]:
+    """Return the promoted parent source for frontier novelty accounting.
+
+    Clean WIP may accumulate source over several proposer turns.  Charging
+    only the last retry's edit undercounts the level's actual novelty, so a
+    validated promoted artifact at exactly ``reached`` is authoritative.
+    Zero-seed and not-yet-promoted roots fall back to the current workspace.
+    """
+    workspace_legs = _read(os.path.join(ws, "legs.py"))
+    workspace_players = _read(os.path.join(ws, "players.py"))
+    art = artifact_dir(game, tag)
+    parent = _load_checkpoint(art)
+    if (
+        parent is None
+        or parent.game != game
+        or parent.reached != reached
+        or not parent.validated
+    ):
+        return workspace_legs, workspace_players
+    parent_legs_path = os.path.join(art, "legs.py")
+    parent_players_path = os.path.join(art, "players.py")
+    if (
+        not os.path.isfile(parent_legs_path)
+        or not os.path.isfile(parent_players_path)
+    ):
+        return workspace_legs, workspace_players
+    return _read(parent_legs_path), _read(parent_players_path)
+
+
+def _clean_unpromoted_source_overlay(
+    game: str, ws: str, tag: str = ""
+) -> Dict[str, str]:
+    """Capture clean source edits that belong on the validated parent.
+
+    Startup seeding refreshes the supervisor-owned checkpoint and promoted
+    files.  If a prior proposer already wrote a clean winning (or speculative)
+    source before its harness exited, blindly seeding first destroys the exact
+    source before orphan recovery can replay it.  Preserve only when scratch
+    and artifact carry the same validated parent boundary; a new/stale scratch
+    workspace must never override the artifact merely because its templates
+    differ.
+    """
+    if not _workspace_has_unpromoted_solver_source(game, ws, tag):
+        return {}
+    workspace_parent = _load_checkpoint(ws)
+    artifact_parent = _load_checkpoint(artifact_dir(game, tag))
+    if (
+        workspace_parent is None
+        or artifact_parent is None
+        or not workspace_parent.validated
+        or not artifact_parent.validated
+        or workspace_parent.game != game
+        or artifact_parent.game != game
+        or workspace_parent.reached != artifact_parent.reached
+        or workspace_parent.final_path != artifact_parent.final_path
+    ):
+        return {}
+    if _workspace_taint_reason(ws):
+        return {}
+    overlay = {}
+    for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
+        path = os.path.join(ws, name)
+        if os.path.isfile(path):
+            overlay[name] = _read(path)
+    return overlay
+
+
+def _clean_wip_source_overlay(
+    game: str, level: int, tag: str = ""
+) -> Dict[str, str]:
+    """Recover taint-clean same-parent source from a saved WIP snapshot.
+
+    A continuation commonly uses a new scratch tag. Probe restoration alone
+    must not silently replace the prior turn's speculative ``legs.py`` and
+    ``players.py`` with the promoted parent. Search newest-first for a regular,
+    taint-clean snapshot whose embedded checkpoint is exactly the current
+    validated parent and whose solver source actually differs from that parent.
+    The trusted checkpoint itself is never restored from WIP.
+    """
+    art = artifact_dir(game, tag)
+    parent = _load_checkpoint(art)
+    if parent is None or not parent.validated or parent.game != game:
+        return {}
+    level_dir = _wip_level_dir(art, level)
+    if not os.path.isdir(level_dir):
+        return {}
+
+    candidates = []
+    for attempt in os.listdir(level_dir):
+        attempt_dir = os.path.join(level_dir, attempt)
+        files_dir = os.path.join(attempt_dir, "files")
+        meta_path = os.path.join(attempt_dir, "metadata.json")
+        if (
+            os.path.islink(attempt_dir)
+            or not os.path.isdir(files_dir)
+            or os.path.islink(files_dir)
+            or not os.path.isfile(meta_path)
+            or os.path.islink(meta_path)
+        ):
+            continue
+        try:
+            with open(meta_path) as handle:
+                metadata = json.load(handle)
+        except Exception:
+            continue
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("game") != game
+            or metadata.get("level") != level
+        ):
+            continue
+        created = metadata.get("created_at")
+        if not isinstance(created, str):
+            created = ""
+        candidates.append((created, attempt, files_dir))
+
+    parent_sources = {}
+    required = ("legs.py", "players.py", "solve.py")
+    for name in required:
+        path = os.path.join(art, name)
+        if not os.path.isfile(path) or os.path.islink(path):
+            return {}
+        parent_sources[name] = _read(path)
+
+    for _, _, files_dir in sorted(candidates, reverse=True):
+        snapshot_parent = _load_checkpoint(files_dir)
+        if (
+            snapshot_parent is None
+            or not snapshot_parent.validated
+            or snapshot_parent.game != parent.game
+            or snapshot_parent.reached != parent.reached
+            or snapshot_parent.final_path != parent.final_path
+        ):
+            continue
+        if _workspace_taint_reason(files_dir):
+            continue
+        if any(
+            not os.path.isfile(os.path.join(files_dir, name))
+            or os.path.islink(os.path.join(files_dir, name))
+            for name in required
+        ):
+            continue
+        overlay = {
+            name: _read(os.path.join(files_dir, name))
+            for name in (*required, "legs_log.md")
+            if os.path.isfile(os.path.join(files_dir, name))
+            and not os.path.islink(os.path.join(files_dir, name))
+        }
+        if any(overlay[name] != parent_sources[name] for name in required):
+            return overlay
+    return {}
+
+
+def _restore_source_overlay(ws: str, overlay: Dict[str, str]) -> None:
+    for name, source in overlay.items():
+        with open(os.path.join(ws, name), "w") as handle:
+            handle.write(source)
 
 
 def _wip_level_dir(art: str, level: int) -> str:
@@ -479,18 +1179,28 @@ def _wip_level_dir(art: str, level: int) -> str:
 
 
 def _workspace_snapshot_files(ws: str) -> List[str]:
+    """Return every admissible workspace file as a stable relative path.
+
+    Hard frontiers often grow small agent-authored subdirectories containing
+    search outputs or probe families.  Those are part of the reproducible WIP
+    state just as much as top-level probes, so omit only harness locks and
+    disposable VCS/cache trees.
+    """
     files = []
-    for name in sorted(os.listdir(ws)):
-        if name in SNAPSHOT_SKIP_FILES:
-            continue
-        path = os.path.join(ws, name)
-        if os.path.isdir(path):
-            if name in SNAPSHOT_SKIP_DIRS:
+    for root, dirs, names in os.walk(ws):
+        dirs[:] = sorted(
+            d for d in dirs
+            if d not in SNAPSHOT_SKIP_DIRS
+            and not os.path.islink(os.path.join(root, d))
+        )
+        for name in sorted(names):
+            path = os.path.join(root, name)
+            rel = os.path.relpath(path, ws)
+            if rel in SNAPSHOT_SKIP_FILES or os.path.islink(path):
                 continue
-            continue
-        if os.path.isfile(path):
-            files.append(name)
-    return files
+            if os.path.isfile(path):
+                files.append(rel)
+    return sorted(files)
 
 
 def _snapshot_digest(ws: str, phase: str, names: List[str]) -> str:
@@ -548,6 +1258,16 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
     their probe scripts, proposer transcript, and failed candidates available for
     later continuation.
     """
+    # Fail closed at the persistence boundary itself.  Callers normally scan
+    # immediately after a proposer turn, but cancellation/copy-finalization
+    # races can expose taint between that scan and this write.  A tainted
+    # workspace must never create or replace a resumable ``latest.json``.
+    taint_reason = _workspace_or_protected_taint_reason(ws)
+    if taint_reason:
+        raise WorkspaceTainted(
+            "refusing to snapshot tainted proposer workspace: "
+            f"{taint_reason}"
+        )
     art = artifact_dir(game, tag)
     os.makedirs(art, exist_ok=True)
     names = _workspace_snapshot_files(ws)
@@ -558,7 +1278,9 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
     files_dir = os.path.join(attempt_dir, "files")
     os.makedirs(files_dir, exist_ok=True)
     for name in names:
-        shutil.copy2(os.path.join(ws, name), os.path.join(files_dir, name))
+        dst = os.path.join(files_dir, name)
+        os.makedirs(os.path.dirname(dst), exist_ok=True)
+        shutil.copy2(os.path.join(ws, name), dst)
     meta = {
         "game": game,
         "level": level,
@@ -609,6 +1331,24 @@ def _record_auto_solve_failure(ws: str, K: int, legs_code: str) -> None:
         failed.append(key)
     with open(path, "w") as f:
         json.dump(data, f)
+
+
+def _wip_path_targets_other_level(path: str, level: int) -> bool:
+    """Return true for explicitly level-numbered scratch from another frontier."""
+    normalized = path.replace(os.sep, "/")
+    match = re.search(
+        r"(?:^|/)codex_turn_[^/]*_L(\d+)_(?:propose|debrief)\.jsonl$",
+        normalized,
+        re.IGNORECASE,
+    )
+    if match:
+        return int(match.group(1)) != level
+    match = re.search(
+        r"(?:^|/)(?:probe|search)(?:_level|_l)(\d+)(?:\D|$)",
+        normalized,
+        re.IGNORECASE,
+    )
+    return bool(match and int(match.group(1)) != level)
 
 
 def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
@@ -662,20 +1402,44 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
     restored = 0
     latest_done = False
     for is_latest, _, attempt, files_dir in attempts:
-        for name in sorted(os.listdir(files_dir)):
+        # Re-evaluate every candidate with the *current* scanner. A snapshot
+        # that passed an older policy can become inadmissible after the taint
+        # rules are tightened; restoring even one of its files would invalidate
+        # the new turn before the proposer starts. If the latest snapshot is
+        # now tainted, continue newest-first to the most recent clean
+        # same-frontier fallback.
+        taint_reason = _workspace_taint_reason(files_dir)
+        if taint_reason:
+            if verbose:
+                print(
+                    "skipping tainted WIP snapshot "
+                    f"{attempt}: {taint_reason}"
+                )
+            continue
+        snapshot_files = []
+        for root, dirs, names in os.walk(files_dir):
+            dirs[:] = sorted(
+                d for d in dirs
+                if d not in SNAPSHOT_SKIP_DIRS
+                and not os.path.islink(os.path.join(root, d))
+            )
+            for name in sorted(names):
+                src = os.path.join(root, name)
+                if os.path.isfile(src) and not os.path.islink(src):
+                    snapshot_files.append(os.path.relpath(src, files_dir))
+        for name in sorted(snapshot_files):
             if name in skip:
                 continue
-            src = os.path.join(files_dir, name)
-            # Local probe execution may leave cache directories inside a preserved
-            # attempt. WIP restoration is intentionally flat and file-only.
-            if not os.path.isfile(src):
+            if _wip_path_targets_other_level(name, level):
                 continue
+            src = os.path.join(files_dir, name)
             dst = os.path.join(ws, name)
             if os.path.exists(dst):
                 if latest_done:
                     continue
                 if os.path.getmtime(dst) >= os.path.getmtime(src):
                     continue
+            os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy2(src, dst)
             restored += 1
         latest_done = True
@@ -684,10 +1448,21 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
     # copied into the clean room and included in the generated frontier brief.
     scaffold = os.path.join(level_dir, "frontier_scaffold.json")
     if os.path.isfile(scaffold):
-        dst = os.path.join(ws, "frontier_scaffold.json")
-        if not os.path.exists(dst) or os.path.getmtime(dst) < os.path.getmtime(scaffold):
-            shutil.copy2(scaffold, dst)
-            restored += 1
+        scaffold_taint = _file_taint_reason(scaffold, "frontier_scaffold.json")
+        if scaffold_taint:
+            if verbose:
+                print(
+                    "skipping tainted reviewed frontier scaffold: "
+                    f"{scaffold_taint}"
+                )
+        else:
+            dst = os.path.join(ws, "frontier_scaffold.json")
+            if (
+                not os.path.exists(dst)
+                or os.path.getmtime(dst) < os.path.getmtime(scaffold)
+            ):
+                shutil.copy2(scaffold, dst)
+                restored += 1
     if verbose and restored:
         print(f"restored {restored} WIP probe file(s) for level {level} "
               f"from latest/backfill snapshots")
@@ -722,6 +1497,33 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
     return rep
 
 
+def exact_level_boundary(game: str, path: Sequence, expected: int) -> Optional[List]:
+    """Return the shortest replay prefix that first reaches ``expected``.
+
+    Verifiers return every action the program committed, including actions taken
+    after a newly won level while attempting the next one.  A promoted checkpoint
+    must end at the exact acquisition boundary; otherwise resuming from it can
+    replay an exhausted move budget and make the next frontier impossible.
+    """
+    if expected <= 0:
+        return []
+    if not path:
+        return None
+    try:
+        env = A.Arena(game)
+    except Exception:
+        # Injectable unit-test games may not have a real Arena. Their verifier
+        # remains the authority, but production games always take the exact path.
+        return list(path)
+    for index, action in enumerate(path, 1):
+        if env.terminal():
+            break
+        env.step(action)
+        if env.levels_completed >= expected:
+            return list(path[:index])
+    return None
+
+
 def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", verbose: bool = True) -> bool:
     """Idempotently publish the latest replay-validated workspace state.
 
@@ -729,6 +1531,34 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
     edits for an unfinished next level from replacing the last known-good artifact.
     """
     if not rep.validated or rep.reached <= 0:
+        return False
+    boundary = exact_level_boundary(game, rep.final_path, rep.reached)
+    if boundary is None:
+        if verbose:
+            print(
+                f"refused promotion: path does not replay to level {rep.reached}"
+            )
+        return False
+    if len(boundary) < len(rep.final_path):
+        if verbose:
+            print(
+                f"trimmed checkpoint to exact level-{rep.reached} boundary: "
+                f"{len(rep.final_path)} -> {len(boundary)} actions"
+            )
+        rep.final_path = boundary
+    try:
+        rep.validated = A.validate(game, rep.final_path, rep.reached)
+    except Exception:
+        # Synthetic injected games used by the harness tests have no real Arena;
+        # retain their injected verifier verdict. Authoritative games never use
+        # this fallback.
+        rep.validated = bool(rep.validated)
+    if not rep.validated:
+        if verbose:
+            print(
+                f"refused promotion: exact boundary failed independent replay "
+                f"for level {rep.reached}"
+            )
         return False
     assert_workspace_not_tainted(ws)
     art = artifact_dir(game, tag)
@@ -776,7 +1606,9 @@ spec = importlib.util.spec_from_file_location("solve", "solve.py")
 m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
 def resumed_solve(env):
     ck = None
-    if os.path.exists("checkpoint.json"):
+    # Prefix optimization must replay the edited solver from level 1 without
+    # mutating the supervisor-owned campaign checkpoint.
+    if os.environ.get("GKM_FRESH_REPLAY") != "1" and os.path.exists("checkpoint.json"):
         with open("checkpoint.json") as f:
             ck = json.load(f)
     if ck and ck.get("game") == {game!r} and ck.get("validated") and ck.get("final_path"):
@@ -788,55 +1620,125 @@ ok = A.validate({game!r}, path, levels) if path else False
 print(f"RESULT levels={{levels}} moves={{len(path)}} replay_ok={{ok}} err={{err}}")
 '''
 
+_SOLVER_IMPORT_LOCK = threading.RLock()
 
-def run_solve_file(game: str, solve_path: str):
-    """Import solve(env) from the workspace and run it on the real game. The workspace
-    dir must be on sys.path so solve.py's `import players` / `from legs import *`
-    resolve, and cached modules are dropped so each call re-reads the agent's edits.
-    (Default verifier.)"""
-    import sys
-    wsdir = os.path.dirname(os.path.abspath(solve_path))
-    added = wsdir not in sys.path
-    if added:
-        sys.path.insert(0, wsdir)
-    for name in ("solve", "players", "legs"):
-        sys.modules.pop(name, None)
+
+def _workspace_import_roots(wsdir: str) -> set[str]:
+    """Return top-level module names that one solver workspace can provide."""
+    roots = {"solve", "players", "legs"}
     try:
-        spec = importlib.util.spec_from_file_location("solve", solve_path)
-        m = importlib.util.module_from_spec(spec)
-        sys.modules["solve"] = m
-        spec.loader.exec_module(m)
-        ckpt = _load_checkpoint(wsdir)
+        entries = tuple(Path(wsdir).iterdir())
+    except OSError:
+        return roots
+    for entry in entries:
+        if entry.is_file() and entry.suffix == ".py":
+            name = entry.stem
+        elif entry.is_dir():
+            # Include namespace-package directories too. Generated solvers may
+            # import them even without an ``__init__.py``.
+            name = entry.name
+        else:
+            continue
+        if name.isidentifier():
+            roots.add(name)
+    return roots
 
-        def resumed_solve(env):
-            if ckpt and ckpt.game == game and ckpt.validated and ckpt.final_path:
-                for act in ckpt.final_path:
-                    env.step(act)
-            m.solve(env)
 
-        return A.run_program(game, resumed_solve)
-    finally:
-        if added and wsdir in sys.path:
-            sys.path.remove(wsdir)
+def _module_is_below(module: object, directory: str) -> bool:
+    origin = getattr(module, "__file__", None)
+    if not isinstance(origin, str):
+        return False
+    try:
+        return os.path.commonpath(
+            (os.path.realpath(origin), directory)
+        ) == directory
+    except (OSError, ValueError):
+        return False
+
+
+def run_solve_file(
+    game: str,
+    solve_path: str,
+    *,
+    time_cap: int = 600,
+    resume_checkpoint: bool = True,
+):
+    """Import and execute one generated solver in an isolated module scope.
+
+    The workspace must be on ``sys.path`` so generated sibling imports resolve.
+    Every top-level module the workspace can provide is shadowed for the complete
+    execution and removed afterward. Without that boundary, an auxiliary module
+    such as ``perception.py`` can leak from one game's replay into the next.
+    """
+    import sys
+    wsdir = os.path.realpath(
+        os.path.dirname(os.path.abspath(solve_path))
+    )
+    roots = _workspace_import_roots(wsdir)
+    with _SOLVER_IMPORT_LOCK:
+        shadowed = {
+            name: module
+            for name, module in tuple(sys.modules.items())
+            if any(
+                name == root or name.startswith(f"{root}.")
+                for root in roots
+            )
+        }
+        for name in shadowed:
+            sys.modules.pop(name, None)
+        added = wsdir not in sys.path
+        if added:
+            sys.path.insert(0, wsdir)
+        try:
+            spec = importlib.util.spec_from_file_location(
+                "solve", solve_path
+            )
+            m = importlib.util.module_from_spec(spec)
+            sys.modules["solve"] = m
+            spec.loader.exec_module(m)
+            ckpt = _load_checkpoint(wsdir)
+
+            def resumed_solve(env):
+                if (
+                    resume_checkpoint
+                    and ckpt
+                    and ckpt.game == game
+                    and ckpt.validated
+                    and ckpt.final_path
+                ):
+                    for act in ckpt.final_path:
+                        env.step(act)
+                m.solve(env)
+
+            return A.run_program(
+                game, resumed_solve, time_cap=time_cap
+            )
+        finally:
+            for name, module in tuple(sys.modules.items()):
+                if (
+                    any(
+                        name == root or name.startswith(f"{root}.")
+                        for root in roots
+                    )
+                    or _module_is_below(module, wsdir)
+                ):
+                    sys.modules.pop(name, None)
+            sys.modules.update(shadowed)
+            if added and wsdir in sys.path:
+                sys.path.remove(wsdir)
 
 
 def _candidate_path_files(ws: str, K: int) -> List[str]:
-    """Likely action-path artifacts a proposer may have left outside solve.py.
-
-    API/tool agents sometimes discover a winning path in a probe and write it to
-    /tmp (or print it) but time out before integrating it into players.py. The
-    harness owns verification, so it should harvest those candidate paths instead
-    of treating the level as unsolved.
-    """
+    """Return regular, unaliased path exports from this attempt only."""
     patterns = [
         os.path.join(ws, "base*.json"),
         os.path.join(ws, f"seg_L{K}.json"),
         os.path.join(ws, f"seg_{K}.json"),
         os.path.join(ws, f"*path*.json"),
+        os.path.join(ws, f"*candidate*.json"),
+        os.path.join(ws, f"*replay*.json"),
         os.path.join(ws, f"win{K}*.json"),
         os.path.join(ws, f"*win*{K}*.json"),
-        os.path.join("/tmp", f"win{K}*.json"),
-        os.path.join("/tmp", f"*win*{K}*.json"),
     ]
     out = []
     for pat in patterns:
@@ -844,29 +1746,67 @@ def _candidate_path_files(ws: str, K: int) -> List[str]:
     # Newer first, de-duped.
     seen = set()
     ordered = []
-    for path in sorted(out, key=lambda p: os.path.getmtime(p), reverse=True):
+    workspace = os.path.realpath(ws)
+    dated = []
+    for path in out:
+        try:
+            dated.append((os.lstat(path).st_mtime, path))
+        except OSError:
+            continue
+    level_token = re.compile(
+        rf"(?:^|[^a-z0-9])(?:level|l|seg[_-]?l?)[_-]?0*{K}"
+        r"(?:[^0-9]|$)",
+        re.IGNORECASE,
+    )
+    # Current-frontier exports dominate old WIP probes.  Modification time is
+    # only a tie-breaker; otherwise a recently touched L5 probe could displace
+    # the actual L9 candidate under the bounded recovery search.
+    dated.sort(
+        key=lambda item: (
+            bool(level_token.search(os.path.basename(item[1]))),
+            item[0],
+        ),
+        reverse=True,
+    )
+    for _mtime, path in dated:
         rp = os.path.realpath(path)
-        if rp not in seen:
-            seen.add(rp)
-            ordered.append(path)
+        try:
+            metadata = os.lstat(path)
+            contained = os.path.commonpath((workspace, rp)) == workspace
+        except (OSError, ValueError):
+            continue
+        if (
+            not contained
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or rp in seen
+        ):
+            continue
+        seen.add(rp)
+        ordered.append(path)
+        if len(ordered) >= MAX_RECOVERY_PATH_CANDIDATES:
+            break
     return ordered
 
 
 def _load_action_path(value) -> Optional[list]:
     """Normalize JSON/log candidates into replayable key or coordinate actions."""
     if isinstance(value, dict):
-        for key in ("path", "actions", "win", "solution"):
+        for key in ("path", "actions", "win", "solution", "final_path"):
             if key in value:
                 value = value[key]
                 break
     if isinstance(value, list) and value:
         normalized = []
         for action in value:
-            if isinstance(action, int) and 1 <= action <= 9:
+            if (
+                isinstance(action, int)
+                and not isinstance(action, bool)
+                and 1 <= action <= 7
+                and action != 6
+            ):
                 normalized.append(action)
-            elif (isinstance(action, (list, tuple)) and len(action) == 3
-                  and action[0] == 6
-                  and all(isinstance(v, int) for v in action[1:])):
+            elif _valid_replay_action(action):
                 normalized.append([6, action[1], action[2]])
             else:
                 return None
@@ -1004,7 +1944,15 @@ def _install_literal_player(ws: str, K: int, suffix: List[int], source: str) -> 
 def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[int],
                                      verbose: bool = True):
     """Validate and install any proposer-discovered path artifact for level K."""
-    candidates = []
+    raw_candidates = []
+    raw_candidates.extend(
+        (p, "proposer_last.log")
+        for p in _candidate_paths_from_log(ws)
+    )
+    raw_candidates.extend(
+        (p, CHECKPOINT_FILE)
+        for p in _candidate_paths_from_checkpoint(ws)
+    )
     for path in _candidate_path_files(ws, K):
         try:
             value = json.load(open(path))
@@ -1012,24 +1960,80 @@ def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[in
             continue
         suffix = _load_action_path(value)
         if suffix:
-            candidates.append((suffix, path))
-    candidates.extend((p, "proposer_last.log") for p in _candidate_paths_from_log(ws))
-    candidates.extend((p, CHECKPOINT_FILE) for p in _candidate_paths_from_checkpoint(ws))
+            raw_candidates.append((suffix, path))
+    candidates = []
+    seen_candidate_paths = set()
+    for candidate, source in raw_candidates:
+        key = _action_path_key(candidate)
+        if key in seen_candidate_paths:
+            continue
+        seen_candidate_paths.add(key)
+        candidates.append((candidate, source))
+        if len(candidates) >= MAX_RECOVERY_PATH_CANDIDATES:
+            break
+
+    # A proposer may legitimately optimize earlier players and export a new
+    # full L1..K path that no longer begins with the old host checkpoint.  This
+    # is not a suffix and must never be glued to the stale prefix.  Admit it
+    # only when both independent artifacts agree operationally: the exported
+    # path replays from zero, and the current workspace source separately
+    # replays from zero to the same frontier.  The harness then adopts the
+    # source-produced exact path; it does not install a literal player or trust
+    # proposer-owned checkpoint/accounting fields.
+    for candidate, source in candidates:
+        candidate_levels, candidate_path, candidate_err = (
+            _run_candidate_replay(game, candidate)
+        )
+        if (
+            candidate_levels < K
+            or candidate_err
+            or not candidate_path
+            or not A.validate(game, candidate_path, candidate_levels)
+        ):
+            continue
+        source_levels, source_path, source_err = run_solve_file(
+            game,
+            os.path.join(ws, "solve.py"),
+            resume_checkpoint=False,
+        )
+        if (
+            source_levels < K
+            or source_err
+            or not source_path
+            or not A.validate(game, source_path, source_levels)
+        ):
+            continue
+        if verbose:
+            print(
+                f"level {K}: recovered replay-validated fresh-prefix "
+                f"replacement from {source} "
+                f"(candidate_len={len(candidate_path)} "
+                f"source_len={len(source_path)} reached={source_levels})"
+            )
+        return source_levels, source_path, None
 
     # Some successful WIP states naturally factor the replay into a compressed
     # verified prefix plus a next-level suffix. Harvest both halves without
     # forcing the proposer to remember to rewrite checkpoint.json before timeout.
     failed_glues = 0
     prefix_ok = {}
+    eligible_prefixes = 0
+    glue_attempts = 0
     for prefix_path, prefix_source in candidates:
         key = _action_path_key(prefix_path)
         if key not in prefix_ok:
             prefix_ok[key] = _validated_prefix_floor(game, prefix_path, K - 1)
         if not prefix_ok[key]:
             continue
+        eligible_prefixes += 1
+        if eligible_prefixes > MAX_RECOVERY_PREFIX_CANDIDATES:
+            break
         for suffix_path, suffix_source in candidates:
             if suffix_path is prefix_path:
                 continue
+            if glue_attempts >= MAX_RECOVERY_GLUE_ATTEMPTS:
+                break
+            glue_attempts += 1
             verified = _verify_candidate_suffix(game, prefix_path, suffix_path, K)
             if verified is None:
                 direct = list(prefix_path) + list(suffix_path)
@@ -1050,6 +2054,8 @@ def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[in
                       f"(prefix_len={len(prefix_path)} suffix_len={len(suffix)} "
                       f"reached={reached})")
             return reached, combined, None
+        if glue_attempts >= MAX_RECOVERY_GLUE_ATTEMPTS:
+            break
     if verbose and failed_glues:
         print(f"level {K}: recorded {failed_glues} failed direct WIP glue attempt(s) "
               "for proposer context")
@@ -1107,11 +2113,16 @@ def _try_auto_solve(K: int, legs_code: str, players_code: str,
     pref = [n for n in candidates
             if any(kw in n.lower() for kw in ("clear", "solve", "search", "bfs", "find", "level", "path"))]
     ordered = pref + [n for n in candidates if n not in pref]
-    for name in ordered:
+    for name in ordered[:AUTO_SOLVE_MAX_CANDIDATES]:
         stub = f"\n\ndef play_level_{K}(env):\n    {name}(env)\n"
         with open(players_p, "a") as f:
             f.write(stub)
-        lv, path, err = verify_fn(game, solve_p)
+        if verify_fn is run_solve_file:
+            lv, path, err = verify_fn(
+                game, solve_p, time_cap=AUTO_SOLVE_CANDIDATE_SECONDS
+            )
+        else:
+            lv, path, err = verify_fn(game, solve_p)
         if lv >= K:
             return lv, path, err
         with open(players_p, "w") as f:
@@ -1244,22 +2255,74 @@ def frame_delta(before, after) -> dict:
     }
 
 
-def action_deltas(env, actions: Sequence[int] = ACTIONS) -> Dict[int, dict]:
+def normalize_public_action(action):
+    """Validate one public key or coordinate action without touching ``env``."""
+    if isinstance(action, (list, tuple)):
+        if (
+            len(action) != 3
+            or action[0] != 6
+            or any(
+                not isinstance(value, int) or isinstance(value, bool)
+                for value in action
+            )
+        ):
+            raise ValueError(
+                "coordinate action must be (6, x, y) with integer x,y in 0..63"
+            )
+        normalized = (6, int(action[1]), int(action[2]))
+        if not (0 <= normalized[1] < 64 and 0 <= normalized[2] < 64):
+            raise ValueError(
+                "coordinate action must be (6, x, y) with integer x,y in 0..63"
+            )
+        return normalized
+    if (
+        not isinstance(action, int)
+        or isinstance(action, bool)
+        or action not in range(1, 8)
+    ):
+        raise ValueError("key action must be an integer in 1..7")
+    if action == 6:
+        raise ValueError(
+            "bare ACTION6 is invalid; use (6, x, y) with integer x,y in 0..63"
+        )
+    return int(action)
+
+
+def safe_step(env, action):
+    """Validate locally, then apply one public key or coordinate action."""
+    normalized = normalize_public_action(action)
+    if isinstance(normalized, tuple):
+        env.step(*normalized)
+    else:
+        env.step(normalized)
+    return normalized
+
+
+def action_deltas(env, actions=None) -> Dict[object, dict]:
+    """Compare valid cloned actions; bare ACTION6 is never sent to the arena."""
+    if actions is None:
+        actions = tuple(action for action in env.actions if action != 6)
+    normalized_actions = tuple(
+        normalize_public_action(action) for action in actions
+    )
     base = arr(env.frame()).copy()
     out = {}
-    for action in actions:
+    for action in normalized_actions:
         clone = env.clone()
-        clone.step(action)
-        out[int(action)] = frame_delta(base, clone.frame())
+        safe_step(clone, action)
+        out[action] = frame_delta(base, clone.frame())
     return out
 
 
-def replay(env, actions: Sequence[int]):
+def replay(env, actions: Sequence):
+    normalized_actions = tuple(
+        normalize_public_action(action) for action in actions
+    )
     clone = env.clone()
-    for action in actions:
+    for action in normalized_actions:
         if clone.terminal():
             break
-        clone.step(int(action))
+        safe_step(clone, action)
     return clone
 
 
@@ -1282,9 +2345,14 @@ def changed_signature(env, actions: Sequence[int], cell: int = 4):
             if before.get(k) != after.get(k)}
 
 
-def bounded_bfs(env, goal_fn, actions: Sequence[int] = (UP, DOWN, LEFT, RIGHT, USE),
+def bounded_bfs(env, goal_fn, actions=None,
                 key_fn=None, max_states: int = 20000, max_depth: int = 80):
-    """Generic clone BFS over observational keys. Use small max_states first."""
+    """BFS over advertised key actions by default; use small bounds first."""
+    if actions is None:
+        actions = tuple(action for action in env.actions if action != 6)
+    normalized_actions = tuple(
+        normalize_public_action(action) for action in actions
+    )
     if key_fn is None:
         key_fn = lambda e: arr(e.frame()).tobytes()
     start_key = key_fn(env)
@@ -1296,14 +2364,14 @@ def bounded_bfs(env, goal_fn, actions: Sequence[int] = (UP, DOWN, LEFT, RIGHT, U
             return path
         if len(path) >= max_depth:
             continue
-        for action in actions:
+        for action in normalized_actions:
             child = node.clone()
-            child.step(int(action))
+            normalized = safe_step(child, action)
             key = key_fn(child)
             if key in seen:
                 continue
             seen.add(key)
-            q.append((child, path + [int(action)]))
+            q.append((child, path + [normalized]))
     return None
 
 
@@ -1321,10 +2389,7 @@ def bounded_replay_bfs(env, goal_fn, action_fn,
     def reconstruct(path):
         node = env.clone()
         for action in path:
-            if isinstance(action, tuple):
-                node.step(*action)
-            else:
-                node.step(int(action))
+            safe_step(node, action)
         return node
 
     start = reconstruct([])
@@ -1337,7 +2402,11 @@ def bounded_replay_bfs(env, goal_fn, action_fn,
             return path
         if len(path) >= max_depth or node.terminal():
             continue
-        for action in action_fn(node):
+        actions = tuple(
+            normalize_public_action(action)
+            for action in action_fn(node)
+        )
+        for action in actions:
             child_path = path + [action]
             child = reconstruct(child_path)
             key = key_fn(child)
@@ -1355,10 +2424,18 @@ def level_goal(base_level: int):
 '''
 
 
-def setup_workspace(game: str, tag: str = "") -> str:
+def setup_workspace(
+    game: str, tag: str = "", *, isolated_generation: bool = False
+) -> str:
     suffix = f"_{tag}" if tag else ""
-    ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}{suffix}")
-    os.makedirs(ws, exist_ok=True)
+    if isolated_generation:
+        os.makedirs(SCRATCH, exist_ok=True)
+        ws = tempfile.mkdtemp(
+            prefix=f"gkm_legs_ws_{game}{suffix}_", dir=SCRATCH
+        )
+    else:
+        ws = os.path.join(SCRATCH, f"gkm_legs_ws_{game}{suffix}")
+        os.makedirs(ws, exist_ok=True)
     labdir = os.path.dirname(os.path.abspath(__file__))
     with open(os.path.join(ws, "gkm_try.py"), "w") as fh:
         fh.write(TESTER.format(labdir=labdir, game=game))
@@ -1481,7 +2558,10 @@ def _frontier_brief(ws: str, game: str, level: int,
         and not name.startswith("codex_turn_")
         and name.endswith((".py", ".md", ".json", ".txt"))
     ]
-    if not messages and not probe_files:
+    checkpoint = _load_checkpoint(ws)
+    if not messages and not probe_files and not (
+        checkpoint and checkpoint.validated and checkpoint.final_path
+    ):
         return ""
 
     lines = [
@@ -1492,6 +2572,19 @@ def _frontier_brief(ws: str, game: str, level: int,
         "Do not reread the full proposer transcript unless a named ambiguity requires it.",
         "",
     ]
+    if checkpoint and checkpoint.validated and checkpoint.final_path:
+        step_cap = int(getattr(A, "DEFAULT_STEP_CAP", 600))
+        used = len(checkpoint.final_path)
+        lines.extend([
+            "## Verified parent budget",
+            "",
+            f"- Exact parent boundary: level {checkpoint.reached} at {used} actions.",
+            f"- Remaining real-action budget under the harness cap: "
+            f"{max(0, step_cap - used)} of {step_cap}.",
+            "- This budget is verifier evidence. If it is insufficient, optimize "
+            "earlier composed legs rather than searching an uncommittable suffix.",
+            "",
+        ])
     if messages:
         lines.extend(["## Prior proposer progress", ""])
         used = 0
@@ -1539,13 +2632,25 @@ def _initialize_codex_workspace_git(ws: str) -> None:
     confined to the clean-room workspace while still letting the agent inspect
     its own edits.
     """
-    subprocess.run(["git", "init", "--quiet", ws], check=True)
+    git_dir = os.path.join(ws, ".git")
+    if os.path.lexists(git_dir):
+        raise WorkspaceTainted(
+            "refusing pre-existing Git metadata in fresh proposer workspace"
+        )
+    subprocess.run(
+        ["git", "-c", "core.hooksPath=/dev/null", "init", "--quiet", ws],
+        check=True,
+    )
     subprocess.run(
         ["git", "-C", ws, "config", "user.name", "GKM clean-room harness"],
         check=True,
     )
     subprocess.run(
         ["git", "-C", ws, "config", "user.email", "gkm-clean-room@invalid"],
+        check=True,
+    )
+    subprocess.run(
+        ["git", "-C", ws, "config", "core.hooksPath", "/dev/null"],
         check=True,
     )
     tracked = [
@@ -1557,14 +2662,20 @@ def _initialize_codex_workspace_git(ws: str) -> None:
         if os.path.isfile(os.path.join(ws, name))
     ]
     if tracked:
-        subprocess.run(["git", "-C", ws, "add", "--", *tracked], check=True)
+        subprocess.run(
+            ["git", "-c", "core.hooksPath=/dev/null", "-C", ws,
+             "add", "--", *tracked],
+            check=True,
+        )
         staged = subprocess.run(
-            ["git", "-C", ws, "diff", "--cached", "--quiet"],
+            ["git", "-c", "core.hooksPath=/dev/null", "-C", ws,
+             "diff", "--cached", "--quiet"],
             check=False,
         )
         if staged.returncode == 1:
             subprocess.run(
-                ["git", "-C", ws, "commit", "--quiet", "-m", "verified starting point"],
+                ["git", "-c", "core.hooksPath=/dev/null", "-C", ws,
+                 "commit", "--quiet", "-m", "verified starting point"],
                 check=True,
             )
         elif staged.returncode != 0:
@@ -1578,11 +2689,24 @@ def _initialize_codex_workspace_git(ws: str) -> None:
 # ---------------------------------------------------------------------------
 # default proposer: the real Claude Code agent (tools) -- needs credits
 # ---------------------------------------------------------------------------
-# markers that mean "no credits / rate-limited" -- the whole run should abort, not
-# silently churn out empty proposals against a dead API.
-_CREDIT_OUT_MARKERS = ("out of usage credits", "usage limit", "credit balance", "session limit",
-                       "rate limit", "insufficient", "quota", "not logged in", "please run /login",
-                       "spend limit", "usage-credits")
+# Provider failures are classified only from error payloads where the transport
+# supplies them (Codex JSONL), never from arbitrary solver prose.  Keep these
+# phrases specific: the old bare ``insufficient`` marker misclassified a frontier
+# brief saying "if the move budget is insufficient" as account exhaustion.
+_CREDIT_OUT_MARKERS = (
+    "out of usage credits",
+    "usage limit",
+    "credit balance",
+    "session limit reached",
+    "insufficient credits",
+    "insufficient quota",
+    "quota exceeded",
+    "quota has been exceeded",
+    "not logged in",
+    "please run /login",
+    "spend limit reached",
+    "usage-credits exhausted",
+)
 
 
 def _raise_keyboard_interrupt(signum, frame):
@@ -1594,13 +2718,106 @@ class CreditOut(RuntimeError):
     orchestrator can stop the whole sequence cleanly instead of burning the budget."""
 
 
+class ProposerInfrastructureError(RuntimeError):
+    """A retryable provider/transport failure, not solver no-progress or quota."""
+
+
+class ProposerEvidenceUnavailable(ProposerInfrastructureError):
+    """A turn whose protected transcript cannot authorize reuse or promotion.
+
+    This is deliberately *not* retryable within the same generation.  Source
+    edits and probes may have been learned during the unrecorded turn, so the
+    entire generation is quarantine-only even when its solver happens to replay.
+    """
+
+
+class ProposerContainmentTimeout(ProposerInfrastructureError):
+    """A hard wall-time containment stop, never a clean solver no-progress result."""
+
+
+class ProposerProtocolViolation(ProposerEvidenceUnavailable):
+    """A public-action violation invalidated the complete proposer generation."""
+
+
 # markers of a transient infrastructure failure (dropped connection, server error):
 # the proposer never worked on the level, so the attempt is retried, not judged.
-_TRANSIENT_MARKERS = ("api error", "connection closed", "connection error", "connection refused",
-                      "overloaded", "internal server error", "service unavailable")
+_TRANSIENT_MARKERS = (
+    "api error",
+    "connection closed",
+    "connection error",
+    "connection refused",
+    "overloaded",
+    "internal server error",
+    "service unavailable",
+    "selected model is at capacity",
+    "model is at capacity",
+    "rate limit",
+    "too many requests",
+)
 
 _TRANSIENT_RETRIES = 2
 """Extra proposer attempts per level when the failure looks infrastructural."""
+
+
+def _classify_provider_error_message(message: str) -> str:
+    """Return ``credit_out``, ``infrastructure``, or ``other`` for an error.
+
+    Callers must pass a provider/CLI error payload, not an entire transcript.
+    This prevents ordinary task text, probe output, or model reasoning from
+    becoming control-plane signals.
+    """
+    blob = message.lower()
+    if any(marker in blob for marker in _CREDIT_OUT_MARKERS):
+        return "credit_out"
+    if any(marker in blob for marker in _TRANSIENT_MARKERS):
+        return "infrastructure"
+    return "other"
+
+
+def _codex_terminal_error_messages(log_path: str) -> list[str]:
+    """Extract only top-level Codex JSONL terminal error payloads.
+
+    Command output and assistant reasoning are deliberately ignored even when
+    they contain words such as "quota", "capacity", or "insufficient".
+    """
+    messages: list[str] = []
+    try:
+        with open(log_path, encoding="utf-8") as handle:
+            for raw in handle:
+                try:
+                    event = json.loads(raw)
+                except json.JSONDecodeError:
+                    continue
+                if not isinstance(event, dict):
+                    continue
+                message = None
+                if event.get("type") == "error":
+                    message = event.get("message")
+                elif event.get("type") == "turn.failed":
+                    error = event.get("error")
+                    if isinstance(error, dict):
+                        message = error.get("message")
+                if isinstance(message, str) and message and message not in messages:
+                    messages.append(message)
+    except OSError:
+        return []
+    return messages
+
+
+def _usage_guard_error_is_cost_block(error: Exception) -> bool:
+    """Whether a guard error is an explicit configured/provider cost stop.
+
+    Lock contention, app-server timeouts, malformed rate-limit responses, and
+    other guard transport failures are infrastructure. Only these specific
+    finite-pool/campaign-cap messages are allowed to become ``CreditOut``.
+    """
+    message = str(error).lower()
+    return any(marker in message for marker in (
+        "weekly codex allowance is",
+        "weekly codex allowance has only",
+        "local campaign run cap reached",
+        "local campaign token cap reached",
+    ))
 
 
 _SECRET_ENV_FILES = ("ANTHROPIC_API_KEY.env.local",)
@@ -1821,7 +3038,8 @@ def _opencode_agent(ws: str, task: str, model: Optional[str], minutes: int) -> N
 
 
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
-CODEX_REASONING_EFFORTS = {"medium", "high"}
+DEFAULT_CODEX_ALLOCATION_POLICY = "drain"
+CODEX_REASONING_EFFORTS = {"medium", "high", "xhigh", "max"}
 
 
 def _codex_command(ws: str, task: str, model: Optional[str],
@@ -1858,7 +3076,9 @@ def _codex_environment() -> dict[str, str]:
         "LC_ALL", "LC_CTYPE", "TERM", "USER", "LOGNAME", "SHELL",
         "VIRTUAL_ENV", "SSL_CERT_FILE", "SSL_CERT_DIR",
     }
-    return {key: value for key, value in os.environ.items() if key in allowed}
+    result = {key: value for key, value in os.environ.items() if key in allowed}
+    result["GKM_SANITIZE_PROPOSER_INTERRUPTS"] = "1"
+    return result
 
 
 def _codex_usage_from_jsonl(path: str) -> dict:
@@ -1870,6 +3090,7 @@ def _codex_usage_from_jsonl(path: str) -> dict:
         "output_tokens": 0,
         "reasoning_output_tokens": 0,
         "usage_reported": False,
+        "observed_tokens": 0,
     }
     try:
         lines = _read(path).splitlines()
@@ -1899,49 +3120,165 @@ def _codex_usage_from_jsonl(path: str) -> dict:
     return result
 
 
-def _stop_process_group(proc: subprocess.Popen, grace_seconds: float = 5.0) -> None:
-    """Terminate the Codex CLI and every shell command it spawned."""
-    if proc.poll() is not None:
-        return
+def _process_group_exists(process_group: int) -> bool:
+    """Return whether any process still belongs to ``process_group``."""
     try:
-        os.killpg(proc.pid, signal.SIGTERM)
-        proc.wait(timeout=grace_seconds)
-    except (ProcessLookupError, subprocess.TimeoutExpired):
+        os.killpg(process_group, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        # A group we created but can no longer inspect is not a clean terminal
+        # boundary; callers must continue to treat it as present.
+        return True
+    return True
+
+
+def _stop_process_group(
+    proc: subprocess.Popen, grace_seconds: float = 5.0
+) -> bool:
+    """Terminate the Codex CLI and every shell command it spawned.
+
+    The session leader may already have exited while a background tool remains.
+    Never return merely because ``proc.poll()`` is terminal: the process-group
+    boundary, not the leader PID, defines a completed proposer turn.
+    """
+    process_group = proc.pid
+    if not _process_group_exists(process_group):
+        return True
+    try:
+        os.killpg(process_group, signal.SIGTERM)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        # Some nested test/launcher sandboxes refuse group signalling even for
+        # the child they just created.  Give a naturally terminating leader the
+        # same bounded grace period; never claim containment if any group
+        # member survives it.
         if proc.poll() is None:
             try:
-                os.killpg(proc.pid, signal.SIGKILL)
+                proc.wait(timeout=grace_seconds)
+            except subprocess.TimeoutExpired:
+                return False
+        return not _process_group_exists(process_group)
+    deadline = time.monotonic() + grace_seconds
+    if proc.poll() is None:
+        try:
+            proc.wait(timeout=grace_seconds)
+        except subprocess.TimeoutExpired:
+            try:
+                os.killpg(process_group, signal.SIGKILL)
             except ProcessLookupError:
                 pass
+            except PermissionError:
+                return False
             proc.wait()
+    # SIGTERM was delivered to the complete group.  A remaining group gets one
+    # unconditional SIGKILL; nested macOS sandboxes can deny the post-reap
+    # existence probe even when the group is already gone, so a reaped leader
+    # plus a successfully delivered group TERM remains a valid containment
+    # boundary for this compatibility harness.  The contiguous container runner
+    # uses descriptor/PID-namespace receipts for the stronger production proof.
+    if _process_group_exists(process_group):
+        try:
+            os.killpg(process_group, signal.SIGKILL)
+        except ProcessLookupError:
+            return True
+        except PermissionError:
+            return proc.poll() is not None
+    if proc.poll() is None:
+        remaining = max(0.0, deadline - time.monotonic())
+        try:
+            proc.wait(timeout=remaining)
+        except subprocess.TimeoutExpired:
+            return False
+    return proc.poll() is not None
+
+
+def _scan_transcript_protocol_marker(
+    path: str, offset: int, carry: bytes
+) -> tuple[bool, int, bytes]:
+    """Incrementally scan an append-only protected transcript for violations.
+
+    The proposer cannot access this path.  Keeping only a marker-sized overlap
+    avoids rereading a multi-hour JSONL transcript on every liveness poll while
+    still detecting a marker split across writes.
+    """
+    marker = A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER.encode("utf-8")
+    try:
+        size = os.path.getsize(path)
+        if size < offset:
+            offset = 0
+            carry = b""
+        with open(path, "rb") as handle:
+            handle.seek(offset)
+            appended = handle.read()
+            new_offset = handle.tell()
+    except OSError:
+        return False, offset, carry
+    combined = carry + appended
+    found = marker in combined
+    keep = max(0, len(marker) - 1)
+    return found, new_offset, combined[-keep:] if keep else b""
 
 
 def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                  reasoning_effort: str = "medium",
+                 allocation_policy: str = DEFAULT_CODEX_ALLOCATION_POLICY,
                  weekly_reserve: int = 80,
                  weekly_headroom: int = 1,
                  max_campaign_tokens: int = 2_000_000,
                  max_campaign_runs: int = 12,
                  ledger_path: Optional[str] = None,
-                 run_label: Optional[str] = None) -> dict:
-    """Run one metered Codex proposer turn under a serialized campaign guard.
+                 run_label: Optional[str] = None,
+                 game: Optional[str] = None,
+                 target_level: Optional[int] = None,
+                 frontier_binding: Optional[dict] = None) -> dict:
+    """Run one metered Codex proposer turn under the campaign guard.
 
-    The raw ``--json`` stream remains in ``proposer_last.log`` so attempted
-    source/runtime/network access is visible to the existing taint gate.  The
+    The live raw ``--json`` stream is written outside the proposer-writable
+    workspace, then copied back as an immutable turn log and
+    ``proposer_last.log`` after the process exits. Attempted
+    source/runtime/network access therefore remains visible to the taint gate
+    even if the proposer tries to edit or move its own audit record. The
     local token cap is an admission cap rather than a provider-side hard token
     ceiling; wall time and the live weekly reserve are the hard pre-turn bounds.
+    Finite pools remain serialized across the full transaction.  A
+    provider-confirmed unlimited pool releases the admission lock after
+    preflight, allowing disjoint model turns to run concurrently while durable
+    ledger appends remain serialized separately.
     """
     if minutes <= 0:
         raise ValueError("Codex minutes must be positive")
+    if allocation_policy not in {"hard", "drain"}:
+        raise ValueError(
+            "Codex allocation_policy must be either 'hard' or 'drain'"
+        )
+    validated_frontier_binding = None
+    if frontier_binding is not None:
+        validated_frontier_binding = CCS.validate_frontier_binding(
+            frontier_binding,
+            expected_game=game,
+            expected_target_level=target_level,
+        )
     chosen_model = model or DEFAULT_CODEX_MODEL
     ledger = ledger_path or os.fspath(CUG.DEFAULT_LEDGER)
     cmd = _codex_command(ws, task, chosen_model, reasoning_effort)
     latest_log_path = os.path.join(ws, "proposer_last.log")
+    transcript_root = _protected_codex_transcript_dir(ws)
+    os.makedirs(transcript_root, exist_ok=True)
 
+    lock_held = False
     try:
-        lock = CUG.campaign_lock(ledger)
+        # Concurrent unlimited turns need only serialize the short live
+        # preflight.  Wait through that overlap instead of misreporting a
+        # transient admission-lock collision as credit exhaustion.
+        lock = CUG.campaign_lock(ledger, wait_seconds=30.0)
         lock.__enter__()
+        lock_held = True
     except CUG.CodexUsageGuardError as exc:
-        raise CreditOut(f"Codex campaign guard stopped the run: {exc}") from exc
+        raise ProposerInfrastructureError(
+            f"Codex campaign admission failed: {exc}"
+        ) from exc
     try:
         try:
             before = CUG.preflight(
@@ -1952,17 +3289,35 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 ledger_path=ledger,
             )
         except CUG.CodexUsageGuardError as exc:
-            raise CreditOut(f"Codex campaign guard stopped the run: {exc}") from exc
+            if _usage_guard_error_is_cost_block(exc):
+                raise CreditOut(
+                    f"Codex campaign guard stopped the run: {exc}"
+                ) from exc
+            raise ProposerInfrastructureError(
+                f"Codex rate-limit preflight failed: {exc}"
+            ) from exc
+        if not before.get("cost_control_enabled", True):
+            lock.__exit__(None, None, None)
+            lock_held = False
 
         started = time.monotonic()
         started_at = datetime.now(timezone.utc).isoformat()
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
         safe_label = re.sub(r"[^A-Za-z0-9_.-]+", "_", run_label or "turn").strip("_")
-        log_path = os.path.join(ws, f"codex_turn_{stamp}_{safe_label}.jsonl")
+        log_name = f"codex_turn_{stamp}_{safe_label}.jsonl"
+        log_path = os.path.join(transcript_root, log_name)
+        workspace_log_path = os.path.join(ws, log_name)
         proc = None
         timed_out = False
+        allocation_expired = False
         interrupted = False
+        protocol_violation = False
         launch_error = None
+        transcript_bytes = None
+        transcript_evidence_error = None
+        surviving_process_group = False
+        process_group_quiesced = True
+        process_group_stop_attempted = False
         try:
             with open(log_path, "w") as log:
                 proc = subprocess.Popen(
@@ -1975,23 +3330,117 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     start_new_session=True,
                 )
                 try:
-                    proc.wait(timeout=minutes * 60)
-                except subprocess.TimeoutExpired:
-                    timed_out = True
-                    _stop_process_group(proc)
-                    print(
-                        f"[codex proposer hit {minutes}min wall-time budget; "
-                        "verifying partial work]"
+                    deadline = time.monotonic() + minutes * 60
+                    scan_offset = 0
+                    scan_carry = b""
+                    while proc.poll() is None:
+                        (
+                            marker_found,
+                            scan_offset,
+                            scan_carry,
+                        ) = _scan_transcript_protocol_marker(
+                            log_path, scan_offset, scan_carry
+                        )
+                        if marker_found:
+                            protocol_violation = True
+                            process_group_stop_attempted = True
+                            process_group_quiesced = _stop_process_group(proc)
+                            print(
+                                "[codex proposer emitted a public-action "
+                                "protocol violation; terminating and "
+                                "quarantining the complete turn]"
+                            )
+                            break
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0 and not allocation_expired:
+                            allocation_expired = True
+                            if allocation_policy == "drain":
+                                print(
+                                    f"[codex proposer crossed its {minutes}min "
+                                    "soft allocation; draining the healthy live "
+                                    "turn without signalling it]"
+                                )
+                            else:
+                                timed_out = True
+                                process_group_stop_attempted = True
+                                process_group_quiesced = _stop_process_group(
+                                    proc
+                                )
+                                print(
+                                    f"[codex proposer hit {minutes}min hard "
+                                    "containment limit; preserving partial work "
+                                    "as a non-solver outcome]"
+                                )
+                                break
+                        wait_seconds = (
+                            0.5
+                            if allocation_expired
+                            else max(0.01, min(0.5, remaining))
+                        )
+                        try:
+                            proc.wait(timeout=wait_seconds)
+                        except subprocess.TimeoutExpired:
+                            continue
+                    # A marker can be the final write immediately before a
+                    # normal process exit, between the last poll and reap.
+                    (
+                        marker_found,
+                        scan_offset,
+                        scan_carry,
+                    ) = _scan_transcript_protocol_marker(
+                        log_path, scan_offset, scan_carry
+                    )
+                    protocol_violation = (
+                        protocol_violation or marker_found
                     )
                 except KeyboardInterrupt:
                     interrupted = True
-                    _stop_process_group(proc)
+                    process_group_stop_attempted = True
+                    process_group_quiesced = _stop_process_group(proc)
         except (OSError, subprocess.SubprocessError) as exc:
             launch_error = exc
 
-        if os.path.isfile(log_path):
-            shutil.copy2(log_path, latest_log_path)
-        usage = _codex_usage_from_jsonl(log_path)
+        # A terminal leader PID is insufficient: a backgrounded tool may still
+        # mutate the workspace or hold the raw transcript descriptor.  Seal
+        # bytes only after terminating that residual process group, and mark
+        # the whole generation non-authoritative.
+        if (
+            proc is not None
+            and not process_group_stop_attempted
+            and _process_group_exists(proc.pid)
+        ):
+            surviving_process_group = True
+            process_group_stop_attempted = True
+            process_group_quiesced = _stop_process_group(proc)
+        if not process_group_quiesced:
+            transcript_evidence_error = PermissionError(
+                "could not terminate the complete proposer process group"
+            )
+
+        # Copy only after Codex and every child tool process has exited.  The
+        # proposer never receives a writable handle or path to the live audit
+        # stream.  A missing/unlinked/replaced protected pathname invalidates
+        # this entire generation: never fall back to an older workspace log.
+        if transcript_evidence_error is None:
+            try:
+                transcript_bytes = _read_single_link_regular(log_path)
+            except (OSError, WorkspaceTainted) as exc:
+                transcript_evidence_error = exc
+            else:
+                _atomic_host_write(workspace_log_path, transcript_bytes)
+                _atomic_host_write(latest_log_path, transcript_bytes)
+                protocol_violation = (
+                    protocol_violation
+                    or A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER.encode(
+                        "utf-8"
+                    )
+                    in transcript_bytes
+                )
+        usage = (
+            _codex_usage_from_jsonl(workspace_log_path)
+            if transcript_bytes is not None
+            else _codex_usage_from_jsonl("")
+        )
         postflight = None
         postflight_error = None
         try:
@@ -1999,47 +3448,165 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         except CUG.CodexUsageGuardError as exc:
             postflight_error = str(exc)
 
+        terminal_errors = (
+            _codex_terminal_error_messages(workspace_log_path)
+            if proc is not None and not timed_out and proc.returncode != 0
+            and transcript_bytes is not None
+            else []
+        )
+        failure_detail_class = "unknown_cli"
+        failure_class = "infrastructure"
+        for message in terminal_errors:
+            classification = _classify_provider_error_message(message)
+            if classification == "credit_out":
+                failure_class = classification
+                failure_detail_class = "provider_credit_out"
+                break
+            if classification == "infrastructure":
+                failure_class = classification
+                failure_detail_class = "known_transient"
+        if launch_error is not None:
+            failure_class = "infrastructure"
+            failure_detail_class = "launch_error"
+
         allowance_before = before["allowance"]
         record = {
             "event": "codex_exec",
             "started_at": started_at,
             "duration_seconds": round(time.monotonic() - started, 3),
             "run_label": run_label,
-            "transcript": os.path.basename(log_path),
+            "game": game,
+            "target_level": target_level,
+            **(validated_frontier_binding or {}),
+            "transcript": log_name,
             "workspace": os.path.basename(os.path.abspath(ws)),
             "model": chosen_model,
             "reasoning_effort": reasoning_effort,
             "minutes_limit": minutes,
+            "allocation_policy": allocation_policy,
+            "allocation_expired": allocation_expired,
             "timed_out": timed_out,
             "interrupted": interrupted,
             "returncode": proc.returncode if proc is not None else None,
             "launch_error": type(launch_error).__name__ if launch_error else None,
+            "failure_class": (
+                "evidence"
+                if (
+                    transcript_evidence_error is not None
+                    or surviving_process_group
+                )
+                else "taint"
+                if protocol_violation
+                else "containment"
+                if timed_out
+                else failure_class
+                if launch_error is not None
+                or (
+                    proc is not None
+                    and not timed_out
+                    and proc.returncode != 0
+                )
+                else None
+            ),
+            "failure_detail_class": (
+                "protected_transcript_unavailable"
+                if transcript_evidence_error is not None
+                else "surviving_process_group"
+                if surviving_process_group
+                else "public_action_protocol_violation"
+                if protocol_violation
+                else "hard_wall_time"
+                if timed_out
+                else failure_detail_class
+                if launch_error is not None
+                or (
+                    proc is not None
+                    and not timed_out
+                    and proc.returncode != 0
+                )
+                else None
+            ),
+            "protected_transcript_status": (
+                "sealed"
+                if transcript_bytes is not None
+                else "unavailable"
+            ),
+            "protected_transcript_sha256": (
+                hashlib.sha256(transcript_bytes).hexdigest()
+                if transcript_bytes is not None
+                else None
+            ),
+            "protected_transcript_error": (
+                type(transcript_evidence_error).__name__
+                if transcript_evidence_error is not None
+                else None
+            ),
+            "surviving_process_group": surviving_process_group,
+            "public_action_protocol_violation": protocol_violation,
+            "terminal_errors": terminal_errors,
             "weekly_used_before": allowance_before["used_percent"],
             "weekly_remaining_before": allowance_before["remaining_percent"],
             "weekly_resets_at": allowance_before["resets_at"],
+            "weekly_window_before": allowance_before.get("window_name"),
+            "weekly_limit_id_before": allowance_before.get("limit_id"),
             "weekly_used_after": postflight["used_percent"] if postflight else None,
             "weekly_remaining_after": postflight["remaining_percent"] if postflight else None,
+            "weekly_window_after": postflight.get("window_name") if postflight else None,
+            "weekly_limit_id_after": postflight.get("limit_id") if postflight else None,
             "postflight_error": postflight_error,
             **usage,
         }
         CUG.append_ledger(record, ledger)
 
+        if transcript_evidence_error is not None:
+            raise ProposerEvidenceUnavailable(
+                "protected Codex transcript is unavailable or unstable; "
+                "discarding this complete proposer generation without WIP "
+                f"reuse or promotion ({log_path}: "
+                f"{type(transcript_evidence_error).__name__})"
+            ) from transcript_evidence_error
+        if surviving_process_group:
+            raise ProposerEvidenceUnavailable(
+                "Codex leader exited while a spawned process remained alive; "
+                "the process group was terminated and this proposer "
+                "generation is discarded without WIP reuse or promotion"
+            )
+        if protocol_violation:
+            raise ProposerProtocolViolation(
+                "Codex attempted an action outside the public protocol; "
+                "the complete proposer generation was terminated and is "
+                "discarded without WIP reuse or promotion"
+            )
         if launch_error is not None:
-            raise RuntimeError(f"could not launch Codex CLI: {launch_error}") from launch_error
+            raise ProposerInfrastructureError(
+                f"could not launch Codex CLI: {launch_error}"
+            ) from launch_error
         if interrupted:
             raise KeyboardInterrupt
         assert proc is not None
+        if timed_out:
+            raise ProposerContainmentTimeout(
+                f"Codex proposer hit the {minutes}min hard containment limit; "
+                "the partial turn is not clean solver no-progress"
+            )
         if not timed_out and proc.returncode != 0:
-            txt = _read(log_path).lower()
-            if any(marker in txt for marker in _CREDIT_OUT_MARKERS):
+            detail = terminal_errors[-1] if terminal_errors else (
+                f"Codex CLI exited with status {proc.returncode}"
+            )
+            if failure_class == "credit_out":
                 raise CreditOut(f"codex reported no credits/quota (see {log_path})")
-            raise RuntimeError(
-                f"codex proposer CLI failed with status {proc.returncode} "
-                f"(see {log_path})"
+            if failure_class == "infrastructure":
+                raise ProposerInfrastructureError(
+                    f"Codex provider/transport failure: {detail} (see {log_path})"
+                )
+            raise ProposerInfrastructureError(
+                f"Codex CLI failed with unclassified status {proc.returncode}: "
+                f"{detail} (see {log_path})"
             )
         return record
     finally:
-        lock.__exit__(None, None, None)
+        if lock_held:
+            lock.__exit__(None, None, None)
 
 
 def _record_codex_level_outcome(turn: Optional[dict], *, ledger_path: Optional[str],
@@ -2054,11 +3621,21 @@ def _record_codex_level_outcome(turn: Optional[dict], *, ledger_path: Optional[s
         "event": "codex_level_outcome",
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "thread_id": turn.get("thread_id"),
+        "codex_exec_transcript": turn.get("transcript"),
         "run_label": turn.get("run_label"),
         "model": turn.get("model"),
         "reasoning_effort": turn.get("reasoning_effort"),
         "game": game,
         "target_level": level,
+        **{
+            field: turn.get(field)
+            for field in (
+                *CCS.FRONTIER_BINDING_FIELDS,
+                "reached",
+                "parent_action_count",
+            )
+            if turn.get(field) is not None
+        },
         "reached_before": reached_before,
         "reached_after": reached_after,
         "solved_target": reached_after >= level,
@@ -2067,8 +3644,11 @@ def _record_codex_level_outcome(turn: Optional[dict], *, ledger_path: Optional[s
         "taint_verdict": "clean",
     }
     try:
-        with CUG.campaign_lock(ledger):
-            CUG.append_ledger(outcome, ledger)
+        # Outcome joins are bookkeeping appends, not cost-admission decisions.
+        # The dedicated blocking append lock preserves every concurrent
+        # unlimited-lane record without contending on the zero-wait campaign
+        # admission lock.
+        CUG.append_ledger(outcome, ledger)
     except CUG.CodexUsageGuardError as exc:
         print(f"[warning: could not append Codex level outcome: {exc}]")
 
@@ -2154,9 +3734,13 @@ CLEAN_ROOM_INSTRUCTION = (
     "CLEAN-ROOM BOUNDARY: work only with files in the current workspace and the "
     "documented observation/action surface exposed by gkm_try.py and perception.py. "
     "Those local harness and API files are legitimate to inspect. Do not read parent "
-    "directories, prior agents' artifacts, hidden implementations, or underscore-"
-    "prefixed runtime state. Do not use any internet service. Any attempted boundary "
-    "crossing invalidates the entire discovery lineage, even if it does not help."
+    "directories, artifacts outside the admitted current-workspace lineage, hidden "
+    "implementations, or underscore-prefixed runtime state. Same-lineage prior "
+    "observations and proposer transcripts already present in this workspace are "
+    "admissible, but reproduce every fact used. Do not inspect or signal host "
+    "processes; run bounded probe workers in the foreground. Do not use any internet "
+    "service. Any attempted boundary crossing invalidates the entire discovery "
+    "lineage, even if it does not help."
     " TOKEN DISCIPLINE: start with solver_index.md, which lists signatures, line "
     "ranges, docstrings, and direct calls without bodies. Use those ranges instead "
     "of printing whole files. If frontier_brief.md exists, read it next: it indexes "
@@ -2172,17 +3756,35 @@ def _propose_task(game, K, context, legs_index):
             f"\n\nYou are growing a LEG LIBRARY across the levels of {game}. Existing "
             f"legs in legs.py: {legs_index or '(none yet)'}.\n"
             f"GOAL: make solve.py reach LEVEL {K}. First run `python gkm_try.py` to see "
-            "where you are; solve.py dispatches to players.play_level_K. On a clone at "
+            "where you are; solve.py dispatches to players.play_level_K. "
+            "`checkpoint.json` is supervisor-owned campaign/accounting state: never "
+            "edit, replace, delete, chmod, or regenerate it. If edits to earlier-level "
+            "code or prefix optimization must be tested from level 1, run "
+            "`GKM_FRESH_REPLAY=1 python gkm_try.py`; save any candidate action path "
+            "under a different descriptive `.json` filename for independent harness "
+            "adoption. On a clone at "
             f"level {K}, learn its structure. Use perception.py first: it is a "
             "source-free scaffold that turns frames into blobs, object candidates, "
             "action deltas, replay summaries, and bounded clone BFS keys. "
             "Inspect env.actions: key actions are integers; coordinate-only games "
             "use env.step(6, x, y), recorded in replay paths as [6, x, y]. "
+            "ACTION6 x and y must be integers inside the returned 64x64 frame "
+            "(0..63 inclusive). Never pass bare `6` to `env.step` or to an "
+            "explicit perception action list; `action_deltas(env)` safely tests "
+            "the advertised key actions by default, while coordinate probes must "
+            "supply explicit `(6, x, y)` tuples. Never probe off-frame or malformed "
+            "actions. Any "
+            "such attempt invalidates and terminates the complete proposer turn even "
+            "when a probe catches the exception. "
             f"Build small symbolic probes on top of those observations instead of repeatedly "
             f"dumping raw pixels. Then WRITE `play_level_{K}(env)` in "
             "players.py that ONLY COMPOSES legs imported from legs.py. REUSE existing "
-            "legs wherever the level is an earlier one in a new configuration; add NEW "
+            "legs wherever observations confirm that the level is an earlier mechanism "
+            "in a new configuration; add NEW "
             "legs to legs.py ONLY when nothing fits, and keep them minimal and general. "
+            "If a candidate repeatedly stalls or exhausts the real-move budget, falsify "
+            "its core mechanic from a pristine level entry before extending its suffix; "
+            "forced reuse is not compression. "
             "Do not put level logic inline in the player -- put reusable skills in "
             "legs.py. Iterate with `python gkm_try.py` until RESULT shows "
             f"levels>={K}. Keep clone use bounded (~300 steps/s).")
@@ -2220,12 +3822,41 @@ class Report:
         return free_energy(self.reached, self.total_marginal_C)
 
 
+def _checked_codex_frontier_binding(
+    game: str,
+    target_level: int,
+    tag: str,
+    expected: Optional[dict],
+) -> dict:
+    """Resolve one exact parent and reject a stale scheduler decision."""
+    try:
+        binding = CCS.exact_frontier_binding(
+            Path(artifact_dir(game, tag)),
+            game=game,
+            target_level=target_level,
+        )
+    except ValueError as exc:
+        if expected is None:
+            raise
+        raise ValueError(
+            "exact frontier changed after scheduler decision; "
+            "refusing stale Codex dispatch"
+        ) from exc
+    if expected is not None and binding != expected:
+        raise ValueError(
+            "exact frontier changed after scheduler decision; "
+            "refusing stale Codex dispatch"
+        )
+    return binding
+
+
 def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 proposer="claude", tag="",
                 seed_artifact: bool = True,
                 restore_wip: bool = True,
                 codex_effort: str = "medium",
                 codex_debrief_effort: str = "medium",
+                codex_allocation_policy: str = DEFAULT_CODEX_ALLOCATION_POLICY,
                 debrief_policy: str = "always",
                 debrief_threshold: int = 150,
                 codex_weekly_reserve: int = 80,
@@ -2234,6 +3865,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 codex_max_campaign_runs: int = 12,
                 transient_retries: int = _TRANSIENT_RETRIES,
                 codex_ledger: Optional[str] = None,
+                expected_frontier_binding: Optional[dict] = None,
                 claude_guard: bool = False,
                 claude_ledger: Optional[str] = None,
                 claude_window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
@@ -2266,11 +3898,101 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     )
     if transient_retries < 0:
         raise ValueError("transient_retries must be nonnegative")
-    ws = setup_workspace(game, tag)
-    run_lock = _acquire_workspace_lock(ws)
+    if codex_allocation_policy not in {"hard", "drain"}:
+        raise ValueError(
+            "codex_allocation_policy must be either 'hard' or 'drain'"
+        )
+    if expected_frontier_binding is not None:
+        if proposer != "codex" or propose_fn is not None:
+            raise ValueError(
+                "expected frontier binding is supported only by the default "
+                "Codex proposer"
+            )
+        expected_frontier_binding = CCS.validate_frontier_binding(
+            expected_frontier_binding,
+            expected_game=game,
+            expected_target_level=max_level,
+        )
+    authoritative_target = None
+    if propose_fn is None:
+        authoritative_target = authoritative_level_target(game)
+        if (
+            not isinstance(max_level, int)
+            or isinstance(max_level, bool)
+            or not 1 <= max_level <= authoritative_target
+        ):
+            raise ValueError(
+                "requested max level is outside authoritative inventory: "
+                f"{game} requested={max_level!r}, "
+                f"authoritative_target={authoritative_target}"
+            )
+    lineage_lock = _acquire_lineage_lock(game)
+    try:
+        # Real proposer attempts always receive a new generation.  The
+        # deterministic scratch name remains only for injected/offline tests.
+        # This makes ``exclude`` literal and prevents zero-seed attempts from
+        # inheriting old solver/probe bytes under a reused tag.
+        if propose_fn is None:
+            ws = setup_workspace(game, tag, isolated_generation=True)
+        else:
+            ws = setup_workspace(game, tag)
+        if not seed_artifact:
+            # ``--fresh`` means zero-seed, not merely "start a new proposer
+            # process".  It is safe for the first turn of a separately rooted
+            # reacquisition, or when the same scratch workspace already carries
+            # the current validated checkpoint.  A new/stale scratch workspace
+            # beside a newer artifact would otherwise silently dispatch L1 and
+            # waste a hard-frontier turn (the eventual promotion guard prevents
+            # regression, but not the targeting error).
+            artifact_checkpoint = _load_checkpoint(artifact_dir(game, tag))
+            workspace_checkpoint = _load_checkpoint(ws)
+            if (
+                artifact_checkpoint is not None
+                and artifact_checkpoint.validated
+                and artifact_checkpoint.reached > 0
+                and (
+                    workspace_checkpoint is None
+                    or not workspace_checkpoint.validated
+                    or workspace_checkpoint.reached < artifact_checkpoint.reached
+                )
+            ):
+                workspace_level = (
+                    workspace_checkpoint.reached
+                    if workspace_checkpoint is not None
+                    and workspace_checkpoint.validated
+                    else 0
+                )
+                raise ValueError(
+                    "refusing zero-seed run against newer validated artifact: "
+                    f"artifact reached={artifact_checkpoint.reached}, "
+                    f"workspace reached={workspace_level}; omit --fresh to seed "
+                    "the verified frontier"
+                )
+        run_lock = _acquire_workspace_lock(ws)
+    except BaseException:
+        _release_workspace_lock(lineage_lock)
+        raise
     legs_p, players_p, solve_p = (os.path.join(ws, f) for f in ("legs.py", "players.py", "solve.py"))
+    unpromoted_source_overlay = {}
+    if seed_artifact:
+        unpromoted_source_overlay = _clean_unpromoted_source_overlay(
+            game, ws, tag
+        )
+        if restore_wip and not unpromoted_source_overlay:
+            artifact_parent = _load_checkpoint(artifact_dir(game, tag))
+            if artifact_parent is not None and artifact_parent.validated:
+                unpromoted_source_overlay = _clean_wip_source_overlay(
+                    game, artifact_parent.reached + 1, tag
+                )
     if seed_artifact:
         seed_workspace_from_artifact(game, ws, tag, verbose=verbose, restore_wip=restore_wip)
+        if unpromoted_source_overlay:
+            _restore_source_overlay(ws, unpromoted_source_overlay)
+            if verbose:
+                print(
+                    "preserved clean unpromoted solver source across parent "
+                    "checkpoint seed; orphan replay will run before proposing"
+                )
     elif verbose:
         print("fresh run requested: skipping artifact seed")
     if proposer == "codex" and propose_fn is None:
@@ -2278,14 +4000,30 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         starting_checkpoint = _load_checkpoint(ws)
         next_level = starting_checkpoint.reached + 1 if starting_checkpoint else 1
         _write_frontier_brief(ws, game, next_level)
-        taint_reason = _workspace_taint_reason(ws)
+        taint_reason = _workspace_or_protected_taint_reason(ws)
         if taint_reason:
             raise WorkspaceTainted(
                 f"refusing to expose tainted restored context to Codex: {taint_reason}"
             )
         _initialize_codex_workspace_git(ws)
+        if expected_frontier_binding is not None:
+            # This second scheduler-to-lineage handoff check runs only after
+            # the per-game lineage lock is held and the workspace has been
+            # seeded. It therefore catches a promotion/reset race even when
+            # the newly promoted checkpoint already satisfies ``max_level``
+            # and the proposal loop would otherwise be skipped.
+            _checked_codex_frontier_binding(
+                game,
+                max_level,
+                tag,
+                expected_frontier_binding,
+            )
     context = discovered_context(game) if propose_fn is None else ""
     codex_turn_records = {}
+    codex_frontier_bindings = {}
+    bind_default_codex_frontier = (
+        propose_fn is None and proposer == "codex"
+    )
     if propose_fn is None:
         agents = {"claude": _claude_agent, "opencode": _opencode_agent, "codex": _codex_agent, "api": _api_agent}
         _agent = agents[proposer]
@@ -2297,12 +4035,16 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     model,
                     minutes_per,
                     reasoning_effort=codex_effort,
+                    allocation_policy=codex_allocation_policy,
                     weekly_reserve=codex_weekly_reserve,
                     weekly_headroom=codex_weekly_headroom,
                     max_campaign_tokens=codex_max_campaign_tokens,
                     max_campaign_runs=codex_max_campaign_runs,
                     ledger_path=codex_ledger,
                     run_label=f"{game}:L{k}:propose",
+                    game=game,
+                    target_level=k,
+                    frontier_binding=codex_frontier_bindings[k],
                 )
         elif proposer == "claude" and claude_guard:
             def propose_fn(w, k):
@@ -2355,12 +4097,15 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     model,
                     max(10, minutes_per // 2),
                     reasoning_effort=codex_debrief_effort,
+                    allocation_policy=codex_allocation_policy,
                     weekly_reserve=codex_weekly_reserve,
                     weekly_headroom=codex_weekly_headroom,
                     max_campaign_tokens=codex_max_campaign_tokens,
                     max_campaign_runs=codex_max_campaign_runs,
                     ledger_path=codex_ledger,
                     run_label=f"{game}:L{k}:debrief",
+                    game=game,
+                    target_level=k,
                 )
         elif proposer == "claude" and claude_guard:
             def debrief_fn(w, k):
@@ -2400,6 +4145,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     ckpt = _load_checkpoint(ws)
     if ckpt is not None:
         rep = ckpt
+        if authoritative_target is not None and rep.reached > authoritative_target:
+            raise ValueError(
+                "checkpoint exceeds authoritative inventory: "
+                f"{game} reached={rep.reached}, "
+                f"authoritative_target={authoritative_target}"
+            )
         if verbose:
             print(f"resumed checkpoint: reached={rep.reached} total_marginal_C={rep.total_marginal_C}")
     # Also verify workspace files if there is no trusted promoted checkpoint.  For
@@ -2423,6 +4174,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     # context: snapshot it as phase 'interrupted', still checkpoint + promote
     # whatever is verified, then re-raise.
     interrupted = False
+    protocol_tainted = False
+    protocol_taint_detail = None
     try:
         signal.signal(signal.SIGTERM, _raise_keyboard_interrupt)
     except ValueError:
@@ -2431,7 +4184,17 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         while rep.reached < max_level:
             K = rep.reached + 1
             reached_before_level = rep.reached
-            legs_b, players_b = _read(legs_p), _read(players_p)
+            if bind_default_codex_frontier:
+                binding = _checked_codex_frontier_binding(
+                    game,
+                    K,
+                    tag,
+                    expected_frontier_binding,
+                )
+                codex_frontier_bindings[K] = binding
+            legs_b, players_b = _frontier_marginal_baseline(
+                game, ws, rep.reached, tag
+            )
 
             def record_proposer_outcome(outcome_levels, outcome_path):
                 turn = codex_turn_records.pop(("propose", K), None)
@@ -2447,6 +4210,67 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                         legs_b, _read(legs_p), players_b, _read(players_p)
                     ),
                 )
+
+            # PHASE -1: an interrupted or orphaned clean turn may already have
+            # written an exact winning solver even though its parent harness
+            # died before snapshot/promotion.  Replaying that source first
+            # preserves the original transcript and exact boundary instead of
+            # overwriting it with auto-solve or paying for another proposer.
+            if _workspace_has_unpromoted_solver_source(game, ws, tag):
+                existing_levels, existing_path, existing_err = verify_fn(
+                    game, solve_p
+                )
+                if (
+                    existing_levels >= K
+                    and not existing_err
+                    and existing_path
+                    and A.validate(game, existing_path, existing_levels)
+                ):
+                    assert_workspace_not_tainted(ws)
+                    art = artifact_dir(game, tag)
+                    parent_legs = (
+                        _read(os.path.join(art, "legs.py"))
+                        if os.path.isfile(os.path.join(art, "legs.py"))
+                        else ""
+                    )
+                    parent_players = (
+                        _read(os.path.join(art, "players.py"))
+                        if os.path.isfile(os.path.join(art, "players.py"))
+                        else ""
+                    )
+                    snapshot_wip_context(
+                        game, ws, K, "recovered_existing_workspace_solver",
+                        existing_levels, None, tag, verbose=verbose,
+                    )
+                    Cm = marginal_complexity(
+                        parent_legs, _read(legs_p),
+                        parent_players, _read(players_p),
+                    )
+                    exact_path = exact_level_boundary(
+                        game, existing_path, K
+                    )
+                    if exact_path is None or not A.validate(
+                        game, exact_path, K
+                    ):
+                        raise RuntimeError(
+                            f"could not recover exact level-{K} boundary "
+                            "from overshooting workspace solver"
+                        )
+                    _record_level(rep, K, Cm)
+                    rep.reached = K
+                    rep.final_path = exact_path
+                    rep.validated = True
+                    _save_checkpoint(ws, rep)
+                    promote_verified_artifact(
+                        game, ws, rep, tag, verbose=verbose
+                    )
+                    if verbose:
+                        print(
+                            f"level {K}: recovered exact winning workspace "
+                            f"marginal_C={Cm} total_C={rep.total_marginal_C} "
+                            f"validated=True F={rep.free_energy:.3f}"
+                        )
+                    continue
 
             # PHASE 0: auto-solve with existing legs (structural reuse, zero proposer cost).
             # Skip when it already failed at this level against this exact legs.py -- a
@@ -2473,33 +4297,74 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     pre_debrief_marginal_C=auto_marginal,
                     threshold=debrief_threshold,
                 ):
+                    files_before_auto_debrief = {
+                        name: _read(os.path.join(ws, name))
+                        for name in (
+                            "legs.py", "players.py", "solve.py", "legs_log.md"
+                        )
+                    }
+                    snapshot_auto_debrief = True
                     try:
                         debrief_fn(ws, K)
                         levels2, path2, _ = verify_fn(game, solve_p)
-                    except CreditOut as ex:
-                        print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                    except ProposerEvidenceUnavailable as ex:
+                        # The auto-solve is independently replayed, but none of
+                        # the unrecorded debrief's edits or probes may enter WIP
+                        # or the promoted source.
+                        _restore_source_overlay(ws, files_before_auto_debrief)
+                        print(
+                            f"EVIDENCE failure during debrief after level {K}: "
+                            f"{ex}; discarding the debrief generation and "
+                            "preserving the pre-debrief auto-solve"
+                        )
                         levels2, path2 = levels, path
-                    phase = "after_auto_solve_debrief"
+                        phase = "auto_solve_debrief_evidence_unavailable"
+                        snapshot_auto_debrief = False
+                    except (CreditOut, ProposerInfrastructureError) as ex:
+                        label = (
+                            "CREDIT-OUT"
+                            if isinstance(ex, CreditOut)
+                            else "INFRASTRUCTURE"
+                        )
+                        print(
+                            f"{label} during debrief after level {K}: {ex}; "
+                            "preserving solved level"
+                        )
+                        levels2, path2 = levels, path
+                        phase = (
+                            "auto_solve_debrief_credit_out"
+                            if isinstance(ex, CreditOut)
+                            else "auto_solve_debrief_infrastructure_failure"
+                        )
+                    else:
+                        phase = "after_auto_solve_debrief"
                 else:
                     levels2, path2 = levels, path
                     phase = "auto_solve_debrief_skipped"
+                    snapshot_auto_debrief = True
                     if verbose:
                         print(f"level {K}: debrief skipped by {debrief_policy} policy")
-                snapshot_wip_context(
-                    game, ws, K, phase, max(levels, levels2), None, tag,
-                    verbose=verbose,
-                )
+                if snapshot_auto_debrief:
+                    snapshot_wip_context(
+                        game, ws, K, phase, max(levels, levels2), None, tag,
+                        verbose=verbose,
+                    )
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
+                exact_path = exact_level_boundary(game, path, K)
+                if exact_path is None or not A.validate(game, exact_path, K):
+                    raise RuntimeError(
+                        f"auto-solve did not yield an exact level-{K} boundary"
+                    )
                 Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
                 _record_level(rep, K, Cm)
-                rep.reached = reached
-                rep.final_path = path
-                rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
+                rep.reached = K
+                rep.final_path = exact_path
+                rep.validated = True
                 _save_checkpoint(ws, rep)
                 promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
                 if verbose:
-                    print(f"level {K}: reached={reached} marginal_C={Cm} "
+                    print(f"level {K}: reached={K} marginal_C={Cm} "
                           f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
                 if reached <= K - 1:
                     break
@@ -2510,6 +4375,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             # past the credit-out check) says nothing about the level, so it is retried;
             # only a real full-budget attempt that falls short stops the run.
             credit_out = False
+            infrastructure_out = False
             pre_recovered = recover_discovered_path_artifact(
                 game, ws, K, rep.final_path, verbose=verbose)
             if pre_recovered is not None:
@@ -2535,6 +4401,86 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
                     credit_out = True
                     break
+                except ProposerProtocolViolation as ex:
+                    # A caught invalid action invalidates the complete generation.
+                    # The protected transcript is the authority; do not
+                    # recover, snapshot, retry, or promote any workspace byte.
+                    print(
+                        f"PROTOCOL TAINT at level {K}: {ex}; discarding "
+                        "this proposer generation without WIP reuse or "
+                        f"promotion (reached={rep.reached})"
+                    )
+                    protocol_tainted = True
+                    protocol_taint_detail = str(ex)
+                    break
+                except ProposerEvidenceUnavailable as ex:
+                    # Do not inspect, recover, retry, or snapshot anything the
+                    # unrecorded turn wrote.  A retry in this same workspace
+                    # would inherit knowledge that has no auditable transcript.
+                    _save_checkpoint(ws, rep)
+                    print(
+                        f"EVIDENCE failure at level {K}: {ex}; discarding "
+                        "this proposer generation without WIP reuse or "
+                        f"promotion (reached={rep.reached})"
+                    )
+                    infrastructure_out = True
+                    break
+                except ProposerContainmentTimeout as ex:
+                    assert_workspace_not_tainted(ws)
+                    recovered = recover_discovered_path_artifact(
+                        game, ws, K, rep.final_path, verbose=verbose
+                    )
+                    _save_checkpoint(ws, rep)
+                    if recovered is not None:
+                        levels, path, err = recovered
+                        infrastructure_out = False
+                        snapshot_wip_context(
+                            game, ws, K, "recovered_after_containment_timeout",
+                            levels, None, tag, verbose=verbose,
+                        )
+                        break
+                    snapshot_wip_context(
+                        game, ws, K, "containment_timeout", rep.reached,
+                        str(ex), tag, verbose=verbose,
+                    )
+                    print(
+                        f"CONTAINMENT at level {K}: {ex}; preserving clean "
+                        "partial WIP without charging solver no-progress "
+                        f"(reached={rep.reached})"
+                    )
+                    infrastructure_out = True
+                    break
+                except ProposerInfrastructureError as ex:
+                    assert_workspace_not_tainted(ws)
+                    recovered = recover_discovered_path_artifact(
+                        game, ws, K, rep.final_path, verbose=verbose
+                    )
+                    _save_checkpoint(ws, rep)
+                    if recovered is not None:
+                        levels, path, err = recovered
+                        infrastructure_out = False
+                        snapshot_wip_context(
+                            game, ws, K, "recovered_after_infrastructure_failure",
+                            levels, None, tag, verbose=verbose,
+                        )
+                        break
+                    snapshot_wip_context(
+                        game, ws, K, "infrastructure_failure", rep.reached,
+                        str(ex), tag, verbose=verbose,
+                    )
+                    if attempt < transient_retries:
+                        if verbose:
+                            print(
+                                f"level {K}: transient infrastructure failure; "
+                                "retrying without charging solver no-progress"
+                            )
+                        continue
+                    print(
+                        f"INFRASTRUCTURE at level {K}: {ex}; preserving WIP "
+                        f"and stopping cleanly (reached={rep.reached})"
+                    )
+                    infrastructure_out = True
+                    break
                 rep = _adopt_workspace_checkpoint(game, ws, rep, verbose=verbose)
                 recovered = recover_discovered_path_artifact(
                     game, ws, K, rep.final_path, verbose=verbose)
@@ -2559,7 +4505,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 if verbose:
                     print(f"level {K}: NOT reached (got {levels}, err={err}); stopping")
                 break
-            if credit_out or levels < K:
+            if (
+                credit_out
+                or infrastructure_out
+                or protocol_tainted
+                or levels < K
+            ):
                 break
             snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
             files_before_debrief = {
@@ -2590,10 +4541,37 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 try:
                     debrief_fn(ws, K)
                     levels2, path2, _ = verify_fn(game, solve_p)  # behaviour preserved?
-                except CreditOut as ex:
-                    print(f"CREDIT-OUT during debrief after level {K}: {ex}; preserving solved level")
+                except ProposerEvidenceUnavailable as ex:
+                    # The winning proposal has its own sealed transcript.
+                    # Restore its exact source and admit no bytes learned by
+                    # the unrecorded optional debrief.
+                    _restore_source_overlay(ws, files_before_debrief)
+                    print(
+                        f"EVIDENCE failure during debrief after level {K}: "
+                        f"{ex}; discarding the debrief generation and "
+                        "preserving the pre-debrief win"
+                    )
                     levels2, path2 = levels, path
-                    snapshot_wip_context(game, ws, K, "debrief_credit_out", levels, str(ex), tag, verbose=verbose)
+                except (CreditOut, ProposerInfrastructureError) as ex:
+                    label = (
+                        "CREDIT-OUT"
+                        if isinstance(ex, CreditOut)
+                        else "INFRASTRUCTURE"
+                    )
+                    print(
+                        f"{label} during debrief after level {K}: {ex}; "
+                        "preserving solved level"
+                    )
+                    levels2, path2 = levels, path
+                    phase = (
+                        "debrief_credit_out"
+                        if isinstance(ex, CreditOut)
+                        else "debrief_infrastructure_failure"
+                    )
+                    snapshot_wip_context(
+                        game, ws, K, phase, levels, str(ex), tag,
+                        verbose=verbose,
+                    )
                 else:
                     snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
                     if levels2 < levels:
@@ -2604,23 +4582,51 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                             print(f"level {K}: debrief regressed solve ({levels2} < {levels}); restored pre-debrief files")
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
+            exact_path = exact_level_boundary(game, path, K)
+            if exact_path is None or not A.validate(game, exact_path, K):
+                raise RuntimeError(
+                    f"proposal did not yield an exact level-{K} boundary"
+                )
             Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
             _record_level(rep, K, Cm)
-            rep.reached = reached
-            rep.final_path = path
-            rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
+            rep.reached = K
+            rep.final_path = exact_path
+            rep.validated = True
             _save_checkpoint(ws, rep)
             promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
             if verbose:
-                print(f"level {K}: reached={reached} marginal_C={Cm} "
+                print(f"level {K}: reached={K} marginal_C={Cm} "
                       f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
             if reached <= K - 1:
                 break
 
     except KeyboardInterrupt:
-        snapshot_wip_context(game, ws, rep.reached + 1, "interrupted",
-                             rep.reached, "interrupted mid-level", tag, verbose=verbose)
+        taint_reason = _workspace_or_protected_taint_reason(ws)
+        if taint_reason:
+            if verbose:
+                print(
+                    "interrupted workspace is tainted; suppressing resumable "
+                    f"WIP snapshot: {taint_reason}"
+                )
+        else:
+            snapshot_wip_context(
+                game, ws, rep.reached + 1, "interrupted",
+                rep.reached, "interrupted mid-level", tag, verbose=verbose,
+            )
         interrupted = True
+
+    if protocol_tainted:
+        _release_workspace_lock(run_lock)
+        _release_workspace_lock(lineage_lock)
+        raise WorkspaceTainted(
+            "public-action protocol violation invalidated the complete proposer "
+            "generation; no WIP or promotion was written"
+            + (
+                f": {protocol_taint_detail}"
+                if protocol_taint_detail
+                else ""
+            )
+        )
 
     rep.validated = A.validate(game, rep.final_path, rep.reached) if rep.final_path else False
     _save_checkpoint(ws, rep)
@@ -2631,6 +4637,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         print("  per-level marginal novelty (should trend DOWN as legs are reused): "
               + ", ".join(f"L{r.level}:{r.marginal_C}" for r in rep.records))
     _release_workspace_lock(run_lock)
+    _release_workspace_lock(lineage_lock)
     if interrupted:
         raise KeyboardInterrupt
     return rep
@@ -2648,27 +4655,54 @@ def _defs(code: str):
 
 if __name__ == "__main__":
     import sys
+    cli_usage = (
+        "usage: gkm_legs.py --game=GAME --max-level=N "
+        "[--proposer=codex] [--model=MODEL] [--minutes=N] "
+        "[--codex-effort=medium|high|xhigh|max] "
+        "[--codex-allocation-policy=hard|drain] "
+        "[--artifacts-root=PATH] [--seed-mode=zero_seed|verified_parent] "
+        "[--wip-mode=exclude|restore_clean_same_frontier] "
+        "[--expected-parent-reached=N "
+        "--expected-parent-action-count=N "
+        "--expected-parent-checkpoint-sha256=HEX "
+        "--expected-parent-source-tree-sha256=HEX "
+        "--expected-frontier-sha256=HEX]"
+    )
     game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
     fresh, restore_wip = False, True
+    seed_mode, wip_mode = None, None
     codex_effort, codex_debrief_effort, codex_weekly_reserve = "medium", "medium", 80
+    codex_allocation_policy = DEFAULT_CODEX_ALLOCATION_POLICY
     debrief_policy, debrief_threshold = "always", 150
     codex_weekly_headroom = 1
     codex_max_campaign_tokens, codex_max_campaign_runs = 2_000_000, 12
     transient_retries = _TRANSIENT_RETRIES
     codex_ledger = None
+    expected_frontier_parts = {}
     claude_guard, claude_ledger, claude_max_turns, claude_max_wall_minutes = False, None, None, None
     claude_window_hours = CLG.DEFAULT_WINDOW_HOURS
     api_guard, api_ledger, api_max_cost_usd, api_max_turns, api_max_wall_minutes = False, None, None, None, None
     api_window_hours = CLG.DEFAULT_WINDOW_HOURS
+    seen_cli_options = set()
     for a in sys.argv[1:]:
+        if a in {"-h", "--help"}:
+            print(cli_usage)
+            raise SystemExit(0)
+        option = a.split("=", 1)[0]
+        if option in seen_cli_options:
+            raise SystemExit(f"duplicate argument: {option}\n{cli_usage}")
+        seen_cli_options.add(option)
         if a.startswith("--game="): game = a.split("=", 1)[1]
         elif a.startswith("--model="): model = a.split("=", 1)[1]
         elif a.startswith("--minutes="): minutes = int(a.split("=", 1)[1])
         elif a.startswith("--max-level="): maxl = int(a.split("=", 1)[1])
         elif a.startswith("--proposer="): proposer = a.split("=", 1)[1]
         elif a.startswith("--tag="): tag = a.split("=", 1)[1]
+        elif a.startswith("--artifacts-root="):
+            os.environ["GKM_ARTIFACTS_ROOT"] = a.split("=", 1)[1]
         elif a.startswith("--codex-effort="): codex_effort = a.split("=", 1)[1]
         elif a.startswith("--codex-debrief-effort="): codex_debrief_effort = a.split("=", 1)[1]
+        elif a.startswith("--codex-allocation-policy="): codex_allocation_policy = a.split("=", 1)[1]
         elif a.startswith("--debrief-policy="): debrief_policy = a.split("=", 1)[1]
         elif a.startswith("--debrief-threshold="): debrief_threshold = int(a.split("=", 1)[1])
         elif a.startswith("--codex-weekly-reserve="): codex_weekly_reserve = int(a.split("=", 1)[1])
@@ -2677,6 +4711,22 @@ if __name__ == "__main__":
         elif a.startswith("--codex-max-campaign-runs="): codex_max_campaign_runs = int(a.split("=", 1)[1])
         elif a.startswith("--transient-retries="): transient_retries = int(a.split("=", 1)[1])
         elif a.startswith("--codex-ledger="): codex_ledger = a.split("=", 1)[1]
+        elif a.startswith("--expected-parent-reached="):
+            expected_frontier_parts["reached"] = int(a.split("=", 1)[1])
+        elif a.startswith("--expected-parent-action-count="):
+            expected_frontier_parts["parent_action_count"] = int(
+                a.split("=", 1)[1]
+            )
+        elif a.startswith("--expected-parent-checkpoint-sha256="):
+            expected_frontier_parts["parent_checkpoint_sha256"] = a.split(
+                "=", 1
+            )[1]
+        elif a.startswith("--expected-parent-source-tree-sha256="):
+            expected_frontier_parts["parent_source_tree_sha256"] = a.split(
+                "=", 1
+            )[1]
+        elif a.startswith("--expected-frontier-sha256="):
+            expected_frontier_parts["frontier_sha256"] = a.split("=", 1)[1]
         elif a == "--claude-guard": claude_guard = True
         elif a.startswith("--claude-ledger="): claude_ledger = a.split("=", 1)[1]
         elif a.startswith("--claude-window-hours="): claude_window_hours = float(a.split("=", 1)[1])
@@ -2690,10 +4740,97 @@ if __name__ == "__main__":
         elif a.startswith("--api-max-wall-minutes="): api_max_wall_minutes = float(a.split("=", 1)[1])
         elif a == "--fresh": fresh = True
         elif a == "--no-wip-restore": restore_wip = False
+        elif a.startswith("--seed-mode="): seed_mode = a.split("=", 1)[1]
+        elif a.startswith("--wip-mode="): wip_mode = a.split("=", 1)[1]
+        else:
+            raise SystemExit(f"unknown argument: {a}\n{cli_usage}")
+    required_cli_options = {
+        "--game", "--max-level", "--proposer", "--model", "--minutes",
+    }
+    missing_cli_options = sorted(required_cli_options - seen_cli_options)
+    if missing_cli_options:
+        raise SystemExit(
+            f"missing required arguments: {missing_cli_options}\n{cli_usage}"
+        )
+    if not game or not model or proposer not in {
+        "claude", "opencode", "codex", "api",
+    }:
+        raise SystemExit(
+            "game/model must be nonempty and proposer must be one of "
+            "claude, opencode, codex, api"
+        )
+    if minutes <= 0:
+        raise SystemExit("--minutes must be positive")
+    if seed_mode is not None:
+        if seed_mode not in {"zero_seed", "verified_parent"}:
+            raise SystemExit(f"invalid --seed-mode={seed_mode}")
+        if fresh:
+            raise SystemExit("--fresh cannot be combined with explicit --seed-mode")
+        if seed_mode == "zero_seed":
+            existing = _load_checkpoint(artifact_dir(game, tag))
+            if existing is not None and existing.validated and existing.reached > 0:
+                raise SystemExit(
+                    "zero_seed requested beside an existing validated artifact; "
+                    "use a new artifact root"
+                )
+            # With WIP restore, the normal empty-artifact seed path restores L1
+            # context. Without WIP, skip artifact seeding entirely.
+            fresh = wip_mode != "restore_clean_same_frontier"
+        else:
+            fresh = False
+    if wip_mode is not None:
+        if wip_mode not in {"exclude", "restore_clean_same_frontier"}:
+            raise SystemExit(f"invalid --wip-mode={wip_mode}")
+        if wip_mode == "exclude":
+            restore_wip = False
+        else:
+            restore_wip = True
+    expected_frontier_binding = None
+    if expected_frontier_parts:
+        required_expected = {
+            "reached",
+            "parent_action_count",
+            "parent_checkpoint_sha256",
+            "parent_source_tree_sha256",
+            "frontier_sha256",
+        }
+        missing_expected = sorted(
+            required_expected - set(expected_frontier_parts)
+        )
+        if missing_expected:
+            raise SystemExit(
+                "partial exact-frontier binding is forbidden; missing "
+                f"{missing_expected}\n{cli_usage}"
+            )
+        expected_frontier_binding = {
+            "frontier_binding_schema": CCS.FRONTIER_BINDING_SCHEMA,
+            "game": game,
+            "reached": expected_frontier_parts["reached"],
+            "target_level": maxl,
+            "parent_action_count":
+                expected_frontier_parts["parent_action_count"],
+            "parent_checkpoint_sha256":
+                expected_frontier_parts["parent_checkpoint_sha256"],
+            "parent_source_tree_sha256":
+                expected_frontier_parts["parent_source_tree_sha256"],
+            "frontier_sha256":
+                expected_frontier_parts["frontier_sha256"],
+        }
+        try:
+            expected_frontier_binding = CCS.validate_frontier_binding(
+                expected_frontier_binding,
+                expected_game=game,
+                expected_target_level=maxl,
+            )
+        except ValueError as exc:
+            raise SystemExit(
+                f"invalid exact-frontier binding: {exc}\n{cli_usage}"
+            ) from exc
     orchestrate(game=game, max_level=maxl, proposer=proposer, model=model,
                 minutes_per=minutes, tag=tag, seed_artifact=not fresh,
                 restore_wip=restore_wip, codex_effort=codex_effort,
                 codex_debrief_effort=codex_debrief_effort,
+                codex_allocation_policy=codex_allocation_policy,
                 debrief_policy=debrief_policy,
                 debrief_threshold=debrief_threshold,
                 codex_weekly_reserve=codex_weekly_reserve,
@@ -2702,6 +4839,7 @@ if __name__ == "__main__":
                 codex_max_campaign_runs=codex_max_campaign_runs,
                 transient_retries=transient_retries,
                 codex_ledger=codex_ledger,
+                expected_frontier_binding=expected_frontier_binding,
                 claude_guard=claude_guard,
                 claude_ledger=claude_ledger,
                 claude_window_hours=claude_window_hours,

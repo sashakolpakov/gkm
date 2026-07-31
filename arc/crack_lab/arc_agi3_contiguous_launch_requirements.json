@@ -1,0 +1,620 @@
+{
+  "schema": 1,
+  "kind": "arc_agi3_contiguous_launch_requirements",
+  "scenario_owners": [
+    {"scenario_id": "S01", "owner": "arc_agi3_contiguous_s01_v1", "version": 1},
+    {"scenario_id": "S02", "owner": "arc_agi3_contiguous_s02_v1", "version": 1},
+    {"scenario_id": "S03", "owner": "arc_agi3_contiguous_s03_v1", "version": 1},
+    {"scenario_id": "S04", "owner": "arc_agi3_contiguous_s04_v1", "version": 1},
+    {"scenario_id": "S05", "owner": "arc_agi3_contiguous_s05_v1", "version": 1},
+    {"scenario_id": "S06", "owner": "arc_agi3_contiguous_s06_v1", "version": 1},
+    {"scenario_id": "S07", "owner": "arc_agi3_contiguous_s07_v1", "version": 1},
+    {"scenario_id": "S08", "owner": "arc_agi3_contiguous_s08_v1", "version": 1},
+    {"scenario_id": "S09", "owner": "arc_agi3_contiguous_s09_v2", "version": 2},
+    {"scenario_id": "S10", "owner": "arc_agi3_contiguous_s10_v1", "version": 1},
+    {"scenario_id": "S11", "owner": "arc_agi3_contiguous_s11_v1", "version": 1},
+    {"scenario_id": "S12", "owner": "arc_agi3_contiguous_s12_v1", "version": 1}
+  ],
+  "supervision_cycle_stages": [
+    "consume_durable_decisions",
+    "poll_live_attempts",
+    "collect_terminal_evidence",
+    "prove_teardown",
+    "classify_and_settle",
+    "commit_exact_promotions",
+    "invalidate_or_admit_auxiliary_outputs",
+    "recover_reserved_auxiliary_work",
+    "recover_or_dispatch_distinct_primary_frontiers",
+    "dispatch_eligible_auxiliary_analysis"
+  ],
+  "requirements": [
+    {
+      "invariant_id": "conformance_rejects_mid_suite_control_mutation",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_conformance.py::test_mid_suite_control_mutation_forces_fail",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "workspace_root_pre_post_is_stable",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_conformance.py::test_workspace_root_leak_forces_fail",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "suite_scratch_is_empty_and_confined",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_conformance.py::test_suite_scratch_gate_rejects_unrelated_entry_without_removing_it",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "inventory_metadata_is_exact_and_sealed",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_conformance.py::test_authoritative_inventory_metadata_is_exact_public_25_183_input",
+      "scenario_id": "S05"
+    },
+    {
+      "invariant_id": "terminal_launch_authority_binds_release_and_image",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_conformance.py::test_terminal_launch_authority_binds_release_and_image",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "scenario_driver_never_synthesizes_pass",
+      "component": "conformance",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scenario_driver.py::test_s01_s12_driver_emits_only_typed_blocked_receipts",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "formal_operator_rejects_cli_before_mutation",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_formal_operator_rejects_cli_and_preflight_before_mutation",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "formal_operator_process_lease_covers_mutable_path",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_formal_operator_holds_one_process_lease_across_mutable_path",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "production_host_children_use_campaign_ledger",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_production_host_child_ledger_is_campaign_bound",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "host_child_ledger_is_terminally_reopened",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_host_child_ledger_audit_requires_quiescent_accounting",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "storage_incident_reaches_exact_operator_terminal",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_storage_incident_has_reachable_exact_terminal_projection",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "watchdog_exact_operator_restart_is_reachable",
+      "component": "watchdog",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py::test_watchdog_restarts_crashed_operator_and_returns_exact_terminal",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "watchdog_restart_circuit_exhausts_to_incident",
+      "component": "watchdog",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py::test_watchdog_restart_exhaustion_is_durable_human_intervention",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "watchdog_long_run_heartbeat_phase_is_monotone",
+      "component": "watchdog",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py::test_watchdog_does_not_reapply_startup_deadline_after_active_lease",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "watchdog_long_child_collects_delayed_terminal",
+      "component": "watchdog",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py::test_watchdog_real_child_survives_expired_startup_and_delayed_terminal",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "post_incident_meta_is_once_and_quarantine_only",
+      "component": "supervisor",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_supervisor.py::test_post_incident_meta_diagnostic_is_once_and_quarantine_only",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "post_incident_meta_formal_path_is_reachable",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_latched_substrate_meta_path_is_reachable_and_no_authority",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "post_incident_meta_resume_requires_fresh_probe_chain",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_meta_recovery_requires_fresh_pass_journal_before_resume",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "post_incident_meta_identity_survives_recovery_events",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_meta_projection_is_stable_after_recovery_journal_events",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "post_incident_meta_is_once_per_distinct_incident",
+      "component": "supervisor",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_supervisor.py::test_post_incident_meta_allows_one_episode_per_distinct_incident",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "pilot_manifest_executes_exact_empty_root_order",
+      "component": "pilot",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_pilot.py::test_frozen_pilot_executor_runs_exact_order_and_unlocks_gate",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "pilot_gate_requires_real_meta_handoff",
+      "component": "pilot",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_pilot.py::test_pilot_gate_rejects_no_real_meta_handoff",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "pilot_completed_runs_recover_without_reexecution",
+      "component": "pilot",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_pilot.py::test_pilot_controller_recovers_existing_runs_without_reexecution",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "full_launch_reopens_ordered_pilot_gate",
+      "component": "supervisor",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_supervisor.py::test_full_launch_reopens_exact_ordered_pilot_gate",
+      "scenario_id": "S12"
+    },
+    {
+      "invariant_id": "inventory_exact_25_183",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_authoritative_inventory_six_disjoint_bound_lanes",
+      "scenario_id": "S05"
+    },
+    {
+      "invariant_id": "source_schema_and_blank_scaffold_are_exact",
+      "component": "source_schema",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_production_l1_uses_only_control_hashed_blank_scaffold",
+      "scenario_id": "S01"
+    },
+    {
+      "invariant_id": "provider_usage_is_typed_and_rotation_closed",
+      "component": "app_server_transport",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_provider_usage_rejects_stale_rotation_and_mixed_units",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "scheduler_retry_policy_is_monotone",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_retry_ladder_is_monotone_and_enters_long_coherence",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "supervision_is_game_agnostic_receipt_reduction",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_supervision_loop_is_a_game_agnostic_receipt_reducer",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "scheduler_decision_binds_snapshot_and_budget",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_decision_binds_snapshot_and_reservation",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "auxiliary_round_obligation_is_unique",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_next_round_diagnosis_cannot_be_dispatched_twice",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "formal_auxiliary_backend_is_policy_selected_and_quarantine_only",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_formal_auxiliary_backend_executes_only_policy_selected_quarantine_path",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "scheduler_audit_reopens_promotion_artifacts",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_audit_reopens_promoted_artifacts_and_rejects_missing_path",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "terminal_wip_reopens_complete_evidence",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_complete_terminal_wip_audit_reopens_every_bound_artifact",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "terminal_wip_rejects_nonexistent_tree",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_audit_rejects_nonexistent_terminal_wip_tree",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "terminal_wip_rejects_provider_settlement_mutation",
+      "component": "scheduler",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_scheduler.py::test_audit_rejects_forged_terminal_provider_settlement",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "unlimited_means_no_cost_cutoff",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_limit_none_disables_uniform_cost_cutoff",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "soft_deadline_drains_without_interrupt",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_soft_deadline_drains_lane_locally_and_refills_unrelated_lane",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "real_cycle_rejects_stage_reordering",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_real_cycle_rejects_frozen_supervision_stage_reordering",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "containment_fault_has_infrastructure_precedence",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_containment_fault_precedes_blocker_candidate_and_no_progress",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "public_action_protocol_invalid_is_terminal_no_authority",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_public_action_protocol_invalid_revokes_all_lineage_authority_and_restart",
+      "scenario_id": "S04"
+    },
+    {
+      "invariant_id": "blocker_claim_cross_product_is_noncounting",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_blocker_claim_negative_cross_product_is_noncounting_infrastructure",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "authenticated_blocker_recovery_is_idempotent",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_authenticated_blocker_recovers_idempotently_and_is_revalidated_closed",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "orphan_materialization_recovers",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_crash_after_input_materialization_recovers_reserved_identity",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_exact_lifecycle_reaches_boundary",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_exact_lifecycle_reaches_one_authoritative_game_boundary",
+      "scenario_id": "S01"
+    },
+    {
+      "invariant_id": "runner_journal_audit_is_full_and_read_only",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_read_only_runner_audit_reuses_full_reducer_without_writes",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "runner_supervision_history_is_bounded",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude",
+      "scenario_id": "S06"
+    },
+    {
+      "invariant_id": "runner_source_cache_revalidates_exact_pointers",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_lane_source_cache_revalidates_replacement_and_mtime_spoof",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "runner_reducer_cache_is_return_isolated",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_reducer_checkpoint_is_not_mutable_through_returned_state",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_journal_cache_is_fail_closed_and_return_isolated",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_journal_cache_rejects_mutation_replacement_and_truncation",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_journal_event_read_is_descriptor_anchored",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_journal_event_read_is_descriptor_anchored_against_valid_race",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_journal_pointer_signature_is_descriptor_anchored",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_journal_file_signature_rejects_regular_pointer_swap",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_full_scale_journal_reads_only_suffix_bytes",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_full_scale_journal_authentication_reads_only_appended_suffix_bytes",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "runner_rejects_wip_provider_path_substitution",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_runner_rejects_terminal_wip_provider_path_substitution",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "runner_rejects_wip_attempt_spec_substitution",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_runner_rejects_terminal_wip_attempt_spec_substitution",
+      "scenario_id": "S08"
+    },
+    {
+      "invariant_id": "unified_audit_requires_runner_and_promotion_evidence",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_unified_audit_requires_runner_and_promotion_evidence",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "terminal_attempt_retention_is_compact_and_crash_recoverable",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_terminal_retention.py::test_terminal_retention_crash_recovery_is_copy_before_purge",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "terminal_retention_plan_covers_real_attempt_receipts",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_terminal_retention_plan_covers_real_compact_attempt_evidence",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "pre_retention_scheduler_pass_is_exactly_terminal_bound",
+      "component": "runner",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_runner.py::test_pre_retention_scheduler_pass_reopens_exact_terminal_binding",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "terminal_cross_audit_recovery_never_reopens_deleted_wip",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_terminal_scheduler_audit_resumes_partial_retention_without_wip",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "terminal_unified_audit_binds_pre_cleanup_scheduler_and_replay",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_complete_unified_audit_requires_retention_bound_scheduler_pass",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "fresh_adapter_restart_recovers",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_adapter_rehydrates_fresh_instance_after_supervisor_crash",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "ambiguous_or_tampered_recovery_fails_closed",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_adapter_rehydration_rejects_ambiguous_or_tampered_identity",
+      "scenario_id": "S07"
+    },
+    {
+      "invariant_id": "clean_typed_container_lifecycle",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_typed_adapter_full_mocked_lifecycle_and_token_secrecy",
+      "scenario_id": "S02"
+    },
+    {
+      "invariant_id": "container_backend_uses_canonical_terminal_precedence",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_backend_uses_runner_terminal_precedence_byte_exactly",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "host_terminal_parent_issues_authenticated_blocker",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_host_terminal_parent_issues_idempotent_authenticated_blocker",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "controller_container_recipe_is_pinned",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_formal_container_recipe_pins_base_and_nonroot_user",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "native_proposer_git_root_is_local_and_content_exclusive",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_controller_guardian.py::test_native_proposer_workspace_is_its_only_git_root_and_broad_git_is_local",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "controller_supply_chain_manifest_is_canonical",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_controller_supply_chain.py::test_controller_supply_chain_manifest_and_recipe_are_exact_and_exclusive",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "controller_egress_default_deny_precedes_controller",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_controller_egress_probe_precedes_controller_creation_and_fails_closed",
+      "scenario_id": "S02"
+    },
+    {
+      "invariant_id": "observed_container_isolation",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_create_command_has_exact_fail_closed_isolation",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "probe_stderr_traceback_is_host_only",
+      "component": "app_server_transport",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_codex_app_server_transport.py::test_probe_stderr_traceback_is_host_only_and_visibility_receipt_is_exact",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "teardown_proves_no_descendants",
+      "component": "container_backend",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_teardown_is_exactly_scoped_and_proves_no_descendants",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "arena_rpc_is_only_solver_engine_boundary",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_pinned_worker_uses_only_default_rpc_clone",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "arena_named_volume_relay_is_byte_exact",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_volume_relay.py::test_relay_client_to_host_stream_is_byte_exact",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "arena_attached_relay_is_full_duplex_and_bounded",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_volume_transport.py::test_attached_relay_is_full_duplex_and_emits_exact_receipt",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "sibling_clone_leak_selects_fresh_process",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_sibling_clone_leak_selects_authenticated_fresh_process",
+      "scenario_id": "S04"
+    },
+    {
+      "invariant_id": "arena_rpc_rejects_out_of_range_protocol_invalid",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_out_of_range_client_call_is_host_logged_protocol_invalid",
+      "scenario_id": "S04"
+    },
+    {
+      "invariant_id": "public_action_grammar_is_cross_layer_exact",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_action_protocol.py::test_all_layers_accept_exactly_the_same_public_json_action_tokens",
+      "scenario_id": "S04"
+    },
+    {
+      "invariant_id": "collector_requires_clean_arena_close_without_candidate",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_collector_requires_clean_arena_close_even_without_candidate",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "worker_outcome_is_non_authoritative",
+      "component": "container_worker",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_worker.py::test_worker_executes_solver_and_marks_outcome_non_authoritative",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "target_boundary_freezes_before_debrief",
+      "component": "proposer_worker",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_proposer_worker.py::test_target_step_freezes_workspace_without_next_level_observation",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "reward_boundary_is_absorbing_before_action7",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_reward_boundary_is_absorbing_before_action7_undo",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "action7_context_mismatch_reconstructs_and_invalidates",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_action7_frame_mismatch_invalidates_and_reconstructs_branch",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "action7_exact_context_restoration_is_admissible",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_rpc.py::test_action7_requires_exact_context_restoration",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "schema1_reached_before_debrief_binds_source",
+      "component": "boundary_certifier",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_boundary_certifier.py::test_reached_before_debrief_outranks_and_binds_schema1_source",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "schema1_raw_transcript_failure_is_not_laundered",
+      "component": "boundary_certifier",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_boundary_certifier.py::test_schema1_raw_transcript_failure_is_not_laundered",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "exact_path_reconstruction_is_last_resort",
+      "component": "boundary_certifier",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_boundary_certifier.py::test_exact_path_reconstruction_is_last_resort",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "app_server_has_zero_ambient_configuration",
+      "component": "app_server_transport",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_codex_app_server_transport.py::test_config_projection_is_zero_ambient_and_fail_closed",
+      "scenario_id": "S04"
+    },
+    {
+      "invariant_id": "complete_controller_lifecycle_is_taint_checked",
+      "component": "taint",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_taint.py::test_complete_exact_lifecycle_and_tool_pairing_passes",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "general_taint_dependency_is_control_bound_and_syntax_aware",
+      "component": "taint",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_taint.py::test_general_taint_dependency_is_control_bound_and_syntax_aware",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "exact_k_to_k_plus_one_promotion",
+      "component": "supervisor",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_supervisor.py::test_promotion_requires_path_and_source_replay_from_zero",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "exact_bundle_manifest_is_atomic_and_fail_closed",
+      "component": "supervisor",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_supervisor.py::test_exact_bundle_manifests_are_atomic_and_fail_closed",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "promotion_rejects_post_boundary_suffix",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_promotion_rejects_actions_after_first_exact_boundary",
+      "scenario_id": "S10"
+    },
+    {
+      "invariant_id": "promotion_rejects_action7_after_reward",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_promotion_never_uses_action7_after_reward_as_validation",
+      "scenario_id": "S09"
+    },
+    {
+      "invariant_id": "retained_journal_is_full_lifecycle_prefix",
+      "component": "orchestrator",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_orchestrator.py::test_retained_journal_requires_full_genesis_to_result_prefix",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "transcript_taint_and_hashes_are_bound",
+      "component": "release_gate",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_release_gate.py::test_reverification_fails_after_each_evidence_mutation_or_deletion",
+      "scenario_id": "S11"
+    },
+    {
+      "invariant_id": "full_inventory_release_receipt_admitted",
+      "component": "release_gate",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_release_gate.py::test_issues_and_reverifies_content_addressed_183_receipt",
+      "scenario_id": "S12"
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+# Minimal, formally named base for the isolated ARC-AGI-3 contiguous campaign.
+# The multi-platform Python manifest is content-addressed; builds must record
+# the resulting platform image's RepoDigest and image ID before any launch.
+#
+# Reproducible launch path: build and push this recipe to a trusted registry
+# (a private loopback registry is acceptable), record the pushed manifest
+# digest from buildx metadata, then pull and launch only
+# ``repository@sha256:<manifest>``.  Conformance must confirm that exact value
+# appears in ``docker image inspect ... .RepoDigests``.  A plain
+# ``docker build --load`` image with only a mutable RepoTag is intentionally
+# inadmissible; an image ID is not silently substituted for a RepoDigest.
+FROM docker.io/library/python:3.12.11-slim-bookworm@sha256:519591d6871b7bc437060736b9f7456b8731f1499a57e22e6c285135ae657bf7
+
+ARG ARC_AGI3_ARENA_RPC_SHA256=132fb8865d565a1b2ade1038bc2a18d341c61071fceb01caa2f35f4eadcd1935
+ARG ARC_AGI3_CONTAINER_WORKER_SHA256=18caaaf61798452dc881b675f7787f3a4f5740e63f1cd477e6a7aba0bdfd6ea8
+ARG ARC_AGI3_PROPOSER_WORKER_SHA256=e6312e17eabc0141db6942169fc367283fc46c4c22eda46d7cffc9024361cf75
+ARG ARC_AGI3_SOURCE_SCHEMA_SHA256=173b0ea1f0d9f2195640e88a6b88a403c316a638ca2ce3f3b12d608e8fa9ef80
+
+ENV LANG=C.UTF-8 \
+    LC_ALL=C.UTF-8 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
+
+# Only the narrow public RPC client and fixed worker entrypoint are baked into
+# the image.  Solver source arrives in the clean read-only parent bundle; game
+# and engine implementation source never enter the image.
+COPY arc/crack_lab/arc_agi3_arena_rpc.py \
+    arc/crack_lab/arc_agi3_container_worker.py \
+    arc/crack_lab/arc_agi3_proposer_worker.py \
+    arc/crack_lab/arc_agi3_source_schema.py \
+    /usr/local/lib/python3.12/site-packages/
+
+RUN chmod 0444 \
+        /usr/local/lib/python3.12/site-packages/arc_agi3_arena_rpc.py \
+        /usr/local/lib/python3.12/site-packages/arc_agi3_container_worker.py \
+        /usr/local/lib/python3.12/site-packages/arc_agi3_proposer_worker.py \
+        /usr/local/lib/python3.12/site-packages/arc_agi3_source_schema.py \
+    && echo "${ARC_AGI3_ARENA_RPC_SHA256}  /usr/local/lib/python3.12/site-packages/arc_agi3_arena_rpc.py" \
+        | sha256sum --check --strict - \
+    && echo "${ARC_AGI3_CONTAINER_WORKER_SHA256}  /usr/local/lib/python3.12/site-packages/arc_agi3_container_worker.py" \
+        | sha256sum --check --strict - \
+    && echo "${ARC_AGI3_PROPOSER_WORKER_SHA256}  /usr/local/lib/python3.12/site-packages/arc_agi3_proposer_worker.py" \
+        | sha256sum --check --strict - \
+    && echo "${ARC_AGI3_SOURCE_SCHEMA_SHA256}  /usr/local/lib/python3.12/site-packages/arc_agi3_source_schema.py" \
+        | sha256sum --check --strict -
+
+LABEL org.gkm.arc-agi3.arena-rpc-sha256="${ARC_AGI3_ARENA_RPC_SHA256}" \
+      org.gkm.arc-agi3.container-worker-sha256="${ARC_AGI3_CONTAINER_WORKER_SHA256}" \
+      org.gkm.arc-agi3.proposer-worker-sha256="${ARC_AGI3_PROPOSER_WORKER_SHA256}" \
+      org.gkm.arc-agi3.source-schema-sha256="${ARC_AGI3_SOURCE_SCHEMA_SHA256}"
+
+# Numeric nonroot identity avoids depending on mutable account databases.  The
+# backend may override this with the nonroot owner of its private export root so
+# bind-mount writes work on Linux without granting group/other access.
+RUN mkdir -p /arc/input /arc/workspace /arc/export /run/arc-agi3 \
+    && touch /run/arc-agi3/arena.sock /run/arc-agi3/token \
+    && chown 65532:65532 /arc/input /arc/workspace /arc/export \
+    && chmod 0000 /run/arc-agi3/arena.sock /run/arc-agi3/token \
+    && chmod 0555 /arc/input \
+    && chmod 0700 /arc/workspace \
+    && chmod 0700 /arc/export \
+    && chmod 0555 /run/arc-agi3
+
+USER 65532:65532
+WORKDIR /arc/input
+ENTRYPOINT ["/usr/local/bin/python3", "-I"]

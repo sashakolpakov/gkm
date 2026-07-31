@@ -220,6 +220,25 @@ def preflight(*, caps: WindowCaps, window_hours: float = DEFAULT_WINDOW_HOURS,
     current = window_records(read_ledger(ledger_path), window_hours=window_hours,
                              now=now, event=event)
     totals = window_totals(current)
+    configured_caps = (
+        caps.max_turns,
+        caps.max_output_tokens,
+        caps.max_wall_minutes,
+        caps.max_cost_usd,
+    )
+    if all(limit is None for limit in configured_caps):
+        return {
+            "window_hours": window_hours,
+            "window_totals": totals,
+            "cost_control_enabled": False,
+            "remaining": {
+                "turns": None,
+                "output_tokens": None,
+                "wall_minutes": None,
+                "cost_usd": None,
+            },
+            "note": "limit=None; cost controls bypassed",
+        }
     if caps.max_turns is not None and totals["turns"] >= caps.max_turns:
         raise ClaudeUsageGuardError(
             f"local Claude turn cap reached ({totals['turns']}/{caps.max_turns} "
@@ -249,6 +268,7 @@ def preflight(*, caps: WindowCaps, window_hours: float = DEFAULT_WINDOW_HOURS,
     return {
         "window_hours": window_hours,
         "window_totals": totals,
+        "cost_control_enabled": True,
         "remaining": {
             "turns": remaining(caps.max_turns, totals["turns"]),
             "output_tokens": remaining(caps.max_output_tokens, totals["output_tokens"]),

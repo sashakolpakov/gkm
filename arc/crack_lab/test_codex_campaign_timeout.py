@@ -12,14 +12,35 @@ import codex_campaign_status as S
 import codex_campaign_policy as P
 
 
+def _binding(game, reached):
+    checkpoint = S.ZERO_SHA256 if reached == 0 else "a" * 64
+    source = S.ZERO_SHA256 if reached == 0 else "b" * 64
+    return S.validate_frontier_binding({
+        "frontier_binding_schema": S.FRONTIER_BINDING_SCHEMA,
+        "game": game,
+        "reached": reached,
+        "target_level": reached + 1,
+        "parent_action_count": reached,
+        "parent_checkpoint_sha256": checkpoint,
+        "parent_source_tree_sha256": source,
+        "frontier_sha256": S._sha256_json({
+            "game": game,
+            "reached": reached,
+            "parent_checkpoint_sha256": checkpoint,
+        }),
+    })
+
+
 def _turn(effort, level, solved, minutes, *, label="game:propose", **extra):
+    game = extra.pop("game", "gg")
     row = {
+        **_binding(game, level - 1),
         "run_label": label,
         "reasoning_effort": effort,
         "target_level": level,
         "solved_target": solved,
         "duration_seconds": minutes * 60.0,
-        "game": extra.pop("game", "gg"),
+        "game": game,
     }
     row.update(extra)
     return row
@@ -131,37 +152,46 @@ def test_zero_and_missing_duration_solves_are_dropped():
 
 def _frontier(game, next_level, kind):
     return {
+        **_binding(game, next_level - 1),
         "game": game,
         "next_level": next_level,
+        "current_level": next_level - 1,
         "incumbent_kind": kind,
         "priority_score": 1.0,
     }
 
 
-def test_ranked_frontier_carries_adaptive_minutes_and_provenance():
+def test_ranked_frontier_uses_versioned_retry_minutes_not_solve_samples():
     turns = [_turn("high", 3, True, m, game="zz")
              for m in (6.0, 8.0, 10.0, 12.0)] + \
             [_turn("high", 3, False, 8.0, game="zz")]
-    # A prior high failure on the frontier routes it to a bounded high escalation.
+    # A prior clean failure fixes n=1. Historical solve durations remain
+    # diagnostic and cannot change the versioned 20-minute high row.
     frontier = _frontier("zz", 3, "promoted")
     ranked = S.ranked_frontiers([frontier], turns)
     row = ranked[0]
     assert row["recommended_effort"] == "high"
-    assert row["recommended_minutes"] >= math.ceil(12.0)
-    assert row["recommended_minutes_basis"] == "empirical_solve_preserving"
-    assert row["recommended_minutes_solve_samples"] == 4
-    assert row["slowest_validated_solve_minutes"] == 12.0
+    assert row["retry_complexity_n"] == 1
+    assert row["recommended_minutes"] == 20
+    assert (
+        row["recommended_minutes_basis"]
+        == "versioned_exact_frontier_clean_retry_ladder"
+    )
+    assert row["recommended_minutes_solve_samples"] is None
+    assert row["slowest_validated_solve_minutes"] is None
 
 
-def test_quarantined_frontier_gets_zero_minutes():
-    # Two high failures quarantine the frontier; no turn, hence zero minutes.
+def test_unlimited_frontier_is_not_permanently_quarantined():
+    # Two clean failures move to n=2/xhigh; quarantine is cooling, not
+    # permanent abandonment, when the provider limit is unbounded.
     turns = [_turn("high", 2, False, 8.0, game="qq"),
              _turn("high", 2, False, 8.0, game="qq")]
     ranked = S.ranked_frontiers([_frontier("qq", 2, "promoted")], turns)
     row = ranked[0]
-    assert row["quarantined_after_escalation_failure"] is True
-    assert row["recommended_minutes"] == 0
-    assert row["recommended_minutes_basis"] == "quarantined"
+    assert row["quarantined_after_escalation_failure"] is False
+    assert row["retry_complexity_n"] == 2
+    assert row["recommended_effort"] == "xhigh"
+    assert row["recommended_minutes"] == 25
 
 
 # --- escalation-cost headroom (required_headroom) --------------------------

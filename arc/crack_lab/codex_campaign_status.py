@@ -10,8 +10,11 @@ from __future__ import annotations
 
 import argparse
 import ast
+import hashlib
 import json
 import math
+import os
+import stat
 from collections import defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -25,10 +28,553 @@ HERE = Path(__file__).resolve().parent
 ARC_ROOT = HERE.parent
 ARTIFACTS = HERE / "agent_solutions"
 AUDITS = ARC_ROOT / "audit_results"
+ENVIRONMENTS = HERE.parents[1] / "environment_files"
+_INVENTORY_CACHE_MAX_ENTRIES = 16
+_inventory_cache: dict[
+    tuple[str, tuple[tuple[object, ...], ...]], dict[str, int]
+] = {}
+ZERO_SHA256 = "0" * 64
+FRONTIER_BINDING_SCHEMA = 1
+FRONTIER_BINDING_FIELDS = (
+    "frontier_binding_schema",
+    "parent_checkpoint_sha256",
+    "parent_source_tree_sha256",
+    "frontier_sha256",
+)
+FRONTIER_BINDING_CORRECTION_SCHEMA = 1
+FRONTIER_BINDING_CORRECTION_AUTHORITY = (
+    "receipt_backed_exact_launch_parent_claim"
+)
+FRONTIER_BINDING_CORRECTION_EVIDENCE_FIELDS = (
+    "workspace_baseline_commit",
+    "baseline_checkpoint_sha256",
+    "baseline_source_tree_sha256",
+    "protected_transcript_sha256",
+    "audit_receipt_relpath",
+    "audit_receipt_sha256",
+    "baseline_checkpoint_replay_verified",
+    "workspace_git_history_unmodified",
+    "terminal_turn_audited",
+    "taint_scan_passed",
+)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _sha256_json(value: Any) -> str:
+    raw = json.dumps(
+        value, sort_keys=True, separators=(",", ":"), ensure_ascii=False
+    ).encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+def _read_stable_regular(path: Path) -> bytes:
+    """Read one immutable-identity input, rejecting aliases and read races."""
+    if path.is_symlink():
+        raise ValueError(f"frontier identity input is a symlink: {path}")
+    before = path.stat(follow_symlinks=False)
+    if not stat.S_ISREG(before.st_mode):
+        raise ValueError(f"frontier identity input is not regular: {path}")
+    raw = path.read_bytes()
+    after = path.stat(follow_symlinks=False)
+    pointer_before = (
+        before.st_dev,
+        before.st_ino,
+        before.st_mode,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    )
+    pointer_after = (
+        after.st_dev,
+        after.st_ino,
+        after.st_mode,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    )
+    if pointer_before != pointer_after:
+        raise ValueError(
+            f"frontier identity input changed while read: {path}"
+        )
+    return raw
+
+
+def _read_receipt_regular(root: Path, name: str) -> bytes:
+    """Open one receipt beneath a stable, unaliased directory descriptor."""
+    if Path(name).name != name:
+        raise ValueError("receipt name is not one path component")
+    required_flags = ("O_DIRECTORY", "O_NOFOLLOW")
+    if any(not hasattr(os, flag) for flag in required_flags):
+        raise ValueError("platform lacks descriptor-safe receipt flags")
+    directory_flags = (
+        os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+        | getattr(os, "O_CLOEXEC", 0)
+    )
+    file_flags = (
+        os.O_RDONLY | os.O_NOFOLLOW | getattr(os, "O_CLOEXEC", 0)
+    )
+    root_fd = os.open(os.fspath(root), directory_flags)
+    try:
+        root_stat = os.fstat(root_fd)
+        if not stat.S_ISDIR(root_stat.st_mode):
+            raise ValueError("receipt root is not a directory")
+        file_fd = os.open(name, file_flags, dir_fd=root_fd)
+        try:
+            before = os.fstat(file_fd)
+            if (
+                not stat.S_ISREG(before.st_mode)
+                or before.st_nlink != 1
+                or before.st_size > 1_000_000
+            ):
+                raise ValueError(
+                    "receipt is aliased, non-regular, or unreasonably large"
+                )
+            chunks = []
+            remaining = before.st_size
+            while remaining:
+                chunk = os.read(file_fd, min(remaining, 65_536))
+                if not chunk:
+                    raise ValueError("receipt became short while read")
+                chunks.append(chunk)
+                remaining -= len(chunk)
+            if os.read(file_fd, 1):
+                raise ValueError("receipt grew while read")
+            after = os.fstat(file_fd)
+            entry_after = os.stat(
+                name, dir_fd=root_fd, follow_symlinks=False
+            )
+            file_identity = (
+                before.st_dev,
+                before.st_ino,
+                before.st_mode,
+                before.st_nlink,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            )
+            if file_identity != (
+                after.st_dev,
+                after.st_ino,
+                after.st_mode,
+                after.st_nlink,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            ) or (
+                entry_after.st_dev,
+                entry_after.st_ino,
+                entry_after.st_mode,
+                entry_after.st_nlink,
+                entry_after.st_size,
+                entry_after.st_mtime_ns,
+                entry_after.st_ctime_ns,
+            ) != file_identity:
+                raise ValueError(
+                    "receipt changed or was replaced while read"
+                )
+        finally:
+            os.close(file_fd)
+        root_after = os.stat(root, follow_symlinks=False)
+        if (
+            root_after.st_dev,
+            root_after.st_ino,
+            root_after.st_mode,
+        ) != (
+            root_stat.st_dev,
+            root_stat.st_ino,
+            root_stat.st_mode,
+        ):
+            raise ValueError("receipt root changed while read")
+        return b"".join(chunks)
+    finally:
+        os.close(root_fd)
+
+
+def _source_tree_sha256(payloads: dict[str, bytes]) -> str:
+    """Use the same named-file digest construction as the contiguous runner."""
+    digest = hashlib.sha256()
+    for name, raw in sorted(payloads.items()):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(hashlib.sha256(raw).hexdigest().encode("ascii"))
+        digest.update(b"\n")
+    return digest.hexdigest()
+
+
+def _is_sha256(value: object) -> bool:
+    return (
+        isinstance(value, str)
+        and len(value) == 64
+        and all(character in "0123456789abcdef" for character in value)
+    )
+
+
+def validate_frontier_binding(
+    value: dict[str, Any],
+    *,
+    expected_game: str | None = None,
+    expected_target_level: int | None = None,
+) -> dict[str, Any]:
+    """Validate a path-free exact-parent binding for ledger/queue transport."""
+    required = {
+        *FRONTIER_BINDING_FIELDS,
+        "game",
+        "reached",
+        "target_level",
+        "parent_action_count",
+    }
+    if not isinstance(value, dict) or set(value) != required:
+        raise ValueError("frontier binding has a noncanonical field set")
+    game = value["game"]
+    reached = value["reached"]
+    target_level = value["target_level"]
+    action_count = value["parent_action_count"]
+    if (
+        value["frontier_binding_schema"] != FRONTIER_BINDING_SCHEMA
+        or not isinstance(game, str)
+        or not game
+        or not isinstance(reached, int)
+        or isinstance(reached, bool)
+        or reached < 0
+        or not isinstance(target_level, int)
+        or isinstance(target_level, bool)
+        or target_level != reached + 1
+        or not isinstance(action_count, int)
+        or isinstance(action_count, bool)
+        or action_count < 0
+        or any(
+            not _is_sha256(value[field])
+            for field in (
+                "parent_checkpoint_sha256",
+                "parent_source_tree_sha256",
+                "frontier_sha256",
+            )
+        )
+    ):
+        raise ValueError("frontier binding is malformed")
+    if expected_game is not None and game != expected_game:
+        raise ValueError("frontier binding game does not match dispatch")
+    if (
+        expected_target_level is not None
+        and target_level != expected_target_level
+    ):
+        raise ValueError("frontier binding target does not match dispatch")
+    expected_frontier = _sha256_json(
+        {
+            "game": game,
+            "reached": reached,
+            "parent_checkpoint_sha256":
+                value["parent_checkpoint_sha256"],
+        }
+    )
+    if value["frontier_sha256"] != expected_frontier:
+        raise ValueError("frontier digest does not match its exact parent")
+    if reached == 0 and (
+        value["parent_checkpoint_sha256"] != ZERO_SHA256
+        or value["parent_source_tree_sha256"] != ZERO_SHA256
+        or action_count != 0
+    ):
+        raise ValueError("cold frontier must use the canonical zero parent")
+    if reached > 0 and (
+        value["parent_checkpoint_sha256"] == ZERO_SHA256
+        or value["parent_source_tree_sha256"] == ZERO_SHA256
+    ):
+        raise ValueError("promoted frontier cannot use a zero parent")
+    return dict(value)
+
+
+def _record_frontier_binding(
+    record: dict[str, Any],
+) -> tuple[dict[str, Any] | None, bool]:
+    """Return a complete binding claim and whether any such claim was made."""
+    claim_fields = (
+        *FRONTIER_BINDING_FIELDS,
+        "reached",
+        "parent_action_count",
+    )
+    declared = any(field in record for field in claim_fields)
+    if not declared:
+        return None, False
+    try:
+        binding = validate_frontier_binding({
+            field: record.get(field)
+            for field in (
+                *FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        })
+    except ValueError:
+        return None, True
+    return binding, True
+
+
+def _binding_correction_receipt_payload(
+    record: dict[str, Any],
+) -> dict[str, Any]:
+    """Project a correction onto its separately sealed audit receipt."""
+    evidence = record["evidence"]
+    return {
+        "receipt_schema": FRONTIER_BINDING_CORRECTION_SCHEMA,
+        "binding_authority": record["binding_authority"],
+        "thread_id": record["thread_id"],
+        "transcript": record["transcript"],
+        "binding": {
+            field: record[field]
+            for field in (
+                *FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        },
+        "evidence": {
+            field: evidence[field]
+            for field in FRONTIER_BINDING_CORRECTION_EVIDENCE_FIELDS
+            if field not in {
+                "audit_receipt_relpath",
+                "audit_receipt_sha256",
+            }
+        },
+    }
+
+
+def validate_frontier_binding_correction(
+    record: dict[str, Any],
+    *,
+    exec_record: dict[str, Any],
+    receipt_root: Path | None = None,
+) -> dict[str, Any]:
+    """Validate a receipt-backed append-only binding of a pre-schema turn.
+
+    This reducer does not treat host-asserted booleans in the ledger as proof.
+    It independently reopens a canonical, content-addressed audit receipt and
+    checks that the receipt seals the exact binding and evidence assertions.
+    The receipt producer remains responsible for reconstructing the launch
+    parent, replaying its checkpoint, checking the protected transcript/Git
+    baseline/taint status, and writing the receipt. Ordinary failure-class
+    corrections cannot supply or override frontier identity.
+    """
+    required = {
+        "event",
+        "binding_correction_schema",
+        "binding_authority",
+        "recorded_at",
+        "thread_id",
+        "transcript",
+        "evidence",
+        *FRONTIER_BINDING_FIELDS,
+        "game",
+        "reached",
+        "target_level",
+        "parent_action_count",
+    }
+    if not isinstance(record, dict) or set(record) != required:
+        raise ValueError(
+            "frontier binding correction has a noncanonical field set"
+        )
+    if (
+        record["event"] != "codex_frontier_binding_correction"
+        or record["binding_correction_schema"]
+        != FRONTIER_BINDING_CORRECTION_SCHEMA
+        or record["binding_authority"]
+        != FRONTIER_BINDING_CORRECTION_AUTHORITY
+        or not isinstance(record["recorded_at"], str)
+        or not record["recorded_at"]
+        or not isinstance(record["thread_id"], str)
+        or not record["thread_id"]
+        or not isinstance(record["transcript"], str)
+        or not record["transcript"]
+        or record["thread_id"] != exec_record.get("thread_id")
+        or record["transcript"] != exec_record.get("transcript")
+        or record["game"] != exec_record.get("game")
+        or record["target_level"] != exec_record.get("target_level")
+    ):
+        raise ValueError(
+            "frontier binding correction does not identify one exact exec"
+        )
+    binding = validate_frontier_binding({
+        field: record[field]
+        for field in (
+            *FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    })
+    evidence = record["evidence"]
+    if (
+        not isinstance(evidence, dict)
+        or set(evidence) != set(
+            FRONTIER_BINDING_CORRECTION_EVIDENCE_FIELDS
+        )
+    ):
+        raise ValueError(
+            "frontier binding correction has noncanonical evidence"
+        )
+    baseline_commit = evidence["workspace_baseline_commit"]
+    if (
+        not isinstance(baseline_commit, str)
+        or len(baseline_commit) not in {40, 64}
+        or any(character not in "0123456789abcdef"
+               for character in baseline_commit)
+        or not all(
+            _is_sha256(evidence[field])
+            for field in (
+                "baseline_checkpoint_sha256",
+                "baseline_source_tree_sha256",
+                "protected_transcript_sha256",
+                "audit_receipt_sha256",
+            )
+        )
+        or evidence["baseline_checkpoint_sha256"]
+        != binding["parent_checkpoint_sha256"]
+        or evidence["baseline_source_tree_sha256"]
+        != binding["parent_source_tree_sha256"]
+        or any(
+            evidence[field] is not True
+            for field in (
+                "baseline_checkpoint_replay_verified",
+                "workspace_git_history_unmodified",
+                "terminal_turn_audited",
+                "taint_scan_passed",
+            )
+        )
+    ):
+        raise ValueError(
+            "frontier binding correction evidence is incomplete or inconsistent"
+        )
+    receipt_relpath = evidence["audit_receipt_relpath"]
+    receipt_sha256 = evidence["audit_receipt_sha256"]
+    if (
+        not isinstance(receipt_relpath, str)
+        or receipt_relpath != f"{receipt_sha256}.json"
+        or Path(receipt_relpath).name != receipt_relpath
+    ):
+        raise ValueError(
+            "frontier binding correction receipt path is not content-addressed"
+        )
+    root = (
+        Path(receipt_root)
+        if receipt_root is not None
+        else HERE / "frontier_binding_receipts"
+    )
+    try:
+        receipt_raw = _read_receipt_regular(root, receipt_relpath)
+        receipt = json.loads(receipt_raw.decode("utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
+        raise ValueError(
+            "frontier binding correction receipt cannot be reopened safely"
+        ) from exc
+    expected_receipt = _binding_correction_receipt_payload(record)
+    canonical_receipt = (
+        json.dumps(
+            expected_receipt,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=False,
+        ).encode("utf-8")
+        + b"\n"
+    )
+    if (
+        receipt != expected_receipt
+        or receipt_raw != canonical_receipt
+        or hashlib.sha256(receipt_raw).hexdigest() != receipt_sha256
+    ):
+        raise ValueError(
+            "frontier binding correction receipt is not canonical or "
+            "does not seal the advertised evidence"
+        )
+    return binding
+
+
+def exact_frontier_binding(
+    artifact: Path,
+    *,
+    game: str,
+    target_level: int,
+) -> dict[str, Any]:
+    """Bind a dispatch to the exact promoted checkpoint and source parent."""
+    artifact = Path(artifact)
+    checkpoint_path = artifact / "checkpoint.json"
+    if not checkpoint_path.exists():
+        reached = 0
+        action_count = 0
+        checkpoint_sha256 = ZERO_SHA256
+        source_tree_sha256 = ZERO_SHA256
+    else:
+        checkpoint_raw = _read_stable_regular(checkpoint_path)
+        try:
+            checkpoint = json.loads(checkpoint_raw.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise ValueError(
+                f"invalid exact-parent checkpoint: {checkpoint_path}"
+            ) from exc
+        if not isinstance(checkpoint, dict):
+            raise ValueError(
+                f"exact-parent checkpoint is not an object: {checkpoint_path}"
+            )
+        reached = checkpoint.get("reached")
+        final_path = checkpoint.get("final_path")
+        if (
+            checkpoint.get("game") != game
+            or not isinstance(reached, int)
+            or isinstance(reached, bool)
+            or reached < 0
+            or not isinstance(final_path, list)
+        ):
+            raise ValueError(
+                f"exact-parent checkpoint has invalid lineage: {checkpoint_path}"
+            )
+        action_count = len(final_path)
+        if reached == 0:
+            checkpoint_sha256 = ZERO_SHA256
+            source_tree_sha256 = ZERO_SHA256
+            action_count = 0
+        else:
+            if checkpoint.get("validated") is not True:
+                raise ValueError(
+                    f"exact-parent checkpoint is not validated: "
+                    f"{checkpoint_path}"
+                )
+            checkpoint_sha256 = hashlib.sha256(checkpoint_raw).hexdigest()
+            payloads = {}
+            for name in ("legs.py", "players.py", "solve.py"):
+                path = artifact / name
+                if not path.exists():
+                    raise ValueError(
+                        f"exact parent lacks required source file: {path}"
+                    )
+                payloads[name] = _read_stable_regular(path)
+            source_tree_sha256 = _source_tree_sha256(payloads)
+    binding = {
+        "frontier_binding_schema": FRONTIER_BINDING_SCHEMA,
+        "game": game,
+        "reached": reached,
+        "target_level": target_level,
+        "parent_checkpoint_sha256": checkpoint_sha256,
+        "parent_source_tree_sha256": source_tree_sha256,
+        "parent_action_count": action_count,
+        "frontier_sha256": _sha256_json(
+            {
+                "game": game,
+                "reached": reached,
+                "parent_checkpoint_sha256": checkpoint_sha256,
+            }
+        ),
+    }
+    return validate_frontier_binding(
+        binding,
+        expected_game=game,
+        expected_target_level=target_level,
+    )
 
 
 def _external_profiles(audits: Path = AUDITS) -> dict[str, dict[str, int]]:
@@ -58,6 +604,76 @@ def _external_ceilings(audits: Path = AUDITS) -> dict[str, int]:
     }
 
 
+def _authoritative_inventory(
+    environments: Path = ENVIRONMENTS,
+) -> dict[str, int]:
+    """Return public game level counts from the downloaded toolkit metadata.
+
+    ``baseline_actions`` has one entry per level.  Only its length is used;
+    action values and game implementation files never enter proposer context.
+    Comparator achievements are evidence about other systems, not an inventory,
+    and therefore must not create nonexistent targets or hide real levels.
+    """
+    root = Path(environments).resolve()
+
+    def pointer() -> tuple[tuple[object, ...], ...]:
+        rows: list[tuple[object, ...]] = []
+        for path in sorted(root.glob("*/*/metadata.json")):
+            metadata = path.stat(follow_symlinks=False)
+            if (
+                path.is_symlink()
+                or not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+            ):
+                raise ValueError(
+                    f"unsafe authoritative metadata pointer: {path}"
+                )
+            rows.append((
+                str(path),
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_nlink,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+            ))
+        return tuple(rows)
+
+    before = pointer()
+    cache_key = (str(root), before)
+    cached = _inventory_cache.get(cache_key)
+    if cached is not None:
+        if pointer() != before:
+            raise ValueError(
+                "authoritative inventory changed while cached"
+            )
+        return dict(cached)
+    result: dict[str, int] = {}
+    for path in (Path(str(row[0])) for row in before):
+        payload = _read_json(path)
+        game = path.parents[1].name
+        actions = payload.get("baseline_actions")
+        if not isinstance(actions, list) or not actions:
+            raise ValueError(f"missing authoritative baseline_actions: {path}")
+        count = len(actions)
+        previous = result.get(game)
+        if previous is not None and previous != count:
+            raise ValueError(
+                f"conflicting authoritative level counts for {game}: "
+                f"{previous} vs {count}"
+            )
+        result[game] = count
+    if pointer() != before:
+        raise ValueError(
+            "authoritative inventory changed while it was inspected"
+        )
+    if len(_inventory_cache) >= _INVENTORY_CACHE_MAX_ENTRIES:
+        _inventory_cache.pop(next(iter(_inventory_cache)))
+    _inventory_cache[cache_key] = dict(result)
+    return result
+
+
 def _definition_count(path: Path) -> int:
     try:
         tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
@@ -70,8 +686,10 @@ def _definition_count(path: Path) -> int:
 
 
 def frontier_rows(artifacts: Path = ARTIFACTS,
-                  audits: Path = AUDITS) -> list[dict[str, Any]]:
+                  audits: Path = AUDITS,
+                  environments: Path = ENVIRONMENTS) -> list[dict[str, Any]]:
     profiles = _external_profiles(audits)
+    inventory = _authoritative_inventory(environments)
     local: dict[str, tuple[Path, dict[str, Any]]] = {}
     for artifact in sorted(artifacts.glob("*_legs")):
         checkpoint_path = artifact / "checkpoint.json"
@@ -83,7 +701,7 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
             local[game] = (artifact, checkpoint)
 
     rows = []
-    for game in sorted(set(profiles) | set(local)):
+    for game in sorted(inventory):
         artifact, checkpoint = local.get(game, (None, {}))
         candidate_dir = artifacts / f"{game}_legs"
         warm_wip = (candidate_dir / "wip_context").exists()
@@ -97,9 +715,19 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
         )
         scaffold = _read_json(scaffold_path) if scaffold_path.exists() else {}
         external = profiles.get(game, {})
-        ceiling = max(external.values(), default=reached)
-        if reached >= ceiling:
+        target = inventory[game]
+        if reached > target:
+            raise ValueError(
+                f"canonical checkpoint exceeds authoritative inventory: "
+                f"{game} reached={reached} target={target}"
+            )
+        if reached >= target:
             continue
+        binding = exact_frontier_binding(
+            candidate_dir,
+            game=game,
+            target_level=next_level,
+        )
         sources = (
             [artifact / name for name in ("legs.py", "players.py", "solve.py")]
             if artifact is not None else []
@@ -110,7 +738,7 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
                 for name in ("legs.py", "players.py"))
             if artifact is not None else 0
         )
-        gap = ceiling - reached
+        gap = target - reached
         # Operational heuristic only: reward a mature incumbent and a one-level
         # completion opportunity, while penalizing context that will be replayed
         # through every agent/tool iteration.
@@ -129,6 +757,7 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
             if gap == 1:
                 priority_score += 1.0
         rows.append({
+            **binding,
             "game": game,
             "incumbent_kind": "promoted" if artifact is not None else "cold_start",
             "warm_wip_available": warm_wip,
@@ -136,9 +765,9 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
             "next_level": next_level,
             "frontier_scaffold_version": scaffold.get("version"),
             "frontier_scaffold_created_at": scaffold.get("created_at"),
-            "external_artifact_ceiling": ceiling,
+            "authoritative_level_count": target,
             "external_evidence": external,
-            "levels_to_external_ceiling": gap,
+            "levels_to_authoritative_completion": gap,
             "solver_source_bytes": source_bytes,
             "top_level_definitions": definitions,
             "priority_score": round(priority_score, 3),
@@ -157,9 +786,18 @@ def effort_efficiency(turns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             grouped[effort].append(turn)
 
     result: dict[str, dict[str, Any]] = {}
-    for effort, rows in sorted(grouped.items()):
+    for effort, all_rows in sorted(grouped.items()):
+        infrastructure = [
+            row for row in all_rows
+            if row.get("failure_class") == "infrastructure"
+        ]
+        rows = [
+            row for row in all_rows
+            if _is_solver_attempt(row)
+        ]
+        non_solver = [row for row in all_rows if not _is_solver_attempt(row)]
         solved = [row for row in rows if row.get("solved_target") is True]
-        failed = [row for row in rows if row.get("solved_target") is False]
+        failed = [row for row in rows if _is_clean_no_progress(row)]
         points = [row.get("displayed_weekly_points_used") for row in rows]
         known_points = [value for value in points if isinstance(value, int)]
         success_points = [
@@ -174,6 +812,8 @@ def effort_efficiency(turns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
         )
         result[effort] = {
             "proposal_attempts": len(rows),
+            "infrastructure_turns_excluded": len(infrastructure),
+            "non_solver_turns_excluded": len(non_solver),
             "solved_levels": len(solved),
             "failed_levels": len(failed),
             "unknown_outcomes": len(rows) - len(solved) - len(failed),
@@ -194,6 +834,28 @@ def effort_efficiency(turns: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
             "observed_tokens_are_complete": missing_usage == 0,
         }
     return result
+
+
+def _is_clean_no_progress(turn: dict[str, Any]) -> bool:
+    explicit = turn.get("clean_no_progress")
+    if isinstance(explicit, bool):
+        return explicit
+    taint = turn.get("taint_verdict")
+    return bool(
+        turn.get("solved_target") is False
+        and turn.get("failure_class") is None
+        and not turn.get("timed_out")
+        and not turn.get("interrupted")
+        and taint in {None, "clean"}
+    )
+
+
+def _is_solver_attempt(turn: dict[str, Any]) -> bool:
+    if turn.get("failure_class") is not None:
+        return False
+    if turn.get("solved_target") is True:
+        return True
+    return _is_clean_no_progress(turn)
 
 
 def effort_efficiency_by_phase(
@@ -414,9 +1076,56 @@ def recommend_minutes(
     }
 
 
+def retry_policy(n: int) -> dict[str, Any]:
+    """Project one exact-frontier clean-retry coordinate onto both ladders."""
+    if not isinstance(n, int) or isinstance(n, bool) or n < 0:
+        raise ValueError("retry coordinate n must be a nonnegative integer")
+    table = {
+        0: ("medium", 15, "exclude", "fresh_frontier"),
+        1: ("high", 20, "restore_clean_same_frontier", "continue_clean_wip"),
+        2: ("xhigh", 25, "restore_clean_same_frontier", "continue_clean_wip"),
+        3: ("xhigh", 40, "restore_clean_same_frontier", "warm_hard_frontier"),
+        4: ("max", 60, "restore_clean_same_frontier", "first_max"),
+        5: ("max", 90, "exclude", "max_coherence_reset"),
+        6: ("max", 120, "restore_clean_same_frontier", "max_cumulative"),
+        7: ("max", 180, "exclude", "repeated_hard_frontier_reset"),
+        8: (
+            "max",
+            180,
+            "restore_clean_same_frontier",
+            "repeated_hard_frontier_continuation",
+        ),
+    }
+    if n in table:
+        effort, minutes, wip_mode, mode = table[n]
+    elif n % 2:
+        effort, minutes, wip_mode, mode = (
+            "max",
+            300,
+            "exclude",
+            "long_coherence_reset",
+        )
+    else:
+        effort, minutes, wip_mode, mode = (
+            "max",
+            300,
+            "restore_clean_same_frontier",
+            "long_coherence_cumulative",
+        )
+    sidecars = 0 if n < 5 else 1 if n < 7 else 2
+    return {
+        "n": n,
+        "effort": effort,
+        "minutes": minutes,
+        "wip_mode": wip_mode,
+        "dispatch_mode": mode,
+        "auxiliary_parallelism": sidecars,
+    }
+
+
 def ranked_frontiers(frontiers: list[dict[str, Any]],
                      turns: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Apply paid-attempt history and choose a provisional effort for each frontier."""
+    """Project exact-parent-bound clean retries onto the unified effort policy."""
     attempts: dict[tuple[str, int], list[dict[str, Any]]] = defaultdict(list)
     for turn in turns:
         game, level = turn.get("game"), turn.get("target_level")
@@ -425,86 +1134,85 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
 
     ranked = []
     for row in frontiers:
-        all_prior = attempts[(row["game"], row["next_level"])]
-        scaffold_at = row.get("frontier_scaffold_created_at")
-        scaffold_epoch = _iso_epoch(scaffold_at)
-        if scaffold_epoch is not None:
-            # A versioned, reviewed scaffold is a materially changed intervention.
-            # Earlier failures remain charged in campaign economics but do not
-            # quarantine the new policy.
-            prior = [
-                turn for turn in all_prior
-                if (
-                    _iso_epoch(turn.get("started_at")) is None
-                    or _iso_epoch(turn.get("started_at")) >= scaffold_epoch
-                )
-            ]
-        else:
-            prior = all_prior
-        failures = [turn for turn in prior if turn.get("solved_target") is False]
-        medium_failures = sum(
-            turn.get("reasoning_effort") == "medium" for turn in failures
-        )
-        high_failures = sum(
-            turn.get("reasoning_effort") == "high" for turn in failures
-        )
-        quarantined = (
-            high_failures >= 2
-            or (medium_failures >= 1 and high_failures >= 1)
-        )
+        row_binding = validate_frontier_binding({
+            field: row.get(field)
+            for field in (
+                *FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        })
+        all_history = attempts[(row["game"], row["next_level"])]
+        exact_history = []
+        unbound_history = []
+        superseded_history = []
+        for turn in all_history:
+            try:
+                turn_binding = validate_frontier_binding({
+                    field: turn.get(field)
+                    for field in (
+                        *FRONTIER_BINDING_FIELDS,
+                        "game",
+                        "reached",
+                        "target_level",
+                        "parent_action_count",
+                    )
+                })
+            except ValueError:
+                # Pre-binding turns and malformed/partial retrospective
+                # corrections remain visible for diagnosis, but they have no
+                # authority to move the retry coordinate.
+                unbound_history.append(turn)
+                continue
+            if turn_binding == row_binding:
+                exact_history.append(turn)
+            else:
+                superseded_history.append(turn)
+        infrastructure_history = [
+            turn for turn in exact_history
+            if turn.get("failure_class") == "infrastructure"
+        ]
+        prior = [turn for turn in exact_history if _is_solver_attempt(turn)]
+        failures = [turn for turn in prior if _is_clean_no_progress(turn)]
+        non_solver = [
+            turn for turn in exact_history if not _is_solver_attempt(turn)
+        ]
         failed_efforts = sorted({
             str(turn.get("reasoning_effort")) for turn in failures
             if turn.get("reasoning_effort")
         })
-        if quarantined:
-            effort = None
-            mode = "quarantined_after_escalation_failure"
-        elif "medium" in failed_efforts or "high" in failed_efforts:
-            effort = "high"
-            mode = "continue_clean_wip"
-        elif row["incumbent_kind"] == "cold_start":
-            effort = "medium"
-            mode = "cold_l1_screen"
-        else:
-            # Solver size is not evidence that high effort is cheaper.  In the
-            # observed window, medium produced every new literal-reuse witness,
-            # while high's only continuation clear was a rescue after medium
-            # failed.  Therefore every genuinely fresh continuation starts on
-            # medium; high is a single bounded escalation, never a size-based
-            # default.
-            effort = "medium"
-            mode = "medium_first"
-        # Wall time is sized from this arm's replay-validated solve-time
-        # distribution (solve-preserving), not a static per-phase constant, so a
-        # continuation whose solves historically ran to the old cap is no longer
-        # truncated.  Quarantined frontiers get no turn, hence zero minutes.
-        phase = _phase_of_level(row["next_level"])
-        if effort is None:
-            wall = {"minutes": 0, "basis": "quarantined",
-                    "solve_samples": 0, "slowest_solve_minutes": None}
-        else:
-            wall = recommend_minutes(phase, effort, turns)
-        minutes = wall["minutes"]
-        adjusted = (
-            -1_000_000.0 if quarantined
-            else float(row["priority_score"]) - 0.8 * len(failures)
-            # A cold frontier reset is worth revisiting, but should not displace a
-            # fresh mature continuation merely because external agents solved it.
-            - (1.0 if scaffold_epoch is not None else 0.0)
-        )
+        policy = retry_policy(len(failures))
+        adjusted = float(row["priority_score"]) - 0.8 * len(failures)
         ranked.append({
             **row,
             "paid_attempts_at_frontier": len(prior),
-            "superseded_attempts_at_frontier": len(all_prior) - len(prior),
+            "infrastructure_turns_at_frontier": len(
+                infrastructure_history
+            ),
+            "non_solver_turns_at_frontier": len(non_solver),
+            "superseded_attempts_at_frontier": len(superseded_history),
+            "unbound_legacy_turns_for_game_level": len(unbound_history),
+            "exact_bound_turns_at_frontier": len(exact_history),
+            "game_level_history_turns": len(all_history),
             "failed_attempts_at_frontier": len(failures),
+            "retry_complexity_n": policy["n"],
+            "retry_history_authority": "exact_parent_bound_only",
             "failed_efforts": failed_efforts,
-            "quarantined_after_escalation_failure": quarantined,
-            "recommended_effort": effort,
-            "recommended_minutes": minutes,
-            "recommended_minutes_basis": wall["basis"],
-            "recommended_minutes_solve_samples": wall["solve_samples"],
-            "slowest_validated_solve_minutes": wall["slowest_solve_minutes"],
-            "dispatch_mode": mode,
+            "quarantined_after_escalation_failure": False,
+            "recommended_effort": policy["effort"],
+            "recommended_minutes": policy["minutes"],
+            "recommended_wip_mode": policy["wip_mode"],
+            "recommended_auxiliary_parallelism": policy[
+                "auxiliary_parallelism"
+            ],
+            "recommended_minutes_basis": (
+                "versioned_exact_frontier_clean_retry_ladder"
+            ),
+            "recommended_minutes_solve_samples": None,
+            "slowest_validated_solve_minutes": None,
+            "dispatch_mode": policy["dispatch_mode"],
             "adjusted_priority_score": round(adjusted, 3),
         })
     return sorted(
@@ -516,7 +1224,11 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
 def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
     workspace = record.get("workspace")
     transcript = record.get("transcript")
-    result = {"command_executions": 0, "file_changes": 0}
+    result = {
+        "command_executions": 0,
+        "file_changes": 0,
+        "turn_completed_events": 0,
+    }
     if not isinstance(workspace, str) or not isinstance(transcript, str):
         return result
     path = HERE / "runs" / "scratch" / workspace / transcript
@@ -527,6 +1239,8 @@ def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
             event = json.loads(raw)
         except json.JSONDecodeError:
             continue
+        if event.get("type") == "turn.completed":
+            result["turn_completed_events"] += 1
         item = event.get("item", {})
         if event.get("type") != "item.completed" or not isinstance(item, dict):
             continue
@@ -543,34 +1257,168 @@ def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         for row in records
         if row.get("event") == "codex_level_outcome" and row.get("thread_id")
     }
+    corrections_by_thread = {
+        row.get("thread_id"): row
+        for row in records
+        if (
+            row.get("event") == "codex_exec_classification_correction"
+            and row.get("thread_id")
+        )
+    }
+    corrections_by_transcript = {
+        row.get("transcript"): row
+        for row in records
+        if (
+            row.get("event") == "codex_exec_classification_correction"
+            and row.get("transcript")
+        )
+    }
+    binding_corrections_by_thread: dict[
+        str, list[dict[str, Any]]
+    ] = defaultdict(list)
+    for record in records:
+        if (
+            record.get("event") == "codex_frontier_binding_correction"
+            and isinstance(record.get("thread_id"), str)
+        ):
+            binding_corrections_by_thread[record["thread_id"]].append(
+                record
+            )
     result = []
     for row in records:
         if row.get("event") != "codex_exec":
             continue
         outcome = outcomes.get(row.get("thread_id"), {})
+        correction = (
+            corrections_by_thread.get(row.get("thread_id"))
+            or corrections_by_transcript.get(row.get("transcript"))
+            or {}
+        )
+        transcript = _transcript_counts(row)
+        failure_class = correction.get(
+            "failure_class", row.get("failure_class")
+        )
+        solved_target = (
+            correction["solved_target"]
+            if "solved_target" in correction
+            else outcome.get("solved_target")
+        )
+        taint_verdict = correction.get(
+            "taint_verdict", outcome.get("taint_verdict")
+        )
+        transcript_complete = transcript["turn_completed_events"] == 1
+        clean_no_progress = bool(
+            solved_target is False
+            and failure_class is None
+            and not row.get("timed_out")
+            and not row.get("interrupted")
+            and taint_verdict == "clean"
+            and transcript_complete
+        )
         before, after = row.get("weekly_remaining_before"), row.get("weekly_remaining_after")
         weekly_delta = before - after if isinstance(before, int) and isinstance(after, int) else None
+        binding_claims = []
+        binding_claim_invalid = False
+        for binding_record in (row, outcome):
+            binding, declared = _record_frontier_binding(binding_record)
+            if declared and binding is None:
+                binding_claim_invalid = True
+            elif binding is not None:
+                binding_claims.append(binding)
+        binding_corrections = binding_corrections_by_thread.get(
+            row.get("thread_id"), []
+        )
+        correction_binding = None
+        if binding_corrections:
+            # One canonical append is deliberate. Multiple, malformed, or
+            # conflicting retrospective claims leave the turn unbound.
+            if len(binding_corrections) != 1:
+                binding_claim_invalid = True
+            else:
+                try:
+                    correction_binding = (
+                        validate_frontier_binding_correction(
+                            binding_corrections[0],
+                            exec_record=row,
+                        )
+                    )
+                except ValueError:
+                    binding_claim_invalid = True
+                else:
+                    binding_claims.append(correction_binding)
+        distinct_bindings = {
+            json.dumps(binding, sort_keys=True, separators=(",", ":"))
+            for binding in binding_claims
+        }
+        if binding_claim_invalid or len(distinct_bindings) > 1:
+            selected_binding = None
+            binding_authority = "unbound_conflicting_or_malformed"
+        elif binding_claims:
+            selected_binding = binding_claims[0]
+            binding_authority = (
+                "retrospective_receipt_backed_claim"
+                if correction_binding is not None
+                else "prospective_exec"
+            )
+        else:
+            selected_binding = None
+            binding_authority = "unbound_legacy"
+        frontier_binding = {
+            field: (
+                selected_binding.get(field)
+                if selected_binding is not None
+                else None
+            )
+            for field in (
+                *FRONTIER_BINDING_FIELDS,
+                "reached",
+                "parent_action_count",
+            )
+        }
         result.append({
             "thread_id": row.get("thread_id"),
             "started_at": row.get("started_at"),
             "run_label": row.get("run_label"),
+            "failure_class": failure_class,
+            "failure_detail_class": correction.get(
+                "failure_detail_class", row.get("failure_detail_class")
+            ),
+            "terminal_errors": correction.get(
+                "terminal_errors", row.get("terminal_errors")
+            ),
             "model": row.get("model"),
             "reasoning_effort": row.get("reasoning_effort"),
             "duration_seconds": row.get("duration_seconds"),
             "minutes_limit": row.get("minutes_limit"),
+            "allocation_policy": row.get("allocation_policy"),
+            "allocation_expired": row.get("allocation_expired"),
             "timed_out": row.get("timed_out"),
+            "interrupted": row.get("interrupted"),
+            "returncode": row.get("returncode"),
             "observed_tokens": row.get("observed_tokens"),
             "cached_input_tokens": row.get("cached_input_tokens"),
             "reasoning_output_tokens": row.get("reasoning_output_tokens"),
             "weekly_remaining_before": before,
             "weekly_remaining_after": after,
             "displayed_weekly_points_used": weekly_delta,
-            "solved_target": outcome.get("solved_target"),
-            "game": outcome.get("game"),
-            "target_level": outcome.get("target_level"),
+            "solved_target": solved_target,
+            "clean_no_progress": clean_no_progress,
+            "retry_increment": correction.get(
+                "retry_increment", int(clean_no_progress)
+            ),
+            "game": outcome.get(
+                "game", correction.get("game", row.get("game"))
+            ),
+            "target_level": outcome.get(
+                "target_level",
+                correction.get("target_level", row.get("target_level")),
+            ),
             "winning_marginal_C": outcome.get("winning_marginal_C"),
-            "taint_verdict": outcome.get("taint_verdict"),
-            **_transcript_counts(row),
+            "taint_verdict": taint_verdict,
+            "transcript_complete": transcript_complete,
+            "frontier_binding_authority": binding_authority,
+            **frontier_binding,
+            **transcript,
         })
     return result
 
@@ -586,11 +1434,19 @@ def _joined_window_turns(
         if row.get("event") == "codex_level_outcome"
         and row.get("thread_id") in thread_ids
     ]
-    return joined_turns([*exec_records, *outcomes])
+    corrections = [
+        row for row in records
+        if row.get("event") == "codex_exec_classification_correction"
+        and row.get("thread_id") in thread_ids
+    ]
+    return joined_turns([*exec_records, *outcomes, *corrections])
 
 
 def _allowance_from_records(records: list[dict[str, Any]],
                             turns: list[dict[str, Any]]) -> Optional[dict[str, Any]]:
+    # Prefer the newest record that explicitly identifies the provider window.
+    # A legacy postflight containing only ``remaining=100`` must not erase a
+    # newer semantic fact that the provider called the pool ``unlimited``.
     for record in reversed(records):
         if record.get("event") == "rate_limit_snapshot":
             allowance = record.get("allowance")
@@ -598,6 +1454,20 @@ def _allowance_from_records(records: list[dict[str, Any]],
                 allowance.get("remaining_percent"), int
             ):
                 return {**allowance, "source": "cached_live_rate_limit_read"}
+        if record.get("event") == "codex_exec":
+            window_name = record.get("weekly_window_after")
+            remaining = record.get("weekly_remaining_after")
+            if isinstance(window_name, str) and isinstance(remaining, int):
+                return {
+                    "remaining_percent": remaining,
+                    "resets_at": record.get("weekly_resets_at"),
+                    "window_name": window_name,
+                    "limit_id": record.get("weekly_limit_id_after"),
+                    "source": "explicit_postflight",
+                }
+    # Compatibility fallback for historical finite-pool records that predate
+    # explicit window metadata.
+    for record in reversed(records):
         if record.get("event") == "codex_exec":
             remaining = record.get("weekly_remaining_after")
             if isinstance(remaining, int):
@@ -644,6 +1514,7 @@ def _readiness(remaining: Optional[int], reserve: int,
 
 def campaign_report(*, ledger: Path = Guard.DEFAULT_LEDGER,
                     artifacts: Path = ARTIFACTS, audits: Path = AUDITS,
+                    environments: Path = ENVIRONMENTS,
                     live_snapshot: Optional[dict[str, Any]] = None,
                     reserve: int = 20, medium_headroom: int = 4,
                     high_headroom: int = 6, max_runs: int = 60,
@@ -687,16 +1558,37 @@ def campaign_report(*, ledger: Path = Guard.DEFAULT_LEDGER,
             local_totals = Guard.local_window_totals(current)
             window_turns = _joined_window_turns(records, current)
 
+    unlimited = bool(allowance and allowance.get("window_name") == "unlimited")
     remaining = allowance.get("remaining_percent") if allowance else None
-    frontiers = ranked_frontiers(frontier_rows(artifacts, audits), turns)
+    inventory = _authoritative_inventory(environments)
+    if len(inventory) != 25 or sum(inventory.values()) != 183:
+        raise ValueError(
+            "authoritative ARC inventory must contain 25 games / 183 levels, "
+            f"found {len(inventory)} games / {sum(inventory.values())} levels"
+        )
+    frontiers = ranked_frontiers(
+        frontier_rows(artifacts, audits, environments), turns
+    )
+    remaining_levels = sum(
+        inventory[row["game"]] - int(row["current_level"])
+        for row in frontiers
+    )
+    solved_levels = sum(inventory.values()) - remaining_levels
+    readiness = _readiness(
+        remaining,
+        0 if unlimited else reserve,
+        medium_headroom,
+        high_headroom,
+        local_totals,
+        -1 if unlimited else max_runs,
+        -1 if unlimited else max_tokens,
+    )
+    readiness["cost_control_enabled"] = not unlimited
     return {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "allowance": allowance,
         "local_window": local_totals,
-        "readiness": _readiness(
-            remaining, reserve, medium_headroom, high_headroom,
-            local_totals, max_runs, max_tokens,
-        ),
+        "readiness": readiness,
         "turns": turns,
         "effort_efficiency": effort_efficiency(turns),
         "window_effort_efficiency": effort_efficiency(window_turns),
@@ -714,6 +1606,17 @@ def campaign_report(*, ledger: Path = Guard.DEFAULT_LEDGER,
             "cost and exact-checkpoint solver-quality summaries are descriptive, "
             "not a causal estimate"
         ),
+        "authoritative_inventory": {
+            "games": len(inventory),
+            "levels": sum(inventory.values()),
+            "per_game": inventory,
+        },
+        "canonical_progress": {
+            "solved_levels": solved_levels,
+            "total_levels": sum(inventory.values()),
+            "remaining_levels": remaining_levels,
+            "percent": round(100.0 * solved_levels / sum(inventory.values()), 4),
+        },
         "frontiers": frontiers,
         "recommended_frontier": frontiers[0] if frontiers else None,
     }

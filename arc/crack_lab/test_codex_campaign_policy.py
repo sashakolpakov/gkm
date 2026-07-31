@@ -3,6 +3,25 @@ from __future__ import annotations
 import codex_campaign_policy as P
 
 
+def _binding(game: str, reached: int):
+    checkpoint = P.Status.ZERO_SHA256 if reached == 0 else "a" * 64
+    source = P.Status.ZERO_SHA256 if reached == 0 else "b" * 64
+    return P.Status.validate_frontier_binding({
+        "frontier_binding_schema": P.Status.FRONTIER_BINDING_SCHEMA,
+        "game": game,
+        "reached": reached,
+        "target_level": reached + 1,
+        "parent_action_count": reached,
+        "parent_checkpoint_sha256": checkpoint,
+        "parent_source_tree_sha256": source,
+        "frontier_sha256": P.Status._sha256_json({
+            "game": game,
+            "reached": reached,
+            "parent_checkpoint_sha256": checkpoint,
+        }),
+    })
+
+
 def test_required_headroom_uses_worst_observed_rate_plus_margin():
     turns = [{
         "reasoning_effort": "high",
@@ -12,6 +31,7 @@ def test_required_headroom_uses_worst_observed_rate_plus_margin():
     assert P.required_headroom("high", 12, turns) == 9
     assert P.required_headroom("high", 6, turns) == 6
     assert P.required_headroom("medium", 6, []) == 4
+    assert P.required_headroom("max", 60, []) == 1
 
 
 def test_required_headroom_excludes_operator_interruption_rate_outlier():
@@ -39,10 +59,15 @@ def test_policy_holds_tail_and_builds_one_adaptive_seed():
         "turns": [],
         "frontiers": [
             {
+                **_binding(f"g{i}", 1),
                 "game": f"g{i}", "next_level": 2,
-                "incumbent_kind": "promoted", "paid_attempts_at_frontier": 0,
-                "quarantined_after_escalation_failure": False,
-                "recommended_effort": "medium", "recommended_minutes": 8,
+                "current_level": 1, "authoritative_level_count": 8,
+                "incumbent_kind": "promoted",
+                "retry_complexity_n": 0,
+                "recommended_effort": "medium", "recommended_minutes": 15,
+                "recommended_wip_mode": "exclude",
+                "recommended_auxiliary_parallelism": 0,
+                "dispatch_mode": "fresh_frontier",
                 "warm_wip_available": False, "external_evidence": {},
             }
             for i in range(4)
@@ -64,16 +89,42 @@ def test_policy_admits_seed_in_fresh_window():
         "turns": [],
         "effort_efficiency": {},
         "frontiers": [{
+            **_binding("cold", 0),
             "game": "cold", "next_level": 1,
-            "incumbent_kind": "cold_start", "paid_attempts_at_frontier": 0,
-            "quarantined_after_escalation_failure": False,
-            "recommended_effort": "medium", "recommended_minutes": 6,
+            "current_level": 0, "authoritative_level_count": 8,
+            "incumbent_kind": "cold_start", "retry_complexity_n": 0,
+            "recommended_effort": "medium", "recommended_minutes": 15,
+            "recommended_wip_mode": "exclude",
+            "recommended_auxiliary_parallelism": 0,
+            "dispatch_mode": "fresh_frontier",
             "warm_wip_available": False, "external_evidence": {},
         }],
     }
     result = P.policy_report(report)
     assert result["admit_next_turn"] is True
     assert result["phase"] == "run_initial_item_then_adapt"
+    item = result["initial_queue"][0]
+    assert item["seed_mode"] == "zero_seed"
+    assert item["wip_mode"] == "exclude"
+    assert "--seed-mode=zero_seed" in item["argv"]
+    assert "--wip-mode=exclude" in item["argv"]
+
+
+def test_policy_carries_authoritative_progress_into_machine_queue():
+    progress = {
+        "solved_levels": 174,
+        "total_levels": 183,
+        "remaining_levels": 9,
+        "percent": 95.082,
+    }
+    report = {
+        "allowance": {"remaining_percent": 100, "window_name": "unlimited"},
+        "local_window": {"runs": 0},
+        "turns": [],
+        "canonical_progress": progress,
+        "frontiers": [],
+    }
+    assert P.policy_report(report)["canonical_progress"] == progress
 
 
 def test_high_rescue_summary_counts_only_high_after_medium_failure():
@@ -136,7 +187,7 @@ def test_choose_exploitation_effort_uses_ast_only_near_cost_tie():
     assert P.choose_exploitation_effort(efficiency, quality) == "medium"
 
 
-def test_adaptive_campaign_item_uses_cheaper_arm_on_untouched_cold():
+def test_adaptive_campaign_item_uses_retry_policy_not_historical_cost_arm():
     report = {
         "turns": [],
         "effort_efficiency": {
@@ -146,35 +197,161 @@ def test_adaptive_campaign_item_uses_cheaper_arm_on_untouched_cold():
                      "displayed_weekly_points": 4},
         },
         "frontiers": [{
+            **_binding("cold", 0),
             "game": "cold", "next_level": 1,
-            "incumbent_kind": "cold_start", "paid_attempts_at_frontier": 0,
+            "current_level": 0, "authoritative_level_count": 8,
+            "incumbent_kind": "cold_start", "retry_complexity_n": 0,
+            "recommended_effort": "medium", "recommended_minutes": 15,
+            "recommended_wip_mode": "exclude",
+            "recommended_auxiliary_parallelism": 0,
+            "dispatch_mode": "fresh_frontier",
             "warm_wip_available": False, "external_evidence": {},
         }],
     }
     item = P.adaptive_campaign_item(report, reserve=20)
     assert item["effort"] == "medium"
     assert "--codex-weekly-reserve=20" in item["argv"]
-    assert item["experiment_role"] == "cold_L1_exploitation_medium"
+    assert item["experiment_role"] == "retry_n0_fresh_frontier"
 
 
-def test_adaptive_campaign_item_skips_quarantined_frontier():
+def test_adaptive_campaign_item_ranks_by_retry_coordinate_not_paid_attempts():
     report = {
         "turns": [],
         "effort_efficiency": {},
         "frontiers": [
             {
+                **_binding("bad", 1),
                 "game": "bad", "next_level": 2,
+                "current_level": 1, "authoritative_level_count": 8,
                 "incumbent_kind": "promoted",
+                "retry_complexity_n": 2,
+                "paid_attempts_at_frontier": 0,
                 "quarantined_after_escalation_failure": True,
+                "recommended_effort": "xhigh", "recommended_minutes": 25,
+                "recommended_wip_mode": "restore_clean_same_frontier",
+                "recommended_auxiliary_parallelism": 0,
+                "dispatch_mode": "continue_clean_wip",
+                "warm_wip_available": True,
             },
             {
+                **_binding("good", 1),
                 "game": "good", "next_level": 2,
+                "current_level": 1, "authoritative_level_count": 8,
                 "incumbent_kind": "promoted",
+                "retry_complexity_n": 0,
+                "paid_attempts_at_frontier": 99,
                 "quarantined_after_escalation_failure": False,
-                "recommended_effort": "medium", "recommended_minutes": 8,
+                "recommended_effort": "medium", "recommended_minutes": 15,
+                "recommended_wip_mode": "exclude",
+                "recommended_auxiliary_parallelism": 0,
+                "dispatch_mode": "fresh_frontier",
                 "warm_wip_available": False, "external_evidence": {},
             },
         ],
     }
     item = P.adaptive_campaign_item(report, reserve=20)
     assert item["game"] == "good"
+
+
+def test_unlimited_campaign_retries_quarantined_frontier_at_xhigh():
+    report = {
+        "allowance": {"window_name": "unlimited"},
+        "turns": [],
+        "frontiers": [{
+            **_binding("hard", 2),
+            "game": "hard",
+            "current_level": 2,
+            "next_level": 3,
+            "authoritative_level_count": 7,
+            "incumbent_kind": "promoted",
+            "paid_attempts_at_frontier": 99,
+            "retry_complexity_n": 2,
+            "quarantined_after_escalation_failure": True,
+            "priority_score": 3.0,
+            "recommended_effort": "xhigh",
+            "recommended_minutes": 25,
+            "recommended_wip_mode": "restore_clean_same_frontier",
+            "recommended_auxiliary_parallelism": 0,
+            "dispatch_mode": "continue_clean_wip",
+            "warm_wip_available": True,
+            "external_evidence": {},
+        }],
+    }
+    item = P.adaptive_campaign_item(report, reserve=5)
+    assert item["game"] == "hard"
+    assert item["effort"] == "xhigh"
+    assert item["minutes"] == 25
+    assert "--codex-effort=xhigh" in item["argv"]
+    assert item["experiment_role"] == "retry_n2_continue_clean_wip"
+    assert item["seed_mode"] == "verified_parent"
+    assert item["wip_mode"] == "restore_clean_same_frontier"
+    assert item["cost_control_enabled"] is False
+    assert item["max_campaign_runs"] == -1
+    assert item["max_campaign_tokens"] == -1
+    assert "--codex-allocation-policy=drain" in item["argv"]
+
+
+def test_long_turns_alternate_coherent_reset_and_wip_continuation():
+    row = {
+        "game": "hard",
+        "current_level": 5,
+        "next_level": 6,
+        "incumbent_kind": "promoted",
+        "warm_wip_available": True,
+    }
+    row["retry_complexity_n"] = 5
+    assert P.lineage_input_modes(row, minutes=90) == (
+        "verified_parent", "exclude"
+    )
+    row["retry_complexity_n"] = 6
+    assert P.lineage_input_modes(row, minutes=120) == (
+        "verified_parent", "restore_clean_same_frontier"
+    )
+    row["retry_complexity_n"] = 7
+    assert P.lineage_input_modes(row, minutes=180) == (
+        "verified_parent", "exclude"
+    )
+    row["retry_complexity_n"] = 8
+    assert P.lineage_input_modes(row, minutes=180) == (
+        "verified_parent", "restore_clean_same_frontier"
+    )
+
+
+def test_unlimited_escalation_lengthens_uninterrupted_hard_frontier_turns():
+    assert P.unlimited_escalation(3, 40) == (
+        "xhigh", 40, "retry_n3_warm_hard_frontier"
+    )
+    assert P.unlimited_escalation(4, 60) == (
+        "max", 60, "retry_n4_first_max"
+    )
+    assert P.unlimited_escalation(5, 90) == (
+        "max", 90, "retry_n5_max_coherence_reset"
+    )
+    assert P.unlimited_escalation(6, 120) == (
+        "max", 120, "retry_n6_max_cumulative"
+    )
+    assert P.unlimited_escalation(7, 180) == (
+        "max", 180, "retry_n7_repeated_hard_frontier_reset"
+    )
+
+
+def test_paid_attempt_count_cannot_substitute_for_retry_coordinate():
+    report = {
+        "allowance": {"window_name": "unlimited"},
+        "turns": [],
+        "frontiers": [{
+            "game": "hard",
+            "current_level": 1,
+            "next_level": 2,
+            "authoritative_level_count": 8,
+            "incumbent_kind": "promoted",
+            "paid_attempts_at_frontier": 12,
+            "warm_wip_available": True,
+        }],
+    }
+    try:
+        P.adaptive_campaign_item(report, reserve=5)
+    except ValueError as exc:
+        assert "retry_complexity_n" in str(exc)
+    else:
+        raise AssertionError("paid attempts silently steered the policy")
