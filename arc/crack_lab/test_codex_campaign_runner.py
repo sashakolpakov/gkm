@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import copy
+import json
+import sys
 from types import SimpleNamespace
 import fcntl
 
@@ -274,6 +276,27 @@ def test_live_policy_rejects_old_max_spec_after_promotion_reset(monkeypatch):
     )
     with pytest.raises(R.CampaignPlanError, match="retry coordinate is stale"):
         R.validate_live_policy_item(item)
+
+
+def test_dry_run_rejects_stale_live_retry_coordinate(tmp_path, monkeypatch):
+    plan_path = tmp_path / "queue.json"
+    plan_path.write_text(json.dumps({
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+        "initial_queue": [_item()],
+    }))
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {"ar25": 8})
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda game: 0)
+
+    def reject_stale(item):
+        raise R.CampaignPlanError("plan item retry coordinate is stale")
+
+    monkeypatch.setattr(R, "validate_live_policy_item", reject_stale)
+    monkeypatch.setattr(
+        sys, "argv", ["codex_campaign_runner.py", "--plan", str(plan_path)]
+    )
+    with pytest.raises(R.CampaignPlanError, match="retry coordinate is stale"):
+        R.main()
 
 
 def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch):

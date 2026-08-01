@@ -2039,6 +2039,60 @@ def test_host_process_names_in_tool_output_do_not_taint_workspace(tmp_path):
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
 
+def test_python_heredoc_variable_named_ps_does_not_taint_workspace(tmp_path):
+    event = {
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "command": (
+                "/bin/zsh -lc \"python - <<'PY'\n"
+                "while queue:\n"
+                " (bridges,ps),path=queue.popleft()\n"
+                " occupied=bridges|ps\n"
+                "PY\""
+            ),
+            "aggregated_output": "public symbolic search\n",
+        },
+    }
+    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
+    assert L._workspace_taint_reason(str(tmp_path)) is None
+
+
+def test_process_command_after_python_heredoc_still_taints_workspace(tmp_path):
+    event = {
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "command": (
+                "/bin/zsh -lc \"python - <<'PY'\n"
+                "ps = {'public': 'symbolic state'}\n"
+                "PY\n"
+                "ps -axo pid,command\""
+            ),
+            "aggregated_output": "anything\n",
+        },
+    }
+    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "host process introspection" in reason
+
+
+def test_unterminated_heredoc_fails_closed_for_process_scan(tmp_path):
+    event = {
+        "type": "item.completed",
+        "item": {
+            "type": "command_execution",
+            "command": "/bin/zsh -lc \"python - <<'PY'\nprint('incomplete')",
+            "aggregated_output": "anything\n",
+        },
+    }
+    (tmp_path / "proposer_last.log").write_text(json.dumps(event) + "\n")
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "host process introspection" in reason
+
+
 def test_filtered_own_probe_process_monitoring_is_not_gameplay_taint(
         tmp_path):
     event = {

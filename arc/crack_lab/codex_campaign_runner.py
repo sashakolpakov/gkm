@@ -516,6 +516,12 @@ def main() -> int:
         game = item.get("game")
         reached = _checkpoint_reached(game) if isinstance(game, str) else 0
         validate_inventory_item(item, targets, reached)
+        # A dry run is the operator's review surface for the command that may
+        # subsequently be executed.  It must therefore reject a queue frozen
+        # at an older retry coordinate just as strictly as ``_run_item`` does;
+        # printing a stale command as "DRY" is misleading even though the
+        # execution path would later fail closed.
+        validate_live_policy_item(item)
         print("DRY" if not args.execute else "QUEUE", item.get("game"), " ".join(argv))
     if not args.execute:
         print(

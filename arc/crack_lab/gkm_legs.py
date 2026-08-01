@@ -243,6 +243,11 @@ HOST_PROCESS_COMMAND_WORD_RE = re.compile(
     r"\b(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)\b",
     re.IGNORECASE,
 )
+SHELL_HEREDOC_OPEN_RE = re.compile(
+    r"<<(?P<strip_tabs>-)?\s*"
+    r"(?:(?P<quote>['\"])(?P<quoted>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?P=quote)|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))"
+)
 """Strings that make a proposer workspace inadmissible.
 
 The arena may execute the hidden game implementation internally, but the
@@ -384,6 +389,54 @@ def _codex_protocol_self_report(text: str) -> bool:
     return False
 
 
+def _shell_command_surface_without_heredoc_bodies(text: str) -> Optional[str]:
+    """Return shell syntax while excluding literal heredoc payloads.
+
+    Codex command records retain a complete ``zsh -lc`` string.  A Python
+    heredoc can therefore contain an ordinary variable named ``ps`` at the
+    start of an indented line.  Treating the heredoc payload as shell syntax
+    falsely classifies that identifier as the host ``ps`` command.  Preserve
+    the command header, terminator, and all syntax after the terminator, but
+    remove payload lines before applying the shell-process policy.
+
+    ``None`` is fail-closed: the command opened a heredoc whose delimiter was
+    not present in the retained command string.
+    """
+
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return text
+    kept: list[str] = []
+    pending: list[tuple[str, bool]] = []
+    active: Optional[tuple[str, bool]] = None
+
+    for line in lines:
+        if active is not None:
+            delimiter, strip_tabs = active
+            candidate = line.rstrip("\r\n")
+            if strip_tabs:
+                candidate = candidate.lstrip("\t")
+            # The command recorder may retain the closing quote of the outer
+            # ``zsh -lc \"...\"`` argument on the delimiter line.
+            if re.fullmatch(re.escape(delimiter) + r"(?:['\"])?\s*", candidate):
+                kept.append(line)
+                active = pending.pop(0) if pending else None
+            else:
+                kept.append("\n" if line.endswith(("\n", "\r")) else "")
+            continue
+
+        kept.append(line)
+        for match in SHELL_HEREDOC_OPEN_RE.finditer(line):
+            delimiter = match.group("quoted") or match.group("bare")
+            pending.append((delimiter, bool(match.group("strip_tabs"))))
+        if pending:
+            active = pending.pop(0)
+
+    if active is not None or pending:
+        return None
+    return "".join(kept)
+
+
 def _has_forbidden_host_process_command(text: str) -> bool:
     """Classify each host-process command, never a transcript as one blob.
 
@@ -391,15 +444,18 @@ def _has_forbidden_host_process_command(text: str) -> bool:
     mask a separate broad query or process-control command elsewhere in the
     same turn.
     """
-    for host_match in HOST_PROCESS_INTROSPECTION_RE.finditer(text):
+    shell_surface = _shell_command_surface_without_heredoc_bodies(text)
+    if shell_surface is None:
+        return True
+    for host_match in HOST_PROCESS_INTROSPECTION_RE.finditer(shell_surface):
         word_match = HOST_PROCESS_COMMAND_WORD_RE.search(
-            text, host_match.start(), host_match.end()
+            shell_surface, host_match.start(), host_match.end()
         )
         if word_match is None:
             return True
         command = word_match.group(0).lower()
         allowed = OPERATIONAL_PROCESS_MONITORING_RE.match(
-            text, word_match.start()
+            shell_surface, word_match.start()
         )
         if command in {"ps", "pgrep"} and allowed is not None:
             continue
