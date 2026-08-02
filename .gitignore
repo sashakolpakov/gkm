@@ -83,6 +83,9 @@ opine-world/
 *.zip
 **/manuscript/*.synctex.gz
 
+# Journal-specific submission correspondence is local, not repository evidence.
+arc/cover_letter/
+
 # Bongard crack-lab generated predicates, transcripts, and image arrays
 bongard/crack_lab/agent_solutions/
 bongard/crack_lab/semantic_runs/
