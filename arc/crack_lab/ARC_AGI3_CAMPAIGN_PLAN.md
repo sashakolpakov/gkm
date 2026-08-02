@@ -1051,13 +1051,13 @@ During the long campaign, report only:
 - a material taint, replay, integrity, or infrastructure failure;
 - a blocker requiring user authority.
 
-Under the 2026-07-30 major-release directive, the foreground task is to freeze
-the strongest current canonical set, close every release audit, run the full
-25-game ONLINE shakedown, produce one definitive Competition-Mode scorecard,
-and update PR #37 as one verified transaction. The already-launched `lf52`
-exact-remainder searches continue separately. No public score, reviewer
-response, or PR surface is updated again before the frozen set passes those
-gates. Conservative local manuscript work follows the benchmark update.
+Under the superseding 2026-07-31 reorder, the conservative manuscript and
+downstream-documentation phase is complete and its verified bundle is
+preserved. The foreground task is now the exact `lf52` remainder, followed by
+the complete release freeze, full 25-game ONLINE shakedown, one definitive
+Competition-Mode scorecard, and PR #37 update as one verified transaction. No
+public score, reviewer response, or PR surface is updated again before the
+183/183 frozen set passes those gates.
 
 ### 4.7 Implementation and evidence map
 
