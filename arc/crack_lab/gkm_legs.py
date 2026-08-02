@@ -286,11 +286,18 @@ def _codex_log_execution_surface(text: str) -> Optional[str]:
     parsed = 0
     diagnostics = []
     passive_event_types = {
+        # Transport diagnostics are emitted by the Codex CLI itself.  They are
+        # neither proposer-authored commands nor observations supplied to the
+        # proposer.  In particular, reconnect/fallback records may name the
+        # provider HTTPS endpoint; treating that URL as attempted web access
+        # falsely quarantines an otherwise clean long turn.
+        "error",
         "thread.started",
         "turn.started",
         "turn.completed",
+        "turn.failed",
     }
-    passive_item_types = {"agent_message", "reasoning"}
+    passive_item_types = {"agent_message", "reasoning", "error"}
     for raw in text.splitlines():
         if not raw.strip():
             continue
@@ -1163,7 +1170,8 @@ def _clean_unpromoted_source_overlay(
 
 
 def _clean_wip_source_overlay(
-    game: str, level: int, tag: str = ""
+    game: str, level: int, tag: str = "",
+    expected_attempt: Optional[str] = None,
 ) -> Dict[str, str]:
     """Recover taint-clean same-parent source from a saved WIP snapshot.
 
@@ -1184,6 +1192,8 @@ def _clean_wip_source_overlay(
 
     candidates = []
     for attempt in os.listdir(level_dir):
+        if expected_attempt is not None and attempt != expected_attempt:
+            continue
         attempt_dir = os.path.join(level_dir, attempt)
         files_dir = os.path.join(attempt_dir, "files")
         meta_path = os.path.join(attempt_dir, "metadata.json")
@@ -1350,6 +1360,15 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
         )
     art = artifact_dir(game, tag)
     os.makedirs(art, exist_ok=True)
+    try:
+        frontier_binding = CCS.exact_frontier_binding(
+            Path(art), game=game, target_level=level
+        )
+    except ValueError:
+        # Injected/offline runs can intentionally operate without a promoted
+        # artifact parent.  Their snapshots remain forensic but cannot become
+        # scheduler-authorized WIP; the status reducer requires a valid binding.
+        frontier_binding = None
     names = _workspace_snapshot_files(ws)
     digest = _snapshot_digest(ws, phase, names)
     level_dir = _wip_level_dir(art, level)
@@ -1369,6 +1388,8 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
         "err": err,
         "attempt": attempt,
         "created_at": datetime.now(timezone.utc).isoformat(),
+        "taint_verdict": "clean",
+        "frontier_binding": frontier_binding,
         "files": names,
     }
     with open(os.path.join(attempt_dir, "metadata.json"), "w") as f:
@@ -1431,8 +1452,58 @@ def _wip_path_targets_other_level(path: str, level: int) -> bool:
     return bool(match and int(match.group(1)) != level)
 
 
+def _validate_expected_wip_attempt(
+    game: str, level: int, expected_attempt: str, tag: str = ""
+) -> dict:
+    """Reopen one scheduler-selected exact-frontier WIP capsule.
+
+    The status reducer validates the sealed pointer and complete inventory;
+    this proposer-side gate additionally applies the current taint policy just
+    before any capsule byte enters a fresh workspace.
+    """
+    if (
+        not isinstance(expected_attempt, str)
+        or not expected_attempt
+        or Path(expected_attempt).name != expected_attempt
+    ):
+        raise ValueError("expected WIP attempt is not one path component")
+    art = Path(artifact_dir(game, tag))
+    parent = _load_checkpoint(os.fspath(art))
+    reached = parent.reached if parent is not None and parent.validated else 0
+    binding = CCS.exact_frontier_binding(
+        art, game=game, target_level=level
+    )
+    descriptor = CCS.latest_wip_descriptor(
+        art,
+        game=game,
+        reached=reached,
+        target_level=level,
+        frontier_binding=binding,
+    )
+    if descriptor.get("warm_wip_available") is not True:
+        raise ValueError(
+            "scheduler-selected WIP is no longer eligible: "
+            f"{descriptor.get('warm_wip_validation')}"
+        )
+    if descriptor.get("warm_wip_attempt") != expected_attempt:
+        raise ValueError(
+            "scheduler-selected WIP pointer changed before dispatch"
+        )
+    files_dir = art / "wip_context" / f"level_{level:02d}" / (
+        expected_attempt
+    ) / "files"
+    taint_reason = _workspace_taint_reason(os.fspath(files_dir))
+    if taint_reason:
+        raise WorkspaceTainted(
+            "scheduler-selected WIP fails the current taint policy: "
+            f"{taint_reason}"
+        )
+    return descriptor
+
+
 def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
-                        verbose: bool = True) -> int:
+                        verbose: bool = True,
+                        expected_attempt: Optional[str] = None) -> int:
     """Copy the latest WIP snapshot's probe context for `level` into the workspace.
 
     Restores the latest snapshot's non-promoted files and NEVER the promoted names
@@ -1448,16 +1519,30 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
     """
     level_dir = _wip_level_dir(artifact_dir(game, tag), level)
     latest_path = os.path.join(level_dir, "latest.json")
+    if expected_attempt is not None:
+        _validate_expected_wip_attempt(
+            game, level, expected_attempt, tag
+        )
     if not os.path.exists(latest_path):
+        if expected_attempt is not None:
+            raise ValueError("scheduler-selected WIP pointer disappeared")
         return 0
     try:
         with open(latest_path) as f:
             latest_attempt = json.load(f).get("attempt")
     except Exception:
+        if expected_attempt is not None:
+            raise ValueError("scheduler-selected WIP pointer is unreadable")
         return 0
+    if expected_attempt is not None and latest_attempt != expected_attempt:
+        raise ValueError(
+            "scheduler-selected WIP pointer changed before restore"
+        )
 
     attempts = []
     for attempt in sorted(os.listdir(level_dir)):
+        if expected_attempt is not None and attempt != expected_attempt:
+            continue
         attempt_dir = os.path.join(level_dir, attempt)
         files_dir = os.path.join(attempt_dir, "files")
         meta_path = os.path.join(attempt_dir, "metadata.json")
@@ -1471,6 +1556,8 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
             pass
         attempts.append((attempt == latest_attempt, created, attempt, files_dir))
     if not attempts:
+        if expected_attempt is not None:
+            raise ValueError("scheduler-selected WIP capsule disappeared")
         return 0
     attempts.sort(key=lambda t: t[1], reverse=True)
     attempts.sort(key=lambda t: not t[0])
@@ -1490,6 +1577,11 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
         # same-frontier fallback.
         taint_reason = _workspace_taint_reason(files_dir)
         if taint_reason:
+            if expected_attempt is not None:
+                raise WorkspaceTainted(
+                    "scheduler-selected WIP became tainted before restore: "
+                    f"{taint_reason}"
+                )
             if verbose:
                 print(
                     "skipping tainted WIP snapshot "
@@ -1546,11 +1638,16 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
     if verbose and restored:
         print(f"restored {restored} WIP probe file(s) for level {level} "
               f"from latest/backfill snapshots")
+    if expected_attempt is not None and restored == 0:
+        raise ValueError(
+            "scheduler-selected WIP contained no restorable context"
+        )
     return restored
 
 
 def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: bool = True,
-                                 restore_wip: bool = True) -> Optional[Report]:
+                                 restore_wip: bool = True,
+                                 expected_wip_attempt: Optional[str] = None) -> Optional[Report]:
     """Overwrite scratch with the latest promoted verified state, if one exists.
 
     Scratch is treated as disposable and possibly contaminated by an unfinished next
@@ -1564,14 +1661,20 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
     rep = _load_checkpoint(art)
     if rep is None or not rep.validated:
         if restore_wip:
-            _restore_wip_probes(game, ws, 1, tag, verbose=verbose)
+            _restore_wip_probes(
+                game, ws, 1, tag, verbose=verbose,
+                expected_attempt=expected_wip_attempt,
+            )
         return None
     for name in PROMOTED_FILES:
         src = os.path.join(art, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(ws, name))
     if restore_wip:
-        _restore_wip_probes(game, ws, rep.reached + 1, tag, verbose=verbose)
+        _restore_wip_probes(
+            game, ws, rep.reached + 1, tag, verbose=verbose,
+            expected_attempt=expected_wip_attempt,
+        )
     if verbose:
         print(f"seeded workspace from artifact: {art} (reached={rep.reached})")
     return rep
@@ -4016,6 +4119,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 transient_retries: int = _TRANSIENT_RETRIES,
                 codex_ledger: Optional[str] = None,
                 expected_frontier_binding: Optional[dict] = None,
+                expected_wip_attempt: Optional[str] = None,
                 claude_guard: bool = False,
                 claude_ledger: Optional[str] = None,
                 claude_window_hours: float = CLG.DEFAULT_WINDOW_HOURS,
@@ -4062,6 +4166,22 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             expected_frontier_binding,
             expected_game=game,
             expected_target_level=max_level,
+        )
+    if expected_wip_attempt is not None:
+        if expected_frontier_binding is None:
+            raise ValueError(
+                "expected WIP requires an exact scheduler frontier binding"
+            )
+        if not seed_artifact or not restore_wip:
+            raise ValueError(
+                "expected WIP requires verified-parent seeding and WIP restore"
+            )
+        if proposer != "codex" or propose_fn is not None:
+            raise ValueError(
+                "expected WIP is supported only by the default Codex proposer"
+            )
+        _validate_expected_wip_attempt(
+            game, max_level, expected_wip_attempt, tag
         )
     authoritative_target = None
     if propose_fn is None:
@@ -4132,10 +4252,14 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             artifact_parent = _load_checkpoint(artifact_dir(game, tag))
             if artifact_parent is not None and artifact_parent.validated:
                 unpromoted_source_overlay = _clean_wip_source_overlay(
-                    game, artifact_parent.reached + 1, tag
+                    game, artifact_parent.reached + 1, tag,
+                    expected_attempt=expected_wip_attempt,
                 )
     if seed_artifact:
-        seed_workspace_from_artifact(game, ws, tag, verbose=verbose, restore_wip=restore_wip)
+        seed_workspace_from_artifact(
+            game, ws, tag, verbose=verbose, restore_wip=restore_wip,
+            expected_wip_attempt=expected_wip_attempt,
+        )
         if unpromoted_source_overlay:
             _restore_source_overlay(ws, unpromoted_source_overlay)
             if verbose:
@@ -4816,7 +4940,8 @@ if __name__ == "__main__":
         "--expected-parent-action-count=N "
         "--expected-parent-checkpoint-sha256=HEX "
         "--expected-parent-source-tree-sha256=HEX "
-        "--expected-frontier-sha256=HEX]"
+        "--expected-frontier-sha256=HEX] "
+        "[--expected-wip-attempt=ATTEMPT]"
     )
     game, model, minutes, maxl, proposer, tag = "wa30", None, 40, 9, "opencode", ""
     fresh, restore_wip = False, True
@@ -4829,6 +4954,7 @@ if __name__ == "__main__":
     transient_retries = _TRANSIENT_RETRIES
     codex_ledger = None
     expected_frontier_parts = {}
+    expected_wip_attempt = None
     claude_guard, claude_ledger, claude_max_turns, claude_max_wall_minutes = False, None, None, None
     claude_window_hours = CLG.DEFAULT_WINDOW_HOURS
     api_guard, api_ledger, api_max_cost_usd, api_max_turns, api_max_wall_minutes = False, None, None, None, None
@@ -4877,6 +5003,8 @@ if __name__ == "__main__":
             )[1]
         elif a.startswith("--expected-frontier-sha256="):
             expected_frontier_parts["frontier_sha256"] = a.split("=", 1)[1]
+        elif a.startswith("--expected-wip-attempt="):
+            expected_wip_attempt = a.split("=", 1)[1]
         elif a == "--claude-guard": claude_guard = True
         elif a.startswith("--claude-ledger="): claude_ledger = a.split("=", 1)[1]
         elif a.startswith("--claude-window-hours="): claude_window_hours = float(a.split("=", 1)[1])
@@ -4935,6 +5063,13 @@ if __name__ == "__main__":
             restore_wip = False
         else:
             restore_wip = True
+    if expected_wip_attempt is not None and (
+        wip_mode != "restore_clean_same_frontier"
+    ):
+        raise SystemExit(
+            "--expected-wip-attempt requires "
+            "--wip-mode=restore_clean_same_frontier"
+        )
     expected_frontier_binding = None
     if expected_frontier_parts:
         required_expected = {
@@ -4990,6 +5125,7 @@ if __name__ == "__main__":
                 transient_retries=transient_retries,
                 codex_ledger=codex_ledger,
                 expected_frontier_binding=expected_frontier_binding,
+                expected_wip_attempt=expected_wip_attempt,
                 claude_guard=claude_guard,
                 claude_ledger=claude_ledger,
                 claude_window_hours=claude_window_hours,

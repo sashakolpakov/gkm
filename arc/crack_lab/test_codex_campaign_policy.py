@@ -274,6 +274,7 @@ def test_unlimited_campaign_retries_quarantined_frontier_at_xhigh():
             "recommended_auxiliary_parallelism": 0,
             "dispatch_mode": "continue_clean_wip",
             "warm_wip_available": True,
+            "warm_wip_attempt": "not_reached_abc123",
             "external_evidence": {},
         }],
     }
@@ -285,6 +286,8 @@ def test_unlimited_campaign_retries_quarantined_frontier_at_xhigh():
     assert item["experiment_role"] == "retry_n2_continue_clean_wip"
     assert item["seed_mode"] == "verified_parent"
     assert item["wip_mode"] == "restore_clean_same_frontier"
+    assert item["expected_wip_attempt"] == "not_reached_abc123"
+    assert "--expected-wip-attempt=not_reached_abc123" in item["argv"]
     assert item["cost_control_enabled"] is False
     assert item["max_campaign_runs"] == -1
     assert item["max_campaign_tokens"] == -1
@@ -315,6 +318,82 @@ def test_long_turns_alternate_coherent_reset_and_wip_continuation():
     assert P.lineage_input_modes(row, minutes=180) == (
         "verified_parent", "restore_clean_same_frontier"
     )
+
+
+def test_clean_infrastructure_wip_overrides_n7_reset_without_advancing_n():
+    report = {
+        "allowance": {"window_name": "unlimited"},
+        "turns": [],
+        "frontiers": [{
+            **_binding("hard", 8),
+            "game": "hard",
+            "current_level": 8,
+            "next_level": 9,
+            "authoritative_level_count": 10,
+            "incumbent_kind": "promoted",
+            "retry_complexity_n": 7,
+            "priority_score": 3.0,
+            "recommended_effort": "max",
+            "recommended_minutes": 180,
+            "recommended_wip_mode": "exclude",
+            "recommended_auxiliary_parallelism": 2,
+            "dispatch_mode": "repeated_hard_frontier_reset",
+            "warm_wip_available": True,
+            "warm_wip_attempt": "infrastructure_failure_transport_abc123",
+            "warm_wip_phase": "infrastructure_failure_transport",
+            "warm_wip_recovery_required": True,
+            "external_evidence": {},
+        }],
+    }
+    item = P.adaptive_campaign_item(report, reserve=5)
+    assert item["retry_complexity_n"] == 7
+    assert item["effort"] == "max"
+    assert item["minutes"] == 180
+    assert item["policy_dispatch_mode"] == "repeated_hard_frontier_reset"
+    assert item["dispatch_mode"] == "recover_clean_infrastructure_wip"
+    assert item["wip_mode"] == "restore_clean_same_frontier"
+    assert item["experiment_role"] == (
+        "retry_n7_recover_clean_infrastructure_wip"
+    )
+    assert item["expected_wip_attempt"] == (
+        "infrastructure_failure_transport_abc123"
+    )
+    assert "--wip-mode=restore_clean_same_frontier" in item["argv"]
+
+
+def test_n7_solver_no_progress_still_excludes_wip():
+    row = {
+        "game": "hard",
+        "current_level": 8,
+        "next_level": 9,
+        "incumbent_kind": "promoted",
+        "retry_complexity_n": 7,
+        "warm_wip_available": True,
+        "warm_wip_attempt": "not_reached_abc123",
+        "warm_wip_phase": "not_reached",
+        "warm_wip_recovery_required": False,
+    }
+    assert P.lineage_input_modes(row, minutes=180) == (
+        "verified_parent", "exclude"
+    )
+
+
+def test_infrastructure_recovery_without_exact_capsule_fails_closed():
+    row = {
+        "game": "hard",
+        "current_level": 8,
+        "next_level": 9,
+        "incumbent_kind": "promoted",
+        "retry_complexity_n": 7,
+        "warm_wip_available": True,
+        "warm_wip_recovery_required": True,
+    }
+    try:
+        P.lineage_input_modes(row, minutes=180)
+    except ValueError as exc:
+        assert "exact-frontier WIP capsule" in str(exc)
+    else:
+        raise AssertionError("unbound infrastructure WIP was accepted")
 
 
 def test_unlimited_escalation_lengthens_uninterrupted_hard_frontier_turns():

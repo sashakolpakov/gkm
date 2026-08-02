@@ -1994,6 +1994,70 @@ def test_many_codex_diagnostics_do_not_reclassify_tool_output_as_taint(tmp_path)
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
 
+def test_codex_transport_https_diagnostics_are_not_proposer_network_taint(
+        tmp_path):
+    events = [
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "error",
+                "message": (
+                    "Falling back from WebSockets to HTTPS transport. "
+                    "request timed out"
+                ),
+            },
+        },
+        {
+            "type": "error",
+            "message": (
+                "Reconnecting: error sending request for url "
+                "(https://chatgpt.com/backend-api/codex/responses)"
+            ),
+        },
+        {
+            "type": "turn.failed",
+            "error": {
+                "message": (
+                    "stream disconnected before completion: error sending "
+                    "request for url "
+                    "(https://chatgpt.com/backend-api/codex/responses)"
+                ),
+            },
+        },
+    ]
+    (tmp_path / "proposer_last.log").write_text(
+        "\n".join(json.dumps(event) for event in events) + "\n"
+    )
+    assert L._workspace_taint_reason(str(tmp_path)) is None
+
+
+def test_codex_network_command_still_taints_with_transport_diagnostics(
+        tmp_path):
+    events = [
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "error",
+                "message": "Falling back to HTTPS transport",
+            },
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "curl https://example.com/game-help",
+                "aggregated_output": "network denied",
+            },
+        },
+    ]
+    (tmp_path / "proposer_last.log").write_text(
+        "\n".join(json.dumps(event) for event in events) + "\n"
+    )
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "external web/network access" in reason
+
+
 def test_codex_jsonl_private_command_still_taints_workspace(tmp_path):
     event = {
         "type": "item.completed",
@@ -2346,8 +2410,26 @@ def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     assert L.promote_verified_artifact("snaptest", str(ws), rep, verbose=False)
     snap = L.snapshot_wip_context("snaptest", str(ws), 2, "not_reached", 1, "probe failed", verbose=False)
     assert (artifact_root / "snaptest_legs" / "wip_context" / "level_02" / "latest.json").exists()
+    metadata = json.loads(Path(snap, "metadata.json").read_text())
+    assert metadata["taint_verdict"] == "clean"
+    assert metadata["frontier_binding"]["game"] == "snaptest"
+    assert metadata["frontier_binding"]["reached"] == 1
+    assert metadata["frontier_binding"]["target_level"] == 2
     assert "fresh probe observation" in (os.path.join(snap, "files", "proposer_last.log") and
                                          open(os.path.join(snap, "files", "proposer_last.log")).read())
+
+    strict_ws = tmp_path / "strict_ws"
+    strict_ws.mkdir()
+    strict_seed = L.seed_workspace_from_artifact(
+        "snaptest",
+        str(strict_ws),
+        verbose=False,
+        expected_wip_attempt=Path(snap).name,
+    )
+    assert strict_seed is not None and strict_seed.reached == 1
+    assert (strict_ws / "proposer_last.log").read_text() == (
+        "fresh probe observation\n"
+    )
 
     (ws / "players.py").write_text("contaminated unfinished edit\n")
     seeded = L.seed_workspace_from_artifact("snaptest", str(ws), verbose=False)
@@ -2356,6 +2438,36 @@ def test_wip_context_snapshot_is_artifact_visible(tmp_path, monkeypatch):
     # WIP snapshots are forensic only: seeding must NOT inject probe context back
     # into the workspace (that stitching caused analysis paralysis; see FINDINGS).
     assert not (ws / "wip_context.md").exists()
+
+
+def test_expected_wip_restore_rejects_pointer_change(tmp_path, monkeypatch):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L, "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "probe.py").write_text("print('partial')\n")
+    snap = Path(L.snapshot_wip_context(
+        "strict", str(ws), 1, "infrastructure_failure", 0,
+        "transport", verbose=False,
+    ))
+    latest = snap.parent / "latest.json"
+    pointer = json.loads(latest.read_text())
+    pointer["attempt"] = "different_attempt"
+    latest.write_text(json.dumps(pointer))
+    retry = tmp_path / "retry"
+    retry.mkdir()
+    try:
+        L._restore_wip_probes(
+            "strict", str(retry), 1, verbose=False,
+            expected_attempt=snap.name,
+        )
+    except ValueError as exc:
+        assert "no longer eligible" in str(exc)
+    else:
+        raise AssertionError("changed WIP pointer was restored")
 
 
 def test_wip_snapshot_and_restore_preserve_nested_agent_context(tmp_path, monkeypatch):

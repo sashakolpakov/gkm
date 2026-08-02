@@ -771,6 +771,109 @@ def test_frontier_rows_reject_checkpoint_beyond_authoritative_inventory(tmp_path
         raise AssertionError("over-target checkpoint was accepted")
 
 
+def _write_bound_wip(
+    artifact: Path,
+    *,
+    game: str,
+    reached: int,
+    target_level: int,
+    phase: str,
+):
+    binding = S.exact_frontier_binding(
+        artifact, game=game, target_level=target_level
+    )
+    attempt = f"{phase}_abc123"
+    attempt_dir = (
+        artifact / "wip_context" / f"level_{target_level:02d}" / attempt
+    )
+    files_dir = attempt_dir / "files"
+    files_dir.mkdir(parents=True)
+    (files_dir / "probe.py").write_text("print('clean')\n")
+    metadata = {
+        "game": game,
+        "level": target_level,
+        "phase": phase,
+        "reached": reached,
+        "err": None,
+        "attempt": attempt,
+        "created_at": "2026-08-02T00:00:00+00:00",
+        "taint_verdict": "clean",
+        "frontier_binding": binding,
+        "files": ["probe.py"],
+    }
+    (attempt_dir / "metadata.json").write_text(json.dumps(metadata))
+    latest = attempt_dir.parent / "latest.json"
+    latest.write_text(json.dumps({"attempt": attempt, "metadata": metadata}))
+    return binding, attempt, metadata
+
+
+def test_latest_wip_descriptor_recognizes_exact_infrastructure_capsule(tmp_path):
+    artifact = tmp_path / "hard_legs"
+    artifact.mkdir()
+    (artifact / "checkpoint.json").write_text(json.dumps({
+        "game": "hard",
+        "reached": 2,
+        "final_path": [1, 2],
+        "validated": True,
+    }))
+    for name in ("legs.py", "players.py", "solve.py"):
+        (artifact / name).write_text(f"# {name}\n")
+    binding, attempt, _ = _write_bound_wip(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        phase="infrastructure_failure_transport",
+    )
+    result = S.latest_wip_descriptor(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        frontier_binding=binding,
+    )
+    assert result == {
+        "warm_wip_available": True,
+        "warm_wip_attempt": attempt,
+        "warm_wip_phase": "infrastructure_failure_transport",
+        "warm_wip_recovery_required": True,
+        "warm_wip_validation": "exact_frontier_capsule",
+    }
+
+
+def test_latest_wip_descriptor_rejects_unsealed_or_stale_capsule(tmp_path):
+    artifact = tmp_path / "hard_legs"
+    artifact.mkdir()
+    (artifact / "checkpoint.json").write_text(json.dumps({
+        "game": "hard",
+        "reached": 2,
+        "final_path": [1, 2],
+        "validated": True,
+    }))
+    for name in ("legs.py", "players.py", "solve.py"):
+        (artifact / name).write_text(f"# {name}\n")
+    binding, attempt, metadata = _write_bound_wip(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        phase="not_reached",
+    )
+    metadata["reached"] = 1
+    latest = artifact / "wip_context" / "level_03" / "latest.json"
+    latest.write_text(json.dumps({"attempt": attempt, "metadata": metadata}))
+    result = S.latest_wip_descriptor(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        frontier_binding=binding,
+    )
+    assert result["warm_wip_available"] is False
+    assert result["warm_wip_recovery_required"] is False
+    assert result["warm_wip_validation"].startswith("rejected:")
+
+
 def test_effort_efficiency_charges_failures_to_cost_per_solve():
     turns = [
         {

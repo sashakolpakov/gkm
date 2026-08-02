@@ -37,6 +37,37 @@ class CampaignPlanError(RuntimeError):
     pass
 
 
+def _effective_retry_inputs(
+    item: dict[str, Any], policy: dict[str, Any]
+) -> tuple[str, str]:
+    """Return the only admissible effective WIP/dispatch projection.
+
+    Clean infrastructure interruption is not a solver retry.  It may override
+    a policy reset only when the plan pins the sealed same-frontier capsule and
+    advertises the matching infrastructure phase.  Effort, allocation, retry
+    coordinate, and auxiliary policy remain those of the versioned retry row.
+    """
+    recovery = item.get("warm_wip_recovery_required") is True
+    if not recovery:
+        return str(policy["wip_mode"]), str(policy["dispatch_mode"])
+    attempt = item.get("expected_wip_attempt")
+    phase = item.get("warm_wip_phase")
+    if (
+        item.get("warm_wip_available") is not True
+        or not isinstance(attempt, str)
+        or not attempt
+        or Path(attempt).name != attempt
+        or phase not in Status.INFRASTRUCTURE_WIP_PHASES
+    ):
+        raise CampaignPlanError(
+            "infrastructure recovery lacks one sealed exact-frontier capsule"
+        )
+    return (
+        "restore_clean_same_frontier",
+        "recover_clean_infrastructure_wip",
+    )
+
+
 def _authoritative_targets() -> dict[str, int]:
     targets = Status._authoritative_inventory()
     if len(targets) != 25 or sum(targets.values()) != 183:
@@ -181,6 +212,27 @@ def validate_item(
         raise CampaignPlanError("command seed mode does not match item")
     if f"--wip-mode={wip_mode}" not in argv:
         raise CampaignPlanError("command WIP mode does not match item")
+    expected_wip_attempt = item.get("expected_wip_attempt")
+    expected_wip_args = [
+        argument for argument in argv
+        if argument.startswith("--expected-wip-attempt=")
+    ]
+    if wip_mode == "restore_clean_same_frontier":
+        if (
+            not isinstance(expected_wip_attempt, str)
+            or not expected_wip_attempt
+            or Path(expected_wip_attempt).name != expected_wip_attempt
+            or expected_wip_args != [
+                f"--expected-wip-attempt={expected_wip_attempt}"
+            ]
+        ):
+            raise CampaignPlanError(
+                "WIP restore does not pin one scheduler-selected capsule"
+            )
+    elif expected_wip_attempt is not None or expected_wip_args:
+        raise CampaignPlanError(
+            "excluded WIP item carries an unexpected capsule selector"
+        )
     expected_composite = f"{seed_mode}+{wip_mode}"
     if item.get("lineage_input_mode") != expected_composite:
         raise CampaignPlanError("composite lineage input mode does not match item")
@@ -194,11 +246,12 @@ def validate_item(
             "plan item has no valid retry_complexity_n"
         )
     policy = Status.retry_policy(n)
+    effective_wip, effective_dispatch = _effective_retry_inputs(item, policy)
     expected_fields = {
         "effort": policy["effort"],
         "minutes": policy["minutes"],
-        "wip_mode": policy["wip_mode"],
-        "dispatch_mode": policy["dispatch_mode"],
+        "wip_mode": effective_wip,
+        "dispatch_mode": effective_dispatch,
         "recommended_auxiliary_parallelism": policy[
             "auxiliary_parallelism"
         ],
@@ -376,11 +429,12 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
             "plan item retry coordinate is stale"
         )
     policy = Status.retry_policy(n)
+    effective_wip, effective_dispatch = _effective_retry_inputs(item, policy)
     comparisons = {
         "effort": policy["effort"],
         "minutes": policy["minutes"],
-        "wip_mode": policy["wip_mode"],
-        "dispatch_mode": policy["dispatch_mode"],
+        "wip_mode": effective_wip,
+        "dispatch_mode": effective_dispatch,
         "recommended_auxiliary_parallelism": policy[
             "auxiliary_parallelism"
         ],
@@ -396,6 +450,20 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
         raise CampaignPlanError(
             "plan item WIP availability is stale"
         )
+    for key in (
+        "warm_wip_attempt",
+        "warm_wip_phase",
+        "warm_wip_recovery_required",
+    ):
+        item_value = (
+            item.get("expected_wip_attempt")
+            if key == "warm_wip_attempt"
+            else item.get(key)
+        )
+        if item_value != row.get(key):
+            raise CampaignPlanError(
+                f"plan item {key} is stale at the live frontier"
+            )
 
 
 def _taint_gate() -> None:

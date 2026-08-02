@@ -159,6 +159,72 @@ def test_validate_item_rejects_unconsumed_or_tampered_frontier_binding():
         R.validate_item(item)
 
 
+def _infrastructure_recovery_item():
+    item = copy.deepcopy(_item())
+    item.update({
+        "dispatch_mode": "recover_clean_infrastructure_wip",
+        "policy_dispatch_mode": "fresh_frontier",
+        "warm_wip_available": True,
+        "warm_wip_phase": "infrastructure_failure_transport",
+        "warm_wip_recovery_required": True,
+        "expected_wip_attempt": "infrastructure_failure_transport_abc123",
+        "wip_mode": "restore_clean_same_frontier",
+        "lineage_input_mode": "zero_seed+restore_clean_same_frontier",
+    })
+    index = item["argv"].index("--wip-mode=exclude")
+    item["argv"][index] = "--wip-mode=restore_clean_same_frontier"
+    item["argv"].append(
+        "--expected-wip-attempt=infrastructure_failure_transport_abc123"
+    )
+    return item
+
+
+def test_validate_item_admits_only_sealed_infrastructure_recovery_override():
+    item = _infrastructure_recovery_item()
+    assert R.validate_item(item)[0] == "python3"
+
+    item["warm_wip_phase"] = "not_reached"
+    with pytest.raises(
+        R.CampaignPlanError, match="sealed exact-frontier capsule"
+    ):
+        R.validate_item(item)
+
+    item = _infrastructure_recovery_item()
+    item["argv"].pop()
+    with pytest.raises(
+        R.CampaignPlanError, match="does not pin one"
+    ):
+        R.validate_item(item)
+
+
+def test_live_policy_reopens_infrastructure_recovery_capsule(monkeypatch):
+    item = _infrastructure_recovery_item()
+    monkeypatch.setattr(
+        R.Status,
+        "campaign_report",
+        lambda **kwargs: {
+            "frontiers": [{
+                **{
+                    key: item[key]
+                    for key in (
+                        *R.Status.FRONTIER_BINDING_FIELDS,
+                        "reached",
+                        "parent_action_count",
+                    )
+                },
+                "game": "ar25",
+                "next_level": 1,
+                "retry_complexity_n": 0,
+                "warm_wip_available": True,
+                "warm_wip_attempt": item["expected_wip_attempt"],
+                "warm_wip_phase": item["warm_wip_phase"],
+                "warm_wip_recovery_required": True,
+            }]
+        },
+    )
+    R.validate_live_policy_item(item)
+
+
 def test_active_workspace_lock_detects_other_tag(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "HERE", tmp_path)
     workspace = tmp_path / "runs" / "scratch" / "gkm_legs_ws_sk48_other"

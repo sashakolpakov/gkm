@@ -293,10 +293,20 @@ The scheduler applies these rules:
   continuation. This preserves both stochastic diversity and live
   reasoning-state continuity without multiplying short restarts.
 - A tainted attempt is discarded and can never make WIP restore eligible.
+- A clean provider, containment, or other infrastructure interruption is not a
+  solver retry. The scheduler keeps the same `n`, effort, and soft allocation,
+  pins the host-sealed exact-frontier WIP attempt by ID, and mechanically
+  restores that capsule even when the ordinary row at `n` calls for `exclude`.
+  The status reducer must reopen the pointer, metadata, complete file inventory,
+  and exact-parent binding; the proposer runner must apply the current taint
+  policy again immediately before restore. If the pointer changed, the capsule
+  is stale, or any current check fails, dispatch stops rather than falling back
+  to a different attempt or silently converting the event into no-progress.
 - WIP eligibility is re-evaluated with the current taint policy on every
   restore; a snapshot accepted by an older scanner is never grandfathered, and
-  the scheduler falls back only to the newest currently clean exact-frontier
-  snapshot.
+  ordinary unpinned recovery falls back only to the newest currently clean
+  exact-frontier snapshot. A scheduler-pinned infrastructure recovery never
+  substitutes a different capsule.
 - A deliberate independent reacquisition uses `exclude` explicitly and a new
   candidate root; it never silently ignores a newer verified artifact.
 

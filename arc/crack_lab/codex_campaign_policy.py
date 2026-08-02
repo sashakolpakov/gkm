@@ -49,6 +49,21 @@ def lineage_input_modes(
         else "verified_parent"
     )
     wip_mode = str(policy["wip_mode"])
+    if row.get("warm_wip_recovery_required") is True:
+        if (
+            row.get("warm_wip_available") is not True
+            or not isinstance(row.get("warm_wip_attempt"), str)
+            or not row["warm_wip_attempt"]
+        ):
+            raise ValueError(
+                "infrastructure recovery requires one exact-frontier WIP "
+                "capsule"
+            )
+        # A provider/containment interruption is not a solver outcome and may
+        # not discard the clean partial turn merely because retry n happens to
+        # project to a coherence-reset row.  The retry coordinate, effort, and
+        # allocation remain unchanged; only the exact input capsule resumes.
+        wip_mode = "restore_clean_same_frontier"
     if (
         wip_mode == "restore_clean_same_frontier"
         and row.get("warm_wip_available") is not True
@@ -153,6 +168,12 @@ def _command(
     max_runs = -1 if unlimited else DEFAULT_MAX_RUNS
     max_tokens = -1 if unlimited else DEFAULT_MAX_TOKENS
     seed_mode, wip_mode = lineage_input_modes(row, minutes=minutes)
+    recovery_required = row.get("warm_wip_recovery_required") is True
+    effective_dispatch_mode = (
+        "recover_clean_infrastructure_wip"
+        if recovery_required
+        else policy["dispatch_mode"]
+    )
     args = [
         "python3", "-u", "arc/crack_lab/gkm_legs.py",
         f"--game={row['game']}",
@@ -169,7 +190,7 @@ def _command(
         f"--codex-max-campaign-runs={max_runs}",
         f"--codex-max-campaign-tokens={max_tokens}",
         "--transient-retries=0",
-        f"--tag=arc_agi3_n{n}_{policy['dispatch_mode']}",
+        f"--tag=arc_agi3_n{n}_{effective_dispatch_mode}",
         f"--seed-mode={seed_mode}",
         f"--wip-mode={wip_mode}",
         f"--expected-parent-reached={binding['reached']}",
@@ -187,6 +208,14 @@ def _command(
         ),
         f"--expected-frontier-sha256={binding['frontier_sha256']}",
     ]
+    expected_wip_attempt = None
+    if wip_mode == "restore_clean_same_frontier":
+        expected_wip_attempt = row.get("warm_wip_attempt")
+        if not isinstance(expected_wip_attempt, str) or not expected_wip_attempt:
+            raise ValueError(
+                "WIP continuation lacks one scheduler-selected capsule"
+            )
+        args.append(f"--expected-wip-attempt={expected_wip_attempt}")
     return {
         **binding,
         "game": row["game"],
@@ -194,7 +223,8 @@ def _command(
         "effort": effort,
         "minutes": minutes,
         "retry_complexity_n": n,
-        "dispatch_mode": policy["dispatch_mode"],
+        "policy_dispatch_mode": policy["dispatch_mode"],
+        "dispatch_mode": effective_dispatch_mode,
         "recommended_auxiliary_parallelism": policy[
             "auxiliary_parallelism"
         ],
@@ -204,6 +234,9 @@ def _command(
         "required_headroom_percent": headroom,
         "external_evidence": row.get("external_evidence", {}),
         "warm_wip_available": bool(row.get("warm_wip_available")),
+        "warm_wip_phase": row.get("warm_wip_phase"),
+        "warm_wip_recovery_required": recovery_required,
+        "expected_wip_attempt": expected_wip_attempt,
         "seed_mode": seed_mode,
         "wip_mode": wip_mode,
         "lineage_input_mode": f"{seed_mode}+{wip_mode}",
@@ -364,7 +397,11 @@ def adaptive_campaign_item(
         minutes=minutes,
         unlimited=unlimited,
     )
-    item["experiment_role"] = role
+    item["experiment_role"] = (
+        f"retry_n{n}_recover_clean_infrastructure_wip"
+        if item["warm_wip_recovery_required"]
+        else role
+    )
     item["policy_projection"] = policy
     return item
 

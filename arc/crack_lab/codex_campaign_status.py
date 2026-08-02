@@ -57,6 +57,11 @@ FRONTIER_BINDING_CORRECTION_EVIDENCE_FIELDS = (
     "terminal_turn_audited",
     "taint_scan_passed",
 )
+INFRASTRUCTURE_WIP_PHASES = frozenset({
+    "infrastructure_failure",
+    "infrastructure_failure_transport",
+    "containment_timeout",
+})
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -577,6 +582,126 @@ def exact_frontier_binding(
     )
 
 
+def latest_wip_descriptor(
+    artifact: Path,
+    *,
+    game: str,
+    reached: int,
+    target_level: int,
+    frontier_binding: dict[str, Any],
+) -> dict[str, Any]:
+    """Validate the host-sealed latest WIP pointer for one exact frontier.
+
+    Merely finding a ``wip_context`` directory is not enough to authorize a
+    continuation.  The pointer, metadata, complete file inventory, and the
+    snapshot-time exact-parent binding must all agree with the current
+    promoted frontier.  The proposer runner re-runs the current taint scanner
+    when it restores the selected capsule; this descriptor is the scheduler's
+    path/binding gate, not a substitute for that dispatch-time scan.
+    """
+    unavailable = {
+        "warm_wip_available": False,
+        "warm_wip_attempt": None,
+        "warm_wip_phase": None,
+        "warm_wip_recovery_required": False,
+        "warm_wip_validation": "unavailable",
+    }
+    level_dir = (
+        Path(artifact) / "wip_context" / f"level_{target_level:02d}"
+    )
+    latest_path = level_dir / "latest.json"
+    if not latest_path.exists():
+        return unavailable
+    try:
+        latest_raw = _read_stable_regular(latest_path)
+        latest = json.loads(latest_raw.decode("utf-8"))
+        if not isinstance(latest, dict) or set(latest) != {
+            "attempt", "metadata"
+        }:
+            raise ValueError("latest pointer has a noncanonical field set")
+        attempt = latest["attempt"]
+        if (
+            not isinstance(attempt, str)
+            or not attempt
+            or Path(attempt).name != attempt
+        ):
+            raise ValueError("latest attempt is not one path component")
+        attempt_dir = level_dir / attempt
+        files_dir = attempt_dir / "files"
+        metadata_path = attempt_dir / "metadata.json"
+        if (
+            attempt_dir.is_symlink()
+            or files_dir.is_symlink()
+            or not files_dir.is_dir()
+        ):
+            raise ValueError("latest attempt directory is absent or aliased")
+        metadata_raw = _read_stable_regular(metadata_path)
+        metadata = json.loads(metadata_raw.decode("utf-8"))
+        if metadata != latest["metadata"]:
+            raise ValueError("latest pointer does not seal its metadata")
+        if (
+            not isinstance(metadata, dict)
+            or metadata.get("attempt") != attempt
+            or metadata.get("game") != game
+            or metadata.get("level") != target_level
+            or metadata.get("reached") != reached
+            or metadata.get("taint_verdict") != "clean"
+        ):
+            raise ValueError("latest metadata is not for this clean frontier")
+        phase = metadata.get("phase")
+        if not isinstance(phase, str) or not phase:
+            raise ValueError("latest metadata lacks a phase")
+        sealed_binding = validate_frontier_binding(
+            metadata.get("frontier_binding"),
+            expected_game=game,
+            expected_target_level=target_level,
+        )
+        if sealed_binding != frontier_binding:
+            raise ValueError("latest WIP belongs to a different exact parent")
+        advertised_files = metadata.get("files")
+        if (
+            not isinstance(advertised_files, list)
+            or not advertised_files
+            or any(not isinstance(name, str) or not name for name in advertised_files)
+            or len(set(advertised_files)) != len(advertised_files)
+        ):
+            raise ValueError("latest WIP has an invalid file inventory")
+        actual_files = []
+        for path in sorted(files_dir.rglob("*")):
+            if path.is_symlink():
+                raise ValueError("latest WIP inventory contains a symlink")
+            if not path.is_file():
+                continue
+            relative = path.relative_to(files_dir).as_posix()
+            if (
+                Path(relative).is_absolute()
+                or ".." in Path(relative).parts
+            ):
+                raise ValueError("latest WIP inventory escapes its capsule")
+            _read_stable_regular(path)
+            actual_files.append(relative)
+        if sorted(advertised_files) != actual_files:
+            raise ValueError("latest WIP file inventory is stale")
+    except (
+        OSError,
+        UnicodeError,
+        json.JSONDecodeError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        return {
+            **unavailable,
+            "warm_wip_validation": f"rejected:{exc}",
+        }
+    return {
+        "warm_wip_available": True,
+        "warm_wip_attempt": attempt,
+        "warm_wip_phase": phase,
+        "warm_wip_recovery_required": phase in INFRASTRUCTURE_WIP_PHASES,
+        "warm_wip_validation": "exact_frontier_capsule",
+    }
+
+
 def _external_profiles(audits: Path = AUDITS) -> dict[str, dict[str, int]]:
     result: dict[str, dict[str, int]] = defaultdict(dict)
     for system, name in (
@@ -704,7 +829,6 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
     for game in sorted(inventory):
         artifact, checkpoint = local.get(game, (None, {}))
         candidate_dir = artifacts / f"{game}_legs"
-        warm_wip = (candidate_dir / "wip_context").exists()
         reached = checkpoint.get("reached", 0)
         if not isinstance(reached, int):
             reached = 0
@@ -728,6 +852,14 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
             game=game,
             target_level=next_level,
         )
+        wip = latest_wip_descriptor(
+            candidate_dir,
+            game=game,
+            reached=reached,
+            target_level=next_level,
+            frontier_binding=binding,
+        )
+        warm_wip = wip["warm_wip_available"]
         sources = (
             [artifact / name for name in ("legs.py", "players.py", "solve.py")]
             if artifact is not None else []
@@ -758,9 +890,9 @@ def frontier_rows(artifacts: Path = ARTIFACTS,
                 priority_score += 1.0
         rows.append({
             **binding,
+            **wip,
             "game": game,
             "incumbent_kind": "promoted" if artifact is not None else "cold_start",
-            "warm_wip_available": warm_wip,
             "current_level": reached,
             "next_level": next_level,
             "frontier_scaffold_version": scaffold.get("version"),
