@@ -450,17 +450,19 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
         raise CampaignPlanError(
             "plan item WIP availability is stale"
         )
-    for key in (
-        "warm_wip_attempt",
-        "warm_wip_phase",
-        "warm_wip_recovery_required",
-    ):
-        item_value = (
-            item.get("expected_wip_attempt")
-            if key == "warm_wip_attempt"
-            else item.get(key)
-        )
-        if item_value != row.get(key):
+    # A reset lane deliberately excludes the latest same-frontier WIP capsule,
+    # so its plan carries no ``expected_wip_attempt`` selector even when an
+    # eligible capsule exists.  Capsule identity is live policy state only for
+    # a restore lane; requiring it for an exclude lane makes every reset after
+    # a clean no-progress turn impossible to launch.  Availability, phase, and
+    # infrastructure-recovery status remain live-checked in both modes.
+    if effective_wip == "restore_clean_same_frontier":
+        if item.get("expected_wip_attempt") != row.get("warm_wip_attempt"):
+            raise CampaignPlanError(
+                "plan item warm_wip_attempt is stale at the live frontier"
+            )
+    for key in ("warm_wip_phase", "warm_wip_recovery_required"):
+        if item.get(key) != row.get(key):
             raise CampaignPlanError(
                 f"plan item {key} is stale at the live frontier"
             )

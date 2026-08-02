@@ -225,6 +225,71 @@ def test_live_policy_reopens_infrastructure_recovery_capsule(monkeypatch):
     R.validate_live_policy_item(item)
 
 
+def test_live_policy_reset_does_not_consume_unused_wip_capsule(monkeypatch):
+    item = _item()
+    item.update({
+        "warm_wip_available": True,
+        "warm_wip_phase": "not_reached",
+        "warm_wip_recovery_required": False,
+        "expected_wip_attempt": None,
+    })
+    monkeypatch.setattr(
+        R.Status,
+        "campaign_report",
+        lambda **kwargs: {
+            "frontiers": [{
+                **{
+                    key: item[key]
+                    for key in (
+                        *R.Status.FRONTIER_BINDING_FIELDS,
+                        "reached",
+                        "parent_action_count",
+                    )
+                },
+                "game": "ar25",
+                "next_level": 1,
+                "retry_complexity_n": 0,
+                "warm_wip_available": True,
+                "warm_wip_attempt": "not_reached_unused_capsule",
+                "warm_wip_phase": "not_reached",
+                "warm_wip_recovery_required": False,
+            }]
+        },
+    )
+    R.validate_live_policy_item(item)
+
+
+def test_live_policy_restore_rejects_changed_wip_capsule(monkeypatch):
+    item = _infrastructure_recovery_item()
+    monkeypatch.setattr(
+        R.Status,
+        "campaign_report",
+        lambda **kwargs: {
+            "frontiers": [{
+                **{
+                    key: item[key]
+                    for key in (
+                        *R.Status.FRONTIER_BINDING_FIELDS,
+                        "reached",
+                        "parent_action_count",
+                    )
+                },
+                "game": "ar25",
+                "next_level": 1,
+                "retry_complexity_n": 0,
+                "warm_wip_available": True,
+                "warm_wip_attempt": "infrastructure_failure_transport_new",
+                "warm_wip_phase": item["warm_wip_phase"],
+                "warm_wip_recovery_required": True,
+            }]
+        },
+    )
+    with pytest.raises(
+        R.CampaignPlanError, match="warm_wip_attempt is stale"
+    ):
+        R.validate_live_policy_item(item)
+
+
 def test_active_workspace_lock_detects_other_tag(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "HERE", tmp_path)
     workspace = tmp_path / "runs" / "scratch" / "gkm_legs_ws_sk48_other"
