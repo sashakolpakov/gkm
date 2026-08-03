@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import ast
 import json
 import sys
 from dataclasses import dataclass
@@ -15,12 +16,42 @@ FROZEN_SOLUTIONS = (
     ARC / "crack_lab" / "releases" / "arc_agi3_gkm_v2_181" / "artifacts"
 )
 PUBLICATION_READMES = ARC / "crack_lab" / "agent_solutions"
-sys.path.insert(0, str(ARC / "crack_lab"))
 sys.path.insert(0, str(ARC / "manuscript"))
 
-from gkm_legs import MARGINAL_COMPLEXITY_CONTRACT  # noqa: E402
 from build_artifact_history import check as check_artifact_history  # noqa: E402
 from history_manifest import get_history  # noqa: E402
+
+
+def load_literal_mapping(path: Path, name: str) -> dict[str, str]:
+    """Read one literal mapping from source without importing campaign runtime."""
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    matches = [
+        node.value
+        for node in tree.body
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == name
+            for target in node.targets
+        )
+    ]
+    if len(matches) != 1:
+        raise ValueError(f"{path}: expected exactly one literal {name}")
+    value = ast.literal_eval(matches[0])
+    if (
+        not isinstance(value, dict)
+        or set(value) != {"field", "label", "formula", "limitation"}
+        or not all(
+            isinstance(key, str) and isinstance(item, str)
+            for key, item in value.items()
+        )
+    ):
+        raise ValueError(f"{path}: invalid literal {name}")
+    return value
+
+
+MARGINAL_COMPLEXITY_CONTRACT = load_literal_mapping(
+    ARC / "crack_lab" / "gkm_legs.py", "MARGINAL_COMPLEXITY_CONTRACT"
+)
 
 
 AUTHORITATIVE_LEVELS = {

@@ -53,7 +53,7 @@ Verified in the integrated repository on 2026-08-03 against frozen release commi
 ## Repository checks
 
 - Unified release-bound manuscript reproduction: passed.
-- Manuscript test target: 228 tests passed.
+- Manuscript test target: 229 tests passed.
 - Fixed-scope SHA-256 integrity manifest: passed.
 - Sphinx 9.1.0 strict HTML build (`-W`): passed.
 - Main paper and one-page PDF builds: passed.

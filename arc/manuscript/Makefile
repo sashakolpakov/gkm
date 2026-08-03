@@ -30,6 +30,7 @@ test:
 		arc/test_audit_action_boundaries.py \
 		arc/test_audit_submission_taint.py \
 		arc/test_audit_marginal_literal_reuse.py \
+		arc/test_build_artifact_docs.py \
 		arc/crack_lab/test_gkm_arena.py \
 		arc/crack_lab/test_gkm_legs.py \
 		arc/crack_lab/test_replay_scorecard.py \

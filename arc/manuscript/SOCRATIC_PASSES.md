@@ -960,7 +960,7 @@ winning model reuse.
   files now use the same 181/183 release facts and the same producer-level universality
   statement. Older numerical passages remain only in explicitly historical editorial
   records and provenance diffs.
-- The schema-v2 reproduction pass succeeds; 228 manuscript tests pass; strict Sphinx
+- The schema-v2 reproduction pass succeeds; 229 manuscript tests pass; strict Sphinx
   HTML builds with warnings treated as errors; the main PDF builds to 27 pages and the
   companion to one page with no warning/undefined/box match in their final logs.
 - `arc_agi3.tex` retains exactly `Alexander Kolpakov` in both `\\author{}` and
