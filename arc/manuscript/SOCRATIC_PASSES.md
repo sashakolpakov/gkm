@@ -251,7 +251,8 @@ manuscript prose.
   validation, and the fact that stable source interfaces are inspected rather than
   universally enforced.
 - The complete `ls20` and `wa30` histories, particularly the thin L2/L4 search players
-  and the literal-to-`ferry_each` L9 debrief.
+  and the superseded exploratory literal-to-`ferry_each` L9 debrief, used only as a
+  historical refactor example.
 - Mac Lane for colimits and Waldhausen for the inclusion-and-attachment role of
   cofibrations.
 
@@ -964,4 +965,5 @@ winning model reuse.
   HTML builds with warnings treated as errors; the main PDF builds to 27 pages and the
   companion to one page with no warning/undefined/box match in their final logs.
 - `arc_agi3.tex` retains exactly `Alexander Kolpakov` in both `\\author{}` and
-  `pdfauthor`; OpenAI appears only in a one-line acknowledgment for GPT-5.6-sol access.
+  `pdfauthor`; OpenAI is absent from the byline and appears only in the one-line
+  acknowledgment and the AI-use disclosure.

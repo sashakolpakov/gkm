@@ -95,7 +95,7 @@ Machine-readable current evidence is regenerated under [`audit_results/`](audit_
   scorecard measures aggregate replay coverage, but is not evidence about discovery
   cost or generalization beyond the public ARC-AGI-3 distribution. Recovered verified
   paths in the artifacts are charged as literals and are not compact
-  mechanistic legs until a debrief refactors them (as happened for `wa30` L9).
+  mechanistic legs until a debrief refactors them.
 - The 597- and 365-action values are final replay paths. Cloned exploratory steps,
   proposer calls, and compute were not counted or normalized.
 - The net-growth statistic can undercount replacement because additions and deletions

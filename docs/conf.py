@@ -10,7 +10,7 @@ subprocess.run(
 )
 
 project = "GKM"
-author = "GKM contributors"
+author = "Alexander Kolpakov"
 
 extensions = []
 templates_path = ["_templates"]
