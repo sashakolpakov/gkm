@@ -54,8 +54,11 @@ the final 183/183 remainder. That phase is complete: the 25-game marginal table,
 empirical figures, three Socratic passes, Sphinx documentation, PDFs, tests, and
 integrity manifest were regenerated and verified without changing the
 theoretical core. The separately frozen v2.0 181/183 benchmark payload was also
-published and remotely reopened. Neither checkpoint substitutes for the final
-183/183 release.
+published and remotely reopened. Its exact remote branch passes the leaderboard
+repository's validator locally, including live URL checks. The corresponding
+fork workflow is still maintainer-gated as `action_required` with no executed
+jobs, so a remote green check is not yet proven. Neither checkpoint substitutes
+for the final 183/183 release.
 
 The frozen v2.0 evidence remains byte-exact at commit `9235ed26` and under
 `arc/crack_lab/releases/arc_agi3_gkm_v2_181/`. On 2026-07-31 its release branch
@@ -3103,7 +3106,9 @@ The overall program is complete when:
       OpenAI as a company) as a submission author;
 - [x] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
 - [ ] PR #37 title, body, YAML, README, links, and scorecard are updated;
-- [x] the frozen v2.0 benchmark surfaces were reopened remotely and verified;
+- [ ] the frozen v2.0 benchmark surfaces are remotely open and locally
+      validator-clean, but the maintainer-gated validation workflow has
+      actually run and passed;
 - [x] the author explicitly reordered and released the conservative
       manuscript/downstream phase before the final 183/183 remainder;
 - [ ] the production contiguous scheduler, deterministic journal replay
