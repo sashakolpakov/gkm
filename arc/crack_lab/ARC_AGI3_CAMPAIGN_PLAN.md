@@ -1216,6 +1216,12 @@ receipt outside the frozen canonical tree, verify it against the unchanged
 tree, and bind that receipt into ONLINE scoring, Competition scoring,
 manuscript reproduction, and contiguous-run launch preflight.
 
+The final release must also ship (or bind by immutable source revision) the
+receipt-aware replay entry point and record exact all-game preflight, ONLINE,
+and Competition commands. A clean-extraction regression must execute the
+preflight command successfully and confirm that every README claim about
+release contents names a file or immutable link that actually exists.
+
 The mutable acquisition tree is not a publication archive. After the
 schema-v2 release tree has passed fresh replay, taint, hash, boundary, and
 manifest gates—and every scorecard/manuscript consumer has been switched to
@@ -1304,8 +1310,10 @@ same gate rejects a terminal Codex leader when any spawned process remains in
 its process group: the complete group is terminated before transcript sealing,
 and that generation is non-authoritative. The focused evidence/process-tree
 regressions and the complete `test_gkm_legs.py` suite pass (109 tests). The
-replacement 528-action exact-L8 `lf52` lane has its own intact protected
-transcript and remains replay-gated.
+quarantined 528-action exact-L8 `lf52` compression lane retained its own intact
+protected transcript but never acquired canonical promotion authority.
+Subsequent L9 turns bind the authoritative 544-action L8 parent and must earn
+any shorter prefix through the ordinary fresh-replay promotion gate.
 
 If every retained source for an otherwise exact replay-valid boundary fails
 fresh source execution, the certifier may use a minimal deterministic source

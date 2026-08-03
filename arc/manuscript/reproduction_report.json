@@ -2,12 +2,12 @@
   "mode": "cached-comparators",
   "summary": {
     "GKM": {
-      "retained_or_winning_checkpoints": 180,
-      "exact_winning_checkpoints": 180,
-      "exact_adjacent_transitions": 154,
+      "retained_or_winning_checkpoints": 174,
+      "exact_winning_checkpoints": 174,
+      "exact_adjacent_transitions": 149,
       "released_memory_transitions": 0,
-      "transitions_with_level_to_level_marginal_comparison": 153,
-      "marginal_decreases": 70,
+      "transitions_with_level_to_level_marginal_comparison": 148,
+      "marginal_decreases": 68,
       "sharp_half_or_more_marginal_drops": 23,
       "hard_literal_world_model_reuse_witnesses": 57,
       "sharp_drops_with_literal_reuse": 14,
@@ -60,14 +60,17 @@
   },
   "drift_from_tracked_snapshot": {},
   "inputs": {
-    "tracked_joint_audit_sha256": "460488c1ee8744fd747b57f7042f70ba759346bb483a1fa4dfc688a49810072b",
+    "tracked_joint_audit_sha256": "d6181d932e1d22b5609634c130944f1f6837c8e799ce478fd63779eee9b76d10",
     "opine_artifacts": "",
     "baseline_release": "",
     "baseline_repo": "",
     "retrodict_runs": "",
-    "release_root": "/private/tmp/gkm-release-9235ed2/arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts",
-    "history_root": "/Users/sasha/gkm/arc/crack_lab/agent_solutions",
-    "release_receipt": "/private/tmp/gkm-release-9235ed2/arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json"
+    "release_root": "arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts",
+    "acquisition_root": "arc/crack_lab/releases/arc_agi3_gkm_v2_181/acquisition_source",
+    "history_root": null,
+    "history_authority": "git:4d0e42f34d7b1db8305f03d725528dfdefe22511:arc/crack_lab/agent_solutions",
+    "release_receipt": "arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json",
+    "release_verifier_root": "local-git:receipt-source-revision"
   },
   "taint_and_lineage": {
     "automated_verdict": "PASS",
@@ -78,18 +81,18 @@
     "promotion_chains_checked": 25,
     "promotion_chain_failures": 0,
     "complete_lineage_required": true,
-    "audit_sha256": "5e6b01a629a7880f1dbf81d27d26f8dc173c044de2cedf2619b9f2721f18e407"
+    "audit_sha256": "d1916cc09685c239e68df8cadd006cc2bccc22f8440f0ba082d3360c833aed98"
   },
   "action_boundaries": {
     "verdict": "PASS",
     "checkpoints": 181,
     "exact": 181,
     "issues": 0,
-    "audit_sha256": "fabf43785ad6c4dd02cee46eae3d862a93150cf48008ca023f32dc426b1e84b8"
+    "audit_sha256": "d2de32316653ef5e4f94fcf3a1c4305c2c6f81141dc49f2b07b13a5de63bffe7"
   },
   "action_protocol": {
     "verdict": "PASS",
-    "audit_sha256": "4318c39ea0e64c2fa041acd0060e31cd9419e6a905149198d670daa8b1a0c903"
+    "audit_sha256": "f46c49ff0ed8c44aaf1ebcd49f352878c2b6f5868f4e1cd614272aae36cab4e6"
   },
   "release_gate": {
     "schema": 2,
@@ -108,20 +111,54 @@
       }
     ]
   },
+  "source_audit_scope": {
+    "replay_verified_endpoint_wins": 181,
+    "admissible_exact_winning_source_checkpoints": 174,
+    "excluded_from_source_marginals": [
+      {
+        "game": "ft09",
+        "level": 2
+      },
+      {
+        "game": "tr87",
+        "level": 1
+      },
+      {
+        "game": "tr87",
+        "level": 2
+      },
+      {
+        "game": "tr87",
+        "level": 3
+      },
+      {
+        "game": "tr87",
+        "level": 4
+      },
+      {
+        "game": "tr87",
+        "level": 5
+      },
+      {
+        "game": "tr87",
+        "level": 6
+      }
+    ]
+  },
   "generated": {
     "bounded_campaign_profiles.pdf": "20e7eb277b8cc1e38c627ead56c0141995d41a1895e3a1b67cc26ec49ef9626f",
     "bounded_campaign_profiles.png": "62d6ab262c737a150320c41e8494ce3bea44316f5a07f360ca245370b6dae98e",
-    "canonical-action-boundaries.json": "fabf43785ad6c4dd02cee46eae3d862a93150cf48008ca023f32dc426b1e84b8",
-    "canonical-action-protocol-audit.json": "4318c39ea0e64c2fa041acd0060e31cd9419e6a905149198d670daa8b1a0c903",
-    "canonical-taint-audit.json": "5e6b01a629a7880f1dbf81d27d26f8dc173c044de2cedf2619b9f2721f18e407",
-    "comparator_stats.md": "c2e0557d19861f246cdd59991b2b7d4c3ae9423243f618ae867fd73abb2357e3",
-    "comparator_stats.tex": "05802d8598ebcebc312dea7f687c7c28cb7da5c2ddc325aabed01254ede68b0d",
+    "canonical-action-boundaries.json": "d2de32316653ef5e4f94fcf3a1c4305c2c6f81141dc49f2b07b13a5de63bffe7",
+    "canonical-action-protocol-audit.json": "f46c49ff0ed8c44aaf1ebcd49f352878c2b6f5868f4e1cd614272aae36cab4e6",
+    "canonical-taint-audit.json": "d1916cc09685c239e68df8cadd006cc2bccc22f8440f0ba082d3360c833aed98",
+    "comparator_stats.md": "17f3c3f476f29362acb502848670cebec5d7c994f5a8bd0e6ec0d1d6df70df1f",
+    "comparator_stats.tex": "b6c957422a2af5cf59a0332b931ad4a8cf64dd8fbd08fb797d7ce89d6b0d7f4f",
     "ls20_sawtooth.pdf": "f7e5e8a442b3bf3849484ddb1658761cca393ee28884d3e747e2d266419ce6f8",
     "ls20_sawtooth.png": "b7cd36b40b83c01dba79a7eb9ea7fb0a12a17464fce7322849f3350d90220984",
-    "marginal_complexity_by_level.json": "8acfe54b265d9da3cb35c0becb4ca77466074f4e4bdeaebc70f2567659977192",
-    "marginal_complexity_by_level.md": "13db28910e7730acdbae6a8a57641ea52c13cebd0e8fd665092c5dc852762d82",
-    "marginal_complexity_by_level.rst": "af775a9d242c8ba94d5be211b458f1e6aa2a42cbe55e8642ce70ad95a9a46bd7",
-    "marginal_complexity_by_level.tex": "3e9260dfbc34fa6e3181f59f047c66a3b8146ef23748ca3a1d01fdb43b4a54fa",
+    "marginal_complexity_by_level.json": "c0a8035bb68bf8c2159cbd3262e406b998ce60ca3eb582867446d38d848274b1",
+    "marginal_complexity_by_level.md": "6d4c5cc9a3ec56beb2a9d66dbd160fcfd0c3a355ea70ed1225970675ad7b5612",
+    "marginal_complexity_by_level.rst": "ab3bcdeb2179462acf39274947cc72a61e803ed57a05fe1cc046176f9d4aa786",
+    "marginal_complexity_by_level.tex": "d400e65931b6760cad4107cd68476adb23ea201577b85f5389a3f72674a728c9",
     "marginal_complexity_profiles.pdf": "957aae806ccaedf233f7ae48b7714a20bf85139fb4132726d76615e7bf39f69b",
     "marginal_complexity_profiles.png": "d3cb2efbbbf1f97afeda290b9bdb59c49b10857344fb74dfd7de8985954ce569"
   }

@@ -127,6 +127,10 @@ histories, not estimators of Kolmogorov complexity.
 Prior and Source Audit
 ----------------------
 
+The frozen release has 181 replay-verified endpoint wins. The stricter source audit
+admits 174 exact winning-source checkpoints; it excludes ``ft09`` L2 and ``tr87``
+L1--L6 deterministic reconstructions from source-marginal and reuse counts.
+
 The frozen ``wa30`` history is a fresh, uniform L1--L9 reacquisition with an exact
 winning-source boundary and replay-validated promotion manifest at every level. An
 earlier exploratory lineage included mechanic-specific human and source-derived

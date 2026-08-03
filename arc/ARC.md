@@ -54,7 +54,7 @@ is **181/183 = 98.907103825137%**, from 7001 stored actions and 7069 API actions
 including resets. The campaign status, uniform proposer budget and escalation policy,
 taint rules, audit gates, and release order are maintained in
 [`crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md`](crack_lab/ARC_AGI3_CAMPAIGN_PLAN.md).
-Machine-readable current evidence is regenerated under `crack_lab/audit_results/`.
+Machine-readable current evidence is regenerated under [`audit_results/`](audit_results/).
 
 - Historical lab notes below describe earlier runs and hypotheses; treat them as WIP
   unless they have a promoted artifact.
@@ -156,7 +156,9 @@ substrate + free-energy admission), `gkm_solve_agent.py` (proposer = Claude with
 discovered context + tools + tester), `gkm_api_agent.py` (Messages-API proposer),
 `gkm_legs.py` (enforced leg-library orchestration + marginal-C accounting +
 interruption-proof WIP recovery), `gkm_crack.py` (the earlier discovered-connector
-cone), `gkm_discovery.py` (interaction probe). Promoted replay-validated artifacts
-live under [`crack_lab/agent_solutions/`](crack_lab/agent_solutions/)
-(`wa30_legs/`, `ls20_legs/` — each with `checkpoint.json`, `players.py`, `legs.py`,
-and preserved WIP snapshots).
+cone), `gkm_discovery.py` (interaction probe). The frozen 25-game publication tree
+lives under
+[`crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/`](crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/).
+Live promoted and partial work remains under
+[`crack_lab/agent_solutions/`](crack_lab/agent_solutions/); `wa30` and `ls20` are the
+two additional uniform-history examples, not the extent of the release.

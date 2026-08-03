@@ -13,15 +13,30 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import shutil
+import stat
 import subprocess
 import sys
+import tarfile
 import tempfile
 from pathlib import Path
+from pathlib import PurePosixPath
 from typing import Any
 
 
 SYSTEMS = ("GKM", "OPINE", "baseline1", "Retrodict")
+FROZEN_SOURCE_HISTORY_REVISION = "4d0e42f34d7b1db8305f03d725528dfdefe22511"
+FROZEN_HISTORY_TREE = "arc/crack_lab/agent_solutions"
+FROZEN_SOURCE_HISTORY_TREE_SHA1 = "85543629cfcafc70eb7230493f394059c8e0ac45"
+FROZEN_SOURCE_AUDIT_EXCLUSIONS = (
+    ("ft09", 2),
+    *(("tr87", level) for level in range(1, 7)),
+)
+REVISION_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+MAX_HISTORY_ARCHIVE_BYTES = 1024 * 1024 * 1024
+MAX_HISTORY_MEMBERS = 50_000
+MAX_HISTORY_FILE_BYTES = 32 * 1024 * 1024
 STAT_FIELDS = (
     "retained_or_winning_checkpoints",
     "exact_winning_checkpoints",
@@ -71,8 +86,16 @@ def _args() -> argparse.Namespace:
         "--release-root",
         type=Path,
         help=(
-            "Frozen <game>_legs tree used for endpoint, taint, action, table, "
-            "and figure reproduction (default: canonical agent_solutions)."
+            "Frozen normalized <game>_legs tree used only for release, endpoint, "
+            "taint, and action verification."
+        ),
+    )
+    parser.add_argument(
+        "--acquisition-root",
+        type=Path,
+        help=(
+            "Frozen acquisition-source <game>_legs tree used to compute D(s), "
+            "the marginal-complexity table, and empirical figures."
         ),
     )
     parser.add_argument(
@@ -80,7 +103,17 @@ def _args() -> argparse.Namespace:
         type=Path,
         help=(
             "Acquisition tree containing exact historical winning snapshots for "
-            "the GKM source/reuse audit (default: canonical agent_solutions)."
+            "the GKM source/reuse audit. Its complete Git-tree digest must match "
+            "the pinned history tree; the default is extracted from "
+            "--history-revision."
+        ),
+    )
+    parser.add_argument(
+        "--history-revision",
+        default=FROZEN_SOURCE_HISTORY_REVISION,
+        help=(
+            "Full local Git revision from which the immutable GKM acquisition "
+            "history is extracted (default: the manuscript source-history snapshot)."
         ),
     )
     parser.add_argument(
@@ -90,6 +123,19 @@ def _args() -> argparse.Namespace:
             "Schema-v2 partial-release receipt. When supplied, the manuscript "
             "suite uses the fail-closed release gate instead of applying the "
             "legacy schema-1 promotion audit to normalized artifacts."
+        ),
+    )
+    parser.add_argument(
+        "--release-verifier-root",
+        type=Path,
+        default=(
+            Path(os.environ["RELEASE_VERIFIER_ROOT"])
+            if os.environ.get("RELEASE_VERIFIER_ROOT")
+            else None
+        ),
+        help=(
+            "Already extracted receipt-bound verifier source. When omitted, "
+            "the receipt's source revision is extracted from local Git history."
         ),
     )
     parser.add_argument("--opine-artifacts", type=Path)
@@ -142,6 +188,301 @@ def _run_json(command: list[str], *, cwd: Path) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("JSON command did not return an object")
     return payload
+
+
+def _portable_path(path: Path, repo: Path) -> str:
+    resolved = path.resolve()
+    try:
+        return resolved.relative_to(repo.resolve()).as_posix()
+    except ValueError:
+        return str(resolved)
+
+
+def _git_environment() -> dict[str, str]:
+    return {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "GIT_NO_REPLACE_OBJECTS": "1",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+
+
+def _safe_archive_name(value: str) -> PurePosixPath:
+    pure = PurePosixPath(value)
+    if (
+        not value
+        or pure.is_absolute()
+        or pure.as_posix() != value
+        or any(part in ("", ".", "..") for part in pure.parts)
+    ):
+        raise RuntimeError(f"unsafe historical archive entry: {value!r}")
+    return pure
+
+
+def _materialize_history(
+    *, repo: Path, revision: str, output: Path
+) -> Path:
+    """Extract the frozen manuscript source history from local Git, fail closed."""
+    if not REVISION_RE.fullmatch(revision):
+        raise RuntimeError("history revision must be a full lowercase object ID")
+    env = _git_environment()
+    for command in (
+        ["git", "-C", str(repo), "cat-file", "-e", f"{revision}^{{commit}}"],
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", revision, "HEAD"],
+    ):
+        completed = subprocess.run(
+            command,
+            check=False,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            env=env,
+            timeout=180,
+        )
+        if completed.returncode != 0:
+            raise RuntimeError(
+                "frozen history revision is unavailable or is not an ancestor of HEAD"
+            )
+
+    archive_path = output.parent / "history.tar"
+    with archive_path.open("xb") as archive_stream:
+        completed = subprocess.run(
+            [
+                "git",
+                "-C",
+                str(repo),
+                "archive",
+                "--format=tar",
+                revision,
+                "--",
+                FROZEN_HISTORY_TREE,
+            ],
+            check=False,
+            stdout=archive_stream,
+            stderr=subprocess.PIPE,
+            env=env,
+            timeout=180,
+        )
+    if completed.returncode != 0:
+        detail = completed.stderr.decode("utf-8", errors="replace").strip()
+        raise RuntimeError(
+            "cannot extract frozen acquisition history"
+            + (f": {detail[:500]}" if detail else "")
+        )
+    if archive_path.stat().st_size > MAX_HISTORY_ARCHIVE_BYTES:
+        raise RuntimeError("frozen acquisition-history archive is unexpectedly large")
+
+    prefix = PurePosixPath(FROZEN_HISTORY_TREE)
+    seen: set[str] = set()
+    folded: set[str] = set()
+    total_size = 0
+    with tarfile.open(archive_path, mode="r:") as archive:
+        members = archive.getmembers()
+        if len(members) > MAX_HISTORY_MEMBERS:
+            raise RuntimeError("frozen acquisition-history archive has too many entries")
+        for member in members:
+            pure = _safe_archive_name(member.name)
+            if (
+                member.isdir()
+                and len(pure.parts) < len(prefix.parts)
+                and prefix.parts[: len(pure.parts)] == pure.parts
+            ):
+                continue
+            if pure.parts[: len(prefix.parts)] != prefix.parts:
+                raise RuntimeError(
+                    f"historical archive entry is outside the requested tree: {pure}"
+                )
+            name = pure.as_posix()
+            casefolded = name.casefold()
+            if name in seen or casefolded in folded:
+                raise RuntimeError(f"duplicate historical archive entry: {name}")
+            seen.add(name)
+            folded.add(casefolded)
+            relative = PurePosixPath(*pure.parts[len(prefix.parts) :])
+            target = output.joinpath(*relative.parts)
+            if member.isdir():
+                target.mkdir(parents=True, exist_ok=True)
+                continue
+            if not member.isfile() or member.size < 0:
+                raise RuntimeError(f"non-regular historical archive entry: {name}")
+            if member.size > MAX_HISTORY_FILE_BYTES:
+                raise RuntimeError(f"historical archive file is too large: {name}")
+            total_size += member.size
+            if total_size > MAX_HISTORY_ARCHIVE_BYTES:
+                raise RuntimeError("expanded acquisition history is unexpectedly large")
+            source = archive.extractfile(member)
+            if source is None:
+                raise RuntimeError(f"cannot extract historical archive entry: {name}")
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with target.open("xb") as destination:
+                shutil.copyfileobj(source, destination)
+            target.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    archive_path.unlink()
+    if not output.is_dir() or not any(output.iterdir()):
+        raise RuntimeError("frozen acquisition history extracted no files")
+    return output
+
+
+def _git_object_id(kind: bytes, payload: bytes) -> bytes:
+    return hashlib.sha1(
+        kind + b" " + str(len(payload)).encode("ascii") + b"\0" + payload
+    ).digest()
+
+
+def _copy_authenticated_history(
+    *, source: Path, output: Path, expected_tree_sha1: str
+) -> Path:
+    """Copy an archive-supplied history and authenticate its complete Git tree."""
+    root = Path(source)
+    try:
+        root_metadata = root.lstat()
+    except OSError as exc:
+        raise RuntimeError("cannot stat explicit source-history root") from exc
+    if not stat.S_ISDIR(root_metadata.st_mode) or stat.S_ISLNK(root_metadata.st_mode):
+        raise RuntimeError("explicit source-history root is not a real directory")
+
+    state = {"members": 0, "bytes": 0}
+
+    def copy_tree(current: Path, target: Path) -> bytes:
+        target.mkdir(parents=True, exist_ok=False)
+        entries: list[tuple[bytes, bool, bytes]] = []
+        try:
+            children = list(os.scandir(current))
+        except OSError as exc:
+            raise RuntimeError("cannot enumerate explicit source-history root") from exc
+        for child in children:
+            try:
+                name = child.name.encode("utf-8")
+            except UnicodeEncodeError as exc:
+                raise RuntimeError("source-history path is not UTF-8") from exc
+            if not name or b"/" in name or b"\0" in name:
+                raise RuntimeError("source-history contains an unsafe path name")
+            try:
+                metadata = child.stat(follow_symlinks=False)
+            except OSError as exc:
+                raise RuntimeError("cannot stat source-history entry") from exc
+            state["members"] += 1
+            if state["members"] > MAX_HISTORY_MEMBERS:
+                raise RuntimeError("source-history tree has too many entries")
+            source_path = Path(child.path)
+            target_path = target / child.name
+            if stat.S_ISDIR(metadata.st_mode) and not stat.S_ISLNK(metadata.st_mode):
+                object_id = copy_tree(source_path, target_path)
+                entries.append((name, True, object_id))
+                continue
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or stat.S_ISLNK(metadata.st_mode)
+                or metadata.st_nlink != 1
+                or metadata.st_size > MAX_HISTORY_FILE_BYTES
+            ):
+                raise RuntimeError("source-history contains a non-regular file")
+            flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            try:
+                descriptor = os.open(source_path, flags)
+            except OSError as exc:
+                raise RuntimeError("cannot securely open source-history file") from exc
+            with os.fdopen(descriptor, "rb") as handle:
+                opened = os.fstat(handle.fileno())
+                if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1:
+                    raise RuntimeError("source-history file changed during copy")
+                raw = handle.read(MAX_HISTORY_FILE_BYTES + 1)
+            if len(raw) > MAX_HISTORY_FILE_BYTES:
+                raise RuntimeError("source-history file is too large")
+            state["bytes"] += len(raw)
+            if state["bytes"] > MAX_HISTORY_ARCHIVE_BYTES:
+                raise RuntimeError("source-history tree is unexpectedly large")
+            with target_path.open("xb") as destination:
+                destination.write(raw)
+            target_path.chmod(stat.S_IRUSR | stat.S_IWUSR)
+            entries.append((name, False, _git_object_id(b"blob", raw)))
+
+        payload = bytearray()
+        for name, is_directory, object_id in sorted(
+            entries, key=lambda item: item[0] + (b"/" if item[1] else b"")
+        ):
+            payload.extend(b"40000 " if is_directory else b"100644 ")
+            payload.extend(name)
+            payload.append(0)
+            payload.extend(object_id)
+        return _git_object_id(b"tree", bytes(payload))
+
+    actual_tree_sha1 = copy_tree(root, output).hex()
+    if actual_tree_sha1 != expected_tree_sha1:
+        raise RuntimeError(
+            "explicit source-history tree does not match the pinned Git tree: "
+            f"expected {expected_tree_sha1}, found {actual_tree_sha1}"
+        )
+    return output
+
+
+def _verify_frozen_release(
+    *,
+    repo: Path,
+    release_root: Path,
+    release_receipt: Path,
+    verifier_root: Path | None,
+) -> dict[str, Any]:
+    command = [
+        sys.executable,
+        "arc/crack_lab/verify_frozen_release.py",
+        "--canonical-root",
+        str(release_root),
+        "--receipt",
+        str(release_receipt),
+    ]
+    if verifier_root is not None:
+        command.extend(["--verifier-root", str(verifier_root.resolve())])
+    result = _run_json(command, cwd=repo)
+    if (
+        result.get("status") != "PASS"
+        or int(result.get("claimed_levels", -1)) != 181
+        or int(result.get("authoritative_levels", -1)) != 183
+    ):
+        raise RuntimeError("schema-v2 frozen release did not verify")
+    result["receipt"] = _portable_path(release_receipt, repo)
+    return result
+
+
+def _source_audit_scope(
+    receipt: dict[str, Any], payload: dict[str, Any]
+) -> dict[str, Any]:
+    claimed = receipt.get("claimed_inventory")
+    if not isinstance(claimed, dict):
+        raise RuntimeError("release receipt has no claimed inventory")
+    endpoint_ids = {
+        (str(game), level)
+        for game, reached in claimed.items()
+        for level in range(1, int(reached) + 1)
+    }
+    source_rows = [
+        row
+        for row in payload.get("rows", [])
+        if row.get("system") == "GKM" and row.get("source_checkpoint_exact") is True
+    ]
+    source_ids = {
+        (str(row["game"]), int(row["completed_level"])) for row in source_rows
+    }
+    if len(source_ids) != len(source_rows):
+        raise RuntimeError("GKM source audit contains duplicate boundary rows")
+    unexpected = sorted(source_ids - endpoint_ids)
+    exclusions = sorted(endpoint_ids - source_ids)
+    if unexpected:
+        raise RuntimeError(f"source audit contains unclaimed endpoints: {unexpected}")
+    if tuple(exclusions) != tuple(FROZEN_SOURCE_AUDIT_EXCLUSIONS):
+        raise RuntimeError(
+            "frozen source-audit exclusions changed: "
+            f"expected {list(FROZEN_SOURCE_AUDIT_EXCLUSIONS)}, found {exclusions}"
+        )
+    return {
+        "replay_verified_endpoint_wins": len(endpoint_ids),
+        "admissible_exact_winning_source_checkpoints": len(source_ids),
+        "excluded_from_source_marginals": [
+            {"game": game, "level": level} for game, level in exclusions
+        ],
+    }
 
 
 def _sha256(path: Path) -> str:
@@ -213,14 +554,14 @@ def _write_generated_stats(
     coupled_clauses: list[str] = []
     for system, row in coupled:
         names = [
-            str(item).split(":", 1)[-1].replace("_", r"\_")
+            str(item).split(":", 1)[-1]
             for item in row["reused_world_model_literals"]
         ]
         if len(names) == 1:
-            called = rf"\texttt{{{names[0]}}}"
+            called = rf"\path{{{names[0]}}}"
         else:
-            called = ", ".join(rf"\texttt{{{name}}}" for name in names[:-1])
-            called += rf", and \texttt{{{names[-1]}}}"
+            called = ", ".join(rf"\path{{{name}}}" for name in names[:-1])
+            called += rf", and \path{{{names[-1]}}}"
         coupled_clauses.append(
             rf"{system} \texttt{{{row['game']}}} L{row['completed_level']}, "
             rf"${row['previous_marginal_ast_zlib_bytes']}\!\to\!"
@@ -237,7 +578,7 @@ def _write_generated_stats(
     md_lines = [
         "<!-- Generated by scripts/reproduce_manuscript.py; do not edit. -->",
         "",
-        "| System | Retained checkpoints | Exact winning checkpoints | "
+        "| System | Retained source checkpoints | Exact winning-source checkpoints admitted by audit | "
         "Exact adjacent | Comparable marginals | Decreases | Sharp drops | "
         "Hard reuse | Sharp + reuse |",
         "| --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
@@ -364,9 +705,14 @@ def main() -> int:
     tracked_opine = audits / "opine-solved-checkpoints.json"
     tracked_baseline = audits / "baseline1_gpt55_xhigh_solved_checkpoints.json"
     tracked_retrodict = audits / "retrodict-solved-checkpoint-memory.json"
-    default_gkm_root = arc / "crack_lab" / "agent_solutions"
-    release_root = (args.release_root or default_gkm_root).resolve()
-    history_root = (args.history_root or default_gkm_root).resolve()
+    frozen_release = arc / "crack_lab" / "releases" / "arc_agi3_gkm_v2_181"
+    release_root = (args.release_root or frozen_release / "artifacts").resolve()
+    acquisition_root = (
+        args.acquisition_root or frozen_release / "acquisition_source"
+    ).resolve()
+    explicit_history_root = (
+        args.history_root.resolve() if args.history_root is not None else None
+    )
     release_receipt = args.release_receipt.resolve() if args.release_receipt else None
     expected_payload = json.loads(tracked_joint.read_text())
     expected_summary = _summary(expected_payload)
@@ -381,29 +727,31 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="gkm-reproduce-") as tmp_name:
         tmp = Path(tmp_name)
+        if explicit_history_root is None:
+            history_root = _materialize_history(
+                repo=repo,
+                revision=args.history_revision,
+                output=tmp / "frozen_history",
+            )
+            history_authority = f"git:{args.history_revision}:{FROZEN_HISTORY_TREE}"
+        else:
+            history_root = _copy_authenticated_history(
+                source=explicit_history_root,
+                output=tmp / "frozen_history",
+                expected_tree_sha1=FROZEN_SOURCE_HISTORY_TREE_SHA1,
+            )
+            history_authority = "git-tree:" + FROZEN_SOURCE_HISTORY_TREE_SHA1
         joint_out = tmp / "marginal-literal-reuse.json"
         taint_out = tmp / "canonical-taint-audit.json"
         action_boundary_out = tmp / "canonical-action-boundaries.json"
         action_protocol_out = tmp / "canonical-action-protocol-audit.json"
         if release_receipt is not None:
-            release_verification = _run_json(
-                [
-                    sys.executable,
-                    "arc/crack_lab/arc_agi3_release_gate.py",
-                    "--canonical-root",
-                    str(release_root),
-                    "verify-partial",
-                    "--receipt",
-                    str(release_receipt),
-                ],
-                cwd=repo,
+            release_verification = _verify_frozen_release(
+                repo=repo,
+                release_root=release_root,
+                release_receipt=release_receipt,
+                verifier_root=args.release_verifier_root,
             )
-            if (
-                release_verification.get("status") != "PASS"
-                or int(release_verification.get("claimed_levels", -1)) != 181
-                or int(release_verification.get("authoritative_levels", -1)) != 183
-            ):
-                raise RuntimeError("schema-v2 frozen release did not verify")
             release_summary = {
                 "schema": 2,
                 "verdict": "PASS",
@@ -563,6 +911,13 @@ def main() -> int:
 
         actual_payload = json.loads(joint_out.read_text())
         actual_summary = _summary(actual_payload)
+        source_audit_scope = (
+            _source_audit_scope(
+                json.loads(release_receipt.read_text()), actual_payload
+            )
+            if release_receipt is not None
+            else None
+        )
         _add_system_specific_stats(
             actual_summary,
             opine_json=opine_json,
@@ -610,7 +965,7 @@ def main() -> int:
             "--output-dir",
             str(figure_dir),
             "--solutions-dir",
-            str(release_root),
+            str(acquisition_root),
         ]
         print("+", " ".join(command))
         subprocess.run(command, cwd=manuscript, env=env, check=True)
@@ -622,7 +977,7 @@ def main() -> int:
                 sys.executable,
                 "scripts/generate_empirical_tables.py",
                 "--solutions-dir",
-                str(release_root),
+                str(acquisition_root),
                 "--output-dir",
                 str(generated_dir),
                 "--rst-output",
@@ -666,9 +1021,24 @@ def main() -> int:
                 "baseline_release": str(args.baseline_release or ""),
                 "baseline_repo": str(args.baseline_repo or ""),
                 "retrodict_runs": str(args.retrodict_runs or ""),
-                "release_root": str(release_root),
-                "history_root": str(history_root),
-                "release_receipt": str(release_receipt or ""),
+                "release_root": _portable_path(release_root, repo),
+                "acquisition_root": _portable_path(acquisition_root, repo),
+                "history_root": (
+                    _portable_path(explicit_history_root, repo)
+                    if explicit_history_root is not None
+                    else None
+                ),
+                "history_authority": history_authority,
+                "release_receipt": (
+                    _portable_path(release_receipt, repo)
+                    if release_receipt is not None
+                    else ""
+                ),
+                "release_verifier_root": str(
+                    args.release_verifier_root.resolve()
+                    if args.release_verifier_root is not None
+                    else "local-git:receipt-source-revision"
+                ),
             },
             "taint_and_lineage": {
                 "automated_verdict": taint_report["automated_verdict"],
@@ -704,6 +1074,7 @@ def main() -> int:
                 "audit_sha256": _sha256(action_protocol_out),
             },
             "release_gate": release_summary,
+            "source_audit_scope": source_audit_scope,
             "generated": {
                 path.name: _sha256(path)
                 for path in sorted(

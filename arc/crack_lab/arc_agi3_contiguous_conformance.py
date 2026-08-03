@@ -905,6 +905,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/priors.py",
     "arc/crack_lab/proposer.py",
     "arc/crack_lab/replay_scorecard.py",
+    "arc/crack_lab/verify_frozen_release.py",
     "cone/cone_foraging.py",
     "cone/cone_foraging_bound.py",
     "arc/crack_lab/container/Containerfile.arc-agi3-contiguous",
@@ -940,6 +941,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/test_arc_agi3_controller_egress_guardian.py",
     "arc/crack_lab/test_arc_agi3_release_gate.py",
     "arc/crack_lab/test_arc_agi3_boundary_certifier.py",
+    "arc/crack_lab/test_verify_frozen_release.py",
     "arc/test_audit_action_protocol.py",
     *AUTHORITATIVE_INVENTORY_METADATA_FILES,
 )

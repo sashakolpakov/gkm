@@ -67,18 +67,28 @@ See [`REPRODUCE_ARC.md`](REPRODUCE_ARC.md).
 The replay script is:
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode online
+python arc/crack_lab/replay_scorecard.py \
+  --mode online --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 ```
 
 The definitive all-game card used the complete frozen release:
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode competition
+python arc/crack_lab/replay_scorecard.py \
+  --mode competition --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 ```
 
-Canonical endpoint folders are under
+The frozen publication endpoints are under
+[`arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/`](arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/).
+The mutable acquisition workspace is
 [`arc/crack_lab/agent_solutions/`](arc/crack_lab/agent_solutions/). The complete
-publication histories for `wa30` and `ls20` are additionally indexed under
+uniform publication histories for `wa30` and `ls20` are additionally indexed under
 [`arc/manuscript/artifact_history/`](arc/manuscript/artifact_history/).
 
 ## Exact claim

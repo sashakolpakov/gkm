@@ -51,11 +51,14 @@ compressed novelty bytes, while the winning player directly calls the unchanged
 to 292 at L7. The cumulative executable solver need not shrink; attribution comes
 from the conditional marginal and literal call together.
 
-**Audit trail.** GKM is meant to leave evidence, not just outputs. Each promoted step is backed by fresh replay, preserved WIP snapshots, a marginal-complexity charge, and a distinction between literal action recovery and reusable refactor. This makes the artifact reviewable: an external evaluator can inspect which information entered through interaction, which code was introduced, what was charged as a literal, and what later became a reusable leg.
+**Audit trail.** GKM is meant to leave evidence, not just outputs. Every admitted
+endpoint has replay and hash evidence; the winning-source subset additionally supports
+source-marginal and reuse analysis. This separates literal path reconstruction from
+historical executable growth.
 
-**Comparison.** The exact winning-checkpoint test couples conditional AST novelty to
-direct calls of unchanged definitions. Of the 181 admitted boundaries, 180 retain
-the exact historical acquisition source needed by this test. They contain 57 hard
+**Comparison.** All 181 claimed boundaries are replay-verified wins. The stricter
+source audit admits 174 exact winning-source checkpoints; it excludes `ft09` L2 and
+`tr87` L1--L6 deterministic reconstructions. The admitted set contains 57 hard
 direct-reuse witnesses, including 14 with half-or-more marginal drops. OPINE has
 four direct engine-reuse wins, with sharp coupled drops at `lp85` L4 and `tu93` L3,
 so it is not solving every level wholly anew. baseline1 has four exact retained-source

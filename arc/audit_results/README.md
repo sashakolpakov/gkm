@@ -33,33 +33,16 @@ reproducibility.
   checkpoints. Its conditional AST marginal is the compressed normalized
   top-level AST in the current winning program that is not a literal member of
   the preceding winning program. A reuse witness requires the winning entry
-  point to call an unchanged named definition directly. The tracked file is the
-  active-campaign snapshot frozen at 2026-07-26 21:02 CEST: GKM has 126 exact
-  winning checkpoints, 99 exact adjacent transitions, 38 hard direct-call
-  witnesses, and nine sharp/direct-call intersections. OPINE has four hard
-  witnesses and two sharp intersections; baseline1 has zero among its 18 exact
-  adjacent transitions; Retrodict releases no executable winning entry point.
-
-The eleven joint sharp-drop/reuse findings are:
-
-- GKM `ar25` L2: 622 to 175, calling unchanged `repeat_action`;
-- GKM `g50t` L4: 2238 to 168 compressed AST-novelty bytes, with a direct call
-  to unchanged `solve_unlock_macro`;
-- GKM `ka59` L2: 810 to 301, calling unchanged `move_steps` and `select_at`;
-- GKM `lp85` L2: 698 to 189, calling unchanged `repeat_click`;
-- GKM `ls20` L7: 682 to 222, with a direct call to unchanged `execute_path`;
-- GKM `m0r0` L2: 673 to 265, calling unchanged
-  `follow_action_sequence`;
-- GKM `sc25` L2: 1131 to 279, calling unchanged
-  `move_until_level_progress` and `select_grid_cells_of_color`;
-- GKM `tu93` L5: 1302 to 186, calling unchanged
-  `drive_dynamic_maze_via_color`;
-- GKM `tu93` L7: 1440 to 212, calling unchanged
-  `drive_dynamic_directional_waypoints`;
-- OPINE `lp85` L4: 5818 to 2550, with the identical winning planner directly
-  calling three unchanged engine definitions; and
-- OPINE `tu93` L3: 7091 to 2608, with the winning planner directly calling
-  three unchanged engine definitions.
+  point to call an unchanged named definition directly. The frozen GKM source
+  audit admits 174 exact winning-source checkpoints, 149 exact adjacent
+  transitions, 57 hard direct-call witnesses, and 14 sharp/direct-call
+  intersections. These are a strict subset of the 181 replay-verified endpoint
+  wins: `ft09` L2 and `tr87` L1--L6 are replay-valid deterministic
+  reconstructions and are excluded from historical source-complexity
+  denominators. OPINE has four hard witnesses and two sharp intersections;
+  baseline1 has zero among its 18 exact adjacent transitions; Retrodict releases
+  no executable winning entry point. The complete witness enumeration is
+  generated in `arc/manuscript/generated/comparator_stats.md`.
 
 baseline1's four exact cumulative source/AST contractions do not pass the
 literal winning-entry-point test. All 18 exact adjacent winning commands are
@@ -74,11 +57,16 @@ interpreted only between adjacent solved levels.
 
 ## Reproduction
 
-The frozen uniform comparison is self-contained in
-`marginal-literal-reuse.json` (SHA-256
-`a2b6248dff6e4ed31de0299c9882120788745986ff3e699c3888025d4fb84775`).
-To recompute GKM against the mutable campaign while reusing the pinned
-large-artifact rows:
+The revision-bound manuscript target extracts the frozen source history and
+recomputes GKM while reusing or rebuilding the independently pinned comparator
+rows:
+
+```bash
+RELEASE_RECEIPT=../crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  make -C arc/manuscript reproduce
+```
+
+For a non-authoritative diagnostic against the mutable campaign tree:
 
 ```bash
 python3 arc/audit_marginal_literal_reuse.py \
@@ -88,8 +76,8 @@ python3 arc/audit_marginal_literal_reuse.py \
   --json /tmp/marginal-literal-reuse-current.json
 ```
 
-The command is a drift check: after another promotion, its GKM row should differ
-from the frozen snapshot. Raw external-artifact commands and pinned input hashes
+That command is only a drift check; it is not the frozen manuscript authority.
+Raw external-artifact commands and pinned input hashes
 are documented in `arc/manuscript/opine_world_comparison.md`.
 
 The source analyzers are:

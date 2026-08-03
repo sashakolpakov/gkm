@@ -18,6 +18,9 @@ together as one clean promotion event at `15c0a049`; this commit cadence does no
 omit any level from the nine-entry ledger or from the final nine-level replay. Also,
 `ls20` had its clean-through-L2 core preserved in the failed L3 attempt archive,
 while the reconstructed manuscript sidecar has clean source evidence at every depth.
+This compact sidecar does not turn replay-certified reconstruction into historical
+acquisition evidence: `ft09` L2 and `tr87` L1--L6 remain excluded from the stricter
+source-complexity denominator.
 
 Rebuild and verify the sidecar from the repository root:
 

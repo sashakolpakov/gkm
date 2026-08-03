@@ -8,7 +8,7 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
 
 ## Canonical deliverables
 
-- `arc_agi3.tex` and `references.bib`: the integrated 26-page paper source.
+- `arc_agi3.tex` and `references.bib`: the integrated paper source.
 - `arc_agi3.pdf`: the generated paper; build it locally rather than treating a bundled
   binary as the source of truth.
 - `scripts/generate_figures.py`: exact source for the three empirical ledger figures.
@@ -23,8 +23,9 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
 - `BUILD_VERIFICATION.md`: results and limits of the repository integration checks.
 - `scripts/build_arxiv_bundle.py`: deterministic minimal arXiv source-package builder
   and isolated compile check.
-- `SHA256SUMS.txt`: integrity manifest for the integrated source deliverables and
-  generated empirical evidence. It deliberately excludes the ignored local paper PDFs,
+- `SHA256SUMS.txt`: fixed-scope integrity manifest for the integrated source
+  deliverables and generated empirical evidence. `make verify-manifest` checks it and
+  `make manifest` regenerates it. It deliberately excludes the ignored local paper PDFs,
   whose TeX metadata records the build time; their page/diagnostic checks are recorded
   in `BUILD_VERIFICATION.md`.
 
@@ -78,24 +79,51 @@ bytes through rendering details; the integration verification records the versio
 The manuscript build reproduces the document, not the stochastic discovery campaign.
 The repository supplies separate gates for the retained evidence:
 
-The final empirical bundle is bound to release commit
-`9235ed26627140460efa1f6ca5e4041470cddc14` and schema-v2 receipt
-`140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
-After checking out or extracting that release, run:
+The frozen artifacts and receipt were published at commit
+`9235ed26627140460efa1f6ca5e4041470cddc14`. The schema-v2 receipt
+`140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`
+separately binds control/verifier source revision
+`c1f8168f230732f2d745c234555b3e3dfcb8aefa`. From the current reproduction
+harness in a full-history Git checkout, run:
 
 ```bash
-RELEASE_ROOT=/path/to/arc_agi3_gkm_v2_181/artifacts \
+ENDPOINT_ROOT=/path/to/arc_agi3_gkm_v2_181/artifacts \
+ACQUISITION_ROOT=/path/to/arc_agi3_gkm_v2_181/acquisition_source \
 RELEASE_RECEIPT=/path/to/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
 make -C arc/manuscript reproduce
-python arc/crack_lab/replay_scorecard.py --mode online
+python arc/crack_lab/replay_scorecard.py \
+  --mode online --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 ```
 
-The reproduction target verifies the release receipt, taint and action-protocol
-audits, exact boundaries, hashes, manifests, source-coupled reuse statistics, tables,
-figures, tests, and PDF. The final command performs a zero-LLM endpoint replay against
-public remote environments and therefore requires the ARC API environment and
-credentials. See [`../../REPRODUCE_ARC.md`](../../REPRODUCE_ARC.md) for the complete
-protocol and security boundary.
+The two roots are deliberately distinct. The normalized endpoint capsules are the
+authority for receipt, replay, taint, action, hash, and manifest checks. The frozen
+acquisition programs are the authority for retained description length (D(s)), the
+marginal-complexity table, and figures. Source-coupled reuse is recomputed from the
+manuscript's frozen source-history snapshot at commit
+`4d0e42f34d7b1db8305f03d725528dfdefe22511`, which the target extracts from local
+Git rather than reading the mutable live campaign. That authority is distinct from the
+artifact-publication commit `9235ed...` and receipt-bound verifier revision `c1f8168...`.
+The release result is 181/183 replay-verified wins. The narrower winning-source
+audit admits 174 exact checkpoints and excludes the seven deterministic path reconstructions
+(`ft09` L2 and `tr87` L1--L6) from source-complexity denominators.
+The final command performs a zero-LLM endpoint replay against public remote environments
+and therefore requires the ARC API environment and credentials. See
+[`../../REPRODUCE_ARC.md`](../../REPRODUCE_ARC.md) for the complete protocol and
+security boundary.
+
+`verify_frozen_release.py` automatically extracts the receipt-bound historical
+verifier/control context from local Git; it never rebuilds the old receipt with current
+controls. Full source/reuse reproduction therefore expects a full-history Git checkout.
+Without `.git`, set both
+`RELEASE_VERIFIER_ROOT=/path/to/extracted/c1f8168-source` and
+`HISTORY_ROOT=/path/to/extracted/4d0e42f-agent-solutions` before `make reproduce`.
+The latter is copied privately and admitted only if its complete Git-tree digest is
+`85543629cfcafc70eb7230493f394059c8e0ac45`.
+For endpoint-only scorecard preflight, pass the former tree with
+`--release-verifier-root`; no source-history tree is needed.
 
 The active/contiguous acquisition policy, including the complexity-triggered
 independent side-expert and supervisory-proposer roles, is separately

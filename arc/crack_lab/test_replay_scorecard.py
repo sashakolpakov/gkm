@@ -1,10 +1,37 @@
 import hashlib
 import json
+import sys
 import pytest
 from types import SimpleNamespace
 
 import replay_scorecard as R
 from replay_scorecard import decode_action
+
+
+def _write_content_addressed_receipt(tmp_path, body):
+    body = {
+        **body,
+        "release_identity": {"source_revision": "a" * 40},
+        "control_contract": {
+            "files_sha256": {
+                "arc/crack_lab/arc_agi3_release_gate.py": "b" * 64
+            }
+        },
+        "verifier": {
+            "files_sha256": {
+                "arc/crack_lab/arc_agi3_release_gate.py": "b" * 64
+            }
+        },
+        "inventory_metadata_sha256": {"wa30/meta.json": "c" * 64},
+    }
+    raw = (
+        json.dumps(body, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
+        + "\n"
+    ).encode()
+    digest = hashlib.sha256(raw).hexdigest()
+    path = tmp_path / f"{digest}.json"
+    path.write_bytes(raw)
+    return path
 
 
 def test_decode_action_supports_keys_and_coordinate_tokens():
@@ -108,33 +135,99 @@ def test_release_binding_requires_exact_checkpoint_bytes(tmp_path):
         checkpoint_hashes[game] = digest
         checkpoints[game] = value
         evidence[game] = [{"checkpoint_sha256": digest}]
-    receipt = tmp_path / "receipt.json"
-    receipt.write_text(json.dumps({
-        "inventory": inventory,
-        "claimed_inventory": inventory,
-        "claimed_level_count": 2,
-        "authoritative_level_count": 2,
-        "canonical_tree_sha256": "a" * 64,
-        "evidence": evidence,
-    }))
+    receipt = _write_content_addressed_receipt(
+        tmp_path,
+        {
+            "inventory": inventory,
+            "claimed_inventory": inventory,
+            "claimed_level_count": 2,
+            "authoritative_level_count": 2,
+            "canonical_tree_sha256": "a" * 64,
+            "evidence": evidence,
+        },
+    )
 
     binding = R.release_binding(
         receipt,
-        artifact_root,
         ["ls20", "wa30"],
         checkpoints,
+        checkpoint_hashes,
     )
     assert binding["claimed_level_count"] == 2
     assert binding["canonical_tree_sha256"] == "a" * 64
+    assert binding["receipt_sha256"] == receipt.stem
 
-    (artifact_root / "wa30_legs" / "checkpoint.json").write_text("{}")
+    stale_hashes = dict(checkpoint_hashes)
+    stale_hashes["wa30"] = "0" * 64
     with pytest.raises(ValueError, match="bytes differ"):
         R.release_binding(
             receipt,
-            artifact_root,
             ["ls20", "wa30"],
             checkpoints,
+            stale_hashes,
         )
+
+    wrong_name = tmp_path / f"{'0' * 64}.json"
+    wrong_name.write_bytes(receipt.read_bytes())
+    with pytest.raises(R.FrozenReleaseError, match="content hash"):
+        R.release_binding(
+            wrong_name,
+            ["ls20", "wa30"],
+            checkpoints,
+            checkpoint_hashes,
+        )
+
+
+def test_load_checkpoint_hashes_the_same_bytes_it_parses(tmp_path):
+    game_root = tmp_path / "wa30_legs"
+    game_root.mkdir()
+    raw = b'{"game":"wa30","reached":1,"final_path":[1]}\n'
+    (game_root / "checkpoint.json").write_bytes(raw)
+    value, digest = R.load_checkpoint("wa30", tmp_path)
+    assert value["final_path"] == [1]
+    assert digest == hashlib.sha256(raw).hexdigest()
+
+
+def test_main_rejects_receipt_swap_between_gate_and_binding(
+    monkeypatch, tmp_path
+):
+    artifact_root = tmp_path / "artifacts"
+    artifact_root.mkdir()
+    receipt = tmp_path / "receipt.json"
+    receipt.write_text("{}\n")
+    checkpoint = {"game": "wa30", "reached": 1, "final_path": [1]}
+    monkeypatch.setattr(
+        R,
+        "verify_frozen_release",
+        lambda **kwargs: {"status": "PASS", "receipt_sha256": "a" * 64},
+    )
+    monkeypatch.setattr(
+        R,
+        "release_binding",
+        lambda *args: {
+            "receipt_sha256": "b" * 64,
+            "claimed_level_count": 1,
+            "authoritative_level_count": 183,
+        },
+    )
+    monkeypatch.setattr(R, "load_checkpoint", lambda *args: (checkpoint, "c" * 64))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "replay_scorecard.py",
+            "--mode",
+            "online",
+            "--games",
+            "wa30",
+            "--artifact-root",
+            str(artifact_root),
+            "--release-receipt",
+            str(receipt),
+            "--preflight-only",
+        ],
+    )
+    assert R.main() == 2
 
 
 def test_write_new_json_never_overwrites(tmp_path):
@@ -143,3 +236,23 @@ def test_write_new_json_never_overwrites(tmp_path):
     assert json.loads(target.read_text()) == {"status": "PASS"}
     with pytest.raises(FileExistsError):
         R.write_new_json(target, {"status": "FAIL"})
+
+
+def test_public_docs_do_not_publish_mode_only_replay_commands():
+    repo = R.GKM
+    paths = (
+        repo / "README.md",
+        repo / "REPRODUCE_ARC.md",
+        repo / "arc/manuscript/README.md",
+        repo / "arc/manuscript/arc_agi3.tex",
+        repo / "arc/crack_lab/replay_scorecard.py",
+    )
+    forbidden = (
+        "python arc/crack_lab/replay_scorecard.py --mode online\n",
+        "python arc/crack_lab/replay_scorecard.py --mode competition\n",
+        "python3 arc/crack_lab/replay_scorecard.py --mode online\n",
+        "python3 arc/crack_lab/replay_scorecard.py --mode competition\n",
+    )
+    for path in paths:
+        text = path.read_text()
+        assert not any(command in text for command in forbidden), path

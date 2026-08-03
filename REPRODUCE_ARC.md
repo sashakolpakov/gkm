@@ -1,8 +1,10 @@
 # Reproducing the ARC-AGI-3 promoted artifacts
 
-This guide explains how to replay the manuscript's promoted `wa30` and `ls20` artifacts.
-It does not rerun the full proposer/discovery process. It replays already
-promoted solver artifacts through the ARC-AGI-3 interface.
+This guide explains how to replay the frozen 25-game ARC-AGI-3 release used by
+the manuscript. It does not rerun the stochastic proposer/discovery process.
+The workflow first reopens the complete schema-v2 evidence with the exact
+receipt-bound historical verifier/control bytes, then binds and replays the
+promoted endpoint paths through the ARC-AGI-3 interface.
 
 ## Install
 
@@ -72,6 +74,33 @@ cross-frontier, or substituted requests.
 The policy test does not by itself prove that runner/container wiring exists;
 the unified contiguous conformance receipt is the launch gate.
 
+## Verify the frozen release
+
+The v2 artifact/receipt publication commit is
+`9235ed26627140460efa1f6ca5e4041470cddc14`; the receipt itself binds the
+earlier control/verifier source revision
+`c1f8168f230732f2d745c234555b3e3dfcb8aefa`. They are different identifiers
+for different objects. From a full-history Git checkout, run:
+
+```bash
+python arc/crack_lab/verify_frozen_release.py \
+  --canonical-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json
+```
+
+The wrapper reads `source_revision` from the canonical, content-addressed
+receipt, extracts only its hash-bound verifier, control, and environment
+metadata files from local Git, checks those bytes, and executes that historical
+gate against the frozen artifact tree. It does not relax the receipt to match
+current controls. A source archive without `.git` must instead supply an
+already extracted receipt-bound tree with `--verifier-root`; the manuscript
+Make target accepts the same path through `RELEASE_VERIFIER_ROOT`. Full
+source/reuse reproduction without Git additionally requires `HISTORY_ROOT` to
+name an extracted copy of
+`4d0e42f34d7b1db8305f03d725528dfdefe22511:arc/crack_lab/agent_solutions`.
+The suite copies that tree privately and requires its complete Git-tree digest to equal
+`85543629cfcafc70eb7230493f394059c8e0ac45` before auditing it.
+
 Any protocol-invalid public action is terminal for that turn. The compatibility runner tails its
 host-owned Codex transcript and terminates the complete proposer process group
 on the first protocol marker; snapshotting independently reopens that protected
@@ -84,16 +113,27 @@ resumable pointer, or promotion survives such a turn, including after restart.
 ## Replay promoted artifacts
 
 `--mode online` is a remote dry run against the same API, with no competition
-constraints — run this first, because a desync here costs nothing:
+constraints — run this first, because a desync here costs nothing. When a
+receipt is supplied, the script runs the full historical release gate above
+before its narrower endpoint/checkpoint binding and local path segmentation:
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode online
+python arc/crack_lab/replay_scorecard.py \
+  --mode online --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 ```
 
-By default this replays both promoted games. To replay a single game:
+The explicit `--games all` is important: the command-line default is the small
+`wa30,ls20` demonstration subset. The release receipt intentionally binds the
+complete claimed inventory, so a one-game diagnostic must omit that receipt
+and is not itself release verification:
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode online --games wa30
+python arc/crack_lab/replay_scorecard.py \
+  --mode online --games wa30 \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts
 ```
 
 ## Generate competition-mode scorecard
@@ -103,13 +143,11 @@ made once, and the closed scorecard is what the community leaderboard links as
 `scorecard_url`.
 
 ```bash
-python arc/crack_lab/replay_scorecard.py --mode competition
-```
-
-The frozen v2 card was generated over all 25 public games with:
-
-```bash
-python arc/crack_lab/replay_scorecard.py --mode competition
+python arc/crack_lab/replay_scorecard.py \
+  --mode competition --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 ```
 
 It closed as [scorecard `cf75e14b-2c25-41cb-bc70-53bd57411edb`](https://arcprize.org/scorecards/cf75e14b-2c25-41cb-bc70-53bd57411edb):
@@ -127,7 +165,7 @@ and the machine-readable audit outputs under `arc/audit_results/`.
 
 The integrated manuscript bundle is under `arc/manuscript/`. Its default target
 regenerates both empirical figures, compiles the standalone inverse-colimit diagram,
-and builds the 26-page paper through BibTeX:
+and builds the paper through BibTeX:
 
 ```bash
 python -m pip install -r arc/manuscript/requirements-figures.txt
@@ -142,8 +180,9 @@ verification boundary.
 
 ## Artifact locations
 
-Canonical promoted and partial endpoints use
-`arc/crack_lab/agent_solutions/<game>_legs/`. Each promoted endpoint's
+Frozen publication endpoints use
+`arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts/<game>_legs/`; live promoted
+and partial work uses `arc/crack_lab/agent_solutions/<game>_legs/`. Each endpoint's
 `checkpoint.json` records the replay path; exact historical-boundary coverage is
 reported separately by the audit suite. The manuscript's frozen `wa30` and `ls20`
 sidecar histories remain under `arc/manuscript/artifact_history/`.

@@ -19,8 +19,11 @@ Modes (docs.arcprize.org/toolkit/competition_mode):
                       resets. The closed scorecard is what the community
                       leaderboard links as scorecard_url.
 
-    python3 arc/crack_lab/replay_scorecard.py --mode online
-    python3 arc/crack_lab/replay_scorecard.py --mode competition
+Canonical all-game invocations must also provide ``--games all``, the frozen
+``--artifact-root``, its content-addressed ``--release-receipt``, and the
+expected claimed-level count.  See ``REPRODUCE_ARC.md`` for the exact frozen
+release commands; bare mode-only examples intentionally select only the small
+demonstration subset and are not publication runs.
 """
 from __future__ import annotations
 
@@ -28,9 +31,16 @@ import argparse
 import hashlib
 import json
 import os
+import stat
 import sys
 import time
 from pathlib import Path
+
+from verify_frozen_release import (
+    FrozenReleaseError,
+    load_receipt,
+    verify_frozen_release,
+)
 
 LAB = Path(__file__).resolve().parent
 GKM = LAB.parents[1]
@@ -46,6 +56,7 @@ if _env.exists():
 
 DEFAULT_SOURCE_URL = "https://github.com/sashakolpakov/gkm"
 DEFAULT_ARTIFACT_ROOT = LAB / "agent_solutions"
+MAX_CHECKPOINT_BYTES = 32 * 1024 * 1024
 
 
 def sha256_file(path: Path) -> str:
@@ -60,10 +71,40 @@ def checkpoint_path(artifact_root: Path, game: str) -> Path:
     return artifact_root / f"{game}_legs" / "checkpoint.json"
 
 
-def checkpoint(game: str, artifact_root: Path = DEFAULT_ARTIFACT_ROOT) -> dict:
+def load_checkpoint(
+    game: str, artifact_root: Path = DEFAULT_ARTIFACT_ROOT
+) -> tuple[dict, str]:
+    """Read and hash one regular checkpoint from the same immutable byte string."""
     path = checkpoint_path(artifact_root, game)
-    with open(path) as f:
-        return json.load(f)
+    metadata = path.lstat()
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_size > MAX_CHECKPOINT_BYTES
+    ):
+        raise ValueError(f"checkpoint is not a bounded regular file: {game}")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    descriptor = os.open(path, flags)
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_size > MAX_CHECKPOINT_BYTES
+        ):
+            raise ValueError(f"checkpoint changed during bounded read: {game}")
+        raw = handle.read(MAX_CHECKPOINT_BYTES + 1)
+    if len(raw) > MAX_CHECKPOINT_BYTES:
+        raise ValueError(f"checkpoint is too large: {game}")
+    value = json.loads(raw)
+    if not isinstance(value, dict):
+        raise ValueError(f"checkpoint is not a JSON object: {game}")
+    return value, hashlib.sha256(raw).hexdigest()
+
+
+def checkpoint(game: str, artifact_root: Path = DEFAULT_ARTIFACT_ROOT) -> dict:
+    """Backward-compatible value-only checkpoint reader."""
+    return load_checkpoint(game, artifact_root)[0]
 
 
 def parse_games(value: str, artifact_root: Path) -> list[str]:
@@ -91,14 +132,13 @@ def parse_games(value: str, artifact_root: Path) -> list[str]:
 
 def release_binding(
     receipt_path: Path,
-    artifact_root: Path,
     games: list[str],
     checkpoints: dict[str, dict],
+    checkpoint_hashes: dict[str, str],
 ) -> dict:
-    """Bind selected checkpoint bytes to a schema-v2 release receipt."""
-    receipt = json.loads(receipt_path.read_text(encoding="utf-8"))
-    if not isinstance(receipt, dict):
-        raise ValueError("release receipt must be an object")
+    """Bind the exact already-loaded endpoint bytes after full verification."""
+    receipt, _ = load_receipt(receipt_path)
+    receipt_sha256 = receipt_path.stem
     inventory = receipt.get("inventory")
     if not isinstance(inventory, dict):
         raise ValueError("release receipt has no authoritative inventory")
@@ -124,7 +164,7 @@ def release_binding(
             or not isinstance(rows[-1], dict)
         ):
             raise ValueError(f"release evidence is incomplete for {game}")
-        actual = sha256_file(checkpoint_path(artifact_root, game))
+        actual = checkpoint_hashes.get(game)
         if rows[-1].get("checkpoint_sha256") != actual:
             raise ValueError(
                 f"checkpoint bytes differ from release receipt: {game}"
@@ -136,7 +176,8 @@ def release_binding(
     if claimed_total != recorded_total:
         raise ValueError("release receipt claimed-level total is inconsistent")
     return {
-        "receipt_sha256": sha256_file(receipt_path),
+        "binding_scope": "endpoint_checkpoint_bytes_only_after_full_gate",
+        "receipt_sha256": receipt_sha256,
         "canonical_tree_sha256": receipt.get("canonical_tree_sha256"),
         "claimed_inventory": claimed,
         "claimed_level_count": claimed_total,
@@ -299,7 +340,18 @@ def main() -> int:
     ap.add_argument(
         "--release-receipt",
         type=Path,
-        help="content-addressed schema-v2 receipt binding the frozen tree",
+        help=(
+            "content-addressed schema-v2 receipt; triggers full historical "
+            "release-gate verification before endpoint binding"
+        ),
+    )
+    ap.add_argument(
+        "--release-verifier-root",
+        type=Path,
+        help=(
+            "already extracted receipt-bound verifier tree; by default the "
+            "exact source revision is read from local Git history"
+        ),
     )
     ap.add_argument(
         "--expected-claimed-levels",
@@ -333,26 +385,58 @@ def main() -> int:
         print("competition mode requires --release-receipt.")
         return 2
 
+    binding = None
+    release_verification = None
+    if args.release_receipt is not None:
+        try:
+            release_verification = verify_frozen_release(
+                receipt_path=args.release_receipt.resolve(),
+                canonical_root=artifact_root,
+                repo_root=GKM,
+                verifier_root=(
+                    args.release_verifier_root.resolve()
+                    if args.release_verifier_root is not None
+                    else None
+                ),
+            )
+        except (
+            FrozenReleaseError,
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            print(f"release receipt rejected: {exc}")
+            return 2
     try:
-        plan = {game: checkpoint(game, artifact_root) for game in games}
-    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        loaded = {game: load_checkpoint(game, artifact_root) for game in games}
+        plan = {game: value for game, (value, _) in loaded.items()}
+        checkpoint_hashes = {game: digest for game, (_, digest) in loaded.items()}
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         print(f"cannot load frozen checkpoint plan: {exc}")
         return 2
-    checkpoint_hashes = {
-        game: sha256_file(checkpoint_path(artifact_root, game))
-        for game in games
-    }
-    binding = None
     if args.release_receipt is not None:
         try:
             binding = release_binding(
                 args.release_receipt.resolve(),
-                artifact_root,
                 games,
                 plan,
+                checkpoint_hashes,
             )
-        except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
-            print(f"release receipt rejected: {exc}")
+            if (
+                release_verification is None
+                or binding["receipt_sha256"]
+                != release_verification.get("receipt_sha256")
+            ):
+                raise ValueError("release receipt changed after full verification")
+        except (
+            FrozenReleaseError,
+            OSError,
+            UnicodeError,
+            json.JSONDecodeError,
+            ValueError,
+        ) as exc:
+            print(f"release endpoint binding rejected: {exc}")
             return 2
     if args.mode == "competition" and (
         binding is None
@@ -409,6 +493,7 @@ def main() -> int:
                 if args.release_receipt is not None
                 else None
             ),
+            "release_verification": release_verification,
             "release_binding": binding,
             "checkpoint_sha256": checkpoint_hashes,
             "claimed_levels": claimed_levels,
@@ -513,6 +598,7 @@ def main() -> int:
             if args.release_receipt is not None
             else None
         ),
+        "release_verification": release_verification,
         "release_binding": binding,
         "checkpoint_sha256": checkpoint_hashes,
         "claimed_levels": claimed_levels,

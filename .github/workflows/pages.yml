@@ -2,7 +2,7 @@ name: Deploy Sphinx documentation
 
 on:
   push:
-    branches: [manuscript]
+    branches: [master]
   workflow_dispatch:
 
 permissions:
@@ -20,6 +20,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -30,7 +33,16 @@ jobs:
         uses: actions/configure-pages@v5
 
       - name: Install documentation dependencies
-        run: python -m pip install -r docs/requirements.txt
+        run: >-
+          python -m pip install
+          'arc-agi==0.9.9' 'arcengine==0.9.3'
+          -r docs/requirements.txt
+
+      - name: Verify frozen ARC-AGI-3 release
+        run: >-
+          python arc/crack_lab/verify_frozen_release.py
+          --canonical-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts
+          --receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json
 
       - name: Build Sphinx documentation
         run: python -m sphinx -W -b html docs docs/_build/html

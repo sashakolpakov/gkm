@@ -11,7 +11,7 @@
     "games": 25,
     "inventory_sha256": "31144058543d7d30fa695cb0a9df410c3711d25c21264dc8c41a86efeeece5ab",
     "kind": "partial_campaign_freeze",
-    "receipt": "/private/tmp/gkm-release-9235ed2/arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json",
+    "receipt": "arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json",
     "status": "PASS",
     "unclaimed_boundaries": [
       {
@@ -23,6 +23,7 @@
         "level": 10
       }
     ],
+    "verification_context_source_revision": "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
     "verifier_sha256": "070610f9c0b8063ed241fc0aae03bbda1ff2573ad2621f73c1f73fa1b2da3bd5"
   }
 }

@@ -1001,16 +1001,26 @@ that output is not a different architecture.
 Three repository commands address different layers:
 \begin{verbatim}
 python arc/manuscript/build_artifact_history.py --check
-RELEASE_ROOT=/path/to/arc_agi3_gkm_v2_181/artifacts \
+ENDPOINT_ROOT=/path/to/arc_agi3_gkm_v2_181/artifacts \
+ACQUISITION_ROOT=/path/to/arc_agi3_gkm_v2_181/acquisition_source \
 RELEASE_RECEIPT=/path/to/arc_agi3_gkm_v2_181/receipts/\
 140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
   make -C arc/manuscript reproduce
-python arc/crack_lab/replay_scorecard.py --mode online
+python arc/crack_lab/replay_scorecard.py --mode online --games all \
+  --artifact-root arc/crack_lab/releases/arc_agi3_gkm_v2_181/artifacts \
+  --release-receipt arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/\
+140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json \
+  --expected-claimed-levels 181
 \end{verbatim}
 The history builder checks the two immutable uniform sidecars. The unified reproduction
-entry point regenerates taint, action, source/reuse, table, figure, and document outputs.
-The online scorecard replays stored paths against the public remote environments and
-consumes zero LLM tokens. Exact regeneration of stochastic proposal transcripts is a
+entry point uses normalized capsules for endpoint certification, frozen acquisition
+programs for $D(s)$ and marginal-complexity outputs, and source-history revision
+\texttt{4d0e42f34d7b1db8305f03d725528dfdefe22511} for the source/reuse audit.
+It invokes the receipt-bound historical release gate to revalidate the complete sealed
+evidence chain. The online
+scorecard repeats that gate before binding and locally segmenting the exact loaded
+checkpoint bytes, then replays their stored paths against the public remote environments
+with zero LLM tokens. Exact regeneration of stochastic proposal transcripts is a
 different experiment from reproduction of the promoted solver.
 
 \subsection{Numerical reconciliation}
@@ -1037,9 +1047,9 @@ transient \texttt{vc33} connection-reset recovery.}
 \end{table}
 
 \section{Empirical Results}
-The reported endpoints are reproduced from promoted checkpoints and action paths; the
-intermediate interpretations below come from corresponding source snapshots and debrief
-records. The definitive replay-only Competition-Mode scorecard reports an official
+The reported endpoints are reproduced from promoted checkpoints and action paths;
+source-level interpretations below are confined to the 174 checkpoints admitted by the
+pinned winning-source audit. The definitive replay-only Competition-Mode scorecard reports an official
 all-game score of $98.11664037825032\%$ over all 25 public games. Its frozen raw
 coverage is $181/183=98.907103825137\%$; the stored paths contain 7001 actions and the
 scorecard records 7069 API calls. Neither quantity measures the larger clone-enabled
@@ -1340,7 +1350,11 @@ winning-entry-point test; the audited GPT-5.5 \texttt{baseline1} lineage does no
 the Retrodict v1 artifact set does not release the executable checkpoints needed to
 pass it. These statements do not impute the same solve-boundary result to baseline1
 v1.6 or Retrodict v2. GKM supplies the strongest literal-leg evidence in the measured
-exact set.
+exact set. This source denominator is narrower than GKM's endpoint result: all 181
+claimed levels are replay-verified wins, while the pinned winning-source audit admits
+174 exact checkpoints. It excludes \texttt{ft09} L2 and \texttt{tr87} L1--L6 because
+their endpoint capsules are replay-valid deterministic path reconstructions rather than
+admissible winning-source checkpoints for source-marginal comparison.
 
 \begin{table}[H]
 \centering
@@ -1349,11 +1363,11 @@ exact set.
   >{\raggedright\arraybackslash}p{0.24\textwidth}
   >{\raggedright\arraybackslash}X@{}}
 \toprule
-System & Exact solve-boundary coverage & Conditional AST marginal &
+System & Replay/source boundary coverage & Conditional AST marginal &
 Direct literal reuse at the win \\
 \midrule
-GKM & \GKMExactWins{} exact winning checkpoints; \GKMExactAdjacent{} adjacent
-transitions &
+GKM & 181/183 replay-verified level wins; \GKMExactWins{} exact winning-source
+checkpoints admitted by audit and \GKMExactAdjacent{} adjacent source transitions &
 \GKMDecreases{} decreases among \GKMComparable{} comparable marginals;
 \GKMSharpDrops{} sharp drops &
 \GKMHardReuse{} winning players directly call unchanged legs;
@@ -1385,16 +1399,15 @@ marginals &
 memory, not winning entry points \\
 \bottomrule
 \end{tabularx}
-\caption{Solved-checkpoint-only comparison. A marginal comparison $M_L$ versus
+\caption{Source-auditable solved-checkpoint comparison. A marginal comparison $M_L$ versus
 $M_{L-1}$ requires the corresponding consecutive exact winning sources. A literal
 reuse witness requires a direct call from the winning entry point; retained but
-uninvoked definitions do not qualify. Counts describe released artifact coverage,
-not performance. The GKM row is the active-campaign snapshot frozen at
-2026-07-26 21:02 CEST.}
+uninvoked definitions do not qualify. Counts describe historical source-audit coverage,
+not replay-verified level coverage or performance.}
 \label{tab:audit-axes}
 \end{table}
 
-\paragraph{The eleven sharp coupled witnesses.}
+\paragraph{Sharp coupled witnesses.}
 \begingroup\footnotesize\sloppy
 Exactly \GKMCoupledWitnesses{} GKM and \OPINECoupledWitnesses{} OPINE
 transitions satisfy both the sharp-drop and literal-call tests:

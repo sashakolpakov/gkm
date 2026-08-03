@@ -893,9 +893,11 @@ winning model reuse.
 - The paper reports the official Competition score (98.11664037825032%), raw coverage
   (181/183 = 98.907103825137%), stored path actions (7001), and API calls (7069) as
   distinct quantities.
-- The source-coupled audit has 180 exact historical winning checkpoints, not 181:
-  `ft09` L2 is omitted from that denominator rather than reconstructed. Endpoint
-  replay and source-history comparison therefore retain separate scopes.
+- All 181 claimed boundaries are replay-verified wins. The stricter source-coupled
+  audit admits 174 exact winning-source checkpoints: `ft09` L2 and `tr87`
+  L1--L6 are replay-valid deterministic path reconstructions and are omitted from that
+  denominator. Endpoint replay and source-history comparison therefore retain
+  separate scopes.
 - The producer is described as universal because the proposer contract, Arena,
   blank scaffold, complexity coordinate, and replay gate are fixed across all games.
   Its promoted executable outputs are correctly described as game- and
@@ -958,8 +960,8 @@ winning model reuse.
   files now use the same 181/183 release facts and the same producer-level universality
   statement. Older numerical passages remain only in explicitly historical editorial
   records and provenance diffs.
-- The schema-v2 reproduction pass succeeds; 183 manuscript tests pass; strict Sphinx
-  HTML builds with warnings treated as errors; the main PDF builds to 26 pages and the
+- The schema-v2 reproduction pass succeeds; 228 manuscript tests pass; strict Sphinx
+  HTML builds with warnings treated as errors; the main PDF builds to 27 pages and the
   companion to one page with no warning/undefined/box match in their final logs.
 - `arc_agi3.tex` retains exactly `Alexander Kolpakov` in both `\\author{}` and
   `pdfauthor`; OpenAI appears only in a one-line acknowledgment for GPT-5.6-sol access.

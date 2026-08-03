@@ -11,7 +11,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 ARC = ROOT / "arc"
-SOLUTIONS = ARC / "crack_lab" / "agent_solutions"
+FROZEN_SOLUTIONS = (
+    ARC / "crack_lab" / "releases" / "arc_agi3_gkm_v2_181" / "artifacts"
+)
+PUBLICATION_READMES = ARC / "crack_lab" / "agent_solutions"
 sys.path.insert(0, str(ARC / "crack_lab"))
 sys.path.insert(0, str(ARC / "manuscript"))
 
@@ -51,7 +54,7 @@ class Artifact:
 
 
 def load_artifact(game: str) -> Artifact:
-    path = SOLUTIONS / f"{game}_legs" / "checkpoint.json"
+    path = FROZEN_SOLUTIONS / f"{game}_legs" / "checkpoint.json"
     data = json.loads(path.read_text())
     checkpoint_records = tuple(
         (int(row["level"]), int(row["marginal_C"])) for row in data["records"]
@@ -91,7 +94,7 @@ def load_artifact(game: str) -> Artifact:
 
 def load_checkpoint_artifact(game: str) -> Artifact:
     """Load one complete checkpoint ledger without requiring a history sidecar."""
-    path = SOLUTIONS / f"{game}_legs" / "checkpoint.json"
+    path = FROZEN_SOLUTIONS / f"{game}_legs" / "checkpoint.json"
     data = json.loads(path.read_text())
     records = tuple(
         (int(row["level"]), int(row["marginal_C"])) for row in data["records"]
@@ -282,7 +285,7 @@ def main() -> None:
         replace_block(path, "ARC_ARTIFACT_STATUS", summary)
     for artifact in (load_artifact("wa30"), load_artifact("ls20")):
         replace_block(
-            SOLUTIONS / f"{artifact.game}_legs" / "README.md",
+            PUBLICATION_READMES / f"{artifact.game}_legs" / "README.md",
             "ARTIFACT_DETAILS",
             detail_markdown(artifact),
         )

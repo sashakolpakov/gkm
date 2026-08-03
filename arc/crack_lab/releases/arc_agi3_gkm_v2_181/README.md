@@ -3,7 +3,7 @@
 This directory is the frozen, replay-certified ARC-AGI-3 release of the
 Gödel–Kolmogorov Machine (GKM). It contains the original frozen acquisition
 source for every public game, a normalized schema-v2 artifact tree with exact
-per-level evidence for the 181 levels reached by this snapshot, and the
+per-level endpoint evidence for the 181 levels reached by this snapshot, and the
 machine-readable release receipt used by the scorecard replayer.
 
 The important unit of generality is the **producer**, not the specialized
@@ -161,11 +161,15 @@ runtime:
 
 The release root also contains:
 
-- the authoritative 25-game inventory;
+- the authoritative 25-game inventory inside the receipt;
 - a release identity binding the artifact to a public source revision;
 - a content-addressed release receipt;
 - a complete audit summary; and
-- the deterministic scorecard entry point.
+- the acquisition-source and normalized-artifact trees.
+
+The repository-level deterministic scorecard entry point is
+`arc/crack_lab/replay_scorecard.py`; it is intentionally not duplicated inside
+this frozen release directory.
 
 The retained checkpoint paths contain 7,001 game actions and reach 181 of the
 183 public levels. These are local artifact facts, not a self-reported
@@ -207,8 +211,9 @@ The release supports three separate claims:
 
 1. **Integrity:** recompute manifests and hashes, then verify the release
    receipt and its exact source revision.
-2. **Behavior:** run every admitted source boundary and literal checkpoint path
-   locally from fresh reset.
+2. **Behavior:** release creation records fresh source and path replays for every
+   endpoint; later verification revalidates their sealed records, while scorecard
+   preflight executes the terminal stored paths locally.
 3. **Endpoint:** perform a full 25-game ONLINE shakedown, then one
    receipt-bound Competition-Mode replay with zero proposer tokens.
 
@@ -219,6 +224,6 @@ claim is narrower and stronger where it matters: no candidate enters the
 archive or scorecard unless its exact retained bytes and action path pass the
 fixed admission protocol.
 
-The definitive commands and the public source/receipt identifiers are recorded
-alongside the completed release rather than inferred from a mutable working
-directory.
+The definitive commands and the distinct artifact-publication and
+receipt-bound verifier revisions are recorded in the repository-level
+`REPRODUCE_ARC.md`. They are not inferred from a mutable working directory.
