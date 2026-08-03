@@ -34,6 +34,7 @@ test:
 		arc/crack_lab/test_gkm_arena.py \
 		arc/crack_lab/test_gkm_legs.py \
 		arc/crack_lab/test_replay_scorecard.py \
+		arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py \
 		arc/crack_lab/test_verify_frozen_release.py \
 		arc/manuscript/scripts/test_generate_figures.py \
 		arc/manuscript/scripts/test_generate_empirical_tables.py \

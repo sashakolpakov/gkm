@@ -33,7 +33,13 @@ FROZEN_SOURCE_AUDIT_EXCLUSIONS = (
     ("ft09", 2),
     *(("tr87", level) for level in range(1, 7)),
 )
+FROZEN_V2_UNCLAIMED_BOUNDARIES = [
+    {"game": "lf52", "level": 9},
+    {"game": "lf52", "level": 10},
+]
 REVISION_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
+GIT_TREE_SHA1_RE = re.compile(r"^[0-9a-f]{40}$")
+MAX_RECEIPT_BYTES = 32 * 1024 * 1024
 MAX_HISTORY_ARCHIVE_BYTES = 1024 * 1024 * 1024
 MAX_HISTORY_MEMBERS = 50_000
 MAX_HISTORY_FILE_BYTES = 32 * 1024 * 1024
@@ -120,9 +126,10 @@ def _args() -> argparse.Namespace:
         "--release-receipt",
         type=Path,
         help=(
-            "Schema-v2 partial-release receipt. When supplied, the manuscript "
-            "suite uses the fail-closed release gate instead of applying the "
-            "legacy schema-1 promotion audit to normalized artifacts."
+            "Schema-v2 complete or partial release receipt. When supplied, "
+            "the manuscript suite uses the fail-closed release gate instead "
+            "of applying the legacy schema-1 promotion audit to normalized "
+            "artifacts."
         ),
     )
     parser.add_argument(
@@ -418,40 +425,265 @@ def _copy_authenticated_history(
     return output
 
 
+def _canonical_json(value: object) -> bytes:
+    try:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError("release receipt is not canonical JSON") from exc
+
+
+def _receipt_object(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise RuntimeError(f"release receipt has duplicate key {key!r}")
+        result[key] = value
+    return result
+
+
+def _snapshot_release_receipt(
+    *, source: Path, output_directory: Path
+) -> tuple[Path, dict[str, Any], str]:
+    """Read one content-addressed receipt and retain the exact verified bytes."""
+    receipt = Path(source)
+    try:
+        metadata = receipt.lstat()
+    except OSError as exc:
+        raise RuntimeError("cannot stat release receipt") from exc
+    if (
+        not stat.S_ISREG(metadata.st_mode)
+        or stat.S_ISLNK(metadata.st_mode)
+        or metadata.st_nlink != 1
+        or metadata.st_size > MAX_RECEIPT_BYTES
+    ):
+        raise RuntimeError("release receipt is not a bounded single-link file")
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(receipt, flags)
+    except OSError as exc:
+        raise RuntimeError("cannot securely open release receipt") from exc
+    with os.fdopen(descriptor, "rb") as handle:
+        opened = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or opened.st_size > MAX_RECEIPT_BYTES
+        ):
+            raise RuntimeError("release receipt changed during bounded read")
+        raw = handle.read(MAX_RECEIPT_BYTES + 1)
+    if len(raw) > MAX_RECEIPT_BYTES:
+        raise RuntimeError("release receipt is unexpectedly large")
+    digest = hashlib.sha256(raw).hexdigest()
+    if receipt.suffix != ".json" or receipt.stem != digest:
+        raise RuntimeError("release receipt filename is not its content hash")
+    try:
+        body = json.loads(raw, object_pairs_hook=_receipt_object)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise RuntimeError("release receipt is invalid JSON") from exc
+    if not isinstance(body, dict) or raw != _canonical_json(body) + b"\n":
+        raise RuntimeError("release receipt bytes are not canonical JSON")
+    identity = body.get("release_identity")
+    revision = identity.get("source_revision") if isinstance(identity, dict) else None
+    if not isinstance(revision, str) or REVISION_RE.fullmatch(revision) is None:
+        raise RuntimeError("release receipt has no valid source revision")
+
+    output_directory.mkdir(parents=True, exist_ok=False)
+    snapshot = output_directory / receipt.name
+    with snapshot.open("xb") as handle:
+        handle.write(raw)
+    snapshot.chmod(stat.S_IRUSR | stat.S_IWUSR)
+    return snapshot, body, digest
+
+
 def _verify_frozen_release(
     *,
     repo: Path,
     release_root: Path,
     release_receipt: Path,
     verifier_root: Path | None,
-) -> dict[str, Any]:
-    command = [
-        sys.executable,
-        "arc/crack_lab/verify_frozen_release.py",
-        "--canonical-root",
-        str(release_root),
-        "--receipt",
-        str(release_receipt),
-    ]
-    if verifier_root is not None:
-        command.extend(["--verifier-root", str(verifier_root.resolve())])
-    result = _run_json(command, cwd=repo)
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    original_receipt = Path(release_receipt)
+    with tempfile.TemporaryDirectory(prefix="gkm-receipt-snapshot-") as tmp_name:
+        snapshot, receipt_body, receipt_sha256 = _snapshot_release_receipt(
+            source=original_receipt,
+            output_directory=Path(tmp_name) / "receipt",
+        )
+        command = [
+            sys.executable,
+            "arc/crack_lab/verify_frozen_release.py",
+            "--canonical-root",
+            str(release_root),
+            "--receipt",
+            str(snapshot),
+        ]
+        if verifier_root is not None:
+            command.extend(["--verifier-root", str(verifier_root.resolve())])
+        result = _run_json(command, cwd=repo)
+
+    identity = receipt_body["release_identity"]
     if (
-        result.get("status") != "PASS"
-        or int(result.get("claimed_levels", -1)) != 181
-        or int(result.get("authoritative_levels", -1)) != 183
+        result.get("receipt_sha256") != receipt_sha256
+        or result.get("verification_context_source_revision")
+        != identity["source_revision"]
     ):
+        raise RuntimeError(
+            "schema-v2 frozen release verification identity did not match receipt"
+        )
+    _release_verification_summary(result, receipt_sha256)
+    result["receipt"] = _portable_path(original_receipt, repo)
+    return result, receipt_body
+
+
+def _release_verification_summary(
+    verification: dict[str, Any], receipt_sha256: str
+) -> dict[str, Any]:
+    """Normalize the two release-gate summary shapes without weakening either.
+
+    Historical partial receipts report ``claimed_levels`` plus the complete
+    authoritative denominator.  A complete receipt has no claimed/unclaimed
+    overlay and reports ``levels`` directly.  Keep those upstream summaries
+    unchanged in generated evidence, but derive the counts used by the
+    manuscript from their verified shape instead of freezing the v2 count.
+    """
+    if verification.get("status") != "PASS":
         raise RuntimeError("schema-v2 frozen release did not verify")
-    result["receipt"] = _portable_path(release_receipt, repo)
-    return result
+    games = verification.get("games")
+    if type(games) is not int or games != 25:
+        raise RuntimeError("schema-v2 frozen release did not verify")
+
+    kind = verification.get("kind")
+    if kind == "partial_campaign_freeze":
+        claimed = verification.get("claimed_levels")
+        authoritative = verification.get("authoritative_levels")
+        unclaimed = verification.get("unclaimed_boundaries")
+        if (
+            type(authoritative) is not int
+            or authoritative != 183
+            or type(claimed) is not int
+            or claimed != 181
+            or unclaimed != FROZEN_V2_UNCLAIMED_BOUNDARIES
+        ):
+            raise RuntimeError("schema-v2 frozen release did not verify")
+        authority = "schema-v2 partial-release receipt verification"
+    elif kind is None:
+        claimed = verification.get("levels")
+        authoritative = claimed
+        unclaimed = verification.get("unclaimed_boundaries", [])
+        if type(claimed) is not int or claimed != 183 or unclaimed != []:
+            raise RuntimeError("schema-v2 frozen release did not verify")
+        authority = "schema-v2 complete-release receipt verification"
+    else:
+        raise RuntimeError("schema-v2 frozen release did not verify")
+
+    return {
+        "schema": 2,
+        "verdict": "PASS",
+        "authority": authority,
+        "receipt_sha256": receipt_sha256,
+        "claimed_boundaries": claimed,
+        "unclaimed_boundaries": unclaimed,
+    }
+
+
+def _receipt_bound_audit_reports(
+    verification: dict[str, Any], receipt_sha256: str
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any]]:
+    """Build the compact audit views implied by one fully verified receipt."""
+    release_summary = _release_verification_summary(
+        verification, receipt_sha256
+    )
+    claimed = release_summary["claimed_boundaries"]
+    taint_report = {
+        "automated_verdict": "PASS",
+        "canonical": {"verdict": "clean", "files": claimed, "hits": []},
+        "frontier_scaffolds": {"verdict": "not_in_release"},
+        "promotion_chains": {},
+        "release_gate": verification,
+    }
+    action_boundary_report = {
+        "verdict": "PASS",
+        "checkpoints": claimed,
+        "exact": claimed,
+        "issues": [],
+        "release_gate": verification,
+    }
+    action_protocol_report = {
+        "verdict": "PASS",
+        "boundaries": claimed,
+        "release_gate": verification,
+    }
+    return (
+        release_summary,
+        taint_report,
+        action_boundary_report,
+        action_protocol_report,
+    )
+
+
+def _history_tree_identity(
+    *,
+    repo: Path,
+    complete_release: bool,
+    explicit_history_root: Path | None,
+    history_revision: str,
+    verification_context_source_revision: str | None,
+) -> str:
+    """Bind complete acquisition history to the receipt's verified Git tree."""
+    if not complete_release:
+        return (
+            FROZEN_SOURCE_HISTORY_TREE_SHA1
+            if explicit_history_root is not None
+            else ""
+        )
+
+    verified_revision = verification_context_source_revision
+    if (
+        not isinstance(verified_revision, str)
+        or REVISION_RE.fullmatch(verified_revision) is None
+    ):
+        raise RuntimeError("complete release has no verified source revision")
+    if history_revision != verified_revision:
+        raise RuntimeError(
+            "complete release history revision must equal the receipt's "
+            "verified source revision"
+        )
+    completed = subprocess.run(
+        [
+            "git",
+            "-C",
+            str(repo),
+            "rev-parse",
+            f"{verified_revision}:{FROZEN_HISTORY_TREE}",
+        ],
+        check=False,
+        text=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        env=_git_environment(),
+        timeout=180,
+    )
+    expected = completed.stdout.strip()
+    if completed.returncode != 0 or GIT_TREE_SHA1_RE.fullmatch(expected) is None:
+        raise RuntimeError(
+            "cannot derive receipt-bound acquisition-history Git tree"
+        )
+    return expected
 
 
 def _source_audit_scope(
     receipt: dict[str, Any], payload: dict[str, Any]
 ) -> dict[str, Any]:
     claimed = receipt.get("claimed_inventory")
+    if claimed is None:
+        claimed = receipt.get("inventory")
     if not isinstance(claimed, dict):
-        raise RuntimeError("release receipt has no claimed inventory")
+        raise RuntimeError("release receipt has no claimed or complete inventory")
     endpoint_ids = {
         (str(game), level)
         for game, reached in claimed.items()
@@ -727,6 +959,35 @@ def main() -> int:
 
     with tempfile.TemporaryDirectory(prefix="gkm-reproduce-") as tmp_name:
         tmp = Path(tmp_name)
+        release_verification = None
+        release_receipt_body = None
+        verified_release_shape = None
+        if release_receipt is not None:
+            release_verification, release_receipt_body = _verify_frozen_release(
+                repo=repo,
+                release_root=release_root,
+                release_receipt=release_receipt,
+                verifier_root=args.release_verifier_root,
+            )
+            verified_release_shape = _release_verification_summary(
+                release_verification, release_receipt.stem
+            )
+        complete_release = bool(
+            verified_release_shape
+            and verified_release_shape["authority"]
+            == "schema-v2 complete-release receipt verification"
+        )
+        authenticated_history_tree = _history_tree_identity(
+            repo=repo,
+            complete_release=complete_release,
+            explicit_history_root=explicit_history_root,
+            history_revision=args.history_revision,
+            verification_context_source_revision=(
+                release_verification.get("verification_context_source_revision")
+                if release_verification is not None
+                else None
+            ),
+        )
         if explicit_history_root is None:
             history_root = _materialize_history(
                 repo=repo,
@@ -734,51 +995,29 @@ def main() -> int:
                 output=tmp / "frozen_history",
             )
             history_authority = f"git:{args.history_revision}:{FROZEN_HISTORY_TREE}"
+            if authenticated_history_tree:
+                history_authority += f":tree:{authenticated_history_tree}"
         else:
             history_root = _copy_authenticated_history(
                 source=explicit_history_root,
                 output=tmp / "frozen_history",
-                expected_tree_sha1=FROZEN_SOURCE_HISTORY_TREE_SHA1,
+                expected_tree_sha1=authenticated_history_tree,
             )
-            history_authority = "git-tree:" + FROZEN_SOURCE_HISTORY_TREE_SHA1
+            history_authority = "git-tree:" + authenticated_history_tree
         joint_out = tmp / "marginal-literal-reuse.json"
         taint_out = tmp / "canonical-taint-audit.json"
         action_boundary_out = tmp / "canonical-action-boundaries.json"
         action_protocol_out = tmp / "canonical-action-protocol-audit.json"
         if release_receipt is not None:
-            release_verification = _verify_frozen_release(
-                repo=repo,
-                release_root=release_root,
-                release_receipt=release_receipt,
-                verifier_root=args.release_verifier_root,
+            assert release_verification is not None
+            (
+                release_summary,
+                taint_report,
+                action_boundary_report,
+                action_protocol_report,
+            ) = _receipt_bound_audit_reports(
+                release_verification, release_receipt.stem
             )
-            release_summary = {
-                "schema": 2,
-                "verdict": "PASS",
-                "authority": "schema-v2 partial-release receipt verification",
-                "receipt_sha256": release_receipt.stem,
-                "claimed_boundaries": 181,
-                "unclaimed_boundaries": release_verification["unclaimed_boundaries"],
-            }
-            taint_report = {
-                "automated_verdict": "PASS",
-                "canonical": {"verdict": "clean", "files": 181, "hits": []},
-                "frontier_scaffolds": {"verdict": "not_in_release"},
-                "promotion_chains": {},
-                "release_gate": release_verification,
-            }
-            action_boundary_report = {
-                "verdict": "PASS",
-                "checkpoints": 181,
-                "exact": 181,
-                "issues": [],
-                "release_gate": release_verification,
-            }
-            action_protocol_report = {
-                "verdict": "PASS",
-                "boundaries": 181,
-                "release_gate": release_verification,
-            }
             taint_out.write_text(json.dumps(taint_report, indent=2) + "\n")
             action_boundary_out.write_text(
                 json.dumps(action_boundary_report, indent=2) + "\n"
@@ -911,13 +1150,14 @@ def main() -> int:
 
         actual_payload = json.loads(joint_out.read_text())
         actual_summary = _summary(actual_payload)
-        source_audit_scope = (
-            _source_audit_scope(
-                json.loads(release_receipt.read_text()), actual_payload
+        if release_receipt is None:
+            source_audit_scope = None
+        else:
+            if release_receipt_body is None:
+                raise RuntimeError("verified release receipt body was not retained")
+            source_audit_scope = _source_audit_scope(
+                release_receipt_body, actual_payload
             )
-            if release_receipt is not None
-            else None
-        )
         _add_system_specific_stats(
             actual_summary,
             opine_json=opine_json,

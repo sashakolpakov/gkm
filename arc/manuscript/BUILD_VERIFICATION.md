@@ -6,8 +6,8 @@ Verified in the integrated repository on 2026-08-03 against frozen release commi
 
 ## Documents
 
-- `arc_agi3.pdf`: 27 pages, 1,066,615 bytes.
-- `gkm_one_page_summary.pdf`: one page, 180,729 bytes.
+- `arc_agi3.pdf`: 27 pages, 1,066,712 bytes.
+- `gkm_one_page_summary.pdf`: one page, 180,118 bytes.
 - The final logs contain no warning, undefined citation/reference,
   overfull/underfull box, or multiply-defined-label match.
 - The manuscript byline and PDF metadata name Alexander Kolpakov solely.
@@ -18,7 +18,7 @@ Verified in the integrated repository on 2026-08-03 against frozen release commi
   through PDFLaTeX and BibTeX. It contains no companion documents, repository evidence,
   caches, compiled PDFs, or LaTeX intermediate files.
 - The rebuilt source archive SHA-256 is
-  `3a1d879680d08cf078dd84c1d47ea38c29853ae0e42fb525c4e062f3f28b70a5`.
+  `882dc1cf670763df67f7270e20a763148022adbc1d80ec9a09f276dadec08aef`.
 
 ## Frozen empirical endpoint
 

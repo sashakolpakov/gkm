@@ -81,18 +81,18 @@
     "promotion_chains_checked": 25,
     "promotion_chain_failures": 0,
     "complete_lineage_required": true,
-    "audit_sha256": "d1916cc09685c239e68df8cadd006cc2bccc22f8440f0ba082d3360c833aed98"
+    "audit_sha256": "7a6432185959f9b3cdbdcb77767d878a5b8bf5a8f0dd6a55e630ddec1d1c81d8"
   },
   "action_boundaries": {
     "verdict": "PASS",
     "checkpoints": 181,
     "exact": 181,
     "issues": 0,
-    "audit_sha256": "d2de32316653ef5e4f94fcf3a1c4305c2c6f81141dc49f2b07b13a5de63bffe7"
+    "audit_sha256": "914969d7a60372eb20a3d83231e4bf10d3f090edf880853a502cb7cedb6eb3a7"
   },
   "action_protocol": {
     "verdict": "PASS",
-    "audit_sha256": "f46c49ff0ed8c44aaf1ebcd49f352878c2b6f5868f4e1cd614272aae36cab4e6"
+    "audit_sha256": "3894410f3647c192664833ccb7070b9823a4e7781572ab575073716a51d7fce7"
   },
   "release_gate": {
     "schema": 2,
@@ -148,9 +148,9 @@
   "generated": {
     "bounded_campaign_profiles.pdf": "20e7eb277b8cc1e38c627ead56c0141995d41a1895e3a1b67cc26ec49ef9626f",
     "bounded_campaign_profiles.png": "62d6ab262c737a150320c41e8494ce3bea44316f5a07f360ca245370b6dae98e",
-    "canonical-action-boundaries.json": "d2de32316653ef5e4f94fcf3a1c4305c2c6f81141dc49f2b07b13a5de63bffe7",
-    "canonical-action-protocol-audit.json": "f46c49ff0ed8c44aaf1ebcd49f352878c2b6f5868f4e1cd614272aae36cab4e6",
-    "canonical-taint-audit.json": "d1916cc09685c239e68df8cadd006cc2bccc22f8440f0ba082d3360c833aed98",
+    "canonical-action-boundaries.json": "914969d7a60372eb20a3d83231e4bf10d3f090edf880853a502cb7cedb6eb3a7",
+    "canonical-action-protocol-audit.json": "3894410f3647c192664833ccb7070b9823a4e7781572ab575073716a51d7fce7",
+    "canonical-taint-audit.json": "7a6432185959f9b3cdbdcb77767d878a5b8bf5a8f0dd6a55e630ddec1d1c81d8",
     "comparator_stats.md": "17f3c3f476f29362acb502848670cebec5d7c994f5a8bd0e6ec0d1d6df70df1f",
     "comparator_stats.tex": "b6c957422a2af5cf59a0332b931ad4a8cf64dd8fbd08fb797d7ce89d6b0d7f4f",
     "ls20_sawtooth.pdf": "f7e5e8a442b3bf3849484ddb1658761cca393ee28884d3e747e2d266419ce6f8",

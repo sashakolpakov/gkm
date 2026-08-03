@@ -12,6 +12,7 @@
     "inventory_sha256": "31144058543d7d30fa695cb0a9df410c3711d25c21264dc8c41a86efeeece5ab",
     "kind": "partial_campaign_freeze",
     "receipt": "arc/crack_lab/releases/arc_agi3_gkm_v2_181/receipts/140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681.json",
+    "receipt_sha256": "140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681",
     "status": "PASS",
     "unclaimed_boundaries": [
       {
