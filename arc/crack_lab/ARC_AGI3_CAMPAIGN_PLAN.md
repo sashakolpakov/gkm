@@ -1334,6 +1334,10 @@ checks and is sealed by output manifest `8bbf7903...`; its verdict remains
 `narrowed_not_discharged`. It is not a candidate, promotion, retry, WIP update,
 or publication artifact and cannot enter a native lineage without a later
 authenticated handoff plus native public-observation reproduction.
+A second quarantine-only supervisory synthesis over exact input manifest
+`30e3f124...` produced handoff `e4086b30...`, sealed by manifest `0536d4a7...`.
+It contains three bounded, unexecuted native-reproduction tests and remains
+forbidden from the currently live native turn.
 
 If every retained source for an otherwise exact replay-valid boundary fails
 fresh source execution, the certifier may use a minimal deterministic source
