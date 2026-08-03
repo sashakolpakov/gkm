@@ -713,7 +713,7 @@ class ProposerBridgeServer:
             raise ProposerBridgeError("proposer export root is not empty")
         self._write_outcome()
         try:
-            from arc_agi3_arena_rpc import ArenaRpcClient
+            from arc_agi3_arena_rpc_client import ArenaRpcClient
 
             self.arena_client = ArenaRpcClient(arena_socket, arena_token)
         except Exception as exc:

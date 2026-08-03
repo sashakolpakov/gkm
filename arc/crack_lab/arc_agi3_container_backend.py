@@ -326,11 +326,17 @@ LABEL_GENERATION = "org.gkm.arc-agi3.generation"
 LABEL_ATTEMPT = "org.gkm.arc-agi3.attempt"
 LABEL_GAME = "org.gkm.arc-agi3.game"
 LABEL_LEVEL = "org.gkm.arc-agi3.level"
-LABEL_ARENA_RPC_SHA256 = "org.gkm.arc-agi3.arena-rpc-sha256"
+LABEL_ARENA_RPC_CLIENT_SHA256 = (
+    "org.gkm.arc-agi3.arena-rpc-client-sha256"
+)
 LABEL_CONTAINER_WORKER_SHA256 = "org.gkm.arc-agi3.container-worker-sha256"
 LABEL_PROPOSER_WORKER_SHA256 = (
     "org.gkm.arc-agi3.proposer-worker-sha256"
 )
+LABEL_SOLVER_REQUIREMENTS_SHA256 = (
+    "org.gkm.arc-agi3.solver-requirements-sha256"
+)
+LABEL_SOURCE_SCHEMA_SHA256 = "org.gkm.arc-agi3.source-schema-sha256"
 
 # These are public build metadata or fixed runtime controls, not inherited host
 # variables.  Any other image/container environment name fails closed.
@@ -2987,10 +2993,14 @@ def trusted_worker_hashes() -> dict[str, str]:
     """Hash the exact host control modules expected inside the pinned image."""
     root = Path(__file__).resolve().parent
     paths = {
-        LABEL_ARENA_RPC_SHA256: root / "arc_agi3_arena_rpc.py",
+        LABEL_ARENA_RPC_CLIENT_SHA256:
+            root / "arc_agi3_arena_rpc_client.py",
         LABEL_CONTAINER_WORKER_SHA256: root / "arc_agi3_container_worker.py",
         LABEL_PROPOSER_WORKER_SHA256:
             root / "arc_agi3_proposer_worker.py",
+        LABEL_SOLVER_REQUIREMENTS_SHA256:
+            root / "container" / "arc_agi3_solver_requirements.lock",
+        LABEL_SOURCE_SCHEMA_SHA256: root / "arc_agi3_source_schema.py",
     }
     return {
         label: _hash_unaliased_regular_file(path, label=label)
@@ -4236,16 +4246,25 @@ def validate_runner_attempt_contract(
         runner_spec, "input_tree_sha256"
     ):
         raise ContainerContractError("runner input bundle hash changed")
+    declared_initial_workspace_tree_sha256 = _runner_field(
+        runner_spec, "initial_workspace_tree_sha256"
+    )
+    declared_initial_app_server_state_tree_sha256 = _runner_field(
+        runner_spec, "initial_app_server_state_tree_sha256"
+    )
     if (
         parent_source_tree_sha256
         != _runner_field(runner_spec, "parent_source_tree_sha256")
         or lane_parent_source_tree_sha256
         != parent_source_tree_sha256
-        or initial_workspace_tree_sha256
-        != _runner_field(runner_spec, "initial_workspace_tree_sha256")
-        or initial_app_server_state_tree_sha256
-        != _runner_field(
-            runner_spec, "initial_app_server_state_tree_sha256"
+        or (
+            not recovery
+            and (
+                initial_workspace_tree_sha256
+                != declared_initial_workspace_tree_sha256
+                or initial_app_server_state_tree_sha256
+                != declared_initial_app_server_state_tree_sha256
+            )
         )
     ):
         raise ContainerContractError(
@@ -4483,7 +4502,7 @@ def validate_runner_attempt_contract(
         or receipt["parent_source_tree_sha256"]
         != parent_source_tree_sha256
         or receipt["initial_workspace_tree_sha256"]
-        != initial_workspace_tree_sha256
+        != declared_initial_workspace_tree_sha256
         or receipt["parent_checkpoint_sha256"] != parent_digest
         or receipt["wip_tree_sha256"] != expected_wip_hash
         or receipt["wip_solver_source_tree_sha256"]
@@ -20981,9 +21000,15 @@ def _prepare_static_receipts(
             else None
         ),
         "staged_initial_state_tree_sha256":
-            probe_transport.inventory_controller_state(
-                Path(_runner_field(spec, "app_server_state_dir"))
-            ).tree_sha256,
+            (
+                probe_transport.inventory_controller_state(
+                    Path(_runner_field(spec, "app_server_state_dir"))
+                ).tree_sha256
+                if arena_binding_event is not None
+                else _runner_field(
+                    spec, "initial_app_server_state_tree_sha256"
+                )
+            ),
         "ambient_state_access_status": "DENIED",
         "state_root_write_probe_status":
             "PENDING_REAL_CONTROLLER_PREFLIGHT",
@@ -25522,8 +25547,11 @@ def _validate_container_observation(
                 LABEL_ATTEMPT,
                 LABEL_GAME,
                 LABEL_LEVEL,
-                LABEL_ARENA_RPC_SHA256,
+                LABEL_ARENA_RPC_CLIENT_SHA256,
                 LABEL_CONTAINER_WORKER_SHA256,
+                LABEL_PROPOSER_WORKER_SHA256,
+                LABEL_SOLVER_REQUIREMENTS_SHA256,
+                LABEL_SOURCE_SCHEMA_SHA256,
             )
         },
         "environment": {

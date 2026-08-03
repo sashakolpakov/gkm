@@ -2389,6 +2389,19 @@ closure must match the JIT evidence receipt. The already-live pre-policy LF52
 child is allowed to drain under its unchanged runtime, but that host runtime is
 not modified mid-turn and its parent remains unable to promote directly.
 
+As of 2026-08-04, the preparatory half of that obligation is implemented by
+`arc_agi3_arena_rpc_client.py` and
+`arc_agi3_compatibility_arena_closure.py`. The extracted client preserves the
+NumPy `uint8` frame surface, while descriptor-confined closure validation binds
+both a deterministic content manifest and per-instance custody. The container
+recipe installs the same client and a hash-pinned NumPy requirements lock; host
+attestation binds the client, both workers, source schema, requirements lock,
+and reviewed recipe. This remains deliberately non-authoritative:
+`launch_authorized` is false and no production launcher consumes the closure.
+The proposed bespoke legacy host-admission layer was rejected and removed;
+the pre-policy LF52 output remains quarantine-only and any promoted result must
+be reproduced through the ordinary fresh contiguous path.
+
 The contiguous runner supplies the hard unattended boundary: a fresh
 unprivileged, network-disabled container receives no repository, home, game
 source, Docker socket, or sibling-lane mount and reaches the public Arena only

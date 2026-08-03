@@ -1854,19 +1854,32 @@ def test_managed_child_ledger_audit_reopens_terminal_and_rejects_drift(
 def test_image_must_bind_exact_current_rpc_and_worker_sources(
     attempt_spec: B.AttemptSpec,
 ):
-    missing = _image_record()
-    missing["Config"]["Labels"].pop(B.LABEL_CONTAINER_WORKER_SHA256)
-    runner = FakeDockerRunner(attempt_spec, image_records=[missing])
-    with pytest.raises(B.ContainerContractError, match="pinned worker controls"):
-        B.DockerContainerBackend(runner).build_launch_attestation(attempt_spec)
-    assert not any(command[2] == "create" for command in runner.commands)
+    for label in B.trusted_worker_hashes():
+        missing = _image_record()
+        missing["Config"]["Labels"].pop(label)
+        runner = FakeDockerRunner(attempt_spec, image_records=[missing])
+        with pytest.raises(
+            B.ContainerContractError, match="pinned worker controls"
+        ):
+            B.DockerContainerBackend(runner).build_launch_attestation(
+                attempt_spec
+            )
+        assert not any(
+            command[2] == "create" for command in runner.commands
+        )
 
-    stale = _image_record()
-    stale["Config"]["Labels"][B.LABEL_ARENA_RPC_SHA256] = "0" * 64
-    runner = FakeDockerRunner(attempt_spec, image_records=[stale])
-    with pytest.raises(B.ContainerContractError, match="pinned worker controls"):
-        B.DockerContainerBackend(runner).build_launch_attestation(attempt_spec)
-    assert not any(command[2] == "create" for command in runner.commands)
+        stale = _image_record()
+        stale["Config"]["Labels"][label] = "0" * 64
+        runner = FakeDockerRunner(attempt_spec, image_records=[stale])
+        with pytest.raises(
+            B.ContainerContractError, match="pinned worker controls"
+        ):
+            B.DockerContainerBackend(runner).build_launch_attestation(
+                attempt_spec
+            )
+        assert not any(
+            command[2] == "create" for command in runner.commands
+        )
 
 
 def test_image_or_container_auth_environment_is_rejected(
@@ -2506,10 +2519,14 @@ def test_formal_container_recipe_pins_base_and_nonroot_user():
     assert len(from_line.rsplit("@sha256:", 1)[1]) == 64
     assert "USER 65532:65532" in recipe
     assert 'ENTRYPOINT ["/usr/local/bin/python3", "-I"]' in recipe
-    assert "arc_agi3_arena_rpc.py" in recipe
+    assert "arc_agi3_arena_rpc_client.py" in recipe
+    assert "arc_agi3_arena_rpc.py" not in recipe
     assert "arc_agi3_container_worker.py" in recipe
     assert "arc_agi3_proposer_worker.py" in recipe
     assert B.LABEL_PROPOSER_WORKER_SHA256 in recipe
+    assert B.LABEL_SOURCE_SCHEMA_SHA256 in recipe
+    assert B.LABEL_SOLVER_REQUIREMENTS_SHA256 in recipe
+    assert "numpy-version" not in recipe
     assert "/run/arc-agi3/arena.sock" in recipe
     assert "/run/arc-agi3/token" in recipe
     for digest in B.trusted_worker_hashes().values():
@@ -5030,6 +5047,8 @@ def test_candidate_manifest_is_bound_to_arena_and_bridge_exports(
             R.Contract.VERIFIED_ISOLATED_CLONE_MODE
         ),
         probe_isolation_evidence_sha256="9" * 64,
+        supervisory_handoff_sha256=None,
+        supervisory_native_reproduction_receipt_sha256=None,
     )
     evidence = B._validate_authenticated_candidate_export(
         spec=spec,
@@ -5955,6 +5974,30 @@ def test_adapter_rehydrates_live_orphan_as_containment_fault(
         command[:3] == ("docker", "container", "start")
         for command in docker_runner.commands
     ) == 1
+
+
+@pytest.mark.parametrize("surface", ("workspace", "app_server_state"))
+def test_fresh_contract_rejects_mutable_tree_drift(
+    request: pytest.FixtureRequest,
+    surface: str,
+):
+    spec = _short_runner_attempt_spec(request)
+    root = Path(
+        spec.workspace_dir
+        if surface == "workspace"
+        else spec.app_server_state_dir
+    )
+    (root / "unexpected-post-snapshot").write_text(
+        "drift\n", encoding="utf-8"
+    )
+    with pytest.raises(
+        B.ContainerContractError,
+        match="workspace, or staged state hash changed",
+    ):
+        B.validate_runner_attempt_contract(
+            spec,
+            containment_canary_anchor=_test_canary_anchor(spec),
+        )
 
 
 def test_adapter_recovers_unacknowledged_teardown_from_intent(

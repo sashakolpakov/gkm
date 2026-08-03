@@ -6,7 +6,8 @@ Core Tests
 
 .. code-block:: bash
 
-   python3 -m py_compile agent.py evo_game.py pattern_fsa.py \
+   python3 -m py_compile foraging/agent.py foraging/evo_game.py \
+     transduction/pattern_fsa.py \
      foraging/run_foraging_ecology.py \
      transduction/run_register_transducer_benchmark.py \
      bongard/run_bongard_symbolic_baseline.py \

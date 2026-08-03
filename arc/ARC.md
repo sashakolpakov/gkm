@@ -146,10 +146,10 @@ Machine-readable current evidence is regenerated under [`audit_results/`](audit_
 **Runnable experiments** — `run_arc_local_gkm.py`, `run_arc_live_probe.py`,
 `run_arc_goal_induction.py`, `run_arc_leg_discovery.py` (each `python3 arc/run_...`).
 
-**Tests** — `test_arc_*.py`, `test_cone_leg_discovery.py`, plus the crack-lab unit
-tests `test_object_mdl.py`, `test_powerplay.py`, `test_universal_crack_boundary.py`;
-run `python -m pytest arc/ -q` from the repo root (heavier crack-lab loop tests live
-in `crack_lab/test_gkm_*.py`).
+**Tests** — `test_arc_*.py`, `test_cone_leg_discovery.py`, `test_object_mdl.py`,
+`test_powerplay.py`, and `test_universal_crack_boundary.py`; run
+`python -m pytest arc/ -q` from the repo root (heavier crack-lab loop tests live in
+`crack_lab/test_gkm_*.py`).
 
 **The cracking lab** — [`crack_lab/`](crack_lab/): `gkm_arena.py` (the rawest
 substrate + free-energy admission), `gkm_solve_agent.py` (proposer = Claude with

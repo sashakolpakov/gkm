@@ -1,0 +1,6 @@
+# Python 3.12 / Debian glibc solver runtime.  Hashes are the official
+# NumPy 2.4.4 CPython 3.12 manylinux wheels for the two supported OCI
+# architectures (linux/amd64 and linux/arm64).
+numpy==2.4.4 \
+    --hash=sha256:81f4a14bee47aec54f883e0cad2d73986640c1590eb9bfaaba7ad17394481e6e \
+    --hash=sha256:f9e75681b59ddaa5e659898085ae0eaea229d054f2ac0c7e563a62205a700121

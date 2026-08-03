@@ -601,6 +601,33 @@ INVARIANTS = (
         "The pinned worker reaches the engine only through authenticated Arena RPC.",
     ),
     Invariant(
+        "compatibility_arena_client_source_is_purified",
+        "arena_rpc",
+        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
+        "test_client_closure_is_exact_and_has_no_host_read_capability",
+        "The canonical compatibility RPC client has no repository, engine, "
+        "environment-file, parent-path, private-state, raw-Arena, or host-"
+        "filesystem capability.",
+    ),
+    Invariant(
+        "compatibility_arena_closure_custody_is_descriptor_safe",
+        "arena_rpc",
+        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
+        "test_root_swap_during_inventory_fails_final_descriptor_recheck",
+        "The deterministic compatibility content manifest and instance "
+        "custody receipt are read through one held directory descriptor, "
+        "reopened at decision, and reject path, inode, mode, or inventory "
+        "substitution.",
+    ),
+    Invariant(
+        "compatibility_arena_closure_is_prep_only_non_authoritative",
+        "arena_rpc",
+        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
+        "test_compatibility_closure_has_no_production_call_site_or_authority",
+        "The compatibility closure has no production launcher call site and "
+        "its receipt explicitly grants no launch or promotion authority.",
+    ),
+    Invariant(
         "arena_named_volume_relay_is_byte_exact",
         "arena_rpc",
         "arc/crack_lab/test_arc_agi3_arena_volume_relay.py::"
@@ -813,6 +840,7 @@ COMPONENT_TEST_FILES = (
     "arc/crack_lab/test_arc_agi3_arena_volume_transport.py",
     "arc/crack_lab/test_arc_agi3_boundary_certifier.py",
     "arc/crack_lab/test_arc_agi3_codex_app_server_transport.py",
+    "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/test_arc_agi3_container_backend.py",
     "arc/crack_lab/test_arc_agi3_container_worker.py",
     "arc/crack_lab/test_arc_agi3_containment_canary_operator.py",
@@ -828,6 +856,7 @@ COMPONENT_TEST_FILES = (
     "arc/crack_lab/test_arc_agi3_controller_egress_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_supply_chain.py",
+    "arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py",
     "arc/crack_lab/test_arc_agi3_proposer_worker.py",
     "arc/crack_lab/test_arc_agi3_python_runtime_manifest.py",
     "arc/crack_lab/test_arc_agi3_release_gate.py",
@@ -896,6 +925,8 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/arc_agi3_proposer_boundary.py",
     "arc/crack_lab/arc_agi3_source_schema.py",
     "arc/crack_lab/arc_agi3_arena_rpc.py",
+    "arc/crack_lab/arc_agi3_arena_rpc_client.py",
+    "arc/crack_lab/arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/arc_agi3_arena_volume_relay.py",
     "arc/crack_lab/arc_agi3_arena_volume_transport.py",
     "arc/crack_lab/arc_agi3_proposer_worker.py",
@@ -922,6 +953,7 @@ CONTROL_CONTRACT_FILES = (
     "cone/cone_foraging.py",
     "cone/cone_foraging_bound.py",
     "arc/crack_lab/container/Containerfile.arc-agi3-contiguous",
+    "arc/crack_lab/container/arc_agi3_solver_requirements.lock",
     "arc/crack_lab/container/Containerfile.arc-agi3-controller",
     "arc/crack_lab/container/Containerfile.arc-agi3-controller-egress",
     "arc/crack_lab/container/Containerfile.arc-agi3-arena-volume-relay",
@@ -944,6 +976,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/test_arc_agi3_contiguous_taint.py",
     "arc/crack_lab/test_arc_agi3_contiguous_watchdog.py",
     "arc/crack_lab/test_arc_agi3_action_protocol.py",
+    "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py",
     "arc/crack_lab/test_arc_agi3_arena_rpc.py",
     "arc/crack_lab/test_arc_agi3_arena_volume_relay.py",
     "arc/crack_lab/test_arc_agi3_arena_volume_transport.py",
@@ -952,6 +985,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/crack_lab/test_arc_agi3_controller_supply_chain.py",
     "arc/crack_lab/test_arc_agi3_controller_guardian.py",
     "arc/crack_lab/test_arc_agi3_controller_egress_guardian.py",
+    "arc/crack_lab/test_arc_agi3_leaderboard_v3_gate.py",
     "arc/crack_lab/test_arc_agi3_release_gate.py",
     "arc/crack_lab/test_arc_agi3_boundary_certifier.py",
     "arc/crack_lab/test_verify_frozen_release.py",

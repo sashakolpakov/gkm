@@ -69,4 +69,5 @@ Abstraction Emergence
 
 The abstraction experiments test whether repeated structure can be encapsulated as a reusable predicate macro when doing so lowers free energy. The current result is deliberately narrow: it demonstrates encapsulation over a predefined primitive vocabulary, not discovery of the primitive observations themselves.
 
-For the full source manuscript, see ``OPEN_ENDED_EVOLUTION_THESIS.md`` in the repository root.
+For the full source manuscript, see
+``foraging/OPEN_ENDED_EVOLUTION_THESIS.md`` in the repository.

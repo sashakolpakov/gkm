@@ -473,6 +473,24 @@
       "scenario_id": "S03"
     },
     {
+      "invariant_id": "compatibility_arena_client_source_is_purified",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::test_client_closure_is_exact_and_has_no_host_read_capability",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "compatibility_arena_closure_custody_is_descriptor_safe",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::test_root_swap_during_inventory_fails_final_descriptor_recheck",
+      "scenario_id": "S03"
+    },
+    {
+      "invariant_id": "compatibility_arena_closure_is_prep_only_non_authoritative",
+      "component": "arena_rpc",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::test_compatibility_closure_has_no_production_call_site_or_authority",
+      "scenario_id": "S03"
+    },
+    {
       "invariant_id": "arena_named_volume_relay_is_byte_exact",
       "component": "arena_rpc",
       "owner_nodeid": "arc/crack_lab/test_arc_agi3_arena_volume_relay.py::test_relay_client_to_host_stream_is_byte_exact",

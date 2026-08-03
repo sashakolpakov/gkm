@@ -1200,8 +1200,28 @@ def _tool_hashes() -> dict[str, str]:
             root / "arc_agi3_arena_rpc.py",
             maximum=32 * 1024 * 1024,
         )),
+        "arena_rpc_client": _sha256(_read_regular(
+            root / "arc_agi3_arena_rpc_client.py",
+            maximum=32 * 1024 * 1024,
+        )),
         "replay_worker": _sha256(_read_regular(
             root / "arc_agi3_container_worker.py",
+            maximum=32 * 1024 * 1024,
+        )),
+        "proposer_worker": _sha256(_read_regular(
+            root / "arc_agi3_proposer_worker.py",
+            maximum=32 * 1024 * 1024,
+        )),
+        "source_schema": _sha256(_read_regular(
+            root / "arc_agi3_source_schema.py",
+            maximum=32 * 1024 * 1024,
+        )),
+        "container_recipe": _sha256(_read_regular(
+            root / "container" / "Containerfile.arc-agi3-contiguous",
+            maximum=32 * 1024 * 1024,
+        )),
+        "solver_requirements": _sha256(_read_regular(
+            root / "container" / "arc_agi3_solver_requirements.lock",
             maximum=32 * 1024 * 1024,
         )),
         "container_backend": _sha256(_read_regular(
@@ -1221,7 +1241,12 @@ def _tool_hashes() -> dict[str, str]:
             "arena",
             "legs_runtime",
             "arena_rpc",
+            "arena_rpc_client",
             "replay_worker",
+            "proposer_worker",
+            "source_schema",
+            "container_recipe",
+            "solver_requirements",
             "container_backend",
         )
     })

@@ -125,17 +125,17 @@ def test_registry_represents_every_required_invariant_exactly_once():
         "conformance",
         "supervisor",
         "runner",
-            "scheduler",
-            "orchestrator",
-            "watchdog",
-            "pilot",
-            "container_backend",
+        "scheduler",
+        "orchestrator",
+        "watchdog",
+        "pilot",
+        "container_backend",
         "app_server_transport",
         "taint",
         "source_schema",
-            "proposer_worker",
-            "boundary_certifier",
-            "arena_rpc",
+        "proposer_worker",
+        "boundary_certifier",
+        "arena_rpc",
         "container_worker",
         "release_gate",
     }
@@ -306,7 +306,7 @@ def test_full_component_allowlist_is_exact_control_bound_inventory():
     assert tuple(
         record["path"] for record in snapshot["files"]
     ) == C.COMPONENT_TEST_FILES
-    assert len(C.COMPONENT_TEST_FILES) == 25
+    assert len(C.COMPONENT_TEST_FILES) == 27
     assert set(C.COMPONENT_TEST_FILES) <= set(C.CONTROL_CONTRACT_FILES)
 
 

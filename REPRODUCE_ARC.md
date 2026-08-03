@@ -74,6 +74,19 @@ cross-frontier, or substituted requests.
 The policy test does not by itself prove that runner/container wiring exists;
 the unified contiguous conformance receipt is the launch gate.
 
+The preparatory compatibility closure is tested separately. It extracts the
+same proposer-side Arena RPC client used by the contiguous container, binds a
+deterministic content manifest and an instance-custody receipt, rejects path or
+file substitution, and pins the solver dependency lock. It deliberately has
+no production call site and returns `launch_authorized=false`; passing this
+test is therefore necessary input preparation, not permission to launch a
+compatibility turn:
+
+```bash
+PYTHONPATH=arc/crack_lab pytest -q \
+  arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py
+```
+
 ## Verify the frozen release
 
 The v2 artifact/receipt publication commit is

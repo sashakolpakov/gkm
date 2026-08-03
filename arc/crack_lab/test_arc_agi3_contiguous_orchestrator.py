@@ -41,6 +41,43 @@ def _attempt_spec(tmp_path: Path) -> Runner.AttemptSpec:
     return next(iter(backend.specs.values()))
 
 
+def test_tool_hashes_cover_exact_solver_image_build_controls():
+    root = Path(O.__file__).resolve().parent
+    tools = O._tool_hashes()
+    expected_paths = {
+        "arena_rpc_client": root / "arc_agi3_arena_rpc_client.py",
+        "replay_worker": root / "arc_agi3_container_worker.py",
+        "proposer_worker": root / "arc_agi3_proposer_worker.py",
+        "source_schema": root / "arc_agi3_source_schema.py",
+        "container_recipe": (
+            root / "container" / "Containerfile.arc-agi3-contiguous"
+        ),
+        "solver_requirements": (
+            root / "container" / "arc_agi3_solver_requirements.lock"
+        ),
+    }
+    for name, path in expected_paths.items():
+        assert tools[name] == hashlib.sha256(path.read_bytes()).hexdigest()
+    assert set(Container.trusted_worker_hashes().values()) <= set(
+        tools.values()
+    )
+    engine_names = (
+        "arena",
+        "legs_runtime",
+        "arena_rpc",
+        "arena_rpc_client",
+        "replay_worker",
+        "proposer_worker",
+        "source_schema",
+        "container_recipe",
+        "solver_requirements",
+        "container_backend",
+    )
+    assert tools["engine"] == O._json_sha256({
+        name: tools[name] for name in engine_names
+    })
+
+
 def test_collector_requires_clean_arena_close_even_without_candidate(
     tmp_path,
 ):

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, Sequence
 
-from arc_agi3_arena_rpc import ArenaRpcClient
+from arc_agi3_arena_rpc_client import ArenaRpcClient
 
 
 WORKER_SCHEMA = "arc-agi3-container-worker/v1"
