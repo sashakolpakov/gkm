@@ -1318,6 +1318,23 @@ protected transcript but never acquired canonical promotion authority.
 Subsequent L9 turns bind the authoritative 544-action L8 parent and must earn
 any shorter prefix through the ordinary fresh-replay promotion gate.
 
+On 2026-08-03, one observation-only auxiliary analysis was run at that exact
+unchanged frontier without exposing it to the live native proposer. A
+quarantined supervisory handoff (`dd692811...`) requested the bounded
+state-representation obligation `OBL-L9-STATE-01`; its outer 119-file input
+bundle is exact-manifested as `d5197bd6...`. The sidecar stopped within its
+fixed caps at 27/32 clean replays, 75/75 prefix snapshots, and 0/128 successor
+branches. Its complete 13-case terminal factorial associated reward only with
+the five-shift far-endpoint capture, but generic one-peg completion is perfectly
+confounded with that endpoint in the matrix. The prefix audit failed safely on
+an incorrect instrumentation boundary after exhausting its snapshot cap and
+was not rerun. The resulting JSON (`a14944e5...`) independently passed frontier,
+content-addressed sequence, replay-count, taint, action-protocol, and authority
+checks and is sealed by output manifest `8bbf7903...`; its verdict remains
+`narrowed_not_discharged`. It is not a candidate, promotion, retry, WIP update,
+or publication artifact and cannot enter a native lineage without a later
+authenticated handoff plus native public-observation reproduction.
+
 If every retained source for an otherwise exact replay-valid boundary fails
 fresh source execution, the certifier may use a minimal deterministic source
 capsule generated from that boundary's canonical exact action prefix. This is a
