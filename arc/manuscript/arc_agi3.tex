@@ -53,27 +53,28 @@
 \title{Kolmogorov Structure Functions, Inverse-Colimits, and Cofibrations: Solving ARC-AGI-3 with Compute-Bounded Self-Improving Agents}
 
 \author{Alexander Kolpakov\footnote{corresponding author; e-mail address: kolpakov.alexander@gmail.com; postal address: University of Austin, 522~Congress Street, Austin TX, 78701 USA}}
-\date{\today}
+\date{August 2026}
 
 \begin{document}
 \maketitle
 \raggedbottom
 
 \begin{abstract}
-We introduce the G\"odel--Kolmogorov Machine (GKM), a compute-bounded
-self-improving architecture for interactive ARC-AGI-3 that synthesizes
-Schmidhuber's G\"odel machines, PowerPlay, and artificial curiosity. A language
-model proposes executable components together with interfaces, cofibrations,
-and attaching maps; inverse-colimit composition integrates them into the
-incumbent solver, while an independent execution-and-replay gate admits only
-verified improvements. PowerPlay supplies cumulative task solver growth, and
-artificial curiosity directs search toward expected compression and free energy
-progress. Kolmogorov structure functions and the loss--complexity dual provide
-the selection geometry. Under stated finiteness and search-support assumptions,
-increasing compute eventually discovers every finite winning program and
-replay-valid attachment chain, making ARC-AGI-3 solvability explicitly
-compute-indexed. Repository artifacts demonstrate cumulative competence and
-reusable program structure.
+We present the G\"odel--Kolmogorov Machine (GKM), a replay-gated program-growth
+architecture for interactive ARC-AGI-3. A coding language model proposes
+game- and level-dependent executable components, while fixed host code admits a
+candidate only after fresh execution and independent path replay. We represent
+retained solver growth as a sequence of pushout attachments, relate candidate
+selection to Kolmogorov structure functions and free-energy duality, and connect
+the resulting loop to G\"odel machines, PowerPlay, and artificial curiosity.
+Under explicit finiteness and fair-search or stagewise full-support assumptions,
+we prove compute-completeness for deterministic games with finite winning
+traces. A frozen 25-game campaign verifies 181 of 183 levels
+($98.9071\%$ raw coverage; $98.1166\%$ in Competition Mode), and exact
+source histories exhibit retained-leg reuse together with nonmonotone marginal
+description growth. GKM is a universal producer of verified executable solvers;
+its learned outputs remain game- and level-dependent rather than constituting a
+single fixed runtime policy.
 \end{abstract}
 
 \textbf{Keywords:} G\"odel--Kolmogorov Machine; ARC-AGI-3; Kolmogorov
@@ -1657,7 +1658,10 @@ We thank OpenAI for providing access to GPT-5.6-sol.
 \paragraph{Data availability statement.}
 All data and code necessary for verification and reproducibility are contained in the GitHub repository \cite{gkmrepo}.
 
-\paragraph{Author contribution.} A.K. is the sole author of this manuscript. The code available in \cite{gkmrepo} was generated with the help of Anthropic's Opus 4.8, Fable 5, and OpenAI's GPT-5.6-sol.
+\paragraph{Author contribution and generative-AI disclosure.}
+A.K. is the sole author of this manuscript and takes full responsibility for its
+contents. Anthropic's Opus 4.8 and Fable 5 and OpenAI's GPT-5.6-sol were used as
+text-to-text generative-AI tools during code development and manuscript preparation.
 
 {\small
 \bibliographystyle{plain}

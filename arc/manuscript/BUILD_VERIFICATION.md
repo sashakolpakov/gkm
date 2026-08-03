@@ -1,12 +1,12 @@
 # Build verification
 
-Verified in the integrated repository on 2026-08-02 against frozen release commit
+Verified in the integrated repository on 2026-08-03 against frozen release commit
 `9235ed26627140460efa1f6ca5e4041470cddc14` and schema-v2 receipt
 `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
 
 ## Documents
 
-- `arc_agi3.pdf`: 27 pages, 1,065,509 bytes.
+- `arc_agi3.pdf`: 27 pages, 1,065,738 bytes.
 - `gkm_one_page_summary.pdf`: one page, 180,307 bytes.
 - The final logs contain no warning, undefined citation/reference,
   overfull/underfull box, or multiply-defined-label match.
@@ -14,6 +14,9 @@ Verified in the integrated repository on 2026-08-02 against frozen release commi
 - The ignored local PDFs are build products, not checksum-manifest inputs, because
   pdfTeX embeds build-time metadata. `SHA256SUMS.txt` covers the canonical sources,
   generated empirical tables/figures, reports, and audit outputs instead.
+- The deterministic six-file arXiv source archive builds from its own upload root
+  through PDFLaTeX and BibTeX. It contains no companion documents, repository evidence,
+  caches, compiled PDFs, or LaTeX intermediate files.
 
 ## Frozen empirical endpoint
 
@@ -41,7 +44,7 @@ Verified in the integrated repository on 2026-08-02 against frozen release commi
 ## Repository checks
 
 - Unified release-bound manuscript reproduction: passed.
-- Manuscript test target: 189 tests passed.
+- Manuscript test target: 193 tests passed.
 - Sphinx 9.1.0 strict HTML build (`-W`): passed.
 - Main paper and one-page PDF builds: passed.
 - Current source audit: 180 exact wins, 154 exact adjacent transitions, 153

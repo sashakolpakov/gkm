@@ -21,6 +21,8 @@ introduction, **GKM** is used as the abbreviation in filenames and dense compari
 - `SOCRATIC_PASSES.md` and `repo_ground_truth_matrix.md`: the current review and
   code-to-claim records. Repository history preserves superseded editorial drafts.
 - `BUILD_VERIFICATION.md`: results and limits of the repository integration checks.
+- `scripts/build_arxiv_bundle.py`: deterministic minimal arXiv source-package builder
+  and isolated compile check.
 - `SHA256SUMS.txt`: integrity manifest for the integrated source deliverables and
   generated empirical evidence. It deliberately excludes the ignored local paper PDFs,
   whose TeX metadata records the build time; their page/diagnostic checks are recorded
@@ -43,6 +45,23 @@ one-page companion:
 make -C arc/manuscript paper
 make -C arc/manuscript one-page
 ```
+
+## arXiv source package
+
+Do not upload the repository root or the whole `arc/manuscript/` directory. arXiv
+compiles from the upload root, while the manuscript intentionally refers to
+`generated/` and `figures/` by relative path. Build the minimal root-level package and
+compile it in a fresh temporary directory with:
+
+```bash
+make -C arc/manuscript arxiv-check
+```
+
+The resulting ignored local file is
+`arc/manuscript/build/arxiv/arc_agi3_arxiv.zip`. It contains exactly the main TeX
+source, the BibTeX database, the two included generated TeX tables, and the two included
+PNG figures. It excludes companion documents, repository evidence, scripts, caches,
+and all LaTeX output/intermediate files.
 
 The figure generator validates the expected PNG dimensions under Matplotlib 3.10.8:
 

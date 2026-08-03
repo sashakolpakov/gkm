@@ -6,7 +6,7 @@ RELEASE_ROOT ?= ../crack_lab/agent_solutions
 HISTORY_ROOT ?= ../crack_lab/agent_solutions
 RELEASE_RECEIPT ?=
 
-.PHONY: all figures tables diagram bibliography paper one-page reproduce reproduce-full test clean
+.PHONY: all figures tables diagram bibliography paper one-page arxiv-bundle arxiv-check reproduce reproduce-full test clean
 
 all: diagram paper
 
@@ -30,6 +30,7 @@ test:
 		arc/crack_lab/test_gkm_legs.py \
 		arc/manuscript/scripts/test_generate_figures.py \
 		arc/manuscript/scripts/test_generate_empirical_tables.py \
+		arc/manuscript/scripts/test_build_arxiv_bundle.py \
 		arc/manuscript/scripts/test_reproduce_manuscript.py
 
 reproduce:
@@ -80,6 +81,12 @@ paper: figures tables
 one-page:
 	pdflatex -interaction=nonstopmode -halt-on-error gkm_one_page_summary.tex
 	pdflatex -interaction=nonstopmode -halt-on-error gkm_one_page_summary.tex
+
+arxiv-bundle:
+	$(PYTHON) scripts/build_arxiv_bundle.py
+
+arxiv-check:
+	$(PYTHON) scripts/build_arxiv_bundle.py --compile-check
 
 clean:
 	rm -f $(MAIN).aux $(MAIN).bbl $(MAIN).blg $(MAIN).log $(MAIN).out
