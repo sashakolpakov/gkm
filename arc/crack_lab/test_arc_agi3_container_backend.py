@@ -107,24 +107,39 @@ def _request_short_private_test_root(
     request: pytest.FixtureRequest,
 ) -> Path:
     configured = os.environ.get("ARC_AGI3_TEST_SHORT_TMPDIR")
-    base = Path(
-        configured
-        if configured is not None
-        else Path(tempfile.gettempdir()).resolve()
-    )
-    if not base.is_absolute() or base.is_symlink() or not base.is_dir():
+    checkout = _CHECKOUT_ROOT
+    if configured is not None:
+        candidates = (Path(configured),)
+    else:
+        # macOS commonly exposes a long per-user TMPDIR even though its
+        # private system temp root is available.  Select the shortest safe
+        # resolved temp base so AF_UNIX tests pass without hidden shell setup.
+        candidates = tuple({
+            Path(tempfile.gettempdir()).resolve(),
+            Path("/private/tmp"),
+            Path("/tmp").resolve(),
+        })
+    valid_bases: list[Path] = []
+    for candidate in candidates:
+        if (
+            not candidate.is_absolute()
+            or candidate.is_symlink()
+            or not candidate.is_dir()
+            or not os.access(candidate, os.W_OK | os.X_OK)
+        ):
+            continue
+        resolved = candidate.resolve()
+        if resolved == checkout or checkout in resolved.parents:
+            continue
+        valid_bases.append(resolved)
+    if not valid_bases:
         raise RuntimeError(
             "short private test root base is unavailable"
         )
-    checkout = _CHECKOUT_ROOT
-    resolved_base = base.resolve()
-    if (
-        resolved_base == checkout
-        or checkout in resolved_base.parents
-    ):
-        raise RuntimeError(
-            "short private test root cannot be inside the checkout"
-        )
+    resolved_base = min(
+        set(valid_bases),
+        key=lambda path: (len(os.fsencode(path)), str(path)),
+    )
     root: Path | None = None
     for _ in range(32):
         candidate = resolved_base / ("a" + uuid.uuid4().hex[:2])
@@ -3433,6 +3448,178 @@ class _AuthenticatedControllerDouble:
         return tuple(sorted(set(self.credentials.leak_sentinels)))
 
 
+def _append_rejected_boundary_write_to_app_transcript(
+    path: Path,
+    *,
+    thread_id: str,
+    turn_id: str,
+    arguments: dict[str, Any],
+) -> tuple[str, int]:
+    """Insert the exact app-server evidence left by a pre-write rejection."""
+
+    retained = [
+        (
+            row["direction"],
+            row["payload"],
+        )
+        for row in (
+            json.loads(line)
+            for line in path.read_text(encoding="utf-8").splitlines()
+        )
+    ]
+    insertion = next(
+        index
+        for index, (direction, payload) in enumerate(retained)
+        if direction == "server_notification"
+        and isinstance(payload, dict)
+        and payload.get("method") == "turn/completed"
+    )
+    call_id = "boundary-write-call"
+    namespace = "contiguous_lane"
+    tool = "workspace_write"
+    retained[insertion:insertion] = [
+        (
+            "server_notification",
+            {
+                "method": "item/started",
+                "params": {
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "item": {
+                        "arguments": dict(arguments),
+                        "id": call_id,
+                        "namespace": namespace,
+                        "status": "inProgress",
+                        "tool": tool,
+                        "type": "dynamicToolCall",
+                    },
+                },
+            },
+        ),
+        (
+            "server_request",
+            {
+                "id": "boundary-write-request",
+                "method": "item/tool/call",
+                "params": {
+                    "arguments": dict(arguments),
+                    "callId": call_id,
+                    "namespace": namespace,
+                    "threadId": thread_id,
+                    "tool": tool,
+                    "turnId": turn_id,
+                },
+            },
+        ),
+        (
+            "client_response",
+            {
+                "id": "boundary-write-request",
+                "result": {
+                    "contentItems": [
+                        {
+                            "type": "inputText",
+                            "text": json.dumps(
+                                {"error": "AppServerTransportError"},
+                                sort_keys=True,
+                                separators=(",", ":"),
+                            ),
+                        }
+                    ],
+                    "success": False,
+                },
+            },
+        ),
+        (
+            "server_notification",
+            {
+                "method": "item/completed",
+                "params": {
+                    "threadId": thread_id,
+                    "turnId": turn_id,
+                    "item": {
+                        "arguments": dict(arguments),
+                        "id": call_id,
+                        "namespace": namespace,
+                        "status": "completed",
+                        "success": False,
+                        "tool": tool,
+                        "type": "dynamicToolCall",
+                    },
+                },
+            },
+        ),
+    ]
+    previous: str | None = None
+    rows: list[bytes] = []
+    for sequence, (direction, payload) in enumerate(retained, 1):
+        body = {
+            "schema": 1,
+            "sequence": sequence,
+            "previous_digest": previous,
+            "direction": direction,
+            "payload": payload,
+        }
+        digest = hashlib.sha256(T.canonical_json(body)).hexdigest()
+        rows.append(T.canonical_json({**body, "digest": digest}))
+        previous = digest
+    assert previous is not None
+    path.write_bytes(b"\n".join(rows) + b"\n")
+    return previous, len(rows)
+
+
+class _BoundaryRejectedControllerDouble(_AuthenticatedControllerDouble):
+    def __init__(self, spec, *, boundary_arguments, **kwargs):
+        super().__init__(spec, **kwargs)
+        self.boundary_arguments = dict(boundary_arguments)
+
+    def start_turn(self, *, frontier_brief):
+        evidence = super().start_turn(frontier_brief=frontier_brief)
+        if getattr(self, "_boundary_write_recorded", False):
+            return self.turn_start
+        (
+            self.transcript_chain_sha256,
+            self.transcript_event_count,
+        ) = _append_rejected_boundary_write_to_app_transcript(
+            Path(self.spec.app_server_transcript_path),
+            thread_id=evidence.thread_id,
+            turn_id=evidence.turn_id,
+            arguments=self.boundary_arguments,
+        )
+        self.turn_start = dataclasses.replace(
+            evidence,
+            transcript_chain_sha256=self.transcript_chain_sha256,
+        )
+        self._boundary_write_recorded = True
+        return self.turn_start
+
+    def run_turn(self):
+        evidence = super().run_turn()
+        observations = tuple(
+            {
+                **observation,
+                "threadId": evidence.thread_id,
+                "turnId": evidence.turn_id,
+            }
+            for observation in evidence.token_usage_observations
+        )
+        if (
+            evidence.tool_call_count == 0
+            or observations != evidence.token_usage_observations
+        ):
+            self.turn_final = dataclasses.replace(
+                evidence,
+                tool_call_count=1,
+                token_usage_observations=observations,
+                provider_usage_settlement=T.settle_provider_usage(
+                    evidence.pre_provider_usage_window,
+                    evidence.post_provider_usage_window,
+                    token_usage_observations=observations,
+                ),
+            )
+        return self.turn_final
+
+
 def _authenticated_adapter_test_kwargs(
     low_backend: B.DockerContainerBackend,
     spec,
@@ -5243,6 +5430,175 @@ def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
         command[:3] == ("docker", "container", "kill")
         for command in docker_runner.commands
     )
+
+
+def test_prewrite_boundary_rejection_is_backend_taint_and_noncounting_scheduler_transition(
+    request: pytest.FixtureRequest,
+):
+    import arc_agi3_contiguous_runner as R
+    from arc_agi3_arena_rpc import ArenaHostSession
+
+    boundary_arguments = {
+        "path": "probe.py",
+        "text": (
+            "from pathlib import Path\n"
+            "Path('/private/controller/secret').read_text()\n"
+        ),
+    }
+
+    # Production BridgeClient rejects the source before it emits a bridge
+    # request.  The app-server protocol still retains the paired dynamic-tool
+    # attempt, which is the immutable classification authority exercised below.
+    callbacks: list[tuple[str, dict[str, Any]]] = []
+    prewrite_client = T.BridgeClient.__new__(T.BridgeClient)
+    prewrite_client._callback = (
+        lambda kind, payload: callbacks.append((kind, payload))
+    )
+    with pytest.raises(
+        T.AppServerTransportError,
+        match="clean-room filesystem boundary",
+    ):
+        prewrite_client.call(
+            "workspace_write",
+            boundary_arguments,
+            idempotency_key="boundary-write-call",
+        )
+    assert callbacks == []
+
+    spec = _short_runner_attempt_spec(request)
+    canary_prefix = "boundary-prewrite-e2e"
+    low_spec = B.validate_runner_attempt_contract(
+        spec,
+        containment_canary_anchor=_test_canary_anchor(
+            spec, canary_prefix
+        ),
+    )
+    docker_runner = FakeDockerRunner(low_spec)
+    low_backend = B.DockerContainerBackend(docker_runner)
+    adapter_kwargs = _authenticated_adapter_test_kwargs(
+        low_backend,
+        spec,
+        canary_prefix=canary_prefix,
+    )
+    adapter_kwargs["controller_factory"] = lambda **kwargs: (
+        _BoundaryRejectedControllerDouble(
+            kwargs["probe_spec"],
+            boundary_arguments=boundary_arguments,
+            **kwargs,
+        )
+    )
+    adapter = B.ContiguousDockerAttemptBackend(
+        low_backend,
+        result_collector=lambda *_args: R.AttemptResult(
+            kind="clean_no_progress",
+            reason="collector observed no authenticated candidate",
+        ),
+        **adapter_kwargs,
+        arena_session_factory=lambda game, *, binding, parent_path, token:
+            ArenaHostSession(
+                game,
+                binding=binding,
+                parent_path=parent_path,
+                token=token,
+                arena_factory=lambda _game: _TinyArena(),
+            ),
+    )
+
+    prepared = adapter.prepare(spec)
+    launched = adapter.launch(spec, prepared)
+    Path(spec.output_dir, "worker_outcome.json").write_text(
+        json.dumps(
+            {
+                "schema": 1,
+                "kind": "arc_agi3_contiguous_proposer_worker",
+                "attempt_id": spec.attempt_id,
+                "authoritative": False,
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    docker_runner.running = False
+    terminal = adapter.poll(
+        spec=spec,
+        prepared=prepared,
+        launched=launched,
+        timeout_seconds=1,
+    )
+    collection = adapter.collect(
+        spec=spec,
+        prepared=prepared,
+        launched=launched,
+        terminal=terminal,
+    )
+
+    assert collection.result.kind == "tainted"
+    assert collection.result.candidate is None
+    assert collection.result.wip is None
+    assert collection.result.blocker is None
+    assert "filesystem_boundary:absolute_path" in collection.result.reason
+    taint_receipt = json.loads(
+        Path(collection.taint_scan_receipt_path).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert taint_receipt["status"] == "TAINT"
+    assert "filesystem_boundary:absolute_path" in taint_receipt["hits"]
+    export_receipt = json.loads(
+        Path(collection.bridge_export_receipt_path).read_text(
+            encoding="utf-8"
+        )
+    )
+    assert export_receipt["outcome"] == "tainted"
+    assert export_receipt["candidate_manifest_sha256"] is None
+    assert export_receipt["wip_manifest_sha256"] is None
+
+    # Reopen the backend evidence through the runner's independent validator,
+    # then apply the exact scheduler transition consumed by its journal reducer.
+    reducer = R.ContiguousCampaignRunner.__new__(
+        R.ContiguousCampaignRunner
+    )
+    reducer._controller_state_canaries = _test_controller_canaries(
+        canary_prefix
+    )
+    reducer._secret_sentinels = tuple(
+        adapter_kwargs["credentials"].leak_sentinels
+    )
+    reducer._validate_collection(
+        spec,
+        prepared,
+        launched,
+        collection,
+    )
+    transition = R.Scheduler.terminal_policy_transition(
+        collection.result.kind
+    )
+    assert transition.next_lane_phase == "READY"
+    assert transition.retry_coordinate_delta == 0
+    assert transition.current_attempt_wip_disposition == "discard"
+    assert transition.prior_wip_disposition == (
+        "revoke_same_thread_frontier_context"
+    )
+    prior_lineage = object()
+    assert R.Scheduler.reduce_terminal_wip(
+        transition=transition,
+        prior_wip=prior_lineage,
+        current_attempt_wip=collection.result.wip,
+        exposure_detected=False,
+    ) is None
+    assert R.advance_exact_frontier_clean_no_progress(
+        4, collection.result.kind
+    ) == 4
+
+    proof = adapter.teardown(
+        spec=spec,
+        prepared=prepared,
+        launched=launched,
+        cause="normal_exit",
+    )
+    assert proof.no_descendants is True
 
 
 def test_adapter_prepare_failure_cleans_private_rpc_endpoints(

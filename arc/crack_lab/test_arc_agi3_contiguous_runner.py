@@ -778,8 +778,8 @@ def _app_scan_policy(
     )
     return (
         Taint.AppServerScanPolicy(
-            state_root=spec.app_server_state_dir,
-            neutral_cwd=spec.neutral_host_cwd_path,
+            state_root=R.EXPECTED_CONTROLLER_STATE_ROOT,
+            neutral_cwd=R.EXPECTED_CONTROLLER_NEUTRAL_CWD,
             model=spec.proposer_transport.model,
             model_provider=spec.proposer_transport.model_provider,
             reasoning_effort=spec.effort,
@@ -802,6 +802,11 @@ def _write_app_transcript(
     thread_id: str,
     turn_id: str,
 ) -> tuple[str, int]:
+    spec = replace(
+        spec,
+        app_server_state_dir=R.EXPECTED_CONTROLLER_STATE_ROOT,
+        neutral_host_cwd_path=R.EXPECTED_CONTROLLER_NEUTRAL_CWD,
+    )
     policy, prompt = _app_scan_policy(spec)
     events: list[tuple[str, object]] = []
 

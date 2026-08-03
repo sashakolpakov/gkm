@@ -17679,55 +17679,14 @@ class ContiguousDockerAttemptBackend:
                 raise ContainerContractError(
                     "candidate result lacks an authenticated bridge publication"
                 )
-            export_path, export_sha256 = _ensure_bound_receipt(
-                host_root / "bridge_export_receipt.json",
-                spec=spec,
-                kind="contiguous_bridge_export",
-                fields=export_fields,
-            )
+            # The definitive taint scan runs below.  Do not seal an outcome
+            # receipt yet: an immutable pre-write boundary hit must dominate a
+            # provisional infrastructure/no-progress label and become the
+            # canonical tainted result before any downstream receipt is bound.
+            export_path: str | None = None
+            export_sha256: str | None = None
             wip_export_path: str | None = None
             wip_export_sha256: str | None = None
-            if wip_evidence is not None:
-                wip_export_path, wip_export_sha256 = (
-                    _ensure_bound_receipt(
-                        host_root / "wip_export_receipt.json",
-                        spec=spec,
-                        kind="contiguous_wip_export",
-                        fields={
-                            "outcome": "wip",
-                            "manifest_path": str(
-                                wip_evidence.manifest_path
-                            ),
-                            "manifest_sha256":
-                                wip_evidence.manifest_sha256,
-                            "wip_root_path": str(
-                                wip_evidence.wip_root_path
-                            ),
-                            "wip_tree_sha256":
-                                wip_evidence.wip_tree_sha256,
-                            "solver_source_path": str(
-                                wip_evidence.solver_source_path
-                            ),
-                            "solver_source_tree_sha256":
-                                wip_evidence
-                                .solver_source_tree_sha256,
-                            "exported_files_sha256": dict(
-                                wip_evidence
-                                .exported_files_sha256
-                            ),
-                            "publish_request_sha256":
-                                wip_evidence
-                                .publish_request_sha256,
-                            "publish_response_sha256":
-                                wip_evidence
-                                .publish_response_sha256,
-                            "total_export_bytes":
-                                wip_evidence.total_export_bytes,
-                            "bridge_export_receipt_sha256":
-                                export_sha256,
-                        },
-                    )
-                )
             scanned_sha256 = {
                 "app_server_transcript": app_transcript_sha256,
                 "backend_transcript": host_transcript_sha256,
@@ -17857,9 +17816,65 @@ class ContiguousDockerAttemptBackend:
                     for hit in record.hits
                 }
             )
-            if actionable_taint and result.kind != "tainted":
-                raise ContainerContractError(
-                    "actionable taint was not classified as tainted"
+            if actionable_taint:
+                result = runner_contract.AttemptResult(
+                    kind="tainted",
+                    cost_used=float(result.cost_used),
+                    reason=(
+                        "actionable_taint:" + ",".join(actionable_taint)
+                    ),
+                    candidate=None,
+                    wip=None,
+                )
+                candidate_evidence = None
+                wip_evidence = None
+                host_blocker_evidence = None
+                runtime.target_boundary_evidence = None
+                export_fields.update({
+                    "outcome": "tainted",
+                    "host_blocker_code": None,
+                    "host_blocker_receipt_sha256": None,
+                    "candidate_manifest_sha256": None,
+                    "authenticated_candidate_path_sha256": None,
+                    "authenticated_candidate_source_set_sha256": None,
+                    "candidate_publish_request_sha256": None,
+                    "candidate_publish_response_sha256": None,
+                    "wip_manifest_sha256": None,
+                    "wip_tree_sha256": None,
+                    "solver_source_tree_sha256": None,
+                    "wip_publish_request_sha256": None,
+                    "wip_publish_response_sha256": None,
+                    "target_boundary_receipt_sha256": None,
+                    "target_boundary_sha256": None,
+                    "target_boundary_workspace_tree_sha256": None,
+                })
+            export_path, export_sha256 = _ensure_bound_receipt(
+                host_root / "bridge_export_receipt.json",
+                spec=spec,
+                kind="contiguous_bridge_export",
+                fields=export_fields,
+            )
+            if wip_evidence is not None:
+                wip_export_path, wip_export_sha256 = (
+                    _ensure_bound_receipt(
+                        host_root / "wip_export_receipt.json",
+                        spec=spec,
+                        kind="contiguous_wip_export",
+                        fields={
+                            "outcome": "wip",
+                            "manifest_path": str(wip_evidence.manifest_path),
+                            "manifest_sha256": wip_evidence.manifest_sha256,
+                            "wip_root_path": str(wip_evidence.wip_root_path),
+                            "wip_tree_sha256": wip_evidence.wip_tree_sha256,
+                            "solver_source_path": str(wip_evidence.solver_source_path),
+                            "solver_source_tree_sha256": wip_evidence.solver_source_tree_sha256,
+                            "exported_files_sha256": dict(wip_evidence.exported_files_sha256),
+                            "publish_request_sha256": wip_evidence.publish_request_sha256,
+                            "publish_response_sha256": wip_evidence.publish_response_sha256,
+                            "total_export_bytes": wip_evidence.total_export_bytes,
+                            "bridge_export_receipt_sha256": export_sha256,
+                        },
+                    )
                 )
             taint_path, taint_sha256 = _ensure_bound_receipt(
                 host_root / "taint_scan_receipt.json",

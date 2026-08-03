@@ -25,6 +25,9 @@ import codex_usage_guard as Guard
 DEFAULT_RESERVE = 20
 DEFAULT_MAX_RUNS = 60
 DEFAULT_MAX_TOKENS = 32_000_000
+BOUNDARY_POLICY_WIP_REJECTION = (
+    "rejected:filesystem_boundary_policy_binding"
+)
 
 
 def lineage_input_modes(
@@ -68,10 +71,17 @@ def lineage_input_modes(
         wip_mode == "restore_clean_same_frontier"
         and row.get("warm_wip_available") is not True
     ):
-        raise ValueError(
-            "retry policy requires clean same-frontier WIP, but none is "
-            "eligible"
-        )
+        if row.get("warm_wip_validation") == BOUNDARY_POLICY_WIP_REJECTION:
+            # Capsules created before this exact capability policy remain
+            # forensic evidence only.  The scheduler must choose a clean
+            # reset before it emits a plan, rather than advertising a warm
+            # continuation that the dispatch gate will inevitably reject.
+            wip_mode = "exclude"
+        else:
+            raise ValueError(
+                "retry policy requires clean same-frontier WIP, but none is "
+                "eligible"
+            )
     return seed_mode, wip_mode
 
 
@@ -169,11 +179,17 @@ def _command(
     max_tokens = -1 if unlimited else DEFAULT_MAX_TOKENS
     seed_mode, wip_mode = lineage_input_modes(row, minutes=minutes)
     recovery_required = row.get("warm_wip_recovery_required") is True
-    effective_dispatch_mode = (
-        "recover_clean_infrastructure_wip"
-        if recovery_required
-        else policy["dispatch_mode"]
+    boundary_policy_reset = (
+        policy["wip_mode"] == "restore_clean_same_frontier"
+        and wip_mode == "exclude"
+        and row.get("warm_wip_validation") == BOUNDARY_POLICY_WIP_REJECTION
     )
+    if recovery_required:
+        effective_dispatch_mode = "recover_clean_infrastructure_wip"
+    elif boundary_policy_reset:
+        effective_dispatch_mode = "filesystem_boundary_clean_reset"
+    else:
+        effective_dispatch_mode = policy["dispatch_mode"]
     args = [
         "python3", "-u", "arc/crack_lab/gkm_legs.py",
         f"--game={row['game']}",
@@ -236,6 +252,7 @@ def _command(
         "warm_wip_available": bool(row.get("warm_wip_available")),
         "warm_wip_phase": row.get("warm_wip_phase"),
         "warm_wip_recovery_required": recovery_required,
+        "warm_wip_validation": row.get("warm_wip_validation"),
         "expected_wip_attempt": expected_wip_attempt,
         "seed_mode": seed_mode,
         "wip_mode": wip_mode,
@@ -397,11 +414,16 @@ def adaptive_campaign_item(
         minutes=minutes,
         unlimited=unlimited,
     )
-    item["experiment_role"] = (
-        f"retry_n{n}_recover_clean_infrastructure_wip"
-        if item["warm_wip_recovery_required"]
-        else role
-    )
+    if item["warm_wip_recovery_required"]:
+        item["experiment_role"] = (
+            f"retry_n{n}_recover_clean_infrastructure_wip"
+        )
+    elif item["dispatch_mode"] == "filesystem_boundary_clean_reset":
+        item["experiment_role"] = (
+            f"retry_n{n}_filesystem_boundary_clean_reset"
+        )
+    else:
+        item["experiment_role"] = role
     item["policy_projection"] = policy
     return item
 

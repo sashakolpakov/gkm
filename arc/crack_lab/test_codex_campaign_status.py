@@ -2,6 +2,8 @@ import hashlib
 import json
 from pathlib import Path
 
+import pytest
+
 import codex_campaign_status as S
 
 
@@ -798,6 +800,12 @@ def _write_bound_wip(
         "attempt": attempt,
         "created_at": "2026-08-02T00:00:00+00:00",
         "taint_verdict": "clean",
+        "filesystem_boundary_policy_schema": S.Boundary.POLICY_SCHEMA,
+        "filesystem_boundary_policy_sha256": S.Boundary.policy_sha256(),
+        "compatibility_arena_module_sha256": (
+            S.Boundary.arena_module_sha256(S.HERE)
+        ),
+        "compatibility_boundary_authority": "behavioral_defense_in_depth",
         "frontier_binding": binding,
         "files": ["probe.py"],
     }
@@ -872,6 +880,90 @@ def test_latest_wip_descriptor_rejects_unsealed_or_stale_capsule(tmp_path):
     assert result["warm_wip_available"] is False
     assert result["warm_wip_recovery_required"] is False
     assert result["warm_wip_validation"].startswith("rejected:")
+
+
+def test_latest_wip_descriptor_rejects_legacy_unbound_capsule_forensic_only(
+    tmp_path,
+):
+    artifact = tmp_path / "hard_legs"
+    artifact.mkdir()
+    (artifact / "checkpoint.json").write_text(json.dumps({
+        "game": "hard",
+        "reached": 2,
+        "final_path": [1, 2],
+        "validated": True,
+    }))
+    for name in ("legs.py", "players.py", "solve.py"):
+        (artifact / name).write_text(f"# {name}\n")
+    binding, _, metadata = _write_bound_wip(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        phase="not_reached",
+    )
+    metadata.pop("filesystem_boundary_policy_schema")
+    metadata.pop("filesystem_boundary_policy_sha256")
+    level = artifact / "wip_context" / "level_03"
+    attempt = metadata["attempt"]
+    (level / attempt / "metadata.json").write_text(json.dumps(metadata))
+    (level / "latest.json").write_text(json.dumps({
+        "attempt": attempt,
+        "metadata": metadata,
+    }))
+
+    result = S.latest_wip_descriptor(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        frontier_binding=binding,
+    )
+
+    assert result["warm_wip_available"] is False
+    assert result["warm_wip_recovery_required"] is False
+    assert result["warm_wip_validation"] == (
+        "rejected:filesystem_boundary_policy_binding"
+    )
+
+
+@pytest.mark.parametrize("malformed", [[], 7])
+def test_latest_wip_descriptor_rejects_nonobject_metadata_without_crashing(
+    tmp_path, malformed
+):
+    artifact = tmp_path / "hard_legs"
+    artifact.mkdir()
+    (artifact / "checkpoint.json").write_text(json.dumps({
+        "game": "hard", "reached": 2, "final_path": [1, 2],
+        "validated": True,
+    }))
+    for name in ("legs.py", "players.py", "solve.py"):
+        (artifact / name).write_text(f"# {name}\n")
+    binding, attempt, _ = _write_bound_wip(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        phase="not_reached",
+    )
+    level = artifact / "wip_context" / "level_03"
+    (level / attempt / "metadata.json").write_text(json.dumps(malformed))
+    (level / "latest.json").write_text(json.dumps({
+        "attempt": attempt, "metadata": malformed,
+    }))
+
+    result = S.latest_wip_descriptor(
+        artifact,
+        game="hard",
+        reached=2,
+        target_level=3,
+        frontier_binding=binding,
+    )
+
+    assert result["warm_wip_available"] is False
+    assert result["warm_wip_validation"] == (
+        "rejected:latest metadata is not an object"
+    )
 
 
 def test_effort_efficiency_charges_failures_to_cost_per_solve():

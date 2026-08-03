@@ -98,6 +98,8 @@ EXPECTED_CONTROLLER_IMAGE_USER = "65532:65532"
 # it group/world-accessible or requiring a privileged chown helper.
 EXPECTED_CONTROLLER_USER = f"{os.getuid()}:{os.getgid()}"
 EXPECTED_CONTROLLER_EGRESS_POLICY = "openai_https_only"
+EXPECTED_CONTROLLER_STATE_ROOT = "/controller-state"
+EXPECTED_CONTROLLER_NEUTRAL_CWD = "/controller-neutral"
 EXPECTED_REASONING_EFFORT_ALLOWLIST = (
     "medium",
     "high",
@@ -5399,12 +5401,16 @@ def _validate_preparation_receipts(
         "reasoning_effort": spec.effort,
         "environments": [],
         "selected_capability_roots": [],
-        "runtime_workspace_roots": ["/controller-neutral"],
+        "runtime_workspace_roots": [
+            EXPECTED_CONTROLLER_NEUTRAL_CWD
+        ],
         "native_proposer_workspace": {
-            "root": "/controller-neutral",
+            "root": EXPECTED_CONTROLLER_NEUTRAL_CWD,
             "storage": "private-tmpfs",
             "git_root_equals_workspace": True,
-            "git_ceiling_directories": "/controller-neutral",
+            "git_ceiling_directories": (
+                EXPECTED_CONTROLLER_NEUTRAL_CWD
+            ),
             "git_discovery_across_filesystem": False,
             "parent_repo_mounts": 0,
             "campaign_plan_mounts": 0,
@@ -5438,7 +5444,7 @@ def _validate_preparation_receipts(
             "type": "readOnly",
             "networkAccess": False,
         },
-        "state_root": "/controller-state",
+        "state_root": EXPECTED_CONTROLLER_STATE_ROOT,
         "state_host_staging_root": spec.app_server_state_dir,
         "state_mode": (
             "resume_staged_copy"
@@ -5684,7 +5690,7 @@ def _validate_launch_receipts(
         "process_start": launched.app_server_process_start,
         "process_group_id": launched.app_server_process_group_id,
         "state_root": spec.app_server_state_dir,
-        "neutral_cwd": "/controller-neutral",
+        "neutral_cwd": EXPECTED_CONTROLLER_NEUTRAL_CWD,
         "neutral_host_staging_cwd": spec.neutral_host_cwd_path,
         "thread_id": launched.codex_thread_id,
         "turn_id": launched.codex_turn_id,
@@ -14523,9 +14529,9 @@ class ContiguousCampaignRunner:
                 "per-lane Codex state changed after final binding"
             )
         if collection.structured_provider_outcome != "completed":
-            if collection.result.kind != "infrastructure":
+            if collection.result.kind not in {"infrastructure", "tainted"}:
                 raise ContiguousRunnerError(
-                    "structured provider failure is not infrastructure"
+                    "structured provider failure is neither infrastructure nor taint-dominated"
                 )
         elif collection.structured_turn_status != "completed":
             raise ContiguousRunnerError(
@@ -14580,8 +14586,12 @@ class ContiguousCampaignRunner:
                 + Transport.canonical_json(frontier_brief).decode("ascii")
             )
             scan_policy = Taint.AppServerScanPolicy(
-                state_root=spec.app_server_state_dir,
-                neutral_cwd=spec.neutral_host_cwd_path,
+                # The immutable transcript records the controller's pinned
+                # in-container paths.  Host staging paths are authenticated
+                # separately by the config/state receipts and must never be
+                # substituted into protocol replay.
+                state_root=EXPECTED_CONTROLLER_STATE_ROOT,
+                neutral_cwd=EXPECTED_CONTROLLER_NEUTRAL_CWD,
                 model=spec.proposer_transport.model,
                 model_provider=spec.proposer_transport.model_provider,
                 reasoning_effort=spec.effort,
@@ -17762,7 +17772,7 @@ class ContiguousCampaignRunner:
                 )
                 != []
                 or config_receipt.get("runtime_workspace_roots")
-                != ["/controller-neutral"]
+                != [EXPECTED_CONTROLLER_NEUTRAL_CWD]
                 or config_receipt.get("dynamic_tool_namespace")
                 != spec.proposer_transport.dynamic_tool_namespace
                 or config_receipt.get("dynamic_tool_names")
@@ -17794,7 +17804,7 @@ class ContiguousCampaignRunner:
                     "networkAccess": False,
                 }
                 or config_receipt.get("state_root")
-                != "/controller-state"
+                != EXPECTED_CONTROLLER_STATE_ROOT
                 or config_receipt.get("state_host_staging_root")
                 != spec.app_server_state_dir
                 or config_receipt.get("state_mode")
@@ -18097,7 +18107,7 @@ class ContiguousCampaignRunner:
                 or app_runtime.get("state_root")
                 != spec.app_server_state_dir
                 or app_runtime.get("neutral_cwd")
-                != "/controller-neutral"
+                != EXPECTED_CONTROLLER_NEUTRAL_CWD
                 or app_runtime.get("neutral_host_staging_cwd")
                 != spec.neutral_host_cwd_path
                 or app_runtime.get("thread_id")

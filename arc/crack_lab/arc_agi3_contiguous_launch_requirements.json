@@ -569,6 +569,12 @@
       "scenario_id": "S11"
     },
     {
+      "invariant_id": "filesystem_boundary_is_prewrite_and_scheduler_visible",
+      "component": "taint",
+      "owner_nodeid": "arc/crack_lab/test_arc_agi3_container_backend.py::test_prewrite_boundary_rejection_is_backend_taint_and_noncounting_scheduler_transition",
+      "scenario_id": "S11"
+    },
+    {
       "invariant_id": "general_taint_dependency_is_control_bound_and_syntax_aware",
       "component": "taint",
       "owner_nodeid": "arc/crack_lab/test_arc_agi3_contiguous_taint.py::test_general_taint_dependency_is_control_bound_and_syntax_aware",

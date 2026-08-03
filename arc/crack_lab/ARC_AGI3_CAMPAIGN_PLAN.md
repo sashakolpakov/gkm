@@ -1339,6 +1339,16 @@ A second quarantine-only supervisory synthesis over exact input manifest
 It contains three bounded, unexecuted native-reproduction tests and remains
 forbidden from the currently live native turn.
 
+A transient ultra-effort follow-up then attempted only the handoff's T2
+obligation. It repaired the earlier prefix-67 bookkeeping failure and completed
+the bounded enumeration, but its sealed input did not retain the comparison
+table for prefixes 0--66 or predicted successor deltas; an earlier interface-
+discovery invocation also lacked a cumulative action ledger. T2 therefore
+remains undischarged. The follow-up had no authority, was not exposed to the
+live proposer, and is not retained as release evidence. Another auxiliary retry
+is inadmissible unless a fresh authenticated native request supplies the
+missing public-observation comparison evidence.
+
 If every retained source for an otherwise exact replay-valid boundary fails
 fresh source execution, the certifier may use a minimal deterministic source
 capsule generated from that boundary's canonical exact action prefix. This is a
@@ -2360,6 +2370,35 @@ multi-process journal races, but only the genuine S06/S07 scenarios and the
 immutable audit receipt can admit launch.
 
 ### 10.3 Container and information-flow boundary
+
+The compatibility campaign and the unattended contiguous campaign have two
+different, explicitly named guarantees. The compatibility runner applies a
+prospective behavioural proposer-boundary policy: it permits only the exact
+documented raw-`gkm_arena` capability, scans every executable workspace source
+and immutable command record, polls the live turn, and repeats the gate before
+WIP retention, recovery, source execution, and promotion. Evidence records the
+policy schema and source digest. A policy mismatch makes WIP forensic-only and
+forces a clean reset. This is a fail-closed audit gate, not a proof of host
+filesystem confinement; a turn that began before the policy was loaded can be
+audited retrospectively but cannot be represented as prospectively confined.
+No new compatibility turn may receive raw-Arena authority until its import
+closure is purified and receipt-bound: offline import must not read the
+repository `.env`, proposer/LLM modules must be lazy or absent, workspace module
+shadows must be rejected, and the physical Arena module plus local runtime
+closure must match the JIT evidence receipt. The already-live pre-policy LF52
+child is allowed to drain under its unchanged runtime, but that host runtime is
+not modified mid-turn and its parent remains unable to promote directly.
+
+The contiguous runner supplies the hard unattended boundary: a fresh
+unprivileged, network-disabled container receives no repository, home, game
+source, Docker socket, or sibling-lane mount and reaches the public Arena only
+through the host RPC capability. The behavioural source/transcript gate stays
+inside that design as defense in depth. Any boundary finding deterministically
+returns a candidate-free and WIP-free `tainted` result, leaves the retry
+coordinate unchanged, and revokes same-thread frontier context. Neither a
+model report nor a scheduler heuristic may override this transition. Launch
+authority remains closed until the production adapter-to-runner-to-scheduler
+test, the easier-game pilots, and the complete conformance receipt all pass.
 
 Use the strong part of baseline1's current operational design—a separate Docker
 boundary—as defense in depth. Container isolation does not replace transcript

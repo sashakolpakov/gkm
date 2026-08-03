@@ -572,6 +572,47 @@ def test_complete_exact_lifecycle_and_tool_pairing_passes(
     assert record.size > 0
 
 
+def test_filesystem_boundary_attempt_is_prewrite_rejected_and_taint_visible(
+    tmp_path: Path,
+) -> None:
+    arguments = {
+        "path": "probe.py",
+        "text": (
+            "from pathlib import Path\n"
+            "Path('/private/controller/secret').read_text()\n"
+        ),
+    }
+    assert "absolute_path" in (
+        Taint.Boundary.dynamic_tool_boundary_hits(
+            "workspace_write", arguments
+        )
+    )
+
+    events = _valid_events()
+    for direction, payload in events:
+        if not isinstance(payload, dict):
+            continue
+        if direction == "server_request" and payload.get("method") == "item/tool/call":
+            payload["params"]["tool"] = "workspace_write"
+            payload["params"]["arguments"] = dict(arguments)
+        if direction == "server_notification" and payload.get("method") in {
+            "item/started", "item/completed"
+        }:
+            item = payload["params"]["item"]
+            if item.get("type") == "dynamicToolCall":
+                item["tool"] = "workspace_write"
+                item["arguments"] = dict(arguments)
+    record = _scan_events(tmp_path, events)
+    assert "filesystem_boundary:absolute_path" in record.hits
+
+    source = tmp_path / "candidate.py"
+    source.write_text(arguments["text"], encoding="utf-8")
+    source_record = Taint.scan_regular_file(
+        source, evidence_kind="candidate_output"
+    )
+    assert "filesystem_boundary:absolute_path" in source_record.hits
+
+
 def test_login_must_be_redacted(tmp_path: Path) -> None:
     events = _valid_events()
     login = next(

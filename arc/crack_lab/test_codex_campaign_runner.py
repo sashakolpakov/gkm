@@ -197,6 +197,21 @@ def test_validate_item_admits_only_sealed_infrastructure_recovery_override():
         R.validate_item(item)
 
 
+def test_runner_projects_policy_rejected_legacy_wip_to_clean_reset():
+    policy = R.Status.retry_policy(2)
+    item = {
+        "warm_wip_available": False,
+        "warm_wip_recovery_required": False,
+        "warm_wip_validation": (
+            "rejected:filesystem_boundary_policy_binding"
+        ),
+    }
+
+    assert R._effective_retry_inputs(item, policy) == (
+        "exclude", "filesystem_boundary_clean_reset"
+    )
+
+
 def test_live_policy_reopens_infrastructure_recovery_capsule(monkeypatch):
     item = _infrastructure_recovery_item()
     monkeypatch.setattr(
@@ -223,6 +238,26 @@ def test_live_policy_reopens_infrastructure_recovery_capsule(monkeypatch):
         },
     )
     R.validate_live_policy_item(item)
+
+
+def test_unattended_admission_reopens_canonical_filesystem_boundary(
+    tmp_path, monkeypatch
+):
+    artifact = tmp_path / "agent_solutions" / "ar25_legs"
+    artifact.mkdir(parents=True)
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    seen = []
+
+    def boundary(path):
+        seen.append(path)
+        return "parent_path in legs.py:1"
+
+    monkeypatch.setattr(R.Legs, "promoted_artifact_taint_reason", boundary)
+    with pytest.raises(
+        R.CampaignPlanError, match="canonical parent fails"
+    ):
+        R.validate_live_policy_item(_item())
+    assert seen == [str(artifact)]
 
 
 def test_live_policy_reset_does_not_consume_unused_wip_capsule(monkeypatch):

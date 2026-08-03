@@ -39,13 +39,18 @@ import threading
 import time
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import gkm_arena as A
 import codex_campaign_status as CCS
 import codex_usage_guard as CUG
 import claude_usage_guard as CLG
+import arc_agi3_proposer_boundary as APB
 from gkm_solve_agent import discovered_context
+
+_ARENA_MODULE_ROOT = Path(__file__).resolve().parent
+_LOADED_ARENA_MODULE_SHA256 = APB.arena_module_sha256(_ARENA_MODULE_ROOT)
+COMPATIBILITY_ARENA_CLOSURE_AUTHORITY = False
 
 # Working-directory root for per-game leg workspaces. Defaults to a repo-relative
 # ``runs/scratch`` dir; override with the ``GKM_SCRATCH`` environment variable.
@@ -261,7 +266,7 @@ PROMOTED_FILES = ("legs.py", "players.py", "solve.py", "legs_log.md", CHECKPOINT
 """Files that define a verified leg-library state and should survive scratch loss."""
 
 SNAPSHOT_SKIP_DIRS = {"__pycache__", ".pytest_cache", ".git"}
-SNAPSHOT_SKIP_FILES = {".orchestrate.lock"}
+SNAPSHOT_SKIP_FILES: set[str] = set()
 BLOCKED_ATTEMPTS_LOG = "blocked_attempts.log"
 MAX_TAINT_SCAN_BYTES = 50_000_000
 MAX_RECOVERY_PATH_CANDIDATES = 24
@@ -535,7 +540,7 @@ def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
     return None
 
 
-def _workspace_taint_reason(ws: str) -> Optional[str]:
+def _workspace_marker_taint_reason(ws: str) -> Optional[str]:
     for root, dirs, files in os.walk(ws):
         dirs[:] = [d for d in dirs if d not in SNAPSHOT_SKIP_DIRS]
         for name in files:
@@ -548,10 +553,93 @@ def _workspace_taint_reason(ws: str) -> Optional[str]:
     return None
 
 
+def _workspace_boundary_reason(ws: str) -> Optional[str]:
+    """Enforce the machine-readable clean-room filesystem capability."""
+    try:
+        current_arena_sha256 = APB.arena_module_sha256(_ARENA_MODULE_ROOT)
+    except RuntimeError as exc:
+        return f"arena_module_control_drift: {exc}"
+    if current_arena_sha256 != _LOADED_ARENA_MODULE_SHA256:
+        return (
+            "arena_module_control_drift: raw-arena module changed after "
+            "compatibility-runner import"
+        )
+    return APB.first_reason(
+        APB.scan_workspace(
+            Path(ws),
+            arena_module_root=Path(__file__).resolve().parent,
+            trusted_host_scaffolds=_trusted_host_scaffold_hashes(ws),
+        )
+    )
+
+
+def _trusted_host_scaffold_hashes(ws: str) -> Dict[str, frozenset[str]]:
+    """Bind the privileged compatibility scaffold to exact host-owned bytes."""
+    base = os.path.basename(os.path.abspath(ws))
+    games = sorted(name.removesuffix(".py") for name in ARC_GAME_SOURCE_NAMES)
+    game = next(
+        (
+            candidate
+            for candidate in games
+            if base == f"gkm_legs_ws_{candidate}"
+            or base.startswith(f"gkm_legs_ws_{candidate}_")
+        ),
+        None,
+    )
+    if game is None:
+        match = re.fullmatch(
+            r"gkm_legs_ws_([A-Za-z0-9]+)(?:_.*)?", base
+        )
+        if match is not None:
+            # Offline/injected harness tests use synthetic game ids.  Trust
+            # only bytes that exactly reproduce the host TESTER template for
+            # that basename-derived id; no proposer-authored variation gains
+            # this exception.
+            game = match.group(1)
+    tester = globals().get("TESTER")
+    if not isinstance(tester, str):
+        return {}
+    candidate_games = [game] if game is not None else games
+    hashes = frozenset(
+        hashlib.sha256(tester.format(
+            labdir=os.path.dirname(os.path.abspath(__file__)),
+            game=candidate,
+        ).encode("utf-8")).hexdigest()
+        for candidate in candidate_games
+    )
+    return {"gkm_try.py": hashes}
+
+
+def _filesystem_boundary_policy_binding() -> dict:
+    """Return the exact prospective policy identity sealed into evidence."""
+    return {
+        "filesystem_boundary_policy_schema": APB.POLICY_SCHEMA,
+        "filesystem_boundary_policy_sha256": APB.policy_sha256(),
+        "compatibility_arena_module_sha256": _LOADED_ARENA_MODULE_SHA256,
+        "compatibility_boundary_authority": "behavioral_defense_in_depth",
+    }
+
+
+def _workspace_taint_reason(ws: str) -> Optional[str]:
+    """Return source/environment taint or a filesystem-boundary violation."""
+    # The boundary gate uses lstat/O_NOFOLLOW and must run before the marker
+    # scanner opens any path.  A workspace symlink therefore cannot redirect
+    # the older content scanner outside the attempt root.
+    return _workspace_boundary_reason(ws) or _workspace_marker_taint_reason(ws)
+
+
 def promoted_artifact_taint_reason(art: str) -> Optional[str]:
     """Scan canonical promoted evidence without reclassifying forensic WIP."""
     for name in PROMOTED_FILES:
-        reason = _file_taint_reason(os.path.join(art, name), name)
+        path = os.path.join(art, name)
+        if os.path.lexists(path):
+            try:
+                payload = _boundary_checked_payload(path, name)
+            except (OSError, WorkspaceTainted) as exc:
+                return f"unsafe promoted source {name}: {exc}"
+        else:
+            payload = None
+        reason = _file_taint_reason(path, name)
         if reason:
             return reason
     return None
@@ -607,6 +695,16 @@ def _protected_transcript_taint_reason(ws: str) -> Optional[str]:
         )
         if reason:
             return reason
+        if path.endswith(".jsonl"):
+            boundary = APB.first_reason(
+                APB.scan_codex_transcript(
+                    Path(path),
+                    workspace_root=Path(ws),
+                    arena_module_root=Path(__file__).resolve().parent,
+                )
+            )
+            if boundary:
+                return boundary
     return None
 
 
@@ -658,6 +756,8 @@ def _read_single_link_regular(path: str) -> bytes:
         stable_content = (
             opened.st_size == final_descriptor.st_size == len(payload)
             and opened.st_mtime_ns == final_descriptor.st_mtime_ns
+            and opened.st_ctime_ns == final_descriptor.st_ctime_ns
+            and opened.st_mode == final_descriptor.st_mode
         )
         if (
             not stable_identity
@@ -673,28 +773,73 @@ def _read_single_link_regular(path: str) -> bytes:
         os.close(descriptor)
 
 
-def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None:
+def _write_promotion_evidence(
+    game: str,
+    ws: str,
+    art: str,
+    rep: Report,
+    *,
+    authorized_turn: Optional[dict] = None,
+) -> None:
     """Freeze a machine-verifiable provenance record for a new promoted level."""
     evidence_root = os.path.join(art, "promotion_evidence")
     evidence_dir = os.path.join(evidence_root, f"level_{rep.reached:02d}")
     os.makedirs(evidence_dir, exist_ok=True)
 
-    protected_sources = sorted(glob.glob(
-        os.path.join(_protected_codex_transcript_dir(ws), "codex_turn_*.jsonl")
-    ))
-    protected_diagnostics = sorted(glob.glob(
-        os.path.join(
-            _protected_codex_transcript_dir(ws),
-            "codex_turn_*.stderr.log",
-        )
-    ))
-    transcript_src = (
-        protected_sources[-1]
-        if protected_sources
-        else os.path.join(ws, "proposer_last.log")
-    )
+    protected_root = _protected_codex_transcript_dir(ws)
+    protected_sources = []
+    protected_diagnostics = []
+    authority_kind = None
+    if (
+        isinstance(authorized_turn, dict)
+        and authorized_turn.get("authority_kind") == "host_auto_solve"
+    ):
+        authority_kind = "host_auto_solve"
+        transcript_src = None
+    elif authorized_turn is not None:
+        if not isinstance(authorized_turn, dict):
+            raise ProposerEvidenceUnavailable(
+                "promotion authority record is not an object"
+            )
+        transcript_name = authorized_turn.get("transcript")
+        diagnostics_name = authorized_turn.get("diagnostics")
+        if (
+            not isinstance(transcript_name, str)
+            or Path(transcript_name).name != transcript_name
+            or not transcript_name.endswith(".jsonl")
+        ):
+            raise ProposerEvidenceUnavailable(
+                "winning turn does not identify one protected transcript"
+            )
+        transcript_src = os.path.join(protected_root, transcript_name)
+        if not os.path.isfile(transcript_src):
+            raise ProposerEvidenceUnavailable(
+                "winning protected transcript is unavailable"
+            )
+        protected_sources = [transcript_src]
+        authority_kind = "codex_turn"
+        if diagnostics_name is not None:
+            if (
+                not isinstance(diagnostics_name, str)
+                or Path(diagnostics_name).name != diagnostics_name
+                or not diagnostics_name.endswith(".stderr.log")
+            ):
+                raise ProposerEvidenceUnavailable(
+                    "winning turn diagnostics binding is malformed"
+                )
+            diagnostics_src = os.path.join(protected_root, diagnostics_name)
+            if not os.path.isfile(diagnostics_src):
+                raise ProposerEvidenceUnavailable(
+                    "winning protected diagnostics are unavailable"
+                )
+            protected_diagnostics = [diagnostics_src]
+    else:
+        # Injected/offline proposers have no Codex turn record.  Their explicit
+        # workspace transcript remains the only admissible fallback; never pick
+        # the newest protected glob, which may belong to a failed debrief.
+        transcript_src = os.path.join(ws, "proposer_last.log")
     transcript_dst = os.path.join(evidence_dir, "proposer_last.log")
-    if os.path.isfile(transcript_src):
+    if transcript_src is not None and os.path.isfile(transcript_src):
         _atomic_host_write(
             transcript_dst, _read_single_link_regular(transcript_src)
         )
@@ -703,9 +848,7 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
 
     codex_transcripts = []
     codex_evidence_dir = os.path.join(evidence_dir, "codex_turns")
-    codex_sources = protected_sources or sorted(
-        glob.glob(os.path.join(ws, "codex_turn_*.jsonl"))
-    )
+    codex_sources = protected_sources
     for source in codex_sources:
         os.makedirs(codex_evidence_dir, exist_ok=True)
         name = os.path.basename(source)
@@ -746,7 +889,7 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
         path = os.path.join(art, name)
         if os.path.isfile(path):
             evidence_path = os.path.join(files_dir, name)
-            shutil.copy2(path, evidence_path)
+            _copy_boundary_checked(path, evidence_path, name)
             file_hashes[name] = _sha256_file(evidence_path)
     manifest = {
         "schema": 1,
@@ -762,6 +905,15 @@ def _write_promotion_evidence(game: str, ws: str, art: str, rep: Report) -> None
         "codex_transcripts": codex_transcripts,
         "codex_diagnostics": codex_diagnostics,
         "taint_verdict": "clean",
+        "proposer_workspace": os.path.basename(os.path.abspath(ws)),
+        "proposer_workspace_root": os.path.abspath(ws),
+        "authorized_turn_transcript": (
+            authorized_turn.get("transcript")
+            if isinstance(authorized_turn, dict)
+            else None
+        ),
+        "promotion_authority_kind": authority_kind or "injected_proposer",
+        **_filesystem_boundary_policy_binding(),
     }
     _atomic_host_write(
         os.path.join(evidence_dir, "manifest.json"),
@@ -843,6 +995,52 @@ def _atomic_host_write(path: str, payload: bytes) -> None:
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)
+
+
+def _boundary_checked_payload(path: str, logical_path: str) -> bytes:
+    """Seal one exact source image and apply the current boundary to its bytes."""
+    payload = _read_single_link_regular(path)
+    suffix = Path(logical_path).suffix.lower()
+    if suffix not in APB.SOURCE_SUFFIXES:
+        return payload
+    try:
+        source = payload.decode("utf-8")
+    except UnicodeError as exc:
+        raise WorkspaceTainted(
+            f"non-UTF-8 executable source {logical_path}: {type(exc).__name__}"
+        ) from exc
+    if suffix in {".py", ".pyw"}:
+        scaffold_hashes = _trusted_host_scaffold_hashes(
+            os.path.dirname(path)
+        ).get(logical_path, ())
+        findings = APB.scan_python_source(
+            source,
+            logical_path=logical_path,
+            arena_module_root=Path(__file__).resolve().parent,
+            allow_host_scaffold=(
+                hashlib.sha256(payload).hexdigest() in scaffold_hashes
+            ),
+        )
+    else:
+        findings = APB.scan_shell_command(
+            source,
+            logical_path=logical_path,
+            line=1,
+            arena_module_root=Path(__file__).resolve().parent,
+        )
+    reason = APB.first_reason(findings)
+    if reason:
+        raise WorkspaceTainted(
+            "filesystem boundary changed after its prior scan: " + reason
+        )
+    return payload
+
+
+def _copy_boundary_checked(path: str, destination: str, logical_path: str) -> None:
+    """Copy exactly the bytes accepted by the post-scan boundary gate."""
+    _atomic_host_write(
+        destination, _boundary_checked_payload(path, logical_path)
+    )
 
 
 def _save_checkpoint(ws: str, rep: Report) -> None:
@@ -982,7 +1180,20 @@ def _open_unaliased_lock(path: str, *, create: bool = True):
         raise RuntimeError(
             f"lock must be an unaliased regular host file: {path}"
         )
+    os.fchmod(descriptor, 0o600)
     return os.fdopen(descriptor, "r+", encoding="utf-8")
+
+
+def _workspace_lock_path(ws: str) -> Path:
+    """Return the host-owned lock paired with a proposer workspace."""
+
+    workspace = Path(ws).absolute()
+    digest = hashlib.sha256(os.fspath(workspace).encode("utf-8")).hexdigest()
+    return (
+        workspace.parent
+        / ".workspace_locks"
+        / f"{digest}.lock"
+    )
 
 
 def _acquire_workspace_lock(ws: str):
@@ -992,8 +1203,37 @@ def _acquire_workspace_lock(ws: str):
         raise RuntimeError(
             f"workspace lock root must be a regular host directory: {ws}"
         )
-    path = os.path.join(ws, ".orchestrate.lock")
-    lock = _open_unaliased_lock(path)
+    # A previous runner version placed this file inside the proposer-writable
+    # tree.  Respect an active legacy lock, but delete an unlocked one before
+    # launching: it has no authority and must not become a context channel.
+    legacy_path = os.path.join(ws, ".orchestrate.lock")
+    if os.path.lexists(legacy_path):
+        legacy = _open_unaliased_lock(legacy_path, create=False)
+        try:
+            try:
+                fcntl.flock(
+                    legacy.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
+                )
+            except BlockingIOError:
+                raise RuntimeError(
+                    f"another orchestrator is already using workspace {ws}"
+                )
+            opened = os.fstat(legacy.fileno())
+            named = os.lstat(legacy_path)
+            if (opened.st_dev, opened.st_ino) != (named.st_dev, named.st_ino):
+                raise RuntimeError(
+                    f"legacy workspace lock changed during migration: {ws}"
+                )
+            os.unlink(legacy_path)
+        finally:
+            legacy.close()
+    path = _workspace_lock_path(ws)
+    os.makedirs(path.parent, exist_ok=True)
+    if path.parent.is_symlink() or not path.parent.is_dir():
+        raise RuntimeError(
+            f"workspace lock root must be a regular host directory: {path.parent}"
+        )
+    lock = _open_unaliased_lock(os.fspath(path))
     try:
         fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
     except BlockingIOError:
@@ -1159,13 +1399,18 @@ def _clean_unpromoted_source_overlay(
         or workspace_parent.final_path != artifact_parent.final_path
     ):
         return {}
-    if _workspace_taint_reason(ws):
+    if _workspace_or_protected_taint_reason(ws):
         return {}
     overlay = {}
     for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
         path = os.path.join(ws, name)
         if os.path.isfile(path):
-            overlay[name] = _read(path)
+            try:
+                overlay[name] = _boundary_checked_payload(
+                    path, name
+                ).decode("utf-8")
+            except (UnicodeError, OSError, WorkspaceTainted):
+                return {}
     return overlay
 
 
@@ -1214,6 +1459,7 @@ def _clean_wip_source_overlay(
             not isinstance(metadata, dict)
             or metadata.get("game") != game
             or metadata.get("level") != level
+            or not _wip_uses_current_boundary_policy(Path(meta_path))
         ):
             continue
         created = metadata.get("created_at")
@@ -1227,7 +1473,12 @@ def _clean_wip_source_overlay(
         path = os.path.join(art, name)
         if not os.path.isfile(path) or os.path.islink(path):
             return {}
-        parent_sources[name] = _read(path)
+        try:
+            parent_sources[name] = _boundary_checked_payload(
+                path, name
+            ).decode("utf-8")
+        except (UnicodeError, OSError, WorkspaceTainted):
+            return {}
 
     for _, _, files_dir in sorted(candidates, reverse=True):
         snapshot_parent = _load_checkpoint(files_dir)
@@ -1247,12 +1498,16 @@ def _clean_wip_source_overlay(
             for name in required
         ):
             continue
-        overlay = {
-            name: _read(os.path.join(files_dir, name))
-            for name in (*required, "legs_log.md")
-            if os.path.isfile(os.path.join(files_dir, name))
-            and not os.path.islink(os.path.join(files_dir, name))
-        }
+        overlay = {}
+        try:
+            for name in (*required, "legs_log.md"):
+                path = os.path.join(files_dir, name)
+                if os.path.isfile(path) and not os.path.islink(path):
+                    overlay[name] = _boundary_checked_payload(
+                        path, name
+                    ).decode("utf-8")
+        except (UnicodeError, OSError, WorkspaceTainted):
+            continue
         if any(overlay[name] != parent_sources[name] for name in required):
             return overlay
     return {}
@@ -1260,8 +1515,111 @@ def _clean_wip_source_overlay(
 
 def _restore_source_overlay(ws: str, overlay: Dict[str, str]) -> None:
     for name, source in overlay.items():
-        with open(os.path.join(ws, name), "w") as handle:
-            handle.write(source)
+        _atomic_host_write(
+            os.path.join(ws, name), source.encode("utf-8")
+        )
+
+
+@dataclass(frozen=True)
+class _WorkspaceRollbackPoint:
+    files: Dict[str, Tuple[bytes, int]]
+    directories: Dict[str, int]
+    root_mode: int
+
+
+def _seal_workspace_rollback_point(ws: str) -> _WorkspaceRollbackPoint:
+    """Seal all mutable workspace state before an optional debrief.
+
+    WIP snapshots intentionally omit disposable caches and local Git metadata.
+    A rollback point cannot: a failed debrief could otherwise leave knowledge
+    in those omitted namespaces for the next proposer.  Only the live
+    supervisor-owned lock is excluded, and the production proposer process
+    group has already been proved quiescent before its debrief call returns.
+    """
+
+    assert_workspace_not_tainted(ws)
+    root = os.path.abspath(ws)
+    root_metadata = os.lstat(root)
+    if stat.S_ISLNK(root_metadata.st_mode) or not stat.S_ISDIR(root_metadata.st_mode):
+        raise WorkspaceTainted("rollback root is not a physical directory")
+    files: Dict[str, Tuple[bytes, int]] = {}
+    directories: Dict[str, int] = {}
+    for directory, dirs, names in os.walk(root, topdown=True, followlinks=False):
+        dirs.sort()
+        names.sort()
+        for name in dirs:
+            path = os.path.join(directory, name)
+            rel = os.path.relpath(path, root)
+            metadata = os.lstat(path)
+            if stat.S_ISLNK(metadata.st_mode) or not stat.S_ISDIR(metadata.st_mode):
+                raise WorkspaceTainted(
+                    f"refusing aliased/non-directory rollback state: {path}"
+                )
+            directories[rel] = stat.S_IMODE(metadata.st_mode)
+        for name in names:
+            path = os.path.join(directory, name)
+            rel = os.path.relpath(path, root)
+            if rel in SNAPSHOT_SKIP_FILES:
+                continue
+            metadata = os.lstat(path)
+            if (
+                not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+            ):
+                raise WorkspaceTainted(
+                    f"refusing aliased/non-regular rollback state: {path}"
+                )
+            files[rel] = (
+                _read_single_link_regular(path),
+                stat.S_IMODE(metadata.st_mode),
+            )
+    return _WorkspaceRollbackPoint(
+        files=files,
+        directories=directories,
+        root_mode=stat.S_IMODE(root_metadata.st_mode),
+    )
+
+
+def _restore_workspace_rollback_point(
+    ws: str, sealed: _WorkspaceRollbackPoint
+) -> None:
+    """Remove every debrief delta and restore the exact sealed clean tree."""
+    root = os.path.abspath(ws)
+    os.chmod(root, sealed.root_mode | 0o700)
+    for directory, dirs, _files in os.walk(
+        root,
+        topdown=True,
+        followlinks=False,
+        onerror=lambda exc: (_ for _ in ()).throw(exc),
+    ):
+        for name in dirs:
+            path = os.path.join(directory, name)
+            if not os.path.islink(path):
+                metadata = os.lstat(path)
+                os.chmod(path, stat.S_IMODE(metadata.st_mode) | 0o700)
+    for directory, dirs, files in os.walk(root, topdown=False, followlinks=False):
+        for name in files:
+            path = os.path.join(directory, name)
+            rel = os.path.relpath(path, root)
+            os.unlink(path)
+        for name in dirs:
+            path = os.path.join(directory, name)
+            if os.path.islink(path):
+                os.unlink(path)
+            else:
+                os.rmdir(path)
+    for name, mode in sorted(
+        sealed.directories.items(), key=lambda item: len(Path(item[0]).parts)
+    ):
+        path = os.path.join(root, name)
+        os.mkdir(path, mode)
+        os.chmod(path, mode)
+    for name, (payload, mode) in sealed.files.items():
+        path = os.path.join(root, name)
+        _atomic_host_write(path, payload)
+        os.chmod(path, mode)
+    os.chmod(root, sealed.root_mode)
+    assert_workspace_not_tainted(root)
 
 
 def _wip_level_dir(art: str, level: int) -> str:
@@ -1278,29 +1636,55 @@ def _workspace_snapshot_files(ws: str) -> List[str]:
     """
     files = []
     for root, dirs, names in os.walk(ws):
-        dirs[:] = sorted(
-            d for d in dirs
-            if d not in SNAPSHOT_SKIP_DIRS
-            and not os.path.islink(os.path.join(root, d))
-        )
+        kept_dirs = []
+        for directory in sorted(dirs):
+            path = os.path.join(root, directory)
+            if os.path.islink(path):
+                raise WorkspaceTainted(
+                    f"refusing workspace symlink during WIP inventory: {path}"
+                )
+            if directory not in SNAPSHOT_SKIP_DIRS:
+                kept_dirs.append(directory)
+        dirs[:] = kept_dirs
         for name in sorted(names):
             path = os.path.join(root, name)
             rel = os.path.relpath(path, ws)
-            if rel in SNAPSHOT_SKIP_FILES or os.path.islink(path):
+            if rel in SNAPSHOT_SKIP_FILES:
                 continue
-            if os.path.isfile(path):
-                files.append(rel)
+            try:
+                metadata = os.lstat(path)
+            except OSError as exc:
+                raise WorkspaceTainted(
+                    f"workspace WIP inventory changed: {path}: {exc}"
+                ) from exc
+            if (
+                stat.S_ISLNK(metadata.st_mode)
+                or not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+            ):
+                raise WorkspaceTainted(
+                    f"refusing aliased/non-regular WIP source: {path}"
+                )
+            files.append(rel)
     return sorted(files)
 
 
-def _snapshot_digest(ws: str, phase: str, names: List[str]) -> str:
+def _snapshot_digest(
+    ws: str,
+    phase: str,
+    names: List[str],
+    payloads: Optional[Dict[str, bytes]] = None,
+) -> str:
     h = hashlib.sha256()
     h.update(phase.encode("utf-8"))
     for name in names:
-        path = os.path.join(ws, name)
         h.update(name.encode("utf-8"))
-        with open(path, "rb") as f:
-            h.update(f.read())
+        payload = (
+            payloads[name]
+            if payloads is not None
+            else _boundary_checked_payload(os.path.join(ws, name), name)
+        )
+        h.update(payload)
     return h.hexdigest()[:12]
 
 
@@ -1370,7 +1754,13 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
         # scheduler-authorized WIP; the status reducer requires a valid binding.
         frontier_binding = None
     names = _workspace_snapshot_files(ws)
-    digest = _snapshot_digest(ws, phase, names)
+    # Seal once, then use the same accepted bytes for both the attempt digest
+    # and archive. A post-scan rewrite cannot change what is retained.
+    payloads = {
+        name: _boundary_checked_payload(os.path.join(ws, name), name)
+        for name in names
+    }
+    digest = _snapshot_digest(ws, phase, names, payloads)
     level_dir = _wip_level_dir(art, level)
     attempt = f"{phase}_{digest}"
     attempt_dir = os.path.join(level_dir, attempt)
@@ -1379,7 +1769,7 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
     for name in names:
         dst = os.path.join(files_dir, name)
         os.makedirs(os.path.dirname(dst), exist_ok=True)
-        shutil.copy2(os.path.join(ws, name), dst)
+        _atomic_host_write(dst, payloads[name])
     meta = {
         "game": game,
         "level": level,
@@ -1391,6 +1781,9 @@ def snapshot_wip_context(game: str, ws: str, level: int, phase: str,
         "taint_verdict": "clean",
         "frontier_binding": frontier_binding,
         "files": names,
+        "proposer_workspace": os.path.basename(os.path.abspath(ws)),
+        "proposer_workspace_root": os.path.abspath(ws),
+        **_filesystem_boundary_policy_binding(),
     }
     with open(os.path.join(attempt_dir, "metadata.json"), "w") as f:
         json.dump(meta, f, indent=2)
@@ -1492,6 +1885,12 @@ def _validate_expected_wip_attempt(
     files_dir = art / "wip_context" / f"level_{level:02d}" / (
         expected_attempt
     ) / "files"
+    metadata_path = files_dir.parent / "metadata.json"
+    if not _wip_uses_current_boundary_policy(metadata_path):
+        raise WorkspaceTainted(
+            "scheduler-selected WIP predates the current filesystem boundary "
+            "policy and is forensic-only"
+        )
     taint_reason = _workspace_taint_reason(os.fspath(files_dir))
     if taint_reason:
         raise WorkspaceTainted(
@@ -1499,6 +1898,28 @@ def _validate_expected_wip_attempt(
             f"{taint_reason}"
         )
     return descriptor
+
+
+def _wip_uses_current_boundary_policy(metadata_path: Path) -> bool:
+    try:
+        metadata = json.loads(
+            _read_single_link_regular(os.fspath(metadata_path)).decode("utf-8")
+        )
+        if not isinstance(metadata, dict):
+            return False
+        return (
+            metadata.get("filesystem_boundary_policy_schema")
+            == APB.POLICY_SCHEMA
+            and metadata.get("filesystem_boundary_policy_sha256")
+            == APB.policy_sha256()
+            and metadata.get("compatibility_arena_module_sha256")
+            == _LOADED_ARENA_MODULE_SHA256
+            and metadata.get("compatibility_boundary_authority")
+            == "behavioral_defense_in_depth"
+        )
+    except (OSError, UnicodeError, json.JSONDecodeError, RuntimeError,
+            WorkspaceTainted):
+        return False
 
 
 def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
@@ -1549,11 +1970,20 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
         if not os.path.isdir(files_dir):
             continue
         created = ""
+        metadata = None
         try:
             with open(meta_path) as f:
-                created = json.load(f).get("created_at", "")
+                metadata = json.load(f)
+                created = metadata.get("created_at", "")
         except Exception:
             pass
+        if not _wip_uses_current_boundary_policy(Path(meta_path)):
+            if expected_attempt is not None:
+                raise WorkspaceTainted(
+                    "scheduler-selected WIP is not bound to the current "
+                    "filesystem boundary policy"
+                )
+            continue
         attempts.append((attempt == latest_attempt, created, attempt, files_dir))
     if not attempts:
         if expected_attempt is not None:
@@ -1599,20 +2029,36 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
                 src = os.path.join(root, name)
                 if os.path.isfile(src) and not os.path.islink(src):
                     snapshot_files.append(os.path.relpath(src, files_dir))
-        for name in sorted(snapshot_files):
-            if name in skip:
-                continue
-            if _wip_path_targets_other_level(name, level):
-                continue
-            src = os.path.join(files_dir, name)
-            dst = os.path.join(ws, name)
-            if os.path.exists(dst):
-                if latest_done:
+        planned: List[Tuple[str, str, bytes]] = []
+        try:
+            for name in sorted(snapshot_files):
+                if name in skip:
                     continue
-                if os.path.getmtime(dst) >= os.path.getmtime(src):
+                if _wip_path_targets_other_level(name, level):
                     continue
+                src = os.path.join(files_dir, name)
+                dst = os.path.join(ws, name)
+                if os.path.exists(dst):
+                    if latest_done:
+                        continue
+                    if os.path.getmtime(dst) >= os.path.getmtime(src):
+                        continue
+                planned.append((name, dst, _boundary_checked_payload(src, name)))
+        except (OSError, WorkspaceTainted) as exc:
+            if expected_attempt is not None:
+                raise WorkspaceTainted(
+                    "scheduler-selected WIP changed during restore: "
+                    f"{exc}"
+                ) from exc
+            if verbose:
+                print(
+                    "skipping WIP snapshot that changed during restore: "
+                    f"{attempt}: {exc}"
+                )
+            continue
+        for name, dst, payload in planned:
             os.makedirs(os.path.dirname(dst), exist_ok=True)
-            shutil.copy2(src, dst)
+            _atomic_host_write(dst, payload)
             restored += 1
         latest_done = True
     # A reviewed scaffold is a level-scoped intervention created after the prior
@@ -1633,7 +2079,9 @@ def _restore_wip_probes(game: str, ws: str, level: int, tag: str = "",
                 not os.path.exists(dst)
                 or os.path.getmtime(dst) < os.path.getmtime(scaffold)
             ):
-                shutil.copy2(scaffold, dst)
+                _copy_boundary_checked(
+                    scaffold, dst, "frontier_scaffold.json"
+                )
                 restored += 1
     if verbose and restored:
         print(f"restored {restored} WIP probe file(s) for level {level} "
@@ -1658,6 +2106,12 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
     only the verified Kolmogorov-Schmidhuber backbone.
     """
     art = artifact_dir(game, tag)
+    artifact_taint = promoted_artifact_taint_reason(art)
+    if artifact_taint:
+        raise WorkspaceTainted(
+            "refusing to seed from artifact outside the current boundary: "
+            f"{artifact_taint}"
+        )
     rep = _load_checkpoint(art)
     if rep is None or not rep.validated:
         if restore_wip:
@@ -1669,7 +2123,7 @@ def seed_workspace_from_artifact(game: str, ws: str, tag: str = "", verbose: boo
     for name in PROMOTED_FILES:
         src = os.path.join(art, name)
         if os.path.exists(src):
-            shutil.copy2(src, os.path.join(ws, name))
+            _copy_boundary_checked(src, os.path.join(ws, name), name)
     if restore_wip:
         _restore_wip_probes(
             game, ws, rep.reached + 1, tag, verbose=verbose,
@@ -1707,7 +2161,81 @@ def exact_level_boundary(game: str, path: Sequence, expected: int) -> Optional[L
     return None
 
 
-def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", verbose: bool = True) -> bool:
+def _stage_and_replay_winning_tree(
+    game: str,
+    ws: str,
+    level: int,
+    verify_fn: Callable,
+) -> tuple[int, List, Dict[str, bytes]]:
+    """Replay an immutable host-staged tree and return its promotable bytes."""
+
+    assert_workspace_not_tainted(ws)
+    payloads = {
+        name: _boundary_checked_payload(os.path.join(ws, name), name)
+        for name in _workspace_snapshot_files(ws)
+    }
+    required = {"legs.py", "players.py", "solve.py"}
+    if not required.issubset(payloads):
+        raise RuntimeError("winning solver tree is incomplete before promotion")
+    parent = Path(ws).absolute().parent / ".promotion_replays"
+    parent.mkdir(parents=True, exist_ok=True)
+    if parent.is_symlink() or not parent.is_dir():
+        raise WorkspaceTainted(
+            f"promotion replay root is not a physical host directory: {parent}"
+        )
+    stage = Path(tempfile.mkdtemp(prefix="winning-", dir=parent))
+
+    def assert_stage_clean() -> None:
+        reason = APB.first_reason(APB.scan_workspace(
+            stage,
+            arena_module_root=Path(__file__).resolve().parent,
+            trusted_host_scaffolds=_trusted_host_scaffold_hashes(ws),
+        )) or _workspace_marker_taint_reason(os.fspath(stage))
+        if reason:
+            raise WorkspaceTainted(
+                f"host-staged winning tree is tainted: {reason}"
+            )
+
+    try:
+        for name, payload in payloads.items():
+            destination = stage / name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            _atomic_host_write(os.fspath(destination), payload)
+        assert_stage_clean()
+        levels, path, _ = verify_fn(game, os.fspath(stage / "solve.py"))
+        # The verifier receives no authority to edit the staged source.  Reopen
+        # every byte after execution before accepting its behavioral result.
+        for name, payload in payloads.items():
+            if _read_single_link_regular(os.fspath(stage / name)) != payload:
+                raise WorkspaceTainted(
+                    f"host-staged winning tree changed during replay: {name}"
+                )
+        assert_stage_clean()
+        exact = exact_level_boundary(game, path, level)
+        if exact is None or not A.validate(game, exact, level):
+            raise RuntimeError(
+                f"sealed solver tree did not replay to exact level {level}"
+            )
+        promoted = {
+            name: payload
+            for name, payload in payloads.items()
+            if name in PROMOTED_FILES and name != CHECKPOINT_FILE
+        }
+        return levels, exact, promoted
+    finally:
+        shutil.rmtree(stage, ignore_errors=True)
+
+
+def promote_verified_artifact(
+    game: str,
+    ws: str,
+    rep: Report,
+    tag: str = "",
+    verbose: bool = True,
+    *,
+    sealed_promoted_payloads: Optional[Dict[str, bytes]] = None,
+    authorized_turn: Optional[dict] = None,
+) -> bool:
     """Idempotently publish the latest replay-validated workspace state.
 
     Promotion is intentionally gated on replay validation. This prevents speculative
@@ -1715,6 +2243,9 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
     """
     if not rep.validated or rep.reached <= 0:
         return False
+    # Promotion must not execute replay or inspect candidate files before the
+    # current boundary has rejected aliases and parent/absolute capabilities.
+    assert_workspace_not_tainted(ws)
     boundary = exact_level_boundary(game, rep.final_path, rep.reached)
     if boundary is None:
         if verbose:
@@ -1751,20 +2282,46 @@ def promote_verified_artifact(game: str, ws: str, rep: Report, tag: str = "", ve
             print(f"kept artifact at level {old.reached}; current verified level {rep.reached} is older")
         return False
     promote_files = old is None or not old.validated or old.reached < rep.reached
-    os.makedirs(art, exist_ok=True)
     _save_checkpoint(ws, rep)
     if promote_files:
+        if sealed_promoted_payloads is None:
+            promoted_payloads = {
+                name: _boundary_checked_payload(os.path.join(ws, name), name)
+                for name in PROMOTED_FILES
+                if os.path.exists(os.path.join(ws, name))
+            }
+        else:
+            promoted_payloads = dict(sealed_promoted_payloads)
+            promoted_payloads[CHECKPOINT_FILE] = _boundary_checked_payload(
+                os.path.join(ws, CHECKPOINT_FILE), CHECKPOINT_FILE
+            )
+    else:
+        src = os.path.join(ws, CHECKPOINT_FILE)
+        promoted_payloads = (
+            {CHECKPOINT_FILE: _boundary_checked_payload(src, CHECKPOINT_FILE)}
+            if os.path.exists(src)
+            else {}
+        )
+    # No artifact byte is changed until every source image has been sealed and
+    # accepted under the post-replay boundary policy.
+    os.makedirs(art, exist_ok=True)
+    if promote_files:
         for name in PROMOTED_FILES:
-            src = os.path.join(ws, name)
-            if os.path.exists(src):
-                shutil.copy2(src, os.path.join(art, name))
-        _write_promotion_evidence(game, ws, art, rep)
+            if name in promoted_payloads:
+                _atomic_host_write(
+                    os.path.join(art, name), promoted_payloads[name]
+                )
+        _write_promotion_evidence(
+            game, ws, art, rep, authorized_turn=authorized_turn
+        )
     else:
         # Same verified level: refresh metadata only. Scratch may contain
         # speculative next-level code, so do not overwrite clean solution files.
-        src = os.path.join(ws, CHECKPOINT_FILE)
-        if os.path.exists(src):
-            shutil.copy2(src, os.path.join(art, CHECKPOINT_FILE))
+        if CHECKPOINT_FILE in promoted_payloads:
+            _atomic_host_write(
+                os.path.join(art, CHECKPOINT_FILE),
+                promoted_payloads[CHECKPOINT_FILE],
+            )
     with open(os.path.join(art, "README.md"), "w") as f:
         f.write(_artifact_readme(game, rep))
     with open(os.path.join(art, "run.log"), "w") as f:
@@ -2127,6 +2684,10 @@ def _install_literal_player(ws: str, K: int, suffix: List[int], source: str) -> 
 def recover_discovered_path_artifact(game: str, ws: str, K: int, prefix: List[int],
                                      verbose: bool = True):
     """Validate and install any proposer-discovered path artifact for level K."""
+    # Recovery is an admission boundary, not a forensic parser: never inspect
+    # a candidate path or transcript from a workspace that fails the current
+    # capability gate.
+    assert_workspace_not_tainted(ws)
     raw_candidates = []
     raw_candidates.extend(
         (p, "proposer_last.log")
@@ -2300,7 +2861,10 @@ def _try_auto_solve(K: int, legs_code: str, players_code: str,
         stub = f"\n\ndef play_level_{K}(env):\n    {name}(env)\n"
         with open(players_p, "a") as f:
             f.write(stub)
-        if verify_fn is run_solve_file:
+        if (
+            verify_fn is run_solve_file
+            or getattr(verify_fn, "_gkm_run_solve_file", False)
+        ):
             lv, path, err = verify_fn(
                 game, solve_p, time_cap=AUTO_SOLVE_CANDIDATE_SECONDS
             )
@@ -2922,6 +3486,10 @@ class ProposerProtocolViolation(ProposerEvidenceUnavailable):
     """A public-action violation invalidated the complete proposer generation."""
 
 
+class ProposerBoundaryViolation(ProposerEvidenceUnavailable):
+    """A filesystem-capability violation invalidated the proposer generation."""
+
+
 # markers of a transient infrastructure failure (dropped connection, server error):
 # the proposer never worked on the level, so the attempt is retried, not judged.
 _TRANSIENT_MARKERS = (
@@ -3498,6 +4066,7 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         allocation_expired = False
         interrupted = False
         protocol_violation = False
+        boundary_violation_reason = None
         launch_error = None
         transcript_bytes = None
         diagnostics_bytes = None
@@ -3532,11 +4101,34 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 )
                 try:
                     deadline = time.monotonic() + minutes * 60
+                    boundary_monitor = APB.LiveBoundaryMonitor(
+                        Path(ws),
+                        arena_module_root=Path(__file__).resolve().parent,
+                        trusted_host_scaffolds=(
+                            _trusted_host_scaffold_hashes(ws)
+                        ),
+                    )
                     scan_offset = 0
                     scan_carry = b""
                     diagnostics_scan_offset = 0
                     diagnostics_scan_carry = b""
                     while proc.poll() is None:
+                        boundary_findings = (
+                            *boundary_monitor.scan_workspace(),
+                            *boundary_monitor.scan_transcript(Path(log_path)),
+                        )
+                        if boundary_findings:
+                            boundary_violation_reason = (
+                                boundary_findings[0].describe()
+                            )
+                            process_group_stop_attempted = True
+                            process_group_quiesced = _stop_process_group(proc)
+                            print(
+                                "[codex proposer crossed the clean-room "
+                                "filesystem boundary; terminating and "
+                                "quarantining the complete turn]"
+                            )
+                            break
                         (
                             marker_found,
                             scan_offset,
@@ -3616,6 +4208,17 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                         or marker_found
                         or diagnostics_marker_found
                     )
+                    terminal_boundary_findings = (
+                        *boundary_monitor.scan_workspace(),
+                        *boundary_monitor.scan_transcript(
+                            Path(log_path), final=True
+                        ),
+                    )
+                    if terminal_boundary_findings:
+                        boundary_violation_reason = (
+                            boundary_violation_reason
+                            or terminal_boundary_findings[0].describe()
+                        )
                 except KeyboardInterrupt:
                     interrupted = True
                     process_group_stop_attempted = True
@@ -3739,7 +4342,7 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     or surviving_process_group
                 )
                 else "taint"
-                if protocol_violation
+                if protocol_violation or boundary_violation_reason is not None
                 else "containment"
                 if timed_out
                 else failure_class
@@ -3758,6 +4361,8 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 if surviving_process_group
                 else "public_action_protocol_violation"
                 if protocol_violation
+                else "filesystem_boundary_violation"
+                if boundary_violation_reason is not None
                 else "hard_wall_time"
                 if timed_out
                 else failure_detail_class
@@ -3796,6 +4401,13 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
             ),
             "surviving_process_group": surviving_process_group,
             "public_action_protocol_violation": protocol_violation,
+            "filesystem_boundary_violation": (
+                boundary_violation_reason is not None
+            ),
+            "filesystem_boundary_violation_reason": (
+                boundary_violation_reason
+            ),
+            **_filesystem_boundary_policy_binding(),
             "terminal_errors": terminal_errors,
             "weekly_used_before": allowance_before["used_percent"],
             "weekly_remaining_before": allowance_before["remaining_percent"],
@@ -3829,6 +4441,13 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 "Codex attempted an action outside the public protocol; "
                 "the complete proposer generation was terminated and is "
                 "discarded without WIP reuse or promotion"
+            )
+        if boundary_violation_reason is not None:
+            raise ProposerBoundaryViolation(
+                "Codex crossed the clean-room filesystem boundary; the "
+                "complete proposer generation was terminated and is "
+                "discarded without WIP reuse or promotion: "
+                f"{boundary_violation_reason}"
             )
         if launch_error is not None:
             raise ProposerInfrastructureError(
@@ -3984,9 +4603,13 @@ def _api_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
 
 
 CLEAN_ROOM_INSTRUCTION = (
-    "CLEAN-ROOM BOUNDARY: work only with files in the current workspace and the "
-    "documented observation/action surface exposed by gkm_try.py and perception.py. "
-    "Those local harness and API files are legitimate to inspect. Do not read parent "
+    "CLEAN-ROOM BOUNDARY: work only with files in the current workspace. The sole "
+    "outside-workspace capability is the host-injected exact module root needed to "
+    "import gkm_arena and directly call its public run_program function; the "
+    "supervisor-owned gkm_try.py may additionally call validate. This capability "
+    "does not authorize constructing Arena, passing or aliasing the module/function, "
+    "introspecting it, or listing/reading its module directory. The current-workspace "
+    "gkm_try.py and perception.py are legitimate to inspect. Do not read parent "
     "directories, artifacts outside the admitted current-workspace lineage, hidden "
     "implementations, or underscore-prefixed runtime state. Same-lineage prior "
     "observations and proposer transcripts already present in this workspace are "
@@ -4152,6 +4775,17 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     )
     if transient_retries < 0:
         raise ValueError("transient_retries must be nonnegative")
+    if (
+        proposer == "codex"
+        and propose_fn is None
+        and not COMPATIBILITY_ARENA_CLOSURE_AUTHORITY
+    ):
+        raise RuntimeError(
+            "native compatibility launch is disabled: the eager raw-Arena "
+            "dependency closure still performs host initialization outside "
+            "the sealed single-file receipt; use the container/RPC contiguous "
+            "runner until that closure is purified and completely bound"
+        )
     if codex_allocation_policy not in {"hard", "drain"}:
         raise ValueError(
             "codex_allocation_policy must be either 'hard' or 'drain'"
@@ -4206,6 +4840,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             ws = setup_workspace(game, tag, isolated_generation=True)
         else:
             ws = setup_workspace(game, tag)
+        initial_taint = _workspace_or_protected_taint_reason(ws)
+        if initial_taint:
+            raise WorkspaceTainted(
+                "refusing to inspect or verify a pre-existing proposer "
+                f"workspace across the clean-room boundary: {initial_taint}"
+            )
         if not seed_artifact:
             # ``--fresh`` means zero-seed, not merely "start a new proposer
             # process".  It is safe for the first turn of a separately rooted
@@ -4412,7 +5052,29 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             debrief_fn = lambda w, k: _agent(
                 w, _debrief_task(game, k), model, max(10, minutes_per // 2)
             )
-    verify_fn = verify_fn or run_solve_file
+    raw_verify_fn = verify_fn or run_solve_file
+
+    def boundary_checked_verify(
+        selected_game: str, selected_solve_path: str, *args, **kwargs
+    ):
+        # This is the single execution choke point for startup replay,
+        # auto-solve, orphan recovery, proposal verification, and debrief.
+        # Re-open the complete workspace/protected transcript boundary
+        # immediately before importing or executing any proposer-authored byte.
+        assert_workspace_not_tainted(ws)
+        try:
+            Path(selected_solve_path).resolve().relative_to(Path(ws).resolve())
+        except (OSError, ValueError) as exc:
+            raise WorkspaceTainted(
+                "verifier source path escapes the attempt workspace: "
+                f"{selected_solve_path}"
+            ) from exc
+        return raw_verify_fn(selected_game, selected_solve_path, *args, **kwargs)
+
+    boundary_checked_verify._gkm_run_solve_file = (  # type: ignore[attr-defined]
+        raw_verify_fn is run_solve_file
+    )
+    verify_fn = boundary_checked_verify
 
     rep = Report(game=game, reached=0)
     # resume from checkpoint (restores marginal-C history across restarts)
@@ -4457,7 +5119,10 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
     try:
         while rep.reached < max_level:
             K = rep.reached + 1
+            rollback_recovered_generation = False
+            authorized_winning_turn = None
             reached_before_level = rep.reached
+            assert_workspace_not_tainted(ws)
             if bind_default_codex_frontier:
                 binding = _checked_codex_frontier_binding(
                     game,
@@ -4471,7 +5136,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             )
 
             def record_proposer_outcome(outcome_levels, outcome_path):
-                turn = codex_turn_records.pop(("propose", K), None)
+                turn = codex_turn_records.get(("propose", K))
                 _record_codex_level_outcome(
                     turn,
                     ledger_path=codex_ledger,
@@ -4490,6 +5155,7 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             # died before snapshot/promotion.  Replaying that source first
             # preserves the original transcript and exact boundary instead of
             # overwriting it with auto-solve or paying for another proposer.
+            assert_workspace_not_tainted(ws)
             if _workspace_has_unpromoted_solver_source(game, ws, tag):
                 existing_levels, existing_path, existing_err = verify_fn(
                     game, solve_p
@@ -4560,6 +5226,10 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     _record_auto_solve_failure(ws, K, legs_b)
             if auto_result is not None:
                 levels, path, err = auto_result
+                if bind_default_codex_frontier:
+                    authorized_winning_turn = {
+                        "authority_kind": "host_auto_solve"
+                    }
                 if verbose:
                     print(f"level {K}: auto-solved via existing legs")
                 auto_marginal = marginal_complexity(
@@ -4571,12 +5241,9 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     pre_debrief_marginal_C=auto_marginal,
                     threshold=debrief_threshold,
                 ):
-                    files_before_auto_debrief = {
-                        name: _read(os.path.join(ws, name))
-                        for name in (
-                            "legs.py", "players.py", "solve.py", "legs_log.md"
-                        )
-                    }
+                    rollback_before_auto_debrief = (
+                        _seal_workspace_rollback_point(ws)
+                    )
                     snapshot_auto_debrief = True
                     try:
                         debrief_fn(ws, K)
@@ -4585,16 +5252,27 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                         # The auto-solve is independently replayed, but none of
                         # the unrecorded debrief's edits or probes may enter WIP
                         # or the promoted source.
-                        _restore_source_overlay(ws, files_before_auto_debrief)
+                        _restore_workspace_rollback_point(
+                            ws, rollback_before_auto_debrief
+                        )
                         print(
                             f"EVIDENCE failure during debrief after level {K}: "
                             f"{ex}; discarding the debrief generation and "
                             "preserving the pre-debrief auto-solve"
                         )
-                        levels2, path2 = levels, path
+                        levels2, path2, _ = verify_fn(game, solve_p)
+                        if levels2 < K:
+                            raise RuntimeError(
+                                "sealed pre-debrief source no longer replays "
+                                f"the auto-solved level {K}"
+                            )
                         phase = "auto_solve_debrief_evidence_unavailable"
                         snapshot_auto_debrief = False
+                        rollback_recovered_generation = True
                     except (CreditOut, ProposerInfrastructureError) as ex:
+                        _restore_workspace_rollback_point(
+                            ws, rollback_before_auto_debrief
+                        )
                         label = (
                             "CREDIT-OUT"
                             if isinstance(ex, CreditOut)
@@ -4604,14 +5282,48 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                             f"{label} during debrief after level {K}: {ex}; "
                             "preserving solved level"
                         )
-                        levels2, path2 = levels, path
+                        levels2, path2, _ = verify_fn(game, solve_p)
+                        if levels2 < K:
+                            raise RuntimeError(
+                                "sealed pre-debrief source no longer replays "
+                                f"the auto-solved level {K}"
+                            )
                         phase = (
                             "auto_solve_debrief_credit_out"
                             if isinstance(ex, CreditOut)
                             else "auto_solve_debrief_infrastructure_failure"
                         )
+                        rollback_recovered_generation = True
+                    except BaseException:
+                        _restore_workspace_rollback_point(
+                            ws, rollback_before_auto_debrief
+                        )
+                        levels2, path2, _ = verify_fn(game, solve_p)
+                        if levels2 < K:
+                            raise RuntimeError(
+                                "sealed pre-debrief source no longer replays "
+                                f"the auto-solved level {K} after an unexpected "
+                                "debrief failure"
+                            )
+                        raise
                     else:
                         phase = "after_auto_solve_debrief"
+                        if levels2 < levels:
+                            _restore_workspace_rollback_point(
+                                ws, rollback_before_auto_debrief
+                            )
+                            levels2, path2, _ = verify_fn(game, solve_p)
+                            if levels2 < K:
+                                raise RuntimeError(
+                                    "sealed pre-debrief auto-solve source "
+                                    f"failed replay at level {K}"
+                                )
+                            phase = "auto_solve_debrief_regression_rolled_back"
+                            rollback_recovered_generation = True
+                        else:
+                            authorized_winning_turn = codex_turn_records.get(
+                                ("debrief", K)
+                            )
                 else:
                     levels2, path2 = levels, path
                     phase = "auto_solve_debrief_skipped"
@@ -4625,18 +5337,32 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     )
                 reached = max(levels, levels2)
                 path = path2 if levels2 >= levels else path
-                exact_path = exact_level_boundary(game, path, K)
-                if exact_path is None or not A.validate(game, exact_path, K):
-                    raise RuntimeError(
-                        f"auto-solve did not yield an exact level-{K} boundary"
+                staged_levels, exact_path, sealed_promoted = (
+                    _stage_and_replay_winning_tree(
+                        game, ws, K, raw_verify_fn
                     )
-                Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
+                )
+                reached = max(reached, staged_levels)
+                Cm = marginal_complexity(
+                    legs_b,
+                    sealed_promoted["legs.py"].decode("utf-8"),
+                    players_b,
+                    sealed_promoted["players.py"].decode("utf-8"),
+                )
                 _record_level(rep, K, Cm)
                 rep.reached = K
                 rep.final_path = exact_path
                 rep.validated = True
                 _save_checkpoint(ws, rep)
-                promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
+                promote_verified_artifact(
+                    game,
+                    ws,
+                    rep,
+                    tag,
+                    verbose=verbose,
+                    sealed_promoted_payloads=sealed_promoted,
+                    authorized_turn=authorized_winning_turn,
+                )
                 if verbose:
                     print(f"level {K}: reached={K} marginal_C={Cm} "
                           f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
@@ -4675,7 +5401,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     snapshot_wip_context(game, ws, K, "credit_out", rep.reached, str(ex), tag, verbose=verbose)
                     credit_out = True
                     break
-                except ProposerProtocolViolation as ex:
+                except (ProposerProtocolViolation,
+                        ProposerBoundaryViolation) as ex:
                     # A caught invalid action invalidates the complete generation.
                     # The protected transcript is the authority; do not
                     # recover, snapshot, retry, or promote any workspace byte.
@@ -4787,10 +5514,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             ):
                 break
             snapshot_wip_context(game, ws, K, "reached_before_debrief", levels, err, tag, verbose=verbose)
-            files_before_debrief = {
-                name: _read(os.path.join(ws, name))
-                for name in ("legs.py", "players.py", "solve.py", "legs_log.md")
-            }
+            authorized_winning_turn = codex_turn_records.get(("propose", K))
+            rollback_before_debrief = _seal_workspace_rollback_point(ws)
             pre_debrief_marginal = marginal_complexity(
                 legs_b, _read(legs_p), players_b, _read(players_p)
             )
@@ -4819,14 +5544,25 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     # The winning proposal has its own sealed transcript.
                     # Restore its exact source and admit no bytes learned by
                     # the unrecorded optional debrief.
-                    _restore_source_overlay(ws, files_before_debrief)
+                    _restore_workspace_rollback_point(
+                        ws, rollback_before_debrief
+                    )
                     print(
                         f"EVIDENCE failure during debrief after level {K}: "
                         f"{ex}; discarding the debrief generation and "
                         "preserving the pre-debrief win"
                     )
-                    levels2, path2 = levels, path
+                    levels2, path2, _ = verify_fn(game, solve_p)
+                    if levels2 < K:
+                        raise RuntimeError(
+                            "sealed pre-debrief source no longer replays "
+                            f"the proposed win at level {K}"
+                        )
+                    rollback_recovered_generation = True
                 except (CreditOut, ProposerInfrastructureError) as ex:
+                    _restore_workspace_rollback_point(
+                        ws, rollback_before_debrief
+                    )
                     label = (
                         "CREDIT-OUT"
                         if isinstance(ex, CreditOut)
@@ -4836,7 +5572,12 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                         f"{label} during debrief after level {K}: {ex}; "
                         "preserving solved level"
                     )
-                    levels2, path2 = levels, path
+                    levels2, path2, _ = verify_fn(game, solve_p)
+                    if levels2 < K:
+                        raise RuntimeError(
+                            "sealed pre-debrief source no longer replays "
+                            f"the proposed win at level {K}"
+                        )
                     phase = (
                         "debrief_credit_out"
                         if isinstance(ex, CreditOut)
@@ -4846,31 +5587,84 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                         game, ws, K, phase, levels, str(ex), tag,
                         verbose=verbose,
                     )
+                    rollback_recovered_generation = True
+                except BaseException:
+                    _restore_workspace_rollback_point(
+                        ws, rollback_before_debrief
+                    )
+                    levels2, path2, _ = verify_fn(game, solve_p)
+                    if levels2 < K:
+                        raise RuntimeError(
+                            "sealed pre-debrief source no longer replays "
+                            f"the proposed win at level {K} after an unexpected "
+                            "debrief failure"
+                        )
+                    raise
                 else:
-                    snapshot_wip_context(game, ws, K, "after_debrief", levels2, None, tag, verbose=verbose)
                     if levels2 < levels:
-                        for name, text in files_before_debrief.items():
-                            with open(os.path.join(ws, name), "w") as f:
-                                f.write(text)
+                        _restore_workspace_rollback_point(
+                            ws, rollback_before_debrief
+                        )
+                        levels2, path2, _ = verify_fn(game, solve_p)
+                        if levels2 < K:
+                            raise RuntimeError(
+                                "sealed pre-debrief proposal source failed "
+                                f"replay at level {K}"
+                            )
                         if verbose:
-                            print(f"level {K}: debrief regressed solve ({levels2} < {levels}); restored pre-debrief files")
+                            print(
+                                f"level {K}: debrief regressed solve; "
+                                "restored and replayed the complete pre-debrief tree"
+                            )
+                        debrief_phase = "debrief_regression_rolled_back"
+                    else:
+                        debrief_phase = "after_debrief"
+                        authorized_winning_turn = codex_turn_records.get(
+                            ("debrief", K)
+                        )
+                    snapshot_wip_context(
+                        game, ws, K, debrief_phase, levels2, None, tag,
+                        verbose=verbose,
+                    )
             reached = max(levels, levels2)
             path = path2 if levels2 >= levels else path
-            exact_path = exact_level_boundary(game, path, K)
-            if exact_path is None or not A.validate(game, exact_path, K):
-                raise RuntimeError(
-                    f"proposal did not yield an exact level-{K} boundary"
+            staged_levels, exact_path, sealed_promoted = (
+                _stage_and_replay_winning_tree(
+                    game, ws, K, raw_verify_fn
                 )
-            Cm = marginal_complexity(legs_b, _read(legs_p), players_b, _read(players_p))
+            )
+            reached = max(reached, staged_levels)
+            Cm = marginal_complexity(
+                legs_b,
+                sealed_promoted["legs.py"].decode("utf-8"),
+                players_b,
+                sealed_promoted["players.py"].decode("utf-8"),
+            )
             _record_level(rep, K, Cm)
             rep.reached = K
             rep.final_path = exact_path
             rep.validated = True
             _save_checkpoint(ws, rep)
-            promote_verified_artifact(game, ws, rep, tag, verbose=verbose)
+            promote_verified_artifact(
+                game,
+                ws,
+                rep,
+                tag,
+                verbose=verbose,
+                sealed_promoted_payloads=sealed_promoted,
+                authorized_turn=authorized_winning_turn,
+            )
             if verbose:
                 print(f"level {K}: reached={K} marginal_C={Cm} "
                       f"total_C={rep.total_marginal_C} validated={rep.validated} F={rep.free_energy:.3f}")
+            if rollback_recovered_generation:
+                if verbose:
+                    print(
+                        "ending this workspace generation after rollback-"
+                        "recovered promotion; the scheduler must seed the next "
+                        "level into a fresh clean workspace"
+                    )
+                break
             if reached <= K - 1:
                 break
 
@@ -4888,6 +5682,10 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                 rep.reached, "interrupted mid-level", tag, verbose=verbose,
             )
         interrupted = True
+    except BaseException:
+        _release_workspace_lock(run_lock)
+        _release_workspace_lock(lineage_lock)
+        raise
 
     if protocol_tainted:
         _release_workspace_lock(run_lock)

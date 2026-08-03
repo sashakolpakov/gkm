@@ -320,6 +320,49 @@ def test_long_turns_alternate_coherent_reset_and_wip_continuation():
     )
 
 
+def test_policy_rejected_legacy_wip_becomes_clean_reset_before_plan():
+    report = {
+        "allowance": {"window_name": "unlimited"},
+        "turns": [],
+        "frontiers": [{
+            **_binding("hard", 2),
+            "game": "hard",
+            "current_level": 2,
+            "next_level": 3,
+            "authoritative_level_count": 7,
+            "incumbent_kind": "promoted",
+            "retry_complexity_n": 2,
+            "priority_score": 3.0,
+            "recommended_effort": "xhigh",
+            "recommended_minutes": 25,
+            "recommended_wip_mode": "restore_clean_same_frontier",
+            "recommended_auxiliary_parallelism": 0,
+            "dispatch_mode": "continue_clean_wip",
+            "warm_wip_available": False,
+            "warm_wip_attempt": None,
+            "warm_wip_phase": None,
+            "warm_wip_recovery_required": False,
+            "warm_wip_validation": (
+                "rejected:filesystem_boundary_policy_binding"
+            ),
+            "external_evidence": {},
+        }],
+    }
+
+    item = P.adaptive_campaign_item(report, reserve=5)
+
+    assert item["wip_mode"] == "exclude"
+    assert item["dispatch_mode"] == "filesystem_boundary_clean_reset"
+    assert item["expected_wip_attempt"] is None
+    assert item["warm_wip_validation"] == (
+        "rejected:filesystem_boundary_policy_binding"
+    )
+    assert item["experiment_role"] == (
+        "retry_n2_filesystem_boundary_clean_reset"
+    )
+    assert "--wip-mode=exclude" in item["argv"]
+
+
 def test_clean_infrastructure_wip_overrides_n7_reset_without_advancing_n():
     report = {
         "allowance": {"window_name": "unlimited"},

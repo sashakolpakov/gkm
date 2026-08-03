@@ -27,9 +27,16 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
+import stat
 import tokenize
 from pathlib import Path
+
+try:
+    from arc.crack_lab import arc_agi3_proposer_boundary as Boundary
+except ModuleNotFoundError:  # pragma: no cover - direct-script fallback
+    from crack_lab import arc_agi3_proposer_boundary as Boundary
 
 
 PROMOTED_FILES = {
@@ -314,9 +321,10 @@ def codex_execution_surface(text: str) -> str | None:
 
 def scan_file(path: Path) -> list[str]:
     try:
-        if path.stat().st_size > MAX_TAINT_SCAN_BYTES:
+        payload = _read_regular_nofollow(path)
+        if len(payload) > MAX_TAINT_SCAN_BYTES:
             return ["oversized_unscanned_evidence"]
-        text = path.read_text(encoding="utf-8", errors="ignore")
+        text = payload.decode("utf-8", errors="ignore")
         protocol_violation = (
             path.name == "proposer_last.log" or path.suffix == ".jsonl"
         ) and PUBLIC_ACTION_PROTOCOL_VIOLATION_RE.search(text) is not None
@@ -337,7 +345,7 @@ def scan_file(path: Path) -> list[str]:
             hits.insert(0, "public_action_protocol_violation")
         return hits
     except OSError:
-        return []
+        return ["filesystem_boundary:unsafe_evidence_read"]
 
 
 def _file_change_is_workspace_local(value: object) -> bool:
@@ -376,8 +384,13 @@ def audit_transcript_containment(root: Path) -> dict:
     seen_hashes: set[str] = set()
     for path in paths:
         try:
-            payload = path.read_bytes()
-        except OSError:
+            payload = _read_regular_nofollow(path)
+        except OSError as exc:
+            result["incidents"].append({
+                "kind": "unsafe_transcript_read",
+                "path": str(path),
+                "detail": str(exc),
+            })
             continue
         digest = hashlib.sha256(payload).hexdigest()
         if digest in seen_hashes:
@@ -485,11 +498,109 @@ def audit_transcript_containment(root: Path) -> dict:
 
 
 def sha256_file(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as f:
-        for block in iter(lambda: f.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    return hashlib.sha256(_read_regular_nofollow(path)).hexdigest()
+
+
+def _read_regular_nofollow(path: Path) -> bytes:
+    """Read a single-link regular file without following an alias or race."""
+
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    before = os.lstat(path)
+    if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+        raise OSError(f"not a single-link regular file: {path}")
+    descriptor = os.open(path, flags)
+    try:
+        opened = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(opened.st_mode)
+            or opened.st_nlink != 1
+            or (opened.st_dev, opened.st_ino) != (before.st_dev, before.st_ino)
+        ):
+            raise OSError(f"file identity changed while opening: {path}")
+        blocks = []
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                break
+            blocks.append(block)
+        after = os.fstat(descriptor)
+        final = os.lstat(path)
+        identity = lambda value: (
+            value.st_dev,
+            value.st_ino,
+            value.st_mode,
+            value.st_nlink,
+            value.st_size,
+            value.st_mtime_ns,
+            value.st_ctime_ns,
+        )
+        if identity(opened) != identity(after) or identity(after) != identity(final):
+            raise OSError(f"file changed while reading: {path}")
+        return b"".join(blocks)
+    finally:
+        os.close(descriptor)
+
+
+def _physical_nofollow_inventory(root: Path) -> dict:
+    """Reject aliases before any recursive glob or authoritative read.
+
+    The certifier deliberately inventories the complete supplied tree, not
+    merely the paths named by manifests.  That prevents an untrusted alias
+    from changing which files recursive discovery sees.  Regular files must
+    be single-link so a canonical object cannot be mutated through another
+    pathname after it has been sealed.
+    """
+
+    result = {"entries": 0, "incidents": [], "verdict": "clean"}
+
+    def incident(kind: str, path: Path, detail: str | None = None) -> None:
+        row = {"kind": kind, "path": str(path)}
+        if detail is not None:
+            row["detail"] = detail
+        result["incidents"].append(row)
+
+    try:
+        root_stat = os.lstat(root)
+    except OSError as exc:
+        incident("root_unavailable", root, str(exc))
+        result["verdict"] = "incident"
+        return result
+    if stat.S_ISLNK(root_stat.st_mode) or not stat.S_ISDIR(root_stat.st_mode):
+        incident("root_not_physical_directory", root)
+        result["verdict"] = "incident"
+        return result
+
+    stack = [root]
+    while stack:
+        directory = stack.pop()
+        try:
+            entries = list(os.scandir(directory))
+        except OSError as exc:
+            incident("directory_unreadable", directory, str(exc))
+            continue
+        for entry in entries:
+            path = Path(entry.path)
+            result["entries"] += 1
+            try:
+                metadata = entry.stat(follow_symlinks=False)
+            except OSError as exc:
+                incident("entry_unreadable", path, str(exc))
+                continue
+            if stat.S_ISLNK(metadata.st_mode):
+                incident("symlink_alias", path)
+            elif stat.S_ISDIR(metadata.st_mode):
+                stack.append(path)
+            elif stat.S_ISREG(metadata.st_mode):
+                if metadata.st_nlink != 1:
+                    incident("hardlink_alias", path)
+            else:
+                incident("non_regular_entry", path)
+    result["verdict"] = (
+        "clean" if not result["incidents"] else "incident"
+    )
+    return result
 
 
 def safe_evidence_path(root: Path, value: object) -> Path | None:
@@ -499,7 +610,40 @@ def safe_evidence_path(root: Path, value: object) -> Path | None:
     relative = Path(value)
     if relative.is_absolute() or ".." in relative.parts:
         return None
-    return root / relative
+    candidate = root / relative
+    current = root
+    for part in (Path("."), *relative.parts):
+        if part != Path("."):
+            current = current / part
+        try:
+            metadata = os.lstat(current)
+        except FileNotFoundError:
+            # The caller reports a missing declared file.  Existing ancestors
+            # were checked without following aliases first.
+            break
+        except OSError:
+            return None
+        if stat.S_ISLNK(metadata.st_mode):
+            return None
+        if current != candidate and not stat.S_ISDIR(metadata.st_mode):
+            return None
+    return candidate
+
+
+def _bound_transcript_boundary_hits(
+    path: Path, *, accepted_workspace_root: str | None
+) -> list[str]:
+    """Apply the prospective capability policy to one policy-bound turn."""
+
+    return sorted({
+        "filesystem_boundary:" + finding.code
+        for finding in Boundary.scan_codex_transcript(
+            path,
+            workspace_root=path.parent,
+            arena_module_root=(Path(__file__).parent / "crack_lab").resolve(),
+            accepted_workspace_root=accepted_workspace_root,
+        )
+    })
 
 
 def audit_promotion_chain(artifact: Path) -> dict:
@@ -507,11 +651,15 @@ def audit_promotion_chain(artifact: Path) -> dict:
     checkpoint_path = artifact / "checkpoint.json"
     expected_reached = None
     try:
-        checkpoint = json.loads(checkpoint_path.read_text(encoding="utf-8"))
+        checkpoint = json.loads(
+            _read_regular_nofollow(checkpoint_path).decode("utf-8")
+        )
+        if not isinstance(checkpoint, dict):
+            raise ValueError("checkpoint is not an object")
         reached = checkpoint.get("reached")
         if isinstance(reached, int) and not isinstance(reached, bool) and reached >= 0:
             expected_reached = reached
-    except (OSError, json.JSONDecodeError):
+    except (OSError, UnicodeError, json.JSONDecodeError, ValueError):
         pass
     result = {
         "manifests": len(manifests),
@@ -528,9 +676,16 @@ def audit_promotion_chain(artifact: Path) -> dict:
     previous = None
     for manifest_path in manifests:
         try:
-            manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+            manifest = json.loads(
+                _read_regular_nofollow(manifest_path).decode("utf-8")
+            )
+        except (OSError, UnicodeError, json.JSONDecodeError) as exc:
             result["integrity_errors"].append(f"{manifest_path}: {exc}")
+            continue
+        if not isinstance(manifest, dict):
+            result["integrity_errors"].append(
+                f"manifest is not an object: {manifest_path}"
+            )
             continue
         evidence_dir = manifest_path.parent
         try:
@@ -560,6 +715,33 @@ def audit_promotion_chain(artifact: Path) -> dict:
         # The oldest schema-v1 manifests predate the explicit ``schema`` key.
         # Absence therefore means v1; every other unknown value fails closed.
         schema = manifest.get("schema", 1)
+        policy_schema = manifest.get("filesystem_boundary_policy_schema")
+        policy_sha256 = manifest.get("filesystem_boundary_policy_sha256")
+        policy_bound = policy_schema is not None or policy_sha256 is not None
+        if policy_bound and (
+            policy_schema != Boundary.POLICY_SCHEMA
+            or policy_sha256 != Boundary.policy_sha256()
+            or manifest.get("compatibility_arena_module_sha256")
+            != Boundary.arena_module_sha256(
+                Path(__file__).parent / "crack_lab"
+            )
+            or manifest.get("compatibility_boundary_authority")
+            != "behavioral_defense_in_depth"
+        ):
+            result["integrity_errors"].append(
+                "filesystem boundary policy binding mismatch: "
+                f"{manifest_path}"
+            )
+        strict_boundary = (
+            policy_schema == Boundary.POLICY_SCHEMA
+            and policy_sha256 == Boundary.policy_sha256()
+            and manifest.get("compatibility_arena_module_sha256")
+            == Boundary.arena_module_sha256(
+                Path(__file__).parent / "crack_lab"
+            )
+            and manifest.get("compatibility_boundary_authority")
+            == "behavioral_defense_in_depth"
+        )
         transcript_entries = []
         if schema == 1:
             transcript_entries.append({
@@ -642,6 +824,13 @@ def audit_promotion_chain(artifact: Path) -> dict:
                 )
                 continue
             hits = scan_file(transcript)
+            if strict_boundary:
+                hits.extend(_bound_transcript_boundary_hits(
+                    transcript,
+                    accepted_workspace_root=manifest.get(
+                        "proposer_workspace_root"
+                    ),
+                ))
             forbidden = [hit for hit in hits if hit not in INFORMATIONAL_HITS]
             if forbidden:
                 result["taint_hits"].append({
@@ -675,6 +864,19 @@ def audit_promotion_chain(artifact: Path) -> dict:
                 result["integrity_errors"].append(f"promoted-file hash mismatch: {evidence_file}")
             else:
                 hits = scan_file(evidence_file)
+                if strict_boundary and evidence_file.suffix.lower() in {
+                    ".py", ".pyw",
+                }:
+                    hits.extend(
+                        "filesystem_boundary:" + finding.code
+                        for finding in Boundary.scan_python_file(
+                            evidence_file,
+                            logical_path=str(evidence_file),
+                            arena_module_root=(
+                                Path(__file__).parent / "crack_lab"
+                            ).resolve(),
+                        )
+                    )
                 forbidden = [
                     hit for hit in hits if hit not in INFORMATIONAL_HITS
                 ]
@@ -750,6 +952,8 @@ def wip_category(metadata: dict) -> str:
 
 def audit(root: Path) -> dict:
     report = {
+        "filesystem_boundary_policy_schema": Boundary.POLICY_SCHEMA,
+        "filesystem_boundary_policy_sha256": Boundary.policy_sha256(),
         "canonical": {"files": 0, "hits": []},
         "successful_candidate_wip": {"snapshots": 0, "files": 0, "hits": []},
         "discarded_wip": {"snapshots": 0, "files": 0, "hits": []},
@@ -761,6 +965,18 @@ def audit(root: Path) -> dict:
             "explicit manifest or an independently reconstructed file-hash chain."
         ),
     }
+    report["root_integrity"] = _physical_nofollow_inventory(root)
+    if report["root_integrity"]["verdict"] != "clean":
+        # Do not perform a recursive glob or open after the physical inventory
+        # has found an alias.  This is the fail-closed property the certifier
+        # itself must uphold, independent of what a manifest claims.
+        report["canonical"]["verdict"] = "not_scanned"
+        report["frontier_scaffolds"]["verdict"] = "not_scanned"
+        report["proposer_containment"] = {
+            "verdict": "not_scanned",
+            "incidents": [],
+        }
+        return report
     for artifact in sorted(root.glob("*_legs")):
         if (artifact / "checkpoint.json").is_file():
             report["promotion_chains"][artifact.name] = audit_promotion_chain(artifact)
@@ -770,6 +986,21 @@ def audit(root: Path) -> dict:
                     continue
                 report["canonical"]["files"] += 1
                 hits = scan_file(path)
+                if path.suffix.lower() in {".py", ".pyw"}:
+                    boundary_hits = Boundary.scan_python_file(
+                        path,
+                        logical_path=str(path),
+                        arena_module_root=(
+                            Path(__file__).parent / "crack_lab"
+                        ).resolve(),
+                    )
+                    hits = sorted({
+                        *hits,
+                        *(
+                            "filesystem_boundary:" + finding.code
+                            for finding in boundary_hits
+                        ),
+                    })
                 if hits:
                     report["canonical"]["hits"].append({
                         "path": str(path), "kinds": hits,
@@ -789,8 +1020,25 @@ def audit(root: Path) -> dict:
 
         for metadata_path in sorted((artifact / "wip_context").glob("level_*/*/metadata.json")):
             try:
-                metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            except (OSError, json.JSONDecodeError):
+                metadata = json.loads(
+                    _read_regular_nofollow(metadata_path).decode("utf-8")
+                )
+            except (OSError, UnicodeError, json.JSONDecodeError):
+                continue
+            if not isinstance(metadata, dict):
+                report["discarded_wip"]["snapshots"] += 1
+                report["discarded_wip"]["hits"].append({
+                    "attempt": None,
+                    "game": None,
+                    "level": None,
+                    "phase": None,
+                    "files": [{
+                        "path": str(metadata_path),
+                        "kinds": [
+                            "filesystem_boundary:malformed_wip_metadata"
+                        ],
+                    }],
+                })
                 continue
             category = wip_category(metadata)
             report[category]["snapshots"] += 1
@@ -800,11 +1048,86 @@ def audit(root: Path) -> dict:
             # are based on that file alone.  Canonical source is scanned above.
             path = metadata_path.parent / "files" / "proposer_last.log"
             snapshot_hits = []
+            policy_schema = metadata.get(
+                "filesystem_boundary_policy_schema"
+            )
+            policy_sha256 = metadata.get(
+                "filesystem_boundary_policy_sha256"
+            )
+            policy_declared = (
+                policy_schema is not None or policy_sha256 is not None
+            )
+            strict_boundary = (
+                policy_schema == Boundary.POLICY_SCHEMA
+                and policy_sha256 == Boundary.policy_sha256()
+                and metadata.get("compatibility_arena_module_sha256")
+                == Boundary.arena_module_sha256(
+                    Path(__file__).parent / "crack_lab"
+                )
+                and metadata.get("compatibility_boundary_authority")
+                == "behavioral_defense_in_depth"
+            )
             if path.is_file():
                 report[category]["files"] += 1
                 hits = scan_file(path)
+                if policy_declared:
+                    if not strict_boundary:
+                        hits.append(
+                            "filesystem_boundary:policy_binding_mismatch"
+                        )
+                    else:
+                        hits.extend(_bound_transcript_boundary_hits(
+                            path,
+                            accepted_workspace_root=metadata.get(
+                                "proposer_workspace_root"
+                            ),
+                        ))
                 if hits:
                     snapshot_hits.append({"path": str(path), "kinds": hits})
+            if strict_boundary:
+                files_root = metadata_path.parent / "files"
+                declared_files = metadata.get("files")
+                if not isinstance(declared_files, list):
+                    snapshot_hits.append({
+                        "path": str(metadata_path),
+                        "kinds": ["filesystem_boundary:malformed_source_inventory"],
+                    })
+                else:
+                    for name in declared_files:
+                        source = safe_evidence_path(files_root, name)
+                        if source is None:
+                            snapshot_hits.append({
+                                "path": str(metadata_path),
+                                "kinds": ["filesystem_boundary:source_path_alias"],
+                            })
+                            continue
+                        try:
+                            mode = os.lstat(source).st_mode
+                        except OSError:
+                            continue
+                        if (
+                            source.name == "gkm_try.py"
+                            or (
+                                source.suffix.lower()
+                                not in Boundary.SOURCE_SUFFIXES
+                                and not stat.S_IMODE(mode) & 0o111
+                            )
+                        ):
+                            continue
+                        source_hits = [
+                            "filesystem_boundary:" + finding.code
+                            for finding in Boundary.scan_source_file(
+                                source,
+                                logical_path=str(source),
+                                arena_module_root=(
+                                    Path(__file__).parent / "crack_lab"
+                                ).resolve(),
+                            )
+                        ]
+                        if source_hits:
+                            snapshot_hits.append({
+                                "path": str(source), "kinds": source_hits,
+                            })
             if snapshot_hits:
                 report[category]["hits"].append({
                     "attempt": metadata.get("attempt"),
@@ -824,7 +1147,8 @@ def audit(root: Path) -> dict:
 def automated_failed(
     report: dict, *, require_complete_lineage: bool = False
 ) -> bool:
-    failed = report["canonical"]["verdict"] != "clean"
+    failed = report["root_integrity"]["verdict"] != "clean"
+    failed = failed or report["canonical"]["verdict"] != "clean"
     failed = failed or report["frontier_scaffolds"]["verdict"] != "clean"
     failed = failed or report["proposer_containment"]["verdict"] != "clean"
     for chain in report["promotion_chains"].values():

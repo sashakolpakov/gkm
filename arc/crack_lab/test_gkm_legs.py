@@ -21,6 +21,833 @@ import pytest
 import gkm_legs as L
 
 
+def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
+    arena_root = Path(L.__file__).resolve().parent
+    clean = (
+        "import json, os, sys\n"
+        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
+        "import gkm_arena as arena\n"
+        "with open('checkpoint.json') as source:\n"
+        "    checkpoint = json.load(source)\n"
+        "limit = int(os.environ.get('PROBE_LIMIT', '10'))\n"
+        "levels, path, error = arena.run_program('lf52', solve)\n"
+    )
+    assert L.APB.scan_python_source(
+        clean,
+        logical_path="probe.py",
+        arena_module_root=arena_root,
+    ) == ()
+
+    unsafe = {
+        "absolute_open": "open('/Users/sasha/gkm/README.md').read()\n",
+        "parent_open": "open('../checkpoint.json').read()\n",
+        "dynamic_open": "name='checkpoint.json'\nopen(name).read()\n",
+        "pathlib_parent": (
+            "from pathlib import Path\n"
+            "Path('checkpoint.json').resolve().read_text()\n"
+        ),
+        "subprocess": (
+            "import subprocess\n"
+            "subprocess.run(['cat', '/etc/passwd'])\n"
+        ),
+        "shell": "import os\nos.system('cat /etc/passwd')\n",
+        "introspection": "import sys\nprint(sys.modules)\n",
+        "wrong_import": "import gkm_legs\n",
+        "wrong_sys_path": "import sys\nsys.path.insert(0, '/tmp')\n",
+        "arena_constructor": (
+            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
+            "import gkm_arena as arena\narena.Arena('lf52')\n"
+        ),
+        "arena_module_pass": (
+            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
+            "import gkm_arena as arena\nconsume(arena)\n"
+        ),
+        "arena_function_alias": (
+            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
+            "import gkm_arena as arena\nrun = arena.run_program\n"
+        ),
+        "arena_import_alias": (
+            f"import sys\nsys.path.insert(0, {os.fspath(arena_root)!r})\n"
+            "from gkm_arena import run_program\n"
+        ),
+    }
+    for label, source in unsafe.items():
+        assert L.APB.scan_python_source(
+            source,
+            logical_path=f"{label}.py",
+            arena_module_root=arena_root,
+        ), label
+
+
+def test_raw_arena_capability_rejects_host_sibling_modules_and_packages(
+    tmp_path,
+):
+    arena_root = tmp_path / "arena_root"
+    arena_root.mkdir()
+    (arena_root / "gkm_arena.py").write_text("def run_program(*a): pass\n")
+    (arena_root / "host_helper.py").write_text("SECRET = 1\n")
+    (arena_root / "host_package").mkdir()
+    prefix = (
+        "import sys\n"
+        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
+    )
+    for module in ("host_helper", "host_package"):
+        findings = L.APB.scan_python_source(
+            prefix + f"import {module}\n",
+            logical_path="probe.py",
+            arena_module_root=arena_root,
+        )
+        assert any(item.code == "arena_sibling_import" for item in findings)
+
+
+@pytest.mark.parametrize("shape", ["before", "conditional", "function"])
+def test_raw_arena_requires_unconditional_insert_before_single_import(
+    shape,
+):
+    arena_root = Path(L.__file__).resolve().parent
+    insertion = f"sys.path.insert(0, {os.fspath(arena_root)!r})"
+    sources = {
+        "before": (
+            "import sys\nimport gkm_arena as arena\n"
+            f"{insertion}\n"
+        ),
+        "conditional": (
+            "import sys\nif False:\n"
+            f"    {insertion}\n"
+            "import gkm_arena as arena\n"
+        ),
+        "function": (
+            "import sys\ndef prepare():\n"
+            f"    {insertion}\n"
+            "import gkm_arena as arena\n"
+        ),
+    }
+
+    findings = L.APB.scan_python_source(
+        sources[shape],
+        logical_path="probe.py",
+        arena_module_root=arena_root,
+    )
+
+    assert any(item.code == "raw_arena_import_order" for item in findings)
+
+
+def test_raw_arena_rejects_workspace_archive_loader_shadow():
+    arena_root = Path(L.__file__).resolve().parent
+    source = (
+        "import sys, zipimport\n"
+        "zipimport.zipimporter('payload.zip').load_module('gkm_arena')\n"
+        f"sys.path.insert(0, {os.fspath(arena_root)!r})\n"
+        "import gkm_arena as arena\n"
+        "arena.run_program('lf52', solve)\n"
+    )
+
+    findings = L.APB.scan_python_source(
+        source, logical_path="probe.py", arena_module_root=arena_root
+    )
+
+    assert any(
+        item.code in {"dynamic_or_process_import", "runtime_introspection"}
+        for item in findings
+    )
+
+
+@pytest.mark.parametrize("shadow", ["file", "package", "pyc", "extension"])
+def test_workspace_rejects_reserved_raw_arena_shadow(tmp_path, shadow):
+    workspace = tmp_path / "gkm_legs_ws_shadow"
+    workspace.mkdir()
+    if shadow == "file":
+        (workspace / "gkm_arena.py").write_text("print('SHADOW')\n")
+    elif shadow == "package":
+        package = workspace / "gkm_arena"
+        package.mkdir()
+        (package / "__init__.py").write_text("print('PKGSHADOW')\n")
+    elif shadow == "pyc":
+        (workspace / "gkm_arena.pyc").write_bytes(b"shadow")
+    else:
+        (workspace / "gkm_arena.cpython-313-darwin.so").write_bytes(b"shadow")
+
+    findings = L.APB.scan_workspace(
+        workspace, arena_module_root=Path(L.__file__).resolve().parent
+    )
+
+    assert any(item.code == "reserved_arena_shadow" for item in findings)
+    monitor = L.APB.LiveBoundaryMonitor(
+        workspace, arena_module_root=Path(L.__file__).resolve().parent
+    )
+    assert any(
+        item.code == "reserved_arena_shadow"
+        for item in monitor.scan_workspace()
+    )
+
+
+@pytest.mark.parametrize(
+    "source",
+    [
+        "import os\ncopy = os.environ.copy()\n",
+        "import io\nio.FileIO(chr(47) + 'etc/passwd').read()\n",
+        "import urllib.request as net\nnet.urlopen('x')\n",
+        "import os\nos.fork()\n",
+        "def broken(:\n    pass\n",
+        "import sys\nsys._getframe().f_globals\n",
+        "import sys\nprint(sys.argv[0])\n",
+        "getattr(object, '__sub' + 'classes__')()\n",
+        "import _io\n_io.FileIO(chr(47) + 'etc/passwd')\n",
+        "import _socket\n_socket.socket()\n",
+        "import os\nos.symlink(chr(47) + 'etc/passwd', 'x')\nopen('x').read()\n",
+        "from pathlib import Path\nPath('x').symlink_to(chr(47) + 'etc/passwd')\n",
+        "import os\nos.link(chr(47) + 'etc/passwd', 'x')\n",
+        "import shutil\nshutil.copy(chr(47) + 'etc/passwd', 'x')\n",
+        "import numpy as np\nnp.genfromtxt(chr(47) + 'etc/passwd')\n",
+        "import posix\nposix.listdir(chr(47))\n",
+        "import platform\nplatform.os.listdir(chr(47))\n",
+        "import os\nos.fdopen(3).read()\n",
+        "f = object.__getattribute__\n",
+    ],
+)
+def test_boundary_rejects_obfuscated_or_detached_python_capabilities(source):
+    assert L.APB.scan_python_source(
+        source,
+        logical_path="probe.py",
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+
+
+def test_boundary_scans_extensionless_executables_and_cache_sources(tmp_path):
+    workspace = tmp_path / "gkm_legs_ws_executables"
+    workspace.mkdir()
+    executable = workspace / "probe"
+    executable.write_text(
+        "#!/usr/bin/env python3\nopen('/etc/passwd').read()\n",
+        encoding="utf-8",
+    )
+    executable.chmod(0o755)
+    cache = workspace / "__pycache__"
+    cache.mkdir()
+    (cache / "escape.py").write_text(
+        "open('/etc/passwd').read()\n", encoding="utf-8"
+    )
+    findings = L.APB.scan_workspace(
+        workspace, arena_module_root=Path(L.__file__).resolve().parent
+    )
+    paths = {item.path for item in findings}
+    assert "probe" in paths
+    assert "__pycache__/escape.py" in paths
+
+
+def test_clean_room_boundary_rejects_symlink_and_immutable_command_escape(
+    tmp_path,
+):
+    arena_root = Path(L.__file__).resolve().parent
+    workspace = tmp_path / "gkm_legs_ws_test"
+    workspace.mkdir()
+    (workspace / "checkpoint.json").write_text("{}\n", encoding="utf-8")
+    (workspace / "probe.py").symlink_to(workspace / "checkpoint.json")
+    findings = L.APB.scan_workspace(
+        workspace, arena_module_root=arena_root
+    )
+    assert any(item.code == "symlink_escape" for item in findings)
+
+    transcript = tmp_path / "codex_turn_test.jsonl"
+    transcript.write_text(
+        json.dumps({
+            "type": "item.completed",
+            "item": {
+                "type": "command_execution",
+                "command": "/bin/zsh -lc 'cat ../secret'",
+            },
+        }) + "\n",
+        encoding="utf-8",
+    )
+    findings = L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        arena_module_root=arena_root,
+    )
+    assert any(item.code == "parent_path" for item in findings)
+
+
+def test_historical_transcript_binds_exact_workspace_root_not_basename(
+    tmp_path,
+):
+    workspace = tmp_path / "current" / "gkm_legs_ws_lf52_exact"
+    workspace.mkdir(parents=True)
+    accepted = tmp_path / "sealed" / "gkm_legs_ws_lf52_exact"
+    accepted.mkdir(parents=True)
+    transcript = tmp_path / "turn.jsonl"
+
+    def write_change(path):
+        transcript.write_text(json.dumps({
+            "type": "item.completed",
+            "item": {
+                "id": "change-1",
+                "type": "file_change",
+                "changes": [{"path": str(path)}],
+            },
+        }) + "\n", encoding="utf-8")
+
+    write_change(accepted / "probe.py")
+    assert not any(
+        item.code == "file_change_escape"
+        for item in L.APB.scan_codex_transcript(
+            transcript,
+            workspace_root=workspace,
+            arena_module_root=Path(L.__file__).resolve().parent,
+            accepted_workspace_root=str(accepted),
+        )
+    )
+
+    decoy = tmp_path / "unsealed" / accepted.name / "probe.py"
+    write_change(decoy)
+    assert any(
+        item.code == "file_change_escape"
+        for item in L.APB.scan_codex_transcript(
+            transcript,
+            workspace_root=workspace,
+            arena_module_root=Path(L.__file__).resolve().parent,
+            accepted_workspace_root=str(accepted),
+        )
+    )
+
+
+@pytest.mark.parametrize("invalid_binding", [7, [], {}])
+def test_historical_transcript_rejects_nonstring_workspace_binding(
+    tmp_path, invalid_binding
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_current"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_text(json.dumps({
+        "type": "item.completed",
+        "item": {"id": "message-1", "type": "agent_message", "text": "ok"},
+    }) + "\n", encoding="utf-8")
+
+    findings = L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+        accepted_workspace_root=invalid_binding,
+    )
+
+    assert any(item.code == "invalid_workspace_binding" for item in findings)
+
+
+def test_workspace_boundary_precedes_marker_reads_and_transcript_aliases_fail(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "gkm_legs_ws_boundary_order"
+    workspace.mkdir()
+    target = tmp_path / "outside.py"
+    target.write_text("open('/etc/passwd').read()\n", encoding="utf-8")
+    (workspace / "probe.py").symlink_to(target)
+
+    def marker_must_not_run(_ws):
+        raise AssertionError("marker scan followed a path before lstat gate")
+
+    monkeypatch.setattr(L, "_workspace_marker_taint_reason", marker_must_not_run)
+    reason = L._workspace_taint_reason(str(workspace))
+    assert reason is not None
+    assert "symlink_escape" in reason
+
+    transcript_target = tmp_path / "events.jsonl"
+    transcript_target.write_text("{}\n", encoding="utf-8")
+    transcript_link = tmp_path / "linked.jsonl"
+    transcript_link.symlink_to(transcript_target)
+    findings = L.APB.scan_codex_transcript(
+        transcript_link,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+    assert any(item.code == "symlink_transcript" for item in findings)
+
+    transcript_hardlink = tmp_path / "hardlinked.jsonl"
+    os.link(transcript_target, transcript_hardlink)
+    findings = L.APB.scan_codex_transcript(
+        transcript_hardlink,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+    assert any(item.code == "aliased_transcript" for item in findings)
+
+
+def test_live_boundary_monitor_rechecks_changed_source(tmp_path):
+    arena_root = Path(L.__file__).resolve().parent
+    workspace = tmp_path / "gkm_legs_ws_monitor"
+    workspace.mkdir()
+    probe = workspace / "probe.py"
+    probe.write_text("open('checkpoint.json').read()\n", encoding="utf-8")
+    monitor = L.APB.LiveBoundaryMonitor(
+        workspace, arena_module_root=arena_root
+    )
+    assert monitor.scan_workspace() == ()
+    probe.write_text("open('/etc/passwd').read()\n", encoding="utf-8")
+    assert any(
+        item.code == "absolute_path"
+        for item in monitor.scan_workspace()
+    )
+
+
+def test_live_boundary_monitor_hashes_source_even_if_mtime_is_restored(tmp_path):
+    arena_root = Path(L.__file__).resolve().parent
+    workspace = tmp_path / "gkm_legs_ws_digest"
+    workspace.mkdir()
+    probe = workspace / "probe.py"
+    unsafe = "open('/etc/passwd').read()\n"
+    safe = "x = 1\n" + " " * (len(unsafe) - len("x = 1\n"))
+    assert len(safe.encode()) == len(unsafe.encode())
+    probe.write_text(safe, encoding="utf-8")
+    before = probe.stat()
+    monitor = L.APB.LiveBoundaryMonitor(
+        workspace, arena_module_root=arena_root
+    )
+    assert monitor.scan_workspace() == ()
+    probe.write_text(unsafe, encoding="utf-8")
+    os.utime(probe, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert any(
+        item.code == "absolute_path"
+        for item in monitor.scan_workspace()
+    )
+
+
+def test_boundary_policy_source_drift_invalidates_loaded_monitor(
+    tmp_path, monkeypatch
+):
+    policy = tmp_path / "policy.py"
+    policy.write_text("version = 1\n", encoding="utf-8")
+    monkeypatch.setattr(L.APB, "_POLICY_SOURCE_PATH", policy)
+    monkeypatch.setattr(
+        L.APB,
+        "_LOADED_POLICY_SHA256",
+        __import__("hashlib").sha256(policy.read_bytes()).hexdigest(),
+    )
+    workspace = tmp_path / "gkm_legs_ws_policy_drift"
+    workspace.mkdir()
+    (workspace / "probe.py").write_text("x = 1\n", encoding="utf-8")
+    monitor = L.APB.LiveBoundaryMonitor(workspace)
+    assert monitor.scan_workspace() == ()
+    policy.write_text("version = 2\n", encoding="utf-8")
+    findings = monitor.scan_workspace()
+    assert [finding.code for finding in findings] == ["policy_control_drift"]
+
+
+def test_nonobject_wip_metadata_is_forensic_only_not_a_restore_crash(tmp_path):
+    metadata = tmp_path / "metadata.json"
+    metadata.write_text("[]\n", encoding="utf-8")
+
+    assert L._wip_uses_current_boundary_policy(metadata) is False
+
+
+def test_shell_boundary_unwraps_and_scans_inline_interpreters():
+    arena_root = Path(L.__file__).resolve().parent
+    clean = (
+        "/bin/zsh -lc \"python - <<'PY'\n"
+        "import json\n"
+        "for name in ('checkpoint.json',):\n"
+        "    print(json.load(open(name)))\n"
+        "PY\""
+    )
+    assert L.APB.scan_shell_command(
+        clean,
+        logical_path="turn.jsonl",
+        line=1,
+        arena_module_root=arena_root,
+    ) == ()
+    assert L.APB.scan_shell_command(
+        "/bin/zsh -lc \"git diff -- legs.py players.py | sed -n '1,20p'\"",
+        logical_path="turn.jsonl",
+        line=1,
+        arena_module_root=arena_root,
+    ) == ()
+
+    unsafe = {
+        "computed_absolute": (
+            "/bin/zsh -lc \"python -c \\\"import os; "
+            "open(chr(47) + 'etc/passwd').read()\\\"\""
+        ),
+        "sys_path_read": (
+            "/bin/zsh -lc \"python - <<'PY'\n"
+            "import sys\nprint(sys.path[0])\nPY\""
+        ),
+        "pathlib_escape": (
+            "/bin/zsh -lc \"python -c \\\"from pathlib import Path; "
+            "print(Path.cwd().parent)\\\"\""
+        ),
+        "command_substitution": "/bin/zsh -lc 'value=$(pwd); echo $value'",
+        "process_substitution": "/bin/zsh -lc 'cat <(cat checkpoint.json)'",
+        "dynamic_redirection": "/bin/zsh -lc 'cat < \"$TARGET\"'",
+        "root_cd": "/bin/zsh -lc 'cd /; python probe.py'",
+        "source": "/bin/zsh -lc 'source probe.txt'",
+        "detached": "/bin/zsh -lc 'python probe.py &'",
+        "python_module": "/bin/zsh -lc 'python -m probe'",
+        "extensionless": "/bin/zsh -lc 'python probe'",
+        "hidden_cache": "/bin/zsh -lc 'python __pycache__/probe.py'",
+        "perl": "/bin/zsh -lc 'perl -e print'",
+        "ruby": "/bin/zsh -lc 'ruby -e puts'",
+        "node": "/bin/zsh -lc 'node -e console.log(1)'",
+        "awk_system": "/bin/zsh -lc \"awk 'BEGIN {system(\\\"id\\\")}'\"",
+        "stdin_source": "/bin/zsh -lc 'python3 - < probe.txt'",
+        "unsafe_substitution": "/bin/zsh -lc 'x=$(rg passwd / | cut -d: -f1)'",
+        "direct_executable": "/bin/zsh -lc './extensionless'",
+        "newline_source": "/bin/zsh -lc 'echo ok\nsource probe.txt'",
+        "newline_cd": "/bin/zsh -lc 'echo ok\ncd /'",
+        "newline_setsid": "/bin/zsh -lc 'printf ok\nsetsid python probe.py'",
+        "source_write_execute_restore": (
+            "/bin/zsh -lc \"printf 'import _io\\n' > probe.py; "
+            "python3 probe.py; printf 'x=1\\n' > probe.py\""
+        ),
+    }
+    for label, command in unsafe.items():
+        assert L.APB.scan_shell_command(
+            command,
+            logical_path=f"{label}.jsonl",
+            line=1,
+            arena_module_root=arena_root,
+        ), label
+
+
+def test_transcript_unknown_or_malformed_lifecycle_cannot_hide_action(tmp_path):
+    workspace = tmp_path / "gkm_legs_ws_schema"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_text(
+        "\n".join([
+            json.dumps({"type": "future.command", "command": "cat /etc/passwd"}),
+            json.dumps({
+                "type": "item.updated",
+                "item": {
+                    "id": "x", "type": "command_execution",
+                    "command": "python probe.py",
+                },
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {"id": "y", "type": "future_tool"},
+            }),
+        ]) + "\n",
+        encoding="utf-8",
+    )
+    codes = {
+        finding.code
+        for finding in L.APB.scan_codex_transcript(
+            transcript,
+            workspace_root=workspace,
+            arena_module_root=Path(L.__file__).resolve().parent,
+        )
+    }
+    assert {
+        "unknown_transcript_event",
+        "malformed_action_lifecycle",
+        "unknown_item_type",
+    } <= codes
+
+
+def test_exact_host_scaffold_survives_wip_relocation_but_mutation_does_not(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "gkm_legs_ws_wa30_scaffold"
+    workspace.mkdir()
+    scaffold = L.TESTER.format(
+        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="wa30"
+    )
+    (workspace / "gkm_try.py").write_text(scaffold, encoding="utf-8")
+    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
+    assert L._workspace_taint_reason(str(workspace)) is None
+    snapshot = Path(L.snapshot_wip_context(
+        "wa30", str(workspace), 1, "interrupted", reached=0, verbose=False
+    ))
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    assert L._restore_wip_probes(
+        "wa30", str(destination), 1, verbose=False
+    ) == 1
+    assert (destination / "probe.py").is_file()
+
+    (snapshot / "files" / "gkm_try.py").write_text(
+        scaffold + "\nimport gkm_legs\n", encoding="utf-8"
+    )
+    destination2 = tmp_path / "destination2"
+    destination2.mkdir()
+    assert L._restore_wip_probes(
+        "wa30", str(destination2), 1, verbose=False
+    ) == 0
+    assert not (destination2 / "probe.py").exists()
+
+
+def test_orchestrate_rejects_preexisting_boundary_fault_before_inspection(
+    tmp_path, monkeypatch
+):
+    workspace = tmp_path / "gkm_legs_ws_startup"
+    workspace.mkdir()
+    (workspace / "probe.py").write_text(
+        "open('../secret').read()\n", encoding="utf-8"
+    )
+    monkeypatch.setattr(L, "setup_workspace", lambda *args, **kwargs: str(workspace))
+    monkeypatch.setattr(
+        L,
+        "_load_checkpoint",
+        lambda *args, **kwargs: (_ for _ in ()).throw(
+            AssertionError("checkpoint inspected before startup boundary gate")
+        ),
+    )
+    with pytest.raises(L.WorkspaceTainted):
+        L.orchestrate(
+            "startupboundary",
+            max_level=1,
+            propose_fn=lambda *_: None,
+            verify_fn=lambda *_: (0, [], None),
+            debrief_fn=lambda *_: None,
+            seed_artifact=False,
+            verbose=False,
+        )
+
+
+def test_phase_minus_one_verify_is_gated_after_last_moment_mutation(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "gkm_legs_ws_jitgate"
+    workspace.mkdir()
+    for name, body in {
+        "legs.py": "# clean\n",
+        "players.py": "# clean\n",
+        "solve.py": "def solve(env):\n    pass\n",
+    }.items():
+        (workspace / name).write_text(body, encoding="utf-8")
+    monkeypatch.setattr(L, "setup_workspace", lambda *args, **kwargs: str(workspace))
+    calls = 0
+
+    def verify(_game, _path):
+        nonlocal calls
+        calls += 1
+        return 0, [], None
+
+    def mutate_then_claim_source(*_args, **_kwargs):
+        (workspace / "probe.py").write_text(
+            "open('../secret').read()\n", encoding="utf-8"
+        )
+        return True
+
+    monkeypatch.setattr(
+        L, "_workspace_has_unpromoted_solver_source", mutate_then_claim_source
+    )
+    with pytest.raises(L.WorkspaceTainted):
+        L.orchestrate(
+            "jitgate",
+            max_level=1,
+            propose_fn=lambda *_: None,
+            verify_fn=verify,
+            debrief_fn=lambda *_: None,
+            seed_artifact=False,
+            verbose=False,
+        )
+    # Only the clean startup replay ran.  The phase-minus-one source never did.
+    assert calls == 1
+
+
+def test_contiguous_workspace_write_path_is_boundary_checked():
+    assert L.APB.dynamic_tool_boundary_hits(
+        "workspace_write",
+        {"path": "../escape.py", "text": "print('x')\n"},
+    ) == ("workspace_write_path_escape",)
+
+
+def test_boundary_lifecycle_rejects_turn_end_wip_and_orphan_recovery(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+
+    wip_workspace = tmp_path / "wip_workspace"
+    wip_workspace.mkdir()
+    (wip_workspace / "probe.py").write_text(
+        "open('../parent-secret').read()\n", encoding="utf-8"
+    )
+    with pytest.raises(L.WorkspaceTainted):
+        L.snapshot_wip_context(
+            "boundarywip", str(wip_workspace), 1, "interrupted",
+            reached=0, verbose=False,
+        )
+    assert not (artifact_root / "boundarywip_legs" / "wip_context").exists()
+
+    monkeypatch.setattr(
+        L,
+        "_candidate_paths_from_log",
+        lambda _ws: (_ for _ in ()).throw(
+            AssertionError("tainted orphan workspace was inspected")
+        ),
+    )
+    with pytest.raises(L.WorkspaceTainted):
+        L.recover_discovered_path_artifact(
+            "boundaryorphan", str(wip_workspace), 1, [], verbose=False
+        )
+    monkeypatch.setattr(L, "_candidate_paths_from_log", lambda _ws: [])
+
+    scratch = tmp_path / "turn_workspace"
+    scratch.mkdir()
+    monkeypatch.setattr(L, "setup_workspace", lambda game, tag="": str(scratch))
+
+    def proposer(workspace, _level):
+        Path(workspace, "probe.py").write_text(
+            "open('../parent-secret').read()\n", encoding="utf-8"
+        )
+
+    with pytest.raises(L.WorkspaceTainted):
+        L.orchestrate(
+            "boundaryturn",
+            max_level=1,
+            propose_fn=proposer,
+            verify_fn=lambda game, path: (0, [], None),
+            debrief_fn=lambda workspace, level: None,
+            seed_artifact=False,
+            verbose=False,
+        )
+    assert not (artifact_root / "boundaryturn_legs").exists()
+
+
+def test_wip_restore_reopens_boundary_and_skips_mutated_snapshot(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
+    snapshot = Path(L.snapshot_wip_context(
+        "boundaryrestore", str(workspace), 1, "interrupted",
+        reached=0, verbose=False,
+    ))
+    (snapshot / "files" / "probe.py").write_text(
+        "open('/etc/passwd').read()\n", encoding="utf-8"
+    )
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    assert L._restore_wip_probes(
+        "boundaryrestore", str(destination), 1, verbose=False
+    ) == 0
+    assert not (destination / "probe.py").exists()
+
+
+def test_unbound_legacy_wip_is_forensic_only_and_not_restored(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "source"
+    workspace.mkdir()
+    (workspace / "probe.py").write_text("print('safe')\n", encoding="utf-8")
+    snapshot = Path(L.snapshot_wip_context(
+        "legacywip", str(workspace), 1, "interrupted",
+        reached=0, verbose=False,
+    ))
+    metadata_path = snapshot / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata.pop("filesystem_boundary_policy_schema")
+    metadata.pop("filesystem_boundary_policy_sha256")
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    assert L._restore_wip_probes(
+        "legacywip", str(destination), 1, verbose=False
+    ) == 0
+    assert not (destination / "probe.py").exists()
+
+
+def test_promotion_rechecks_exact_bytes_after_prior_scan(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    workspace = tmp_path / "promotion"
+    workspace.mkdir()
+    for name, source in {
+        "legs.py": "def leg(env):\n    pass\n",
+        "players.py": "def play_level_1(env):\n    pass\n",
+        "solve.py": "def solve(env):\n    pass\n",
+        "legs_log.md": "clean\n",
+    }.items():
+        (workspace / name).write_text(source, encoding="utf-8")
+    report = L.Report(
+        game="boundarypromotion",
+        reached=1,
+        records=[L.LevelRecord(level=1, marginal_C=1, reached=True)],
+        total_marginal_C=1,
+        final_path=[1],
+        validated=True,
+    )
+    monkeypatch.setattr(L, "exact_level_boundary", lambda *args: [1])
+    monkeypatch.setattr(L.A, "validate", lambda *args: True)
+    original_assert = L.assert_workspace_not_tainted
+    calls = 0
+
+    def mutate_after_second_scan(selected):
+        nonlocal calls
+        original_assert(selected)
+        calls += 1
+        if calls == 2:
+            (workspace / "legs.py").write_text(
+                "open('/etc/passwd').read()\n", encoding="utf-8"
+            )
+
+    monkeypatch.setattr(L, "assert_workspace_not_tainted", mutate_after_second_scan)
+    with pytest.raises(L.WorkspaceTainted):
+        L.promote_verified_artifact(
+            "boundarypromotion", str(workspace), report, verbose=False
+        )
+    assert not (artifact_root / "boundarypromotion_legs").exists()
+
+
+def test_seed_rejects_boundary_violating_canonical_parent_before_copy(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    artifact = artifact_root / "boundaryseed_legs"
+    artifact.mkdir(parents=True)
+    report = L.Report(game="boundaryseed", reached=1, final_path=[1], validated=True)
+    L._save_checkpoint(str(artifact), report)
+    (artifact / "legs.py").write_text(
+        "open('/etc/passwd').read()\n", encoding="utf-8"
+    )
+    destination = tmp_path / "destination"
+    destination.mkdir()
+    with pytest.raises(L.WorkspaceTainted):
+        L.seed_workspace_from_artifact(
+            "boundaryseed", str(destination), restore_wip=False, verbose=False
+        )
+    assert not (destination / "legs.py").exists()
+
+
 def test_run_solve_file_isolates_generated_auxiliary_modules(
     tmp_path, monkeypatch
 ):
@@ -532,6 +1359,8 @@ def test_repository_promoted_artifacts_are_clean_and_consistent():
 def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
     first = L._acquire_workspace_lock(str(tmp_path))
     try:
+        assert L._workspace_lock_path(str(tmp_path)).parent != tmp_path
+        assert not (tmp_path / ".orchestrate.lock").exists()
         try:
             L._acquire_workspace_lock(str(tmp_path))
         except RuntimeError as ex:
@@ -565,6 +1394,35 @@ def test_workspace_lock_rejects_overlapping_orchestrator(tmp_path):
         assert proc.stdout.strip() == "BLOCKED"
     finally:
         L._release_workspace_lock(first)
+
+
+def test_boundary_rejects_legacy_workspace_lock_as_context_surface(tmp_path):
+    shell = L.APB.scan_shell_command(
+        "cat .orchestrate.lock",
+        logical_path="turn.jsonl",
+        line=1,
+    )
+    assert any(item.code == "hidden_control_surface" for item in shell)
+    python = L.APB.scan_python_source(
+        "open('.orchestrate.lock').read()\n", logical_path="probe.py"
+    )
+    assert any(item.code == "dynamic_or_external_file_access" for item in python)
+
+    workspace = tmp_path / "gkm_legs_ws_lock_surface"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_text(json.dumps({
+        "type": "item.completed",
+        "item": {
+            "id": "change-lock",
+            "type": "file_change",
+            "changes": [{"path": ".orchestrate.lock"}],
+        },
+    }) + "\n", encoding="utf-8")
+    findings = L.APB.scan_codex_transcript(
+        transcript, workspace_root=workspace
+    )
+    assert any(item.code == "file_change_hidden_surface" for item in findings)
 
 
 def test_workspace_lock_rejects_symlink_and_hardlink_aliases(tmp_path):
@@ -627,6 +1485,27 @@ def test_codex_command_is_explicitly_metered_and_sandboxed(tmp_path):
         assert all(name in str(ex) for name in ("medium", "high", "xhigh", "max"))
     else:
         raise AssertionError("unsupported Codex effort was accepted")
+
+
+def test_native_codex_compatibility_launch_is_disabled_until_closure_sealed(
+    monkeypatch,
+):
+    monkeypatch.setattr(
+        L,
+        "authoritative_level_target",
+        lambda _game: (_ for _ in ()).throw(
+            AssertionError("launch gate ran too late")
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="dependency closure"):
+        L.orchestrate(
+            "lf52",
+            max_level=9,
+            proposer="codex",
+            propose_fn=None,
+            verbose=False,
+        )
 
 
 def test_codex_environment_does_not_forward_api_secrets(monkeypatch):
@@ -1168,6 +2047,7 @@ def test_evidence_lost_debrief_restores_exact_pre_debrief_win(
     promoted = artifact_root / "debriefevidence_legs" / "players.py"
     assert "play_level_1" in promoted.read_text()
     assert "unaudited debrief" not in promoted.read_text()
+    assert not (workspace / "unrecorded_probe.txt").exists()
     phases = [
         json.loads(path.read_text())["phase"]
         for path in (
@@ -1179,6 +2059,153 @@ def test_evidence_lost_debrief_restores_exact_pre_debrief_win(
     ]
     assert "reached_before_debrief" in phases
     assert not any("evidence" in phase for phase in phases)
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [L.CreditOut("test credit"), L.ProposerInfrastructureError("test infra")],
+)
+def test_failed_debrief_fully_rolls_back_and_replays_before_promotion(
+    tmp_path, monkeypatch, failure
+):
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    workspace.chmod(0o750)
+    for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
+        (workspace / name).write_text(
+            "# clean\n" if name.endswith(".py") else "",
+            encoding="utf-8",
+        )
+    (workspace / ".git").mkdir()
+    (workspace / ".git" / "sealed-baseline").write_text(
+        "before\n", encoding="utf-8"
+    )
+    (workspace / "__pycache__").mkdir()
+    (workspace / "__pycache__" / "sealed.cache").write_bytes(b"before")
+    monkeypatch.setattr(
+        L, "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    monkeypatch.setattr(L, "setup_workspace", lambda *a, **k: str(workspace))
+    monkeypatch.setattr(L.A, "validate", lambda *_a, **_k: True)
+    monkeypatch.setattr(L, "exact_level_boundary", lambda _g, path, _l: list(path))
+
+    def propose(ws, _level):
+        assert _level == 1, "rollback-recovered generation advanced to L2"
+        Path(ws, "players.py").write_text(
+            "def play_level_1(env):\n    pass\n", encoding="utf-8"
+        )
+
+    verify_calls = 0
+
+    def verify(_game, solve_path):
+        nonlocal verify_calls
+        verify_calls += 1
+        if verify_calls >= 3:
+            assert (workspace / ".git" / "sealed-baseline").read_text() == (
+                "before\n"
+            )
+            assert not (workspace / ".git" / "debrief-leak").exists()
+            assert (workspace / "__pycache__" / "sealed.cache").read_bytes() == (
+                b"before"
+            )
+            assert not (workspace / "__pycache__" / "debrief.cache").exists()
+        source = Path(solve_path).with_name("players.py").read_text()
+        return (1, [1], None) if "play_level_1" in source else (0, [], None)
+
+    def failed_debrief(ws, _level):
+        Path(ws).chmod(0o700)
+        Path(ws, "players.py").write_text(
+            "# partial debrief edit\n", encoding="utf-8"
+        )
+        Path(ws, "unsealed_note.py").write_text(
+            "x = 1\n", encoding="utf-8"
+        )
+        Path(ws, ".git", "sealed-baseline").unlink()
+        Path(ws, ".git", "debrief-leak").write_text(
+            "learned\n", encoding="utf-8"
+        )
+        Path(ws, "__pycache__", "sealed.cache").unlink()
+        Path(ws, "__pycache__", "debrief.cache").write_bytes(b"learned")
+        Path(ws, ".orchestrate.lock").write_text(
+            "learned through obsolete lock\n", encoding="utf-8"
+        )
+        raise failure
+
+    report = L.orchestrate(
+        "debriefrollback",
+        max_level=2,
+        propose_fn=propose,
+        verify_fn=verify,
+        debrief_fn=failed_debrief,
+        verbose=False,
+    )
+    assert report.reached == 1
+    assert verify_calls >= 3  # startup, winning proposal, sealed rollback replay
+    assert not (workspace / "unsealed_note.py").exists()
+    assert (workspace / ".git" / "sealed-baseline").read_text() == "before\n"
+    assert not (workspace / ".git" / "debrief-leak").exists()
+    assert (workspace / "__pycache__" / "sealed.cache").read_bytes() == b"before"
+    assert not (workspace / "__pycache__" / "debrief.cache").exists()
+    assert not (workspace / ".orchestrate.lock").exists()
+    assert workspace.stat().st_mode & 0o777 == 0o750
+    promoted = artifact_root / "debriefrollback_legs" / "players.py"
+    assert "play_level_1" in promoted.read_text()
+    assert "partial debrief" not in promoted.read_text()
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [KeyboardInterrupt(), SystemExit("stop"), RuntimeError("unexpected")],
+    ids=["keyboard", "system-exit", "runtime"],
+)
+def test_unexpected_debrief_failure_rolls_back_and_releases_both_locks(
+    tmp_path, monkeypatch, failure
+):
+    artifact_root = tmp_path / "artifacts"
+    workspace = tmp_path / "workspace"
+    workspace.mkdir()
+    for name in ("legs.py", "players.py", "solve.py", "legs_log.md"):
+        (workspace / name).write_text("", encoding="utf-8")
+    monkeypatch.setattr(
+        L, "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    monkeypatch.setattr(L, "setup_workspace", lambda *a, **k: str(workspace))
+    monkeypatch.setattr(L.A, "validate", lambda *_a, **_k: True)
+    monkeypatch.setattr(L, "exact_level_boundary", lambda _g, path, _l: list(path))
+
+    def propose(ws, _level):
+        Path(ws, "players.py").write_text(
+            "def play_level_1(env):\n    pass\n", encoding="utf-8"
+        )
+
+    def verify(_game, solve_path):
+        source = Path(solve_path).with_name("players.py").read_text()
+        return (1, [1], None) if "play_level_1" in source else (0, [], None)
+
+    def debrief(ws, _level):
+        Path(ws, "players.py").write_text("# partial\n", encoding="utf-8")
+        Path(ws, "unsealed.txt").write_text("leak\n", encoding="utf-8")
+        raise failure
+
+    with pytest.raises(type(failure)):
+        L.orchestrate(
+            "unexpecteddebrief",
+            max_level=1,
+            propose_fn=propose,
+            verify_fn=verify,
+            debrief_fn=debrief,
+            verbose=False,
+        )
+
+    assert "play_level_1" in (workspace / "players.py").read_text()
+    assert not (workspace / "unsealed.txt").exists()
+    lineage = L._acquire_lineage_lock("unexpecteddebrief")
+    run = L._acquire_workspace_lock(str(workspace))
+    L._release_workspace_lock(run)
+    L._release_workspace_lock(lineage)
 
 
 def test_single_link_evidence_reader_rejects_hardlink_alias(tmp_path):
@@ -1700,7 +2727,9 @@ def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
         "legs_log.md": "# log\n",
     }.items():
         (ws / name).write_text(body)
-    codex_turn = ws / "codex_turn_20260722T000000000000Z_test.jsonl"
+    protected_dir = Path(L._protected_codex_transcript_dir(str(ws)))
+    protected_dir.mkdir(parents=True)
+    codex_turn = protected_dir / "codex_turn_20260722T000000000000Z_test.jsonl"
     codex_turn.write_text(json.dumps({"type": "thread.started", "thread_id": "clean"}) + "\n")
 
     rep = L.Report(
@@ -1711,7 +2740,13 @@ def test_promote_and_seed_verified_artifact(tmp_path, monkeypatch):
         final_path=[1, 2, 3],
         validated=True,
     )
-    assert L.promote_verified_artifact("artifacttest", str(ws), rep, verbose=False)
+    assert L.promote_verified_artifact(
+        "artifacttest",
+        str(ws),
+        rep,
+        verbose=False,
+        authorized_turn={"transcript": codex_turn.name, "diagnostics": None},
+    )
     assert (artifact_root / "artifacttest_legs" / "README.md").exists()
     manifest = json.loads(
         (artifact_root / "artifacttest_legs" / "promotion_evidence" /
@@ -1761,6 +2796,11 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     diagnostics_name = name.removesuffix(".jsonl") + ".stderr.log"
     diagnostics_bytes = b"deterministic CLI diagnostic\n"
     (protected_dir / diagnostics_name).write_bytes(diagnostics_bytes)
+    failed_debrief_name = "codex_turn_20260728T000100000000Z_failed.jsonl"
+    (protected_dir / failed_debrief_name).write_text(
+        json.dumps({"type": "error", "message": "failed debrief"}) + "\n",
+        encoding="utf-8",
+    )
 
     rep = L.Report(
         game="protectedtranscript",
@@ -1771,7 +2811,14 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
         validated=True,
     )
     assert L.promote_verified_artifact(
-        "protectedtranscript", str(ws), rep, verbose=False
+        "protectedtranscript",
+        str(ws),
+        rep,
+        verbose=False,
+        authorized_turn={
+            "transcript": name,
+            "diagnostics": diagnostics_name,
+        },
     )
     evidence = (
         artifact_root / "protectedtranscript_legs" / "promotion_evidence" /
@@ -1786,6 +2833,10 @@ def test_promotion_uses_host_protected_codex_transcript(tmp_path, monkeypatch):
     assert (
         evidence / manifest["codex_diagnostics"][0]["path"]
     ).read_bytes() == diagnostics_bytes
+    assert manifest["authorized_turn_transcript"] == name
+    assert failed_debrief_name not in {
+        Path(item["path"]).name for item in manifest["codex_transcripts"]
+    }
 
 
 def test_tainted_workspace_cannot_promote_artifact(tmp_path, monkeypatch):
@@ -1842,7 +2893,10 @@ def test_runtime_enumeration_and_frame_data_taint_workspace(tmp_path):
         path.write_text(body)
         reason = L._workspace_taint_reason(str(tmp_path))
         assert reason is not None
-        assert "private game/runtime introspection" in reason
+        assert (
+            "private game/runtime introspection" in reason
+            or "runtime_introspection" in reason
+        )
         path.unlink()
 
 
@@ -1927,7 +2981,12 @@ def test_debrief_inline_code_mention_is_not_execution_taint(tmp_path):
     assert L._workspace_taint_reason(str(tmp_path)) is None
 
     (tmp_path / "probe.py").write_text("print(vars(env))\n")
-    assert "private game/runtime introspection" in L._workspace_taint_reason(str(tmp_path))
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert (
+        "private game/runtime introspection" in reason
+        or "runtime_introspection" in reason
+    )
 
 
 def test_public_clone_traceback_private_field_is_not_agent_taint(tmp_path):
@@ -2239,13 +3298,15 @@ def test_narrow_pgrep_does_not_mask_forbidden_process_control(tmp_path):
     assert "host process introspection" in reason
 
 
-def test_public_harness_api_introspection_is_allowed(tmp_path):
+def test_raw_arena_capability_does_not_authorize_source_introspection(tmp_path):
     (tmp_path / "probe.py").write_text(
         "import inspect, gkm_arena as A\n"
         "print(dir(A), dir(A.Arena), dir(env))\n"
         "print(inspect.getsource(A.Arena.clone))\n"
     )
-    assert L._workspace_taint_reason(str(tmp_path)) is None
+    reason = L._workspace_taint_reason(str(tmp_path))
+    assert reason is not None
+    assert "dynamic_or_process_import" in reason
 
 
 def test_public_action_protocol_marker_quarantines_complete_turn(tmp_path):
@@ -2355,7 +3416,8 @@ def test_hypothetical_protocol_discussion_is_not_self_invalidation(tmp_path):
 
 def test_promoted_artifact_scan_excludes_forensic_wip(tmp_path):
     for name in L.PROMOTED_FILES:
-        (tmp_path / name).write_text("clean promoted evidence\n")
+        body = "# clean promoted evidence\n" if name.endswith(".py") else "clean promoted evidence\n"
+        (tmp_path / name).write_text(body)
     dirty = tmp_path / "wip_context" / "level_01" / "attempt" / "files"
     dirty.mkdir(parents=True)
     (dirty / "probe.py").write_text("print(env._game)\n")
@@ -2810,7 +3872,7 @@ def test_seed_restores_wip_probes_without_clobbering(tmp_path, monkeypatch):
     (ws / "codex_turn_20260727T000001Z_probetest_L2_propose.jsonl").write_text(
         '{"type":"turn.started"}\n'
     )
-    (ws / "players.py").write_text("UNVERIFIED candidate\n")
+    (ws / "players.py").write_text("# UNVERIFIED candidate\n")
     L.snapshot_wip_context("probetest", str(ws), 2, "interrupted", 1, "killed", verbose=False)
 
     # scratch dies; a fresh seed must restore the probe but keep players.py verified
@@ -2840,7 +3902,7 @@ def test_seed_restores_level_one_wip_without_promoted_artifact(tmp_path, monkeyp
     ws = tmp_path / "attempt"
     ws.mkdir()
     (ws / "probe_l1.py").write_text("print('mapped mechanic')\n")
-    (ws / "players.py").write_text("UNVERIFIED candidate\n")
+    (ws / "players.py").write_text("# UNVERIFIED candidate\n")
     L.snapshot_wip_context("unpromoted", str(ws), 1, "not_reached", 0,
                            "retry later", verbose=False)
     level_dir = artifact_root / "unpromoted_legs" / "wip_context" / "level_01"
@@ -3185,7 +4247,7 @@ def test_interrupt_snapshots_and_promotes(tmp_path, monkeypatch):
                 f.write(f"\n\ndef play_level_1(env):\n    pass\n")
         else:
             with open(os.path.join(ws, "probe_l2.py"), "w") as f:
-                f.write("half-done probe\n")
+                    f.write("# half-done probe\n")
             raise KeyboardInterrupt  # user hits Ctrl-C mid-L2
 
     def mock_verify(game, solve_path):

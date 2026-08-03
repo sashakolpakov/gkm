@@ -724,6 +724,18 @@ INVARIANTS = (
         "The exact app-server lifecycle and dynamic-tool pairs pass the strict taint parser.",
     ),
     Invariant(
+        "filesystem_boundary_is_prewrite_and_scheduler_visible",
+        "taint",
+        "arc/crack_lab/test_arc_agi3_container_backend.py::"
+        "test_prewrite_boundary_rejection_is_backend_taint_and_noncounting_scheduler_transition",
+        "The production BridgeClient and container backend, exercised with "
+        "authenticated controller/Docker doubles, carry a prewrite-denied "
+        "filesystem-boundary workspace_write from its immutable transcript "
+        "through runner validation into candidate/WIP-free taint, scheduler "
+        "lineage revocation, and a zero retry delta. Live Docker execution "
+        "remains a pilot/conformance-gate obligation.",
+    ),
+    Invariant(
         "general_taint_dependency_is_control_bound_and_syntax_aware",
         "taint",
         "arc/crack_lab/test_arc_agi3_contiguous_taint.py::"
@@ -881,6 +893,7 @@ CONTROL_CONTRACT_FILES = (
     "arc/audit_submission_taint.py",
     "arc/audit_action_protocol.py",
     "arc/crack_lab/arc_agi3_contiguous_taint.py",
+    "arc/crack_lab/arc_agi3_proposer_boundary.py",
     "arc/crack_lab/arc_agi3_source_schema.py",
     "arc/crack_lab/arc_agi3_arena_rpc.py",
     "arc/crack_lab/arc_agi3_arena_volume_relay.py",

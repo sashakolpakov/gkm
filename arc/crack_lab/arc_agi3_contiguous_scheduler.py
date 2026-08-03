@@ -12732,6 +12732,7 @@ _CONTROL_FILES = (
     "arc/crack_lab/arc_agi3_contiguous_orchestrator.py",
     "arc/crack_lab/arc_agi3_contiguous_supervisor.py",
     "arc/crack_lab/arc_agi3_contiguous_taint.py",
+    "arc/crack_lab/arc_agi3_proposer_boundary.py",
     "arc/crack_lab/arc_agi3_source_schema.py",
 )
 

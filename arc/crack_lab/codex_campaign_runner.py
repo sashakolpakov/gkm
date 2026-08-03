@@ -49,6 +49,13 @@ def _effective_retry_inputs(
     """
     recovery = item.get("warm_wip_recovery_required") is True
     if not recovery:
+        if (
+            policy.get("wip_mode") == "restore_clean_same_frontier"
+            and item.get("warm_wip_available") is not True
+            and item.get("warm_wip_validation")
+            == Policy.BOUNDARY_POLICY_WIP_REJECTION
+        ):
+            return "exclude", "filesystem_boundary_clean_reset"
         return str(policy["wip_mode"]), str(policy["dispatch_mode"])
     attempt = item.get("expected_wip_attempt")
     phase = item.get("warm_wip_phase")
@@ -343,23 +350,32 @@ def active_workspace_lock(game: str) -> Path | None:
     """Return an actively locked tagged workspace for ``game``, if any."""
     pattern = os.fspath(HERE / "runs" / "scratch" / f"gkm_legs_ws_{game}*")
     for workspace in sorted(glob.glob(pattern)):
-        path = Path(workspace) / ".orchestrate.lock"
-        if not path.is_file():
-            continue
-        try:
-            lock = Legs._open_unaliased_lock(os.fspath(path), create=False)
-        except RuntimeError as exc:
-            raise CampaignPlanError(
-                f"unsafe workspace lock path: {path}"
-            ) from exc
-        try:
+        # Check both the current protected sibling and the legacy in-workspace
+        # location so a runner upgrade cannot overlap an already live turn.
+        for path in (
+            Legs._workspace_lock_path(workspace),
+            Path(workspace) / ".orchestrate.lock",
+        ):
+            if not path.is_file():
+                continue
             try:
-                fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-            except BlockingIOError:
-                return path
-            fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
-        finally:
-            lock.close()
+                lock = Legs._open_unaliased_lock(
+                    os.fspath(path), create=False
+                )
+            except RuntimeError as exc:
+                raise CampaignPlanError(
+                    f"unsafe workspace lock path: {path}"
+                ) from exc
+            try:
+                try:
+                    fcntl.flock(
+                        lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB
+                    )
+                except BlockingIOError:
+                    return path
+                fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+            finally:
+                lock.close()
     return None
 
 
@@ -393,6 +409,16 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
     target = item.get("target_level")
     if not isinstance(game, str) or not isinstance(target, int):
         raise CampaignPlanError("plan item has invalid game or target_level")
+    artifact = HERE / "agent_solutions" / f"{game}_legs"
+    if artifact.exists():
+        boundary_reason = Legs.promoted_artifact_taint_reason(
+            os.fspath(artifact)
+        )
+        if boundary_reason:
+            raise CampaignPlanError(
+                "canonical parent fails the current clean-room boundary: "
+                f"{boundary_reason}"
+            )
     report = Status.campaign_report(
         reserve=0,
         medium_headroom=1,
@@ -450,6 +476,10 @@ def validate_live_policy_item(item: dict[str, Any]) -> None:
         raise CampaignPlanError(
             "plan item WIP availability is stale"
         )
+    if item.get("warm_wip_validation") != row.get("warm_wip_validation"):
+        raise CampaignPlanError(
+            "plan item WIP boundary-policy validation is stale"
+        )
     # A reset lane deliberately excludes the latest same-frontier WIP capsule,
     # so its plan carries no ``expected_wip_attempt`` selector even when an
     # eligible capsule exists.  Capsule identity is live policy state only for
@@ -484,6 +514,13 @@ def _taint_gate() -> None:
         raise CampaignPlanError("taint gate returned non-JSON output") from exc
     if proc.returncode != 0 or result.get("automated_verdict") != "PASS":
         raise CampaignPlanError("post-turn taint gate failed; campaign stopped")
+    for artifact in sorted((HERE / "agent_solutions").glob("*_legs")):
+        reason = Legs.promoted_artifact_taint_reason(os.fspath(artifact))
+        if reason:
+            raise CampaignPlanError(
+                "post-turn clean-room boundary failed; campaign stopped: "
+                f"{artifact.name}: {reason}"
+            )
 
 
 def _refresh_solver_audits() -> None:

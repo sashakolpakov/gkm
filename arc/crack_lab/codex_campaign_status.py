@@ -22,6 +22,7 @@ from statistics import median
 from typing import Any, Optional
 
 import codex_usage_guard as Guard
+import arc_agi3_proposer_boundary as Boundary
 
 
 HERE = Path(__file__).resolve().parent
@@ -637,11 +638,28 @@ def latest_wip_descriptor(
             raise ValueError("latest attempt directory is absent or aliased")
         metadata_raw = _read_stable_regular(metadata_path)
         metadata = json.loads(metadata_raw.decode("utf-8"))
+        if not isinstance(metadata, dict):
+            raise ValueError("latest metadata is not an object")
         if metadata != latest["metadata"]:
             raise ValueError("latest pointer does not seal its metadata")
         if (
-            not isinstance(metadata, dict)
-            or metadata.get("attempt") != attempt
+            metadata.get("filesystem_boundary_policy_schema")
+            != Boundary.POLICY_SCHEMA
+            or metadata.get("filesystem_boundary_policy_sha256")
+            != Boundary.policy_sha256()
+            or metadata.get("compatibility_arena_module_sha256")
+            != Boundary.arena_module_sha256(HERE)
+            or metadata.get("compatibility_boundary_authority")
+            != "behavioral_defense_in_depth"
+        ):
+            return {
+                **unavailable,
+                "warm_wip_validation": (
+                    "rejected:filesystem_boundary_policy_binding"
+                ),
+            }
+        if (
+            metadata.get("attempt") != attempt
             or metadata.get("game") != game
             or metadata.get("level") != target_level
             or metadata.get("reached") != reached

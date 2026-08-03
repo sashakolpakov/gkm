@@ -35,6 +35,31 @@ def _write_private_json(path: Path, value: object) -> None:
     path.chmod(0o600)
 
 
+def test_bridge_prewrite_gate_rejects_loaded_policy_source_drift(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    policy = tmp_path / "boundary_policy.py"
+    policy.write_text("version = 1\n", encoding="utf-8")
+    monkeypatch.setattr(T.Boundary, "_POLICY_SOURCE_PATH", policy)
+    monkeypatch.setattr(
+        T.Boundary,
+        "_LOADED_POLICY_SHA256",
+        hashlib.sha256(policy.read_bytes()).hexdigest(),
+    )
+    assert T.Boundary.dynamic_tool_boundary_hits(
+        "workspace_write", {"path": "probe.py", "text": "x = 1\n"}
+    ) == ()
+    policy.write_text("version = 2\n", encoding="utf-8")
+    client = T.BridgeClient.__new__(T.BridgeClient)
+
+    with pytest.raises(T.AppServerTransportError, match="policy_control_drift"):
+        client.call(
+            "workspace_write",
+            {"path": "probe.py", "text": "x = 1\n"},
+            idempotency_key="drifted-write",
+        )
+
+
 def test_strict_json_rejects_duplicate_keys_and_nonfinite_numbers() -> None:
     with pytest.raises(T.AppServerTransportError, match="duplicate"):
         T.strict_json_loads('{"a":1,"a":2}')
