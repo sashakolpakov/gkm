@@ -5508,6 +5508,52 @@ def test_production_l1_uses_only_control_hashed_blank_scaffold(tmp_path):
     )
 
 
+def test_source_schema_closes_imports_over_exact_flat_source_set():
+    payloads = {
+        "legs.py": (
+            b"from collections import deque\n"
+            b"from helpers import normalize\n"
+            b"import numpy.linalg as linear_algebra\n"
+        ),
+        "players.py": b"from legs import *\n",
+        "solve.py": b"import players\n",
+        "helpers.py": b"def normalize(value):\n    return value\n",
+        "policy_data.json": b'{}\n',
+    }
+    assert R.SourceSchema.validate_source_payloads(payloads) == (
+        "helpers.py",
+        "legs.py",
+        "players.py",
+        "policy_data.json",
+        "solve.py",
+    )
+    assert R.SourceSchema.PINNED_NUMPY_VERSION == "2.4.4"
+
+
+@pytest.mark.parametrize(
+    "forbidden_import",
+    (
+        "from .players import play\n",
+        "from arc.crack_lab import gkm_arena\n",
+        "import environment_files\n",
+        "import unknown_ambient_solver_package\n",
+    ),
+)
+def test_source_schema_rejects_nonclosed_import_roots(
+    forbidden_import,
+):
+    payloads = {
+        "legs.py": forbidden_import.encode("utf-8"),
+        "players.py": b"from legs import *\n",
+        "solve.py": b"import players\n",
+    }
+    with pytest.raises(
+        R.SourceSchema.SourceSchemaError,
+        match="relative source import|undeclared ambient root",
+    ):
+        R.SourceSchema.validate_source_payloads(payloads)
+
+
 def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
     tmp_path,
 ):

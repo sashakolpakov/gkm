@@ -32,6 +32,8 @@ from pathlib import Path, PurePosixPath
 from typing import Any, Iterable, Mapping, Sequence
 
 import arc_agi3_release_gate as release_gate
+import arc_agi3_proposer_boundary as Boundary
+import arc_agi3_source_schema as SourceSchema
 import gkm_arena
 import gkm_legs
 
@@ -64,10 +66,27 @@ HISTORICAL_TRANSCRIPT_EVENT_TYPES = frozenset({
     "item.completed",
     "turn.completed",
 })
+_SOURCE_SCHEMA_PATH = Path(SourceSchema.__file__).resolve()
+_LOADED_SOURCE_SCHEMA_SHA256 = hashlib.sha256(
+    _SOURCE_SCHEMA_PATH.read_bytes()
+).hexdigest()
 
 
 class CertificationError(RuntimeError):
     """A source selection, replay, taint, or publication gate failed."""
+
+
+@dataclass(frozen=True)
+class SourceCapture:
+    """One immutable byte boundary shared by scan, replay, and staging."""
+
+    payloads: tuple[tuple[str, bytes], ...]
+    origins: tuple[tuple[str, str], ...]
+    transcript_payload: bytes | None
+    transcript_name: str | None
+    filesystem_policy_sha256: str
+    source_schema_sha256: str
+    allowed_import_roots_sha256: str
 
 
 @dataclass(frozen=True)
@@ -86,6 +105,7 @@ class SourceCandidate:
     retained_historical_phase: bool = False
     historical_transcript_complete: bool = False
     historical_transcript_failure: str | None = None
+    capture: SourceCapture | None = None
 
     @property
     def priority(self) -> tuple[int, int, str]:
@@ -120,6 +140,66 @@ def _sha256_file(path: Path) -> str:
         while chunk := stream.read(1024 * 1024):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def _stat_identity(value: os.stat_result) -> tuple[int, ...]:
+    return (
+        value.st_dev,
+        value.st_ino,
+        value.st_mode,
+        value.st_nlink,
+        value.st_size,
+        value.st_mtime_ns,
+        value.st_ctime_ns,
+    )
+
+
+def _read_regular_snapshot(
+    path: Path,
+    *,
+    kind: str,
+    max_bytes: int,
+) -> bytes:
+    """Read one regular file descriptor and reject an identity-changing read."""
+    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise CertificationError(
+            f"cannot capture {kind} as a regular file: {path} "
+            f"({type(exc).__name__})"
+        ) from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size <= 0
+            or before.st_size > max_bytes
+        ):
+            raise CertificationError(
+                f"unsafe {kind} identity or size: {path}"
+            )
+        chunks: list[bytes] = []
+        remaining = before.st_size
+        while remaining:
+            chunk = os.read(descriptor, min(1024 * 1024, remaining))
+            if not chunk:
+                break
+            chunks.append(chunk)
+            remaining -= len(chunk)
+        after = os.fstat(descriptor)
+        raw = b"".join(chunks)
+        if (
+            _stat_identity(before) != _stat_identity(after)
+            or len(raw) != before.st_size
+        ):
+            raise CertificationError(
+                f"{kind} changed while its byte boundary was captured: {path}"
+            )
+        return raw
+    finally:
+        os.close(descriptor)
 
 
 def _regular_file(path: Path, *, nonempty: bool = False) -> bool:
@@ -211,9 +291,21 @@ def _historical_transcript_verdict(
     """
     if transcript is None:
         return False, "missing_transcript"
-    if not _regular_file(transcript, nonempty=True):
+    try:
+        raw = _read_regular_snapshot(
+            transcript,
+            kind="historical transcript",
+            max_bytes=gkm_legs.MAX_TAINT_SCAN_BYTES,
+        )
+    except CertificationError:
         return False, "transcript_not_regular"
-    raw = transcript.read_bytes()
+    return _historical_transcript_bytes_verdict(raw)
+
+
+def _historical_transcript_bytes_verdict(
+    raw: bytes,
+) -> tuple[bool, str | None]:
+    """Judge historical credit from the exact transcript bytes retained."""
     try:
         text = raw.decode("utf-8")
     except UnicodeError:
@@ -481,10 +573,19 @@ def _exact_path_source_payloads(
 def _source_payloads(
     candidate: SourceCandidate,
 ) -> tuple[dict[str, bytes], dict[str, str]]:
+    if candidate.capture is not None:
+        return (
+            dict(candidate.capture.payloads),
+            dict(candidate.capture.origins),
+        )
     if candidate.kind == "exact_path_reconstruction":
         return _exact_path_source_payloads(candidate)
     payloads = {
-        name: (candidate.files_dir / name).read_bytes()
+        name: _read_regular_snapshot(
+            candidate.files_dir / name,
+            kind=f"winning source {name}",
+            max_bytes=Boundary.MAX_SOURCE_BYTES,
+        )
         for name in REQUIRED_SOURCES
     }
     origins = {
@@ -509,24 +610,165 @@ def _source_payloads(
             payloads["perception.py"] = gkm_legs.PERCEPTION_SEED.encode("utf-8")
             origins["perception.py"] = "harness:PERCEPTION_SEED"
         else:
-            payloads["perception.py"] = perception.read_bytes()
+            payloads["perception.py"] = _read_regular_snapshot(
+                perception,
+                kind="winning source perception.py",
+                max_bytes=Boundary.MAX_SOURCE_BYTES,
+            )
             origins["perception.py"] = perception.as_posix()
     return payloads, origins
 
 
-def _source_taint_reason(candidate: SourceCandidate) -> str | None:
-    _payloads, origins = _source_payloads(candidate)
-    for name, origin in origins.items():
-        if origin == "harness:PERCEPTION_SEED":
-            continue
-        reason = gkm_legs._file_taint_reason(origin, name)
+def _allowed_import_roots(
+    payloads: Mapping[str, bytes],
+) -> frozenset[str]:
+    local_import_roots = frozenset({
+        PurePosixPath(name).stem
+        for name in payloads
+        if PurePosixPath(name).suffix in {".py", ".pyw"}
+    })
+    return (
+        SourceSchema.STDLIB_ROOTS
+        | SourceSchema.ALLOWED_THIRD_PARTY_ROOTS
+        | local_import_roots
+    )
+
+
+def _allowed_import_roots_sha256(
+    payloads: Mapping[str, bytes],
+) -> str:
+    return _sha256_bytes(_canonical_json({
+        "source_schema": SourceSchema.SCHEMA,
+        "pinned_numpy_version": SourceSchema.PINNED_NUMPY_VERSION,
+        "allowed_import_roots": sorted(_allowed_import_roots(payloads)),
+    }))
+
+
+def _source_schema_sha256() -> str:
+    current = _sha256_file(_SOURCE_SCHEMA_PATH)
+    if current != _LOADED_SOURCE_SCHEMA_SHA256:
+        raise CertificationError(
+            "shared source schema changed after certifier import"
+        )
+    return _LOADED_SOURCE_SCHEMA_SHA256
+
+
+def _capture_candidate(candidate: SourceCandidate) -> SourceCandidate:
+    """Freeze every admitted source/transcript byte before any scan or replay."""
+    if candidate.capture is not None:
+        return candidate
+    payloads, origins = _source_payloads(candidate)
+    try:
+        policy_sha256 = Boundary.policy_sha256()
+    except (OSError, RuntimeError) as exc:
+        raise CertificationError(
+            f"filesystem boundary policy identity is unavailable: {exc}"
+        ) from exc
+    schema_sha256 = _source_schema_sha256()
+
+    transcript_payload: bytes | None = None
+    transcript_name: str | None = None
+    transcript_complete = False
+    transcript_failure: str | None = "missing_transcript"
+    if candidate.transcript is not None:
+        transcript_payload = _read_regular_snapshot(
+            candidate.transcript,
+            kind="source transcript",
+            max_bytes=gkm_legs.MAX_TAINT_SCAN_BYTES,
+        )
+        transcript_name = candidate.transcript.name
+        transcript_complete, transcript_failure = (
+            _historical_transcript_bytes_verdict(transcript_payload)
+        )
+
+    capture = SourceCapture(
+        payloads=tuple(sorted(payloads.items())),
+        origins=tuple(sorted(origins.items())),
+        transcript_payload=transcript_payload,
+        transcript_name=transcript_name,
+        filesystem_policy_sha256=policy_sha256,
+        source_schema_sha256=schema_sha256,
+        allowed_import_roots_sha256=(
+            _allowed_import_roots_sha256(payloads)
+        ),
+    )
+    return replace(
+        candidate,
+        capture=capture,
+        historical_transcript_complete=transcript_complete,
+        historical_transcript_failure=transcript_failure,
+        historical_source_boundary=(
+            candidate.retained_historical_phase and transcript_complete
+        ),
+    )
+
+
+def _source_filesystem_boundary_reason(
+    payloads: Mapping[str, bytes],
+) -> str | None:
+    """Apply the clean-room import/filesystem policy to exact source bytes.
+
+    A certified ``solve(env)`` receives its Arena object from the host and has
+    no raw-Arena capability.  In particular, retained acquisition source may
+    not recover one by importing a host path.  This check is separate from the
+    semantic taint scanner and must run before any retained source executes.
+    """
+    try:
+        _source_schema_sha256()
+    except CertificationError as exc:
+        return f"source_schema_violation: {exc}"
+    for name, payload in sorted(payloads.items()):
+        try:
+            source = payload.decode("utf-8")
+        except UnicodeError as exc:
+            return (
+                f"non_utf8_source in {name}: executable source is not UTF-8 "
+                f"({type(exc).__name__})"
+            )
+        reason = Boundary.first_reason(Boundary.scan_python_source(
+            source,
+            logical_path=name,
+            arena_module_root=None,
+        ))
         if reason:
             return reason
-    if candidate.transcript is not None:
-        return gkm_legs._file_taint_reason(
-            str(candidate.transcript), candidate.transcript.name
-        )
+    try:
+        SourceSchema.validate_source_payloads(payloads)
+    except SourceSchema.SourceSchemaError as exc:
+        return f"source_schema_violation: {exc}"
     return None
+
+
+def _source_taint_reason(candidate: SourceCandidate) -> str | None:
+    frozen = _capture_candidate(candidate)
+    assert frozen.capture is not None
+    payloads, origins = _source_payloads(frozen)
+    reason = _source_filesystem_boundary_reason(payloads)
+    if reason:
+        return reason
+    with tempfile.TemporaryDirectory(
+        prefix=(
+            f"arc_agi3_scan_{candidate.game}_L{candidate.level:02d}_"
+        )
+    ) as temporary:
+        snapshot_root = Path(temporary)
+        for name, payload in sorted(payloads.items()):
+            if origins[name] == "harness:PERCEPTION_SEED":
+                continue
+            path = snapshot_root / name
+            _write_new_bytes(path, payload)
+            reason = gkm_legs._file_taint_reason(str(path), name)
+            if reason:
+                return reason
+        if frozen.capture.transcript_payload is not None:
+            transcript_name = frozen.capture.transcript_name
+            assert transcript_name is not None
+            path = snapshot_root / transcript_name
+            _write_new_bytes(path, frozen.capture.transcript_payload)
+            return gkm_legs._file_taint_reason(
+                str(path), transcript_name
+            )
+        return None
 
 
 def _normalized_actions(actions: Iterable[Any]) -> list[Any]:
@@ -545,11 +787,18 @@ def _source_replay(
     *,
     time_cap: int,
 ) -> list[Any]:
+    frozen = _capture_candidate(candidate)
+    payloads, _origins = _source_payloads(frozen)
+    boundary_reason = _source_filesystem_boundary_reason(payloads)
+    if boundary_reason:
+        raise CertificationError(
+            "source filesystem boundary violation before replay: "
+            f"{boundary_reason}"
+        )
     with tempfile.TemporaryDirectory(
         prefix=f"arc_agi3_certify_{candidate.game}_L{candidate.level:02d}_"
     ) as temporary:
         workspace = Path(temporary)
-        payloads, _origins = _source_payloads(candidate)
         for name, payload in payloads.items():
             _write_new_bytes(workspace / name, payload)
         reached, path, error = gkm_legs.run_solve_file(
@@ -683,17 +932,22 @@ def _select_and_replay(
     for candidate in boundary_candidates(
         source_root, game=game, level=level
     ):
-        taint = _source_taint_reason(candidate)
+        try:
+            frozen = _capture_candidate(candidate)
+        except CertificationError as exc:
+            failures.append(f"{candidate.origin}: capture={exc}")
+            continue
+        taint = _source_taint_reason(frozen)
         if taint:
             failures.append(f"{candidate.origin}: taint={taint}")
             continue
         try:
-            path = _source_replay(candidate, time_cap=time_cap)
+            path = _source_replay(frozen, time_cap=time_cap)
             _path_replay(game, level, path)
         except CertificationError as exc:
             failures.append(f"{candidate.origin}: {exc}")
             continue
-        return candidate, path
+        return frozen, path
     detail = "; ".join(failures[-5:]) if failures else "no source candidate"
     raise CertificationError(
         f"no certifiable source for {game} L{level}: {detail}"
@@ -749,6 +1003,8 @@ def _certify_boundary(
         level=level,
         time_cap=time_cap,
     )
+    candidate = _capture_candidate(candidate)
+    assert candidate.capture is not None
     boundary = game_root / "promotion_evidence" / f"level_{level:02d}"
     temporary = boundary.with_name(
         f".{boundary.name}.{uuid.uuid4().hex}.staging"
@@ -760,6 +1016,19 @@ def _certify_boundary(
     (temporary / "audits").mkdir()
     try:
         source_payloads, source_origins = _source_payloads(candidate)
+        source_snapshot_hashes = {
+            name: _sha256_bytes(payload)
+            for name, payload in sorted(source_payloads.items())
+        }
+        source_snapshot_tree_sha256 = release_gate._json_sha256(
+            source_snapshot_hashes
+        )
+        boundary_reason = _source_filesystem_boundary_reason(source_payloads)
+        if boundary_reason:
+            raise CertificationError(
+                f"staged source filesystem boundary at {game} L{level}: "
+                f"{boundary_reason}"
+            )
         for name, payload in source_payloads.items():
             _write_new_bytes(temporary / "files" / name, payload)
 
@@ -812,6 +1081,24 @@ def _certify_boundary(
             "dependency_reconstructed_from_harness_seed": (
                 "harness:PERCEPTION_SEED" in source_origins.values()
             ),
+            "source_snapshot_files_sha256": source_snapshot_hashes,
+            "source_snapshot_tree_sha256": source_snapshot_tree_sha256,
+            "source_transcript_snapshot_sha256": (
+                _sha256_bytes(candidate.capture.transcript_payload)
+                if candidate.capture.transcript_payload is not None
+                else None
+            ),
+            "filesystem_boundary_policy_sha256": (
+                candidate.capture.filesystem_policy_sha256
+            ),
+            "source_schema": SourceSchema.SCHEMA,
+            "source_schema_sha256": (
+                candidate.capture.source_schema_sha256
+            ),
+            "pinned_numpy_version": SourceSchema.PINNED_NUMPY_VERSION,
+            "allowed_import_roots_sha256": (
+                candidate.capture.allowed_import_roots_sha256
+            ),
             "checkpoint_reconstructed_by_fresh_replay": True,
             "posthoc_acquisition_marginal_admissible":
                 (
@@ -828,7 +1115,7 @@ def _certify_boundary(
             path.name: _sha256_file(path)
             for path in sorted((temporary / "files").iterdir())
         }
-        if candidate.transcript is not None:
+        if candidate.capture.transcript_payload is not None:
             # Preserve the scanner's evidence type when copying a native Codex
             # transcript.  ``gkm_legs._file_taint_reason`` deliberately scans
             # only agent-authored commands in ``proposer_last.log``/JSONL and
@@ -839,22 +1126,28 @@ def _certify_boundary(
             # otherwise byte-identical copy.  Each boundary has its own
             # transcript directory, so the canonical name cannot collide; its
             # content hash is already sealed in the manifest and taint audit.
-            if candidate.transcript.name == "proposer_last.log":
+            transcript_source_name = candidate.capture.transcript_name
+            assert transcript_source_name is not None
+            transcript_sha256 = _sha256_bytes(
+                candidate.capture.transcript_payload
+            )
+            transcript_suffix = Path(transcript_source_name).suffix
+            if transcript_source_name == "proposer_last.log":
                 transcript_name = "proposer_last.log"
-            elif candidate.transcript.suffix == ".jsonl":
+            elif transcript_suffix == ".jsonl":
                 transcript_name = (
                     f"{game}_L{level:02d}_source_"
-                    f"{_sha256_file(candidate.transcript)[:12]}.jsonl"
+                    f"{transcript_sha256[:12]}.jsonl"
                 )
             else:
                 transcript_name = (
                     f"{game}_L{level:02d}_source_"
-                    f"{_sha256_file(candidate.transcript)[:12]}"
-                    f"{candidate.transcript.suffix or '.log'}"
+                    f"{transcript_sha256[:12]}"
+                    f"{transcript_suffix or '.log'}"
                 )
-            _copy_regular(
-                candidate.transcript,
+            _write_new_bytes(
                 temporary / "transcripts" / transcript_name,
+                candidate.capture.transcript_payload,
             )
         winning_hashes = {
             name: promoted[name] for name in sorted(source_payloads)
@@ -862,6 +1155,13 @@ def _certify_boundary(
         winning_source_tree_sha256 = release_gate._json_sha256(
             winning_hashes
         )
+        if (
+            winning_hashes != source_snapshot_hashes
+            or winning_source_tree_sha256 != source_snapshot_tree_sha256
+        ):
+            raise CertificationError(
+                f"source snapshot identity drift at {game} L{level}"
+            )
         exact_path_sha256 = release_gate._json_sha256(exact_path)
         certification_transcript = {
             "schema": SCHEMA,
@@ -881,6 +1181,23 @@ def _certify_boundary(
                 candidate.historical_transcript_failure,
             "winning_source_files_sha256": winning_hashes,
             "winning_source_tree_sha256": winning_source_tree_sha256,
+            "source_snapshot_tree_sha256": source_snapshot_tree_sha256,
+            "source_transcript_snapshot_sha256": (
+                _sha256_bytes(candidate.capture.transcript_payload)
+                if candidate.capture.transcript_payload is not None
+                else None
+            ),
+            "filesystem_boundary_policy_sha256": (
+                candidate.capture.filesystem_policy_sha256
+            ),
+            "source_schema": SourceSchema.SCHEMA,
+            "source_schema_sha256": (
+                candidate.capture.source_schema_sha256
+            ),
+            "pinned_numpy_version": SourceSchema.PINNED_NUMPY_VERSION,
+            "allowed_import_roots_sha256": (
+                candidate.capture.allowed_import_roots_sha256
+            ),
             "exact_path_sha256": exact_path_sha256,
             "action_count": len(exact_path),
             "source_from_zero_replay": "PASS",
@@ -890,7 +1207,7 @@ def _certify_boundary(
             "source_action_protocol": "PASS",
             "path_action_protocol": "PASS",
             "original_source_transcript_available":
-                candidate.transcript is not None,
+                candidate.capture.transcript_payload is not None,
         }
         _write_new_json(
             temporary / "transcripts" / "certification.json",

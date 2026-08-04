@@ -5307,6 +5307,55 @@ def test_wip_manifest_is_bound_to_authenticated_broad_and_source_trees(
             ),
         )
 
+    # Even a fully rehashed, bridge-acknowledged WIP cannot retain source
+    # that depends on an ambient game/environment module.
+    (wip_root / "context" / "notes.txt").write_bytes(
+        payloads["wip/context/notes.txt"]
+    )
+    bad_players = b"import environment_files\nPLAYERS = ()\n"
+    players_relative = "wip/solver_source/players.py"
+    (output / players_relative).write_bytes(bad_players)
+    payloads[players_relative] = bad_players
+    exported_hashes[players_relative] = hashlib.sha256(
+        bad_players
+    ).hexdigest()
+    manifest["exported_files_sha256"] = dict(exported_hashes)
+    manifest["wip_tree_sha256"] = S._tree_hash(wip_root)
+    manifest["solver_source_tree_sha256"] = S._tree_hash(source_root)
+    manifest_path.write_text(
+        json.dumps(
+            manifest, sort_keys=True, separators=(",", ":")
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    bad_manifest_sha256 = hashlib.sha256(
+        manifest_path.read_bytes()
+    ).hexdigest()
+    bad_response = {
+        **response_event,
+        "result": {
+            **response_event["result"],
+            "manifest_sha256": bad_manifest_sha256,
+            "exported_files_sha256": dict(exported_hashes),
+            "total_export_bytes": sum(
+                len(raw) for raw in payloads.values()
+            ),
+        },
+    }
+    with pytest.raises(
+        B.ContainerContractError,
+        match="closed source schema",
+    ):
+        B._validate_authenticated_wip_export(
+            spec=spec,
+            output_root=output,
+            bridge_events=(
+                ("bridge_request", request_event),
+                ("bridge_response", bad_response),
+            ),
+        )
+
 
 def test_orphan_process_pid_reuse_never_authorizes_a_signal(
     request: pytest.FixtureRequest,

@@ -3048,6 +3048,7 @@ def _candidate(
     *,
     include_data: bool = True,
     candidate_path: list[int] | None = None,
+    players_suffix: bytes = b"",
 ) -> Runner.PromotionCandidate:
     output = Path(spec.output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -3058,7 +3059,9 @@ def _candidate(
         for entry in Path(spec.parent_source_path).iterdir()
         if entry.is_file()
     }
-    payloads["players.py"] += b"\n# exact next player\n"
+    payloads["players.py"] += (
+        b"\n# exact next player\n" + players_suffix
+    )
     if include_data:
         payloads["policy_data.json"] = b'{"version":1}\n'
         payloads["solver_notes.txt"] = b"reusable public constant\n"
@@ -3509,6 +3512,45 @@ def test_candidate_inventory_rejects_undeclared_suffix_file(tmp_path):
         match="undeclared or missing",
     ):
         O._load_candidate(spec, candidate)
+
+
+@pytest.mark.parametrize(
+    "forbidden_import",
+    (
+        b"from .legs import choose_action\n",
+        b"from arc.crack_lab import gkm_arena\n",
+        b"import environment_files\n",
+        b"import unknown_ambient_solver_package\n",
+    ),
+)
+def test_candidate_import_closure_fails_before_replay_or_promotion(
+    tmp_path,
+    monkeypatch,
+    forbidden_import,
+):
+    spec = _attempt_spec(tmp_path)
+    candidate = _candidate(
+        spec, players_suffix=forbidden_import
+    )
+    _install_gate_stubs(
+        monkeypatch,
+        candidate,
+        attempt_id=spec.attempt_id,
+        campaign_id=spec.campaign_id,
+    )
+    replay_root = tmp_path / "forbidden-source-must-not-replay"
+    promotion_root = tmp_path / "promotion-store"
+    gate = O.ProductionPromotionGate(
+        promotion_root,
+        replay_executor=_Replay(replay_root),
+    )
+    with pytest.raises(
+        Runner.PromotionRejected,
+        match="candidate source violates the shared source schema",
+    ):
+        gate.commit(spec=spec, candidate=candidate)
+    assert not replay_root.exists()
+    assert not (promotion_root / spec.game).exists()
 
 
 def test_promotion_rejects_actions_after_first_exact_boundary(

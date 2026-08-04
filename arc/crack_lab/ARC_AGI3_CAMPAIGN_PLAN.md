@@ -1246,6 +1246,16 @@ reconstruction can certify replay and release reproducibility but cannot be
 relabeled as a historical acquisition marginal. The certifier and its tests
 are part of the contiguous conformance/control-contract digest.
 
+The certifier applies the clean-room filesystem/import policy to the exact
+winning-source bytes at selection, again immediately before any host replay,
+and again before release staging. Certified `solve(env)` source receives its
+Arena object from the host and therefore has no raw-Arena import exception:
+an absolute or parent path, private/sibling harness import, dynamic loader, or
+other host-filesystem capability fails before execution. The compatibility
+runner's separately hash-pinned `gkm_arena.run_program` capability remains
+limited to acquisition probes and does not transfer into certified solver
+source.
+
 Source selection is phase-first, not merely replay-first. For a given boundary,
 an exact retained `reached_before_debrief` snapshot outranks every
 post-debrief/promoted or schema-1 source. A schema-1 promoted source is labeled
@@ -3177,6 +3187,12 @@ suite is not launch authority.
 The winning source named by a promotion receipt must be byte-identical to a
 declared candidate export, and both that source and the candidate's exact path
 must have independent host replay-from-zero PASS results in the receipt.
+Before WIP retention, candidate replay, or promotion, the shared source schema
+also parses the complete flat source set and closes every import over declared
+local `.py` stems, the standard library, or pinned NumPy 2.4.4. Relative,
+dotted-local, `arc.crack_lab`, `environment_files`, and other undeclared
+ambient imports fail closed; the backend, orchestrator, and publisher all
+reapply the same validator.
 Every host checkpoint must pass `load_trusted_checkpoint()` before scheduling.
 The pinned-image conformance run and adversarial isolation probes must produce
 one result artifact accepted by `validate_launch_attestation()` and
