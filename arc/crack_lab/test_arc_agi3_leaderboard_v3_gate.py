@@ -377,7 +377,9 @@ Official Competition resets: 25
 ARC toolkit: 0.9.9
 Close recovery: none
 Official score {competition_run['aggregate']['score']}.
-OpenAI GPT-5.6. Revision {REVISION}. Receipt {RELEASE_SHA}.
+Models: OpenAI GPT-5.6-sol (expanded campaign); Claude Code (preserved legacy proposer lineages).
+Revision {REVISION}. Receipt {RELEASE_SHA}.
+Source: https://github.com/sashakolpakov/gkm/tree/{REVISION}
 Competition: {competition_run['scorecard_url']}
 
 | Component | Origin/authoring agent | Admitted inputs | Transcript or source boundary | Verifier receipt | Promoted artifact |
@@ -1484,3 +1486,320 @@ def test_v3_date_requires_an_exact_yaml_date_scalar(date_value):
     case["candidate"]["versions"][2]["date"] = date_value
     with pytest.raises(G.LeaderboardV3Error, match="YYYY-MM-DD"):
         G.validate_v3_payload(**case)
+
+
+def test_v3_readme_requires_exact_cross_surface_model_names():
+    case = _case()
+    case["candidate_readme"] = case["candidate_readme"].replace(
+        "OpenAI GPT-5.6-sol (expanded campaign)",
+        "OpenAI GPT-5.6",
+    )
+    with pytest.raises(G.LeaderboardV3Error, match="exact model lineage"):
+        G.validate_v3_payload(**case)
+
+
+@pytest.mark.parametrize(
+    "link",
+    (
+        "https://github.com/sashakolpakov/gkm/tree/"
+        + G.V2_PUBLIC_SOURCE_REVISION
+        + "/arc/crack_lab",
+        "https://github.com/sashakolpakov/gkm/tree/master/arc/crack_lab",
+    ),
+)
+def test_v3_readme_rejects_stale_or_unpinned_gkm_evidence_links(link):
+    case = _case()
+    case["candidate_readme"] += f"\nStale evidence: {link}\n"
+    with pytest.raises(G.LeaderboardV3Error, match="stale v2|scored revision"):
+        G.validate_v3_payload(**case)
+
+
+POST_PUSH_HEAD = "9" * 40
+POST_PUSH_BASE = "8" * 40
+POST_PUSH_VALIDATOR = b"print('validator fixture')\n"
+
+
+def _post_push_fixture(tmp_path, monkeypatch):
+    case = _case()
+    offline = G.validate_v3_payload(**case)
+    candidate_yaml = G.yaml.safe_dump(
+        case["candidate"], sort_keys=False, allow_unicode=True
+    ).encode()
+    candidate_readme = case["candidate_readme"].encode()
+    checkout = tmp_path / "leaderboard"
+    yaml_path = checkout / G.LEADERBOARD_SUBMISSION_YAML
+    readme_path = checkout / G.LEADERBOARD_SUBMISSION_README
+    validator_path = checkout / G.LEADERBOARD_VALIDATOR
+    yaml_path.parent.mkdir(parents=True)
+    validator_path.parent.mkdir(parents=True)
+    yaml_path.write_bytes(candidate_yaml)
+    readme_path.write_bytes(candidate_readme)
+    validator_path.write_bytes(POST_PUSH_VALIDATOR)
+
+    pr = {
+        "number": G.LEADERBOARD_PR_NUMBER,
+        "state": "open",
+        "draft": False,
+        "closed_at": None,
+        "merged_at": None,
+        "changed_files": 2,
+        "title": offline["expected_pr_title"],
+        "body": case["candidate_readme"],
+        "base": {
+            "ref": G.LEADERBOARD_BASE_BRANCH,
+            "sha": POST_PUSH_BASE,
+            "repo": {"full_name": G.LEADERBOARD_UPSTREAM_REPO},
+        },
+        "head": {
+            "ref": G.LEADERBOARD_HEAD_BRANCH,
+            "sha": POST_PUSH_HEAD,
+            "repo": {"full_name": G.LEADERBOARD_FORK_REPO},
+        },
+    }
+    state = {
+        "pr": pr,
+        "pr_recheck": None,
+        "pr_calls": 0,
+        "changed_files": [
+            {"filename": G.LEADERBOARD_SUBMISSION_README},
+            {"filename": G.LEADERBOARD_SUBMISSION_YAML},
+        ],
+        "remote_yaml": candidate_yaml,
+        "remote_readme": candidate_readme,
+        "remote_validator": POST_PUSH_VALIDATOR,
+        "workflow": {
+            "workflow_runs": [
+                {
+                    "id": 101,
+                    "run_attempt": 1,
+                    "head_sha": POST_PUSH_HEAD,
+                    "head_branch": G.LEADERBOARD_HEAD_BRANCH,
+                    "head_repository": {
+                        "full_name": G.LEADERBOARD_FORK_REPO
+                    },
+                    "event": "pull_request",
+                    "name": "Validate Submission",
+                    "path": ".github/workflows/validate.yml",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "check_suite_id": 303,
+                }
+            ]
+        },
+        "checks": {
+            "check_runs": [
+                {
+                    "id": 202,
+                    "head_sha": POST_PUSH_HEAD,
+                    "name": "validate",
+                    "status": "completed",
+                    "conclusion": "success",
+                    "check_suite": {"id": 303},
+                    "app": {"slug": "github-actions"},
+                }
+            ]
+        },
+        "bad_url": False,
+        "url_calls": [],
+        "checkout_status": b"",
+    }
+
+    def fetch_json(url, *, label):
+        if url == G.LEADERBOARD_PR_ENDPOINT:
+            state["pr_calls"] += 1
+            if state["pr_calls"] == 2 and state["pr_recheck"] is not None:
+                return copy.deepcopy(state["pr_recheck"])
+            return copy.deepcopy(state["pr"])
+        if "/files?" in url:
+            return copy.deepcopy(state["changed_files"])
+        if "/actions/runs?" in url:
+            return copy.deepcopy(state["workflow"])
+        if "/check-runs?" in url:
+            return copy.deepcopy(state["checks"])
+        raise AssertionError(f"unexpected JSON URL: {url}")
+
+    def fetch_bytes(url, *, label, accept):
+        if G.LEADERBOARD_SUBMISSION_YAML in url:
+            return state["remote_yaml"]
+        if G.LEADERBOARD_SUBMISSION_README in url:
+            return state["remote_readme"]
+        if G.LEADERBOARD_VALIDATOR in url:
+            return state["remote_validator"]
+        raise AssertionError(f"unexpected byte URL: {url}")
+
+    def verify_url(url, *, allow_access_controlled=False):
+        state["url_calls"].append((url, allow_access_controlled))
+        if state["bad_url"]:
+            raise G.LeaderboardV3Error("candidate public URL does not resolve")
+        return {
+            "url": url,
+            "status": 200,
+            "resolved_url": url,
+            "allow_access_controlled": allow_access_controlled,
+        }
+
+    monkeypatch.setattr(G, "_fetch_github_json", fetch_json)
+    monkeypatch.setattr(G, "_fetch_github_bytes", fetch_bytes)
+    monkeypatch.setattr(
+        G,
+        "_checkout_git_state",
+        lambda root: (POST_PUSH_HEAD, state["checkout_status"]),
+    )
+    monkeypatch.setattr(G, "_verify_public_url", verify_url)
+    monkeypatch.setattr(
+        G,
+        "_run_upstream_validator",
+        lambda *args: {
+            "returncode": 0,
+            "stdout_sha256": "a" * 64,
+            "stderr_sha256": "b" * 64,
+        },
+    )
+    kwargs = {
+        "candidate": case["candidate"],
+        "candidate_yaml_bytes": candidate_yaml,
+        "candidate_readme": case["candidate_readme"],
+        "candidate_readme_bytes": candidate_readme,
+        "offline_summary": offline,
+        "release_sha256": RELEASE_SHA,
+        "leaderboard_checkout": checkout,
+        "expected_head_sha": POST_PUSH_HEAD,
+        "upstream_validator_sha256": hashlib.sha256(
+            POST_PUSH_VALIDATOR
+        ).hexdigest(),
+    }
+    return kwargs, state
+
+
+def test_post_push_transaction_happy_path_is_fully_bound(tmp_path, monkeypatch):
+    kwargs, state = _post_push_fixture(tmp_path, monkeypatch)
+    result = G.verify_post_push_transaction(**kwargs)
+    assert result["status"] == "PASS"
+    assert result["complete"] is True
+    assert result["head_sha"] == POST_PUSH_HEAD
+    assert result["upstream_validator_sha256"] == hashlib.sha256(
+        POST_PUSH_VALIDATOR
+    ).hexdigest()
+    assert result["workflow"] == {
+        "status": "PASS",
+        "workflow_run_id": 101,
+        "check_run_id": 202,
+    }
+    assert state["pr_calls"] == 2
+    assert ("https://openai.com/", True) in state["url_calls"]
+    assert (
+        f"https://github.com/sashakolpakov/gkm/tree/{REVISION}",
+        False,
+    ) in state["url_calls"]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "message"),
+    (
+        ("title", "PR title"),
+        ("body", "PR body"),
+        ("head", "state, repository, branch, head"),
+        ("files", "exactly the GKM submission"),
+        ("yaml", "remote candidate YAML/README"),
+        ("validator", "validator bytes"),
+        ("url", "public URL"),
+        ("dirty", "clean exact pushed PR head"),
+    ),
+)
+def test_post_push_transaction_rejects_remote_or_local_drift(
+    tmp_path, monkeypatch, mutation, message
+):
+    kwargs, state = _post_push_fixture(tmp_path, monkeypatch)
+    if mutation == "title":
+        state["pr"]["title"] = "stale v2 title"
+    elif mutation == "body":
+        state["pr"]["body"] = "stale v2 body"
+    elif mutation == "head":
+        state["pr"]["head"]["sha"] = "7" * 40
+    elif mutation == "files":
+        state["changed_files"][0]["filename"] = "submissions/gkm/extra.txt"
+    elif mutation == "yaml":
+        state["remote_yaml"] += b"# drift\n"
+    elif mutation == "validator":
+        state["remote_validator"] += b"# drift\n"
+    elif mutation == "url":
+        state["bad_url"] = True
+    elif mutation == "dirty":
+        state["checkout_status"] = b" M submissions/gkm/README.md\n"
+    with pytest.raises(G.LeaderboardV3Error, match=message):
+        G.verify_post_push_transaction(**kwargs)
+
+
+def test_post_push_rejects_pr_change_during_reopen(tmp_path, monkeypatch):
+    kwargs, state = _post_push_fixture(tmp_path, monkeypatch)
+    state["pr_recheck"] = copy.deepcopy(state["pr"])
+    state["pr_recheck"]["base"]["sha"] = "6" * 40
+    with pytest.raises(G.LeaderboardV3Error, match="changed during"):
+        G.verify_post_push_transaction(**kwargs)
+
+
+def test_post_push_reports_maintainer_gated_workflow_as_incomplete(
+    tmp_path, monkeypatch
+):
+    kwargs, state = _post_push_fixture(tmp_path, monkeypatch)
+    run = state["workflow"]["workflow_runs"][0]
+    run["status"] = "completed"
+    run["conclusion"] = "action_required"
+    state["checks"] = {"check_runs": []}
+    result = G.verify_post_push_transaction(**kwargs)
+    assert result["status"] == "MAINTAINER_ACTION_REQUIRED"
+    assert result["complete"] is False
+
+
+@pytest.mark.parametrize(
+    ("target", "value", "message"),
+    (
+        ("workflow", "failure", "workflow completed without success"),
+        ("check", "failure", "validate check did not pass"),
+    ),
+)
+def test_post_push_rejects_failed_workflow_or_check(
+    tmp_path, monkeypatch, target, value, message
+):
+    kwargs, state = _post_push_fixture(tmp_path, monkeypatch)
+    if target == "workflow":
+        state["workflow"]["workflow_runs"][0]["conclusion"] = value
+    else:
+        state["checks"]["check_runs"][0]["conclusion"] = value
+    with pytest.raises(G.LeaderboardV3Error, match=message):
+        G.verify_post_push_transaction(**kwargs)
+
+
+def test_public_url_probe_records_bot_blocked_author_link(monkeypatch):
+    url = "https://openai.com/"
+
+    def forbidden(*args, **kwargs):
+        raise G.urllib.error.HTTPError(url, 403, "Forbidden", None, None)
+
+    monkeypatch.setattr(G.urllib.request, "urlopen", forbidden)
+    result = G._verify_public_url(url, allow_access_controlled=True)
+    assert result == {
+        "url": url,
+        "status": 403,
+        "resolved_url": url,
+        "resolution": "access-controlled author link",
+    }
+    with pytest.raises(G.LeaderboardV3Error, match="does not resolve"):
+        G._verify_public_url(url)
+
+
+def test_upstream_validator_runner_executes_exact_isolated_script(tmp_path):
+    checkout = tmp_path / "leaderboard"
+    validator = checkout / G.LEADERBOARD_VALIDATOR
+    candidate = checkout / G.LEADERBOARD_SUBMISSION_YAML
+    validator.parent.mkdir(parents=True)
+    candidate.parent.mkdir(parents=True)
+    validator.write_text(
+        "import pathlib, sys\n"
+        "assert pathlib.Path(sys.argv[1]).name == 'submission.yaml'\n"
+        "print('PASSED')\n"
+    )
+    candidate.write_text("name: fixture\n")
+    result = G._run_upstream_validator(checkout, validator, candidate)
+    assert result["returncode"] == 0
+    assert result["stderr_sha256"] == hashlib.sha256(b"").hexdigest()

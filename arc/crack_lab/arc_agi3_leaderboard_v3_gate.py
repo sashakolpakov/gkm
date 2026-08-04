@@ -30,6 +30,15 @@ publication timestamp. The recovery/final gate command is::
       --competition-run-receipt <competition-run.json> \
       --online-journal-snapshot <sha256>.jsonl \
       --competition-journal-snapshot <sha256>.jsonl
+
+After the validated files have been pushed and the PR title/body have been
+updated, add the following verification-only arguments to close the remote
+transaction without mutating it::
+
+      --verify-post-push \
+      --leaderboard-checkout <clean-exact-pr-head-checkout> \
+      --expected-pr-head-sha <full-git-sha> \
+      --upstream-validator-sha256 <sha256>
 """
 
 from __future__ import annotations
@@ -42,8 +51,10 @@ import math
 import os
 import re
 import stat
+import subprocess
 import sys
 import urllib.error
+import urllib.parse
 import urllib.request
 from pathlib import Path, PurePosixPath
 from typing import Any, Mapping, Sequence
@@ -68,6 +79,23 @@ PUBLIC_SCORECARD_ENDPOINT = "https://arcprize.org/api/v3/scorecards/{card_id}"
 PUBLIC_COMMIT_ENDPOINT = (
     "https://api.github.com/repos/sashakolpakov/gkm/commits/{revision}"
 )
+LEADERBOARD_UPSTREAM_REPO = "arcprize/ARC-AGI-Community-Leaderboard"
+LEADERBOARD_FORK_REPO = "sashakolpakov/ARC-AGI-Community-Leaderboard"
+LEADERBOARD_PR_NUMBER = 37
+LEADERBOARD_BASE_BRANCH = "main"
+LEADERBOARD_HEAD_BRANCH = "gkm-submission"
+LEADERBOARD_SUBMISSION_YAML = "submissions/gkm/submission.yaml"
+LEADERBOARD_SUBMISSION_README = "submissions/gkm/README.md"
+LEADERBOARD_VALIDATOR = ".github/scripts/validate_submission.py"
+LEADERBOARD_CHANGED_FILES = {
+    LEADERBOARD_SUBMISSION_README,
+    LEADERBOARD_SUBMISSION_YAML,
+}
+LEADERBOARD_PR_ENDPOINT = (
+    "https://api.github.com/repos/"
+    f"{LEADERBOARD_UPSTREAM_REPO}/pulls/{LEADERBOARD_PR_NUMBER}"
+)
+V2_PUBLIC_SOURCE_REVISION = "9235ed26627140460efa1f6ca5e4041470cddc14"
 SCORECARD_URL_PREFIX = "https://arcprize.org/scorecards/"
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
 REVISION_RE = re.compile(r"^[0-9a-f]{40}(?:[0-9a-f]{24})?$")
@@ -79,6 +107,7 @@ OPERATION_ID_RE = re.compile(r"^[0-9a-f]{64}$")
 ARC_SCORECARD_URL_RE = re.compile(
     r"https?://(?:www\.)?arcprize\.org/scorecards/[^\s<>\])]+"
 )
+PUBLIC_URL_RE = re.compile(r"https?://[^\s<>\"'`]+")
 OFFICIAL_SCORE_RE = re.compile(
     r"\bofficial\s+score\s*[:=]?\s*([0-9]+(?:\.[0-9]+)?)%?",
     re.IGNORECASE,
@@ -1800,6 +1829,83 @@ def _scorecard_accounting(
     }
 
 
+def _public_urls(value: object) -> tuple[str, ...]:
+    """Extract bounded HTTP(S) links from nested public submission data."""
+    stack = [value]
+    found: list[str] = []
+    seen: set[str] = set()
+    nodes = 0
+    while stack:
+        current = stack.pop()
+        nodes += 1
+        if nodes > MAX_PUBLIC_ARTIFACT_NODES:
+            raise LeaderboardV3Error("public URL inventory is unexpectedly large")
+        if isinstance(current, str):
+            for match in PUBLIC_URL_RE.findall(current):
+                url = match.rstrip('.,;:!?)]}"')
+                if url and url not in seen:
+                    seen.add(url)
+                    found.append(url)
+        elif isinstance(current, Mapping):
+            stack.extend(current.keys())
+            stack.extend(current.values())
+        elif isinstance(current, (list, tuple)):
+            stack.extend(current)
+    return tuple(found)
+
+
+def _validate_revision_bound_gkm_links(
+    urls: Sequence[str], *, revision: str, require_one: bool
+) -> None:
+    """Require every public GKM evidence URL to name the scored revision."""
+    found = 0
+    for url in urls:
+        parsed = urllib.parse.urlsplit(url)
+        host = (parsed.hostname or "").lower()
+        parts = tuple(
+            part for part in urllib.parse.unquote(parsed.path).split("/") if part
+        )
+        linked_revision: str | None = None
+        if host in {"github.com", "www.github.com"} and parts[:2] == (
+            "sashakolpakov",
+            "gkm",
+        ):
+            if len(parts) < 4 or parts[2] not in {"blob", "commit", "raw", "tree"}:
+                raise LeaderboardV3Error(
+                    "GKM evidence links must be pinned to the scored revision"
+                )
+            linked_revision = parts[3]
+        elif host == "raw.githubusercontent.com" and parts[:2] == (
+            "sashakolpakov",
+            "gkm",
+        ):
+            if len(parts) < 4:
+                raise LeaderboardV3Error(
+                    "raw GKM evidence link is missing its source revision"
+                )
+            linked_revision = parts[2]
+        if linked_revision is None:
+            continue
+        found += 1
+        if linked_revision == V2_PUBLIC_SOURCE_REVISION:
+            raise LeaderboardV3Error("candidate contains a stale v2 evidence link")
+        if linked_revision != revision:
+            raise LeaderboardV3Error(
+                "candidate GKM evidence link differs from the scored revision"
+            )
+    if require_one and found == 0:
+        raise LeaderboardV3Error(
+            "candidate README is missing an immutable scored-revision GKM link"
+        )
+
+
+def canonical_pr_body(candidate_readme: str) -> str:
+    """The persistent PR body is exactly the validated submission README."""
+    if not isinstance(candidate_readme, str) or not candidate_readme:
+        raise LeaderboardV3Error("candidate README cannot define an empty PR body")
+    return candidate_readme
+
+
 def _validate_authors(candidate: Mapping[str, Any]) -> None:
     authors = candidate.get("authors")
     if not isinstance(authors, list):
@@ -1971,6 +2077,16 @@ def _validate_readme(
             raise LeaderboardV3Error(
                 f"candidate README is missing release fact {fragment!r}"
             )
+    for model_name in REQUIRED_V3_MODELS:
+        if model_name not in text:
+            raise LeaderboardV3Error(
+                f"candidate README is missing exact model lineage {model_name!r}"
+            )
+    _validate_revision_bound_gkm_links(
+        _public_urls(text),
+        revision=str(competition_run["source_revision"]),
+        require_one=True,
+    )
     scorecard_urls = [
         value.rstrip(".,;") for value in ARC_SCORECARD_URL_RE.findall(text)
     ]
@@ -2249,6 +2365,552 @@ def validate_v3_payload(
     }
 
 
+def _github_headers(*, accept: str) -> dict[str, str]:
+    headers = {
+        "Accept": accept,
+        "User-Agent": "gkm-v3-post-push-verifier/1",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+    token = os.environ.get("GITHUB_TOKEN") or os.environ.get("GH_TOKEN")
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
+def _fetch_github_bytes(url: str, *, label: str, accept: str) -> bytes:
+    request = urllib.request.Request(
+        url,
+        headers=_github_headers(accept=accept),
+    )
+    try:
+        with urllib.request.urlopen(request, timeout=30) as response:
+            raw = response.read(MAX_RECORD_BYTES + 1)
+    except (OSError, urllib.error.URLError) as exc:
+        raise LeaderboardV3Error(f"cannot fetch {label}") from exc
+    if len(raw) > MAX_RECORD_BYTES:
+        raise LeaderboardV3Error(f"{label} response is unexpectedly large")
+    return raw
+
+
+def _fetch_github_json(url: str, *, label: str) -> object:
+    raw = _fetch_github_bytes(
+        url,
+        label=label,
+        accept="application/vnd.github+json",
+    )
+    try:
+        value = json.loads(
+            raw,
+            object_pairs_hook=_strict_json_object,
+            parse_constant=_reject_json_constant,
+        )
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise LeaderboardV3Error(f"{label} response is invalid JSON") from exc
+    _reject_nonfinite(value, label=label)
+    return value
+
+
+def _github_content_url(repo: str, path: str, revision: str) -> str:
+    quoted_path = urllib.parse.quote(path, safe="/")
+    quoted_revision = urllib.parse.quote(revision, safe="")
+    return (
+        f"https://api.github.com/repos/{repo}/contents/{quoted_path}"
+        f"?ref={quoted_revision}"
+    )
+
+
+def _pr_projection(value: object, *, expected_head_sha: str) -> dict[str, object]:
+    if not isinstance(value, Mapping):
+        raise LeaderboardV3Error("PR #37 response is not an object")
+    base = value.get("base")
+    head = value.get("head")
+    if not isinstance(base, Mapping) or not isinstance(head, Mapping):
+        raise LeaderboardV3Error("PR #37 is missing base/head metadata")
+    base_repo = base.get("repo")
+    head_repo = head.get("repo")
+    if not isinstance(base_repo, Mapping) or not isinstance(head_repo, Mapping):
+        raise LeaderboardV3Error("PR #37 is missing base/head repositories")
+    projection = {
+        "number": value.get("number"),
+        "state": value.get("state"),
+        "draft": value.get("draft"),
+        "closed_at": value.get("closed_at"),
+        "merged_at": value.get("merged_at"),
+        "changed_files": value.get("changed_files"),
+        "title": value.get("title"),
+        "body": value.get("body"),
+        "base_ref": base.get("ref"),
+        "base_sha": base.get("sha"),
+        "base_repo": base_repo.get("full_name"),
+        "head_ref": head.get("ref"),
+        "head_sha": head.get("sha"),
+        "head_repo": head_repo.get("full_name"),
+    }
+    if (
+        projection["number"] != LEADERBOARD_PR_NUMBER
+        or projection["state"] != "open"
+        or projection["draft"] is not False
+        or projection["closed_at"] is not None
+        or projection["merged_at"] is not None
+        or projection["changed_files"] != len(LEADERBOARD_CHANGED_FILES)
+        or projection["base_ref"] != LEADERBOARD_BASE_BRANCH
+        or projection["base_repo"] != LEADERBOARD_UPSTREAM_REPO
+        or projection["head_ref"] != LEADERBOARD_HEAD_BRANCH
+        or projection["head_repo"] != LEADERBOARD_FORK_REPO
+        or projection["head_sha"] != expected_head_sha
+        or not isinstance(projection["base_sha"], str)
+        or re.fullmatch(r"[0-9a-f]{40}", str(projection["base_sha"])) is None
+    ):
+        raise LeaderboardV3Error(
+            "PR #37 state, repository, branch, head, or file count is incorrect"
+        )
+    return projection
+
+
+def _validate_pr_surface(
+    projection: Mapping[str, object], *, expected_title: str, expected_body: str
+) -> None:
+    if projection.get("title") != expected_title:
+        raise LeaderboardV3Error("remote PR title differs from the release contract")
+    if projection.get("body") != expected_body:
+        raise LeaderboardV3Error("remote PR body differs from the canonical README")
+
+
+def _validate_changed_files(value: object) -> None:
+    if not isinstance(value, list):
+        raise LeaderboardV3Error("PR changed-files response is not a list")
+    names = [row.get("filename") if isinstance(row, Mapping) else None for row in value]
+    if len(names) != len(set(names)) or set(names) != LEADERBOARD_CHANGED_FILES:
+        raise LeaderboardV3Error(
+            "PR must change exactly the GKM submission YAML and README"
+        )
+
+
+def _safe_checkout_file(root: Path, relative: str, *, label: str) -> Path:
+    pure = PurePosixPath(relative)
+    if pure.is_absolute() or ".." in pure.parts or pure.as_posix() != relative:
+        raise LeaderboardV3Error(f"unsafe {label} path")
+    checkout = Path(root)
+    try:
+        metadata = checkout.lstat()
+    except OSError as exc:
+        raise LeaderboardV3Error("cannot stat leaderboard checkout") from exc
+    if not stat.S_ISDIR(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):
+        raise LeaderboardV3Error("leaderboard checkout must be a real directory")
+    cursor = checkout
+    for part in pure.parts[:-1]:
+        cursor /= part
+        try:
+            nested = cursor.lstat()
+        except OSError as exc:
+            raise LeaderboardV3Error(f"cannot stat parent of {label}") from exc
+        if not stat.S_ISDIR(nested.st_mode) or stat.S_ISLNK(nested.st_mode):
+            raise LeaderboardV3Error(f"{label} has a symlinked or invalid parent")
+    return checkout.joinpath(*pure.parts)
+
+
+def _checkout_git_state(checkout: Path) -> tuple[str, bytes]:
+    environment = {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "GIT_CONFIG_NOSYSTEM": "1",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_TERMINAL_PROMPT": "0",
+    }
+    outputs: list[bytes] = []
+    for command in (
+        ["git", "rev-parse", "HEAD"],
+        ["git", "status", "--porcelain=v1", "--untracked-files=all"],
+    ):
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=checkout,
+                env=environment,
+                check=False,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=30,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise LeaderboardV3Error("cannot inspect leaderboard checkout") from exc
+        if completed.returncode != 0 or len(completed.stderr) > MAX_RECORD_BYTES:
+            raise LeaderboardV3Error("leaderboard checkout Git inspection failed")
+        outputs.append(completed.stdout)
+    try:
+        head = outputs[0].decode("ascii").strip()
+    except UnicodeError as exc:
+        raise LeaderboardV3Error("leaderboard checkout HEAD is invalid") from exc
+    return head, outputs[1]
+
+
+def _run_upstream_validator(
+    checkout: Path, validator: Path, candidate_yaml: Path
+) -> dict[str, object]:
+    environment = {
+        "PATH": os.environ.get("PATH", os.defpath),
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONNOUSERSITE": "1",
+        "PYTHONUTF8": "1",
+    }
+    for field in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE"):
+        if os.environ.get(field):
+            environment[field] = str(os.environ[field])
+    try:
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-I",
+                "-B",
+                "-X",
+                "utf8",
+                str(validator),
+                str(candidate_yaml),
+            ],
+            cwd=checkout,
+            env=environment,
+            check=False,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=300,
+        )
+    except (OSError, subprocess.TimeoutExpired) as exc:
+        raise LeaderboardV3Error("upstream submission validator did not complete") from exc
+    if len(completed.stdout) > MAX_RECORD_BYTES or len(completed.stderr) > MAX_RECORD_BYTES:
+        raise LeaderboardV3Error("upstream validator output is unexpectedly large")
+    if completed.returncode != 0:
+        detail = completed.stdout[-1000:] + completed.stderr[-1000:]
+        raise LeaderboardV3Error(
+            "upstream submission validator failed: "
+            + detail.decode("utf-8", errors="replace")
+        )
+    return {
+        "returncode": completed.returncode,
+        "stdout_sha256": _sha256_bytes(completed.stdout),
+        "stderr_sha256": _sha256_bytes(completed.stderr),
+    }
+
+
+def _verify_public_url(
+    url: str, *, allow_access_controlled: bool = False
+) -> dict[str, object]:
+    parsed = urllib.parse.urlsplit(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        raise LeaderboardV3Error(f"candidate contains an invalid public URL: {url}")
+    last_error: BaseException | None = None
+    for method in ("HEAD", "GET"):
+        request = urllib.request.Request(
+            url,
+            method=method,
+            headers={
+                "Accept": "*/*",
+                "User-Agent": "Mozilla/5.0 (compatible; GKM-LinkVerifier/1.0)",
+            },
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=20) as response:
+                status = int(getattr(response, "status", response.getcode()))
+                if 200 <= status < 400:
+                    return {
+                        "url": url,
+                        "status": status,
+                        "resolved_url": response.geturl(),
+                    }
+                last_error = RuntimeError(f"HTTP {status}")
+        except urllib.error.HTTPError as exc:
+            if method == "GET" and allow_access_controlled and exc.code in {401, 403}:
+                return {
+                    "url": url,
+                    "status": int(exc.code),
+                    "resolved_url": exc.geturl(),
+                    "resolution": "access-controlled author link",
+                }
+            last_error = exc
+        except (OSError, urllib.error.URLError) as exc:
+            last_error = exc
+    raise LeaderboardV3Error(f"candidate public URL does not resolve: {url}") from last_error
+
+
+def _workflow_verdict(
+    workflow_payload: object, check_payload: object, *, expected_head_sha: str
+) -> dict[str, object]:
+    if not isinstance(workflow_payload, Mapping) or not isinstance(
+        workflow_payload.get("workflow_runs"), list
+    ):
+        raise LeaderboardV3Error("validation workflow response is invalid")
+    matching = [
+        row
+        for row in workflow_payload["workflow_runs"]
+        if isinstance(row, Mapping)
+        and row.get("head_sha") == expected_head_sha
+        and row.get("head_branch") == LEADERBOARD_HEAD_BRANCH
+        and isinstance(row.get("head_repository"), Mapping)
+        and row["head_repository"].get("full_name") == LEADERBOARD_FORK_REPO
+        and row.get("event") == "pull_request"
+        and (
+            row.get("name") == "Validate Submission"
+            or str(row.get("path", "")).endswith("/.github/workflows/validate.yml")
+            or row.get("path") == ".github/workflows/validate.yml"
+        )
+    ]
+    if not matching:
+        return {
+            "status": "MAINTAINER_ACTION_REQUIRED",
+            "reason": "no validation workflow run exists for the exact PR head",
+        }
+    run = max(
+        matching,
+        key=lambda row: (
+            int(row.get("id", 0)) if _is_int(row.get("id", 0)) else 0,
+            int(row.get("run_attempt", 0))
+            if _is_int(row.get("run_attempt", 0))
+            else 0,
+        ),
+    )
+    conclusion = run.get("conclusion")
+    status = run.get("status")
+    if conclusion == "action_required":
+        return {
+            "status": "MAINTAINER_ACTION_REQUIRED",
+            "reason": "the exact-head validation workflow awaits maintainer approval",
+            "workflow_run_id": run.get("id"),
+        }
+    if status != "completed":
+        return {
+            "status": "WORKFLOW_NOT_COMPLETE",
+            "reason": "the exact-head validation workflow has not completed",
+            "workflow_run_id": run.get("id"),
+        }
+    if conclusion != "success":
+        raise LeaderboardV3Error(
+            "the exact-head validation workflow completed without success"
+        )
+    if not isinstance(check_payload, Mapping) or not isinstance(
+        check_payload.get("check_runs"), list
+    ):
+        raise LeaderboardV3Error("validation check-runs response is invalid")
+    checks = [
+        row
+        for row in check_payload["check_runs"]
+        if isinstance(row, Mapping)
+        and row.get("head_sha") == expected_head_sha
+        and row.get("name") == "validate"
+        and isinstance(row.get("check_suite"), Mapping)
+        and row["check_suite"].get("id") == run.get("check_suite_id")
+        and isinstance(row.get("app"), Mapping)
+        and row["app"].get("slug") == "github-actions"
+    ]
+    if not checks:
+        return {
+            "status": "WORKFLOW_NOT_COMPLETE",
+            "reason": "the successful workflow has no exact-head validate check yet",
+            "workflow_run_id": run.get("id"),
+        }
+    check = max(
+        checks,
+        key=lambda row: int(row.get("id", 0)) if _is_int(row.get("id", 0)) else 0,
+    )
+    if check.get("status") != "completed" or check.get("conclusion") != "success":
+        raise LeaderboardV3Error("the exact-head validate check did not pass")
+    return {
+        "status": "PASS",
+        "workflow_run_id": run.get("id"),
+        "check_run_id": check.get("id"),
+    }
+
+
+def verify_post_push_transaction(
+    *,
+    candidate: Mapping[str, Any],
+    candidate_yaml_bytes: bytes,
+    candidate_readme: str,
+    candidate_readme_bytes: bytes,
+    offline_summary: Mapping[str, Any],
+    release_sha256: str,
+    leaderboard_checkout: Path,
+    expected_head_sha: str,
+    upstream_validator_sha256: str,
+) -> dict[str, object]:
+    """Verify, without mutation, the exact remote PR transaction and checks."""
+    try:
+        decoded_candidate = yaml.load(candidate_yaml_bytes, Loader=StrictSafeLoader)
+    except (UnicodeError, yaml.YAMLError) as exc:
+        raise LeaderboardV3Error("candidate YAML bytes are invalid") from exc
+    if decoded_candidate != candidate:
+        raise LeaderboardV3Error("candidate object differs from candidate YAML bytes")
+    if candidate_readme.encode("utf-8") != candidate_readme_bytes:
+        raise LeaderboardV3Error("candidate README text differs from its bytes")
+    if re.fullmatch(r"[0-9a-f]{40}", expected_head_sha) is None:
+        raise LeaderboardV3Error("expected PR head must be a full Git commit SHA")
+    if SHA256_RE.fullmatch(upstream_validator_sha256) is None:
+        raise LeaderboardV3Error("upstream validator SHA-256 is invalid")
+    expected_title = offline_summary.get("expected_pr_title")
+    if not isinstance(expected_title, str):
+        raise LeaderboardV3Error("offline gate did not emit an expected PR title")
+    expected_body = canonical_pr_body(candidate_readme)
+    source_revision = offline_summary.get("public_revision")
+    if not isinstance(source_revision, str):
+        raise LeaderboardV3Error("offline gate did not bind a public revision")
+    if offline_summary.get("release_receipt_sha256") != release_sha256:
+        raise LeaderboardV3Error("offline release receipt binding changed")
+
+    all_urls = _public_urls((candidate, candidate_readme))
+    _validate_revision_bound_gkm_links(
+        all_urls, revision=source_revision, require_one=True
+    )
+
+    checkout = Path(leaderboard_checkout)
+    yaml_path = _safe_checkout_file(
+        checkout, LEADERBOARD_SUBMISSION_YAML, label="candidate YAML"
+    )
+    readme_path = _safe_checkout_file(
+        checkout, LEADERBOARD_SUBMISSION_README, label="candidate README"
+    )
+    validator_path = _safe_checkout_file(
+        checkout, LEADERBOARD_VALIDATOR, label="upstream validator"
+    )
+    if _read_regular(yaml_path, label="checkout candidate YAML") != candidate_yaml_bytes:
+        raise LeaderboardV3Error("checkout candidate YAML differs from validated bytes")
+    if _read_regular(readme_path, label="checkout candidate README") != candidate_readme_bytes:
+        raise LeaderboardV3Error("checkout candidate README differs from validated bytes")
+    checkout_validator = _read_regular(
+        validator_path, label="checkout upstream validator"
+    )
+    checkout_head, checkout_status = _checkout_git_state(checkout)
+    if checkout_head != expected_head_sha or checkout_status:
+        raise LeaderboardV3Error(
+            "leaderboard checkout is not the clean exact pushed PR head"
+        )
+
+    first_pr = _fetch_github_json(LEADERBOARD_PR_ENDPOINT, label="PR #37")
+    first_projection = _pr_projection(
+        first_pr, expected_head_sha=expected_head_sha
+    )
+    _validate_pr_surface(
+        first_projection,
+        expected_title=expected_title,
+        expected_body=expected_body,
+    )
+    changed_files = _fetch_github_json(
+        LEADERBOARD_PR_ENDPOINT + "/files?per_page=100",
+        label="PR #37 changed files",
+    )
+    _validate_changed_files(changed_files)
+
+    remote_yaml = _fetch_github_bytes(
+        _github_content_url(
+            LEADERBOARD_FORK_REPO,
+            LEADERBOARD_SUBMISSION_YAML,
+            expected_head_sha,
+        ),
+        label="remote candidate YAML",
+        accept="application/vnd.github.raw",
+    )
+    remote_readme = _fetch_github_bytes(
+        _github_content_url(
+            LEADERBOARD_FORK_REPO,
+            LEADERBOARD_SUBMISSION_README,
+            expected_head_sha,
+        ),
+        label="remote candidate README",
+        accept="application/vnd.github.raw",
+    )
+    if remote_yaml != candidate_yaml_bytes or remote_readme != candidate_readme_bytes:
+        raise LeaderboardV3Error(
+            "remote candidate YAML/README bytes differ from the validated payload"
+        )
+
+    base_sha = str(first_projection["base_sha"])
+    remote_validator = _fetch_github_bytes(
+        _github_content_url(
+            LEADERBOARD_UPSTREAM_REPO,
+            LEADERBOARD_VALIDATOR,
+            base_sha,
+        ),
+        label="remote upstream validator",
+        accept="application/vnd.github.raw",
+    )
+    if (
+        checkout_validator != remote_validator
+        or _sha256_bytes(remote_validator) != upstream_validator_sha256
+    ):
+        raise LeaderboardV3Error(
+            "checkout/upstream validator bytes do not match the pinned SHA-256"
+        )
+
+    author_urls = {
+        link
+        for author in candidate.get("authors", [])
+        if isinstance(author, Mapping)
+        for field in ("url", "twitter", "linkedin", "scholar", "github")
+        for link in (author.get(field),)
+        if isinstance(link, str) and link
+    }
+    readme_urls = set(_public_urls(candidate_readme))
+    url_results = [
+        _verify_public_url(
+            url,
+            allow_access_controlled=url in author_urls and url not in readme_urls,
+        )
+        for url in all_urls
+    ]
+    validator_result = _run_upstream_validator(
+        checkout, validator_path, yaml_path
+    )
+
+    encoded_head = urllib.parse.quote(expected_head_sha, safe="")
+    workflow_payload = _fetch_github_json(
+        "https://api.github.com/repos/"
+        f"{LEADERBOARD_UPSTREAM_REPO}/actions/runs?event=pull_request"
+        f"&head_sha={encoded_head}&per_page=100",
+        label="validation workflow runs",
+    )
+    check_payload = _fetch_github_json(
+        "https://api.github.com/repos/"
+        f"{LEADERBOARD_UPSTREAM_REPO}/commits/{encoded_head}/check-runs"
+        "?per_page=100",
+        label="validation check runs",
+    )
+    workflow = _workflow_verdict(
+        workflow_payload, check_payload, expected_head_sha=expected_head_sha
+    )
+
+    second_pr = _fetch_github_json(LEADERBOARD_PR_ENDPOINT, label="PR #37 recheck")
+    second_projection = _pr_projection(
+        second_pr, expected_head_sha=expected_head_sha
+    )
+    _validate_pr_surface(
+        second_projection,
+        expected_title=expected_title,
+        expected_body=expected_body,
+    )
+    if second_projection != first_projection:
+        raise LeaderboardV3Error("PR #37 changed during post-push verification")
+
+    complete = workflow["status"] == "PASS"
+    return {
+        "schema": 1,
+        "status": "PASS" if complete else str(workflow["status"]),
+        "complete": complete,
+        "pr_number": LEADERBOARD_PR_NUMBER,
+        "head_sha": expected_head_sha,
+        "source_revision": source_revision,
+        "release_receipt_sha256": release_sha256,
+        "expected_pr_title": expected_title,
+        "changed_files": sorted(LEADERBOARD_CHANGED_FILES),
+        "candidate_yaml_sha256": _sha256_bytes(candidate_yaml_bytes),
+        "candidate_readme_sha256": _sha256_bytes(candidate_readme_bytes),
+        "canonical_pr_body_sha256": _sha256_bytes(expected_body.encode("utf-8")),
+        "upstream_validator_sha256": upstream_validator_sha256,
+        "upstream_validator_result": validator_result,
+        "public_url_count": len(url_results),
+        "public_urls_sha256": _json_sha256(url_results),
+        "workflow": workflow,
+    }
+
+
 def fetch_public_scorecard(card_id: str) -> dict[str, Any]:
     if UUID_RE.fullmatch(card_id) is None:
         raise LeaderboardV3Error("cannot fetch an invalid scorecard ID")
@@ -2293,7 +2955,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument(
         "--competition-journal-snapshot", type=Path, required=True
     )
+    parser.add_argument(
+        "--verify-post-push",
+        action="store_true",
+        help="verify the already-pushed PR transaction without mutating GitHub",
+    )
+    parser.add_argument("--leaderboard-checkout", type=Path)
+    parser.add_argument("--expected-pr-head-sha")
+    parser.add_argument("--upstream-validator-sha256")
     args = parser.parse_args(argv)
+    post_push_values = (
+        args.leaderboard_checkout,
+        args.expected_pr_head_sha,
+        args.upstream_validator_sha256,
+    )
+    if args.verify_post_push and any(value is None for value in post_push_values):
+        parser.error(
+            "--verify-post-push requires --leaderboard-checkout, "
+            "--expected-pr-head-sha, and --upstream-validator-sha256"
+        )
+    if not args.verify_post_push and any(
+        value is not None for value in post_push_values
+    ):
+        parser.error("post-push arguments require --verify-post-push")
+    exit_code = 0
     try:
         baseline, _baseline_bytes = _load_yaml(
             args.baseline_yaml,
@@ -2362,6 +3047,27 @@ def main(argv: Sequence[str] | None = None) -> int:
         )
         summary["candidate_yaml_sha256"] = _sha256_bytes(candidate_bytes)
         summary["candidate_readme_sha256"] = _sha256_bytes(readme_bytes)
+        summary["canonical_pr_body_sha256"] = _sha256_bytes(
+            canonical_pr_body(candidate_readme).encode("utf-8")
+        )
+        if args.verify_post_push:
+            assert args.leaderboard_checkout is not None
+            assert args.expected_pr_head_sha is not None
+            assert args.upstream_validator_sha256 is not None
+            post_push = verify_post_push_transaction(
+                candidate=candidate,
+                candidate_yaml_bytes=candidate_bytes,
+                candidate_readme=candidate_readme,
+                candidate_readme_bytes=readme_bytes,
+                offline_summary=summary,
+                release_sha256=release_sha256,
+                leaderboard_checkout=args.leaderboard_checkout,
+                expected_head_sha=args.expected_pr_head_sha,
+                upstream_validator_sha256=args.upstream_validator_sha256,
+            )
+            summary["post_push"] = post_push
+            if post_push["status"] != "PASS":
+                exit_code = 3
     except (
         LeaderboardV3Error,
         OSError,
@@ -2372,7 +3078,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(f"v3 leaderboard gate FAIL: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(summary, sort_keys=True))
-    return 0
+    return exit_code
 
 
 if __name__ == "__main__":

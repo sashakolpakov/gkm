@@ -1717,11 +1717,24 @@ their historical scorecards:
 Then:
 
 1. update `submissions/gkm/README.md` and `submission.yaml`;
-2. validate the leaderboard schema;
+2. run the offline v3 release gate and the exact current upstream
+   `.github/scripts/validate_submission.py` in a clean leaderboard checkout,
+   recording the upstream validator SHA-256 and its successful result;
 3. commit and push the `gkm-submission` branch;
-4. change PR #37 title and body;
-5. inspect rendered links, checks, and reviewer comments;
-6. report only confirmed remote changes.
+4. change PR #37 to the gate-rendered title and set its body byte-for-byte to
+   the validated `submissions/gkm/README.md`;
+5. run `arc_agi3_leaderboard_v3_gate.py --verify-post-push` against the clean
+   exact pushed head, passing the leaderboard checkout, full head SHA, and
+   recorded upstream-validator SHA-256.  This read-only mode must reopen PR
+   #37, bind its base/head repositories and branches, compare the remote YAML
+   and README bytes, require exactly those two changed files, resolve every
+   public URL, rerun the pinned upstream validator, and recheck the PR after
+   the network reads;
+6. require the exact-head `Validate Submission` workflow and `validate` check
+   to pass.  `MAINTAINER_ACTION_REQUIRED` or `WORKFLOW_NOT_COMPLETE` is an
+   explicit nonzero, not-complete result, never a release PASS;
+7. inspect rendered links and reviewer comments, then report only confirmed
+   remote changes.
 
 ## 10. Automated contiguous-campaign orchestrator
 
@@ -3228,9 +3241,8 @@ The overall program is complete when:
       OpenAI as a company) as a submission author;
 - [x] GKM/OPINE/Retrodict/baseline1 statistics use one documented schema;
 - [ ] PR #37 title, body, YAML, README, links, and scorecard are updated;
-- [ ] the frozen v2.0 benchmark surfaces are remotely open and locally
-      validator-clean, but the maintainer-gated validation workflow has
-      actually run and passed;
+- [ ] the final v3 PR head passes both the pinned local upstream validator and
+      the remotely reopened exact-head `Validate Submission` workflow/check;
 - [x] the author explicitly reordered and released the conservative
       manuscript/downstream phase before the final 183/183 remainder;
 - [ ] the production contiguous scheduler, deterministic journal replay
