@@ -1,6 +1,6 @@
 # Build verification
 
-Verified in the integrated repository on 2026-08-03 against frozen release commit
+Verified in the integrated repository on 2026-08-04 against frozen release commit
 `9235ed26627140460efa1f6ca5e4041470cddc14` and schema-v2 receipt
 `140e37ca7014d5aa6a48a3808fd94e90209c56499dbcd7df9f0fe733a29a7681`.
 
@@ -53,7 +53,7 @@ Verified in the integrated repository on 2026-08-03 against frozen release commi
 ## Repository checks
 
 - Unified release-bound manuscript reproduction: passed.
-- Manuscript test target: 229 tests passed.
+- Manuscript test target: 453 tests passed.
 - Fixed-scope SHA-256 integrity manifest: passed.
 - Sphinx 9.1.0 strict HTML build (`-W`): passed.
 - Main paper and one-page PDF builds: passed.
