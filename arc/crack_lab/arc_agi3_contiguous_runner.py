@@ -43,6 +43,10 @@ import arc_agi3_compatibility_arena_closure as CompatibilityClosure
 JOURNAL_SCHEMA = 1
 RUNNER_SCHEMA = 1
 MAX_LANES = 6
+MAX_VERIFIED_QUIESCENT_COLLECTIONS = 2 * MAX_LANES
+MAX_QUIESCENT_COLLECTION_DIRECTORIES = (
+    Transport.MAX_APP_SERVER_STATE_FILES
+)
 JOURNAL_SEGMENT_EVENT_LIMIT = 256
 MIN_JOURNAL_FILESYSTEM_FREE_BYTES = 64 * 1024 * 1024
 MIN_JOURNAL_FILESYSTEM_FREE_INODES = 256
@@ -12541,6 +12545,7 @@ class ContiguousCampaignRunner:
                     allow_arena_teardown_receipt=(
                         attempt["teardown"] is not None
                     ),
+                    teardown=attempt["teardown"],
                 )
             if attempt.get("protocol_invalid") is not None:
                 protocol_invalid = attempt["protocol_invalid"]
@@ -14249,7 +14254,398 @@ class ContiguousCampaignRunner:
             }
         )
 
+    @staticmethod
+    def _collection_evidence_roots(
+        spec: AttemptSpec,
+    ) -> tuple[tuple[str, Path], ...]:
+        return (
+            ("host_evidence", Path(spec.host_transcript_path).parent),
+            ("proposer_output", Path(spec.output_dir)),
+            ("controller_state", Path(spec.app_server_state_dir)),
+        )
+
+    @classmethod
+    def _snapshot_quiescent_collection_evidence(
+        cls,
+        spec: AttemptSpec,
+    ) -> str:
+        """Return a fixed read-only digest of quiescent collection evidence.
+
+        File count follows the authoritative inventory's file-only bound;
+        directories have a separate bound and do not consume file slots.
+        Exact names, types, identity, ownership, size, nanosecond times, and
+        every file's content hash are streamed into one digest; nothing
+        proportional to the tree is retained.  This is called only after typed
+        teardown proves there is no live writer, and it never mutates evidence.
+        """
+
+        aggregate = hashlib.sha256()
+        root_identities: set[tuple[int, int]] = set()
+
+        def metadata_fields(metadata: os.stat_result) -> tuple[int, ...]:
+            return (
+                metadata.st_dev,
+                metadata.st_ino,
+                metadata.st_mode,
+                metadata.st_nlink,
+                metadata.st_uid,
+                metadata.st_gid,
+                metadata.st_size,
+                metadata.st_mtime_ns,
+                metadata.st_ctime_ns,
+            )
+
+        for label, root in cls._collection_evidence_roots(spec):
+            if not root.is_absolute():
+                raise ContiguousRunnerError(
+                    f"quiescent {label} root is not absolute"
+                )
+            try:
+                root_descriptor = os.open(
+                    root,
+                    os.O_RDONLY
+                    | getattr(os, "O_DIRECTORY", 0)
+                    | getattr(os, "O_NOFOLLOW", 0),
+                )
+            except OSError as exc:
+                raise ContiguousRunnerError(
+                    f"quiescent {label} root cannot be opened"
+                ) from exc
+            root_metadata = os.fstat(root_descriptor)
+            root_identity = (
+                root_metadata.st_dev,
+                root_metadata.st_ino,
+            )
+            if root_identity in root_identities:
+                os.close(root_descriptor)
+                raise ContiguousRunnerError(
+                    "quiescent collection evidence roots overlap"
+                )
+            root_identities.add(root_identity)
+            file_count = 0
+            directory_count = 0
+            total_bytes = 0
+
+            def emit(
+                kind: str,
+                relative: str,
+                metadata: os.stat_result,
+                content_sha256: str | None = None,
+            ) -> None:
+                aggregate.update(_canonical_json({
+                    "label": label,
+                    "kind": kind,
+                    "path": relative,
+                    "metadata": metadata_fields(metadata),
+                    "content_sha256": content_sha256,
+                }))
+                aggregate.update(b"\n")
+
+            def visit(
+                directory_descriptor: int,
+                relative_parent: PurePosixPath,
+                depth: int,
+            ) -> os.stat_result:
+                nonlocal file_count, directory_count, total_bytes
+                if depth > Transport.MAX_APP_SERVER_STATE_DEPTH:
+                    raise ContiguousRunnerError(
+                        f"quiescent {label} tree exceeds its depth bound"
+                    )
+                before = os.fstat(directory_descriptor)
+                relative_text = (
+                    "."
+                    if relative_parent == PurePosixPath(".")
+                    else relative_parent.as_posix()
+                )
+                if (
+                    not stat.S_ISDIR(before.st_mode)
+                    or before.st_uid != os.getuid()
+                    or stat.S_IMODE(before.st_mode) & 0o022
+                ):
+                    raise ContiguousRunnerError(
+                        f"quiescent {label} directory is unsafe"
+                    )
+                names = sorted(os.listdir(directory_descriptor))
+                for name in names:
+                    if (
+                        not isinstance(name, str)
+                        or not name
+                        or name in {".", ".."}
+                        or "/" in name
+                        or "\x00" in name
+                    ):
+                        raise ContiguousRunnerError(
+                            f"quiescent {label} entry name is unsafe"
+                        )
+                    relative = relative_parent / name
+                    relative_text = relative.as_posix()
+                    linked_before = os.stat(
+                        name,
+                        dir_fd=directory_descriptor,
+                        follow_symlinks=False,
+                    )
+                    if stat.S_ISDIR(linked_before.st_mode):
+                        directory_count += 1
+                        if (
+                            directory_count
+                            > MAX_QUIESCENT_COLLECTION_DIRECTORIES
+                        ):
+                            raise ContiguousRunnerError(
+                                f"quiescent {label} tree exceeds its directory "
+                                "bound"
+                            )
+                        child_descriptor = os.open(
+                            name,
+                            os.O_RDONLY
+                            | getattr(os, "O_DIRECTORY", 0)
+                            | getattr(os, "O_NOFOLLOW", 0),
+                            dir_fd=directory_descriptor,
+                        )
+                        try:
+                            opened = os.fstat(child_descriptor)
+                            if metadata_fields(opened) != metadata_fields(
+                                linked_before
+                            ):
+                                raise ContiguousRunnerError(
+                                    f"quiescent {label} directory changed"
+                                )
+                            child_after = visit(
+                                child_descriptor, relative, depth + 1
+                            )
+                            linked_after = os.stat(
+                                name,
+                                dir_fd=directory_descriptor,
+                                follow_symlinks=False,
+                            )
+                            if metadata_fields(
+                                child_after
+                            ) != metadata_fields(linked_after):
+                                raise ContiguousRunnerError(
+                                    f"quiescent {label} directory changed"
+                                )
+                        finally:
+                            os.close(child_descriptor)
+                        continue
+                    if (
+                        not stat.S_ISREG(linked_before.st_mode)
+                        or linked_before.st_nlink != 1
+                        or linked_before.st_size < 0
+                        or linked_before.st_size
+                        > Transport.MAX_APP_SERVER_STATE_FILE_BYTES
+                        or linked_before.st_uid != os.getuid()
+                        or stat.S_IMODE(linked_before.st_mode) & 0o022
+                    ):
+                        raise ContiguousRunnerError(
+                            f"quiescent {label} file inventory is unsafe"
+                        )
+                    file_count += 1
+                    total_bytes += linked_before.st_size
+                    if (
+                        file_count > Transport.MAX_APP_SERVER_STATE_FILES
+                        or total_bytes
+                        > Transport.MAX_APP_SERVER_STATE_TOTAL_BYTES
+                    ):
+                        raise ContiguousRunnerError(
+                            f"quiescent {label} file inventory is unsafe"
+                        )
+                    descriptor = os.open(
+                        name,
+                        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                        dir_fd=directory_descriptor,
+                    )
+                    try:
+                        opened = os.fstat(descriptor)
+                        content = hashlib.sha256()
+                        observed = 0
+                        while True:
+                            block = os.read(descriptor, 1024 * 1024)
+                            if not block:
+                                break
+                            observed += len(block)
+                            if observed > linked_before.st_size:
+                                raise ContiguousRunnerError(
+                                    f"quiescent {label} file grew"
+                                )
+                            content.update(block)
+                        linked_after = os.stat(
+                            name,
+                            dir_fd=directory_descriptor,
+                            follow_symlinks=False,
+                        )
+                        after = os.fstat(descriptor)
+                        if not (
+                            metadata_fields(linked_before)
+                            == metadata_fields(opened)
+                            == metadata_fields(after)
+                            == metadata_fields(linked_after)
+                            and observed == after.st_size
+                        ):
+                            raise ContiguousRunnerError(
+                                f"quiescent {label} file changed"
+                            )
+                        emit(
+                            "file",
+                            relative_text,
+                            after,
+                            content.hexdigest(),
+                        )
+                    finally:
+                        os.close(descriptor)
+                names_after = sorted(os.listdir(directory_descriptor))
+                after = os.fstat(directory_descriptor)
+                if (
+                    names_after != names
+                    or metadata_fields(after) != metadata_fields(before)
+                ):
+                    raise ContiguousRunnerError(
+                        f"quiescent {label} directory changed during digest"
+                    )
+                emit(
+                    "directory",
+                    relative_text,
+                    after,
+                )
+                return after
+
+            try:
+                root_after = visit(
+                    root_descriptor, PurePosixPath("."), 0
+                )
+                linked_root = root.stat(follow_symlinks=False)
+                if metadata_fields(root_after) != metadata_fields(
+                    linked_root
+                ):
+                    raise ContiguousRunnerError(
+                        f"quiescent {label} root changed"
+                    )
+            except ContiguousRunnerError:
+                raise
+            except OSError as exc:
+                raise ContiguousRunnerError(
+                    f"quiescent {label} tree changed during digest"
+                ) from exc
+            finally:
+                os.close(root_descriptor)
+        return aggregate.hexdigest()
+
+    @staticmethod
+    def _collection_validation_binding(
+        spec: AttemptSpec,
+        prepared: BackendPreparation,
+        launched: BackendLaunch,
+        collection: BackendCollection,
+        *,
+        teardown: BackendTeardownProof,
+        secret_sentinels: tuple[str, ...],
+        controller_state_canaries: tuple[Taint.LiveCanary, ...],
+    ) -> str:
+        return hashlib.sha256(_canonical_json({
+            "schema": 1,
+            "kind": "contiguous_collection_validation_binding",
+            "spec": asdict(spec),
+            "prepared": asdict(prepared),
+            "launched": asdict(launched),
+            "collection": asdict(collection),
+            "teardown": asdict(teardown),
+            "secret_sentinels": sorted(set(secret_sentinels)),
+            "controller_state_canaries": [
+                asdict(item) for item in controller_state_canaries
+            ],
+        })).hexdigest()
+
     def _validate_collection(
+        self,
+        spec: AttemptSpec,
+        prepared: BackendPreparation,
+        launched: BackendLaunch,
+        collection: BackendCollection,
+        *,
+        allow_arena_teardown_receipt: bool = False,
+        teardown: BackendTeardownProof | None = None,
+    ) -> None:
+        """Cache only fully scanned evidence after authenticated quiescence.
+
+        Pre-teardown calls always reopen every byte.  Once the journal has
+        replay-validated container, controller, relay, endpoint, and descendant
+        absence, one further full validation and a read-only byte snapshot are
+        performed.  Only that quiescent exact attempt/teardown binding may be
+        reused.  This deliberately relies on the trusted-host/process-absence
+        boundary rather than pretending a tree walk is an atomic snapshot of
+        live mutable evidence.  Reducer replay never chmods or writes evidence.
+        """
+
+        if not allow_arena_teardown_receipt:
+            if teardown is not None:
+                raise ContiguousRunnerError(
+                    "pre-teardown collection received teardown authority"
+                )
+            self._validate_collection_uncached(
+                spec,
+                prepared,
+                launched,
+                collection,
+                allow_arena_teardown_receipt=False,
+            )
+            return
+        if not isinstance(teardown, BackendTeardownProof):
+            raise ContiguousRunnerError(
+                "post-teardown collection lacks quiescence proof"
+            )
+        validated_teardown = _backend_teardown_from_dict(
+            asdict(teardown)
+        )
+        if validated_teardown != teardown:
+            raise ContiguousRunnerError(
+                "post-teardown collection changed quiescence proof"
+            )
+        binding = self._collection_validation_binding(
+            spec,
+            prepared,
+            launched,
+            collection,
+            teardown=validated_teardown,
+            secret_sentinels=self._secret_sentinels,
+            controller_state_canaries=self._controller_state_canaries,
+        )
+        cache = getattr(
+            self, "_verified_quiescent_collections", None
+        )
+        if cache is None:
+            cache = {}
+            self._verified_quiescent_collections = cache
+        cached = cache.get(spec.attempt_id)
+        if cached is not None:
+            evidence_digest = self._snapshot_quiescent_collection_evidence(
+                spec
+            )
+            observed = hashlib.sha256(_canonical_json({
+                "binding": binding,
+                "quiescent_evidence_digest": evidence_digest,
+            })).hexdigest()
+            if cached != observed:
+                raise ContiguousRunnerError(
+                    "quiescent collection binding or evidence changed"
+                )
+            return
+        self._validate_collection_uncached(
+            spec,
+            prepared,
+            launched,
+            collection,
+            allow_arena_teardown_receipt=True,
+        )
+        evidence_digest = self._snapshot_quiescent_collection_evidence(
+            spec
+        )
+        cache_value = hashlib.sha256(_canonical_json({
+            "binding": binding,
+            "quiescent_evidence_digest": evidence_digest,
+        })).hexdigest()
+        if len(cache) >= MAX_VERIFIED_QUIESCENT_COLLECTIONS:
+            cache.pop(next(iter(cache)))
+        cache[spec.attempt_id] = cache_value
+
+    def _validate_collection_uncached(
         self,
         spec: AttemptSpec,
         prepared: BackendPreparation,
@@ -19318,6 +19714,16 @@ class ContiguousCampaignRunner:
                 recorded_at=now,
             )
             return
+        # The explicit result transition below legitimately changes state/WIP
+        # custody metadata.  Discard the pre-transition, in-memory snapshot
+        # before any chmod so a failure cannot leave stale authority.  The
+        # next ordinary reducer pass must perform a full validation and take
+        # a fresh read-only snapshot of the post-transition evidence.
+        quiescent_cache = getattr(
+            self, "_verified_quiescent_collections", None
+        )
+        if isinstance(quiescent_cache, dict):
+            quiescent_cache.pop(attempt_id, None)
         state_root = Path(attempt["spec"].app_server_state_dir)
         expected_state_sha = (
             attempt["collection"].app_server_state_tree_sha256

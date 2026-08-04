@@ -13,6 +13,7 @@ import time
 import uuid
 from dataclasses import asdict, replace
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -126,6 +127,106 @@ def test_app_server_pipe_drains_coalesced_lines_before_select():
         read_stream.close()
         os.close(read_fd)
         os.close(write_fd)
+
+
+def test_quiescent_collection_snapshot_is_read_only_and_content_bound(
+    tmp_path,
+):
+    generation = (tmp_path / "generation").resolve()
+    host = generation / "host"
+    output = generation / "output"
+    state = generation / "state" / "codex_home"
+    for root in (host, output, state):
+        (root / "a-earlier").mkdir(parents=True)
+        (root / "z-later").mkdir()
+        (root / "a-earlier" / "evidence.bin").write_bytes(b"clean")
+        (root / "z-later" / "evidence.bin").write_bytes(b"later")
+    spec = SimpleNamespace(
+        host_transcript_path=str(host / "backend.jsonl"),
+        output_dir=str(output),
+        app_server_state_dir=str(state),
+    )
+    paths = tuple(sorted(generation.rglob("*")))
+    before_metadata = {
+        path: (
+            path.stat(follow_symlinks=False).st_mode,
+            path.stat(follow_symlinks=False).st_size,
+            path.stat(follow_symlinks=False).st_mtime_ns,
+            path.stat(follow_symlinks=False).st_ctime_ns,
+        )
+        for path in paths
+    }
+    baseline = (
+        R.ContiguousCampaignRunner
+        ._snapshot_quiescent_collection_evidence(spec)
+    )
+    after_metadata = {
+        path: (
+            path.stat(follow_symlinks=False).st_mode,
+            path.stat(follow_symlinks=False).st_size,
+            path.stat(follow_symlinks=False).st_mtime_ns,
+            path.stat(follow_symlinks=False).st_ctime_ns,
+        )
+        for path in paths
+    }
+    assert after_metadata == before_metadata
+    earlier = state / "a-earlier" / "evidence.bin"
+    earlier.write_bytes(b"secret")
+    changed = (
+        R.ContiguousCampaignRunner
+        ._snapshot_quiescent_collection_evidence(spec)
+    )
+    assert changed != baseline
+
+
+def test_quiescent_collection_snapshot_uses_file_only_bound(
+    tmp_path, monkeypatch
+):
+    generation = (tmp_path / "generation").resolve()
+    roots = (
+        generation / "host",
+        generation / "output",
+        generation / "state" / "codex_home",
+    )
+    for root in roots:
+        (root / "empty-a" / "empty-b").mkdir(parents=True)
+        (root / "one.bin").write_bytes(b"one")
+    spec = SimpleNamespace(
+        host_transcript_path=str(roots[0] / "backend.jsonl"),
+        output_dir=str(roots[1]),
+        app_server_state_dir=str(roots[2]),
+    )
+    monkeypatch.setattr(Transport, "MAX_APP_SERVER_STATE_FILES", 1)
+    R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(spec)
+    extra = roots[0] / "two.bin"
+    extra.write_bytes(b"two")
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="file inventory is unsafe",
+    ):
+        R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(
+            spec
+        )
+
+
+def test_quiescent_collection_snapshot_rejects_overlapping_roots(tmp_path):
+    shared = (tmp_path / "shared").resolve()
+    state = (tmp_path / "state").resolve()
+    shared.mkdir()
+    state.mkdir()
+    (shared / "evidence.bin").write_bytes(b"one")
+    spec = SimpleNamespace(
+        host_transcript_path=str(shared / "backend.jsonl"),
+        output_dir=str(shared),
+        app_server_state_dir=str(state),
+    )
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="evidence roots overlap",
+    ):
+        R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(
+            spec
+        )
 
 
 def _provider_window(
@@ -5980,6 +6081,37 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     monkeypatch.setattr(
         R.Scheduler, "verify_decision", verify_decision_once
     )
+    collection_validations = 0
+    full_collection_validations = 0
+    original_validate_collection = (
+        R.ContiguousCampaignRunner._validate_collection
+    )
+    original_validate_collection_uncached = (
+        R.ContiguousCampaignRunner._validate_collection_uncached
+    )
+
+    def counted_collection_validation(self, *args, **kwargs):
+        nonlocal collection_validations
+        collection_validations += 1
+        return original_validate_collection(self, *args, **kwargs)
+
+    def counted_full_collection_validation(self, *args, **kwargs):
+        nonlocal full_collection_validations
+        full_collection_validations += 1
+        return original_validate_collection_uncached(
+            self, *args, **kwargs
+        )
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_validate_collection",
+        counted_collection_validation,
+    )
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_validate_collection_uncached",
+        counted_full_collection_validation,
+    )
 
     def strategy(spec):
         if spec.game != target_game:
@@ -5987,7 +6119,7 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
         specs.append(spec)
         return R.AttemptResult(kind="clean_no_progress")
 
-    runner, _, _, _, _ = make_runner(
+    runner, backend, _, _, _ = make_runner(
         tmp_path, backend=FakeBackend(strategy), max_lanes=6
     )
     for _ in range(100):
@@ -6037,6 +6169,265 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     for _ in range(3):
         runner.state()
     assert verified_decisions == before_cached_reads
+    # Bound the expensive cryptographic/secret-scan work directly.  A
+    # collection has at most two pre-teardown passes (admission plus journal
+    # replay), one exact post-teardown pass, and one fresh pass after the
+    # explicit result transition changes state/WIP custody metadata.  Only
+    # then may the read-only quiescent byte-digest cache serve reducer reads.
+    assert full_collection_validations <= 4 * len(backend.collections)
+    assert collection_validations > full_collection_validations
+
+
+def _opaque_quiescence_proof() -> R.BackendTeardownProof:
+    return R.BackendTeardownProof(
+        container_id="1" * 64,
+        cause="normal_exit",
+        proof_sha256="2" * 64,
+        container_inspect_absent=True,
+        container_top_absent=True,
+        identity_query_empty=True,
+        no_descendants=True,
+        app_server_process_absent=True,
+        app_server_process_group_absent=True,
+        bridge_socket_absent=True,
+        bridge_token_absent=True,
+        app_server_control_absent=True,
+        arena_relay_container_id="3" * 64,
+        arena_volume_name="arc-agi3-arena-123456abcdef-" + "4" * 32,
+        arena_relay_inspect_absent=True,
+        arena_relay_top_absent=True,
+        arena_relay_identity_query_empty=True,
+        arena_volume_inspect_absent=True,
+        arena_volume_identity_query_empty=True,
+        arena_relay_attachment_status="CLEAN_EOF",
+        arena_relay_teardown_receipt_path="/tmp/arena-teardown.json",
+        arena_relay_teardown_receipt_sha256="5" * 64,
+        process_identity_authority="controller_container_cgroup",
+        controller_container_id="6" * 64,
+        egress_proxy_container_id="7" * 64,
+        controller_inspect_absent=True,
+        controller_identity_query_empty=True,
+        controller_top_absent=True,
+        controller_no_descendants=True,
+        egress_proxy_inspect_absent=True,
+        egress_proxy_identity_query_empty=True,
+        egress_proxy_top_absent=True,
+        egress_proxy_no_descendants=True,
+        controller_absence_receipt_sha256="8" * 64,
+        canary_reveal_path="/tmp/canary-reveal.json",
+        canary_reveal_sha256="9" * 64,
+    )
+
+
+def test_collection_validation_cache_is_post_teardown_bounded_and_digest_bound(
+    monkeypatch,
+):
+    runner = R.ContiguousCampaignRunner.__new__(
+        R.ContiguousCampaignRunner
+    )
+    runner._secret_sentinels = ()
+    runner._controller_state_canaries = ()
+    spec = SimpleNamespace(attempt_id="attempt-1")
+    teardown = _opaque_quiescence_proof()
+    full_validations = 0
+    snapshot_calls = 0
+    snapshot_digest = "b" * 64
+
+    monkeypatch.setattr(
+        runner,
+        "_collection_validation_binding",
+        lambda *_args, **_kwargs: "a" * 64,
+    )
+    monkeypatch.setattr(
+        R,
+        "_backend_teardown_from_dict",
+        lambda _value: teardown,
+    )
+
+    def full_validation(*_args, **_kwargs):
+        nonlocal full_validations
+        full_validations += 1
+
+    def snapshot(_spec):
+        nonlocal snapshot_calls
+        snapshot_calls += 1
+        return snapshot_digest
+
+    monkeypatch.setattr(
+        runner, "_snapshot_quiescent_collection_evidence", snapshot
+    )
+    monkeypatch.setattr(
+        runner, "_validate_collection_uncached", full_validation
+    )
+    opaque = object()
+    runner._validate_collection(spec, opaque, opaque, opaque)
+    runner._validate_collection(spec, opaque, opaque, opaque)
+    assert full_validations == 2
+    assert snapshot_calls == 0
+    assert not hasattr(runner, "_verified_quiescent_collections")
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="received teardown authority",
+    ):
+        runner._validate_collection(
+            spec, opaque, opaque, opaque, teardown=teardown
+        )
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="lacks quiescence proof",
+    ):
+        runner._validate_collection(
+            spec,
+            opaque,
+            opaque,
+            opaque,
+            allow_arena_teardown_receipt=True,
+        )
+
+    runner._validate_collection(
+        spec,
+        opaque,
+        opaque,
+        opaque,
+        allow_arena_teardown_receipt=True,
+        teardown=teardown,
+    )
+    for _ in range(4):
+        runner._validate_collection(
+            spec,
+            opaque,
+            opaque,
+            opaque,
+            allow_arena_teardown_receipt=True,
+            teardown=teardown,
+        )
+    assert full_validations == 3
+    assert snapshot_calls == 5
+    assert len(runner._verified_quiescent_collections) == 1
+    assert all(
+        isinstance(value, str)
+        and len(value) == 64
+        and int(value, 16) >= 0
+        for value in runner._verified_quiescent_collections.values()
+    )
+
+    snapshot_digest = "c" * 64
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="binding or evidence changed",
+    ):
+        runner._validate_collection(
+            spec,
+            opaque,
+            opaque,
+            opaque,
+            allow_arena_teardown_receipt=True,
+            teardown=teardown,
+    )
+    assert full_validations == 3
+    assert snapshot_calls == 6
+
+    snapshot_digest = "b" * 64
+    runner._verified_quiescent_collections = {
+        f"old-{index}": "d" * 64
+        for index in range(R.MAX_VERIFIED_QUIESCENT_COLLECTIONS)
+    }
+    spec.attempt_id = "attempt-new"
+    runner._validate_collection(
+        spec,
+        opaque,
+        opaque,
+        opaque,
+        allow_arena_teardown_receipt=True,
+        teardown=teardown,
+    )
+    assert full_validations == 4
+    assert snapshot_calls == 7
+    assert len(runner._verified_quiescent_collections) == (
+        R.MAX_VERIFIED_QUIESCENT_COLLECTIONS
+    )
+    assert "old-0" not in runner._verified_quiescent_collections
+    assert "attempt-new" in runner._verified_quiescent_collections
+
+
+def test_quiescent_snapshot_read_failure_is_classified_and_retryable(
+    tmp_path,
+    monkeypatch,
+):
+    generation = (tmp_path / "generation").resolve()
+    host = generation / "host"
+    output = generation / "output"
+    state = generation / "state" / "codex_home"
+    for root in (host, output, state):
+        root.mkdir(parents=True)
+        (root / "evidence.bin").write_bytes(b"clean")
+    spec = SimpleNamespace(
+        attempt_id="attempt-1",
+        host_transcript_path=str(host / "backend.jsonl"),
+        output_dir=str(output),
+        app_server_state_dir=str(state),
+    )
+    teardown = _opaque_quiescence_proof()
+    runner = R.ContiguousCampaignRunner.__new__(
+        R.ContiguousCampaignRunner
+    )
+    runner._secret_sentinels = ()
+    runner._controller_state_canaries = ()
+    full_validations = 0
+    original_read = os.read
+    injected = False
+
+    def full_validation(*_args, **_kwargs):
+        nonlocal full_validations
+        full_validations += 1
+
+    def fail_first_read(descriptor, maximum):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise OSError("synthetic snapshot read failure")
+        return original_read(descriptor, maximum)
+
+    monkeypatch.setattr(
+        runner,
+        "_collection_validation_binding",
+        lambda *_args, **_kwargs: "a" * 64,
+    )
+    monkeypatch.setattr(
+        runner, "_validate_collection_uncached", full_validation
+    )
+    monkeypatch.setattr(
+        R, "_backend_teardown_from_dict", lambda _value: teardown
+    )
+    monkeypatch.setattr(os, "read", fail_first_read)
+    opaque = object()
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="quiescent host_evidence tree changed during digest",
+    ):
+        runner._validate_collection(
+            spec,
+            opaque,
+            opaque,
+            opaque,
+            allow_arena_teardown_receipt=True,
+            teardown=teardown,
+        )
+    assert full_validations == 1
+    assert not getattr(runner, "_verified_quiescent_collections", {})
+
+    monkeypatch.setattr(os, "read", original_read)
+    runner._validate_collection(
+        spec,
+        opaque,
+        opaque,
+        opaque,
+        allow_arena_teardown_receipt=True,
+        teardown=teardown,
+    )
+    assert full_validations == 2
+    assert len(runner._verified_quiescent_collections) == 1
+    R.ContiguousCampaignRunner._snapshot_quiescent_collection_evidence(spec)
 
 
 def test_mismatched_wip_is_dropped_but_clean_failure_counts(tmp_path):
@@ -7313,6 +7704,147 @@ def test_crash_after_collection_recovers_before_teardown(tmp_path):
     assert any(
         event["kind"] == "ATTEMPT_TORN_DOWN"
         for event in recovered.journal.read()
+    )
+
+
+def test_post_teardown_snapshot_is_reducer_read_only_and_restart_safe(
+    tmp_path, monkeypatch
+):
+    backend = FakeBackend(
+        lambda spec: R.AttemptResult(kind="clean_no_progress")
+    )
+    backend.crash_after_first_collect = True
+    runner, _, gate, builder, _ = make_runner(
+        tmp_path, backend=backend, max_lanes=1
+    )
+    runner.cycle()
+    with pytest.raises(R.SimulatedCrash):
+        runner.cycle()
+    attempt = next(iter(runner.state()["attempts"].values()))
+    assert attempt["phase"] == "EXITED"
+    generation = Path(attempt["spec"].generation_dir)
+
+    recovering = R.ContiguousCampaignRunner(
+        tmp_path / "campaign",
+        backend=backend,
+        promotion_gate=gate,
+        input_builder=builder,
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        controller_state_canaries=backend.controller_state_canaries,
+        id_factory=ids(),
+    )
+    current = recovering.state()
+    attempt_id, live_attempt = next(iter(current["attempts"].items()))
+    recovering._collect_exited(
+        attempt_id, live_attempt, now=recovering.clock()
+    )
+    collected = recovering.state()["attempts"][attempt_id]
+    assert collected["phase"] == "COLLECTED"
+    recovering._teardown_collected(
+        attempt_id, collected, now=recovering.clock()
+    )
+    torn_state = recovering.state()
+    torn_attempt = torn_state["attempts"][attempt_id]
+    assert torn_attempt["phase"] == "TORN_DOWN"
+    assert attempt_id in recovering._verified_quiescent_collections
+
+    def evidence_metadata():
+        return {
+            path: (
+                path.stat(follow_symlinks=False).st_mode,
+                path.stat(follow_symlinks=False).st_size,
+                path.stat(follow_symlinks=False).st_mtime_ns,
+                path.stat(follow_symlinks=False).st_ctime_ns,
+            )
+            for path in sorted(generation.rglob("*"))
+        }
+
+    before_result_seal = evidence_metadata()
+    original_seal = R._seal_regular_tree
+
+    def fail_result_seal(_root):
+        original_seal(_root)
+        raise R.ContiguousRunnerError("synthetic state seal failure")
+
+    monkeypatch.setattr(R, "_seal_regular_tree", fail_result_seal)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="synthetic state seal failure",
+    ):
+        recovering._record_torn_down_result(
+            attempt_id, torn_attempt, now=recovering.clock()
+        )
+    assert attempt_id not in recovering._verified_quiescent_collections
+    assert evidence_metadata() != before_result_seal
+    monkeypatch.setattr(R, "_seal_regular_tree", original_seal)
+
+    original_uncached = recovering._validate_collection_uncached
+    full_validations = 0
+
+    def validate_uncached(*args, **kwargs):
+        nonlocal full_validations
+        full_validations += 1
+        return original_uncached(*args, **kwargs)
+
+    monkeypatch.setattr(
+        recovering, "_validate_collection_uncached", validate_uncached
+    )
+
+    before = evidence_metadata()
+    original_chmod = os.chmod
+
+    def reject_generation_chmod(path, mode, *, follow_symlinks=True):
+        selected = Path(path)
+        if selected == generation or generation in selected.parents:
+            raise AssertionError("state replay attempted to chmod evidence")
+        return original_chmod(
+            path, mode, follow_symlinks=follow_symlinks
+        )
+
+    monkeypatch.setattr(os, "chmod", reject_generation_chmod)
+    recovering.state()
+    assert full_validations == 1
+    assert attempt_id in recovering._verified_quiescent_collections
+    assert evidence_metadata() == before
+    monkeypatch.setattr(os, "chmod", original_chmod)
+    monkeypatch.setattr(
+        recovering, "_validate_collection_uncached", original_uncached
+    )
+
+    original_validate = (
+        R.ContiguousCampaignRunner._validate_prepared_input
+    )
+    prepared_validations = 0
+
+    def validate_prepared(*args, **kwargs):
+        nonlocal prepared_validations
+        prepared_validations += 1
+        return original_validate(*args, **kwargs)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_validate_prepared_input",
+        validate_prepared,
+    )
+    restarted = R.ContiguousCampaignRunner(
+        tmp_path / "campaign",
+        backend=backend,
+        promotion_gate=gate,
+        input_builder=builder,
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        controller_state_canaries=backend.controller_state_canaries,
+        id_factory=ids(),
+    )
+    assert evidence_metadata() == before
+    restarted.cycle()
+    assert prepared_validations > 0
+    assert any(
+        event["kind"] == "ATTEMPT_RESULT"
+        for event in restarted.journal.read()
     )
 
 

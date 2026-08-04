@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import ctypes
 import errno
 import hashlib
@@ -508,10 +509,8 @@ def canonical_closure_snapshot() -> dict[str, Any]:
         maximum=MAX_SOURCE_BYTES,
         label="canonical Arena RPC client",
     )
-    analysis = analyze_client_source(raw)
     if (
         raw != _LOADED_CLIENT_RAW
-        or analysis != _LOADED_CLIENT_ANALYSIS
         or _identity(metadata, full=True)
         != _identity(_LOADED_CLIENT_METADATA, full=True)
     ):
@@ -520,7 +519,7 @@ def canonical_closure_snapshot() -> dict[str, Any]:
         )
     return {
         "components": observed,
-        "client": analysis,
+        "client": copy.deepcopy(_LOADED_CLIENT_ANALYSIS),
     }
 
 

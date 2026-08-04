@@ -96,6 +96,35 @@ def test_client_closure_is_exact_and_has_no_host_read_capability():
     assert snapshot["client"]["private_game_state_accesses"] == []
 
 
+def test_canonical_snapshots_reuse_loaded_analysis_and_validate_once(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    root, prepared = _prepared(tmp_path)
+    original_analyze = Closure.analyze_client_source
+    analyzed: list[bytes] = []
+
+    def counted_analyze(raw: bytes):
+        analyzed.append(raw)
+        return original_analyze(raw)
+
+    monkeypatch.setattr(Closure, "analyze_client_source", counted_analyze)
+    first = Closure.canonical_closure_snapshot()
+    second = Closure.canonical_closure_snapshot()
+    assert analyzed == []
+    assert first == second
+
+    # A caller cannot mutate the retained authenticated analysis through a
+    # returned snapshot; this preserves the old fresh-analysis isolation.
+    first["client"]["import_roots"].append("mutated")
+    assert Closure.canonical_closure_snapshot() == second
+    assert analyzed == []
+
+    observed = Closure.validate_closure(root, prepared["receipt_sha256"])
+    assert observed["launch_authorized"] is False
+    assert analyzed == [Closure._LOADED_CLIENT_RAW]
+
+
 def test_client_import_closure_is_stdlib_plus_pinned_numpy_only():
     imports = set(Closure.EXACT_CLIENT_IMPORT_ROOTS)
     assert imports - sys.stdlib_module_names == {"numpy"}
