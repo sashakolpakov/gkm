@@ -46,7 +46,8 @@ PR edit is one coherent release: title, persistent body, YAML, README,
 percentages, links, and scorecard change together. Do not post piecemeal
 explanatory comments or publish the obsolete July score while this update is
 being assembled. A later 183/183 completion triggers a separately audited
-refresh. Contiguous-runner implementation, pilots, and launch remain last.
+refresh. Preparatory contiguous-runner hardening may proceed in parallel;
+production pilots and full launch remain last.
 
 **Reordered execution directive, 2026-07-31:** the author explicitly released
 and moved the conservative manuscript/downstream-documentation phase ahead of
@@ -1766,13 +1767,11 @@ maintain a separately ordered copy of the file list or reimplement its hash.
 
 The current `arc_agi3_contiguous_supervisor.py` is deliberately an admission,
 promotion, recovery, and launch-preflight library; its CLI performs preflight
-only and is not itself the campaign scheduler. The contiguous campaign is not
-launch-ready until a separately tested
-`arc/crack_lab/arc_agi3_contiguous_runner.py` implements the complete state
-machine, container lifecycle, six-lane capacity controller, durable restart
-logic, and post-turn/promotion audits described below. A passing primitives
-suite must never be reported as evidence that this missing execution layer
-exists.
+only and is not itself the campaign scheduler. The separately tested
+`arc/crack_lab/arc_agi3_contiguous_runner.py` and formal orchestrator now supply
+the state-machine and execution layers described below. Their existence and
+focused tests are preparatory evidence only: they do not create production
+launch authority.
 The formal operator entry point is
 `arc/crack_lab/arc_agi3_contiguous_orchestrator.py`; the runner remains its
 state-machine library. The orchestrator requires every campaign root,
@@ -1785,10 +1784,13 @@ condition. It never finds `python3`, Codex, Docker, configuration, credentials,
 or plugins through ambient `PATH`, `PYTHONPATH`, login-shell state, pytest
 environment, or user project discovery.
 The executable preflight is explicitly fail-closed today, even for
-schema-valid attestation JSON. It may be enabled only when the real scheduler,
-machine-observed container attestation producer, Arena RPC boundary, and
-canonical frozen 183/183 release receipt are implemented and bound into the
-control-contract hash.
+schema-valid attestation JSON. Full production launch remains blocked until
+genuine S01--S12 production observers and receipts, a receipt-bound minimal
+role-image build with an immutable repository digest, the exact runtime and
+production-stack evidence, the real ordered-pilot executor and authenticated
+pilot gate, and the canonical frozen 183/183 release receipt are all produced,
+reopened, and bound into one receipt-derived launch authority. Unit or mocked
+passes cannot substitute for any of those objects.
 
 The 2026-07-29 blocker-authority, candidate-ingress, policy-steering, and
 auxiliary-dispatch passes were development checkpoints only. Their test counts
@@ -1954,8 +1956,10 @@ items an operator may resolve interactively after launch:
 - One generated launch-authority receipt, not separately flippable booleans,
   binds every role image, exact runtime/interpreter and loaded-module origins,
   operator/service configuration, full-suite receipt, genuine S01--S12
-  receipts, and the frozen release. Any component-local readiness flag remains
-  false until that receipt verifies.
+  receipts, and the frozen release. No component-local readiness boolean
+  confers authority; full launch authority is derived only by reopening those
+  receipts. The auxiliary adapter remains separately disabled until a real
+  production implementation and its admission evidence exist.
 
 The canonical conformance entry must run both the exact one-owner invariant
 registry and the complete explicit allowlist of contiguous component test
@@ -2396,8 +2400,37 @@ NumPy `uint8` frame surface, while descriptor-confined closure validation binds
 both a deterministic content manifest and per-instance custody. The container
 recipe installs the same client and a hash-pinned NumPy requirements lock; host
 attestation binds the client, both workers, source schema, requirements lock,
-and reviewed recipe. This remains deliberately non-authoritative:
-`launch_authorized` is false and no production launcher consumes the closure.
+and reviewed recipe. This remains deliberately non-authoritative. The ordinary
+contiguous backend now consumes the closure and binds it to the exact
+scheduler-selected host session, socket, token digest, relay, unstarted
+container, image digest, and reviewed build controls. Both backend and runner
+reopen that receipt before launch. The
+closure records `launch_authorized=false`; the per-turn receipt records
+`authority.launch_authority=false` and has no scheduling, mutation, WIP,
+candidate, or promotion authority. The production
+scenario-observer, global-release, and ordered-pilot gates remain separate and
+fail closed, so this integration alone does not make the unattended campaign
+launch-ready.
+Any pinned worker image must be rebuilt from a host-created, receipt-bound
+minimal context after hashing the complete contiguous Containerfile and
+passing that digest through the no-default
+`ARC_AGI3_CONTAINER_RECIPE_SHA256` build argument. The recipe installs it as
+the `org.gkm.arc-agi3.container-recipe-sha256` image label; runtime image
+inspection and the per-turn compatibility receipt independently require
+equality with the current host recipe. Existing or newly built images without
+the exact label are release-blocked before container creation. This
+preparatory tranche has not built or pushed the production role image and has
+not emitted the context-manifest, build-metadata, repository-digest provenance
+receipt required for launch.
+
+If a host process dies during closure publication and leaves the typed staging
+path, that attempt root is never retried or reused. The backend preserves a
+bounded descriptor-safe staging observation, the runner closes the old
+PREPARED identity with zero solver/WIP/cost/promotion authority, and a fresh
+attempt/generation becomes eligible only through the ordinary failure-circuit
+deadline. Repeated quarantines trip the same bounded operator-incident gate;
+ordinary closure errors with no retained staging remain normal retry/circuit
+failures and cannot churn fresh identities.
 The proposed bespoke legacy host-admission layer was rejected and removed;
 the pre-policy LF52 output remains quarantine-only and any promoted result must
 be reproduced through the ordinary fresh contiguous path.
@@ -2981,8 +3014,8 @@ contiguous evidence lineage:
    transactional WIP, exact admission and atomic-promotion fault matrix,
    mutation inverses, and independently reopened 25-game/183-level release;
 8. perform a fresh immutable `run`, a separate reopening `verify`, and bind the
-   verified scenario receipts, frozen release, and exact image before either
-   launch-ready flag may become true.
+   verified scenario receipts, frozen release, and exact image before
+   receipt-derived launch authority may be issued.
 
 Every test, scenario, build, and runtime staging directory must be created
 under its receipt-bound private temporary or campaign root, never under the

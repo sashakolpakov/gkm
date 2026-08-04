@@ -1406,7 +1406,6 @@ def _build(
 
 
 def test_identity_generation_is_unique_and_canonical():
-    assert B.CONTIGUOUS_CONTAINER_LAUNCH_READY is False
     first = B.AttemptIdentity.create(game="wa30", target_level=9)
     second = B.AttemptIdentity.create(
         game="wa30",
@@ -2525,11 +2524,15 @@ def test_formal_container_recipe_pins_base_and_nonroot_user():
     assert "arc_agi3_proposer_worker.py" in recipe
     assert B.LABEL_PROPOSER_WORKER_SHA256 in recipe
     assert B.LABEL_SOURCE_SCHEMA_SHA256 in recipe
+    assert B.LABEL_CONTAINER_RECIPE_SHA256 in recipe
     assert B.LABEL_SOLVER_REQUIREMENTS_SHA256 in recipe
+    assert "ARG ARC_AGI3_CONTAINER_RECIPE_SHA256\n" in recipe
     assert "numpy-version" not in recipe
     assert "/run/arc-agi3/arena.sock" in recipe
     assert "/run/arc-agi3/token" in recipe
-    for digest in B.trusted_worker_hashes().values():
+    for label, digest in B.trusted_worker_hashes().items():
+        if label == B.LABEL_CONTAINER_RECIPE_SHA256:
+            continue
         assert digest in recipe
     assert "sha256sum --check --strict" in recipe
     assert "contiguous campaign" in recipe.lower()
@@ -3696,6 +3699,31 @@ def _authenticated_adapter_test_kwargs(
     }
 
 
+def _prepare_only_adapter(spec):
+    from arc_agi3_arena_rpc import ArenaHostSession
+
+    low_spec = B.validate_runner_attempt_contract(
+        spec,
+        containment_canary_anchor=_test_canary_anchor(spec),
+    )
+    docker_runner = FakeDockerRunner(low_spec)
+    low_backend = B.DockerContainerBackend(docker_runner)
+    adapter = B.ContiguousDockerAttemptBackend(
+        low_backend,
+        result_collector=lambda *_args, **_kwargs: None,
+        **_authenticated_adapter_test_kwargs(low_backend, spec),
+        arena_session_factory=lambda game, *, binding, parent_path, token:
+        ArenaHostSession(
+            game,
+            binding=binding,
+            parent_path=parent_path,
+            token=token,
+            arena_factory=lambda _game: _TinyArena(),
+        ),
+    )
+    return adapter, low_backend
+
+
 def test_canary_escrow_survives_crash_between_launch_and_teardown(
     request: pytest.FixtureRequest,
 ):
@@ -3864,6 +3892,16 @@ def test_terminal_canary_reveal_is_post_containment_and_idempotent(
             / "arena_session_binding_receipt.json"
         ),
         arena_session_binding_receipt_sha256="9" * 64,
+        compatibility_closure_path=str(
+            Path(spec.host_transcript_path).parent
+            / B.COMPATIBILITY_CLOSURE_DIRECTORY
+        ),
+        compatibility_closure_receipt_sha256="b" * 64,
+        compatibility_turn_receipt_path=str(
+            Path(spec.host_transcript_path).parent
+            / B.COMPATIBILITY_TURN_RECEIPT_NAME
+        ),
+        compatibility_turn_receipt_sha256="c" * 64,
         arena_transport=B.ARENA_VOLUME_TRANSPORT,
         arena_volume_name=B.arena_volume_name(
             B.AttemptIdentity(
@@ -5325,6 +5363,114 @@ def test_orphan_process_pid_reuse_never_authorizes_a_signal(
     assert signals == []
 
 
+def test_prepare_process_death_preserves_staging_then_quarantines_attempt(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+):
+    import arc_agi3_contiguous_runner as R
+
+    class SimulatedProcessDeath(BaseException):
+        pass
+
+    spec = _short_runner_attempt_spec(request)
+    adapter, low_backend = _prepare_only_adapter(spec)
+    original_checkpoint = (
+        B.compatibility_closure._publication_checkpoint
+    )
+
+    def die_after_partial_staging(checkpoint: str) -> None:
+        if checkpoint == "content_manifest_fsynced":
+            raise SimulatedProcessDeath(checkpoint)
+
+    monkeypatch.setattr(
+        B.compatibility_closure,
+        "_publication_checkpoint",
+        die_after_partial_staging,
+    )
+    with pytest.raises(
+        SimulatedProcessDeath, match="content_manifest_fsynced"
+    ):
+        adapter.prepare(spec)
+    staging = B._compatibility_staging_path(spec)
+    assert staging.is_dir()
+    retained_observation = (
+        B.compatibility_closure.observe_quarantined_staging(
+            B._compatibility_closure_paths(spec)[0]
+        )
+    )
+    assert not B._preparation_quarantine_path(spec).exists()
+
+    monkeypatch.setattr(
+        B.compatibility_closure,
+        "_publication_checkpoint",
+        original_checkpoint,
+    )
+    restarted = B.ContiguousDockerAttemptBackend(
+        low_backend,
+        result_collector=lambda *_args, **_kwargs: None,
+        **_authenticated_adapter_test_kwargs(low_backend, spec),
+        arena_session_factory=adapter._arena_session_factory,
+    )
+    with pytest.raises(
+        R.BackendPreparationQuarantinedError
+    ) as first:
+        restarted.prepare(spec)
+    receipt_path = Path(
+        first.value.quarantine_receipt_path
+    )
+    receipt = B._read_unaliased_json(
+        receipt_path,
+        label="test preparation quarantine receipt",
+    )
+    assert receipt["failure_type"] == (
+        "CompatibilityStagingAmbiguityError"
+    )
+    assert receipt["staging_observation"] == retained_observation
+    assert receipt["staging_observation_sha256"] == (
+        retained_observation["observation_sha256"]
+    )
+    assert receipt["old_evidence_reuse_authority"] is False
+    assert receipt["fresh_attempt_generation_required"] is True
+    assert staging.is_dir()
+    with pytest.raises(
+        R.BackendPreparationQuarantinedError
+    ) as reopened:
+        restarted.prepare(spec)
+    assert (
+        reopened.value.quarantine_receipt_sha256
+        == first.value.quarantine_receipt_sha256
+    )
+    assert staging.is_dir()
+
+
+def test_ordinary_closure_error_without_retained_staging_remains_retryable(
+    monkeypatch: pytest.MonkeyPatch,
+    request: pytest.FixtureRequest,
+):
+    spec = _short_runner_attempt_spec(request)
+    adapter, _low_backend = _prepare_only_adapter(spec)
+
+    def ordinary_failure(_root):
+        raise B.compatibility_closure.CompatibilityClosureError(
+            "injected ordinary failure"
+        )
+
+    monkeypatch.setattr(
+        B.compatibility_closure,
+        "prepare_closure",
+        ordinary_failure,
+    )
+    with pytest.raises(
+        B.ContainerContractError,
+        match="without typed retained-staging ambiguity",
+    ):
+        adapter.prepare(spec)
+    closure_root, _turn_receipt = B._compatibility_closure_paths(spec)
+    assert not closure_root.exists()
+    assert not B._compatibility_staging_path(spec).exists()
+    assert not B._preparation_quarantine_path(spec).exists()
+
+
 def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
     tmp_path: Path,
     request: pytest.FixtureRequest,
@@ -5367,13 +5513,49 @@ def test_typed_adapter_full_mocked_lifecycle_and_token_secrecy(
     prepared = adapter.prepare(spec)
     token_path = Path(spec.arena_token_file_path)
     token = token_path.read_text(encoding="ascii")
+    closure = B.compatibility_closure.validate_closure(
+        Path(prepared.compatibility_closure_path),
+        prepared.compatibility_closure_receipt_sha256,
+    )
+    assert closure["status"] == "PASS"
+    assert closure["launch_authorized"] is False
+    compatibility_turn = B._read_unaliased_json(
+        Path(prepared.compatibility_turn_receipt_path),
+        label="test compatibility turn receipt",
+    )
+    assert compatibility_turn["closure"]["client_sha256"] == dict(
+        low_backend.inspect_image(spec.image_reference).worker_control_sha256
+    )[B.LABEL_ARENA_RPC_CLIENT_SHA256]
+    assert compatibility_turn["container"]["container_id"] == (
+        adapter._attempts[spec.attempt_id].attestation.container_id
+    )
+    assert compatibility_turn["authority"] == {
+        "scheduler_authority": False,
+        "mutation_authority": False,
+        "promotion_authority": False,
+        "launch_authority": False,
+        "runner_reopen_required_before_launch": True,
+    }
     docker_runner.log_stdout = f"solver said {token}\\n"
     attestation_bytes = Path(
         prepared.launch_attestation_path
     ).read_bytes()
     assert token.encode("ascii") not in attestation_bytes
     assert token not in json.dumps(dataclasses.asdict(prepared))
+    assert token not in json.dumps(compatibility_turn)
     assert adapter.prepare(spec) == prepared
+
+    turn_path = Path(prepared.compatibility_turn_receipt_path)
+    retained_turn_raw = turn_path.read_bytes()
+    substituted_turn = json.loads(retained_turn_raw)
+    substituted_turn["authority"]["launch_authority"] = True
+    turn_path.write_bytes(B._canonical_json_bytes(substituted_turn))
+    with pytest.raises(
+        B.ContainerContractError,
+        match="existing .* receipt differs",
+    ):
+        adapter.launch(spec, prepared)
+    turn_path.write_bytes(retained_turn_raw)
 
     launched = adapter.launch(spec, prepared)
     assert adapter.launch(spec, prepared) == launched
@@ -6161,6 +6343,14 @@ def test_adapter_recovers_unacknowledged_teardown_from_intent(
             host_root / "arena_session_binding_receipt.json"
         ),
         arena_session_binding_receipt_sha256="9" * 64,
+        compatibility_closure_path=str(
+            host_root / B.COMPATIBILITY_CLOSURE_DIRECTORY
+        ),
+        compatibility_closure_receipt_sha256="b" * 64,
+        compatibility_turn_receipt_path=str(
+            host_root / B.COMPATIBILITY_TURN_RECEIPT_NAME
+        ),
+        compatibility_turn_receipt_sha256="c" * 64,
         arena_transport=B.ARENA_VOLUME_TRANSPORT,
         arena_volume_name=B.arena_volume_name(
             B.AttemptIdentity(

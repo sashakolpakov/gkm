@@ -16,6 +16,10 @@ ARG ARC_AGI3_CONTAINER_WORKER_SHA256=93ce41e440730d9b5955d46720d978cadeacd79119d
 ARG ARC_AGI3_PROPOSER_WORKER_SHA256=a118f0df20dcfd23173c350fb73b10c553cd07a3b89f4be6c0bfcf297d860529
 ARG ARC_AGI3_SOURCE_SCHEMA_SHA256=173b0ea1f0d9f2195640e88a6b88a403c316a638ca2ce3f3b12d608e8fa9ef80
 ARG ARC_AGI3_SOLVER_REQUIREMENTS_SHA256=9a53c24a770a6090ccd41b9e4a60a42d6a3b1a7485ad8a135dd84dd53d31147f
+# The build invocation must supply the SHA-256 of this complete Containerfile.
+# There is deliberately no default: an omitted build-provenance binding must
+# produce an image that the host inspector rejects.
+ARG ARC_AGI3_CONTAINER_RECIPE_SHA256
 
 ENV LANG=C.UTF-8 \
     LC_ALL=C.UTF-8 \
@@ -61,6 +65,7 @@ LABEL org.gkm.arc-agi3.arena-rpc-client-sha256="${ARC_AGI3_ARENA_RPC_CLIENT_SHA2
       org.gkm.arc-agi3.container-worker-sha256="${ARC_AGI3_CONTAINER_WORKER_SHA256}" \
       org.gkm.arc-agi3.proposer-worker-sha256="${ARC_AGI3_PROPOSER_WORKER_SHA256}" \
       org.gkm.arc-agi3.source-schema-sha256="${ARC_AGI3_SOURCE_SCHEMA_SHA256}" \
+      org.gkm.arc-agi3.container-recipe-sha256="${ARC_AGI3_CONTAINER_RECIPE_SHA256}" \
       org.gkm.arc-agi3.solver-requirements-sha256="${ARC_AGI3_SOLVER_REQUIREMENTS_SHA256}"
 
 # Numeric nonroot identity avoids depending on mutable account databases.  The

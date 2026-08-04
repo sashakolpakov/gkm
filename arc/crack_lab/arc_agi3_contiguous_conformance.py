@@ -523,7 +523,10 @@ INVARIANTS = (
         "container_backend",
         "arc/crack_lab/test_arc_agi3_container_backend.py::"
         "test_typed_adapter_full_mocked_lifecycle_and_token_secrecy",
-        "The typed clean lifecycle binds image, RPC, output, transcript, and token secrecy.",
+        "The typed clean lifecycle binds image, compatibility closure, exact "
+        "per-turn RPC/container receipt, output, transcript, and token "
+        "secrecy; launch reopens the non-authoritative receipt and fails "
+        "closed on drift.",
     ),
     Invariant(
         "container_backend_uses_canonical_terminal_precedence",
@@ -620,12 +623,36 @@ INVARIANTS = (
         "substitution.",
     ),
     Invariant(
-        "compatibility_arena_closure_is_prep_only_non_authoritative",
+        "compatibility_arena_closure_publication_is_crash_atomic",
         "arena_rpc",
         "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
-        "test_compatibility_closure_has_no_production_call_site_or_authority",
-        "The compatibility closure has no production launcher call site and "
-        "its receipt explicitly grants no launch or promotion authority.",
+        "test_crash_atomic_publication_fault_matrix_is_behavioral",
+        "Closure files and their directory are fsynced under one deterministic "
+        "non-authoritative sibling, exclusively atomically renamed into an "
+        "absent destination, and parent-fsynced. Ordinary failures may clean "
+        "only the current invocation's still-held staging inode and recorded "
+        "child inodes; every pre-existing, racing, or post-crash staging inode "
+        "is preserved fail-closed. Only the typed pre-existing-staging signal "
+        "permits zero-cost quarantine and a fresh scheduler root.",
+    ),
+    Invariant(
+        "compatibility_arena_closure_receipt_is_non_authoritative",
+        "arena_rpc",
+        "arc/crack_lab/test_arc_agi3_compatibility_arena_closure.py::"
+        "test_compatibility_closure_has_no_standalone_launch_authority",
+        "The compatibility closure may be consumed by the existing backend, "
+        "but its receipt alone explicitly grants no launch, scheduling, "
+        "mutation, or promotion authority.",
+    ),
+    Invariant(
+        "retained_prepare_crash_is_quarantined_and_fresh_generation_is_bounded",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_retained_prepare_crash_uses_fresh_generation_and_bounds_repeats",
+        "A process death that leaves typed compatibility staging closes the "
+        "old PREPARED identity at zero authority, preserves a bounded "
+        "descriptor observation, dispatches only a distinct fresh generation "
+        "after circuit policy permits it, and gates repeated quarantines.",
     ),
     Invariant(
         "arena_named_volume_relay_is_byte_exact",

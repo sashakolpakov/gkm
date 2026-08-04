@@ -5399,6 +5399,3 @@ class CodexAppServerController:
                 stopped.absence_receipt_sha256
             ),
         )
-
-
-CONTIGUOUS_APP_SERVER_TRANSPORT_LAUNCH_READY = False

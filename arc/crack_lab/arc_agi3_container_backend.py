@@ -40,6 +40,7 @@ from typing import Any, Callable, Mapping, Protocol, Sequence
 import arc_agi3_codex_app_server_transport as probe_transport
 import arc_agi3_arena_volume_transport as arena_volume_transport
 import arc_agi3_containment_canary_operator as canary_operator_contract
+import arc_agi3_compatibility_arena_closure as compatibility_closure
 
 
 class ContainerContractError(RuntimeError):
@@ -173,11 +174,6 @@ def _apply_terminal_result_precedence(
         result,
     )
 
-
-# The low-level backend is executable and unit tested, but the end-to-end
-# scheduler adapter/release receipt is still being integrated.  No campaign
-# preflight may treat this module alone as launch authorization.
-CONTIGUOUS_CONTAINER_LAUNCH_READY = False
 
 SHA256_RE = re.compile(r"^sha256:[0-9a-f]{64}$")
 CONTAINER_ID_RE = re.compile(r"^[0-9a-f]{64}$")
@@ -333,10 +329,28 @@ LABEL_CONTAINER_WORKER_SHA256 = "org.gkm.arc-agi3.container-worker-sha256"
 LABEL_PROPOSER_WORKER_SHA256 = (
     "org.gkm.arc-agi3.proposer-worker-sha256"
 )
+LABEL_CONTAINER_RECIPE_SHA256 = (
+    "org.gkm.arc-agi3.container-recipe-sha256"
+)
 LABEL_SOLVER_REQUIREMENTS_SHA256 = (
     "org.gkm.arc-agi3.solver-requirements-sha256"
 )
 LABEL_SOURCE_SCHEMA_SHA256 = "org.gkm.arc-agi3.source-schema-sha256"
+
+COMPATIBILITY_CLOSURE_DIRECTORY = "compatibility_arena_closure"
+COMPATIBILITY_TURN_RECEIPT_NAME = "compatibility_turn_receipt.json"
+COMPATIBILITY_TURN_RECEIPT_KIND = (
+    "arc_agi3_contiguous_compatibility_turn_binding"
+)
+PREPARATION_QUARANTINE_RECEIPT_NAME = (
+    "compatibility_preparation_quarantine.json"
+)
+PREPARATION_QUARANTINE_RECEIPT_KIND = (
+    "contiguous_compatibility_preparation_quarantine"
+)
+PREPARATION_QUARANTINE_FAILURE_TYPES = frozenset({
+    "CompatibilityStagingAmbiguityError",
+})
 
 # These are public build metadata or fixed runtime controls, not inherited host
 # variables.  Any other image/container environment name fails closed.
@@ -2998,6 +3012,8 @@ def trusted_worker_hashes() -> dict[str, str]:
         LABEL_CONTAINER_WORKER_SHA256: root / "arc_agi3_container_worker.py",
         LABEL_PROPOSER_WORKER_SHA256:
             root / "arc_agi3_proposer_worker.py",
+        LABEL_CONTAINER_RECIPE_SHA256:
+            root / "container" / "Containerfile.arc-agi3-contiguous",
         LABEL_SOLVER_REQUIREMENTS_SHA256:
             root / "container" / "arc_agi3_solver_requirements.lock",
         LABEL_SOURCE_SCHEMA_SHA256: root / "arc_agi3_source_schema.py",
@@ -12940,6 +12956,131 @@ class ContiguousDockerAttemptBackend:
         with self._lock:
             runtime.arena_protocol_containment_sha256 = observation
 
+    def _preparation_quarantine_fields(
+        self,
+        *,
+        spec: Any,
+        low_spec: AttemptSpec,
+        failure_type: str,
+    ) -> dict[str, Any]:
+        if failure_type not in PREPARATION_QUARANTINE_FAILURE_TYPES:
+            raise ContainerContractError(
+                "preparation quarantine failure type is unsupported"
+            )
+        closure_root, _turn_receipt = _compatibility_closure_paths(spec)
+        closure_present = closure_root.exists() or closure_root.is_symlink()
+        if closure_present:
+            raise ContainerContractError(
+                "staging quarantine cannot coexist with a closure root"
+            )
+        try:
+            staging_observation = (
+                compatibility_closure.observe_quarantined_staging(
+                    closure_root
+                )
+            )
+        except compatibility_closure.CompatibilityClosureError as exc:
+            raise ContainerContractError(
+                "quarantined staging cannot be boundedly observed"
+            ) from exc
+        if (
+            staging_observation.get("present") is not True
+            or staging_observation.get("inventory_observed")
+            not in {True, False}
+            or staging_observation.get("authority")
+            != {
+                "quarantine_evidence_only": True,
+                "cleanup_authority": False,
+                "launch_authority": False,
+                "promotion_authority": False,
+            }
+            or not _is_hex_sha256(
+                staging_observation.get("observation_sha256")
+            )
+        ):
+            raise ContainerContractError(
+                "quarantined staging observation is noncanonical"
+            )
+        identities = _parse_container_id_lines(
+            self._backend._identity_query(low_spec.identity).stdout,
+            label="preparation quarantine identity query",
+        )
+        endpoints = (
+            low_spec.arena_socket,
+            low_spec.arena_token_file,
+            low_spec.bridge_socket,
+            low_spec.bridge_token_file,
+            Path(_runner_field(spec, "host_transcript_path")),
+            Path(_runner_field(spec, "app_server_transcript_path")),
+        )
+        if identities or any(
+            path.exists() or path.is_symlink() for path in endpoints
+        ):
+            raise ContainerContractError(
+                "preparation quarantine lacks exact external absence"
+            )
+        return {
+            "failure_stage": "compatibility_closure_prepare",
+            "failure_type": failure_type,
+            "closure_root": str(closure_root),
+            "closure_root_present": False,
+            "staging_observation": staging_observation,
+            "staging_observation_sha256": (
+                staging_observation["observation_sha256"]
+            ),
+            "container_identity_query_empty": True,
+            "arena_relay_absent": True,
+            "rpc_endpoints_absent": True,
+            "proposer_container_started": False,
+            "proposer_turn_started": False,
+            "candidate_authority": False,
+            "wip_authority": False,
+            "cost_authority": False,
+            "promotion_authority": False,
+            "old_evidence_reuse_authority": False,
+            "fresh_attempt_generation_required": True,
+            "status": "QUARANTINED",
+        }
+
+    def _reopen_preparation_quarantine(
+        self,
+        *,
+        spec: Any,
+        low_spec: AttemptSpec,
+    ) -> BaseException | None:
+        path = _preparation_quarantine_path(spec)
+        if not (path.exists() or path.is_symlink()):
+            return None
+        retained = _read_unaliased_json(
+            path, label="preparation quarantine receipt"
+        )
+        failure_type = retained.get("failure_type")
+        if failure_type not in PREPARATION_QUARANTINE_FAILURE_TYPES:
+            raise ContainerContractError(
+                "preparation quarantine failure type drifted"
+            )
+        expected = {
+            **_bound_receipt_base(
+                spec, kind=PREPARATION_QUARANTINE_RECEIPT_KIND
+            ),
+            **self._preparation_quarantine_fields(
+                spec=spec,
+                low_spec=low_spec,
+                failure_type=failure_type,
+            ),
+        }
+        if retained != expected:
+            raise ContainerContractError(
+                "preparation quarantine receipt or retained evidence drifted"
+            )
+        receipt_sha256 = _hash_unaliased_regular_file(
+            path, label="preparation quarantine receipt"
+        )
+        return _runner_contract().BackendPreparationQuarantinedError(
+            quarantine_receipt_path=str(path),
+            quarantine_receipt_sha256=receipt_sha256,
+        )
+
     def prepare(self, spec: Any) -> Any:
         """Create RPC endpoints and attest one unstarted exact container."""
         attempt_id = _canonical_uuid4(
@@ -12977,6 +13118,11 @@ class ContiguousDockerAttemptBackend:
                 spec,
                 containment_canary_anchor=canary_anchor,
             )
+            retained_quarantine = self._reopen_preparation_quarantine(
+                spec=spec, low_spec=low_spec
+            )
+            if retained_quarantine is not None:
+                raise retained_quarantine
             # A host crash may happen after Docker created the relay volume
             # but before any host evidence path exists.  Exact labelled
             # Docker reconciliation therefore runs on every fresh prepare,
@@ -13008,6 +13154,10 @@ class ContiguousDockerAttemptBackend:
                 / "arena_volume_preparation.json",
                 Path(_runner_field(spec, "host_transcript_path")).parent
                 / "arena_volume_teardown.json",
+                Path(_runner_field(spec, "host_transcript_path")).parent
+                / COMPATIBILITY_CLOSURE_DIRECTORY,
+                Path(_runner_field(spec, "host_transcript_path")).parent
+                / COMPATIBILITY_TURN_RECEIPT_NAME,
             )
             if any(path.exists() or path.is_symlink()
                    for path in backend_owned_paths):
@@ -13032,6 +13182,11 @@ class ContiguousDockerAttemptBackend:
             arena_volume_runtime: ArenaVolumeRuntime | None = None
             attestation: LaunchAttestation | None = None
             static_receipts: dict[str, tuple[str, str]] = {}
+            compatibility_closure_receipt_sha256: str | None = None
+            compatibility_turn_receipt: tuple[str, str] | None = None
+            compatibility_failure: (
+                compatibility_closure.CompatibilityClosureError | None
+            ) = None
             runtime_holder: dict[str, _AdapterRuntime] = {}
             try:
                 parent_checkpoint, parent_path = (
@@ -13100,6 +13255,42 @@ class ContiguousDockerAttemptBackend:
                     )
                 )
                 attestation = self._backend.build_launch_attestation(low_spec)
+                arena_volume_evidence = arena_volume_runtime.evidence
+                closure_root, _turn_receipt_path = (
+                    _compatibility_closure_paths(spec)
+                )
+                try:
+                    closure_preparation = (
+                        compatibility_closure.prepare_closure(closure_root)
+                    )
+                except compatibility_closure.CompatibilityClosureError as exc:
+                    compatibility_failure = exc
+                    raise
+                compatibility_closure_receipt_sha256 = (
+                    closure_preparation["receipt_sha256"]
+                )
+                compatibility_turn_receipt = (
+                    _ensure_compatibility_turn_receipt(
+                        spec=spec,
+                        attestation=attestation,
+                        arena_binding_event=arena_binding_event,
+                        arena_binding_receipt_path=(
+                            static_receipts["arena_binding"][0]
+                        ),
+                        arena_binding_receipt_sha256=(
+                            static_receipts["arena_binding"][1]
+                        ),
+                        arena_volume=arena_volume_evidence,
+                        closure_root=closure_root,
+                        closure_receipt_sha256=(
+                            compatibility_closure_receipt_sha256
+                        ),
+                    )
+                )
+                # The launch attestation is the preparation commit point.  It
+                # becomes durable only after the purified closure and exact
+                # per-turn binding receipt are durable and independently
+                # reopenable.
                 self._backend.write_attestation(
                     attestation_path, attestation
                 )
@@ -13107,14 +13298,12 @@ class ContiguousDockerAttemptBackend:
                 prepared_transport = _runner_field(
                     spec, "proposer_transport"
                 )
-                arena_volume_evidence = (
-                    arena_volume_runtime.evidence
-                )
                 preparation = runner_contract.BackendPreparation(
                     preparation_id=_preparation_id(
                         attestation,
                         canary_anchor,
                         arena_volume_evidence,
+                        compatibility_turn_receipt[1],
                     ),
                     launch_attestation_path=str(attestation_path),
                     launch_attestation_sha256=attestation.document_sha256,
@@ -13136,6 +13325,16 @@ class ContiguousDockerAttemptBackend:
                     ),
                     arena_session_binding_receipt_sha256=(
                         static_receipts["arena_binding"][1]
+                    ),
+                    compatibility_closure_path=str(closure_root),
+                    compatibility_closure_receipt_sha256=(
+                        compatibility_closure_receipt_sha256
+                    ),
+                    compatibility_turn_receipt_path=(
+                        compatibility_turn_receipt[0]
+                    ),
+                    compatibility_turn_receipt_sha256=(
+                        compatibility_turn_receipt[1]
                     ),
                     arena_transport=(
                         arena_volume_evidence.transport
@@ -13353,6 +13552,11 @@ class ContiguousDockerAttemptBackend:
                         / "arena_volume_teardown.json",
                         "Arena relay teardown receipt",
                     ),
+                    (
+                        transcript_path.parent
+                        / COMPATIBILITY_TURN_RECEIPT_NAME,
+                        "compatibility turn receipt",
+                    ),
                 ):
                     try:
                         _unlink_owned_attempt_file(path, label=label)
@@ -13360,11 +13564,62 @@ class ContiguousDockerAttemptBackend:
                         cleanup_errors.append(
                             f"{label} cleanup failed: {type(exc).__name__}"
                         )
+                closure_root, _turn_receipt_path = (
+                    _compatibility_closure_paths(spec)
+                )
+                if (
+                    compatibility_closure_receipt_sha256 is not None
+                    and (closure_root.exists() or closure_root.is_symlink())
+                ):
+                    try:
+                        compatibility_closure.remove_closure(
+                            closure_root,
+                            compatibility_closure_receipt_sha256,
+                        )
+                    except BaseException as exc:
+                        cleanup_errors.append(
+                            "compatibility closure cleanup failed: "
+                            + type(exc).__name__
+                        )
                 if cleanup_errors:
                     raise ContainerContractError(
                         "attempt preparation failed and cleanup was incomplete: "
                         + "; ".join(cleanup_errors)
                     ) from original
+                if compatibility_failure is not None:
+                    if isinstance(
+                        compatibility_failure,
+                        compatibility_closure
+                        .CompatibilityStagingAmbiguityError,
+                    ):
+                        fields = self._preparation_quarantine_fields(
+                            spec=spec,
+                            low_spec=low_spec,
+                            failure_type=type(
+                                compatibility_failure
+                            ).__name__,
+                        )
+                        receipt_path, receipt_sha256 = (
+                            _ensure_bound_receipt(
+                                _preparation_quarantine_path(spec),
+                                spec=spec,
+                                kind=(
+                                    PREPARATION_QUARANTINE_RECEIPT_KIND
+                                ),
+                                fields=fields,
+                            )
+                        )
+                        raise (
+                            _runner_contract()
+                            .BackendPreparationQuarantinedError(
+                                quarantine_receipt_path=receipt_path,
+                                quarantine_receipt_sha256=receipt_sha256,
+                            )
+                        ) from compatibility_failure
+                    raise ContainerContractError(
+                        "compatibility Arena closure preparation failed "
+                        "without typed retained-staging ambiguity"
+                    ) from compatibility_failure
                 raise
 
     def _recover_incomplete_preparation(self, spec: Any) -> None:
@@ -13403,6 +13658,35 @@ class ContiguousDockerAttemptBackend:
                     "incomplete preparation container cleanup failed: "
                     + cleanup_error
                 )
+        closure_root, compatibility_receipt_path = (
+            _compatibility_closure_paths(spec)
+        )
+        closure_receipt_sha256: str | None = None
+        if closure_root.exists() or closure_root.is_symlink():
+            closure_receipt_path = (
+                closure_root / compatibility_closure.RECEIPT_NAME
+            )
+            closure_receipt_sha256 = _hash_unaliased_regular_file(
+                closure_receipt_path,
+                label="stale compatibility closure receipt",
+            )
+            if (
+                compatibility_receipt_path.exists()
+                or compatibility_receipt_path.is_symlink()
+            ):
+                retained = _read_unaliased_json(
+                    compatibility_receipt_path,
+                    label="stale compatibility turn receipt",
+                )
+                if (
+                    retained.get("kind")
+                    != COMPATIBILITY_TURN_RECEIPT_KIND
+                    or retained.get("closure", {}).get("receipt_sha256")
+                    != closure_receipt_sha256
+                ):
+                    raise ContainerContractError(
+                        "stale compatibility evidence is ambiguous"
+                    )
         for path, label in (
             (low_spec.arena_socket, "stale Arena socket"),
             (low_spec.arena_token_file, "stale Arena token"),
@@ -13460,8 +13744,21 @@ class ContiguousDockerAttemptBackend:
                 / "arena_volume_teardown.json",
                 "stale Arena relay teardown receipt",
             ),
+            (
+                compatibility_receipt_path,
+                "stale compatibility turn receipt",
+            ),
         ):
             _unlink_owned_attempt_file(path, label=label)
+        if closure_receipt_sha256 is not None:
+            try:
+                compatibility_closure.remove_closure(
+                    closure_root, closure_receipt_sha256
+                )
+            except compatibility_closure.CompatibilityClosureError as exc:
+                raise ContainerContractError(
+                    "stale compatibility closure cannot be recovered"
+                ) from exc
 
     def _wait_for_bridge_socket(
         self, runtime: _AdapterRuntime, *, timeout_seconds: float = 30.0
@@ -15857,6 +16154,44 @@ class ContiguousDockerAttemptBackend:
             if prepared != runtime.preparation:
                 raise ContainerContractError(
                     "launch preparation does not bind this exact attempt"
+                )
+            arena_binding_receipt = _read_unaliased_json(
+                Path(prepared.arena_session_binding_receipt_path),
+                label="prelaunch Arena session binding receipt",
+            )
+            arena_binding_event = arena_binding_receipt.get(
+                "binding_event"
+            )
+            if (
+                not isinstance(arena_binding_event, dict)
+                or runtime.arena_volume_runtime is None
+            ):
+                raise ContainerContractError(
+                    "prelaunch compatibility binding lacks live Arena evidence"
+                )
+            closure_root = Path(prepared.compatibility_closure_path)
+            reopened_compatibility = _ensure_compatibility_turn_receipt(
+                spec=spec,
+                attestation=runtime.attestation,
+                arena_binding_event=arena_binding_event,
+                arena_binding_receipt_path=(
+                    prepared.arena_session_binding_receipt_path
+                ),
+                arena_binding_receipt_sha256=(
+                    prepared.arena_session_binding_receipt_sha256
+                ),
+                arena_volume=runtime.arena_volume_runtime.evidence,
+                closure_root=closure_root,
+                closure_receipt_sha256=(
+                    prepared.compatibility_closure_receipt_sha256
+                ),
+            )
+            if reopened_compatibility != (
+                prepared.compatibility_turn_receipt_path,
+                prepared.compatibility_turn_receipt_sha256,
+            ):
+                raise ContainerContractError(
+                    "prelaunch compatibility turn receipt changed"
                 )
             intent_sha256 = self._ensure_launch_intent(
                 spec=spec, runtime=runtime
@@ -19137,6 +19472,8 @@ class ContiguousDockerAttemptBackend:
             host_root / "app_server_protocol_schema_receipt.json",
             host_root / "arena_volume_readiness.json",
             host_root / "arena_volume_preparation.json",
+            host_root / COMPATIBILITY_CLOSURE_DIRECTORY,
+            host_root / COMPATIBILITY_TURN_RECEIPT_NAME,
         )
         if any(
             not path.exists() or path.is_symlink()
@@ -19171,11 +19508,40 @@ class ContiguousDockerAttemptBackend:
         recovered_arena_evidence = (
             recovered_arena_volume.evidence
         )
+        recovered_closure_root, _recovered_turn_path = (
+            _compatibility_closure_paths(spec)
+        )
+        recovered_closure_receipt_sha256 = (
+            _hash_unaliased_regular_file(
+                recovered_closure_root
+                / compatibility_closure.RECEIPT_NAME,
+                label="rehydrated compatibility closure receipt",
+            )
+        )
+        recovered_compatibility_turn_receipt = (
+            _ensure_compatibility_turn_receipt(
+                spec=spec,
+                attestation=attestation,
+                arena_binding_event=recovered_arena_event,
+                arena_binding_receipt_path=(
+                    static_receipts["arena_binding"][0]
+                ),
+                arena_binding_receipt_sha256=(
+                    static_receipts["arena_binding"][1]
+                ),
+                arena_volume=recovered_arena_evidence,
+                closure_root=recovered_closure_root,
+                closure_receipt_sha256=(
+                    recovered_closure_receipt_sha256
+                ),
+            )
+        )
         recovered_preparation = runner_contract.BackendPreparation(
             preparation_id=_preparation_id(
                 attestation,
                 canary_anchor,
                 recovered_arena_evidence,
+                recovered_compatibility_turn_receipt[1],
             ),
             launch_attestation_path=str(attestation_path),
             launch_attestation_sha256=attestation.document_sha256,
@@ -19195,6 +19561,16 @@ class ContiguousDockerAttemptBackend:
             ),
             arena_session_binding_receipt_sha256=(
                 static_receipts["arena_binding"][1]
+            ),
+            compatibility_closure_path=str(recovered_closure_root),
+            compatibility_closure_receipt_sha256=(
+                recovered_closure_receipt_sha256
+            ),
+            compatibility_turn_receipt_path=(
+                recovered_compatibility_turn_receipt[0]
+            ),
+            compatibility_turn_receipt_sha256=(
+                recovered_compatibility_turn_receipt[1]
             ),
             arena_transport=recovered_arena_evidence.transport,
             arena_volume_name=recovered_arena_evidence.volume_name,
@@ -20773,6 +21149,241 @@ def _ensure_bound_receipt(
     )
 
 
+def _compatibility_closure_paths(spec: Any) -> tuple[Path, Path]:
+    host_root = Path(_runner_field(spec, "host_transcript_path")).parent
+    return (
+        host_root / COMPATIBILITY_CLOSURE_DIRECTORY,
+        host_root / COMPATIBILITY_TURN_RECEIPT_NAME,
+    )
+
+
+def _compatibility_staging_path(spec: Any) -> Path:
+    closure_root, _receipt_path = _compatibility_closure_paths(spec)
+    return closure_root.parent / compatibility_closure._staging_name(
+        closure_root
+    )
+
+
+def _preparation_quarantine_path(spec: Any) -> Path:
+    return (
+        Path(_runner_field(spec, "host_transcript_path")).parent
+        / PREPARATION_QUARANTINE_RECEIPT_NAME
+    )
+
+
+def _endpoint_receipt_projection(value: EndpointObservation) -> dict[str, Any]:
+    return {
+        "path": str(value.path),
+        "kind": value.kind,
+        "device": value.device,
+        "inode": value.inode,
+        "mode": value.mode,
+        "owner_uid": value.owner_uid,
+        "owner_gid": value.owner_gid,
+        "size": value.size,
+        "content_sha256": value.content_sha256,
+    }
+
+
+def _compatibility_turn_receipt_fields(
+    *,
+    spec: Any,
+    attestation: LaunchAttestation,
+    arena_binding_event: Mapping[str, Any],
+    arena_binding_receipt_path: str,
+    arena_binding_receipt_sha256: str,
+    arena_volume: ArenaVolumePreparationEvidence,
+    closure_root: Path,
+    closure_receipt_sha256: str,
+) -> dict[str, Any]:
+    """Reopen and bind the purified client to one observed turn.
+
+    The result contains no token bytes and grants no scheduling or promotion
+    authority.  It proves that the exact client closure, host session,
+    endpoints, relay, unstarted container, and digest-pinned build controls
+    belong to the same scheduler-selected attempt.
+    """
+
+    try:
+        closure = compatibility_closure.validate_closure(
+            closure_root, closure_receipt_sha256
+        )
+        closure_snapshot = (
+            compatibility_closure.canonical_closure_snapshot()
+        )
+    except compatibility_closure.CompatibilityClosureError as exc:
+        raise ContainerContractError(
+            "compatibility Arena closure failed production validation"
+        ) from exc
+    worker_controls = dict(attestation.image.worker_control_sha256)
+    expected_worker_controls = trusted_worker_hashes()
+    client_sha256 = worker_controls.get(
+        LABEL_ARENA_RPC_CLIENT_SHA256
+    )
+    controls = closure_snapshot.get("components")
+    recipe_sha256 = (
+        controls.get("container_recipe", {}).get("sha256")
+        if isinstance(controls, dict)
+        else None
+    )
+    requirements_sha256 = (
+        controls.get("solver_requirements", {}).get("sha256")
+        if isinstance(controls, dict)
+        else None
+    )
+    if (
+        attestation.identity.campaign_id
+        != _runner_field(spec, "campaign_id")
+        or attestation.identity.generation_id
+        != _runner_field(spec, "generation_id")
+        or attestation.identity.attempt_id
+        != _runner_field(spec, "attempt_id")
+        or attestation.identity.game != _runner_field(spec, "game")
+        or attestation.identity.target_level
+        != _runner_field(spec, "target_level")
+        or closure.get("status") != "PASS"
+        or closure.get("launch_authorized") is not False
+        or closure.get("client_sha256") != client_sha256
+        or worker_controls != expected_worker_controls
+        or not isinstance(controls, dict)
+        or worker_controls.get(LABEL_CONTAINER_RECIPE_SHA256)
+        != recipe_sha256
+        or worker_controls.get(LABEL_SOLVER_REQUIREMENTS_SHA256)
+        != requirements_sha256
+        or attestation.arena_token_file.content_sha256 is None
+        or attestation.arena_token_file.path
+        != Path(_runner_field(spec, "arena_token_file_path"))
+        or arena_volume.transport != ARENA_VOLUME_TRANSPORT
+        or arena_volume.volume_name != attestation.arena_volume_name
+        or arena_binding_event.get("binding_sha256") is None
+    ):
+        raise ContainerContractError(
+            "compatibility closure, build, endpoint, or attempt binding differs"
+        )
+    return {
+        "game": _runner_field(spec, "game"),
+        "target_level": _runner_field(spec, "target_level"),
+        "frontier_sha256": _runner_field(spec, "frontier_sha256"),
+        "parent_checkpoint_sha256": _runner_field(
+            spec, "parent_checkpoint_sha256"
+        ),
+        "closure": {
+            "root": str(closure_root),
+            "receipt_sha256": closure_receipt_sha256,
+            "content_manifest_sha256": closure[
+                "content_manifest_sha256"
+            ],
+            "client_sha256": closure["client_sha256"],
+        },
+        "host_rpc": {
+            "session_binding_receipt_path": arena_binding_receipt_path,
+            "session_binding_receipt_sha256": (
+                arena_binding_receipt_sha256
+            ),
+            "binding_sha256": arena_binding_event["binding_sha256"],
+            "session_id": arena_binding_event["session_id"],
+            "host_socket_path": _runner_field(
+                spec, "arena_socket_path"
+            ),
+            "host_socket_identity_sha256": (
+                arena_volume.arena_socket_identity_sha256
+            ),
+            "container_socket": _endpoint_receipt_projection(
+                attestation.arena_socket
+            ),
+            "token_file": _endpoint_receipt_projection(
+                attestation.arena_token_file
+            ),
+            "token_bytes_retained": False,
+        },
+        "transport": {
+            "kind": arena_volume.transport,
+            "volume_name": arena_volume.volume_name,
+            "volume_observation_sha256": (
+                arena_volume.volume_observation_sha256
+            ),
+            "relay_container_id": arena_volume.relay_container_id,
+            "relay_image_digest": arena_volume.relay_image_digest,
+            "relay_image_observation_sha256": (
+                arena_volume.relay_image_observation_sha256
+            ),
+            "relay_container_observation_sha256": (
+                arena_volume.relay_container_observation_sha256
+            ),
+            "readiness_receipt_sha256": (
+                arena_volume.readiness_receipt_sha256
+            ),
+            "preparation_receipt_sha256": (
+                arena_volume.preparation_receipt_sha256
+            ),
+            "attach_argv_sha256": arena_volume.attach_argv_sha256,
+        },
+        "container": {
+            "container_id": attestation.container_id,
+            "requested_image_reference": (
+                attestation.image.requested_reference
+            ),
+            "image_manifest_digest": attestation.image.manifest_digest,
+            "image_id": attestation.image.image_id,
+            "image_observation_sha256": (
+                attestation.image.observation_sha256
+            ),
+            "worker_control_sha256": worker_controls,
+            "container_observation_sha256": (
+                attestation.container_observation_sha256
+            ),
+            "security_projection_sha256": (
+                attestation.security_projection_sha256
+            ),
+            "create_argv_sha256": attestation.create_argv_sha256,
+            "launch_attestation_sha256": attestation.document_sha256,
+            "container_recipe_sha256": worker_controls[
+                LABEL_CONTAINER_RECIPE_SHA256
+            ],
+            "solver_requirements_sha256": worker_controls[
+                LABEL_SOLVER_REQUIREMENTS_SHA256
+            ],
+        },
+        "authority": {
+            "scheduler_authority": False,
+            "mutation_authority": False,
+            "promotion_authority": False,
+            "launch_authority": False,
+            "runner_reopen_required_before_launch": True,
+        },
+    }
+
+
+def _ensure_compatibility_turn_receipt(
+    *,
+    spec: Any,
+    attestation: LaunchAttestation,
+    arena_binding_event: Mapping[str, Any],
+    arena_binding_receipt_path: str,
+    arena_binding_receipt_sha256: str,
+    arena_volume: ArenaVolumePreparationEvidence,
+    closure_root: Path,
+    closure_receipt_sha256: str,
+) -> tuple[str, str]:
+    _closure_path, receipt_path = _compatibility_closure_paths(spec)
+    fields = _compatibility_turn_receipt_fields(
+        spec=spec,
+        attestation=attestation,
+        arena_binding_event=arena_binding_event,
+        arena_binding_receipt_path=arena_binding_receipt_path,
+        arena_binding_receipt_sha256=arena_binding_receipt_sha256,
+        arena_volume=arena_volume,
+        closure_root=closure_root,
+        closure_receipt_sha256=closure_receipt_sha256,
+    )
+    return _ensure_bound_receipt(
+        receipt_path,
+        spec=spec,
+        kind=COMPATIBILITY_TURN_RECEIPT_KIND,
+        fields=fields,
+    )
+
+
 def _prove_neutral_cwd_write_denied(path: Path) -> None:
     """Perform a real owner-identity write probe without retaining bytes."""
     root = Path(path)
@@ -21259,7 +21870,12 @@ def _preparation_id(
     attestation: LaunchAttestation,
     canary_anchor: CanaryEscrowAnchor,
     arena_volume: ArenaVolumePreparationEvidence,
+    compatibility_turn_receipt_sha256: str,
 ) -> str:
+    if not _is_hex_sha256(compatibility_turn_receipt_sha256):
+        raise ContainerContractError(
+            "compatibility turn receipt digest is malformed"
+        )
     namespace = uuid.UUID(attestation.identity.attempt_id)
     return str(
         uuid.uuid5(
@@ -21275,7 +21891,9 @@ def _preparation_id(
             + ":"
             + arena_volume.relay_container_id
             + ":"
-            + arena_volume.volume_name,
+            + arena_volume.volume_name
+            + ":"
+            + compatibility_turn_receipt_sha256,
         )
     )
 
@@ -25550,6 +26168,7 @@ def _validate_container_observation(
                 LABEL_ARENA_RPC_CLIENT_SHA256,
                 LABEL_CONTAINER_WORKER_SHA256,
                 LABEL_PROPOSER_WORKER_SHA256,
+                LABEL_CONTAINER_RECIPE_SHA256,
                 LABEL_SOLVER_REQUIREMENTS_SHA256,
                 LABEL_SOURCE_SCHEMA_SHA256,
             )

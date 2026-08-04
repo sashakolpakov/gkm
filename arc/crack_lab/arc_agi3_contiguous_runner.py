@@ -37,6 +37,7 @@ import arc_agi3_codex_app_server_transport as Transport
 import arc_agi3_source_schema as SourceSchema
 import arc_agi3_contiguous_taint as Taint
 import arc_agi3_contiguous_scheduler as Scheduler
+import arc_agi3_compatibility_arena_closure as CompatibilityClosure
 
 
 JOURNAL_SCHEMA = 1
@@ -50,7 +51,6 @@ JOURNAL_QUIESCENCE_RESERVE_BYTES = 1024 * 1024
 # The runtime is deliberately not a release authorization.  The independent
 # image-level release receipt must flip its own gate after the backend adapter,
 # taint suite, and exact replay checks all pass.
-CONTIGUOUS_RUNNER_LAUNCH_READY = False
 # No production auxiliary adapter is released by this module.  Tests and future
 # adapters can exercise the abstract contract only when the durable campaign
 # manifest independently attests every isolation/input/admission boundary.
@@ -279,6 +279,30 @@ class BackendSubstratePreflightError(RuntimeError):
         self.substrate_identity_sha256 = substrate_identity_sha256
         self.failure_receipt_path = failure_receipt_path
         self.failure_receipt_sha256 = failure_receipt_sha256
+
+
+class BackendPreparationQuarantinedError(RuntimeError):
+    """One pre-launch preparation root is sealed and must be superseded."""
+
+    def __init__(
+        self,
+        *,
+        quarantine_receipt_path: str,
+        quarantine_receipt_sha256: str,
+    ) -> None:
+        if (
+            not _safe_path_string(quarantine_receipt_path)
+            or not Path(quarantine_receipt_path).is_absolute()
+            or not _is_sha256(quarantine_receipt_sha256)
+        ):
+            raise ContiguousRunnerError(
+                "preparation quarantine evidence is malformed"
+            )
+        super().__init__(
+            "pre-launch preparation evidence requires a fresh attempt root"
+        )
+        self.quarantine_receipt_path = quarantine_receipt_path
+        self.quarantine_receipt_sha256 = quarantine_receipt_sha256
 
 
 # Internal compatibility alias for adapters built against the pre-conformance
@@ -3175,6 +3199,10 @@ class BackendPreparation:
     bridge_policy_receipt_sha256: str
     arena_session_binding_receipt_path: str
     arena_session_binding_receipt_sha256: str
+    compatibility_closure_path: str
+    compatibility_closure_receipt_sha256: str
+    compatibility_turn_receipt_path: str
+    compatibility_turn_receipt_sha256: str
     arena_transport: Literal[
         "docker-attach-stdio+named-volume-unix"
     ]
@@ -4789,6 +4817,18 @@ def _backend_preparation_from_dict(value: object) -> BackendPreparation:
         or not _is_sha256(
             prepared.arena_session_binding_receipt_sha256
         )
+        or not _safe_path_string(
+            prepared.compatibility_closure_path
+        )
+        or not _is_sha256(
+            prepared.compatibility_closure_receipt_sha256
+        )
+        or not _safe_path_string(
+            prepared.compatibility_turn_receipt_path
+        )
+        or not _is_sha256(
+            prepared.compatibility_turn_receipt_sha256
+        )
         or prepared.arena_transport != ARENA_VOLUME_TRANSPORT
         or not isinstance(prepared.arena_volume_name, str)
         or re.fullmatch(
@@ -4912,6 +4952,8 @@ def _backend_preparation_from_dict(value: object) -> BackendPreparation:
                 prepared.launch_attestation_path,
                 prepared.bridge_policy_receipt_path,
                 prepared.arena_session_binding_receipt_path,
+                prepared.compatibility_closure_path,
+                prepared.compatibility_turn_receipt_path,
                 prepared.arena_relay_readiness_receipt_path,
                 prepared.arena_relay_preparation_receipt_path,
                 prepared.neutral_cwd_attestation_path,
@@ -5059,6 +5101,116 @@ def _backend_launch_from_dict(value: object) -> BackendLaunch:
     ):
         raise ContiguousRunnerError("invalid backend launch")
     return launched
+
+
+def _validate_preparation_quarantine_receipt(
+    spec: AttemptSpec,
+    receipt_path: str,
+    receipt_sha256: str,
+) -> dict[str, Any]:
+    host_root = Path(spec.host_transcript_path).parent
+    receipt = _validate_bound_receipt(
+        receipt_path,
+        receipt_sha256,
+        expected_path=(
+            host_root / "compatibility_preparation_quarantine.json"
+        ),
+        expected_kind=(
+            "contiguous_compatibility_preparation_quarantine"
+        ),
+        spec=spec,
+    )
+    closure_root = host_root / "compatibility_arena_closure"
+
+    if closure_root.exists() or closure_root.is_symlink():
+        raise ContiguousRunnerError(
+            "staging quarantine unexpectedly gained a closure root"
+        )
+    try:
+        staging_observation = (
+            CompatibilityClosure.observe_quarantined_staging(
+                closure_root
+            )
+        )
+    except CompatibilityClosure.CompatibilityClosureError as exc:
+        raise ContiguousRunnerError(
+            "quarantined staging failed bounded independent observation"
+        ) from exc
+    if (
+        staging_observation.get("present") is not True
+        or staging_observation.get("authority")
+        != {
+            "quarantine_evidence_only": True,
+            "cleanup_authority": False,
+            "launch_authority": False,
+            "promotion_authority": False,
+        }
+    ):
+        raise ContiguousRunnerError(
+            "quarantined staging observation gained authority"
+        )
+    absent_paths = (
+        Path(spec.arena_socket_path),
+        Path(spec.arena_token_file_path),
+        Path(spec.bridge_socket_path),
+        Path(spec.bridge_token_file_path),
+        Path(spec.host_transcript_path),
+        Path(spec.app_server_transcript_path),
+        Path(spec.bridge_policy_receipt_path),
+        host_root / "launch_attestation.json",
+        host_root / "compatibility_turn_receipt.json",
+        host_root / "arena_session_binding_receipt.json",
+        host_root / "neutral_cwd_attestation.json",
+        host_root / "app_server_config_receipt.json",
+        host_root / "codex_binary_receipt.json",
+        host_root / "app_server_protocol_schema_receipt.json",
+        host_root / "arena_volume_readiness.json",
+        host_root / "arena_volume_preparation.json",
+        host_root / "arena_volume_teardown.json",
+    )
+    failure_type = receipt.get("failure_type")
+    if failure_type != "CompatibilityStagingAmbiguityError":
+        raise ContiguousRunnerError(
+            "preparation quarantine failure type is unsupported"
+        )
+    expected_extra = {
+        "failure_stage": "compatibility_closure_prepare",
+        "failure_type": failure_type,
+        "closure_root": str(closure_root),
+        "closure_root_present": False,
+        "staging_observation": staging_observation,
+        "staging_observation_sha256": (
+            staging_observation["observation_sha256"]
+        ),
+        "container_identity_query_empty": True,
+        "arena_relay_absent": True,
+        "rpc_endpoints_absent": True,
+        "proposer_container_started": False,
+        "proposer_turn_started": False,
+        "candidate_authority": False,
+        "wip_authority": False,
+        "cost_authority": False,
+        "promotion_authority": False,
+        "old_evidence_reuse_authority": False,
+        "fresh_attempt_generation_required": True,
+        "status": "QUARANTINED",
+    }
+    expected_base = {
+        "schema": RUNNER_SCHEMA,
+        "kind": "contiguous_compatibility_preparation_quarantine",
+        "campaign_id": spec.campaign_id,
+        "generation_id": spec.generation_id,
+        "attempt_id": spec.attempt_id,
+        "attempt_spec_sha256": proposer_attempt_binding_sha256(spec),
+    }
+    if (
+        receipt != {**expected_base, **expected_extra}
+        or any(path.exists() or path.is_symlink() for path in absent_paths)
+    ):
+        raise ContiguousRunnerError(
+            "preparation quarantine is incomplete, drifted, or authoritative"
+        )
+    return receipt
 
 
 def _validate_preparation_receipts(
@@ -5356,6 +5508,187 @@ def _validate_preparation_receipts(
         raise ContiguousRunnerError(
             "backend preparation did not bind one controller-selected "
             "probe-isolation mode"
+        )
+    closure_root = Path(prepared.compatibility_closure_path)
+    turn_receipt_path = Path(
+        prepared.compatibility_turn_receipt_path
+    )
+    if (
+        closure_root
+        != host_root / "compatibility_arena_closure"
+        or turn_receipt_path
+        != host_root / "compatibility_turn_receipt.json"
+    ):
+        raise ContiguousRunnerError(
+            "compatibility closure paths left the exact attempt host root"
+        )
+    try:
+        closure_observation = CompatibilityClosure.validate_closure(
+            closure_root,
+            prepared.compatibility_closure_receipt_sha256,
+        )
+        closure_snapshot = (
+            CompatibilityClosure.canonical_closure_snapshot()
+        )
+    except CompatibilityClosure.CompatibilityClosureError as exc:
+        raise ContiguousRunnerError(
+            "compatibility closure failed independent runner validation"
+        ) from exc
+    turn_receipt = _validate_bound_receipt(
+        prepared.compatibility_turn_receipt_path,
+        prepared.compatibility_turn_receipt_sha256,
+        expected_path=turn_receipt_path,
+        expected_kind=(
+            "arc_agi3_contiguous_compatibility_turn_binding"
+        ),
+        spec=spec,
+    )
+    image = attestation_value.get("image")
+    arena_rpc = attestation_value.get("arena_rpc")
+    controls = closure_snapshot.get("components")
+    worker_controls = (
+        image.get("worker_control_sha256")
+        if isinstance(image, dict)
+        else None
+    )
+    recipe_sha256 = (
+        controls.get("container_recipe", {}).get("sha256")
+        if isinstance(controls, dict)
+        else None
+    )
+    requirements_sha256 = (
+        controls.get("solver_requirements", {}).get("sha256")
+        if isinstance(controls, dict)
+        else None
+    )
+    if (
+        not isinstance(image, dict)
+        or not isinstance(arena_rpc, dict)
+        or not isinstance(controls, dict)
+        or not isinstance(worker_controls, dict)
+        or closure_observation.get("status") != "PASS"
+        or closure_observation.get("launch_authorized") is not False
+        or worker_controls.get(
+            "org.gkm.arc-agi3.arena-rpc-client-sha256"
+        )
+        != closure_observation.get("client_sha256")
+        or worker_controls.get(
+            "org.gkm.arc-agi3.container-recipe-sha256"
+        )
+        != recipe_sha256
+        or worker_controls.get(
+            "org.gkm.arc-agi3.solver-requirements-sha256"
+        )
+        != requirements_sha256
+    ):
+        raise ContiguousRunnerError(
+            "compatibility closure does not match the attested image client"
+        )
+    expected_turn_receipt = {
+        "schema": 1,
+        "kind": "arc_agi3_contiguous_compatibility_turn_binding",
+        "campaign_id": spec.campaign_id,
+        "generation_id": spec.generation_id,
+        "attempt_id": spec.attempt_id,
+        "attempt_spec_sha256": proposer_attempt_binding_sha256(spec),
+        "game": spec.game,
+        "target_level": spec.target_level,
+        "frontier_sha256": spec.frontier_sha256,
+        "parent_checkpoint_sha256": spec.parent_checkpoint_sha256,
+        "closure": {
+            "root": str(closure_root),
+            "receipt_sha256": (
+                prepared.compatibility_closure_receipt_sha256
+            ),
+            "content_manifest_sha256": closure_observation[
+                "content_manifest_sha256"
+            ],
+            "client_sha256": closure_observation["client_sha256"],
+        },
+        "host_rpc": {
+            "session_binding_receipt_path": (
+                prepared.arena_session_binding_receipt_path
+            ),
+            "session_binding_receipt_sha256": (
+                prepared.arena_session_binding_receipt_sha256
+            ),
+            "binding_sha256": binding_event["binding_sha256"],
+            "session_id": binding_event["session_id"],
+            "host_socket_path": spec.arena_socket_path,
+            "host_socket_identity_sha256": (
+                prepared.arena_relay_socket_identity_sha256
+            ),
+            "container_socket": arena_rpc.get("socket"),
+            "token_file": arena_rpc.get("token_file"),
+            "token_bytes_retained": False,
+        },
+        "transport": {
+            "kind": ARENA_VOLUME_TRANSPORT,
+            "volume_name": prepared.arena_volume_name,
+            "volume_observation_sha256": (
+                prepared.arena_volume_observation_sha256
+            ),
+            "relay_container_id": prepared.arena_relay_container_id,
+            "relay_image_digest": prepared.arena_relay_image_digest,
+            "relay_image_observation_sha256": (
+                prepared.arena_relay_image_observation_sha256
+            ),
+            "relay_container_observation_sha256": (
+                prepared.arena_relay_container_observation_sha256
+            ),
+            "readiness_receipt_sha256": (
+                prepared.arena_relay_readiness_receipt_sha256
+            ),
+            "preparation_receipt_sha256": (
+                prepared.arena_relay_preparation_receipt_sha256
+            ),
+            "attach_argv_sha256": (
+                prepared.arena_relay_attach_argv_sha256
+            ),
+        },
+        "container": {
+            "container_id": attestation_value.get("container_id"),
+            "requested_image_reference": image.get(
+                "requested_reference"
+            ),
+            "image_manifest_digest": image.get("manifest_digest"),
+            "image_id": image.get("image_id"),
+            "image_observation_sha256": image.get(
+                "image_inspect_sha256"
+            ),
+            "worker_control_sha256": image.get(
+                "worker_control_sha256"
+            ),
+            "container_observation_sha256": attestation_value.get(
+                "container_inspect_sha256"
+            ),
+            "security_projection_sha256": attestation_value.get(
+                "security_projection_sha256"
+            ),
+            "create_argv_sha256": attestation_value.get(
+                "create_argv_sha256"
+            ),
+            "launch_attestation_sha256": (
+                prepared.launch_attestation_sha256
+            ),
+            "container_recipe_sha256": worker_controls[
+                "org.gkm.arc-agi3.container-recipe-sha256"
+            ],
+            "solver_requirements_sha256": worker_controls[
+                "org.gkm.arc-agi3.solver-requirements-sha256"
+            ],
+        },
+        "authority": {
+            "scheduler_authority": False,
+            "mutation_authority": False,
+            "promotion_authority": False,
+            "launch_authority": False,
+            "runner_reopen_required_before_launch": True,
+        },
+    }
+    if turn_receipt != expected_turn_receipt:
+        raise ContiguousRunnerError(
+            "compatibility turn receipt is stale, incomplete, or substituted"
         )
     neutral = _validate_bound_receipt(
         prepared.neutral_cwd_attestation_path,
@@ -9690,6 +10023,7 @@ class ContiguousCampaignRunner:
                     "public_observation_transition": None,
                     "protocol_invalid": None,
                     "substrate_failure": None,
+                    "preparation_quarantine": None,
                     "outcome": None,
                     "settled_result": None,
                     "teardown": None,
@@ -9826,6 +10160,85 @@ class ContiguousCampaignRunner:
                 attempt["operation_retry_not_before"][
                     payload["operation"]
                 ] = payload["retry_not_before"]
+            elif kind == "ATTEMPT_PREPARATION_QUARANTINED":
+                attempt = self._attempt(
+                    attempts, attempt_id, "PREPARED"
+                )
+                required = {
+                    "attempt_id",
+                    "quarantine_receipt_path",
+                    "quarantine_receipt_sha256",
+                    "result",
+                    "authenticated_cost_units",
+                    "budget_reservation_id",
+                    "scheduler_decision_id",
+                }
+                if (
+                    set(payload) != required
+                    or payload["authenticated_cost_units"] != 0
+                    or payload["budget_reservation_id"]
+                    != attempt["budget_reservation_id"]
+                    or payload["scheduler_decision_id"]
+                    != attempt["scheduler_decision_id"]
+                    or not isinstance(payload["result"], dict)
+                ):
+                    raise ContiguousRunnerError(
+                        "preparation quarantine event schema/order mismatch"
+                    )
+                result = self._result_from_payload({
+                    "attempt_id": attempt_id,
+                    **payload["result"],
+                })
+                if result != AttemptResult(
+                    kind="infrastructure",
+                    cost_used=0.0,
+                    reason="compatibility_preparation_quarantined",
+                ):
+                    raise ContiguousRunnerError(
+                        "preparation quarantine gained result authority"
+                    )
+                _validate_preparation_quarantine_receipt(
+                    attempt["spec"],
+                    payload["quarantine_receipt_path"],
+                    payload["quarantine_receipt_sha256"],
+                )
+                try:
+                    budget = Scheduler.settle_budget(
+                        budget,
+                        reservation_id=attempt[
+                            "budget_reservation_id"
+                        ],
+                        attempt_id=attempt_id,
+                        charged_units=0,
+                    )
+                except Scheduler.SchedulerError as exc:
+                    raise ContiguousRunnerError(
+                        "preparation quarantine settlement is invalid"
+                    ) from exc
+                lane = lanes[attempt["spec"].game]
+                if (
+                    lane["active"] != attempt_id
+                    or lane["no_progress"]
+                    != attempt["scheduler_decision"].choice.no_progress
+                ):
+                    raise ContiguousRunnerError(
+                        "preparation quarantine does not close its exact "
+                        "reserved frontier"
+                    )
+                lane["active"] = None
+                attempt.update(
+                    phase="CLOSED",
+                    settled_result=result,
+                    outcome="compatibility_preparation_quarantined",
+                    preparation_quarantine={
+                        "path": payload[
+                            "quarantine_receipt_path"
+                        ],
+                        "sha256": payload[
+                            "quarantine_receipt_sha256"
+                        ],
+                    },
+                )
             elif kind == "BACKEND_PREPARED":
                 attempt = self._attempt(attempts, attempt_id, "PREPARED")
                 if set(payload) != {"attempt_id", "prepared"}:
@@ -12043,10 +12456,9 @@ class ContiguousCampaignRunner:
             )
 
         # Only files that can still influence execution/promotion are rehashed
-        # on every scheduler pass.  A closed blocker is the sole exception:
-        # its external receipt remains live lane-stopping authority and must be
-        # reopened and host-authenticated on every pass, including cached
-        # reducer recovery.
+        # on every scheduler pass.  Closed blocker and preparation-quarantine
+        # receipts are exceptions: their external evidence remains live and
+        # must be reopened on every pass, including cached reducer recovery.
         for attempt in attempts.values():
             if attempt["phase"] == "CLOSED":
                 settled = attempt.get("settled_result")
@@ -12094,6 +12506,15 @@ class ContiguousCampaignRunner:
                         evidence=protocol_invalid[
                             "terminal_evidence"
                         ],
+                    )
+                preparation_quarantine = attempt.get(
+                    "preparation_quarantine"
+                )
+                if preparation_quarantine is not None:
+                    _validate_preparation_quarantine_receipt(
+                        attempt["spec"],
+                        preparation_quarantine["path"],
+                        preparation_quarantine["sha256"],
                     )
                 continue
             if attempt["phase"] == "RESERVED":
@@ -17702,6 +18123,11 @@ class ContiguousCampaignRunner:
                 raise
             if not isinstance(exc, Exception):
                 raise
+            if isinstance(exc, BackendPreparationQuarantinedError):
+                self._record_preparation_quarantine(
+                    attempt_id, spec, exc
+                )
+                return
             self._record_retry(
                 attempt_id, "backend_prepare", exc
             )
@@ -17929,6 +18355,64 @@ class ContiguousCampaignRunner:
             attempt_id=attempt_id,
             operation="backend_prepare",
             evidence_kind="backend_prepared",
+        )
+
+    def _record_preparation_quarantine(
+        self,
+        attempt_id: str,
+        spec: AttemptSpec,
+        exc: BackendPreparationQuarantinedError,
+    ) -> None:
+        attempt = self.state()["attempts"].get(attempt_id)
+        if (
+            attempt is None
+            or attempt["phase"] != "PREPARED"
+            or attempt["spec"] != spec
+        ):
+            raise ContiguousRunnerError(
+                "preparation quarantine targets the wrong attempt phase"
+            )
+        _validate_preparation_quarantine_receipt(
+            spec,
+            exc.quarantine_receipt_path,
+            exc.quarantine_receipt_sha256,
+        )
+        self._record_circuit_failure(
+            attempt_id=attempt_id,
+            operation="backend_prepare",
+            fault_domain="containment_infrastructure",
+        )
+        # Reopen state after the circuit event (and possible threshold
+        # incident) before binding the terminal budget coordinates below.
+        attempt = self.state()["attempts"][attempt_id]
+        result = AttemptResult(
+            kind="infrastructure",
+            cost_used=0.0,
+            reason="compatibility_preparation_quarantined",
+        )
+        result_payload = self._result_payload(attempt_id, result)
+        result_payload.pop("attempt_id")
+        self.journal.append(
+            event_id=f"{attempt_id}:preparation-quarantined",
+            kind="ATTEMPT_PREPARATION_QUARANTINED",
+            payload={
+                "attempt_id": attempt_id,
+                "quarantine_receipt_path": (
+                    exc.quarantine_receipt_path
+                ),
+                "quarantine_receipt_sha256": (
+                    exc.quarantine_receipt_sha256
+                ),
+                "result": result_payload,
+                "authenticated_cost_units": 0,
+                "budget_reservation_id": (
+                    attempt["budget_reservation_id"]
+                ),
+                "scheduler_decision_id": (
+                    attempt["scheduler_decision_id"]
+                ),
+            },
+            recorded_at=self.clock(),
         )
 
     def _record_substrate_infrastructure(
@@ -20780,9 +21264,21 @@ class ContiguousCampaignRunner:
                     try:
                         spec = self._materialize_reserved(reservation)
                         self._prepare_backend(spec.attempt_id, spec)
-                        prepared = self.state()["attempts"][
+                        prepared_attempt = self.state()["attempts"][
                             spec.attempt_id
-                        ]["prepared"]
+                        ]
+                        if prepared_attempt["phase"] == "CLOSED":
+                            # A preserved crash root is never retried or
+                            # reused.  Stop this dispatch pass so a systematic
+                            # host fault cannot spin through fresh identities;
+                            # the next cycle may allocate one new generation.
+                            break
+                        if prepared_attempt["phase"] != "BACKEND_PREPARED":
+                            raise ContiguousRunnerError(
+                                "backend preparation did not reach one "
+                                "terminal or launchable phase"
+                            )
+                        prepared = prepared_attempt["prepared"]
                         launched_now = self._launch_backend(
                             spec.attempt_id, spec, prepared
                         )
@@ -22656,6 +23152,7 @@ __all__ = [
     "BackendLaunch",
     "BackendPoll",
     "BackendPreparation",
+    "BackendPreparationQuarantinedError",
     "BackendTeardownProof",
     "AuxiliaryAbort",
     "AuxiliaryAdmission",
@@ -22668,7 +23165,6 @@ __all__ = [
     "AuxiliaryTeardown",
     "ContiguousCampaignRunner",
     "CONTIGUOUS_AUXILIARY_LAUNCH_READY",
-    "CONTIGUOUS_RUNNER_LAUNCH_READY",
     "ContiguousRunnerError",
     "DurableAttemptJournal",
     "InputBundleBuilder",

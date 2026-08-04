@@ -1,6 +1,6 @@
 72a7591e354dc73fc84ba673757d019ea7256fc1908844e2e4e7d84d7f1bfb92  ../../.github/workflows/pages.yml
 6512fa75da853f7575d4f831d85ff392e28769eafadcf0398f5c14bea37155ba  ../../README.md
-cd3ebc0666007371011c55c30e2afda6feffa5db04f46d2e1c016e7c575ee65f  ../../REPRODUCE_ARC.md
+fecf508feffd471b5f51ea859c6d1fce9b0031f6d2d818ffdf4ed79865be59de  ../../REPRODUCE_ARC.md
 ab3bcdeb2179462acf39274947cc72a61e803ed57a05fe1cc046176f9d4aa786  ../../docs/generated/marginal_complexity_by_level.rst
 527b9673bfa2cef01554965863b0d3604611657304ad0fdd1cff812d60efc550  ../../docs/self_improving_agent.rst
 501d0a1ba761780bf19a35543be5b45c055392737b159e38b97b6be2cd5d4fa2  ../ARC.md

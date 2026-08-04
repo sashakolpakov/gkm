@@ -72,15 +72,38 @@ The contiguous admission chain additionally proves the sidecar brief's
 native/supervisory origin and rejects manual, scheduler-authored, stale,
 cross-frontier, or substituted requests.
 The policy test does not by itself prove that runner/container wiring exists;
-the unified contiguous conformance receipt is the launch gate.
+the unified contiguous conformance receipt is one required input to
+receipt-derived launch authority, not launch authorization by itself.
 
-The preparatory compatibility closure is tested separately. It extracts the
-same proposer-side Arena RPC client used by the contiguous container, binds a
-deterministic content manifest and an instance-custody receipt, rejects path or
-file substitution, and pins the solver dependency lock. It deliberately has
-no production call site and returns `launch_authorized=false`; passing this
-test is therefore necessary input preparation, not permission to launch a
-compatibility turn:
+The compatibility closure extracts the same proposer-side Arena RPC client
+used by the contiguous container, binds a deterministic content manifest and
+an instance-custody receipt, rejects path or file substitution, and pins the
+solver dependency lock. The existing contiguous backend consumes it atomically
+and emits an exact per-turn binding over the host session, socket, token digest
+(never token bytes), relay, unstarted container, pinned image, and build
+controls. The runner and backend both reopen that binding before launch. The
+closure records `launch_authorized=false`, while the per-turn receipt records
+`authority.launch_authority=false`. Neither receipt can schedule, launch,
+mutate, retain WIP, admit a candidate, or promote. Full launch additionally
+requires the independently reopened production-scenario, frozen-release,
+runtime/image, production-stack, and ordered-pilot receipts.
+
+The worker image must be rebuilt after any recipe change. A production builder
+must construct a receipt-bound minimal build context, compute SHA-256 over
+`arc/crack_lab/container/Containerfile.arc-agi3-contiguous`, supply that
+exact digest as the no-default build argument
+`ARC_AGI3_CONTAINER_RECIPE_SHA256`, push the image, retain immutable build
+metadata, reopen its repository digest, and bind the context manifest, recipe,
+arguments, metadata, image ID, and repository digest in one provenance
+receipt. Building with the repository root as context is forbidden. Image
+inspection requires the resulting
+`org.gkm.arc-agi3.container-recipe-sha256` label to equal the current host
+recipe digest; omitting or substituting the build argument fails before
+container creation. This preparatory tranche enforces that argument/label
+contract at inspection time; it has not built or pushed a production image and
+has not produced the minimal-context build-provenance receipt. Production
+S01--S12 observations, ordered pilots, and the terminal release evidence also
+remain separate fail-closed requirements.
 
 ```bash
 PYTHONPATH=arc/crack_lab pytest -q \

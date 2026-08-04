@@ -45,10 +45,6 @@ MAX_CANDIDATE_FILES = 256
 MAX_CANDIDATE_FILE_BYTES = 16 * 1024 * 1024
 MAX_CANDIDATE_TOTAL_BYTES = 64 * 1024 * 1024
 MAX_CANDIDATE_DEPTH = 8
-# Deliberately false until the container scheduler, observed attestation
-# producer, Arena RPC boundary, and canonical 183/183 release gate exist.
-# Schema-valid, self-asserted JSON must never authorize an early launch.
-CONTIGUOUS_LAUNCH_READY = False
 CHECKPOINT_NAME = "checkpoint.json"
 CANDIDATE_NAME = "candidate_path.json"
 CANDIDATE_EVIDENCE_NAME = "host_candidate_path.json"
@@ -122,6 +118,43 @@ PROMOTION_RECEIPT_FIELDS = {
     "checks",
 }
 CONTROL_CONTRACT_FILES = Conformance.CONTROL_CONTRACT_FILES
+
+# Fields which must remain identical between the supplied terminal receipt and
+# the fresh, immediately-before-launch conformance execution.  Execution times
+# and output hashes are intentionally absent: they are fresh observations, not
+# launch identities.  The two independently validated terminal evidence hashes
+# bind those observations in the receipt-derived authority below.
+_TERMINAL_LAUNCH_IDENTITY_FIELDS = (
+    "registry_sha256",
+    "launch_requirements_sha256",
+    "control_contract_sha256",
+    "inventory_sha256",
+    "container_image_digest",
+    "frozen_release_receipt_path",
+    "frozen_release_receipt_sha256",
+    "frozen_release_levels",
+    "production_scenario_driver_receipt_path",
+    "production_scenario_driver_receipt_sha256",
+    "production_scenario_receipts_sha256",
+    "production_scenario_verification_environment_sha256",
+    "suite_execution_policy_sha256",
+    "scenario_receipts_sha256",
+    "component_suite_inventory_sha256",
+    "component_suite_outcomes_sha256",
+    "suite_loaded_control_modules_sha256",
+    "suite_source_loaded_sha256",
+    "suite_interpreter_path",
+    "suite_interpreter_sha256",
+    "suite_runtime_manifest_path",
+    "suite_runtime_manifest_sha256",
+    "execution_control_root",
+    "execution_control_snapshot_sha256",
+    "execution_control_snapshot_immutable",
+    "workspace_root_inventory_start_sha256",
+    "workspace_root_inventory_end_sha256",
+    "games",
+    "levels",
+)
 
 
 class SupervisorContractError(RuntimeError):
@@ -5371,6 +5404,193 @@ def _run_control_suite(
     return result
 
 
+def _derive_receipt_launch_authority(
+    *,
+    targets: Mapping[str, int],
+    supplied_terminal: Mapping[str, Any],
+    runtime_terminal: Mapping[str, Any],
+    pilot_gate: Mapping[str, Any],
+    pilot_gate_receipt: Path,
+    requested_image_digest: str,
+    python_runtime_manifest: Path,
+    python_runtime_manifest_sha256: str,
+    production_stack_attestation_sha256: str,
+) -> dict[str, Any]:
+    """Derive launch authority exclusively from already verified evidence.
+
+    This is deliberately not a configurable readiness switch.  Its inputs are
+    the exact terminal conformance result reopened from disk, the result of a
+    fresh control-suite execution rebound to the same S01--S12 and 183-level
+    release receipts, and the authenticated ordered pilot gate (which itself
+    reopens the production-stack receipt and both pilot lineages).
+    """
+
+    authoritative = authoritative_inventory()
+    if (
+        dict(targets) != authoritative
+        or len(authoritative) != EXPECTED_GAMES
+        or sum(authoritative.values()) != EXPECTED_LEVELS
+    ):
+        raise SupervisorContractError(
+            "receipt-derived launch authority targets another inventory"
+        )
+    if any(
+        supplied_terminal.get(field) != runtime_terminal.get(field)
+        for field in _TERMINAL_LAUNCH_IDENTITY_FIELDS
+    ):
+        raise SupervisorContractError(
+            "runtime terminal authority differs from the supplied "
+            "conformance receipt"
+        )
+    for label, terminal in (
+        ("supplied", supplied_terminal),
+        ("runtime", runtime_terminal),
+    ):
+        if (
+            terminal.get("status") != "PASS"
+            or terminal.get("launch_authority") is not True
+            or terminal.get("games") != EXPECTED_GAMES
+            or terminal.get("levels") != EXPECTED_LEVELS
+            or terminal.get("frozen_release_levels") != EXPECTED_LEVELS
+            or terminal.get("container_image_digest")
+            != requested_image_digest
+            or not _is_sha256_hex(
+                terminal.get("frozen_release_receipt_sha256")
+            )
+            or not _is_sha256_hex(
+                terminal.get(
+                    "production_scenario_driver_receipt_sha256"
+                )
+            )
+            or not _is_sha256_hex(
+                terminal.get("production_scenario_receipts_sha256")
+            )
+            or not _is_sha256_hex(
+                terminal.get(
+                    "production_scenario_verification_environment_sha256"
+                )
+            )
+            or not _is_sha256_hex(
+                terminal.get("terminal_evidence_sha256")
+            )
+            or not isinstance(
+                terminal.get("frozen_release_receipt_path"), str
+            )
+            or not Path(
+                terminal["frozen_release_receipt_path"]
+            ).is_absolute()
+            or not isinstance(
+                terminal.get(
+                    "production_scenario_driver_receipt_path"
+                ),
+                str,
+            )
+            or not Path(
+                terminal["production_scenario_driver_receipt_path"]
+            ).is_absolute()
+        ):
+            raise SupervisorContractError(
+                f"{label} terminal receipt is not exact 25-game/"
+                "183-boundary launch authority"
+            )
+    runtime_manifest_path = Path(python_runtime_manifest)
+    if (
+        not runtime_manifest_path.is_absolute()
+        or not _is_sha256_hex(python_runtime_manifest_sha256)
+        or supplied_terminal.get("suite_runtime_manifest_path")
+        != str(runtime_manifest_path)
+        or supplied_terminal.get("suite_runtime_manifest_sha256")
+        != python_runtime_manifest_sha256
+        or runtime_terminal.get("suite_runtime_manifest_path")
+        != str(runtime_manifest_path)
+        or runtime_terminal.get("suite_runtime_manifest_sha256")
+        != python_runtime_manifest_sha256
+    ):
+        raise SupervisorContractError(
+            "receipt-derived launch authority lacks the exact runtime "
+            "manifest"
+        )
+    gate_path = Path(pilot_gate_receipt).resolve()
+    if (
+        not _is_sha256_hex(production_stack_attestation_sha256)
+        or pilot_gate.get("schema") != 1
+        or pilot_gate.get("kind")
+        != "arc_agi3_contiguous_pilot_gate"
+        or pilot_gate.get("status") != "PASS"
+        or pilot_gate.get("full_campaign_launch_gate") != "UNLOCKED"
+        or pilot_gate.get("pilot_games") != ["ft09", "lp85"]
+        or pilot_gate.get("pilot_targets") != [6, 8]
+        or pilot_gate.get("pilot_lineage_canonical") is not False
+        or pilot_gate.get("image_digest") != requested_image_digest
+        or pilot_gate.get("control_contract_sha256")
+        != supplied_terminal.get("control_contract_sha256")
+        or pilot_gate.get("production_stack_attestation_sha256")
+        != production_stack_attestation_sha256
+        or not isinstance(
+            pilot_gate.get("production_stack_attestation_path"), str
+        )
+        or not Path(
+            pilot_gate["production_stack_attestation_path"]
+        ).is_absolute()
+        or pilot_gate.get("pilot_manifest_sha256") is None
+        or not _is_sha256_hex(pilot_gate.get("pilot_manifest_sha256"))
+        or not _is_sha256_hex(pilot_gate.get("receipt_sha256"))
+        or not _is_sha256_hex(pilot_gate.get("file_sha256"))
+        or pilot_gate.get("path") != str(gate_path)
+        or isinstance(pilot_gate.get("meta_handoff_count"), bool)
+        or not isinstance(pilot_gate.get("meta_handoff_count"), int)
+        or pilot_gate["meta_handoff_count"] < 1
+    ):
+        raise SupervisorContractError(
+            "receipt-derived launch authority lacks the exact ordered "
+            "pilot and production-stack evidence"
+        )
+    body = {
+        "schema": 1,
+        "kind": "arc_agi3_contiguous_receipt_launch_authority",
+        "status": "PASS",
+        "authority_source": "verified_receipts_only",
+        "games": EXPECTED_GAMES,
+        "levels": EXPECTED_LEVELS,
+        "inventory_sha256": supplied_terminal["inventory_sha256"],
+        "control_contract_sha256": supplied_terminal[
+            "control_contract_sha256"
+        ],
+        "image_digest": requested_image_digest,
+        "supplied_terminal_evidence_sha256": supplied_terminal[
+            "terminal_evidence_sha256"
+        ],
+        "runtime_terminal_evidence_sha256": runtime_terminal[
+            "terminal_evidence_sha256"
+        ],
+        "frozen_release_receipt_sha256": supplied_terminal[
+            "frozen_release_receipt_sha256"
+        ],
+        "production_scenario_driver_receipt_sha256": supplied_terminal[
+            "production_scenario_driver_receipt_sha256"
+        ],
+        "production_scenario_receipts_sha256": supplied_terminal[
+            "production_scenario_receipts_sha256"
+        ],
+        "python_runtime_manifest_sha256":
+            python_runtime_manifest_sha256,
+        "pilot_gate_receipt_sha256": pilot_gate["file_sha256"],
+        "pilot_gate_content_sha256": pilot_gate["receipt_sha256"],
+        "pilot_manifest_sha256": pilot_gate["pilot_manifest_sha256"],
+        "production_stack_attestation_sha256":
+            production_stack_attestation_sha256,
+        "pilot_meta_handoff_count": pilot_gate[
+            "meta_handoff_count"
+        ],
+    }
+    return {
+        **body,
+        "authority_sha256": hashlib.sha256(
+            _operator_lease_canonical_json(body)
+        ).hexdigest(),
+    }
+
+
 def launch_preflight(
     attestation: Path,
     *,
@@ -5408,6 +5628,24 @@ def launch_preflight(
     ):
         raise SupervisorContractError(
             "requested container image does not match the tested image digest"
+        )
+    if (
+        python_runtime_manifest is None
+        or not _is_sha256_hex(python_runtime_manifest_sha256)
+    ):
+        raise SupervisorContractError(
+            "launch requires one exact pinned Python runtime manifest"
+        )
+    if (
+        pilot_gate_receipt is None
+        or pilot_authentication_key is None
+        or not _is_sha256_hex(
+            pilot_production_stack_attestation_sha256
+        )
+    ):
+        raise SupervisorContractError(
+            "full launch requires exact pilot, key, and production-stack "
+            "receipt inputs"
         )
     if (
         prior_conformance["suite_runtime_manifest_path"]
@@ -5454,34 +5692,6 @@ def launch_preflight(
             "runtime conformance could not bind live terminal launch "
             "authority"
         ) from exc
-    if any(
-        runtime_conformance[field] != prior_conformance[field]
-        for field in (
-            "registry_sha256",
-            "control_contract_sha256",
-            "inventory_sha256",
-            "container_image_digest",
-            "frozen_release_receipt_path",
-            "frozen_release_receipt_sha256",
-            "frozen_release_levels",
-            "production_scenario_driver_receipt_path",
-            "production_scenario_driver_receipt_sha256",
-            "production_scenario_receipts_sha256",
-            "production_scenario_verification_environment_sha256",
-            "suite_runtime_manifest_path",
-            "suite_runtime_manifest_sha256",
-        )
-    ):
-        raise SupervisorContractError(
-            "runtime terminal authority differs from the supplied "
-            "conformance receipt"
-        )
-    if not CONTIGUOUS_LAUNCH_READY:
-        raise SupervisorContractError(
-            "contiguous launch is fail-closed until the real container "
-            "scheduler, observed attestation producer, Arena RPC boundary, "
-            "and canonical 183/183 release gate are implemented"
-        )
     try:
         import arc_agi3_contiguous_pilot as Pilot
 
@@ -5502,9 +5712,71 @@ def launch_preflight(
         raise SupervisorContractError(
             "full launch requires exact live ft09 then lp85 pilot PASS"
         ) from exc
+    # Reopen every durable authority after the longest verification step.
+    # This makes a replacement of terminal, release, scenario, pilot, stack,
+    # interpreter, package, or runtime-manifest evidence during preflight a
+    # launch-blocking failure rather than a successful stale check.
+    try:
+        RuntimeManifest.load_runtime_manifest(
+            Path(python_runtime_manifest),
+            expected_sha256=str(python_runtime_manifest_sha256),
+            python_executable=Path(python_executable),
+            python_executable_sha256=python_executable_sha256,
+        )
+        reopened_conformance = validate_launch_attestation(
+            attestation,
+            canonical_root=canonical_root,
+            environments_root=environments_root,
+            repository=runtime_control_snapshot_root,
+        )
+        reopened_pilot_gate = Pilot.verify_pilot_gate_receipt(
+            Path(pilot_gate_receipt),
+            authentication_key_path=Path(
+                pilot_authentication_key
+            ),
+            expected_image_digest=requested_image_digest,
+            expected_control_contract_sha256=(
+                runtime_conformance["control_contract_sha256"]
+            ),
+            expected_production_stack_attestation_sha256=str(
+                pilot_production_stack_attestation_sha256
+            ),
+        )
+    except Exception as exc:
+        raise SupervisorContractError(
+            "launch evidence changed during final receipt revalidation"
+        ) from exc
+    if reopened_conformance != prior_conformance:
+        raise SupervisorContractError(
+            "terminal conformance changed during launch preflight"
+        )
+    if reopened_pilot_gate != pilot_gate:
+        raise SupervisorContractError(
+            "pilot or production-stack evidence changed during preflight"
+        )
+    receipt_authority = _derive_receipt_launch_authority(
+        targets=targets,
+        supplied_terminal=reopened_conformance,
+        runtime_terminal=runtime_conformance,
+        pilot_gate=reopened_pilot_gate,
+        pilot_gate_receipt=Path(pilot_gate_receipt),
+        requested_image_digest=requested_image_digest,
+        python_runtime_manifest=Path(python_runtime_manifest),
+        python_runtime_manifest_sha256=str(
+            python_runtime_manifest_sha256
+        ),
+        production_stack_attestation_sha256=str(
+            pilot_production_stack_attestation_sha256
+        ),
+    )
     return {
         "status": "PASS",
         "runtime_contiguous_conformance": "PASS",
+        "launch_authority": "RECEIPT_DERIVED",
+        "launch_authority_sha256": receipt_authority[
+            "authority_sha256"
+        ],
+        "launch_authority_evidence": receipt_authority,
         "conformance_result": str(conformance_result),
         "conformance_registry_sha256":
             prior_conformance["registry_sha256"],
@@ -5557,6 +5829,20 @@ def main(argv: Iterable[str] | None = None) -> int:
         type=Path,
         required=True,
     )
+    parser.add_argument(
+        "--pilot-gate-receipt",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        "--pilot-authentication-key",
+        type=Path,
+        required=True,
+    )
+    parser.add_argument(
+        "--pilot-production-stack-attestation-sha256",
+        required=True,
+    )
     args = parser.parse_args(argv)
     print(json.dumps(
         launch_preflight(
@@ -5573,6 +5859,13 @@ def main(argv: Iterable[str] | None = None) -> int:
             ),
             runtime_control_snapshot_root=(
                 args.runtime_control_snapshot_root
+            ),
+            pilot_gate_receipt=args.pilot_gate_receipt,
+            pilot_authentication_key=(
+                args.pilot_authentication_key
+            ),
+            pilot_production_stack_attestation_sha256=(
+                args.pilot_production_stack_attestation_sha256
             ),
         ),
         indent=2,

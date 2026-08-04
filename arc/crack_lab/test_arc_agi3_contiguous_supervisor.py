@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import hashlib
 import json
 import os
@@ -2218,6 +2219,100 @@ def _terminal_stub(
     }
 
 
+def _launch_receipt_inputs(
+    terminal: dict, tmp_path: Path
+) -> dict:
+    runtime_manifest = (tmp_path / "python-runtime.json").resolve()
+    terminal.update({
+        "suite_runtime_manifest_path": str(runtime_manifest),
+        "suite_runtime_manifest_sha256": "7" * 64,
+    })
+    return {
+        "python_runtime_manifest": runtime_manifest,
+        "python_runtime_manifest_sha256": "7" * 64,
+        "pilot_gate_receipt": (tmp_path / "pilot-gate.json").resolve(),
+        "pilot_authentication_key": (tmp_path / "pilot.key").resolve(),
+        "pilot_production_stack_attestation_sha256": "2" * 64,
+    }
+
+
+def _receipt_authority_fixture(tmp_path: Path) -> dict:
+    runtime_manifest = (tmp_path / "runtime-manifest.json").resolve()
+    release = (tmp_path / "release.json").resolve()
+    scenario = (tmp_path / "scenario.json").resolve()
+    control_root = (tmp_path / "controls").resolve()
+    supplied = {
+        "status": "PASS",
+        "launch_authority": True,
+        "registry_sha256": "1" * 64,
+        "launch_requirements_sha256": "2" * 64,
+        "control_contract_sha256": "3" * 64,
+        "inventory_sha256": B.authoritative_inventory_sha256(),
+        "container_image_digest": "sha256:" + "4" * 64,
+        "frozen_release_receipt_path": str(release),
+        "frozen_release_receipt_sha256": "5" * 64,
+        "frozen_release_levels": 183,
+        "production_scenario_driver_receipt_path": str(scenario),
+        "production_scenario_driver_receipt_sha256": "6" * 64,
+        "production_scenario_receipts_sha256": "7" * 64,
+        "production_scenario_verification_environment_sha256": "8" * 64,
+        "suite_execution_policy_sha256": "9" * 64,
+        "scenario_receipts_sha256": {"S01": "a" * 64},
+        "component_suite_inventory_sha256": "b" * 64,
+        "component_suite_outcomes_sha256": "c" * 64,
+        "suite_loaded_control_modules_sha256": "d" * 64,
+        "suite_source_loaded_sha256": "e" * 64,
+        "suite_interpreter_path": str(PYTHON_EXECUTABLE),
+        "suite_interpreter_sha256": PYTHON_EXECUTABLE_SHA256,
+        "suite_runtime_manifest_path": str(runtime_manifest),
+        "suite_runtime_manifest_sha256": "f" * 64,
+        "execution_control_root": str(control_root),
+        "execution_control_snapshot_sha256": "3" * 64,
+        "execution_control_snapshot_immutable": True,
+        "workspace_root_inventory_start_sha256": "0" * 64,
+        "workspace_root_inventory_end_sha256": "0" * 64,
+        "games": 25,
+        "levels": 183,
+        "terminal_evidence_sha256": "a" * 64,
+    }
+    runtime = dict(supplied)
+    runtime["terminal_evidence_sha256"] = "b" * 64
+    gate_path = (tmp_path / "pilot-gate.json").resolve()
+    pilot = {
+        "schema": 1,
+        "kind": "arc_agi3_contiguous_pilot_gate",
+        "status": "PASS",
+        "full_campaign_launch_gate": "UNLOCKED",
+        "pilot_games": ["ft09", "lp85"],
+        "pilot_targets": [6, 8],
+        "pilot_lineage_canonical": False,
+        "image_digest": supplied["container_image_digest"],
+        "control_contract_sha256": supplied[
+            "control_contract_sha256"
+        ],
+        "production_stack_attestation_path": str(
+            (tmp_path / "production_stack_attestation.json").resolve()
+        ),
+        "production_stack_attestation_sha256": "c" * 64,
+        "pilot_manifest_sha256": P.PILOT_MANIFEST_SHA256,
+        "receipt_sha256": "d" * 64,
+        "file_sha256": "e" * 64,
+        "path": str(gate_path),
+        "meta_handoff_count": 1,
+    }
+    return {
+        "targets": B.authoritative_inventory(),
+        "supplied_terminal": supplied,
+        "runtime_terminal": runtime,
+        "pilot_gate": pilot,
+        "pilot_gate_receipt": gate_path,
+        "requested_image_digest": supplied["container_image_digest"],
+        "python_runtime_manifest": runtime_manifest,
+        "python_runtime_manifest_sha256": "f" * 64,
+        "production_stack_attestation_sha256": "c" * 64,
+    }
+
+
 def _launch_validation_kwargs(tmp_path: Path) -> dict:
     return {
         "canonical_root": tmp_path,
@@ -2309,6 +2404,7 @@ def test_launch_preflight_binds_tested_image_and_current_control_tree(
         return conformance
 
     terminal = _terminal_stub(conformance, tmp_path, digest)
+    receipt_inputs = _launch_receipt_inputs(terminal, tmp_path)
     monkeypatch.setattr(
         B,
         "validate_launch_attestation",
@@ -2320,7 +2416,9 @@ def test_launch_preflight_binds_tested_image_and_current_control_tree(
         lambda *_args, **_kwargs: terminal,
     )
     monkeypatch.setattr(B, "_run_control_suite", pass_runtime_suite)
-    with pytest.raises(B.SupervisorContractError, match="fail-closed"):
+    with pytest.raises(
+        B.SupervisorContractError, match="exact live ft09 then lp85"
+    ):
         B.launch_preflight(
             path,
             requested_image_digest=digest,
@@ -2330,6 +2428,7 @@ def test_launch_preflight_binds_tested_image_and_current_control_tree(
             python_executable=PYTHON_EXECUTABLE,
             python_executable_sha256=PYTHON_EXECUTABLE_SHA256,
             runtime_control_snapshot_root=tmp_path / "snapshot",
+            **receipt_inputs,
         )
     assert observed == ["PASS"]
     with pytest.raises(B.SupervisorContractError, match="tested image"):
@@ -2367,6 +2466,7 @@ def test_launch_preflight_requires_observed_runtime_suite(tmp_path, monkeypatch)
         raise B.SupervisorContractError("observed suite failure")
 
     terminal = _terminal_stub(conformance, tmp_path, digest)
+    receipt_inputs = _launch_receipt_inputs(terminal, tmp_path)
     monkeypatch.setattr(
         B,
         "validate_launch_attestation",
@@ -2383,6 +2483,7 @@ def test_launch_preflight_requires_observed_runtime_suite(tmp_path, monkeypatch)
             python_executable=PYTHON_EXECUTABLE,
             python_executable_sha256=PYTHON_EXECUTABLE_SHA256,
             runtime_control_snapshot_root=tmp_path / "snapshot",
+            **receipt_inputs,
         )
 
 
@@ -2411,6 +2512,13 @@ def test_launch_preflight_rejects_runtime_manifest_substitution(
             "runtime substitution must fail before execution"
         ),
     )
+    receipt_inputs = _launch_receipt_inputs(prior, tmp_path)
+    receipt_inputs.update({
+        "python_runtime_manifest": (
+            tmp_path / "substituted-runtime.json"
+        ),
+        "python_runtime_manifest_sha256": "c" * 64,
+    })
     with pytest.raises(
         B.SupervisorContractError,
         match="Python runtime manifest",
@@ -2424,10 +2532,7 @@ def test_launch_preflight_rejects_runtime_manifest_substitution(
             python_executable=PYTHON_EXECUTABLE,
             python_executable_sha256=PYTHON_EXECUTABLE_SHA256,
             runtime_control_snapshot_root=tmp_path / "snapshot",
-            python_runtime_manifest=(
-                tmp_path / "substituted-runtime.json"
-            ),
-            python_runtime_manifest_sha256="c" * 64,
+            **receipt_inputs,
         )
 
 
@@ -2460,6 +2565,105 @@ def test_launch_preflight_rejects_prelaunch_only_conformance(
         )
 
 
+def test_receipt_derived_launch_authority_has_no_static_latch(tmp_path):
+    inputs = _receipt_authority_fixture(tmp_path)
+    first = B._derive_receipt_launch_authority(**inputs)
+    second = B._derive_receipt_launch_authority(**inputs)
+    assert first == second
+    assert first["status"] == "PASS"
+    assert first["authority_source"] == "verified_receipts_only"
+    assert first["games"] == 25
+    assert first["levels"] == 183
+    assert first["authority_sha256"] == hashlib.sha256(
+        B._operator_lease_canonical_json({
+            key: value
+            for key, value in first.items()
+            if key != "authority_sha256"
+        })
+    ).hexdigest()
+    assert not hasattr(B, "CONTIGUOUS_LAUNCH_READY")
+
+
+@pytest.mark.parametrize(
+    ("scope", "field", "bad_value"),
+    (
+        ("both", "frozen_release_levels", 182),
+        ("both", "frozen_release_receipt_sha256", None),
+        (
+            "runtime",
+            "production_scenario_driver_receipt_sha256",
+            "0" * 64,
+        ),
+        ("both", "production_scenario_receipts_sha256", "invalid"),
+        (
+            "both",
+            "production_scenario_verification_environment_sha256",
+            "invalid",
+        ),
+        ("runtime", "control_contract_sha256", "0" * 64),
+        ("runtime", "registry_sha256", "0" * 64),
+        ("both", "container_image_digest", "sha256:" + "0" * 64),
+        ("both", "suite_runtime_manifest_sha256", "0" * 64),
+        ("supplied", "terminal_evidence_sha256", "invalid"),
+    ),
+)
+def test_receipt_derived_launch_authority_rejects_terminal_inverse(
+    tmp_path, scope, field, bad_value
+):
+    inputs = _receipt_authority_fixture(tmp_path)
+    selected = copy.deepcopy(inputs)
+    if scope in {"both", "supplied"}:
+        selected["supplied_terminal"][field] = bad_value
+    if scope in {"both", "runtime"}:
+        selected["runtime_terminal"][field] = bad_value
+    with pytest.raises(B.SupervisorContractError):
+        B._derive_receipt_launch_authority(**selected)
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    (
+        ("status", "BLOCKED"),
+        ("full_campaign_launch_gate", "LOCKED"),
+        ("pilot_games", ["lp85", "ft09"]),
+        ("pilot_targets", [6, 7]),
+        ("image_digest", "sha256:" + "0" * 64),
+        ("control_contract_sha256", "0" * 64),
+        ("production_stack_attestation_sha256", "0" * 64),
+        ("file_sha256", None),
+        ("receipt_sha256", "invalid"),
+        ("meta_handoff_count", 0),
+    ),
+)
+def test_receipt_derived_launch_authority_rejects_pilot_inverse(
+    tmp_path, field, bad_value
+):
+    inputs = _receipt_authority_fixture(tmp_path)
+    inputs["pilot_gate"][field] = bad_value
+    with pytest.raises(
+        B.SupervisorContractError, match="pilot and production-stack"
+    ):
+        B._derive_receipt_launch_authority(**inputs)
+
+
+def test_receipt_derived_launch_authority_rejects_inventory_and_runtime_args(
+    tmp_path,
+):
+    inputs = _receipt_authority_fixture(tmp_path)
+    inputs["targets"].pop("lf52")
+    with pytest.raises(
+        B.SupervisorContractError, match="another inventory"
+    ):
+        B._derive_receipt_launch_authority(**inputs)
+
+    inputs = _receipt_authority_fixture(tmp_path)
+    inputs["python_runtime_manifest_sha256"] = "0" * 64
+    with pytest.raises(
+        B.SupervisorContractError, match="exact runtime manifest"
+    ):
+        B._derive_receipt_launch_authority(**inputs)
+
+
 def test_full_launch_reopens_exact_ordered_pilot_gate(
     tmp_path, monkeypatch
 ):
@@ -2472,10 +2676,19 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
         tmp_path,
         digest,
     )
+    receipt_inputs = _launch_receipt_inputs(prior, tmp_path)
+    observed = {
+        "calls": 0,
+        "terminal_reopens": 0,
+        "runtime_reopens": 0,
+    }
+
+    def validate_terminal(*_args, **_kwargs):
+        observed["terminal_reopens"] += 1
+        return prior
+
     monkeypatch.setattr(
-        B,
-        "validate_launch_attestation",
-        lambda *_args, **_kwargs: prior,
+        B, "validate_launch_attestation", validate_terminal
     )
     monkeypatch.setattr(
         B,
@@ -2487,8 +2700,6 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
         "bind_terminal_launch_authority",
         lambda *_args, **_kwargs: dict(prior),
     )
-    observed = {}
-
     def verify(
         receipt_path,
         *,
@@ -2498,6 +2709,7 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
         expected_production_stack_attestation_sha256,
     ):
         observed.update({
+            "calls": observed["calls"] + 1,
             "receipt": receipt_path,
             "key": authentication_key_path,
             "image": expected_image_digest,
@@ -2505,15 +2717,39 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
             "stack": expected_production_stack_attestation_sha256,
         })
         return {
+            "schema": 1,
+            "kind": "arc_agi3_contiguous_pilot_gate",
+            "status": "PASS",
+            "full_campaign_launch_gate": "UNLOCKED",
+            "pilot_games": ["ft09", "lp85"],
+            "pilot_targets": [6, 8],
+            "pilot_lineage_canonical": False,
+            "image_digest": digest,
+            "control_contract_sha256": prior[
+                "control_contract_sha256"
+            ],
+            "production_stack_attestation_path": str(
+                (tmp_path / "production_stack_attestation.json").resolve()
+            ),
+            "production_stack_attestation_sha256": "2" * 64,
             "file_sha256": "1" * 64,
+            "receipt_sha256": "3" * 64,
+            "path": str(Path(receipt_path).resolve()),
             "pilot_manifest_sha256": P.PILOT_MANIFEST_SHA256,
             "meta_handoff_count": 1,
         }
 
     monkeypatch.setattr(P, "verify_pilot_gate_receipt", verify)
-    monkeypatch.setattr(B, "CONTIGUOUS_LAUNCH_READY", True)
-    pilot_gate = tmp_path / "pilot-gate.json"
-    pilot_key = tmp_path / "pilot.key"
+
+    def reopen_runtime(*_args, **_kwargs):
+        observed["runtime_reopens"] += 1
+        return {}
+
+    monkeypatch.setattr(
+        B.RuntimeManifest,
+        "load_runtime_manifest",
+        reopen_runtime,
+    )
     result = B.launch_preflight(
         attestation,
         requested_image_digest=digest,
@@ -2523,13 +2759,14 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
         python_executable=PYTHON_EXECUTABLE,
         python_executable_sha256=PYTHON_EXECUTABLE_SHA256,
         runtime_control_snapshot_root=tmp_path,
-        pilot_gate_receipt=pilot_gate,
-        pilot_authentication_key=pilot_key,
-        pilot_production_stack_attestation_sha256="2" * 64,
+        **receipt_inputs,
     )
     assert observed == {
-        "receipt": pilot_gate,
-        "key": pilot_key,
+        "calls": 2,
+        "terminal_reopens": 2,
+        "runtime_reopens": 1,
+        "receipt": receipt_inputs["pilot_gate_receipt"],
+        "key": receipt_inputs["pilot_authentication_key"],
         "image": digest,
         "control": prior["control_contract_sha256"],
         "stack": "2" * 64,
@@ -2539,6 +2776,12 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
         P.PILOT_MANIFEST_SHA256
     )
     assert result["pilot_meta_handoff_count"] == 1
+    assert result["launch_authority"] == "RECEIPT_DERIVED"
+    assert result["launch_authority_evidence"]["games"] == 25
+    assert result["launch_authority_evidence"]["levels"] == 183
+    assert result["launch_authority_sha256"] == (
+        result["launch_authority_evidence"]["authority_sha256"]
+    )
 
 
 def test_post_incident_meta_diagnostic_is_once_and_quarantine_only(

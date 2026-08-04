@@ -1393,12 +1393,69 @@ class FakeBackend:
         )
         attestation = host / "launch_attestation.json"
         if not attestation.exists():
+            compatibility_snapshot = (
+                R.CompatibilityClosure.canonical_closure_snapshot()
+            )
+            compatibility_client_sha256 = compatibility_snapshot[
+                "client"
+            ]["source_sha256"]
+            compatibility_controls = compatibility_snapshot[
+                "components"
+            ]
+            fake_socket_endpoint = {
+                "path": str(host / "arena-mirror.sock"),
+                "kind": "socket",
+                "device": 1,
+                "inode": 2,
+                "mode": 0o600,
+                "owner_uid": os.getuid(),
+                "owner_gid": os.getgid(),
+                "size": 0,
+                "content_sha256": None,
+            }
+            fake_token_endpoint = {
+                "path": spec.arena_token_file_path,
+                "kind": "token",
+                "device": 1,
+                "inode": 3,
+                "mode": 0o400,
+                "owner_uid": os.getuid(),
+                "owner_gid": os.getgid(),
+                "size": 64,
+                "content_sha256": "d" * 64,
+            }
             attestation.write_text(
                 json.dumps(
                     {
                         "attempt_id": spec.attempt_id,
                         "generation_id": spec.generation_id,
                         "image_digest": spec.image_digest,
+                        "container_id": "e" * 64,
+                        "container_inspect_sha256": "3" * 64,
+                        "security_projection_sha256": "4" * 64,
+                        "create_argv_sha256": "5" * 64,
+                        "image": {
+                            "requested_reference": spec.image_reference,
+                            "manifest_digest": spec.image_digest,
+                            "image_id": "sha256:" + "f" * 64,
+                            "image_inspect_sha256": "2" * 64,
+                            "worker_control_sha256": {
+                                "org.gkm.arc-agi3.arena-rpc-client-sha256":
+                                    compatibility_client_sha256,
+                                "org.gkm.arc-agi3.container-recipe-sha256":
+                                    compatibility_controls[
+                                        "container_recipe"
+                                    ]["sha256"],
+                                "org.gkm.arc-agi3.solver-requirements-sha256":
+                                    compatibility_controls[
+                                        "solver_requirements"
+                                    ]["sha256"],
+                            },
+                        },
+                        "arena_rpc": {
+                            "socket": fake_socket_endpoint,
+                            "token_file": fake_token_endpoint,
+                        },
                         "containment_canary_anchor": canary_anchor,
                     },
                     sort_keys=True,
@@ -1422,11 +1479,7 @@ class FakeBackend:
                 "probe_isolation_evidence_sha256"
             ]
         else:
-            arena_binding_path, arena_binding_sha = _bound_receipt(
-                spec,
-                arena_receipt_file,
-                "contiguous_arena_session_binding",
-                binding_event={
+            retained_event = {
                 "campaign_id": spec.campaign_id,
                 "generation_id": spec.generation_id,
                 "attempt_id": spec.attempt_id,
@@ -1444,7 +1497,14 @@ class FakeBackend:
                     TEST_PROBE_ISOLATION_EVIDENCE,
                 "probe_isolation_evidence_sha256":
                     TEST_PROBE_ISOLATION_SHA256,
-                },
+                "binding_sha256": "d" * 64,
+                "session_id": "e" * 64,
+            }
+            arena_binding_path, arena_binding_sha = _bound_receipt(
+                spec,
+                arena_receipt_file,
+                "contiguous_arena_session_binding",
+                binding_event=retained_event,
             )
             probe_mode = TEST_PROBE_ISOLATION_MODE
             probe_sha256 = TEST_PROBE_ISOLATION_SHA256
@@ -1660,6 +1720,140 @@ class FakeBackend:
         arena_relay_preparation_sha256 = hashlib.sha256(
             arena_relay_preparation.read_bytes()
         ).hexdigest()
+        closure_root = host / "compatibility_arena_closure"
+        if closure_root.exists():
+            closure_receipt_sha256 = hashlib.sha256(
+                (closure_root / "closure_receipt.json").read_bytes()
+            ).hexdigest()
+            closure_observation = (
+                R.CompatibilityClosure.validate_closure(
+                    closure_root, closure_receipt_sha256
+                )
+            )
+        else:
+            closure_observation = (
+                R.CompatibilityClosure.prepare_closure(closure_root)
+            )
+            closure_receipt_sha256 = closure_observation[
+                "receipt_sha256"
+            ]
+        attestation_value = json.loads(
+            attestation.read_text(encoding="utf-8")
+        )
+        closure_controls = (
+            R.CompatibilityClosure.canonical_closure_snapshot()[
+                "components"
+            ]
+        )
+        compatibility_turn_path, compatibility_turn_sha256 = (
+            _bound_receipt(
+                spec,
+                host / "compatibility_turn_receipt.json",
+                "arc_agi3_contiguous_compatibility_turn_binding",
+                game=spec.game,
+                target_level=spec.target_level,
+                frontier_sha256=spec.frontier_sha256,
+                parent_checkpoint_sha256=(
+                    spec.parent_checkpoint_sha256
+                ),
+                closure={
+                    "root": str(closure_root),
+                    "receipt_sha256": closure_receipt_sha256,
+                    "content_manifest_sha256": closure_observation[
+                        "content_manifest_sha256"
+                    ],
+                    "client_sha256": closure_observation[
+                        "client_sha256"
+                    ],
+                },
+                host_rpc={
+                    "session_binding_receipt_path": arena_binding_path,
+                    "session_binding_receipt_sha256": arena_binding_sha,
+                    "binding_sha256": retained_event[
+                        "binding_sha256"
+                    ],
+                    "session_id": retained_event["session_id"],
+                    "host_socket_path": spec.arena_socket_path,
+                    "host_socket_identity_sha256": (
+                        arena_relay_socket_identity_sha256
+                    ),
+                    "container_socket": attestation_value[
+                        "arena_rpc"
+                    ]["socket"],
+                    "token_file": attestation_value["arena_rpc"][
+                        "token_file"
+                    ],
+                    "token_bytes_retained": False,
+                },
+                transport={
+                    "kind": R.ARENA_VOLUME_TRANSPORT,
+                    "volume_name": arena_volume_name,
+                    "volume_observation_sha256": (
+                        arena_volume_observation_sha256
+                    ),
+                    "relay_container_id": arena_relay_container_id,
+                    "relay_image_digest": (
+                        transport.arena_relay_image_digest
+                    ),
+                    "relay_image_observation_sha256": (
+                        arena_relay_image_observation_sha256
+                    ),
+                    "relay_container_observation_sha256": (
+                        arena_relay_container_observation_sha256
+                    ),
+                    "readiness_receipt_sha256": (
+                        arena_relay_readiness_sha256
+                    ),
+                    "preparation_receipt_sha256": (
+                        arena_relay_preparation_sha256
+                    ),
+                    "attach_argv_sha256": (
+                        arena_relay_attach_argv_sha256
+                    ),
+                },
+                container={
+                    "container_id": attestation_value["container_id"],
+                    "requested_image_reference": attestation_value[
+                        "image"
+                    ]["requested_reference"],
+                    "image_manifest_digest": attestation_value["image"][
+                        "manifest_digest"
+                    ],
+                    "image_id": attestation_value["image"]["image_id"],
+                    "image_observation_sha256": attestation_value["image"][
+                        "image_inspect_sha256"
+                    ],
+                    "worker_control_sha256": attestation_value["image"][
+                        "worker_control_sha256"
+                    ],
+                    "container_observation_sha256": attestation_value[
+                        "container_inspect_sha256"
+                    ],
+                    "security_projection_sha256": attestation_value[
+                        "security_projection_sha256"
+                    ],
+                    "create_argv_sha256": attestation_value[
+                        "create_argv_sha256"
+                    ],
+                    "launch_attestation_sha256": hashlib.sha256(
+                        attestation.read_bytes()
+                    ).hexdigest(),
+                    "container_recipe_sha256": closure_controls[
+                        "container_recipe"
+                    ]["sha256"],
+                    "solver_requirements_sha256": closure_controls[
+                        "solver_requirements"
+                    ]["sha256"],
+                },
+                authority={
+                    "scheduler_authority": False,
+                    "mutation_authority": False,
+                    "promotion_authority": False,
+                    "launch_authority": False,
+                    "runner_reopen_required_before_launch": True,
+                },
+            )
+        )
         prepared = R.BackendPreparation(
             preparation_id="prepare:" + spec.attempt_id,
             launch_attestation_path=str(attestation),
@@ -1673,6 +1867,14 @@ class FakeBackend:
             bridge_policy_receipt_sha256=bridge_policy_sha,
             arena_session_binding_receipt_path=arena_binding_path,
             arena_session_binding_receipt_sha256=arena_binding_sha,
+            compatibility_closure_path=str(closure_root),
+            compatibility_closure_receipt_sha256=(
+                closure_receipt_sha256
+            ),
+            compatibility_turn_receipt_path=compatibility_turn_path,
+            compatibility_turn_receipt_sha256=(
+                compatibility_turn_sha256
+            ),
             arena_transport=R.ARENA_VOLUME_TRANSPORT,
             arena_volume_name=arena_volume_name,
             arena_volume_observation_sha256=(
@@ -3122,6 +3324,72 @@ def _typed_substrate_failure(
         failure_receipt_path=failure_path,
         failure_receipt_sha256=failure_sha,
     )
+
+
+def _typed_preparation_quarantine(
+    spec: R.AttemptSpec,
+) -> R.BackendPreparationQuarantinedError:
+    host = Path(spec.host_transcript_path).parent
+    closure_root = host / "compatibility_arena_closure"
+    staging = host / R.CompatibilityClosure._staging_name(
+        closure_root
+    )
+    staging.mkdir(mode=0o700)
+    partial = staging / R.CompatibilityClosure.CLIENT_NAME
+    partial.write_bytes(b"retained partial closure bytes\n")
+    partial.chmod(0o400)
+    staging_observation = (
+        R.CompatibilityClosure.observe_quarantined_staging(
+            closure_root
+        )
+    )
+    receipt_path, receipt_sha256 = _bound_receipt(
+        spec,
+        host / "compatibility_preparation_quarantine.json",
+        "contiguous_compatibility_preparation_quarantine",
+        failure_stage="compatibility_closure_prepare",
+        failure_type="CompatibilityStagingAmbiguityError",
+        closure_root=str(closure_root),
+        closure_root_present=False,
+        staging_observation=staging_observation,
+        staging_observation_sha256=(
+            staging_observation["observation_sha256"]
+        ),
+        container_identity_query_empty=True,
+        arena_relay_absent=True,
+        rpc_endpoints_absent=True,
+        proposer_container_started=False,
+        proposer_turn_started=False,
+        candidate_authority=False,
+        wip_authority=False,
+        cost_authority=False,
+        promotion_authority=False,
+        old_evidence_reuse_authority=False,
+        fresh_attempt_generation_required=True,
+        status="QUARANTINED",
+    )
+    return R.BackendPreparationQuarantinedError(
+        quarantine_receipt_path=receipt_path,
+        quarantine_receipt_sha256=receipt_sha256,
+    )
+
+
+class QuarantinedPreparationBackend(FakeBackend):
+    def __init__(self, quarantine_count: int):
+        super().__init__(candidate_result)
+        self.quarantine_count = quarantine_count
+        self.quarantined_specs: list[R.AttemptSpec] = []
+
+    def prepare(self, spec: R.AttemptSpec) -> R.BackendPreparation:
+        if (
+            len(self.quarantined_specs) < self.quarantine_count
+            and spec.attempt_id not in self.specs
+        ):
+            self.prepare_calls.append(spec.attempt_id)
+            self.specs[spec.attempt_id] = spec
+            self.quarantined_specs.append(spec)
+            raise _typed_preparation_quarantine(spec)
+        return super().prepare(spec)
 
 
 class SubstrateFailingBackend(FakeBackend):
@@ -4806,7 +5074,6 @@ def test_runner_rejects_terminal_wip_attempt_spec_substitution(tmp_path):
 
 
 def test_authoritative_inventory_six_disjoint_bound_lanes(tmp_path):
-    assert R.CONTIGUOUS_RUNNER_LAUNCH_READY is False
     runner, backend, _, builder, _ = make_runner(tmp_path)
     report = runner.cycle()
     state = runner.state()
@@ -5560,6 +5827,95 @@ def test_restart_after_deadline_polls_then_launches_other_prepared_lane(
         attempt["phase"] == "RUNNING"
         for attempt in recovered.state()["attempts"].values()
     ) == 1
+
+
+def test_retained_prepare_crash_uses_fresh_generation_and_bounds_repeats(
+    tmp_path: Path,
+):
+    backend = QuarantinedPreparationBackend(quarantine_count=1)
+    runner, _, _, _, clock = make_runner(
+        tmp_path / "one", backend=backend, max_lanes=1
+    )
+    first_report = runner.cycle()
+    first_state = runner.state()
+    assert first_report["started_attempts"] == []
+    assert len(backend.quarantined_specs) == 1
+    old_spec = backend.quarantined_specs[0]
+    old_attempt = first_state["attempts"][old_spec.attempt_id]
+    assert old_attempt["phase"] == "CLOSED"
+    assert old_attempt["settled_result"] == R.AttemptResult(
+        kind="infrastructure",
+        cost_used=0.0,
+        reason="compatibility_preparation_quarantined",
+    )
+    assert first_state["lanes"][old_spec.game]["active"] is None
+    old_receipt = Path(
+        old_attempt["preparation_quarantine"]["path"]
+    )
+    old_receipt_sha256 = hashlib.sha256(
+        old_receipt.read_bytes()
+    ).hexdigest()
+    old_staging_observation = (
+        R.CompatibilityClosure.observe_quarantined_staging(
+            Path(old_spec.host_transcript_path).parent
+            / "compatibility_arena_closure"
+        )
+    )
+
+    # The dispatch pass stops after one quarantine, so even a zero first
+    # backoff cannot churn identities inside the same supervision cycle.
+    assert len(first_state["attempts"]) == 1
+    second_report = runner.cycle()
+    second_state = runner.state()
+    assert len(second_report["started_attempts"]) == 1
+    fresh_id = second_report["started_attempts"][0]
+    fresh = second_state["attempts"][fresh_id]
+    assert fresh["phase"] == "RUNNING"
+    assert fresh["spec"].generation_id != old_spec.generation_id
+    assert fresh["spec"].attempt_id != old_spec.attempt_id
+    assert (
+        Path(fresh["spec"].host_transcript_path).parent
+        != Path(old_spec.host_transcript_path).parent
+    )
+    assert hashlib.sha256(old_receipt.read_bytes()).hexdigest() == (
+        old_receipt_sha256
+    )
+    assert (
+        R.CompatibilityClosure.observe_quarantined_staging(
+            Path(old_spec.host_transcript_path).parent
+            / "compatibility_arena_closure"
+        )
+        == old_staging_observation
+    )
+
+    repeated_backend = QuarantinedPreparationBackend(
+        quarantine_count=R.FAILURE_CIRCUIT_THRESHOLD
+    )
+    repeated, _, _, _, repeated_clock = make_runner(
+        tmp_path / "repeated",
+        backend=repeated_backend,
+        max_lanes=1,
+    )
+    for _index in range(R.FAILURE_CIRCUIT_THRESHOLD):
+        repeated.cycle()
+        repeated_clock.advance(
+            max(R.OPERATION_RETRY_BACKOFF_SECONDS) + 1
+        )
+    repeated_state = repeated.state()
+    assert len(repeated_backend.quarantined_specs) == (
+        R.FAILURE_CIRCUIT_THRESHOLD
+    )
+    assert repeated_state["operator_incident"] is not None
+    assert repeated_state["operator_incident"]["operation"] == (
+        "backend_prepare"
+    )
+    retained_count = len(repeated_state["attempts"])
+    repeated.cycle()
+    assert len(repeated.state()["attempts"]) == retained_count
+    assert all(
+        attempt["phase"] == "CLOSED"
+        for attempt in repeated.state()["attempts"].values()
+    )
 
 
 def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
@@ -7494,10 +7850,17 @@ def test_cycle_lock_serializes_competing_supervisors(tmp_path):
     lock = open(runner.root / ".cycle.lock", "a+", encoding="utf-8")
     fcntl.flock(lock.fileno(), fcntl.LOCK_EX)
     started = threading.Event()
+    finished = threading.Event()
+    errors = []
 
     def run_cycle():
         started.set()
-        runner.cycle()
+        try:
+            runner.cycle()
+        except BaseException as exc:
+            errors.append(exc)
+        finally:
+            finished.set()
 
     thread = threading.Thread(target=run_cycle)
     thread.start()
@@ -7506,8 +7869,10 @@ def test_cycle_lock_serializes_competing_supervisors(tmp_path):
     assert backend.specs == {}
     fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
     lock.close()
-    thread.join(timeout=5)
+    assert finished.wait(timeout=60)
+    thread.join()
     assert not thread.is_alive()
+    assert errors == []
     assert len(backend.specs) == 1
 
 
