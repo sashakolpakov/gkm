@@ -814,6 +814,98 @@ def test_trusted_scaffold_literal_filter_is_exact_and_sealed(tmp_path):
         L._boundary_checked_payload(str(path), "gkm_try.py")
 
 
+@pytest.mark.parametrize(
+    "template_name",
+    ("TESTER", "_HOST_TESTER_POLICY_V1"),
+)
+def test_each_versioned_host_scaffold_is_exactly_digest_bound(
+    tmp_path, template_name
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_versioned_scaffold"
+    workspace.mkdir()
+    path = workspace / "gkm_try.py"
+    template = getattr(L, template_name)
+    exact = template.format(
+        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="lf52"
+    ).encode("utf-8")
+    trusted = L._trusted_host_scaffold_hashes(str(workspace))
+
+    assert L.hashlib.sha256(exact).hexdigest() in trusted["gkm_try.py"]
+    path.write_bytes(exact)
+    assert L._workspace_taint_reason(str(workspace)) is None
+
+    # Even a one-byte, behavior-preserving proposer edit is a different
+    # authority, not a compatible host scaffold.
+    assert exact.endswith(b"\n")
+    mutated = exact[:-1] + b" "
+    assert mutated != exact
+    assert len(mutated) == len(exact)
+    assert sum(left != right for left, right in zip(exact, mutated)) == 1
+    assert L.hashlib.sha256(mutated).hexdigest() not in trusted["gkm_try.py"]
+    path.write_bytes(mutated)
+    reason = L._workspace_taint_reason(str(workspace))
+    assert reason is not None
+    assert (
+        "absolute_path" in reason
+        or "dynamic_or_process_import" in reason
+        or "private_harness_import" in reason
+    )
+
+
+def test_proposer_authored_scaffold_lookalike_has_no_host_authority(tmp_path):
+    workspace = tmp_path / "gkm_legs_ws_lf52_scaffold_lookalike"
+    workspace.mkdir()
+    path = workspace / "gkm_try.py"
+    lookalike = (
+        "import importlib.util, os, sys\n"
+        f"sys.path.insert(0, {os.path.dirname(os.path.abspath(L.__file__))!r})\n"
+        "import gkm_legs as G\n"
+        "A = G.A\n"
+        "spec = importlib.util.spec_from_file_location('solve', 'solve.py')\n"
+        "module = importlib.util.module_from_spec(spec)\n"
+        "spec.loader.exec_module(module)\n"
+        "levels, path, error = A.run_program('lf52', module.solve)\n"
+    ).encode("utf-8")
+    trusted = L._trusted_host_scaffold_hashes(str(workspace))
+
+    assert L.hashlib.sha256(lookalike).hexdigest() not in trusted["gkm_try.py"]
+    path.write_bytes(lookalike)
+    reason = L._workspace_taint_reason(str(workspace))
+    assert reason is not None
+    assert (
+        "absolute_path" in reason
+        or "dynamic_or_process_import" in reason
+        or "private_harness_import" in reason
+    )
+
+
+def test_lf52_live_policy_v1_scaffold_identity_remains_compatible(tmp_path):
+    workspace = tmp_path / (
+        "gkm_legs_ws_lf52_arc_agi3_n9_long_coherence_reset_pt7qyytw"
+    )
+    workspace.mkdir()
+    assert L.hashlib.sha256(
+        L._HOST_TESTER_POLICY_V1.encode("utf-8")
+    ).hexdigest() == (
+        "b79a64eaf5d13d1b4da4e87550c4d1292775d81801af1163105f63444e2701d2"
+    )
+    active_launch_bytes = L._HOST_TESTER_POLICY_V1.format(
+        labdir="/Users/sasha/gkm/arc/crack_lab", game="lf52"
+    ).encode("utf-8")
+    assert L.hashlib.sha256(active_launch_bytes).hexdigest() == (
+        "b753d2dcf5b44640e18e2f6a669f854222af9161b38da452f244c3a9d1d70aba"
+    )
+    exact = L._HOST_TESTER_POLICY_V1.format(
+        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="lf52"
+    ).encode("utf-8")
+    assert L.hashlib.sha256(exact).hexdigest() in (
+        L._trusted_host_scaffold_hashes(str(workspace))["gkm_try.py"]
+    )
+    (workspace / "gkm_try.py").write_bytes(exact)
+
+    assert L._workspace_taint_reason(str(workspace)) is None
+
+
 def test_orchestrate_rejects_preexisting_boundary_fault_before_inspection(
     tmp_path, monkeypatch
 ):

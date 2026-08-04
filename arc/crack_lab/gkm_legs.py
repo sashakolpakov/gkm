@@ -734,7 +734,14 @@ def _workspace_boundary_reason(ws: str) -> Optional[str]:
 
 
 def _trusted_host_scaffold_hashes(ws: str) -> Dict[str, frozenset[str]]:
-    """Bind the privileged compatibility scaffold to exact host-owned bytes."""
+    """Bind each supported compatibility scaffold to exact host-owned bytes.
+
+    A live turn may span a host-policy upgrade.  Retain old scaffold authority
+    only by rendering a frozen, versioned host template for the basename-bound
+    game and hashing those exact bytes.  This is deliberately not a semantic
+    or source-pattern exception: any proposer edit, including one byte, loses
+    the authority.
+    """
     base = os.path.basename(os.path.abspath(ws))
     games = sorted(name.removesuffix(".py") for name in ARC_GAME_SOURCE_NAMES)
     game = next(
@@ -756,8 +763,12 @@ def _trusted_host_scaffold_hashes(ws: str) -> Dict[str, frozenset[str]]:
             # that basename-derived id; no proposer-authored variation gains
             # this exception.
             game = match.group(1)
-    tester = globals().get("TESTER")
-    if not isinstance(tester, str):
+    testers = globals().get("_TRUSTED_HOST_TESTER_TEMPLATES")
+    if not (
+        isinstance(testers, tuple)
+        and testers
+        and all(isinstance(tester, str) for tester in testers)
+    ):
         return {}
     candidate_games = [game] if game is not None else games
     hashes = frozenset(
@@ -765,6 +776,7 @@ def _trusted_host_scaffold_hashes(ws: str) -> Dict[str, frozenset[str]]:
             labdir=os.path.dirname(os.path.abspath(__file__)),
             game=candidate,
         ).encode("utf-8")).hexdigest()
+        for tester in testers
         for candidate in candidate_games
     )
     return {"gkm_try.py": hashes}
@@ -2577,6 +2589,38 @@ levels, path, err = A.run_program({game!r}, resumed_solve)
 ok = A.validate({game!r}, path, levels) if path else False
 print(f"RESULT levels={{levels}} moves={{len(path)}} replay_ok={{ok}} err={{err}}")
 '''
+
+# Policy v1 was emitted before Arena compatibility loading moved behind the
+# authenticated ``gkm_legs.A`` binding.  Long proposer turns launched under
+# that policy retain authority only when their host-owned ``gkm_try.py`` is an
+# exact rendering of these frozen bytes.  Keep this template immutable; a new
+# historical policy requires a new explicitly versioned template.
+_HOST_TESTER_POLICY_V1 = '''import importlib.util, json, os, sys
+sys.path.insert(0, {labdir!r})
+import gkm_legs as G
+import gkm_arena as A
+taint_reason = G._workspace_taint_reason(os.getcwd())
+if taint_reason:
+    raise SystemExit(f"TAINTED WORKSPACE: {{taint_reason}}")
+spec = importlib.util.spec_from_file_location("solve", "solve.py")
+m = importlib.util.module_from_spec(spec); spec.loader.exec_module(m)
+def resumed_solve(env):
+    ck = None
+    # Prefix optimization must replay the edited solver from level 1 without
+    # mutating the supervisor-owned campaign checkpoint.
+    if os.environ.get("GKM_FRESH_REPLAY") != "1" and os.path.exists("checkpoint.json"):
+        with open("checkpoint.json") as f:
+            ck = json.load(f)
+    if ck and ck.get("game") == {game!r} and ck.get("validated") and ck.get("final_path"):
+        for act in ck["final_path"]:
+            env.step(act)
+    m.solve(env)
+levels, path, err = A.run_program({game!r}, resumed_solve)
+ok = A.validate({game!r}, path, levels) if path else False
+print(f"RESULT levels={{levels}} moves={{len(path)}} replay_ok={{ok}} err={{err}}")
+'''
+
+_TRUSTED_HOST_TESTER_TEMPLATES = (TESTER, _HOST_TESTER_POLICY_V1)
 
 _SOLVER_IMPORT_LOCK = threading.RLock()
 
