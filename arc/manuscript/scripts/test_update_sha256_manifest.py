@@ -8,6 +8,15 @@ import pytest
 import update_sha256_manifest as M
 
 
+def test_manifest_pins_artifact_status_reproduction_closure() -> None:
+    assert {
+        "../../docs/generated/arc_artifacts.rst",
+        "build_artifact_history.py",
+        "generated/arc_artifacts.tex",
+        "history_manifest.py",
+    } <= set(M.MANIFEST_PATHS)
+
+
 def test_manifest_renderer_is_ordered_and_exact(tmp_path: Path) -> None:
     base = tmp_path / "arc/manuscript"
     base.mkdir(parents=True)
