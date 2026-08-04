@@ -6,8 +6,10 @@ tested is the load-bearing property: reusing a leg is free, so later levels that
 no new legs have lower marginal novelty than early rule-learning levels.
 """
 import os
+import importlib.machinery
 import inspect
 import json
+import py_compile
 import re
 import shutil
 import subprocess
@@ -19,6 +21,21 @@ from pathlib import Path
 import pytest
 
 import gkm_legs as L
+
+
+def _minimal_arena_source(marker="SAFE"):
+    return (
+        f"PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = {marker!r}\n"
+        "DEFAULT_STEP_CAP = 600\n"
+        "FRAME_SIDE = 64\n"
+        "PRECONCEPTIONS = ''\n"
+        "API = ''\n"
+        "class Arena: pass\n"
+        "def _compile(source): return (lambda env: None), None\n"
+        "def free_energy(*args): return 0.0\n"
+        "def run_program(*args): return (0, [], None)\n"
+        "def validate(*args): return True\n"
+    )
 
 
 def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
@@ -77,6 +94,169 @@ def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
             logical_path=f"{label}.py",
             arena_module_root=arena_root,
         ), label
+
+
+def test_authenticated_private_arena_is_exact_and_compatible():
+    arena_root = Path(L.__file__).resolve().parent
+    arena, digest = L._load_authenticated_arena(arena_root)
+
+    assert digest == L.APB.arena_module_sha256(arena_root)
+    assert arena.__file__ == os.fspath(arena_root / "gkm_arena.py")
+    assert arena.__name__ not in sys.modules
+    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == (
+        L.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER
+    )
+    solve, error = arena._compile("def solve(env):\n    return None\n")
+    assert solve is not None
+    assert error is None
+    assert L._compatibility_arena_control_reason() is None
+
+
+@pytest.mark.parametrize("shadow", ["package", "extension"])
+def test_physical_shadow_rejects_warmed_cache_postload_alternative(
+    tmp_path,
+    shadow,
+):
+    arena_root = tmp_path / "arena_root"
+    arena_root.mkdir()
+    (arena_root / "gkm_arena.py").write_text(_minimal_arena_source())
+    arena, _digest = L._load_authenticated_arena(arena_root)
+    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == "SAFE"
+    # Warm the ordinary resolver before introducing the shadow.  The physical
+    # inventory below must remain authoritative even if importer caches are
+    # stale and without an invalidate_caches() call.
+    assert importlib.machinery.PathFinder.find_spec(
+        "gkm_arena", [os.fspath(arena_root)]
+    ) is not None
+    cached_times = os.stat(arena_root)
+    if shadow == "package":
+        package = arena_root / "gkm_arena"
+        package.mkdir()
+        (package / "__init__.py").write_text("SHADOW = True\n")
+    else:
+        extension = next(
+            suffix
+            for suffix in importlib.machinery.EXTENSION_SUFFIXES
+            if suffix.startswith(".")
+        )
+        (arena_root / f"gkm_arena{extension}").write_bytes(b"")
+    os.utime(
+        arena_root,
+        ns=(cached_times.st_atime_ns, cached_times.st_mtime_ns),
+    )
+
+    reason = L._compatibility_arena_host_shadow_reason(arena_root)
+
+    assert reason is not None
+    assert reason.startswith("arena_host_shadow:")
+    with pytest.raises(RuntimeError, match="arena_host_shadow"):
+        L._load_authenticated_arena(arena_root)
+
+
+def test_authenticated_private_arena_ignores_forged_preload(monkeypatch):
+    arena_root = Path(L.__file__).resolve().parent
+    forged = types.ModuleType("gkm_arena")
+    forged.__file__ = os.fspath(arena_root / "gkm_arena.py")
+    forged.__spec__ = importlib.machinery.ModuleSpec(
+        "gkm_arena",
+        importlib.machinery.SourceFileLoader(
+            "gkm_arena", os.fspath(arena_root / "gkm_arena.py")
+        ),
+        origin=os.fspath(arena_root / "gkm_arena.py"),
+    )
+    forged.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = "POISON"
+    monkeypatch.setitem(sys.modules, "gkm_arena", forged)
+
+    arena, digest = L._load_authenticated_arena(arena_root)
+
+    assert arena is not forged
+    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER != "POISON"
+    assert digest == L.APB.arena_module_sha256(arena_root)
+
+
+def test_import_time_authenticated_arena_ignores_forged_sys_modules():
+    lab = Path(L.__file__).resolve().parent
+    code = """
+import sys, types
+fake = types.ModuleType('gkm_arena')
+fake.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER = 'POISON'
+sys.modules['gkm_arena'] = fake
+import gkm_legs as G
+assert G.A is not fake
+assert G.A.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER != 'POISON'
+assert G.A.__name__ not in sys.modules
+"""
+    result = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=lab,
+        env={**os.environ, "PYTHONPATH": os.fspath(lab)},
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_authenticated_loader_ignores_and_preserves_pyc(tmp_path):
+    arena_root = tmp_path / "arena_root"
+    arena_root.mkdir()
+    source = arena_root / "gkm_arena.py"
+    source.write_text(_minimal_arena_source())
+    legitimate = Path(py_compile.compile(os.fspath(source), doraise=True))
+    poisoned = arena_root / "gkm_arena.pyc"
+    poisoned.write_bytes(b"deliberately invalid ambient bytecode")
+    before_legitimate = legitimate.read_bytes()
+    before_poisoned = poisoned.read_bytes()
+
+    arena, _digest = L._load_authenticated_arena(arena_root)
+
+    assert arena.PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER == "SAFE"
+    assert legitimate.read_bytes() == before_legitimate
+    assert poisoned.read_bytes() == before_poisoned
+    assert L._compatibility_arena_host_shadow_reason(arena_root) is None
+
+
+def test_workspace_boundary_fails_closed_on_arena_control_mismatch(
+    tmp_path,
+    monkeypatch,
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_origin"
+    workspace.mkdir()
+    monkeypatch.setattr(
+        L,
+        "_compatibility_arena_control_reason",
+        lambda: "arena_module_control_drift: substituted",
+    )
+
+    assert L._workspace_boundary_reason(str(workspace)) == (
+        "arena_module_control_drift: substituted"
+    )
+
+
+def test_boundary_checked_payload_rechecks_arena_before_admission(
+    tmp_path, monkeypatch
+):
+    source = tmp_path / "solve.py"
+    source.write_text("def solve(env):\n    return None\n")
+    monkeypatch.setattr(
+        L,
+        "_compatibility_arena_control_reason",
+        lambda: "arena_module_control_drift: admission",
+    )
+
+    with pytest.raises(L.WorkspaceTainted, match="admission"):
+        L._boundary_checked_payload(os.fspath(source), "solve.py")
+
+
+def test_gkm_solve_agent_defers_arena_and_uses_authenticated_tester():
+    import gkm_solve_agent as solve_agent
+
+    assert "A" not in solve_agent.__dict__
+    assert "import gkm_arena" not in solve_agent.TESTER
+    assert "A = G.A" in solve_agent.TESTER
+    assert solve_agent._arena() is L.A
+    assert "import gkm_arena" not in L.TESTER
+    assert "A = G.A" in L.TESTER
 
 
 def test_raw_arena_capability_rejects_host_sibling_modules_and_packages(
@@ -577,6 +757,61 @@ def test_exact_host_scaffold_survives_wip_relocation_but_mutation_does_not(
         "wa30", str(destination2), 1, verbose=False
     ) == 0
     assert not (destination2 / "probe.py").exists()
+
+
+def test_trusted_scaffold_literal_filter_is_exact_and_sealed(tmp_path):
+    workspace = tmp_path / "gkm_legs_ws_wa30_scaffold_filter"
+    workspace.mkdir()
+    path = workspace / "gkm_try.py"
+    exact = L.TESTER.format(
+        labdir=os.path.dirname(os.path.abspath(L.__file__)), game="wa30"
+    ).encode("utf-8")
+
+    def filtered_codes(payload):
+        trusted = L._trusted_host_scaffold_hashes(str(workspace))
+        digest = L.hashlib.sha256(payload).hexdigest()
+        findings = L.APB.scan_python_source(
+            payload.decode("utf-8"),
+            logical_path="gkm_try.py",
+            arena_module_root=Path(L.__file__).resolve().parent,
+            allow_host_scaffold=L.APB._trusted_digest(
+                trusted, "gkm_try.py", digest
+            ),
+        )
+        return {
+            item.code
+            for item in L._filter_trusted_scaffold_root_literal(
+                workspace,
+                findings,
+                trusted=trusted,
+                sealed_payloads={"gkm_try.py": payload},
+            )
+        }
+
+    path.write_bytes(exact)
+    assert filtered_codes(exact) == set()
+    assert L._workspace_boundary_reason(str(workspace)) is None
+    assert L._boundary_checked_payload(str(path), "gkm_try.py") == exact
+
+    mutated = exact + b"\n"
+    path.write_bytes(mutated)
+    assert {
+        "absolute_path",
+        "dynamic_or_process_import",
+        "private_harness_import",
+    } <= filtered_codes(mutated)
+    assert L._workspace_boundary_reason(str(workspace)) is not None
+    with pytest.raises(L.WorkspaceTainted):
+        L._boundary_checked_payload(str(path), "gkm_try.py")
+
+    proposer_authored = b"EXTERNAL = '/etc/passwd'\n"
+    path.write_bytes(proposer_authored)
+    assert "absolute_path" in filtered_codes(proposer_authored)
+    assert L._workspace_boundary_reason(str(workspace)).startswith(
+        "absolute_path in gkm_try.py"
+    )
+    with pytest.raises(L.WorkspaceTainted, match="absolute_path"):
+        L._boundary_checked_payload(str(path), "gkm_try.py")
 
 
 def test_orchestrate_rejects_preexisting_boundary_fault_before_inspection(
@@ -1785,6 +2020,139 @@ def test_codex_agent_immediately_terminates_public_action_violation(
     assert row["public_action_protocol_violation"] is True
     assert row["protected_transcript_status"] == "sealed"
     assert L._workspace_or_protected_taint_reason(str(ws)) is not None
+
+
+@pytest.mark.parametrize("phase", ["live", "terminal"])
+def test_codex_agent_applies_arena_control_live_and_terminal(
+    tmp_path, monkeypatch, phase
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    ledger = tmp_path / "usage.jsonl"
+    snapshot = {
+        "rateLimitsByLimitId": {
+            "codex": {
+                "planType": "plus",
+                "secondary": {
+                    "usedPercent": 0,
+                    "resetsAt": 1_800_000_000,
+                    "windowDurationMins": 10_080,
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
+    child = (
+        "import json,time; "
+        "print(json.dumps({'type':'thread.started','thread_id':'gate'}),"
+        " flush=True); "
+        + (
+            "time.sleep(60)"
+            if phase == "live"
+            else "print(json.dumps({'type':'turn.completed','usage':{}}), flush=True)"
+        )
+    )
+    monkeypatch.setattr(
+        L,
+        "_codex_command",
+        lambda ws, task, model, effort: [
+            sys.executable, "-u", "-c", child
+        ],
+    )
+    calls = []
+
+    def boundary_reasons(_monitor, _path, *, final=False):
+        calls.append(final)
+        if phase == "live" and not final:
+            return ("arena_module_control_drift: live",)
+        if phase == "terminal" and final:
+            return ("arena_module_control_drift: terminal",)
+        return ()
+
+    monkeypatch.setattr(L, "_codex_boundary_reasons", boundary_reasons)
+
+    with pytest.raises(L.ProposerBoundaryViolation, match=phase):
+        L._codex_agent(
+            str(ws),
+            f"offline {phase} arena-control test",
+            None,
+            1,
+            ledger_path=str(ledger),
+            run_label=f"gate:{phase}",
+            game="gate",
+            target_level=1,
+        )
+
+    assert (False in calls) if phase == "live" else (True in calls)
+    row = json.loads(ledger.read_text())
+    assert row["failure_class"] == "taint"
+    assert row["failure_detail_class"] == "filesystem_boundary_violation"
+    assert row["filesystem_boundary_violation_reason"].endswith(phase)
+
+
+@pytest.mark.parametrize("fault", ["arena", "workspace"])
+def test_codex_agent_rejects_boundary_before_process_creation(
+    tmp_path, monkeypatch, fault
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    ledger = tmp_path / "usage.jsonl"
+    snapshot = {
+        "rateLimitsByLimitId": {
+            "codex": {
+                "planType": "plus",
+                "secondary": {
+                    "usedPercent": 0,
+                    "resetsAt": 1_800_000_000,
+                    "windowDurationMins": 10_080,
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
+    monkeypatch.setattr(
+        L,
+        "_codex_command",
+        lambda *_args: [sys.executable, "-c", "raise SystemExit(0)"],
+    )
+    if fault == "arena":
+        monkeypatch.setattr(
+            L,
+            "_compatibility_arena_control_reason",
+            lambda: "arena_module_control_drift: prelaunch",
+        )
+    else:
+        (ws / "probe.py").write_text(
+            "open('/etc/passwd').read()\n", encoding="utf-8"
+        )
+    popen_called = False
+
+    def forbidden_popen(*_args, **_kwargs):
+        nonlocal popen_called
+        popen_called = True
+        raise AssertionError("Popen called before boundary admission")
+
+    monkeypatch.setattr(L.subprocess, "Popen", forbidden_popen)
+
+    with pytest.raises(L.ProposerBoundaryViolation):
+        L._codex_agent(
+            str(ws),
+            f"offline prelaunch {fault} test",
+            None,
+            1,
+            ledger_path=str(ledger),
+            run_label=f"prelaunch:{fault}",
+            game="prelaunch",
+            target_level=1,
+        )
+
+    assert popen_called is False
+    row = json.loads(ledger.read_text())
+    assert row["returncode"] is None
+    assert row["failure_class"] == "taint"
+    assert row["failure_detail_class"] == "filesystem_boundary_violation"
+    assert row["protected_transcript_status"] == "sealed"
+    assert row["protected_diagnostics_status"] == "sealed"
 
 
 def test_codex_agent_fails_closed_when_protected_transcript_disappears(

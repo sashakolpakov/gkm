@@ -21,6 +21,7 @@ Claude Code agent (with tools) and run the real game. Requires credits only for 
 default proposer.
 """
 from __future__ import annotations
+import importlib.machinery
 import importlib.util
 import ast
 import fcntl
@@ -37,20 +38,183 @@ import subprocess
 import tempfile
 import threading
 import time
+import types
 from datetime import datetime, timezone
 from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional, Tuple
 
-import gkm_arena as A
+# The boundary policy must be loaded before any local helper that could import
+# the raw Arena.  The compatibility runner authenticates and privately executes
+# the exact source bytes below; ambient import state is never authority.
+import arc_agi3_proposer_boundary as APB
+
+_ARENA_MODULE_ROOT = Path(__file__).resolve().parent
+COMPATIBILITY_ARENA_CLOSURE_AUTHORITY = False
+
+
+def _compatibility_arena_host_shadow_reason(
+    arena_module_root: Path | str,
+) -> Optional[str]:
+    """Inventory raw-import alternatives without consulting importer state.
+
+    Direct proposer probes retain a narrow compatibility permission to import
+    ``gkm_arena`` and call ``run_program``.  They are not the production
+    authority (the contiguous runner uses its hash-bound Arena RPC), but the
+    host compatibility root must still contain no package or native-extension
+    alternative that a normal import could select.  ``PathFinder``,
+    ``sys.modules``, loader metadata, and bytecode caches are deliberately not
+    consulted here.
+
+    A top-level ``gkm_arena.pyc`` and ordinary ``__pycache__`` entries are not
+    alternatives to the authenticated private source execution used by the
+    host harness, so they are preserved and ignored.
+    """
+
+    root = Path(arena_module_root)
+    try:
+        before = os.lstat(root)
+    except OSError as exc:
+        return f"arena_host_root_unavailable: {type(exc).__name__}"
+    if stat.S_ISLNK(before.st_mode) or not stat.S_ISDIR(before.st_mode):
+        return "arena_host_root_unsafe: expected a physical directory"
+    if before.st_nlink < 1:
+        return "arena_host_root_unsafe: invalid directory link count"
+    flags = (
+        os.O_RDONLY
+        | getattr(os, "O_DIRECTORY", 0)
+        | getattr(os, "O_NOFOLLOW", 0)
+    )
+    try:
+        descriptor = os.open(root, flags)
+    except OSError as exc:
+        return f"arena_host_root_unavailable: {type(exc).__name__}"
+    try:
+        opened = os.fstat(descriptor)
+        if APB._stat_identity(opened) != APB._stat_identity(before):
+            return "arena_host_root_raced: directory changed before inventory"
+        names = tuple(os.listdir(descriptor))
+        after_fd = os.fstat(descriptor)
+    except OSError as exc:
+        return f"arena_host_root_unavailable: {type(exc).__name__}"
+    finally:
+        os.close(descriptor)
+    try:
+        after_path = os.lstat(root)
+    except OSError as exc:
+        return f"arena_host_root_raced: {type(exc).__name__}"
+    if (
+        APB._stat_identity(after_fd) != APB._stat_identity(before)
+        or APB._stat_identity(after_path) != APB._stat_identity(before)
+    ):
+        return "arena_host_root_raced: directory changed during inventory"
+
+    forbidden = {"gkm_arena"}
+    forbidden.update(
+        "gkm_arena" + suffix
+        for suffix in importlib.machinery.EXTENSION_SUFFIXES
+    )
+    shadows = sorted(forbidden.intersection(names))
+    if shadows:
+        return "arena_host_shadow: " + ", ".join(shadows)
+    return None
+
+
+def _read_authenticated_arena_source(
+    arena_module_root: Path | str,
+) -> tuple[bytes, str]:
+    """Read and hash the exact physical Arena source under the APB contract."""
+
+    raw, finding, _identity = APB._read_regular_nofollow(
+        Path(arena_module_root) / "gkm_arena.py",
+        logical_path="gkm_arena.py",
+        kind="arena_module",
+        max_bytes=APB.MAX_SOURCE_BYTES,
+    )
+    if finding is not None or raw is None:
+        detail = finding.describe() if finding is not None else "unavailable"
+        raise RuntimeError(f"raw-arena module identity is unsafe: {detail}")
+    return raw, hashlib.sha256(raw).hexdigest()
+
+
+def _load_authenticated_arena(
+    arena_module_root: Path | str,
+) -> tuple[types.ModuleType, str]:
+    """Execute authenticated source bytes in an unregistered private module."""
+
+    root = Path(arena_module_root)
+    reason = _compatibility_arena_host_shadow_reason(root)
+    if reason:
+        raise RuntimeError(reason)
+    raw, digest = _read_authenticated_arena_source(root)
+    source_path = os.fspath(root / "gkm_arena.py")
+    private_name = f"_gkm_authenticated_arena_{digest[:16]}"
+    module = types.ModuleType(private_name)
+    module.__file__ = source_path
+    module.__package__ = ""
+    module.__loader__ = None
+    module.__spec__ = importlib.machinery.ModuleSpec(
+        private_name, loader=None, origin=source_path
+    )
+    code = compile(raw, source_path, "exec", dont_inherit=True)
+    exec(code, module.__dict__)
+    required = (
+        "Arena",
+        "run_program",
+        "validate",
+        "_compile",
+        "free_energy",
+        "PRECONCEPTIONS",
+        "API",
+        "DEFAULT_STEP_CAP",
+        "FRAME_SIDE",
+        "PUBLIC_ACTION_PROTOCOL_VIOLATION_MARKER",
+    )
+    missing = [name for name in required if not hasattr(module, name)]
+    if missing:
+        raise RuntimeError(
+            "authenticated raw-arena module lacks required surface: "
+            + ", ".join(missing)
+        )
+    reason = _compatibility_arena_host_shadow_reason(root)
+    if reason:
+        raise RuntimeError(reason)
+    raw_after, digest_after = _read_authenticated_arena_source(root)
+    if raw_after != raw or digest_after != digest:
+        raise RuntimeError(
+            "arena_module_control_drift: raw-arena source changed during "
+            "authenticated private load"
+        )
+    return module, digest
+
+
+def _compatibility_arena_control_reason() -> Optional[str]:
+    """Reopen the physical controls and fail closed on any post-load drift."""
+
+    reason = _compatibility_arena_host_shadow_reason(_ARENA_MODULE_ROOT)
+    if reason:
+        return reason
+    try:
+        _raw, current_digest = _read_authenticated_arena_source(
+            _ARENA_MODULE_ROOT
+        )
+    except (OSError, RuntimeError) as exc:
+        return f"arena_module_control_drift: {exc}"
+    if current_digest != _LOADED_ARENA_MODULE_SHA256:
+        return (
+            "arena_module_control_drift: raw-arena source changed after "
+            "authenticated private load"
+        )
+    return None
+
+
+A, _LOADED_ARENA_MODULE_SHA256 = _load_authenticated_arena(
+    _ARENA_MODULE_ROOT
+)
+
 import codex_campaign_status as CCS
 import codex_usage_guard as CUG
 import claude_usage_guard as CLG
-import arc_agi3_proposer_boundary as APB
 from gkm_solve_agent import discovered_context
-
-_ARENA_MODULE_ROOT = Path(__file__).resolve().parent
-_LOADED_ARENA_MODULE_SHA256 = APB.arena_module_sha256(_ARENA_MODULE_ROOT)
-COMPATIBILITY_ARENA_CLOSURE_AUTHORITY = False
 
 # Working-directory root for per-game leg workspaces. Defaults to a repo-relative
 # ``runs/scratch`` dir; override with the ``GKM_SCRATCH`` environment variable.
@@ -555,21 +719,17 @@ def _workspace_marker_taint_reason(ws: str) -> Optional[str]:
 
 def _workspace_boundary_reason(ws: str) -> Optional[str]:
     """Enforce the machine-readable clean-room filesystem capability."""
-    try:
-        current_arena_sha256 = APB.arena_module_sha256(_ARENA_MODULE_ROOT)
-    except RuntimeError as exc:
-        return f"arena_module_control_drift: {exc}"
-    if current_arena_sha256 != _LOADED_ARENA_MODULE_SHA256:
-        return (
-            "arena_module_control_drift: raw-arena module changed after "
-            "compatibility-runner import"
-        )
+    arena_control_reason = _compatibility_arena_control_reason()
+    if arena_control_reason:
+        return arena_control_reason
+    trusted = _trusted_host_scaffold_hashes(ws)
+    findings = APB.scan_workspace(
+        Path(ws),
+        arena_module_root=Path(__file__).resolve().parent,
+        trusted_host_scaffolds=trusted,
+    )
     return APB.first_reason(
-        APB.scan_workspace(
-            Path(ws),
-            arena_module_root=Path(__file__).resolve().parent,
-            trusted_host_scaffolds=_trusted_host_scaffold_hashes(ws),
-        )
+        _filter_trusted_scaffold_root_literal(ws, findings, trusted=trusted)
     )
 
 
@@ -608,6 +768,50 @@ def _trusted_host_scaffold_hashes(ws: str) -> Dict[str, frozenset[str]]:
         for candidate in candidate_games
     )
     return {"gkm_try.py": hashes}
+
+
+def _filter_trusted_scaffold_root_literal(
+    ws: str | Path,
+    findings,
+    *,
+    trusted: Optional[Dict[str, frozenset[str]]] = None,
+    sealed_payloads: Optional[Dict[str, bytes]] = None,
+):
+    """Allow the exact host tester's root literal, never mutated variants.
+
+    APB already grants a digest-bound host scaffold its ``gkm_legs`` import and
+    verifier calls.  Its exact module-root insertion is also host-owned, but it
+    is intentionally *not* a general proposer exception; keep that final
+    exception confined to the compatibility harness.
+    """
+
+    selected = tuple(findings)
+    if not any(
+        item.path == "gkm_try.py" and item.code == "absolute_path"
+        for item in selected
+    ):
+        return selected
+    authority = trusted or _trusted_host_scaffold_hashes(os.fspath(ws))
+    payload = (sealed_payloads or {}).get("gkm_try.py")
+    if payload is None:
+        payload, read_finding, _identity = APB._read_regular_nofollow(
+            Path(ws) / "gkm_try.py",
+            logical_path="gkm_try.py",
+            kind="source",
+            max_bytes=APB.MAX_SOURCE_BYTES,
+        )
+        if read_finding is not None or payload is None:
+            return selected
+    digest = hashlib.sha256(payload).hexdigest()
+    if not APB._trusted_digest(authority, "gkm_try.py", digest):
+        return selected
+    return tuple(
+        item
+        for item in selected
+        if not (
+            item.path == "gkm_try.py" and item.code == "absolute_path"
+        )
+    )
 
 
 def _filesystem_boundary_policy_binding() -> dict:
@@ -999,6 +1203,9 @@ def _atomic_host_write(path: str, payload: bytes) -> None:
 
 def _boundary_checked_payload(path: str, logical_path: str) -> bytes:
     """Seal one exact source image and apply the current boundary to its bytes."""
+    arena_control_reason = _compatibility_arena_control_reason()
+    if arena_control_reason:
+        raise WorkspaceTainted(arena_control_reason)
     payload = _read_single_link_regular(path)
     suffix = Path(logical_path).suffix.lower()
     if suffix not in APB.SOURCE_SUFFIXES:
@@ -1028,6 +1235,11 @@ def _boundary_checked_payload(path: str, logical_path: str) -> bytes:
             line=1,
             arena_module_root=Path(__file__).resolve().parent,
         )
+    findings = _filter_trusted_scaffold_root_literal(
+        os.path.dirname(path),
+        findings,
+        sealed_payloads={logical_path: payload},
+    )
     reason = APB.first_reason(findings)
     if reason:
         raise WorkspaceTainted(
@@ -2186,11 +2398,17 @@ def _stage_and_replay_winning_tree(
     stage = Path(tempfile.mkdtemp(prefix="winning-", dir=parent))
 
     def assert_stage_clean() -> None:
-        reason = APB.first_reason(APB.scan_workspace(
+        trusted = _trusted_host_scaffold_hashes(ws)
+        findings = APB.scan_workspace(
             stage,
             arena_module_root=Path(__file__).resolve().parent,
-            trusted_host_scaffolds=_trusted_host_scaffold_hashes(ws),
-        )) or _workspace_marker_taint_reason(os.fspath(stage))
+            trusted_host_scaffolds=trusted,
+        )
+        reason = APB.first_reason(
+            _filter_trusted_scaffold_root_literal(
+                stage, findings, trusted=trusted
+            )
+        ) or _workspace_marker_taint_reason(os.fspath(stage))
         if reason:
             raise WorkspaceTainted(
                 f"host-staged winning tree is tainted: {reason}"
@@ -2338,7 +2556,7 @@ def promote_verified_artifact(
 TESTER = '''import importlib.util, json, os, sys
 sys.path.insert(0, {labdir!r})
 import gkm_legs as G
-import gkm_arena as A
+A = G.A
 taint_reason = G._workspace_taint_reason(os.getcwd())
 if taint_reason:
     raise SystemExit(f"TAINTED WORKSPACE: {{taint_reason}}")
@@ -2361,6 +2579,33 @@ print(f"RESULT levels={{levels}} moves={{len(path)}} replay_ok={{ok}} err={{err}
 '''
 
 _SOLVER_IMPORT_LOCK = threading.RLock()
+
+
+def _codex_boundary_reasons(
+    boundary_monitor,
+    transcript_path: Path,
+    *,
+    final: bool = False,
+) -> tuple[str, ...]:
+    """Return host-control and proposer-boundary failures for one poll.
+
+    This single helper is used during live polling and at terminal sealing so
+    neither path can omit the authenticated Arena control.
+    """
+
+    arena_control_reason = _compatibility_arena_control_reason()
+    if arena_control_reason:
+        return (arena_control_reason,)
+    findings = (
+        *boundary_monitor.scan_workspace(),
+        *boundary_monitor.scan_transcript(transcript_path, final=final),
+    )
+    findings = _filter_trusted_scaffold_root_literal(
+        boundary_monitor.workspace_root,
+        findings,
+        trusted=boundary_monitor.trusted_host_scaffolds,
+    )
+    return tuple(finding.describe() for finding in findings)
 
 
 def _workspace_import_roots(wsdir: str) -> set[str]:
@@ -4078,49 +4323,49 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
             with open(log_path, "w") as log, open(
                 diagnostics_path, "w"
             ) as diagnostics_log:
-                proc = subprocess.Popen(
-                    cmd,
-                    cwd=ws,
-                    # The task is already the final argv element.  Inheriting
-                    # the supervisor PTY makes ``codex exec`` also probe that
-                    # stream and prepend the non-JSON diagnostic ``Reading
-                    # additional input from stdin...`` to an otherwise strict
-                    # JSONL acquisition transcript.  A closed stdin preserves
-                    # the immutable transcript schema and prevents accidental
-                    # operator input from entering the proposer lineage.
-                    stdin=subprocess.DEVNULL,
-                    stdout=log,
-                    # Keep CLI diagnostics in a separately sealed sideband so
-                    # the authoritative event stream remains strict JSONL.
-                    # Both streams are scanned and hashed before this turn can
-                    # authorize WIP reuse or promotion.
-                    stderr=diagnostics_log,
-                    text=True,
-                    env=_codex_environment(),
-                    start_new_session=True,
+                boundary_monitor = APB.LiveBoundaryMonitor(
+                    Path(ws),
+                    arena_module_root=Path(__file__).resolve().parent,
+                    trusted_host_scaffolds=(
+                        _trusted_host_scaffold_hashes(ws)
+                    ),
                 )
+                prelaunch_boundary_reasons = _codex_boundary_reasons(
+                    boundary_monitor, Path(log_path)
+                )
+                if prelaunch_boundary_reasons:
+                    boundary_violation_reason = (
+                        prelaunch_boundary_reasons[0]
+                    )
+                else:
+                    proc = subprocess.Popen(
+                        cmd,
+                        cwd=ws,
+                        # The task is already the final argv element.
+                        # Inheriting the supervisor PTY makes ``codex exec``
+                        # also probe that stream and prepend non-JSON input to
+                        # an otherwise strict JSONL acquisition transcript.
+                        stdin=subprocess.DEVNULL,
+                        stdout=log,
+                        # Keep CLI diagnostics in a separately sealed sideband
+                        # so the authoritative event stream remains strict.
+                        stderr=diagnostics_log,
+                        text=True,
+                        env=_codex_environment(),
+                        start_new_session=True,
+                    )
                 try:
                     deadline = time.monotonic() + minutes * 60
-                    boundary_monitor = APB.LiveBoundaryMonitor(
-                        Path(ws),
-                        arena_module_root=Path(__file__).resolve().parent,
-                        trusted_host_scaffolds=(
-                            _trusted_host_scaffold_hashes(ws)
-                        ),
-                    )
                     scan_offset = 0
                     scan_carry = b""
                     diagnostics_scan_offset = 0
                     diagnostics_scan_carry = b""
-                    while proc.poll() is None:
-                        boundary_findings = (
-                            *boundary_monitor.scan_workspace(),
-                            *boundary_monitor.scan_transcript(Path(log_path)),
+                    while proc is not None and proc.poll() is None:
+                        boundary_reasons = _codex_boundary_reasons(
+                            boundary_monitor, Path(log_path)
                         )
-                        if boundary_findings:
-                            boundary_violation_reason = (
-                                boundary_findings[0].describe()
-                            )
+                        if boundary_reasons:
+                            boundary_violation_reason = boundary_reasons[0]
                             process_group_stop_attempted = True
                             process_group_quiesced = _stop_process_group(proc)
                             print(
@@ -4208,21 +4453,19 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                         or marker_found
                         or diagnostics_marker_found
                     )
-                    terminal_boundary_findings = (
-                        *boundary_monitor.scan_workspace(),
-                        *boundary_monitor.scan_transcript(
-                            Path(log_path), final=True
-                        ),
+                    terminal_boundary_reasons = _codex_boundary_reasons(
+                        boundary_monitor, Path(log_path), final=True
                     )
-                    if terminal_boundary_findings:
+                    if terminal_boundary_reasons:
                         boundary_violation_reason = (
                             boundary_violation_reason
-                            or terminal_boundary_findings[0].describe()
+                            or terminal_boundary_reasons[0]
                         )
                 except KeyboardInterrupt:
                     interrupted = True
-                    process_group_stop_attempted = True
-                    process_group_quiesced = _stop_process_group(proc)
+                    if proc is not None:
+                        process_group_stop_attempted = True
+                        process_group_quiesced = _stop_process_group(proc)
         except (OSError, subprocess.SubprocessError) as exc:
             launch_error = exc
 
