@@ -7,10 +7,10 @@ Verified in the integrated repository on 2026-08-04 against frozen release commi
 ## Documents
 
 - `arc_agi3.pdf`: 27 pages, 1,066,712 bytes.
-- `gkm_one_page_summary.pdf`: one page, 180,118 bytes.
+- `gkm_one_page_summary.pdf`: one page, 180,219 bytes.
 - The final logs contain no warning, undefined citation/reference,
   overfull/underfull box, or multiply-defined-label match.
-- The manuscript byline and PDF metadata name Alexander Kolpakov solely.
+- Both documents' visible author lines and PDF metadata name Alexander Kolpakov solely.
 - The ignored local PDFs are build products, not checksum-manifest inputs, because
   pdfTeX embeds build-time metadata. `SHA256SUMS.txt` covers the canonical sources,
   generated empirical tables/figures, reports, and audit outputs instead.
