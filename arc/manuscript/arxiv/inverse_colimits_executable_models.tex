@@ -1,0 +1,843 @@
+\documentclass[11pt]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+
+\newtheorem{theorem}{Theorem}[section]
+\newtheorem{proposition}[theorem]{Proposition}
+\newtheorem{lemma}[theorem]{Lemma}
+\newtheorem{definition}[theorem]{Definition}
+
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Syn}{\mathbf{Syn}}
+\newcommand{\Exec}{\mathbf{Exec}}
+\newcommand{\Beh}{\mathbf{Beh}}
+\newcommand{\K}{K_U}
+\DeclareMathOperator{\Run}{Run}
+
+\title{Pushout Attachments and Conditional Complexity of Executable Models}
+\author{Alexander Kolpakov}
+\date{August 5, 2026}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We study modular extensions of executable models as pushouts of finite typed
+presentations.  Raw syntax is represented in the pointwise-finite part of a
+presheaf slice, and a module with interface is a span whose boundary map is
+monic.  Adhesivity makes the induced base map monic and recovers the interface
+as a pullback.  For each base, chosen pushouts define a linking functor from the
+category of such attachments to the category of pointed cofibration
+extensions.  The degenerate-attachment functor is fully faithful and right
+adjoint to linking, identifying pointed extensions with a reflective
+subcategory of attachments; in the ambient syntax category, finite coproducts
+describe parallel attachment.  A semantics functor yields a comparison from
+the pushout of component behaviors to the behavior of the syntactic pushout,
+whose invertibility gives a sufficient semantic monicity criterion.  Effective
+linking bounds the conditional prefix complexity of an extension by that of
+its complete attachment code.  Under the stated canonicalization and
+loss-invariance hypotheses, unrestricted attachment codes and extension codes
+induce the same loss--complexity profiles up to additive constants, and these
+profiles admit an exact scalar envelope.  The framework separates syntactic
+gluing, semantic exactness, ideal Kolmogorov complexity, and operational
+description length, and shows that any nontrivial modular bias must come from
+restrictions on the attachment grammar.
+\end{abstract}
+
+\noindent\textbf{Keywords.}
+Adhesive category; cofibration; executable model; Kolmogorov complexity;
+minimum description length; pushout.
+
+\smallskip
+\noindent\textbf{Mathematics Subject Classification (2020).}\\
+Primary 18B50; Secondary 18A30, 18A40, 68Q30, 68Q55.
+
+\section{Introduction}
+
+Finite executable presentations are often enlarged by binding a new module to
+an existing presentation along a typed interface.  We represent such an
+extension by a span
+\[
+ X\xleftarrow{u}A\xrightarrow{i}B
+\]
+and its pushout \(P=X\sqcup_A B\).  Here \(X\) is the base, \(A\) is the
+interface, and \(B\) is the module to be attached.  Requiring the boundary map
+\(i\) to be monic ensures that the induced map \(X\to P\) preserves the base
+as a subpresentation.
+
+Raw typed presentations are placed in a presheaf slice
+\(\Syn=\mathbf{Set}^{\mathcal C^{\mathrm{op}}}/T\), with
+\(\Syn_{\mathrm f}\) denoting its pointwise-finite objects.  We call its
+monomorphisms cofibrations.  This is only a choice of distinguished attachment
+maps: no weak equivalences, lifting axioms, or model-category structure are
+assumed.  Since presheaf slices are adhesive, pushouts along these maps
+preserve monomorphisms and are also pullbacks~\cite{lack,toposes}.  Thus an
+attachment preserves the base and has exact syntactic overlap.  These
+categorical facts are standard; their role here is to specify precisely what
+modular growth guarantees.
+
+Syntactic persistence does not imply executability or behavioral persistence.
+A language-specific checker need not accept every ambient pushout, so
+admissibility is an explicit condition.  Likewise, for a semantics functor
+\(\Run:\Exec\to\Beh\), applying \(\Run\) to an admissible attachment produces
+a canonical comparison
+\[
+ \Run(X)\sqcup_{\Run(A)}\Run(B)\longrightarrow\Run(P).
+\]
+We call the attachment semantically exact when this map is invertible.  Under
+pushout stability of monomorphisms in \(\Beh\), semantic exactness and
+monicity of \(\Run(i)\) imply that \(\Run(X)\to\Run(P)\) is monic.  The
+comparison therefore isolates the application-specific proof obligation
+instead of conflating it with syntactic gluing.
+
+For each base \(X\), we organize attachment spans and pointed cofibration
+extensions into categories.  Chosen pushouts give a linking functor from
+attachments to extensions, left adjoint to the fully faithful functor that
+regards an extension as a degenerate attachment.  Hence extensions form a
+reflective subcategory of attachments.  The effective object maps underlying
+this ambient reflection provide the two coding directions used below;
+together with canonicalization and loss invariance, they yield the profile
+comparison up to additive shifts.  When degenerate cells are excluded, the
+reflection need not restrict to the allowed grammar, and attachment syntax can
+impose a genuine modular bias.
+
+The contribution is the resulting compatibility chain.  An admissible
+monic-boundary attachment yields a persistent syntactic extension; under the
+stated behavioral hypotheses, semantic exactness transports that persistence
+to behavior; and effective linking transports an attachment description to a
+conditional description of the extension.  The categorical ingredients and
+the scalar envelope are standard
+in isolation.  We identify the attachment reflection and its effective coding
+consequence so that none of admissibility, semantic preservation, ideal
+Kolmogorov complexity, or a computable code is asserted to imply the others.
+
+Pushout-based gluing relates the construction to adhesive graph transformation
+~\cite{lack,toposes} and to categorical treatments of open systems by
+structured cospans~\cite{baezcourser}.  Unlike structured cospans, which
+compose open systems along boundary objects, our attachment category fixes a
+base and treats an interface span as an object; the reflector retains only its
+linked pointed extension.  The selection layer is a conditional restriction
+of algorithmic loss--complexity and individual rate--distortion profiles
+~\cite{vereshchagin,vereshchagin2010}, with minimum description length
+providing the operational coding interpretation~\cite{rissanen}.  Executable
+world-model formalisms motivate the presentation discipline in Section~2
+~\cite{schmidhuber1991,schmidhuber2004,steunebrink2013}; the categorical
+construction is not attributed to those works.
+
+\section{Executable model presentations}
+
+\subsection{The operational criterion}
+
+\begin{definition}[Executable presentation]
+Fix effective alphabets of actions \(\mathcal A\), observations \(\mathcal O\),
+rewards \(\mathcal W\), patterns, values, and guards, together with a decidable
+type-and-interface checker and one global effective interpreter \(I\).  An
+\emph{executable presentation} is a finite hierarchy \(M\) of guarded rules
+accepted by the checker, with effectively encoded configuration and goal
+spaces.  The interpreter induces a computably enumerable backward relation
+\[
+ R_M^-\subseteq
+ \operatorname{Goal}_M\times\operatorname{Goal}_M^*
+\]
+and an effective forward-chaining relation.  In an action-conditioned
+specialization, the latter is the partial computable map
+\[
+ F_M:\operatorname{Conf}_M\times\mathcal A
+       \rightharpoonup
+       \operatorname{Conf}_M\times\mathcal O\times\mathcal W
+\]
+and may be iterated on its predicted configuration to form a rollout.  The
+backward relation interprets a consequent as a goal whose antecedents become
+subgoals.  Rule bodies may call other named rules through typed references.
+\end{definition}
+
+Acceptance by the checker is a syntactic executability condition, not a
+termination or usefulness claim.  An ill-posed input or a nonterminating
+computation has no output, and a later semantic loss may assign it infinite
+loss.
+
+\subsection{A typed presheaf category}
+
+Let \(\mathcal C\) be a finite computably presented category whose objects
+describe the syntactic
+sorts---for example rule nodes, antecedent and consequent ports, guards,
+state slots, and hierarchical references---and whose arrows describe their
+incidences.  Fix a type-and-attribute presheaf \(T\), together with effective
+codes for the attributes occurring in finite objects such that equality,
+typing, incidence, and naturality of finite codes are decidable.  Raw typed
+presentations form the slice
+\[
+ \Syn=\mathbf{Set}^{\mathcal C^{\mathrm{op}}}/T.
+\]
+Write \(\Syn_{\mathrm f}\) for the full subcategory whose underlying presheaves
+are pointwise finite.  Literal names and attributes that must be preserved are
+encoded in the map to \(T\), rather than left as informal decorations.
+
+A presentation discipline selects a not necessarily full subcategory
+\(\Exec\subseteq\Syn_{\mathrm f}\) of well-formed finite open and closed
+executable presentations.  Write
+\(\iota:\Exec\hookrightarrow\Syn_{\mathrm f}\)
+for its inclusion.
+Its morphisms preserve types, guarded rule structure, ports, and hierarchical
+references.  As part of the discipline, we specify a semantics functor
+\[
+ \Run:\Exec\longrightarrow\Beh,
+\]
+where \(\Beh\) may be a category of transition systems, trace presentations,
+or another declared behavior category.
+
+This separation is deliberate.  Raw syntax has all finite colimits needed
+below.  A particular grammar, type checker, compiler, or scheduler need not be
+closed under arbitrary pushout.  All pushouts below are formed in
+\(\Syn_{\mathrm f}\).  We call such a pushout \emph{admissible} when its four
+objects and all four maps in the pushout square belong to \(\Exec\).  This
+condition does not assert that the square is a pushout in the non-full
+subcategory \(\Exec\).
+
+\section{Pushout attachments along cofibrations}
+
+\subsection{Interface spans}
+
+The attachment shape is a span
+\[
+ X\xleftarrow{u}A\xrightarrow{i}B.
+\]
+Its colimit identifies the two copies of the interface \(A\) and is the
+pushout \(X\sqcup_A B\).
+
+In this note, a \emph{cofibration} is a morphism of \(\Syn_{\mathrm f}\) that
+is monic in \(\Syn\).  These maps contain the isomorphisms, are closed under
+composition, and are stable under pushout.  No weak equivalences, lifting
+axioms, or model-category structure are being assumed.
+
+\begin{lemma}[Finite typed pushouts]\label{lem:typed-pushouts}
+The category \(\Syn\) is adhesive.  The subcategory \(\Syn_{\mathrm f}\) is
+closed under finite colimits.  The class of its morphisms that are
+monomorphisms in \(\Syn\) contains the isomorphisms, is closed under
+composition, and is stable under pushout.
+\end{lemma}
+
+\begin{proof}
+Presheaf categories are topoi, slices of topoi are topoi, and topoi are
+adhesive~\cite{lack,toposes}.  In particular, pushouts along monomorphisms are
+also pullbacks, and their cobase changes are monomorphisms.  Colimits in the
+presheaf category and its slice are computed from finite coproducts and
+quotients componentwise.
+Because \(\mathcal C\) has finitely many objects, a finite colimit of pointwise
+finite presheaves is again pointwise finite.  The remaining assertions about
+isomorphisms and composition are general, while pushout stability follows from
+adhesivity.
+\end{proof}
+
+\begin{definition}[Cofibration attachment]
+Let \(X,A,B\in\Syn_{\mathrm f}\).  A \emph{cofibration attachment} consists of a
+binding \(u:A\to X\) and a boundary inclusion \(i:A\hookrightarrow B\) that is
+a cofibration.  Its linked presentation is
+\[
+ P=X\sqcup_A B.
+\]
+The attachment is \emph{executable} when this ambient pushout is admissible.
+\end{definition}
+
+Here \(A\) is the typed dependency surface, \(B\) is a new rule hierarchy or
+module containing that surface, and \(u\) binds its ports to \(X\).  The
+boundary map \(i\), rather than the binding \(u\), is required to be monic so
+that cobase change preserves the base.
+
+\begin{proposition}[Persistence and exact overlap]\label{prop:persistence}
+For a cofibration attachment, the canonical map
+\(j_X:X\to P\) is a cofibration, and the canonical comparison
+\[
+ A\longrightarrow X\times_P B
+\]
+is an isomorphism.  If the binding \(u\) is also a cofibration, then the
+canonical map \(j_B:B\to P\) is a cofibration as well.
+\end{proposition}
+
+\begin{proof}
+The map \(j_X\) is the cobase change of \(i\) along \(u\), so it is a
+cofibration.  Because a pushout along a monomorphism in the ambient adhesive
+category is a pullback, the canonical map \(A\to X\times_P B\) is invertible.
+If \(u\) is a cofibration, its cobase change \(j_B\) is one.
+\end{proof}
+
+Thus the base remains componentwise embedded, and the original interface is
+recovered as \(X\times_P B\).  If \(u\) is also monic, both pieces embed and
+their subobject intersection is precisely \(A\).  The proposition alone does not
+imply that \(P\) lies in \(\Exec\); executability is precisely the separate
+admissibility hypothesis.  Even for an executable attachment, the universal
+property is still ambient unless the inclusion creates this pushout, and
+admissibility does not imply that old executions remain successful.
+
+\subsection{The category of attachments}
+
+Fix \(X\in\Syn_{\mathrm f}\).  Let \(\mathbf{Ext}_X\) be the full
+subcategory of the coslice \(X\mathbin{\downarrow}\Syn_{\mathrm f}\) whose
+objects are cofibrations \(e:X\hookrightarrow Y\).  Let
+\(\mathbf{Att}_X\) have objects
+\[
+ c=(X\xleftarrow{u}A\xrightarrow{i}B)
+\]
+with \(i\) a cofibration.  For
+\(c'=(X\xleftarrow{u'}A'\xrightarrow{i'}B')\), a morphism
+\((a,b):c\to c'\) consists of maps \(a:A\to A'\) and \(b:B\to B'\)
+satisfying \(u=u'a\) and \(bi=i'a\).
+
+\begin{theorem}[Attachment reflection]\label{thm:attachment-reflection}
+After choosing pushouts, linking defines a functor
+\[
+ L_X:\mathbf{Att}_X\longrightarrow\mathbf{Ext}_X,
+ \qquad
+ (X\xleftarrow{u}A\xrightarrow{i}B)
+ \longmapsto (X\hookrightarrow X\sqcup_A B).
+\]
+The functor
+\[
+ D_X:\mathbf{Ext}_X\longrightarrow\mathbf{Att}_X,
+ \qquad
+ (j:X\hookrightarrow Y)\longmapsto
+ (X\xleftarrow{\mathrm{id}_X}X\xrightarrow{j}Y)
+\]
+is fully faithful and \(L_X\dashv D_X\).  In particular, the counit
+\(L_XD_X\Rightarrow\mathrm{Id}_{\mathbf{Ext}_X}\) is an isomorphism, so
+\(\mathbf{Ext}_X\) is reflective in \(\mathbf{Att}_X\).
+\end{theorem}
+
+\begin{proof}
+A morphism \((a,b):c\to c'\) induces by pushout universality a unique map
+\(L_Xc\to L_Xc'\) under \(X\).  Uniqueness gives functoriality, and the
+source map of each linked extension is a cofibration by
+Proposition~\ref{prop:persistence}.  For
+\(e=(j:X\hookrightarrow Y)\), pushout universality gives natural bijections
+\[
+ \mathbf{Ext}_X(L_Xc,e)
+ \cong\{b:B\to Y\mid bi=ju\}
+ \cong\mathbf{Att}_X(c,D_Xe).
+\]
+Thus \(L_X\dashv D_X\).  In a morphism between degenerate attachments the
+interface component is forced to be \(\mathrm{id}_X\), so \(D_X\) is fully
+faithful; explicitly, it sends a coslice morphism \(h\) to
+\((\mathrm{id}_X,h)\).  The pushout of
+\(X\xleftarrow{\mathrm{id}_X}X\xrightarrow{j}Y\) is canonically \(Y\),
+which gives the counit isomorphism.
+\end{proof}
+
+This reflection is ambient.  It restricts to an attachment category internal
+to \(\Exec\) only when the presentation discipline is closed under the chosen
+attachment pushouts and all induced mediating maps.
+
+\begin{proposition}[Parallel composition]\label{prop:parallel}
+The category \(\mathbf{Ext}_X\) has finite coproducts, created by the coslice.
+For \(e_s:X\hookrightarrow Y_s\), their coproduct has apex the iterated
+pushout \(Y_1\sqcup_X\cdots\sqcup_XY_m\).  If each \(e_s=L_Xc_s\), this apex
+is canonically the colimit of the corresponding finite star of attachment
+spans.  Thus parallel attachments are independent of ordering up to the
+canonical coproduct isomorphisms.
+\end{proposition}
+
+\begin{proof}
+The identity of \(X\) is initial in \(\mathbf{Ext}_X\).  Binary coproducts in
+the coslice are pushouts over \(X\).  The common base map factors as
+\(X\hookrightarrow Y_1\hookrightarrow Y_1\sqcup_XY_2\); the second map is a
+cobase change of \(X\hookrightarrow Y_2\).  Both factors are cofibrations, so
+the coproduct is an object of \(\mathbf{Ext}_X\), and fullness creates it
+there.  Iteration gives finite coproducts.  The final claim follows by
+comparing the universal properties of the iterated pushout and the star
+colimit.
+\end{proof}
+
+Cells may also depend on cells attached earlier.  Given
+\[
+ X_{k-1}\xleftarrow{u_k}A_k\xrightarrow{i_k}B_k,
+ \qquad
+ X_k=X_{k-1}\sqcup_{A_k}B_k,
+\]
+with each \(i_k\) a cofibration, repeated application of
+Proposition~\ref{prop:persistence} gives a cofibration filtration
+\[
+ X_0\hookrightarrow X_1\hookrightarrow\cdots\hookrightarrow X_n.
+\]
+Every finite stage remains in \(\Syn_{\mathrm f}\).
+
+\section{Execution semantics}
+
+\subsection{The comparison map}
+
+Consider an executable attachment and suppose the behavioral pushout in the
+following display exists:
+\[
+ Q=\Run(X)\sqcup_{\Run(A)}\Run(B).
+\]
+Applying \(\Run\) to the syntactic pushout cocone produces compatible maps
+from \(\Run(X)\) and \(\Run(B)\) to \(\Run(P)\).  Universality therefore gives
+a canonical comparison morphism
+\[
+ \chi:Q\longrightarrow\Run(P).
+\]
+
+\begin{definition}[Semantically exact attachment]
+An executable attachment is \emph{semantically exact} when \(\chi\) is an
+isomorphism.
+\end{definition}
+
+Exactness is a sufficient compatibility condition to prove for a language and
+linker.  It is not a consequence of the syntactic pushout, and it need not be
+necessary for other notions of behavioral preservation.
+
+\begin{theorem}[Semantic monicity criterion]\label{thm:behavioral-persistence}
+Assume that the displayed behavioral pushout exists, monomorphisms in
+\(\Beh\) are stable under pushout, \(\Run(i):\Run(A)\to\Run(B)\) is monic,
+and the attachment is semantically exact.  Then
+\[
+ \Run(j_X):\Run(X)\longrightarrow\Run(P)
+\]
+is monic.
+\end{theorem}
+
+\begin{proof}
+The canonical map \(\Run(X)\to Q\) is the pushout of \(\Run(i)\), hence is
+monic.  The map \(\Run(j_X)\) is its composite with the isomorphism
+\(\chi:Q\to\Run(P)\), so it is monic.
+\end{proof}
+
+This conclusion is internal to the declared category \(\Beh\).  It entails
+literal preservation of old traces or transitions only when the chosen
+behavioral morphisms are additionally trace-reflecting or transition-
+reflecting.  For a finite chain of attachments satisfying the theorem, the
+composite \(\Run(X_0)\to\Run(X_n)\) is monic by closure of monomorphisms under
+composition.
+
+The hypotheses expose two independent failure modes.  Compilation may make
+the raw pushout inadmissible, for example through a guard or naming conflict.
+Even if it compiles, execution may introduce interactions absent from the
+behavioral pushout, making \(\chi\) noninvertible.  For example, under a global
+``first matching rule wins'' scheduler, attaching a fresh higher-priority rule
+can suppress the output formerly selected from \(X\), although the rule-graph
+pushout itself is admissible.  Such a scheduler may prevent the proposed
+behavior assignment from being functorial on the chosen syntax morphisms.  If
+a semantics functor is instead defined in a coarser behavior category, the
+comparison map may fail to be invertible.  This simple case rules out inferring
+behavioral preservation from syntax alone.  Finite trace enumeration proves
+exactness only when the declared semantics is finite and effectively presented
+and the comparison isomorphism can be checked exhaustively; finite sampling
+does not prove global program equivalence.
+
+\section{Conditional complexity of linking}
+
+Fix a universal prefix machine \(U\) and effective self-delimiting encodings of
+finite presentations, morphisms, and tuples.  Write \(\K(z\mid w)\) for
+conditional prefix Kolmogorov complexity.  Candidates are encoded as pointed
+extensions \((X,j,Y)\), not as independently labeled objects.  Assume that the
+base \(X\) has a fixed canonical code.  We canonicalize extensions in the
+coslice \(X\mathbin{\downarrow}\Syn_{\mathrm f}\).  Represent \(j\) as a
+literal inclusion, retain the fixed labels on its image, and biject the
+remaining elements at each sort to a standard finite label set; among the
+finitely many incidence codes so obtained, choose the least.  The map to
+\(T\) and the marked arrow must be preserved.  The decidability assumptions
+on finite attributes make this convention effective.  Complexity therefore
+depends on the fixed representation and universal machine, but not on a
+gratuitous relabeling outside the base.
+
+For an attachment to \(X\), let
+\[
+ c=(A,B,u,i)
+\]
+be its complete attachment code.  Componentwise finite coproducts, quotienting
+by the interface identifications, and canonical relabeling give a fixed
+computable linker \(\operatorname{Link}\), total on valid finite span codes,
+with literal domain \(X\) and
+\[
+ \operatorname{Link}(X,c)=(j_X:X\hookrightarrow P),
+ \qquad P=X\sqcup_A B,
+\]
+after canonicalization.
+The linker computes raw syntax; it need not decide whether its output belongs
+to \(\Exec\).  The bounds below are asserted for the admissible outputs.
+
+\begin{proposition}[Computable-gluing bound]\label{prop:gluing-bound}
+There is a constant \(b\), depending only on the encodings, universal machine,
+and linker, such that every admissible attachment satisfies
+\[
+ \K((j_X:X\hookrightarrow X\sqcup_A B)\mid X)
+ \le \K(A,B,u,i\mid X)+b.
+\]
+If the cell \(B\) is already available as conditional information, then
+\[
+ \K((j_X:X\hookrightarrow X\sqcup_A B)\mid X,B)
+ \le \K(A,u,i\mid X,B)+b.
+\]
+\end{proposition}
+
+\begin{proof}
+A fixed wrapper runs a shortest conditional program for the attachment data
+and then invokes \(\operatorname{Link}\).  The wrapper has constant length.
+The second inequality uses the same wrapper with \(B\) supplied on the
+conditional tape.
+\end{proof}
+
+This proposition is the standard monotonicity of prefix complexity under a
+fixed partial computable map, applied to the linker.  The first bound does not
+supply the cell \(B\) as free side information.  Only the second does so,
+because \(B\) is then common conditional information.  More generally, if every candidate may use
+one fixed module library \(R\), all complexities and codes must be conditioned
+uniformly on \((X,R)\); assigning a different free library to each candidate
+would invalidate the comparison.  These are upper bounds, not additive
+identities, and shared algorithmic information may shorten a joint code.
+
+For a finite sequence of attachment codes \(c_{1:n}\), iterated linking is
+also a fixed partial computable operation.  Writing \(j_{0,n}:X_0\hookrightarrow
+X_n\) for the composite pointed extension, one has
+\[
+ \K((j_{0,n}:X_0\hookrightarrow X_n)\mid X_0)
+ \le \K(c_{1:n}\mid X_0)+O(1).
+\]
+If \(\ell(c_{1:n}\mid X_0)\) is the length of a declared self-delimiting code
+with a fixed uniform effective decoder, then
+\[
+ \K((j_{0,n}:X_0\hookrightarrow X_n)\mid X_0)
+ \le \ell(c_{1:n}\mid X_0)+O(1).
+\]
+The latter is an operational accounting rule.  It should not be reported as
+the exact value of \(\K\); the \(O(1)\) term is uniform in \(n\) for the fixed
+self-delimiting tuple decoder.
+
+\section{Kolmogorov selection over cofibration extensions}
+
+\subsection{Conditional loss--complexity profiles}
+
+Fixing a universal machine turns Kolmogorov's foundational complexity notion
+~\cite{kolmogorov} into a description coordinate.  For finite data \(x\), the
+classical structure function is
+\[
+ h_x(\alpha)
+ =\min\{\log_2|S|:x\in S,\ S\text{ finite},\ \K(S)\le\alpha\},
+\]
+with value \(+\infty\) when the constraint set is empty
+~\cite{vereshchagin,livitanyi}.  More general algorithmic rate--distortion
+functions replace \(\log |S|\) by a distortion criterion
+~\cite{vereshchagin2010}.
+
+Our candidate class is a conditional restriction of that framework.  Fix a
+base presentation \(X\in\Exec\), finite data \(D\), and a countable effectively
+presented class \(\mathcal E_X\) of morphisms
+\(e=(j:X\hookrightarrow Y)\) in \(\Exec\) whose underlying maps are
+cofibrations.  The marked arrow is part of a candidate: the same target may
+extend \(X\) in different ways.  Let
+\[
+ L_D(e)\in[0,+\infty]
+\]
+be a declared execution loss, with infinite loss permitted for nontermination
+or failure of a semantic obligation, and put \(k_X(e)=\K(e\mid X)\).
+
+\begin{definition}[Profiles]
+For \(\alpha\in\N\) and finite \(r\ge0\), the two conditional
+profiles are
+\[
+ H_{D,X}(\alpha)
+ =\min\{L_D(e):e\in\mathcal E_X,\ k_X(e)\le\alpha\}
+\]
+and
+\[
+ C_{D,X}(r)
+ =\min\{k_X(e):e\in\mathcal E_X,\ L_D(e)\le r\},
+\]
+with a minimum defined as \(+\infty\) when its constraint set is empty.
+\end{definition}
+
+For fixed \(\alpha\), only finitely many candidate encodings have a prefix
+description of length at most \(\alpha\), so the first minimum is attained whenever finite.
+The second is attained whenever finite because complexity is integer valued.
+Consequently, for \(\alpha\in\N\) and finite \(r\),
+\[
+ H_{D,X}(\alpha)\le r
+ \quad\Longleftrightarrow\quad
+ C_{D,X}(r)\le\alpha.
+\]
+Both profiles are generally uncomputable ideal quantities.  With empty or
+fixed \(X\), candidates equal to finite sets \(S\ni D\), and
+\(L_D(S)=\log_2|S|\), the profile \(H_{D,X}\) is the classical structure
+function up to the fixed encoding convention.
+
+\subsection{The scalar envelope and MDL specialization}
+
+For \(\lambda>0\), define
+\[
+ \Phi_{D,X}(\lambda)
+ =\inf_{e\in\mathcal E_X}
+   \bigl(L_D(e)+\lambda k_X(e)\bigr).
+\]
+Every infimum over an empty set below is understood to be \(+\infty\).
+
+\begin{proposition}[Exact loss--complexity envelope]\label{prop:envelope}
+For every \(\lambda>0\),
+\[
+ \Phi_{D,X}(\lambda)
+ =\inf_{\alpha\in\N}
+   \bigl(H_{D,X}(\alpha)+\lambda\alpha\bigr)
+ =\inf_{r\ge0}
+   \bigl(r+\lambda C_{D,X}(r)\bigr).
+\]
+If at least one candidate has finite loss, the infimum defining
+\(\Phi_{D,X}(\lambda)\) is attained, and every minimizer is Pareto-optimal in
+the two coordinates \((L_D,k_X)\).
+\end{proposition}
+
+\begin{proof}
+For any candidate \(e\), set \(\alpha=k_X(e)\).  Then
+\(H_{D,X}(\alpha)\le L_D(e)\), so the first right-hand infimum is at most
+\(\Phi_{D,X}(\lambda)\).  Conversely, a finite value of
+\(H_{D,X}(\alpha)\) is realized by some \(e_\alpha\), and
+\[
+ \Phi_{D,X}(\lambda)
+ \le L_D(e_\alpha)+\lambda k_X(e_\alpha)
+ \le H_{D,X}(\alpha)+\lambda\alpha.
+\]
+Taking infima proves the first equality.  The second follows symmetrically:
+use \(r=L_D(e)\) in one direction and a candidate realizing \(C_{D,X}(r)\) in
+the other.
+
+For attainment, choose a finite-objective candidate with value \(M\).  Every
+candidate with objective at most \(M\) has \(k_X(e)\le M/\lambda\), and there
+are only finitely many such candidates.  Their finite set contains a minimizer.
+A candidate that weakly
+improved both coordinates and strictly improved one would strictly lower the
+scalar objective, proving Pareto optimality.
+\end{proof}
+
+For a probabilistic specialization, suppose
+\(\{P_e(\,\cdot\mid X):e\in\mathcal E_X\}\) is a family of conditional
+semimeasures that is uniformly lower semicomputable from \((e,X)\), and set
+\(-\log_2 0=+\infty\).  The coding inequality gives
+\[
+ \K(D\mid e,X)
+ \le-\log_2 P_e(D\mid X)+O(1),
+\]
+and a self-delimiting concatenation therefore gives
+\[
+ \K(D\mid X)
+ \le \K(e\mid X)-\log_2 P_e(D\mid X)+O(1),
+\]
+where the \(O(1)\) term is uniform in \(D,e,X\) and depends only on the fixed
+family decoder.  Thus with \(L_D(e)=-\log_2P_e(D\mid X)\), the value
+\(\Phi_{D,X}(1)\) is the ideal conditional two-part MDL optimum; it is finite
+exactly when some candidate assigns \(D\) positive mass
+~\cite{rissanen,livitanyi}.  This interpretation requires the stated uniform
+coding hypothesis; an arbitrary real-valued loss has no such implication.
+
+\subsection{Extension codes versus attachment codes}
+
+Let \(\mathcal C_X\) be the valid codes \(c=(A,B,u,i)\) of admissible
+cofibration attachments for which \(e_c=\operatorname{Link}(X,c)\) lies in
+\(\mathcal E_X\).  Assume that \(\mathcal E_X\) is closed under the fixed base-preserving
+canonicalization and that loss is invariant under pointed isomorphisms fixing
+\(X\).  Define the ideal attachment-code profile and scalar objective by
+\[
+ H^{\mathrm{att}}_{D,X}(\alpha)
+ =\min\{L_D(e_c):c\in\mathcal C_X,\ \K(c\mid X)\le\alpha\}
+\]
+and
+\[
+ \Phi^{\mathrm{att}}_{D,X}(\lambda)
+ =\inf_{c\in\mathcal C_X}
+   \bigl(L_D(e_c)+\lambda\K(c\mid X)\bigr).
+\]
+
+For the comparison below, choose the object map of \(L_X\) to be the single
+canonical computable linker above, uniform in \(X\).  The degenerate
+constructor \((X,e)\mapsto D_Xe\) is likewise one uniform computable map.
+
+\begin{theorem}[Attachment--extension coding comparison]\label{thm:attachment-profile}
+There are nonnegative integer constants \(b_1,b_2\), depending only on the
+fixed machine, encodings, linker, and canonicalizer and independent of
+\(D,X,\alpha,\lambda\), such that
+\[
+ H_{D,X}(\alpha+b_1)
+ \le H^{\mathrm{att}}_{D,X}(\alpha),
+ \qquad
+ \Phi_{D,X}(\lambda)
+ \le\Phi^{\mathrm{att}}_{D,X}(\lambda)+\lambda b_1,
+\]
+and
+\[
+ H^{\mathrm{att}}_{D,X}(\alpha+b_2)
+ \le H_{D,X}(\alpha),
+ \qquad
+ \Phi^{\mathrm{att}}_{D,X}(\lambda)
+ \le\Phi_{D,X}(\lambda)+\lambda b_2.
+\]
+\end{theorem}
+
+\begin{proof}
+For \(e=(j:X\hookrightarrow Y)\in\mathcal E_X\), the degenerate attachment
+\(D_Xe=(X\xleftarrow{\mathrm{id}_X}X\xrightarrow{j}Y)\) is admissible: its
+pushout square has maps \(\mathrm{id}_X,j,j,\mathrm{id}_Y\) in \(\Exec\).
+Its canonical link is pointed-isomorphic to \(e\), so closure under
+canonicalization puts it in \(\mathcal E_X\) and its code in \(\mathcal C_X\).
+The fixed effective object maps of \(L_X\) and \(D_X\) give constants
+\[
+ \K(L_Xc\mid X)\le\K(c\mid X)+b_1,
+ \qquad
+ \K(D_Xe\mid X)\le\K(e\mid X)+b_2.
+\]
+The first is Proposition~\ref{prop:gluing-bound}; the second uses the fixed
+degenerate constructor.  By Theorem~\ref{thm:attachment-reflection},
+\(L_XD_Xe\cong e\) under \(X\),
+so pointed-isomorphism invariance preserves loss.  Applying the two bounds to
+the feasible sets and scalar objectives proves all four inequalities.
+\end{proof}
+
+The converse deliberately permits degenerate cells.  It shows that unrestricted
+attachment syntax has, up to coding constants, no stronger inductive bias than
+the extension class itself.  A restricted grammar of primitive cells can
+provide a substantive modular bias, but then the converse inequalities need
+not hold; the linker bounds remain one-way.
+
+\subsection{Machine dependence and computable proxies}
+
+\begin{proposition}[Invariance]
+Hold \(\mathcal E_X\) and \(L_D\) fixed, and let \(U\) and \(V\) be optimal
+universal prefix machines.  There is a nonnegative integer \(c\) such that,
+for all \(D,X\), \(\alpha\in\N\), finite \(r\ge0\), and \(\lambda>0\),
+\[
+ H^{U}_{D,X}(\alpha+c)\le H^{V}_{D,X}(\alpha),
+ \qquad
+ H^{V}_{D,X}(\alpha+c)\le H^{U}_{D,X}(\alpha),
+\]
+\[
+ C^{U}_{D,X}(r)\le C^{V}_{D,X}(r)+c,
+ \qquad
+ C^{V}_{D,X}(r)\le C^{U}_{D,X}(r)+c,
+\]
+and, whenever the scalar optima are finite,
+\[
+ |\Phi^{U}_{D,X}(\lambda)-\Phi^{V}_{D,X}(\lambda)|
+ \le\lambda c.
+\]
+\end{proposition}
+
+\begin{proof}
+The invariance theorem gives
+\(|K_U(e\mid X)-K_V(e\mid X)|\le c\) uniformly in \(e,X\).  Substitution in
+the feasibility constraints gives the profile inequalities; substitution in
+the scalar objectives and taking infima gives the last one.
+\end{proof}
+
+The constant does not make finite-sample choices canonical.  An operational
+selector must fix a machine or a computable prefix code.  Let
+\(\mathcal C_X^{\mathrm{code}}\) be a declared family of valid codes with one
+uniform prefix decoder, and let \(\ell(c\mid X)\) be the explicit code length.
+It may minimize
+\[
+ L_D(\operatorname{Link}(X,c))+\lambda\ell(c\mid X),
+ \qquad c\in\mathcal C_X^{\mathrm{code}}.
+\]
+For an explicitly given finite list of codes, a total linker, and
+rational-valued total loss, the minimum is decidable by exhaustive evaluation.
+General computable reals may only permit certified interval bounds unless a
+separating gap is known; for an enumerable family or partial execution,
+anytime search cannot generally certify global optimality.
+
+The explicit length provides an upper bound on the linked extension's prefix
+complexity up to a decoder constant.  It nevertheless scores derivations rather than
+isomorphism classes: several codes may link to the same extension and thereby
+alter the induced prior.  No general approximation guarantee to the ideal
+Kolmogorov frontier follows without further assumptions.
+
+\section{Conclusion}
+
+An admissible pushout along a monic boundary preserves the base and recovers
+the interface as its exact overlap.  The attachment reflection organizes these
+pushouts functorially:
+pointed cofibration extensions form a reflective subcategory of attachment
+spans, with finite coproducts describing parallel linking.  Semantic exactness
+states the additional condition needed for behavioral monicity.  Effective
+linking and its fully faithful degenerate-attachment right adjoint give the two
+coding directions, so unrestricted attachment and extension codes determine
+the same loss--complexity profiles up to uniform additive constants; the
+scalar envelope gives regularized selection.
+
+The construction remains conditional.  A concrete executable language must
+prove its selected pushouts admissible and its semantics exact or conservative.
+A substantive modular prior likewise requires a restricted primitive-cell
+grammar excluding the degenerate attachments in the image of \(D_X\).  These
+are exactly where language-specific and model-selection results must enter.
+
+{\small
+\begin{thebibliography}{99}
+
+\bibitem{baezcourser}
+J.~C. Baez and K. Courser,
+``Structured cospans,''
+\emph{Theory and Applications of Categories} 35 (2020), no.~48, 1771--1822.
+\url{https://www.tac.mta.ca/tac/volumes/35/48/35-48abs.html}.
+
+\bibitem{kolmogorov}
+A.~N. Kolmogorov,
+``Three approaches to the quantitative definition of information,''
+\emph{Problems of Information Transmission} 1 (1965), 1--7.
+
+\bibitem{lack}
+S. Lack and P. Soboci\'nski,
+``Adhesive and quasiadhesive categories,''
+\emph{RAIRO---Theoretical Informatics and Applications} 39 (2005), 511--545.
+\url{https://doi.org/10.1051/ita:2005028}.
+
+\bibitem{toposes}
+S. Lack and P. Soboci\'nski,
+``Toposes are adhesive,''
+in \emph{Graph Transformations}, Lecture Notes in Computer Science 4178,
+Springer, 2006, 184--198.
+\url{https://doi.org/10.1007/11841883_14}.
+
+\bibitem{livitanyi}
+M. Li and P. Vit\'anyi,
+\emph{An Introduction to Kolmogorov Complexity and Its Applications},
+third edition, Springer, 2008.
+
+\bibitem{rissanen}
+J. Rissanen,
+``Modeling by shortest data description,''
+\emph{Automatica} 14 (1978), 465--471.
+\url{https://doi.org/10.1016/0005-1098(78)90005-5}.
+
+\bibitem{schmidhuber1991}
+J. Schmidhuber,
+``Curious model-building control systems,''
+in \emph{Proceedings of the International Joint Conference on Neural
+Networks}, vol. 2, 1991, 1458--1463.
+\url{https://doi.org/10.1109/IJCNN.1991.170605}.
+
+\bibitem{schmidhuber2004}
+J. Schmidhuber,
+``Optimal ordered problem solver,''
+\emph{Machine Learning} 54 (2004), 211--254.
+\url{https://doi.org/10.1023/B:MACH.0000015880.99707.b2}.
+
+\bibitem{steunebrink2013}
+B.~R. Steunebrink, J. Koutn\'{\i}k, K.~R. Th\'orisson, E. Nivel, and
+J. Schmidhuber,
+``Resource-bounded machines are motivated to be effective, efficient, and
+curious,''
+in \emph{Artificial General Intelligence}, Lecture Notes in Computer Science
+7999 (Lecture Notes in Artificial Intelligence), Springer, 2013, 119--129.
+\url{https://doi.org/10.1007/978-3-642-39521-5_13}.
+
+\bibitem{vereshchagin}
+N.~K. Vereshchagin and P.~M.~B. Vit\'anyi,
+``Kolmogorov's structure functions and model selection,''
+\emph{IEEE Transactions on Information Theory} 50 (2004), 3265--3290.
+\url{https://doi.org/10.1109/TIT.2004.838346}.
+
+\bibitem{vereshchagin2010}
+N.~K. Vereshchagin and P.~M.~B. Vit\'anyi,
+``Rate distortion and denoising of individual data using Kolmogorov
+complexity,''
+\emph{IEEE Transactions on Information Theory} 56 (2010), 3438--3454.
+\url{https://doi.org/10.1109/TIT.2010.2048491}.
+
+\end{thebibliography}
+}
+
+\end{document}
