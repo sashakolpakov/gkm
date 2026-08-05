@@ -15,17 +15,21 @@ import argparse
 import hashlib
 import json
 import os
+import re
 import stat
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any, Callable, Mapping, Sequence
+from typing import Any, Mapping, Protocol, Sequence
 
 
 SCHEMA = 1
 KIND = "arc_agi3_contiguous_scenario_driver"
 SCENARIO_KIND = "arc_agi3_contiguous_scenario_receipt"
 MAX_FILE_BYTES = 16 * 1024 * 1024
+OBSERVATION_KIND = "arc_agi3_contiguous_production_observation"
+OBSERVATION_ID_RE = re.compile(r"[a-z][a-z0-9_]{0,127}")
+EVIDENCE_KIND_RE = re.compile(r"[a-z][a-z0-9_.:-]{0,127}")
 
 
 class ScenarioDriverError(RuntimeError):
@@ -37,6 +41,61 @@ class ScenarioDefinition:
     scenario_id: str
     owner: str
     required_observations: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class ScenarioExecutionContext:
+    """Control-bound inputs available to one in-tree observer."""
+
+    repository: Path
+    runtime_manifest_path: Path
+    runtime_manifest_sha256: str
+    output_root: Path
+
+
+@dataclass(frozen=True)
+class ScenarioEvidence:
+    """One immutable machine-evidence object reopened by ``verify``."""
+
+    observation_id: str
+    kind: str
+    path: str
+    sha256: str
+    bytes: int
+
+
+@dataclass(frozen=True)
+class ProductionObservation:
+    """Typed result of a genuine, in-tree production observer."""
+
+    schema: int
+    kind: str
+    scenario_id: str
+    owner: str
+    status: str
+    machine_observed: bool
+    required_observations: tuple[str, ...]
+    evidence: tuple[ScenarioEvidence, ...]
+    evidence_sha256: str
+
+
+class ProductionObserver(Protocol):
+    """Execute and independently reopen one scenario's real evidence."""
+
+    def observe(
+        self,
+        definition: ScenarioDefinition,
+        context: ScenarioExecutionContext,
+    ) -> ProductionObservation:
+        ...
+
+    def verify(
+        self,
+        definition: ScenarioDefinition,
+        observation: ProductionObservation,
+        evidence: Mapping[str, bytes],
+    ) -> None:
+        ...
 
 
 SCENARIOS = (
@@ -171,12 +230,29 @@ SCENARIOS = (
 )
 
 
-# Production observers are intentionally in-tree callables, never dynamically
-# loaded names or caller-supplied status documents.  Empty means launch remains
-# closed while the driver/receipt/reverification machinery itself is usable.
-PRODUCTION_OBSERVERS: Mapping[
-    str, Callable[[ScenarioDefinition], Mapping[str, Any]]
-] = {}
+# Production observers are intentionally in-tree implementations, never
+# dynamically loaded names or caller-supplied status documents.  Empty means
+# launch remains closed.  The driver nevertheless implements the complete
+# typed PASS path so adding a future observer cannot bypass immutable evidence
+# reopening or silently turn a missing scenario into authority.
+PRODUCTION_OBSERVERS: Mapping[str, ProductionObserver] = {}
+
+
+def _production_observer_registry() -> Mapping[str, ProductionObserver]:
+    expected = {item.scenario_id for item in SCENARIOS}
+    if (
+        not isinstance(PRODUCTION_OBSERVERS, Mapping)
+        or not set(PRODUCTION_OBSERVERS).issubset(expected)
+        or any(
+            not callable(getattr(observer, "observe", None))
+            or not callable(getattr(observer, "verify", None))
+            for observer in PRODUCTION_OBSERVERS.values()
+        )
+    ):
+        raise ScenarioDriverError(
+            "production observer registry is malformed"
+        )
+    return PRODUCTION_OBSERVERS
 
 
 def canonical_json(value: object) -> bytes:
@@ -207,6 +283,31 @@ def _reject_symlinked_components(path: Path, *, label: str) -> None:
             )
 
 
+def _path_pointer(path: Path, *, label: str) -> tuple[tuple[Any, ...], ...]:
+    """Bind every absolute path component without following a symlink."""
+
+    absolute = Path(os.path.abspath(path))
+    if absolute != path or not absolute.is_absolute():
+        raise ScenarioDriverError(f"{label} path is not canonical")
+    current = Path(absolute.anchor)
+    result: list[tuple[Any, ...]] = []
+    for component in absolute.parts[1:]:
+        current /= component
+        metadata = current.stat(follow_symlinks=False)
+        if stat.S_ISLNK(metadata.st_mode):
+            raise ScenarioDriverError(
+                f"{label} contains a symlinked component"
+            )
+        result.append((
+            str(current),
+            metadata.st_dev,
+            metadata.st_ino,
+            stat.S_IFMT(metadata.st_mode),
+            stat.S_IMODE(metadata.st_mode),
+        ))
+    return tuple(result)
+
+
 def _directory_identity(path: Path, *, label: str) -> tuple[int, int]:
     _reject_symlinked_components(path, label=label)
     try:
@@ -224,47 +325,135 @@ def _directory_identity(path: Path, *, label: str) -> tuple[int, int]:
     return metadata.st_dev, metadata.st_ino
 
 
-def _read_regular(path: Path, *, label: str) -> bytes:
-    if not path.is_absolute() or path.is_symlink():
+def _read_regular(
+    path: Path,
+    *,
+    label: str,
+    required_mode: int | None = None,
+    require_owner: bool = False,
+) -> bytes:
+    selected = Path(path)
+    if not selected.is_absolute() or selected.is_symlink():
         raise ScenarioDriverError(f"{label} path is not canonical")
-    _reject_symlinked_components(path, label=label)
-    before = path.lstat()
-    if (
-        not stat.S_ISREG(before.st_mode)
-        or before.st_nlink != 1
-        or before.st_size > MAX_FILE_BYTES
-    ):
-        raise ScenarioDriverError(
-            f"{label} is not a bounded unaliased file"
-        )
-    descriptor = os.open(
-        path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-    )
     try:
-        current = os.fstat(descriptor)
+        pointer_before = _path_pointer(selected, label=label)
+        parent_descriptor = os.open(
+            selected.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except (OSError, ScenarioDriverError) as exc:
+        raise ScenarioDriverError(
+            f"{label} is unavailable or aliased"
+        ) from exc
+    descriptor: int | None = None
+    try:
+        parent_before = os.fstat(parent_descriptor)
+        if not stat.S_ISDIR(parent_before.st_mode):
+            raise ScenarioDriverError(
+                f"{label} parent is not a directory"
+            )
+        descriptor = os.open(
+            selected.name,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=parent_descriptor,
+        )
+        before = os.fstat(descriptor)
+        linked_before = os.stat(
+            selected.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        stable_file_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
         if (
-            current.st_dev,
-            current.st_ino,
-            current.st_size,
-        ) != (
-            before.st_dev,
-            before.st_ino,
-            before.st_size,
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > MAX_FILE_BYTES
+            or (
+                required_mode is not None
+                and stat.S_IMODE(before.st_mode) != required_mode
+            )
+            or (require_owner and before.st_uid != os.getuid())
+            or any(
+                getattr(before, field) != getattr(linked_before, field)
+                for field in stable_file_fields
+            )
         ):
             raise ScenarioDriverError(
-                f"{label} changed during observation"
+                f"{label} is not a bounded unaliased file"
             )
-        result = bytearray()
-        while len(result) <= MAX_FILE_BYTES:
-            block = os.read(descriptor, 1024 * 1024)
+        chunks: list[bytes] = []
+        remaining = before.st_size
+        while remaining:
+            block = os.read(descriptor, min(1024 * 1024, remaining))
             if not block:
-                break
-            result.extend(block)
-        if len(result) > MAX_FILE_BYTES:
-            raise ScenarioDriverError(f"{label} exceeds its bound")
-        return bytes(result)
+                raise ScenarioDriverError(
+                    f"{label} changed during observation"
+                )
+            chunks.append(block)
+            remaining -= len(block)
+        if os.read(descriptor, 1):
+            raise ScenarioDriverError(
+                f"{label} grew during observation"
+            )
+        after = os.fstat(descriptor)
+        linked_after = os.stat(
+            selected.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        parent_after = os.fstat(parent_descriptor)
+        parent_linked_after = selected.parent.stat(
+            follow_symlinks=False
+        )
+        stable_parent_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+        )
+        if (
+            any(
+                getattr(before, field) != getattr(after, field)
+                or getattr(after, field) != getattr(linked_after, field)
+                for field in stable_file_fields
+            )
+            or any(
+                getattr(parent_before, field)
+                != getattr(parent_after, field)
+                or getattr(parent_after, field)
+                != getattr(parent_linked_after, field)
+                for field in stable_parent_fields
+            )
+            or _path_pointer(selected, label=label) != pointer_before
+        ):
+            raise ScenarioDriverError(
+                f"{label} pointer or metadata changed during observation"
+            )
+        return b"".join(chunks)
+    except ScenarioDriverError:
+        raise
+    except OSError as exc:
+        raise ScenarioDriverError(
+            f"{label} changed during observation"
+        ) from exc
     finally:
-        os.close(descriptor)
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_descriptor)
 
 
 def _write_new(path: Path, body: Mapping[str, Any]) -> str:
@@ -296,6 +485,217 @@ def _write_new(path: Path, body: Mapping[str, Any]) -> str:
     finally:
         os.close(directory)
     return sha256(payload)
+
+
+def _evidence_projection(
+    evidence: Sequence[ScenarioEvidence],
+) -> list[dict[str, Any]]:
+    return [asdict(item) for item in evidence]
+
+
+def _observation_projection(
+    observation: ProductionObservation,
+) -> dict[str, Any]:
+    return {
+        "schema": observation.schema,
+        "kind": observation.kind,
+        "scenario_id": observation.scenario_id,
+        "owner": observation.owner,
+        "status": observation.status,
+        "machine_observed": observation.machine_observed,
+        "required_observations": list(
+            observation.required_observations
+        ),
+        "evidence": _evidence_projection(observation.evidence),
+        "evidence_sha256": observation.evidence_sha256,
+    }
+
+
+def _observation_from_mapping(value: object) -> ProductionObservation:
+    fields = {
+        "schema",
+        "kind",
+        "scenario_id",
+        "owner",
+        "status",
+        "machine_observed",
+        "required_observations",
+        "evidence",
+        "evidence_sha256",
+    }
+    if not isinstance(value, dict) or set(value) != fields:
+        raise ScenarioDriverError(
+            "production observation schema is not exact"
+        )
+    required = value["required_observations"]
+    rows = value["evidence"]
+    if not isinstance(required, list) or not isinstance(rows, list):
+        raise ScenarioDriverError(
+            "production observation collections are malformed"
+        )
+    evidence_fields = {"observation_id", "kind", "path", "sha256", "bytes"}
+    evidence: list[ScenarioEvidence] = []
+    for row in rows:
+        if not isinstance(row, dict) or set(row) != evidence_fields:
+            raise ScenarioDriverError(
+                "production evidence reference schema is not exact"
+            )
+        try:
+            evidence.append(ScenarioEvidence(**row))
+        except TypeError as exc:
+            raise ScenarioDriverError(
+                "production evidence reference cannot be typed"
+            ) from exc
+    try:
+        return ProductionObservation(
+            schema=value["schema"],
+            kind=value["kind"],
+            scenario_id=value["scenario_id"],
+            owner=value["owner"],
+            status=value["status"],
+            machine_observed=value["machine_observed"],
+            required_observations=tuple(required),
+            evidence=tuple(evidence),
+            evidence_sha256=value["evidence_sha256"],
+        )
+    except TypeError as exc:
+        raise ScenarioDriverError(
+            "production observation cannot be typed"
+        ) from exc
+
+
+def _validate_production_observation(
+    definition: ScenarioDefinition,
+    observation: ProductionObservation,
+    *,
+    observer: ProductionObserver,
+    repository: Path,
+) -> ProductionObservation:
+    """Reopen all evidence and invoke the scenario-specific validator."""
+
+    if (
+        not isinstance(observation, ProductionObservation)
+        or observation.schema != SCHEMA
+        or isinstance(observation.schema, bool)
+        or observation.kind != OBSERVATION_KIND
+        or observation.scenario_id != definition.scenario_id
+        or observation.owner != definition.owner
+        or observation.status != "PASS"
+        or observation.machine_observed is not True
+        or observation.required_observations
+        != definition.required_observations
+        or not isinstance(observation.evidence, tuple)
+        or len(observation.evidence)
+        != len(definition.required_observations)
+        or not isinstance(observation.evidence_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", observation.evidence_sha256)
+        is None
+    ):
+        raise ScenarioDriverError(
+            f"{definition.scenario_id} production observation is malformed"
+        )
+    if observation.evidence_sha256 != sha256(
+        canonical_json(_evidence_projection(observation.evidence))
+    ):
+        raise ScenarioDriverError(
+            f"{definition.scenario_id} evidence inventory digest differs"
+        )
+    expected_ids = set(definition.required_observations)
+    observed_ids: set[str] = set()
+    observed_paths: set[str] = set()
+    reopened: dict[str, bytes] = {}
+    repository = Path(os.path.abspath(repository))
+    for item in observation.evidence:
+        if (
+            not isinstance(item, ScenarioEvidence)
+            or OBSERVATION_ID_RE.fullmatch(item.observation_id) is None
+            or EVIDENCE_KIND_RE.fullmatch(item.kind) is None
+            or item.observation_id not in expected_ids
+            or item.observation_id in observed_ids
+            or not isinstance(item.path, str)
+            or not isinstance(item.sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", item.sha256) is None
+            or not isinstance(item.bytes, int)
+            or isinstance(item.bytes, bool)
+            or not 0 < item.bytes <= MAX_FILE_BYTES
+        ):
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} evidence reference is malformed"
+            )
+        path = Path(item.path)
+        if (
+            not path.is_absolute()
+            or Path(os.path.abspath(path)) != path
+            or item.path in observed_paths
+        ):
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} evidence path is not unique and canonical"
+            )
+        try:
+            path.relative_to(repository)
+        except ValueError:
+            pass
+        else:
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} evidence is inside the control tree"
+            )
+        raw = _read_regular(
+            path,
+            label=(
+                f"{definition.scenario_id} {item.observation_id} evidence"
+            ),
+            required_mode=0o400,
+            require_owner=True,
+        )
+        metadata = path.lstat()
+        if (
+            metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o400
+            or len(raw) != item.bytes
+            or sha256(raw) != item.sha256
+        ):
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} evidence bytes or ownership differ"
+            )
+        observed_ids.add(item.observation_id)
+        observed_paths.add(item.path)
+        reopened[item.observation_id] = raw
+    if observed_ids != expected_ids:
+        raise ScenarioDriverError(
+            f"{definition.scenario_id} evidence coverage is incomplete"
+        )
+    try:
+        observer.verify(definition, observation, reopened)
+    except ScenarioDriverError:
+        raise
+    except Exception as exc:
+        raise ScenarioDriverError(
+            f"{definition.scenario_id} scenario-specific verification failed"
+        ) from exc
+    for item in observation.evidence:
+        path = Path(item.path)
+        raw = _read_regular(
+            path,
+            label=(
+                f"{definition.scenario_id} {item.observation_id} "
+                "post-verification evidence"
+            ),
+            required_mode=0o400,
+            require_owner=True,
+        )
+        metadata = path.lstat()
+        if (
+            metadata.st_uid != os.getuid()
+            or stat.S_IMODE(metadata.st_mode) != 0o400
+            or raw != reopened[item.observation_id]
+            or len(raw) != item.bytes
+            or sha256(raw) != item.sha256
+        ):
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} evidence changed during "
+                "scenario-specific verification"
+            )
+    return observation
 
 
 def _control_contract(repository: Path) -> str:
@@ -342,6 +742,34 @@ def _blocked_receipt(
     }
 
 
+def _pass_receipt(
+    definition: ScenarioDefinition,
+    *,
+    control_contract_sha256: str,
+    runtime_manifest_path: Path,
+    runtime_manifest_sha256: str,
+    observation: ProductionObservation,
+) -> dict[str, Any]:
+    projection = _observation_projection(observation)
+    return {
+        "schema": SCHEMA,
+        "kind": SCENARIO_KIND,
+        "scenario_id": definition.scenario_id,
+        "owner": definition.owner,
+        "status": "PASS",
+        # A single scenario never authorizes launch.  Only the exact ordered
+        # aggregate of all twelve independently verified receipts may do so.
+        "launch_authority": False,
+        "control_contract_sha256": control_contract_sha256,
+        "runtime_manifest_path": str(runtime_manifest_path),
+        "runtime_manifest_sha256": runtime_manifest_sha256,
+        "required_observations":
+            list(definition.required_observations),
+        "observation": projection,
+        "observation_sha256": sha256(canonical_json(projection)),
+    }
+
+
 def run(
     *,
     repository: Path,
@@ -367,19 +795,49 @@ def run(
     scenario_root = output_root / "scenarios"
     scenario_root.mkdir(mode=0o700)
     rows: list[dict[str, Any]] = []
+    blockers: list[dict[str, str]] = []
+    observers = _production_observer_registry()
+    context = ScenarioExecutionContext(
+        repository=repository,
+        runtime_manifest_path=runtime_manifest_path,
+        runtime_manifest_sha256=runtime_manifest_sha256,
+        output_root=output_root,
+    )
     for definition in SCENARIOS:
-        observer = PRODUCTION_OBSERVERS.get(definition.scenario_id)
-        if observer is not None:
-            raise ScenarioDriverError(
-                "production observer execution is not admitted until its "
-                "typed result validator is implemented"
+        observer = observers.get(definition.scenario_id)
+        if observer is None:
+            body = _blocked_receipt(
+                definition,
+                control_contract_sha256=control_digest,
+                runtime_manifest_path=runtime_manifest_path,
+                runtime_manifest_sha256=runtime_manifest_sha256,
             )
-        body = _blocked_receipt(
-            definition,
-            control_contract_sha256=control_digest,
-            runtime_manifest_path=runtime_manifest_path,
-            runtime_manifest_sha256=runtime_manifest_sha256,
-        )
+            blockers.append({
+                "scenario_id": definition.scenario_id,
+                "reason": "production_observer_not_implemented",
+            })
+        else:
+            try:
+                observation = observer.observe(definition, context)
+            except ScenarioDriverError:
+                raise
+            except Exception as exc:
+                raise ScenarioDriverError(
+                    f"{definition.scenario_id} production observer failed"
+                ) from exc
+            observation = _validate_production_observation(
+                definition,
+                observation,
+                observer=observer,
+                repository=repository,
+            )
+            body = _pass_receipt(
+                definition,
+                control_contract_sha256=control_digest,
+                runtime_manifest_path=runtime_manifest_path,
+                runtime_manifest_sha256=runtime_manifest_sha256,
+                observation=observation,
+            )
         path = scenario_root / f"{definition.scenario_id}.json"
         digest = _write_new(path, body)
         rows.append(
@@ -388,27 +846,22 @@ def run(
                 "owner": definition.owner,
                 "path": str(path),
                 "sha256": digest,
-                "status": "BLOCKED",
+                "status": body["status"],
             }
         )
+    all_pass = all(row["status"] == "PASS" for row in rows)
     aggregate = {
         "schema": SCHEMA,
         "kind": KIND,
         "mode": "run",
-        "status": "BLOCKED",
-        "launch_authority": False,
+        "status": "PASS" if all_pass else "BLOCKED",
+        "launch_authority": all_pass,
         "control_contract_sha256": control_digest,
         "runtime_manifest_path": str(runtime_manifest_path),
         "runtime_manifest_sha256": runtime_manifest_sha256,
         "scenario_receipts": rows,
         "scenario_receipts_sha256": sha256(canonical_json(rows)),
-        "blockers": [
-            {
-                "scenario_id": definition.scenario_id,
-                "reason": "production_observer_not_implemented",
-            }
-            for definition in SCENARIOS
-        ],
+        "blockers": blockers,
     }
     aggregate_path = output_root / "scenario_driver_receipt.json"
     aggregate_sha256 = _write_new(aggregate_path, aggregate)
@@ -437,7 +890,10 @@ def verify(receipt_path: Path, *, repository: Path) -> dict[str, Any]:
         scenario_root, label="scenario receipt root"
     )
     raw = _read_regular(
-        receipt_path, label="scenario driver receipt"
+        receipt_path,
+        label="scenario driver receipt",
+        required_mode=0o400,
+        require_owner=True,
     )
     try:
         aggregate = json.loads(raw)
@@ -445,19 +901,34 @@ def verify(receipt_path: Path, *, repository: Path) -> dict[str, Any]:
         raise ScenarioDriverError(
             "scenario driver receipt is malformed"
         ) from exc
+    if not isinstance(aggregate, dict):
+        raise ScenarioDriverError(
+            "scenario driver receipt is malformed"
+        )
     runtime_path = Path(str(aggregate.get("runtime_manifest_path", "")))
     runtime_raw = _read_regular(
         runtime_path, label="reopened Python runtime manifest"
     )
     rows = aggregate.get("scenario_receipts")
     expected_ids = [item.scenario_id for item in SCENARIOS]
+    observers = _production_observer_registry()
+    expected_statuses = [
+        (
+            "PASS"
+            if definition.scenario_id in observers
+            else "BLOCKED"
+        )
+        for definition in SCENARIOS
+    ]
     expected_blockers = [
         {
             "scenario_id": definition.scenario_id,
             "reason": "production_observer_not_implemented",
         }
         for definition in SCENARIOS
+        if definition.scenario_id not in observers
     ]
+    all_pass = expected_statuses == ["PASS"] * len(SCENARIOS)
     aggregate_keys = {
         "schema",
         "kind",
@@ -478,15 +949,19 @@ def verify(receipt_path: Path, *, repository: Path) -> dict[str, Any]:
         or aggregate.get("schema") != SCHEMA
         or aggregate.get("kind") != KIND
         or aggregate.get("mode") != "run"
-        or aggregate.get("status") != "BLOCKED"
-        or aggregate.get("launch_authority") is not False
+        or aggregate.get("status")
+        != ("PASS" if all_pass else "BLOCKED")
+        or aggregate.get("launch_authority") is not all_pass
         or aggregate.get("control_contract_sha256")
         != _control_contract(repository)
         or aggregate.get("runtime_manifest_sha256")
         != sha256(runtime_raw)
         or not isinstance(rows, list)
+        or any(not isinstance(row, dict) for row in rows)
         or [row.get("scenario_id") for row in rows]
         != expected_ids
+        or [row.get("status") for row in rows]
+        != expected_statuses
         or aggregate.get("scenario_receipts_sha256")
         != sha256(canonical_json(rows))
         or aggregate.get("blockers") != expected_blockers
@@ -494,40 +969,139 @@ def verify(receipt_path: Path, *, repository: Path) -> dict[str, Any]:
         raise ScenarioDriverError(
             "scenario aggregate binding differs"
         )
-    for definition, row in zip(SCENARIOS, rows, strict=True):
+    expected_names = {
+        f"{definition.scenario_id}.json" for definition in SCENARIOS
+    }
+    if set(os.listdir(scenario_root)) != expected_names:
+        raise ScenarioDriverError(
+            "scenario receipt root inventory differs"
+        )
+    receipt_keys = {
+        "schema",
+        "kind",
+        "scenario_id",
+        "owner",
+        "status",
+        "launch_authority",
+        "control_contract_sha256",
+        "runtime_manifest_path",
+        "runtime_manifest_sha256",
+        "required_observations",
+        "observation",
+        "observation_sha256",
+    }
+    verified_receipts: dict[Path, bytes] = {}
+    for definition, row, expected_status in zip(
+        SCENARIOS, rows, expected_statuses, strict=True
+    ):
         path = scenario_root / f"{definition.scenario_id}.json"
         body_raw = _read_regular(
-            path, label=f"{definition.scenario_id} receipt"
+            path,
+            label=f"{definition.scenario_id} receipt",
+            required_mode=0o400,
+            require_owner=True,
         )
+        verified_receipts[path] = body_raw
         try:
             body = json.loads(body_raw)
         except (UnicodeError, json.JSONDecodeError) as exc:
             raise ScenarioDriverError(
                 f"{definition.scenario_id} receipt is malformed"
             ) from exc
-        expected = _blocked_receipt(
-            definition,
-            control_contract_sha256=
-                aggregate["control_contract_sha256"],
-            runtime_manifest_path=runtime_path,
-            runtime_manifest_sha256=
-                aggregate["runtime_manifest_sha256"],
-        )
         if (
-            row
-            != {
+            not isinstance(row, dict)
+            or row != {
                 "scenario_id": definition.scenario_id,
                 "owner": definition.owner,
                 "path": str(path),
                 "sha256": sha256(body_raw),
-                "status": "BLOCKED",
+                "status": expected_status,
             }
-            or body != expected
-            or body_raw != canonical_json(expected)
+            or not isinstance(body, dict)
+            or set(body) != receipt_keys
+            or body_raw != canonical_json(body)
+            or body.get("schema") != SCHEMA
+            or body.get("kind") != SCENARIO_KIND
+            or body.get("scenario_id") != definition.scenario_id
+            or body.get("owner") != definition.owner
+            or body.get("status") != expected_status
+            or body.get("launch_authority") is not False
+            or body.get("control_contract_sha256")
+            != aggregate["control_contract_sha256"]
+            or body.get("runtime_manifest_path") != str(runtime_path)
+            or body.get("runtime_manifest_sha256")
+            != aggregate["runtime_manifest_sha256"]
+            or body.get("required_observations")
+            != list(definition.required_observations)
         ):
             raise ScenarioDriverError(
                 f"{definition.scenario_id} receipt differs"
             )
+        if expected_status == "BLOCKED":
+            expected = _blocked_receipt(
+                definition,
+                control_contract_sha256=(
+                    aggregate["control_contract_sha256"]
+                ),
+                runtime_manifest_path=runtime_path,
+                runtime_manifest_sha256=(
+                    aggregate["runtime_manifest_sha256"]
+                ),
+            )
+            if body != expected:
+                raise ScenarioDriverError(
+                    f"{definition.scenario_id} BLOCKED receipt differs"
+                )
+            continue
+        observation_value = body.get("observation")
+        if body.get("observation_sha256") != sha256(
+            canonical_json(observation_value)
+        ):
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} observation digest differs"
+            )
+        observation = _observation_from_mapping(observation_value)
+        observer = observers.get(definition.scenario_id)
+        assert observer is not None
+        observation = _validate_production_observation(
+            definition,
+            observation,
+            observer=observer,
+            repository=repository,
+        )
+        expected = _pass_receipt(
+            definition,
+            control_contract_sha256=(
+                aggregate["control_contract_sha256"]
+            ),
+            runtime_manifest_path=runtime_path,
+            runtime_manifest_sha256=(
+                aggregate["runtime_manifest_sha256"]
+            ),
+            observation=observation,
+        )
+        if body != expected:
+            raise ScenarioDriverError(
+                f"{definition.scenario_id} PASS receipt differs"
+            )
+    if _read_regular(
+        receipt_path,
+        label="reopened scenario driver receipt",
+        required_mode=0o400,
+        require_owner=True,
+    ) != raw or any(
+        _read_regular(
+            path,
+            label=f"reopened {path.stem} scenario receipt",
+            required_mode=0o400,
+            require_owner=True,
+        )
+        != expected_raw
+        for path, expected_raw in verified_receipts.items()
+    ):
+        raise ScenarioDriverError(
+            "scenario receipt bytes changed during verification"
+        )
     if (
         _directory_identity(
             output_root, label="scenario output root"
@@ -545,8 +1119,8 @@ def verify(receipt_path: Path, *, repository: Path) -> dict[str, Any]:
         "schema": SCHEMA,
         "kind": KIND,
         "mode": "verify",
-        "status": "BLOCKED",
-        "launch_authority": False,
+        "status": "PASS" if all_pass else "BLOCKED",
+        "launch_authority": all_pass,
         "receipt_path": str(receipt_path),
         "receipt_sha256": sha256(raw),
         "control_contract_sha256":

@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import argparse
 import ast
+import copy
 import hashlib
 import json
 import math
@@ -32,6 +33,7 @@ import sys
 import uuid
 import zlib
 from collections import Counter
+from contextvars import ContextVar, Token
 from dataclasses import asdict, dataclass, replace
 from decimal import Decimal, InvalidOperation, ROUND_CEILING, ROUND_FLOOR
 from pathlib import Path
@@ -736,6 +738,16 @@ def validate_inventory(inventory: Mapping[str, int]) -> dict[str, int]:
         raise SchedulerError(
             "inventory must contain exactly 25 games / 183 levels"
         )
+    validation_scope = _inventory_validation_scope.get()
+    if validation_scope is not None:
+        scoped = validation_scope["authoritative"]
+        if scoped is not None:
+            if tuple(normalized.items()) != scoped:
+                raise SchedulerError(
+                    "inventory does not exactly match the audit-scoped "
+                    "authoritative game targets"
+                )
+            return normalized
     # Count/total equality is insufficient (for example, inventing re86 L9
     # while removing a real level elsewhere preserves 183).  Reopen the same
     # toolkit-derived per-game authority used by checkpoint admission.
@@ -753,6 +765,10 @@ def validate_inventory(inventory: Mapping[str, int]) -> dict[str, int]:
         raise SchedulerError(
             "inventory does not exactly match authoritative game targets"
         )
+    authenticated = tuple(authoritative.items())
+    _authenticated_inventory_snapshots.add(authenticated)
+    if validation_scope is not None:
+        validation_scope["authoritative"] = authenticated
     return normalized
 
 
@@ -2512,9 +2528,115 @@ class SelectionEvidence:
 
 
 _MAX_SELECTION_EVIDENCE_CACHE_ENTRIES = 1024
+_SourceTreePointer = tuple[tuple[object, ...], ...]
+_SelectionEvidencePayload = tuple[
+    int,
+    str,
+    str,
+    str,
+    str | None,
+    str | None,
+    int,
+    int,
+    tuple[str, ...],
+    str,
+]
+_SelectionEvidenceCacheEntry = tuple[
+    _SourceTreePointer,
+    _SourceTreePointer | None,
+    _SelectionEvidencePayload,
+]
 _selection_evidence_cache: dict[
-    tuple[object, ...], SelectionEvidence
+    tuple[object, ...], _SelectionEvidenceCacheEntry
 ] = {}
+_selection_evidence_validation_scope: ContextVar[
+    dict[tuple[object, ...], _SelectionEvidenceCacheEntry] | None
+] = ContextVar(
+    "arc_agi3_selection_evidence_validation_scope",
+    default=None,
+)
+_inventory_validation_scope: ContextVar[
+    dict[str, tuple[tuple[str, int], ...] | None] | None
+] = ContextVar(
+    "arc_agi3_inventory_validation_scope",
+    default=None,
+)
+# A reduced cycle may reuse only an inventory value that this process has
+# already compared with the toolkit authority during a cold/full validation.
+# Merely passing a same-shaped mapping to ``begin_inventory_validation_scope``
+# must not manufacture that provenance.
+_authenticated_inventory_snapshots: set[
+    tuple[tuple[str, int], ...]
+] = set()
+_snapshot_validation_scope: ContextVar[
+    dict[int, tuple[CampaignSnapshot, CampaignSnapshot]] | None
+] = ContextVar(
+    "arc_agi3_snapshot_validation_scope",
+    default=None,
+)
+
+
+def begin_selection_evidence_validation_scope() -> Token:
+    """Start a nonpersistent exact-evidence memo for one state reduction."""
+
+    return _selection_evidence_validation_scope.set({})
+
+
+def end_selection_evidence_validation_scope(token: Token) -> None:
+    """Destroy a reduction-local evidence memo on every return path."""
+
+    _selection_evidence_validation_scope.reset(token)
+
+
+def begin_inventory_validation_scope(
+    prevalidated: Mapping[str, int] | None = None,
+) -> Token:
+    """Bound authoritative-inventory reuse to one exact audit/cycle pass."""
+
+    if prevalidated is None:
+        normalized = None
+    else:
+        if not isinstance(prevalidated, Mapping):
+            raise SchedulerError(
+                "prevalidated inventory must be a mapping"
+            )
+        rows: list[tuple[str, int]] = []
+        for game, target in prevalidated.items():
+            if (
+                not isinstance(game, str)
+                or GAME_RE.fullmatch(game) is None
+                or not _is_int(target, minimum=1)
+            ):
+                raise SchedulerError(
+                    "prevalidated inventory is malformed"
+                )
+            rows.append((game, target))
+        normalized = tuple(sorted(rows))
+        if normalized not in _authenticated_inventory_snapshots:
+            raise SchedulerError(
+                "inventory has no prior authoritative validation"
+            )
+    return _inventory_validation_scope.set(
+        {"authoritative": normalized}
+    )
+
+
+def end_inventory_validation_scope(token: Token) -> None:
+    """Destroy the inventory memo on every return path."""
+
+    _inventory_validation_scope.reset(token)
+
+
+def begin_snapshot_validation_scope() -> Token:
+    """Start an identity memo for repeated checks of frozen snapshots."""
+
+    return _snapshot_validation_scope.set({})
+
+
+def end_snapshot_validation_scope(token: Token) -> None:
+    """Destroy the frozen-snapshot memo on every return path."""
+
+    _snapshot_validation_scope.reset(token)
 
 
 def _selection_evidence_body(
@@ -2539,6 +2661,86 @@ def _selection_evidence_body(
         "retained_normalized_units": retained_normalized_units,
         "reused_definition_calls": list(reused_definition_calls),
     }
+
+
+def _selection_evidence_payload(
+    evidence: SelectionEvidence,
+) -> _SelectionEvidencePayload:
+    """Copy evidence into a cache-owned, transitively immutable payload."""
+
+    return (
+        evidence.schema,
+        evidence.metric,
+        evidence.parent_source_path,
+        evidence.parent_source_tree_sha256,
+        evidence.candidate_source_path,
+        evidence.candidate_source_tree_sha256,
+        evidence.conditional_novelty,
+        evidence.retained_normalized_units,
+        tuple(evidence.reused_definition_calls),
+        evidence.evidence_sha256,
+    )
+
+
+def _selection_evidence_from_payload(
+    payload: _SelectionEvidencePayload,
+) -> SelectionEvidence:
+    """Return a fresh value so a caller cannot poison either cache layer."""
+
+    return SelectionEvidence(
+        schema=payload[0],  # type: ignore[arg-type]
+        metric=payload[1],  # type: ignore[arg-type]
+        parent_source_path=payload[2],
+        parent_source_tree_sha256=payload[3],
+        candidate_source_path=payload[4],
+        candidate_source_tree_sha256=payload[5],
+        conditional_novelty=payload[6],
+        retained_normalized_units=payload[7],
+        reused_definition_calls=tuple(payload[8]),
+        evidence_sha256=payload[9],
+    )
+
+
+def _reuse_selection_evidence_cache_entry(
+    entry: _SelectionEvidenceCacheEntry,
+    *,
+    parent_path: Path,
+    parent_source_tree_sha256: str,
+    parent_pointer: _SourceTreePointer,
+    candidate_path: Path | None,
+    candidate_source_tree_sha256: str | None,
+    candidate_pointer: _SourceTreePointer | None,
+) -> SelectionEvidence:
+    """Revalidate exact source pointers before reconstructing cached evidence."""
+
+    entry_parent_pointer, entry_candidate_pointer, payload = entry
+    if (
+        entry_parent_pointer != parent_pointer
+        or entry_candidate_pointer != candidate_pointer
+    ):
+        raise SchedulerError("selection evidence cache pointer is inconsistent")
+    if (
+        _source_tree_pointer(parent_path) != parent_pointer
+        or (
+            candidate_path is not None
+            and _source_tree_pointer(candidate_path) != candidate_pointer
+        )
+    ):
+        raise SchedulerError(
+            "solver source changed while cached evidence was checked"
+        )
+    evidence = _selection_evidence_from_payload(payload)
+    if (
+        evidence.parent_source_path != str(parent_path)
+        or evidence.parent_source_tree_sha256
+        != parent_source_tree_sha256
+        or evidence.candidate_source_path
+        != (str(candidate_path) if candidate_path is not None else None)
+        or evidence.candidate_source_tree_sha256
+        != candidate_source_tree_sha256
+    ):
+        raise SchedulerError("selection evidence cache binding is inconsistent")
+    return evidence
 
 
 def selection_evidence(
@@ -2570,20 +2772,33 @@ def selection_evidence(
         candidate_source_tree_sha256,
         candidate_pointer,
     )
+    validation_scope = _selection_evidence_validation_scope.get()
+    if validation_scope is not None:
+        scoped = validation_scope.get(cache_key)
+        if scoped is not None:
+            return _reuse_selection_evidence_cache_entry(
+                scoped,
+                parent_path=parent_path,
+                parent_source_tree_sha256=parent_source_tree_sha256,
+                parent_pointer=parent_pointer,
+                candidate_path=candidate_path,
+                candidate_source_tree_sha256=candidate_source_tree_sha256,
+                candidate_pointer=candidate_pointer,
+            )
     cached = _selection_evidence_cache.get(cache_key)
     if cached is not None:
-        if (
-            _source_tree_pointer(parent_path) != parent_pointer
-            or (
-                candidate_path is not None
-                and _source_tree_pointer(candidate_path)
-                != candidate_pointer
-            )
-        ):
-            raise SchedulerError(
-                "solver source changed while cached evidence was checked"
-            )
-        return cached
+        evidence = _reuse_selection_evidence_cache_entry(
+            cached,
+            parent_path=parent_path,
+            parent_source_tree_sha256=parent_source_tree_sha256,
+            parent_pointer=parent_pointer,
+            candidate_path=candidate_path,
+            candidate_source_tree_sha256=candidate_source_tree_sha256,
+            candidate_pointer=candidate_pointer,
+        )
+        if validation_scope is not None:
+            validation_scope[cache_key] = cached
+        return evidence
 
     parent = _source_tree(parent_path, parent_source_tree_sha256)
     if candidate_source_path is None:
@@ -2672,7 +2887,14 @@ def selection_evidence(
         _selection_evidence_cache.pop(
             next(iter(_selection_evidence_cache))
         )
-    _selection_evidence_cache[cache_key] = evidence
+    cache_entry = (
+        parent_pointer,
+        candidate_pointer,
+        _selection_evidence_payload(evidence),
+    )
+    _selection_evidence_cache[cache_key] = cache_entry
+    if validation_scope is not None:
+        validation_scope[cache_key] = cache_entry
     return evidence
 
 
@@ -4080,7 +4302,50 @@ def _validate_wip(frontier: Frontier) -> None:
         raise SchedulerError("WIP is not bound to the exact clean frontier")
 
 
+def _revalidate_frontier_source_authority(frontier: Frontier) -> None:
+    """Reopen source pointers/evidence even on snapshot-scope cache hits."""
+
+    _validate_wip(frontier)
+    verify_selection_evidence(frontier.evidence)
+    expected_candidate = (
+        frontier.wip.solver_source_path
+        if frontier.wip is not None else None
+    )
+    expected_candidate_sha = (
+        frontier.wip.solver_source_tree_sha256
+        if frontier.wip is not None else None
+    )
+    if (
+        frontier.evidence.parent_source_path
+        != frontier.parent_source_path
+        or frontier.evidence.parent_source_tree_sha256
+        != frontier.parent_source_tree_sha256
+        or frontier.evidence.candidate_source_path
+        != expected_candidate
+        or frontier.evidence.candidate_source_tree_sha256
+        != expected_candidate_sha
+    ):
+        raise SchedulerError(
+            "selection evidence is not bound to the frontier/WIP"
+        )
+
+
 def validate_snapshot(snapshot: CampaignSnapshot) -> CampaignSnapshot:
+    validation_scope = _snapshot_validation_scope.get()
+    cached_snapshot = (
+        None
+        if validation_scope is None
+        else validation_scope.get(id(snapshot))
+    )
+    if cached_snapshot is not None:
+        caller_owned, canonical = cached_snapshot
+        if caller_owned is not snapshot or snapshot != canonical:
+            raise SchedulerError(
+                "validated snapshot changed while its scope remained live"
+            )
+        for frontier in canonical.frontiers:
+            _revalidate_frontier_source_authority(frontier)
+        return copy.deepcopy(canonical)
     _require_identifier(snapshot.campaign_id, "campaign_id")
     if not _is_int(snapshot.journal_head_sequence):
         raise SchedulerError("journal head sequence is invalid")
@@ -4120,29 +4385,7 @@ def validate_snapshot(snapshot: CampaignSnapshot) -> CampaignSnapshot:
             active_games.add(frontier.game)
         if frontier.draining and frontier.active_attempt_id is None:
             raise SchedulerError("draining frontier has no active attempt")
-        _validate_wip(frontier)
-        verify_selection_evidence(frontier.evidence)
-        expected_candidate = (
-            frontier.wip.solver_source_path
-            if frontier.wip is not None else None
-        )
-        expected_candidate_sha = (
-            frontier.wip.solver_source_tree_sha256
-            if frontier.wip is not None else None
-        )
-        if (
-            frontier.evidence.parent_source_path
-            != frontier.parent_source_path
-            or frontier.evidence.parent_source_tree_sha256
-            != frontier.parent_source_tree_sha256
-            or frontier.evidence.candidate_source_path
-            != expected_candidate
-            or frontier.evidence.candidate_source_tree_sha256
-            != expected_candidate_sha
-        ):
-            raise SchedulerError(
-                "selection evidence is not bound to the frontier/WIP"
-            )
+        _revalidate_frontier_source_authority(frontier)
         if (
             tuple(
                 sorted(set(
@@ -4485,6 +4728,10 @@ def validate_snapshot(snapshot: CampaignSnapshot) -> CampaignSnapshot:
             "proposer plus auxiliary occupancy exceeds capacity"
         )
     validate_budget_state(snapshot.budget)
+    if validation_scope is not None:
+        canonical = copy.deepcopy(snapshot)
+        validation_scope[id(snapshot)] = (snapshot, canonical)
+        return copy.deepcopy(canonical)
     return snapshot
 
 

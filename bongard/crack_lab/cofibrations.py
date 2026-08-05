@@ -33,6 +33,7 @@ from __future__ import annotations
 
 from dataclasses import asdict, dataclass, fields, is_dataclass
 from typing import Any, Callable
+from numbers import Real
 
 import numpy as np
 
@@ -239,15 +240,86 @@ def verify_patch_locality(target: Any, spec: CofibrationSpec) -> CofibrationChec
             return target.get(name)
         return getattr(target, name, None)
 
+    def _empty(value: Any) -> bool:
+        if value is None:
+            return True
+        if isinstance(value, str):
+            return value == ""
+        if isinstance(value, np.ndarray):
+            return value.size == 0
+        if isinstance(value, (bool, np.bool_)):
+            return not bool(value)
+        if isinstance(value, Real):
+            return not np.isfinite(float(value)) or float(value) == 0.0
+        if isinstance(value, (tuple, list, dict, set, frozenset)):
+            return len(value) == 0
+        return False
+
     for name in spec.interface_fields:
         value = _get(name)
-        if value is None or value == () or value == "":
+        if _empty(value):
             return CofibrationCheck(False, "interface_missing", name)
     for name in spec.added_fields:
         value = _get(name)
-        if value is None or value == () or value == "":
+        if _empty(value):
             return CofibrationCheck(False, "patch_missing", name)
     return CofibrationCheck(True)
+
+
+def _source_binding_ids(source: Any) -> tuple[str, ...]:
+    """Identifiers by which a relation witness can name the glued source."""
+    names = ("part_id", "object_id", "source_id", "source_component_id", "id")
+    values: list[str] = []
+    for name in names:
+        value = source.get(name) if isinstance(source, dict) \
+            else getattr(source, name, None)
+        if isinstance(value, str) and value:
+            values.append(value)
+    return tuple(dict.fromkeys(values))
+
+
+def _relation_endpoints(value: Any) -> tuple[str, ...]:
+    if value is None:
+        return ()
+    if isinstance(value, (tuple, list)):
+        return tuple(dict.fromkeys(
+            endpoint for item in value for endpoint in _relation_endpoints(item)
+        ))
+    endpoints = []
+    for name in ("source_a", "source_b"):
+        endpoint = value.get(name) if isinstance(value, dict) \
+            else getattr(value, name, None)
+        if isinstance(endpoint, str) and endpoint:
+            endpoints.append(endpoint)
+    return tuple(dict.fromkeys(endpoints))
+
+
+def _target_relation_candidates(target: Any) -> tuple[Any, ...]:
+    candidates: list[Any] = []
+    for name in ("contacts", "relations", "attachments", "intersections"):
+        value = target.get(name) if isinstance(target, dict) \
+            else getattr(target, name, None)
+        if isinstance(value, (tuple, list)):
+            candidates.extend(value)
+        elif value is not None:
+            candidates.append(value)
+    return tuple(candidates)
+
+
+def verify_attachment_binding(
+        source: Any, attachment_value: Any,
+        glue_map: tuple[tuple[str, str], ...]) -> CofibrationCheck:
+    """The executed relation must actually involve the glued source."""
+    source_ids = _source_binding_ids(source)
+    mapping = dict(glue_map)
+    mapped_ids = {mapping.get(identifier, identifier)
+                  for identifier in source_ids}
+    endpoints = set(_relation_endpoints(attachment_value))
+    if not mapped_ids or not endpoints or mapped_ids.isdisjoint(endpoints):
+        return CofibrationCheck(
+            False, "attachment_unbound",
+            "relation endpoints do not include the glued source")
+    return CofibrationCheck(True, glue_map=glue_map)
 
 
 def verify_source_glued_in(source: Any, target: Any,
@@ -308,7 +380,8 @@ def verify_trace_transport(source_trace: dict[str, Any],
 def verify_cofibration(source: Any, target: Any, spec: CofibrationSpec,
                        source_trace: dict[str, Any] | None = None,
                        target_trace: dict[str, Any] | None = None,
-                       projection_fn: Callable | None = None) -> CofibrationCheck:
+                       projection_fn: Callable | None = None,
+                       attachment_value: Any | None = None) -> CofibrationCheck:
     locality = verify_patch_locality(target, spec)
     if not locality.ok:
         return locality
@@ -329,8 +402,23 @@ def verify_cofibration(source: Any, target: Any, spec: CofibrationSpec,
     projection = verify_projection_recovers_source(source, target, spec, projection_fn)
     if not projection.ok:
         return projection
+    relation_candidates = (
+        (attachment_value,) if attachment_value is not None
+        else _target_relation_candidates(target)
+    )
+    binding = next((
+        candidate for candidate in (
+            verify_attachment_binding(
+                source, relation, glued.glue_map or projection.glue_map)
+            for relation in relation_candidates
+        ) if candidate.ok
+    ), None)
+    if binding is None:
+        return CofibrationCheck(
+            False, "attachment_unbound",
+            "no declared attachment relation involves the glued source")
     if source_trace is not None and target_trace is not None:
         transport = verify_trace_transport(source_trace, target_trace, spec)
         if not transport.ok:
             return transport
-    return CofibrationCheck(True, glue_map=glued.glue_map or projection.glue_map)
+    return CofibrationCheck(True, glue_map=binding.glue_map)

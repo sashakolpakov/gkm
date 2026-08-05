@@ -4,6 +4,7 @@ import errno
 import fcntl
 import hashlib
 import json
+import multiprocessing
 import os
 import selectors
 import shutil
@@ -24,6 +25,20 @@ import arc_agi3_contiguous_supervisor as Contract
 
 Transport = R.Transport
 Taint = R.Taint
+
+
+def _process_acquire_runner_lock(runner, queue) -> None:
+    """Test child: traverse the runner's fork-safe ownership path."""
+
+    try:
+        handle, token = runner._acquire_campaign_cycle_lock()
+    except BaseException as exc:
+        queue.put(("error", type(exc).__name__, str(exc)))
+        return
+    try:
+        queue.put(("acquired", os.getpid()))
+    finally:
+        runner._release_campaign_cycle_lock(handle, token)
 
 
 HASH = "a" * 64
@@ -4159,6 +4174,7 @@ class _SyntheticAuxiliaryRunner(R.ContiguousCampaignRunner):
     """Fast exact-n harness around the production auxiliary cycle."""
 
     def __init__(self, root: Path, backend: FakeAuxiliaryBackend):
+        self._initialize_validation_state()
         self.root = root
         self.root.mkdir(parents=True)
         (self.root / "attempt_journal").mkdir()
@@ -5197,8 +5213,24 @@ def test_authoritative_inventory_six_disjoint_bound_lanes(tmp_path):
 
 
 def test_substrate_permission_failure_latches_all_unstarted_work_and_polling_is_quiet(
-    tmp_path,
+    tmp_path, monkeypatch,
 ):
+    validation_work = {"full": 0, "reduced": 0}
+    original_reduction = R.ContiguousCampaignRunner._state_reduced
+
+    def counted_reduction(self, *, full_external_audit):
+        validation_work[
+            "full" if full_external_audit else "reduced"
+        ] += 1
+        return original_reduction(
+            self, full_external_audit=full_external_audit
+        )
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_state_reduced",
+        counted_reduction,
+    )
     backend = SubstrateFailingBackend()
     runner, _, _, _, clock = make_runner(
         tmp_path, backend=backend, max_lanes=6
@@ -5229,8 +5261,17 @@ def test_substrate_permission_failure_latches_all_unstarted_work_and_polling_is_
         if path.is_file()
     ))
     baseline_launches = tuple(backend.launch_calls)
+    validation_work.update(full=0, reduced=0)
     for _ in range(100):
         runner.cycle(now=clock.value)
+    # This is intentionally one hundred calls through the public lock/audit
+    # boundary, rather than one manually held cycle containing 100 private
+    # polls.  Each quiet cycle performs exactly one cold entry audit, one cold
+    # return audit, and one cycle-local suffix reduction.  The remaining
+    # internal reads consume the exact same owner-bound/head-bound state.
+    # Since the journal remains unchanged, authenticated validation work is
+    # linear in the number of public supervision cycles.
+    assert validation_work == {"full": 200, "reduced": 100}
     assert tuple(backend.launch_calls) == baseline_launches
     assert len(runner.journal._read_authenticated()) == baseline_events
     assert tuple(sorted(
@@ -5385,6 +5426,19 @@ def test_enospc_during_event_commit_consumes_reserve_and_latches_campaign(
     assert state["storage_incident"]["failure_stage"] == "event_commit"
     assert report["storage_incident"] == state["storage_incident"]
     assert not list(runner.journal.root.glob(".pending-*"))
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_lock_held is False
+    assert runner._reducer_checkpoint is None
+    assert runner._trusted_auxiliary_event_digests == set()
+    assert runner._verified_lane_checkpoints == {}
+    assert runner._verified_lane_sources == {}
+    assert runner._verified_attempt_inputs == {}
+    assert (
+        R.Scheduler._selection_evidence_validation_scope.get()
+        is None
+    )
+    assert R.Scheduler._inventory_validation_scope.get() is None
+    assert R.Scheduler._snapshot_validation_scope.get() is None
     R.Scheduler.validate_journal_event_sequence(
         runner.journal.read()
     )
@@ -5450,6 +5504,54 @@ def test_storage_incident_quiesces_live_primary_once_without_collection_or_autho
     R.Scheduler.validate_journal_event_sequence(
         runner.journal.read()
     )
+
+
+def test_storage_emergency_reauthenticates_prefix_before_any_containment(
+    tmp_path, monkeypatch,
+):
+    runner, backend, gate, _, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    runner.cycle()
+    baseline = runner.journal.filesystem_admission_snapshot(
+        required_event_bytes=1
+    )
+    monkeypatch.setattr(
+        runner.journal,
+        "filesystem_admission_snapshot",
+        lambda **_kwargs: {
+            **baseline,
+            "byte_admitted": False,
+            "inode_admitted": True,
+        },
+    )
+    original = runner._cycle_state_with_full_journal_prefix
+    mutated = False
+
+    def mutate_after_storage_latch():
+        nonlocal mutated
+        state = runner._cycle_state()
+        if not mutated and state["storage_incident"] is not None:
+            genesis = runner.journal._paths()[0]
+            mode = stat.S_IMODE(genesis.stat().st_mode)
+            genesis.chmod(0o600)
+            genesis.write_bytes(genesis.read_bytes() + b" ")
+            genesis.chmod(mode)
+            mutated = True
+        return original()
+
+    monkeypatch.setattr(
+        runner,
+        "_cycle_state_with_full_journal_prefix",
+        mutate_after_storage_latch,
+    )
+    with pytest.raises(R.ContiguousRunnerError):
+        runner.cycle()
+    assert mutated is True
+    assert backend.emergency_containment_calls == []
+    assert backend.collections == {}
+    assert backend.teardown_calls == []
+    assert gate.calls == []
 
 
 def test_journal_rolls_to_authenticated_checkpoint_segment_and_recovers_open_cut(
@@ -5786,6 +5888,13 @@ def test_limit_none_disables_uniform_cost_cutoff(tmp_path):
 
 def test_auxiliary_dispatch_is_default_off_and_fails_closed(tmp_path):
     assert R.CONTIGUOUS_AUXILIARY_LAUNCH_READY is False
+    assert "CONTIGUOUS_AUXILIARY_LAUNCH_READY" in R.__all__
+    disabled, _, _, _, _ = make_runner(
+        tmp_path / "default-disabled", max_lanes=1
+    )
+    disabled_state = disabled.state()
+    assert disabled_state["auxiliary_dispatch_configured"] is False
+    assert disabled_state["auxiliary_launch_ready"] is False
     proposer = FakeBackend()
     common = {
         "backend": proposer,
@@ -5821,6 +5930,41 @@ def test_auxiliary_dispatch_is_default_off_and_fails_closed(tmp_path):
             ),
             **common,
         )
+
+    enabled_backend = FakeAuxiliaryBackend(
+        tmp_path / "enabled-auxiliary-backend"
+    )
+    enabled, _, _, _, _ = make_runner(
+        tmp_path / "enabled",
+        max_lanes=1,
+        auxiliary_backend=enabled_backend,
+        auxiliary_launch_configuration=(
+            enabled_backend.configuration()
+        ),
+    )
+    enabled_state = enabled.state()
+    assert enabled_state["auxiliary_dispatch_configured"] is True
+    assert enabled_state["auxiliary_launch_ready"] is False
+
+
+def test_deprecated_auxiliary_ready_flag_cannot_authorize_dispatch(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(
+        R, "CONTIGUOUS_AUXILIARY_LAUNCH_READY", True
+    )
+    runner, backend, _, _, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    state = runner.state()
+    assert state["auxiliary_launch_ready"] is False
+    assert state["auxiliary_dispatch_configured"] is False
+    runner.cycle()
+    assert backend.specs
+    post_cycle = runner.state()
+    assert post_cycle["auxiliary_launch_ready"] is False
+    assert post_cycle["pending_auxiliary_decision"] is None
+    assert post_cycle["auxiliary_assignments"] == {}
 
 
 def test_soft_deadline_drains_lane_locally_and_refills_unrelated_lane(tmp_path):
@@ -6069,6 +6213,34 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     tmp_path, monkeypatch
 ):
     target_game = sorted(Contract.authoritative_inventory())[0]
+    original_snapshot = R.ContiguousCampaignRunner._scheduler_snapshot
+
+    def isolated_frontier_snapshot(cls, *args, **kwargs):
+        del cls
+        snapshot = original_snapshot(*args, **kwargs)
+        # Exercise the complete durable runner/escalation path without making
+        # this one invariant wait for the independent 25-game fairness sweep.
+        # The game-agnostic selector and six-lane projection have separate S06
+        # owners; this fixture isolates one exact frontier by presenting every
+        # other frontier as durably unavailable to both creation and replay.
+        return R.Scheduler.validate_snapshot(replace(
+            snapshot,
+            frontiers=tuple(
+                frontier
+                if frontier.game == target_game
+                else replace(
+                    frontier,
+                    blocked_reason="test-isolated-frontier",
+                )
+                for frontier in snapshot.frontiers
+            ),
+        ))
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_scheduler_snapshot",
+        classmethod(isolated_frontier_snapshot),
+    )
     specs: list[R.AttemptSpec] = []
     verified_decisions = 0
     original_verify_decision = R.Scheduler.verify_decision
@@ -6120,9 +6292,9 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
         return R.AttemptResult(kind="clean_no_progress")
 
     runner, backend, _, _, _ = make_runner(
-        tmp_path, backend=FakeBackend(strategy), max_lanes=6
+        tmp_path, backend=FakeBackend(strategy), max_lanes=1
     )
-    for _ in range(100):
+    for _ in range(30):
         runner.cycle()
         if len(specs) >= 7:
             break
@@ -6162,20 +6334,24 @@ def test_escalation_is_frontier_bound_and_missing_wip_falls_back_to_exclude(
     )
     # Bound authenticated work directly. Wall-clock assertions are not
     # admissible launch evidence because unrelated host load can change them.
-    # Every durable decision is verified exactly once, and cached state reads
-    # perform no additional decision verification.
-    assert verified_decisions == all_decision_events
+    # Every durable decision is verified before use.  A public cold audit
+    # intentionally replays all historical decisions instead of inheriting a
+    # reducer/validation cache from the active supervision cycle.
+    assert verified_decisions >= all_decision_events
     before_cached_reads = verified_decisions
     for _ in range(3):
         runner.state()
-    assert verified_decisions == before_cached_reads
+    assert verified_decisions - before_cached_reads == (
+        3 * all_decision_events
+    )
     # Bound the expensive cryptographic/secret-scan work directly.  A
     # collection has at most two pre-teardown passes (admission plus journal
     # replay), one exact post-teardown pass, and one fresh pass after the
-    # explicit result transition changes state/WIP custody metadata.  Only
-    # then may the read-only quiescent byte-digest cache serve reducer reads.
+    # explicit result transition changes state/WIP custody metadata.  Cold
+    # audits deliberately discard the quiescent byte-digest cache, so every
+    # retained call in this isolated stress is a complete validation.
     assert full_collection_validations <= 4 * len(backend.collections)
-    assert collection_validations > full_collection_validations
+    assert collection_validations == full_collection_validations
 
 
 def _opaque_quiescence_proof() -> R.BackendTeardownProof:
@@ -7748,7 +7924,9 @@ def test_post_teardown_snapshot_is_reducer_read_only_and_restart_safe(
     torn_state = recovering.state()
     torn_attempt = torn_state["attempts"][attempt_id]
     assert torn_attempt["phase"] == "TORN_DOWN"
-    assert attempt_id in recovering._verified_quiescent_collections
+    assert not getattr(
+        recovering, "_verified_quiescent_collections", {}
+    )
 
     def evidence_metadata():
         return {
@@ -7776,7 +7954,9 @@ def test_post_teardown_snapshot_is_reducer_read_only_and_restart_safe(
         recovering._record_torn_down_result(
             attempt_id, torn_attempt, now=recovering.clock()
         )
-    assert attempt_id not in recovering._verified_quiescent_collections
+    assert attempt_id not in getattr(
+        recovering, "_verified_quiescent_collections", {}
+    )
     assert evidence_metadata() != before_result_seal
     monkeypatch.setattr(R, "_seal_regular_tree", original_seal)
 
@@ -7806,7 +7986,9 @@ def test_post_teardown_snapshot_is_reducer_read_only_and_restart_safe(
     monkeypatch.setattr(os, "chmod", reject_generation_chmod)
     recovering.state()
     assert full_validations == 1
-    assert attempt_id in recovering._verified_quiescent_collections
+    assert not getattr(
+        recovering, "_verified_quiescent_collections", {}
+    )
     assert evidence_metadata() == before
     monkeypatch.setattr(os, "chmod", original_chmod)
     monkeypatch.setattr(
@@ -8092,6 +8274,921 @@ def test_reducer_checkpoint_is_not_mutable_through_returned_state(
         runner.state()["attempts"][attempt_id]["spec"].game
         == durable_game
     )
+
+
+def test_runner_scheduler_snapshot_cache_revalidates_sources_and_is_copy_isolated(
+    tmp_path,
+):
+    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
+    state = runner.state()
+    events = runner.journal.read()
+    cache = {}
+
+    def snapshot():
+        return runner._scheduler_snapshot(
+            genesis={
+                "campaign_id": state["campaign_id"],
+                "inventory": state["inventory"],
+                "max_lanes": state["max_lanes"],
+            },
+            lanes=state["lanes"],
+            attempts=state["attempts"],
+            budget=runner._budget_from_state(state),
+            journal_head_sequence=events[-1]["sequence"],
+            journal_head_digest=events[-1]["digest"],
+            selection_evidence_cache=cache,
+        )
+
+    first = snapshot()
+    original_novelty = first.frontiers[0].evidence.conditional_novelty
+    object.__setattr__(
+        first.frontiers[0].evidence,
+        "conditional_novelty",
+        original_novelty + 999,
+    )
+    second = snapshot()
+    assert (
+        second.frontiers[0].evidence.conditional_novelty
+        == original_novelty
+    )
+
+    lane = state["lanes"][second.frontiers[0].game]
+    source_file = Path(lane["source_path"]) / "legs.py"
+    mode = stat.S_IMODE(source_file.stat().st_mode)
+    source_file.chmod(0o600)
+    source_file.write_bytes(source_file.read_bytes() + b"\n")
+    source_file.chmod(mode)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="campaign state cannot form",
+    ):
+        snapshot()
+
+
+def test_cycle_validated_reduction_is_linear_local_and_restart_cold(
+    tmp_path, monkeypatch
+):
+    counts = {"full": 0, "reduced": 0, "lanes": 0}
+    cold_full_entries = []
+    original_state = R.ContiguousCampaignRunner._state_reduced
+    original_lane = R.ContiguousCampaignRunner._validate_lane_authority
+
+    def counted_state(self, *, full_external_audit):
+        counts[
+            "full" if full_external_audit else "reduced"
+        ] += 1
+        if full_external_audit:
+            cold_full_entries.append((
+                self._reducer_checkpoint,
+                dict(self._verified_lane_checkpoints),
+                dict(self._verified_lane_sources),
+                dict(self._verified_attempt_inputs),
+                set(self._trusted_auxiliary_event_digests),
+            ))
+        return original_state(
+            self, full_external_audit=full_external_audit
+        )
+
+    def counted_lane(self, *args, **kwargs):
+        counts["lanes"] += 1
+        return original_lane(self, *args, **kwargs)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_state_reduced",
+        counted_state,
+    )
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_validate_lane_authority",
+        counted_lane,
+    )
+    runner, backend, gate, builder, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    counts.update(full=0, reduced=0, lanes=0)
+    cold_full_entries.clear()
+
+    runner.cycle()
+    inventory_size = len(Contract.authoritative_inventory())
+    assert counts["full"] == 2
+    assert len(cold_full_entries) == 2
+    assert cold_full_entries[0] == (
+        None, {}, {}, {}, set()
+    )
+    # The return pass keeps only the authenticated semantic reducer seed;
+    # every external pointer and receipt memo is cold.
+    assert isinstance(
+        cold_full_entries[1][0], R._ReducerCheckpoint
+    )
+    assert cold_full_entries[1][1:] == ({}, {}, {}, set())
+    assert counts["reduced"] > 2
+    # Two campaign-wide boundary audits plus four exact effects: reservation
+    # creation/input construction, prepare, and launch.
+    assert counts["lanes"] == 2 * inventory_size + 4
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_lock_held is False
+    assert isinstance(runner._reducer_checkpoint, R._ReducerCheckpoint)
+    assert (
+        R.Scheduler._selection_evidence_validation_scope.get()
+        is None
+    )
+    assert R.Scheduler._inventory_validation_scope.get() is None
+    assert R.Scheduler._snapshot_validation_scope.get() is None
+    assert runner._verified_lane_checkpoints == {}
+    assert runner._verified_lane_sources == {}
+    assert runner._verified_attempt_inputs == {}
+
+    full_before = counts["full"]
+    reduced_before = counts["reduced"]
+    runner._cycle_state()
+    assert counts["full"] == full_before + 1
+    assert counts["reduced"] == reduced_before
+
+    restarted = R.ContiguousCampaignRunner(
+        tmp_path / "campaign",
+        backend=backend,
+        promotion_gate=gate,
+        input_builder=builder,
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        controller_state_canaries=backend.controller_state_canaries,
+        id_factory=ids(),
+    )
+    assert restarted._cycle_validation_context is None
+    assert restarted._reducer_checkpoint is None
+
+    lane = restarted.state()["lanes"]
+    source_root = Path(next(iter(lane.values()))["source_path"])
+    source_file = source_root / "legs.py"
+    mode = stat.S_IMODE(source_file.stat().st_mode)
+    source_file.chmod(0o600)
+    source_file.write_bytes(source_file.read_bytes() + b"\n")
+    source_file.chmod(mode)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="campaign state cannot form|lane source changed",
+    ):
+        R.ContiguousCampaignRunner(
+            tmp_path / "campaign",
+            backend=backend,
+            promotion_gate=gate,
+            input_builder=builder,
+            backend_configuration=backend_configuration(),
+            cost_window_id=COST_WINDOW_ID,
+            max_lanes=1,
+            controller_state_canaries=backend.controller_state_canaries,
+            id_factory=ids(),
+        )
+
+
+def test_growing_history_replays_semantic_suffix_near_linearly(
+    tmp_path, monkeypatch,
+):
+    runner, _, _, _, clock = make_runner(tmp_path, max_lanes=1)
+    runner.cycle()
+    baseline_events = len(runner.journal.read())
+    replayed = []
+    runner._semantic_replay_observer = (
+        lambda event: replayed.append(
+            (event["sequence"], event["kind"])
+        )
+    )
+
+    def append_one_retry(*, now=None, initial_state=None):
+        del now
+        assert initial_state is not None
+        attempt_id, attempt = next(
+            (item for item in initial_state["attempts"].items()
+             if item[1]["phase"] == "RUNNING")
+        )
+        retry_index = attempt["retry_count"] + 1
+        operation_index = (
+            attempt["operation_retry_counts"].get(
+                "backend_poll", 0
+            ) + 1
+        )
+        recorded_at = float(clock())
+        runner.journal.append(
+            event_id=f"{attempt_id}:retry:{retry_index:08d}",
+            kind="ATTEMPT_RETRY",
+            payload={
+                "attempt_id": attempt_id,
+                "retry_index": retry_index,
+                "operation": "backend_poll",
+                "operation_retry_index": operation_index,
+                "error_type": "SyntheticHistoryGrowth",
+                "backoff_seconds": 1.0,
+                "retry_not_before": recorded_at + 1.0,
+            },
+            recorded_at=recorded_at,
+        )
+        return {
+            "solved_levels": initial_state["solved_levels"],
+            "total_levels": initial_state["total_levels"],
+            "complete": initial_state["complete"],
+        }
+
+    monkeypatch.setattr(runner, "_cycle_locked", append_one_retry)
+    started = time.monotonic()
+    for _ in range(100):
+        runner.cycle(now=clock.value)
+    elapsed = time.monotonic() - started
+    final_events = len(runner.journal.read())
+    grown = final_events - baseline_events
+    assert grown == 100
+    # Count the actual semantic event loop, not top-level reducer calls.  Each
+    # newly committed event is replayed once; the authenticated checkpoint
+    # prevents old decisions/history from being replayed on either boundary.
+    assert len(replayed) == grown
+    assert sum(kind == "SCHEDULER_DECISION" for _, kind in replayed) == 0
+    assert elapsed < 45.0
+
+
+def test_reentrant_public_state_is_full_and_cycle_context_is_restored(
+    tmp_path, monkeypatch
+):
+    counts = {"full": 0, "reduced": 0}
+    original_state = R.ContiguousCampaignRunner._state_reduced
+
+    def counted_state(self, *, full_external_audit):
+        counts[
+            "full" if full_external_audit else "reduced"
+        ] += 1
+        return original_state(
+            self, full_external_audit=full_external_audit
+        )
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_state_reduced",
+        counted_state,
+    )
+    runner, backend, _, _, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    original_prepare = backend.prepare
+    callback_states = []
+
+    def reentrant_prepare(spec):
+        callback_states.append(runner.state())
+        return original_prepare(spec)
+
+    monkeypatch.setattr(backend, "prepare", reentrant_prepare)
+    counts.update(full=0, reduced=0)
+    runner.cycle()
+
+    assert len(callback_states) == 1
+    assert counts["full"] == 3
+    assert counts["reduced"] > 0
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_lock_held is False
+    assert isinstance(runner._reducer_checkpoint, R._ReducerCheckpoint)
+
+
+def test_cross_thread_state_cannot_consume_live_cycle_caches(
+    tmp_path, monkeypatch
+):
+    runner, backend, _, _, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    original_prepare = backend.prepare
+    observed = []
+
+    def cross_thread_prepare(spec):
+        def inspect():
+            try:
+                runner.state()
+            except BaseException as exc:
+                observed.append(exc)
+            else:
+                observed.append(None)
+
+        thread = threading.Thread(target=inspect)
+        thread.start()
+        thread.join(timeout=5.0)
+        assert not thread.is_alive()
+        return original_prepare(spec)
+
+    monkeypatch.setattr(backend, "prepare", cross_thread_prepare)
+    runner.cycle()
+    assert len(observed) == 1
+    assert isinstance(observed[0], R.ContiguousRunnerError)
+    assert "foreign execution owner" in str(observed[0])
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_execution_owner is None
+    assert runner._cycle_lock_held is False
+
+
+def test_same_instance_cycle_reentrancy_fails_before_flock(
+    tmp_path, monkeypatch,
+):
+    runner, backend, _, _, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    original_prepare = backend.prepare
+    observed = []
+
+    def reentrant_prepare(spec):
+        started = time.monotonic()
+        with pytest.raises(
+            R.ContiguousRunnerError,
+            match="reentrant supervision cycle",
+        ):
+            runner.cycle()
+        observed.append(time.monotonic() - started)
+        return original_prepare(spec)
+
+    monkeypatch.setattr(backend, "prepare", reentrant_prepare)
+    runner.cycle()
+    assert len(observed) == 1
+    assert observed[0] < 1.0
+
+
+def test_second_runner_same_campaign_same_thread_fails_before_flock(
+    tmp_path, monkeypatch,
+):
+    runner, backend, gate, builder, _ = make_runner(
+        tmp_path, max_lanes=1
+    )
+    second = R.ContiguousCampaignRunner(
+        runner.root,
+        backend=backend,
+        promotion_gate=gate,
+        input_builder=builder,
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        controller_state_canaries=backend.controller_state_canaries,
+        id_factory=ids(),
+    )
+    original_prepare = backend.prepare
+    observed = []
+
+    def nested_second_runner(spec):
+        started = time.monotonic()
+        with pytest.raises(
+            R.ContiguousRunnerError,
+            match="same-thread campaign lock recursion",
+        ):
+            second.cycle()
+        observed.append(time.monotonic() - started)
+        return original_prepare(spec)
+
+    monkeypatch.setattr(backend, "prepare", nested_second_runner)
+    runner.cycle()
+    assert len(observed) == 1
+    assert observed[0] < 1.0
+
+
+def test_foreign_thread_and_process_block_then_serialize_campaign_lock(
+    tmp_path,
+):
+    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
+    handle, token = runner._acquire_campaign_cycle_lock()
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="same-thread campaign lock recursion",
+    ):
+        runner._acquire_campaign_cycle_lock()
+    thread_result = []
+
+    def foreign_thread_cycle():
+        try:
+            thread_result.append(runner.cycle())
+        except BaseException as exc:
+            thread_result.append(exc)
+
+    thread = threading.Thread(target=foreign_thread_cycle)
+    thread.start()
+    time.sleep(0.15)
+    assert thread.is_alive()
+    runner._release_campaign_cycle_lock(handle, token)
+    thread.join(timeout=10.0)
+    assert not thread.is_alive()
+    assert len(thread_result) == 1
+    assert isinstance(thread_result[0], dict)
+
+    handle, token = runner._acquire_campaign_cycle_lock()
+    context = multiprocessing.get_context("fork")
+    queue = context.Queue()
+    process = context.Process(
+        target=_process_acquire_runner_lock,
+        args=(runner, queue),
+    )
+    process.start()
+    time.sleep(0.15)
+    assert process.is_alive()
+    assert queue.empty()
+    runner._release_campaign_cycle_lock(handle, token)
+    status, child_pid = queue.get(timeout=10.0)
+    assert status == "acquired"
+    assert child_pid == process.pid
+    process.join(timeout=10.0)
+    assert process.exitcode == 0
+
+
+def test_exact_authority_failure_stops_all_later_lanes_and_effects(
+    tmp_path, monkeypatch,
+):
+    backend = FakeBackend(lambda _spec: None)
+    runner, backend, gate, _, _ = make_runner(
+        tmp_path, backend=backend, max_lanes=2
+    )
+    runner.cycle()
+    assert len(backend.specs) == 2
+    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
+    mutated = False
+
+    def mutate_lane_a_prefix(self, attempt_id, allowed_phases):
+        nonlocal mutated
+        if not mutated:
+            genesis = self.journal._paths()[0]
+            mode = stat.S_IMODE(genesis.stat().st_mode)
+            genesis.chmod(0o600)
+            genesis.write_bytes(genesis.read_bytes() + b" ")
+            genesis.chmod(mode)
+            mutated = True
+        return original_exact(self, attempt_id, allowed_phases)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_exact_cycle_attempt",
+        mutate_lane_a_prefix,
+    )
+    polls_before = tuple(backend.poll_timeouts)
+    promotions_before = tuple(gate.calls)
+    journal_entries_before = tuple(
+        sorted(str(path.relative_to(runner.root))
+               for path in runner.root.rglob("*") if path.is_file())
+    )
+    with pytest.raises(R.ExactAuthorityGateError):
+        runner.cycle()
+    assert mutated is True
+    assert tuple(backend.poll_timeouts) == polls_before
+    assert tuple(gate.calls) == promotions_before
+    assert tuple(
+        sorted(str(path.relative_to(runner.root))
+               for path in runner.root.rglob("*") if path.is_file())
+    ) == journal_entries_before
+
+
+def test_bound_receipt_hash_and_parse_share_one_stable_descriptor(
+    tmp_path, monkeypatch,
+):
+    runner, backend, _, _, _ = make_runner(tmp_path, max_lanes=1)
+    runner.cycle()
+    attempt = next(iter(runner.state()["attempts"].values()))
+    spec = attempt["spec"]
+    prepared = attempt["prepared"]
+    receipt_path = Path(prepared.bridge_policy_receipt_path)
+    original_value = json.loads(receipt_path.read_bytes())
+    replacement = receipt_path.with_name("replacement.json")
+    replacement.write_bytes(
+        R._canonical_json({**original_value, "authority": True}) + b"\n"
+    )
+    replacement.chmod(stat.S_IMODE(receipt_path.stat().st_mode))
+    receipt_inode = receipt_path.stat().st_ino
+    original_read = R.os.read
+    swapped = False
+
+    def replace_after_authenticated_read(descriptor, size):
+        nonlocal swapped
+        raw = original_read(descriptor, size)
+        if (
+            not swapped
+            and raw
+            and os.fstat(descriptor).st_ino == receipt_inode
+        ):
+            os.replace(replacement, receipt_path)
+            swapped = True
+        return raw
+
+    monkeypatch.setattr(R.os, "read", replace_after_authenticated_read)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="pointer or metadata changed|changed during read",
+    ):
+        R._validate_bound_receipt(
+            prepared.bridge_policy_receipt_path,
+            prepared.bridge_policy_receipt_sha256,
+            expected_path=Path(spec.bridge_policy_receipt_path),
+            expected_kind="contiguous_bridge_policy",
+            spec=spec,
+        )
+    assert swapped is True
+
+
+def test_preparation_attestation_hash_and_parse_share_stable_descriptor(
+    tmp_path, monkeypatch,
+):
+    runner, _, _, _, _ = make_runner(tmp_path, max_lanes=1)
+    runner.cycle()
+    attempt = next(iter(runner.state()["attempts"].values()))
+    spec = attempt["spec"]
+    prepared = attempt["prepared"]
+    attestation = Path(prepared.launch_attestation_path)
+    replacement = attestation.with_name("attestation-replacement.json")
+    value = json.loads(attestation.read_bytes())
+    replacement.write_bytes(
+        R._canonical_json({**value, "authority": True}) + b"\n"
+    )
+    replacement.chmod(stat.S_IMODE(attestation.stat().st_mode))
+    target_inode = attestation.stat().st_ino
+    original_read = R.os.read
+    swapped = False
+
+    def swap_attestation_after_read(descriptor, size):
+        nonlocal swapped
+        raw = original_read(descriptor, size)
+        if (
+            not swapped
+            and raw
+            and os.fstat(descriptor).st_ino == target_inode
+        ):
+            os.replace(replacement, attestation)
+            swapped = True
+        return raw
+
+    monkeypatch.setattr(R.os, "read", swap_attestation_after_read)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="pointer or metadata changed|changed during read",
+    ):
+        R._validate_preparation_receipts(spec, prepared)
+    assert swapped is True
+
+
+def test_auxiliary_effect_gate_reopens_mutated_prepared_receipt(
+    tmp_path,
+):
+    backend = FakeAuxiliaryBackend(tmp_path / "auxiliary-backend")
+    runner = _SyntheticAuxiliaryRunner(
+        tmp_path / "campaign", backend
+    )
+    assignment_id = runner._reserve_auxiliary(runner.state())
+    assert assignment_id is not None
+    runner._prepare_auxiliary(
+        runner.state()["auxiliary_assignments"][assignment_id]
+    )
+    assignment = runner.state()["auxiliary_assignments"][
+        assignment_id
+    ]
+    assert assignment["state"].phase == "INPUT_PREPARED"
+    receipt = Path(
+        assignment["prepared"].input_bundle_receipt_path
+    )
+    receipt.write_bytes(receipt.read_bytes() + b" ")
+
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="auxiliary private input bundle digest changed",
+    ):
+        runner._launch_auxiliary(assignment)
+    assert backend.launch_calls == []
+
+
+def test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate(
+    tmp_path, monkeypatch,
+):
+    backend = FakeAuxiliaryBackend(tmp_path / "auxiliary-backend")
+    runner = _SyntheticAuxiliaryRunner(
+        tmp_path / "campaign", backend
+    )
+    observed_phases = []
+    original = runner._cycle_state_with_full_journal_prefix
+
+    def observe_full_prefix():
+        phases = tuple(
+            item["state"].phase
+            for item in runner.state()["auxiliary_assignments"].values()
+        )
+        observed_phases.extend(phases)
+        return original()
+
+    monkeypatch.setattr(
+        runner,
+        "_cycle_state_with_full_journal_prefix",
+        observe_full_prefix,
+    )
+    assignment_id = runner._reserve_auxiliary(runner.state())
+    assignment = runner.state()["auxiliary_assignments"][assignment_id]
+    runner._prepare_auxiliary(assignment)
+    assignment = runner.state()["auxiliary_assignments"][assignment_id]
+    runner._launch_auxiliary(assignment)
+    assignment = runner.state()["auxiliary_assignments"][assignment_id]
+    runner._poll_auxiliary(assignment)
+    assignment = runner.state()["auxiliary_assignments"][assignment_id]
+    runner._admit_auxiliary(assignment)
+    assert {"RESERVED", "INPUT_PREPARED", "RUNNING", "QUARANTINED"} <= (
+        set(observed_phases)
+    )
+
+    abort_backend = FakeAuxiliaryBackend(tmp_path / "abort-backend")
+    abort_runner = _SyntheticAuxiliaryRunner(
+        tmp_path / "abort-campaign", abort_backend
+    )
+    abort_full_prefix_calls = 0
+    abort_original = abort_runner._cycle_state_with_full_journal_prefix
+
+    def count_abort_gate():
+        nonlocal abort_full_prefix_calls
+        abort_full_prefix_calls += 1
+        return abort_original()
+
+    monkeypatch.setattr(
+        abort_runner,
+        "_cycle_state_with_full_journal_prefix",
+        count_abort_gate,
+    )
+    abort_id = abort_runner._reserve_auxiliary(abort_runner.state())
+    abort_runner._abort_auxiliary(
+        abort_runner.state()["auxiliary_assignments"][abort_id],
+        reason="test_abort",
+    )
+    assert abort_full_prefix_calls == 1
+
+
+def test_exact_compatibility_client_analysis_cache_is_copy_isolated_and_concurrent(
+    monkeypatch,
+):
+    closure = R.CompatibilityClosure
+    raw = closure._LOADED_CLIENT_RAW
+    original_parse = closure.ast.parse
+
+    def unexpected_parse(*_args, **_kwargs):
+        raise AssertionError(
+            "exact loaded client bytes must reuse import-time analysis"
+        )
+
+    monkeypatch.setattr(closure.ast, "parse", unexpected_parse)
+    barrier = threading.Barrier(8)
+    failures = []
+
+    def analyze_exact():
+        try:
+            barrier.wait(timeout=5.0)
+            for _ in range(20):
+                observed = closure.analyze_client_source(raw)
+                observed["import_roots"].append("caller-mutation")
+                assert "caller-mutation" not in (
+                    closure.analyze_client_source(raw)["import_roots"]
+                )
+        except BaseException as exc:
+            failures.append(exc)
+
+    threads = [threading.Thread(target=analyze_exact) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=10.0)
+        assert not thread.is_alive()
+    assert failures == []
+
+    # Noncanonical bytes must never hit the exact-byte cache.
+    monkeypatch.setattr(closure.ast, "parse", original_parse)
+    mutated = closure.analyze_client_source(raw + b"\n# mutation\n")
+    assert mutated["source_sha256"] != (
+        closure._LOADED_CLIENT_ANALYSIS["source_sha256"]
+    )
+
+
+def test_substrate_effect_gate_reopens_mutated_authorization_receipt(
+    tmp_path, monkeypatch,
+):
+    backend = RecoverableSubstrateBackend()
+    runner, _, _, _, clock = make_runner(
+        tmp_path,
+        backend=backend,
+        max_lanes=1,
+        operator_configuration_sha256="9" * 64,
+    )
+    runner.cycle()
+    runner.cycle(now=clock.value)
+    clock.advance(R.SUBSTRATE_HEALTH_REPROBE_BACKOFF_SECONDS[0])
+    original_exact = R.ContiguousCampaignRunner._exact_substrate_attempt
+    mutated = False
+
+    def mutate_then_reopen(self, attempt_id):
+        nonlocal mutated
+        if not mutated:
+            incident = self._cycle_state()["substrate_incident"]
+            pending = incident["pending_reprobe"]
+            receipt = Path(pending["authorization_receipt_path"])
+            receipt.write_bytes(receipt.read_bytes() + b" ")
+            mutated = True
+        return original_exact(self, attempt_id)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_exact_substrate_attempt",
+        mutate_then_reopen,
+    )
+    with pytest.raises(R.ContiguousRunnerError):
+        runner.cycle(now=clock.value)
+    assert mutated is True
+    assert backend.health_probe_calls == []
+
+
+def test_cycle_context_is_cleared_on_base_exception(tmp_path):
+    backend = FakeBackend()
+    backend.crash_after_first_launch = True
+    runner, _, _, _, _ = make_runner(
+        tmp_path, backend=backend, max_lanes=1
+    )
+    with pytest.raises(R.SimulatedCrash):
+        runner.cycle()
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_lock_held is False
+    assert runner._reducer_checkpoint is None
+    assert runner._trusted_auxiliary_event_digests == set()
+    assert runner._verified_lane_checkpoints == {}
+    assert runner._verified_lane_sources == {}
+    assert runner._verified_attempt_inputs == {}
+    assert (
+        R.Scheduler._selection_evidence_validation_scope.get()
+        is None
+    )
+    assert R.Scheduler._inventory_validation_scope.get() is None
+    assert R.Scheduler._snapshot_validation_scope.get() is None
+
+
+@pytest.mark.parametrize(
+    "target_phase",
+    (
+        "RESERVED",
+        "PREPARED",
+        "BACKEND_PREPARED",
+        "RUNNING",
+        "DRAINING",
+        "EXITED",
+        "COLLECTED",
+        "COLLECTION_REJECTED",
+        "TORN_DOWN",
+        "PROMOTING",
+    ),
+)
+def test_exact_phase_gate_rejects_source_mutation_before_effect(
+    tmp_path, monkeypatch, target_phase
+):
+    if target_phase == "PROMOTING":
+        strategy = candidate_result
+    elif target_phase == "COLLECTION_REJECTED":
+        def strategy(spec):
+            candidate = candidate_for(spec)
+            return R.AttemptResult(
+                kind="candidate",
+                candidate=replace(
+                    candidate,
+                    probe_isolation_mode=(
+                        Contract.FRESH_PROCESS_PER_CANDIDATE_MODE
+                    ),
+                ),
+            )
+    elif target_phase == "DRAINING":
+        strategy = lambda _spec: None
+    else:
+        strategy = lambda _spec: R.AttemptResult(
+            kind="clean_no_progress"
+        )
+    backend = FakeBackend(strategy)
+    runner, backend, gate, builder, clock = make_runner(
+        tmp_path, backend=backend, max_lanes=1
+    )
+    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
+    fired = False
+
+    def mutate_then_validate(self, attempt_id, allowed_phases):
+        nonlocal fired
+        phases = (
+            {allowed_phases}
+            if isinstance(allowed_phases, str)
+            else set(allowed_phases)
+        )
+        current = self._cycle_state()["attempts"].get(attempt_id)
+        if (
+            not fired
+            and current is not None
+            and current["phase"] == target_phase
+            and target_phase in phases
+        ):
+            reservation = current["reservation"]
+            source_file = Path(
+                reservation.parent_source_path
+            ) / "legs.py"
+            mode = stat.S_IMODE(source_file.stat().st_mode)
+            source_file.chmod(0o600)
+            source_file.write_bytes(
+                source_file.read_bytes() + b"\n"
+            )
+            source_file.chmod(mode)
+            fired = True
+        return original_exact(self, attempt_id, allowed_phases)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_exact_cycle_attempt",
+        mutate_then_validate,
+    )
+    if target_phase == "DRAINING":
+        runner.cycle()
+        clock.advance(15 * 60 + 1)
+        runner.cycle()
+    polls_before = len(backend.poll_timeouts)
+    collections_before = len(backend.collections)
+    teardowns_before = len(backend.teardown_calls)
+    promotions_before = len(gate.calls)
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match=(
+            "campaign state cannot form|lane source changed|"
+            "attempt input bundle or receipt changed"
+        ),
+    ):
+        for _ in range(3):
+            runner.cycle()
+    assert fired is True
+
+    if target_phase == "RESERVED":
+        assert builder.layouts == {}
+    elif target_phase == "PREPARED":
+        assert backend.prepare_calls == []
+    elif target_phase == "BACKEND_PREPARED":
+        assert backend.launch_calls == []
+    elif target_phase == "RUNNING":
+        assert backend.poll_timeouts == []
+    elif target_phase == "DRAINING":
+        assert len(backend.poll_timeouts) == polls_before
+    elif target_phase == "EXITED":
+        assert len(backend.collections) == collections_before
+    elif target_phase in {"COLLECTED", "COLLECTION_REJECTED"}:
+        assert len(backend.teardown_calls) == teardowns_before
+    elif target_phase == "TORN_DOWN":
+        assert not any(
+            event["kind"] == "ATTEMPT_RESULT"
+            for event in runner.journal.read()
+        )
+    elif target_phase == "PROMOTING":
+        assert len(gate.calls) == promotions_before
+    assert runner._cycle_validation_context is None
+    assert runner._cycle_lock_held is False
+    assert runner._reducer_checkpoint is None
+    assert runner._trusted_auxiliary_event_digests == set()
+    assert runner._verified_lane_checkpoints == {}
+    assert runner._verified_lane_sources == {}
+    assert runner._verified_attempt_inputs == {}
+    assert (
+        R.Scheduler._selection_evidence_validation_scope.get()
+        is None
+    )
+    assert R.Scheduler._inventory_validation_scope.get() is None
+    assert R.Scheduler._snapshot_validation_scope.get() is None
+
+
+def test_promotion_effect_gate_reauthenticates_complete_journal_prefix(
+    tmp_path, monkeypatch,
+):
+    runner, _, gate, _, _ = make_runner(
+        tmp_path,
+        backend=FakeBackend(candidate_result),
+        max_lanes=1,
+    )
+    original_exact = R.ContiguousCampaignRunner._exact_cycle_attempt
+    mutated = False
+
+    def mutate_prefix_then_promote(self, attempt_id, allowed_phases):
+        nonlocal mutated
+        phases = (
+            {allowed_phases}
+            if isinstance(allowed_phases, str)
+            else set(allowed_phases)
+        )
+        current = self._cycle_state()["attempts"].get(attempt_id)
+        if (
+            not mutated
+            and "PROMOTING" in phases
+            and current is not None
+            and current["phase"] == "PROMOTING"
+        ):
+            genesis = self.journal._paths()[0]
+            mode = stat.S_IMODE(genesis.stat().st_mode)
+            genesis.chmod(0o600)
+            genesis.write_bytes(genesis.read_bytes() + b" ")
+            genesis.chmod(mode)
+            mutated = True
+        return original_exact(self, attempt_id, allowed_phases)
+
+    monkeypatch.setattr(
+        R.ContiguousCampaignRunner,
+        "_exact_cycle_attempt",
+        mutate_prefix_then_promote,
+    )
+    with pytest.raises(R.ContiguousRunnerError):
+        for _ in range(4):
+            runner.cycle()
+    assert mutated is True
+    assert gate.calls == []
 
 
 def test_unjournaled_generation_is_rejected(tmp_path):

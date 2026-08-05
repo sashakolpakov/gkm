@@ -31,6 +31,40 @@ class Problem:
         return [(p, True) for p in self.pos] + [(p, False) for p in self.neg]
 
 
+ImageProgram = tuple[tuple[str, ...], ...]
+
+
+@dataclass(frozen=True)
+class ProgrammedProblem:
+    """A latent Bongard problem that can be rendered without resampling it.
+
+    Keeping the action programs separate from their raster realization lets a
+    proposer see one support rendering while a verifier evaluates the frozen
+    predicate on a genuinely unseen nuisance rendering.  The hidden rendering
+    changes rotation, scale, and placement but not the generator-side class.
+    """
+
+    problem_id: str
+    category: str
+    concept: str
+    pos_programs: tuple[ImageProgram, ...]
+    neg_programs: tuple[ImageProgram, ...]
+
+    def render(self, seed: int, panel_size: int = PANEL_SIZE) -> Problem:
+        pos = tuple(
+            render_panel(program, _panel_rng(
+                seed, self.problem_id, "pos", index), panel_size)
+            for index, program in enumerate(self.pos_programs)
+        )
+        neg = tuple(
+            render_panel(program, _panel_rng(
+                seed, self.problem_id, "neg", index), panel_size)
+            for index, program in enumerate(self.neg_programs)
+        )
+        return Problem(
+            self.problem_id, self.category, self.concept, pos, neg)
+
+
 def trace_shape(actions: Sequence[str]) -> list[tuple[float, float]]:
     x = y = 0.0
     heading = 0.0
@@ -125,9 +159,18 @@ def _panel_rng(seed: int, problem_id: str, side: str, index: int) -> np.random.R
         int.from_bytes(hashlib.sha256(key).digest()[:4], "big"))
 
 
-def sample_problems(dataset_dir: str, limit: int = 10, seed: int = 0,
-                    source: str = "basic",
-                    panel_size: int = PANEL_SIZE) -> list[Problem]:
+def _freeze_program(program: Sequence[Sequence[Sequence[str]]]
+                    ) -> tuple[ImageProgram, ...]:
+    return tuple(
+        tuple(tuple(str(action) for action in shape) for shape in image)
+        for image in program
+    )
+
+
+def sample_problem_programs(
+        dataset_dir: str, limit: int = 10, seed: int = 0,
+        source: str = "basic") -> list[ProgrammedProblem]:
+    """Sample latent programs without committing to a raster realization."""
     dataset_dir = os.path.abspath(dataset_dir)
     if dataset_dir not in sys.path:
         sys.path.insert(0, dataset_dir)
@@ -140,14 +183,17 @@ def sample_problems(dataset_dir: str, limit: int = 10, seed: int = 0,
     attrs_tsv = os.path.join(dataset_dir, "data",
                              "human_designed_shapes_attributes.tsv")
     rng = np.random.RandomState(seed)
-    problems: list[Problem] = []
+    problems: list[ProgrammedProblem] = []
 
-    def render_problem(pid: str, category: str, concept: str, program) -> Problem:
-        pos = tuple(render_panel(img, _panel_rng(seed, pid, "pos", i), panel_size)
-                    for i, img in enumerate(program[0][:6]))
-        neg = tuple(render_panel(img, _panel_rng(seed, pid, "neg", i), panel_size)
-                    for i, img in enumerate(program[1][:6]))
-        return Problem(pid, category, concept, pos, neg)
+    def freeze_problem(pid: str, category: str, concept: str,
+                       program) -> ProgrammedProblem:
+        return ProgrammedProblem(
+            pid,
+            category,
+            concept,
+            _freeze_program(program[0][:6]),
+            _freeze_program(program[1][:6]),
+        )
 
     if source in ("basic", "both"):
         shape_list = list(get_shape_super_classes(shapes_tsv).keys())
@@ -158,7 +204,7 @@ def sample_problems(dataset_dir: str, limit: int = 10, seed: int = 0,
         for idx in order[:limit]:
             shape = shape_list[int(idx)]
             sampled = sampler.sample([shape], int(idx))
-            problems.append(render_problem(
+            problems.append(freeze_problem(
                 sampled.get_problem_name(), "basic", shape,
                 sampled.get_action_string_list()))
 
@@ -178,12 +224,23 @@ def sample_problems(dataset_dir: str, limit: int = 10, seed: int = 0,
             sampled = sampler.sample([attr], int(idx))
             if sampled is None:
                 continue
-            problems.append(render_problem(
+            problems.append(freeze_problem(
                 sampled.get_problem_name(), "abstract", attr,
                 sampled.get_action_string_list()))
             count += 1
 
     return problems
+
+
+def sample_problems(dataset_dir: str, limit: int = 10, seed: int = 0,
+                    source: str = "basic",
+                    panel_size: int = PANEL_SIZE) -> list[Problem]:
+    """Sample and render the public support presentation."""
+    return [
+        problem.render(seed, panel_size)
+        for problem in sample_problem_programs(
+            dataset_dir, limit=limit, seed=seed, source=source)
+    ]
 
 
 def interleave_corpus(basic: Sequence[Problem], abstract: Sequence[Problem],
@@ -202,15 +259,54 @@ def interleave_corpus(basic: Sequence[Problem], abstract: Sequence[Problem],
 
 
 def write_panels(ws: str, problem: Problem, opaque_id: str) -> str:
+    slots: list[tuple[str, int, np.ndarray]] = []
+    for side, arrs in (("pos", problem.pos), ("neg", problem.neg)):
+        if len(arrs) != 6:
+            raise ValueError(f"{opaque_id} must contain exactly six {side} panels")
+        for i, arr in enumerate(arrs):
+            panel = np.asarray(arr)
+            if panel.dtype != np.uint8 or panel.ndim != 2 \
+                    or panel.shape != (PANEL_SIZE, PANEL_SIZE) \
+                    or not np.isin(panel, (0, 1)).all():
+                raise ValueError(
+                    f"{opaque_id} {side}_{i} must be a {PANEL_SIZE}x{PANEL_SIZE} "
+                    "binary uint8 panel")
+            slots.append((side, i, np.ascontiguousarray(panel)))
+
     pdir = os.path.join(ws, opaque_id)
     os.makedirs(pdir, exist_ok=True)
-    for side, arrs in (("pos", problem.pos), ("neg", problem.neg)):
-        for i, arr in enumerate(arrs):
-            np.save(os.path.join(pdir, f"{side}_{i}.npy"), arr)
-            try:
-                from PIL import Image
-                Image.fromarray((255 - arr * 255).astype(np.uint8)).save(
-                    os.path.join(pdir, f"{side}_{i}.png"))
-            except Exception:
-                pass
+    def remove_owned_files() -> None:
+        for side, i, _panel in slots:
+            for suffix in (".npy", ".png"):
+                try:
+                    os.unlink(os.path.join(pdir, f"{side}_{i}{suffix}"))
+                except FileNotFoundError:
+                    pass
+
+    # Reused positional directories cannot retain an old presentation. On any
+    # failure the full owned file set is absent rather than partially mixed.
+    remove_owned_files()
+    try:
+        from PIL import Image
+        for side, i, panel in slots:
+            npy_path = os.path.join(pdir, f"{side}_{i}.npy")
+            np.save(npy_path, panel, allow_pickle=False)
+            round_trip_npy = np.load(npy_path, allow_pickle=False)
+            if round_trip_npy.dtype != np.uint8 \
+                    or not np.array_equal(round_trip_npy, panel):
+                raise RuntimeError(
+                    f"failed to reproduce proposer array {side}_{i}.npy")
+            presentation = np.where(panel == 1, 0, 255).astype(np.uint8)
+            png_path = os.path.join(pdir, f"{side}_{i}.png")
+            Image.fromarray(presentation, mode="L").save(png_path)
+            with Image.open(png_path) as encoded:
+                round_trip = np.asarray(encoded.convert("L"))
+            if not np.isin(round_trip, (0, 255)).all() \
+                    or not np.array_equal(
+                        (round_trip == 0).astype(np.uint8), panel):
+                raise RuntimeError("PNG bytes do not match the panel array")
+    except Exception as exc:
+        remove_owned_files()
+        raise RuntimeError(
+            f"failed to materialize proposer panels for {opaque_id}") from exc
     return pdir

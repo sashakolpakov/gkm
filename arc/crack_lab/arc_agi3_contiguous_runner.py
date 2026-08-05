@@ -15,6 +15,7 @@ backend's container/cgroup boundary.
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import errno
 import fcntl
@@ -27,6 +28,7 @@ import re
 import shutil
 import stat
 import time
+import threading
 import uuid
 from dataclasses import asdict, dataclass, is_dataclass, replace
 from pathlib import Path, PurePosixPath
@@ -53,12 +55,11 @@ MIN_JOURNAL_FILESYSTEM_FREE_INODES = 256
 JOURNAL_EMERGENCY_RESERVE_BYTES = 64 * 1024
 JOURNAL_QUIESCENCE_RESERVE_BYTES = 1024 * 1024
 # The runtime is deliberately not a release authorization.  The independent
-# image-level release receipt must flip its own gate after the backend adapter,
-# taint suite, and exact replay checks all pass.
-# No production auxiliary adapter is released by this module.  Tests and future
-# adapters can exercise the abstract contract only when the durable campaign
-# manifest independently attests every isolation/input/admission boundary.
-CONTIGUOUS_AUXILIARY_LAUNCH_READY = False
+# image-level release receipt must authorize the operator after the backend
+# adapter, taint suite, and exact replay checks all pass.  Auxiliary readiness
+# is therefore derived from the exact genesis-bound launch configuration and
+# backend attestations in ``__init__``; the deprecated false-valued module
+# alias below is compatibility metadata, not a separately flippable authority.
 POLL_TIMEOUT_SECONDS = 5.0
 MAX_HOST_TRANSCRIPT_BYTES = 64 * 1024 * 1024
 MAX_AUXILIARY_RECEIPT_BYTES = 32 * 1024 * 1024
@@ -159,9 +160,59 @@ FAILURE_FAULT_DOMAINS = frozenset(
     Scheduler.FAILURE_FAULT_DOMAINS
 )
 
+# Deprecated schema-1 compatibility surface.  This historical flag was never
+# launch authority and remains permanently false.  Operational configuration
+# is reported separately by ``auxiliary_dispatch_configured`` and every actual
+# dispatch still passes the exact configuration/backend/effect gates.
+CONTIGUOUS_AUXILIARY_LAUNCH_READY = False
+
+# ``flock`` can self-deadlock when a native thread opens the same campaign lock
+# through another runner instance.  Track only locks actually acquired by this
+# process; foreign threads and processes still enter the kernel lock and block
+# normally.  Tokens prevent an old releaser from deleting a new owner's entry.
+_CAMPAIGN_LOCK_REGISTRY_GUARD = threading.RLock()
+_CAMPAIGN_LOCK_OWNERS: dict[
+    str, tuple[int, str, "_CycleExecutionOwner"]
+] = {}
+_CAMPAIGN_LOCK_REGISTRY_PID = os.getpid()
+
+
+def _reset_campaign_lock_registry_after_fork() -> None:
+    """Discard process-local lock owners and inherited lock internals.
+
+    A fork copies both Python's native-thread identifier and this module's
+    owner table.  Neither copy describes ownership in the child process.  A
+    new guard is required as well because the inherited ``RLock`` may have
+    been held by a vanished thread at the fork boundary.
+    """
+
+    global _CAMPAIGN_LOCK_REGISTRY_GUARD
+    global _CAMPAIGN_LOCK_OWNERS
+    global _CAMPAIGN_LOCK_REGISTRY_PID
+    _CAMPAIGN_LOCK_REGISTRY_GUARD = threading.RLock()
+    _CAMPAIGN_LOCK_OWNERS = {}
+    _CAMPAIGN_LOCK_REGISTRY_PID = os.getpid()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(
+        after_in_child=_reset_campaign_lock_registry_after_fork
+    )
+
 
 class ContiguousRunnerError(RuntimeError):
     """A fail-closed scheduler, journal, or backend-contract error."""
+
+
+class ExactAuthorityGateError(ContiguousRunnerError):
+    """Fatal cycle-wide failure of a just-in-time authority gate.
+
+    Ordinary backend failures can be isolated to one lane.  A failed exact
+    gate instead means the authenticated campaign prefix or one of its bound
+    authorities changed.  Continuing another lane after that observation
+    would let later effects run under a state that the host has already found
+    untrustworthy, so this subtype must always escape the complete cycle.
+    """
 
 
 class JournalStorageExhausted(ContiguousRunnerError):
@@ -682,6 +733,186 @@ def _sha256_file_identity(
         return digest.hexdigest(), after
     finally:
         os.close(descriptor)
+
+
+def _read_stable_bounded_regular_bytes(
+    path: Path,
+    *,
+    maximum: int,
+) -> tuple[bytes, str, os.stat_result]:
+    """Hash and return bytes from one pathname/descriptor transaction.
+
+    Security receipts must never authenticate inode A and then parse inode B.
+    Anchor the parent directory, open the basename relative to that descriptor,
+    read exactly the bounded size, and require the descriptor, directory entry,
+    parent pathname, and every ancestor pointer to remain identical throughout
+    the transaction.  The returned digest therefore authenticates the exact
+    bytes returned to the parser.
+    """
+
+    selected = Path(path)
+    if not selected.is_absolute() or maximum < 0:
+        raise ContiguousRunnerError(
+            f"stable host read requires an absolute bounded path: {selected}"
+        )
+    try:
+        pointer_before = _path_pointer_prefix(selected)
+    except (OSError, ContiguousRunnerError) as exc:
+        raise ContiguousRunnerError(
+            f"stable host receipt is unavailable or aliased: {selected}"
+        ) from exc
+    try:
+        parent_descriptor = os.open(
+            selected.parent,
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+    except OSError as exc:
+        raise ContiguousRunnerError(
+            f"stable host read parent is unavailable: {selected.parent}"
+        ) from exc
+    descriptor: int | None = None
+    try:
+        parent_before = os.fstat(parent_descriptor)
+        if not stat.S_ISDIR(parent_before.st_mode):
+            raise ContiguousRunnerError(
+                f"stable host read parent is not a directory: {selected.parent}"
+            )
+        try:
+            descriptor = os.open(
+                selected.name,
+                os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0),
+                dir_fd=parent_descriptor,
+            )
+        except OSError as exc:
+            raise ContiguousRunnerError(
+                f"stable host receipt is unavailable: {selected}"
+            ) from exc
+        before = os.fstat(descriptor)
+        linked_before = os.stat(
+            selected.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        stable_file_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > maximum
+            or any(
+                getattr(before, name) != getattr(linked_before, name)
+                for name in stable_file_fields
+            )
+        ):
+            raise ContiguousRunnerError(
+                f"stable host receipt has unsafe identity or size: {selected}"
+            )
+        chunks: list[bytes] = []
+        remaining = before.st_size
+        while remaining:
+            block = os.read(descriptor, min(1024 * 1024, remaining))
+            if not block:
+                raise ContiguousRunnerError(
+                    f"stable host receipt changed while reading: {selected}"
+                )
+            chunks.append(block)
+            remaining -= len(block)
+        if os.read(descriptor, 1):
+            raise ContiguousRunnerError(
+                f"stable host receipt grew while reading: {selected}"
+            )
+        after = os.fstat(descriptor)
+        linked_after = os.stat(
+            selected.name,
+            dir_fd=parent_descriptor,
+            follow_symlinks=False,
+        )
+        parent_after = os.fstat(parent_descriptor)
+        parent_linked_after = selected.parent.stat(
+            follow_symlinks=False
+        )
+        stable_parent_fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_nlink",
+            "st_uid",
+            "st_gid",
+        )
+        if (
+            any(
+                getattr(before, name) != getattr(after, name)
+                or getattr(after, name) != getattr(linked_after, name)
+                for name in stable_file_fields
+            )
+            or any(
+                getattr(parent_before, name) != getattr(parent_after, name)
+                or getattr(parent_after, name)
+                != getattr(parent_linked_after, name)
+                for name in stable_parent_fields
+            )
+            or _path_pointer_prefix(selected) != pointer_before
+        ):
+            raise ContiguousRunnerError(
+                f"stable host receipt pointer or metadata changed: {selected}"
+            )
+        raw = b"".join(chunks)
+        return raw, hashlib.sha256(raw).hexdigest(), after
+    except OSError as exc:
+        raise ContiguousRunnerError(
+            f"stable host receipt changed during read: {selected}"
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+        os.close(parent_descriptor)
+
+
+def _read_stable_bounded_json(
+    path: Path,
+    *,
+    maximum: int = MAX_AUXILIARY_RECEIPT_BYTES,
+) -> tuple[dict[str, Any], str, os.stat_result]:
+    raw, digest, metadata = _read_stable_bounded_regular_bytes(
+        path, maximum=maximum
+    )
+    try:
+        value = json.loads(raw)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise ContiguousRunnerError(f"invalid JSON: {path}") from exc
+    if not isinstance(value, dict):
+        raise ContiguousRunnerError(f"expected JSON object: {path}")
+    return value, digest, metadata
+
+
+def _read_stable_digest_bound_json(
+    path: Path,
+    expected_sha256: str,
+    *,
+    label: str,
+    maximum: int = MAX_AUXILIARY_RECEIPT_BYTES,
+) -> tuple[dict[str, Any], os.stat_result]:
+    """Parse only the exact descriptor bytes authenticated by a digest."""
+
+    if not _is_sha256(expected_sha256):
+        raise ContiguousRunnerError(f"{label} digest is malformed")
+    value, observed_sha256, metadata = _read_stable_bounded_json(
+        Path(path), maximum=maximum
+    )
+    if not hmac.compare_digest(observed_sha256, expected_sha256):
+        raise ContiguousRunnerError(f"{label} digest changed")
+    return value, metadata
 
 
 def _bounded_regular_bytes(path: Path, *, maximum: int) -> bytes:
@@ -1831,7 +2062,9 @@ class DurableAttemptJournal:
                 paths.append(entry)
         return sorted(paths, key=lambda path: path.name)
 
-    def _read_authenticated(self) -> list[dict[str, Any]]:
+    def _read_authenticated(
+        self, *, trust_cycle_prefix: bool = False
+    ) -> list[dict[str, Any]]:
         """Return the private authenticated view used by the reducer.
 
         The event dictionaries alias the cache and therefore never cross the
@@ -1840,10 +2073,22 @@ class DurableAttemptJournal:
         """
 
         signature = self._directory_signature()
+        cycle_prefix_is_trusted = (
+            trust_cycle_prefix
+            and getattr(self, "_cycle_trusted_thread_id", None)
+            == threading.get_ident()
+        )
         if (
             self._cache is not None
             and signature == self._cache_directory_signature
         ):
+            if cycle_prefix_is_trusted:
+                self._validate_segment_chain(self._cache)
+                if self._directory_signature() != signature:
+                    raise ContiguousRunnerError(
+                        "journal directory changed during cycle-local read"
+                    )
+                return list(self._cache)
             cached_paths = tuple(
                 self.root / name for name in self._cache_names
             )
@@ -1874,19 +2119,20 @@ class DurableAttemptJournal:
                 raise ContiguousRunnerError(
                     "journal immutable prefix was truncated or replaced"
                 )
-            try:
-                prefix_signatures = tuple(
-                    self._file_signature(path)
-                    for path in paths[:prefix_length]
-                )
-            except (FileNotFoundError, OSError) as exc:
-                raise ContiguousRunnerError(
-                    "journal immutable prefix became unreadable"
-                ) from exc
-            if prefix_signatures != self._cache_file_signatures:
-                raise ContiguousRunnerError(
-                    "journal immutable prefix pointer or metadata changed"
-                )
+            if not cycle_prefix_is_trusted:
+                try:
+                    prefix_signatures = tuple(
+                        self._file_signature(path)
+                        for path in paths[:prefix_length]
+                    )
+                except (FileNotFoundError, OSError) as exc:
+                    raise ContiguousRunnerError(
+                        "journal immutable prefix became unreadable"
+                    ) from exc
+                if prefix_signatures != self._cache_file_signatures:
+                    raise ContiguousRunnerError(
+                        "journal immutable prefix pointer or metadata changed"
+                    )
         prefix_length = (
             len(self._cache_names) if self._cache is not None else 0
         )
@@ -1960,6 +2206,42 @@ class DurableAttemptJournal:
 
         return copy.deepcopy(self._read_authenticated())
 
+    def _reauthenticate_append_prefix(
+        self,
+        expected: Sequence[Mapping[str, Any]],
+    ) -> list[dict[str, Any]]:
+        """Reopen an exact append prefix and convert drift to a fatal gate."""
+
+        try:
+            observed = self._read_authenticated(
+                trust_cycle_prefix=False
+            )
+        except ExactAuthorityGateError:
+            raise
+        except ContiguousRunnerError as exc:
+            raise ExactAuthorityGateError(str(exc)) from exc
+        expected_identity = tuple(
+            (
+                item.get("sequence"),
+                item.get("event_id"),
+                item.get("digest"),
+            )
+            for item in expected
+        )
+        observed_identity = tuple(
+            (
+                item.get("sequence"),
+                item.get("event_id"),
+                item.get("digest"),
+            )
+            for item in observed
+        )
+        if observed_identity != expected_identity:
+            raise ExactAuthorityGateError(
+                "journal prefix changed during append transaction"
+            )
+        return observed
+
     def append(
         self,
         *,
@@ -1990,7 +2272,24 @@ class DurableAttemptJournal:
         handle = self._lock()
         pending: Path | None = None
         try:
-            events = self._read_authenticated()
+            # A journal append is itself an authority-bearing effect.  Reopen
+            # every immutable prefix event signature even when the caller is
+            # inside a validated cycle; cycle-local trust is reserved for pure
+            # reductions between effects.
+            try:
+                events = self._read_authenticated(
+                    trust_cycle_prefix=False
+                )
+            except ExactAuthorityGateError:
+                raise
+            except ContiguousRunnerError as exc:
+                raise ExactAuthorityGateError(str(exc)) from exc
+            initial_cache = (
+                list(self._cache) if self._cache is not None else None,
+                tuple(self._cache_names),
+                tuple(self._cache_file_signatures),
+                self._cache_directory_signature,
+            )
             for existing in events:
                 if existing["event_id"] != event_id:
                     continue
@@ -2069,8 +2368,10 @@ class DurableAttemptJournal:
             pending = (
                 event_directory / f".pending-{uuid.uuid4().hex}"
             )
+            published = False
             try:
                 _write_new_file(pending, event)
+                self._reauthenticate_append_prefix(events)
                 os.chmod(pending, 0o400, follow_symlinks=False)
                 pending_descriptor = _open_unaliased(
                     pending, os.O_RDONLY
@@ -2079,15 +2380,47 @@ class DurableAttemptJournal:
                     os.fsync(pending_descriptor)
                 finally:
                     os.close(pending_descriptor)
+                self._reauthenticate_append_prefix(events)
                 os.replace(pending, final)
                 pending = None
+                published = True
+                committed = self._reauthenticate_append_prefix(
+                    (*events, event)
+                )
                 _fsync_directory(event_directory)
+                committed = self._reauthenticate_append_prefix(
+                    (*events, event)
+                )
             except (OSError, ContiguousRunnerError) as exc:
                 if pending is not None:
                     try:
                         pending.unlink()
                     except OSError:
                         pass
+                if published:
+                    try:
+                        expected_raw = _canonical_json(event) + b"\n"
+                        final_raw = _bounded_regular_bytes(
+                            final,
+                            maximum=Scheduler.MAX_JOURNAL_EVENT_BYTES,
+                        )
+                        if final_raw != expected_raw:
+                            raise ContiguousRunnerError(
+                                "published journal event changed before "
+                                "rollback"
+                            )
+                        final.unlink()
+                        _fsync_directory(event_directory)
+                    except BaseException as cleanup_exc:
+                        raise ContiguousRunnerError(
+                            "journal append drift could not be rolled back"
+                        ) from cleanup_exc
+                (
+                    self._cache,
+                    self._cache_names,
+                    self._cache_file_signatures,
+                    self._cache_directory_signature,
+                ) = initial_cache
                 storage_code = _storage_error_code(exc)
                 if storage_code is not None:
                     try:
@@ -2108,16 +2441,10 @@ class DurableAttemptJournal:
                         storage_snapshot=storage,
                     ) from exc
                 raise
-            self._cache = [*events, event]
-            self._cache_names = (
-                *self._cache_names,
-                str(final.relative_to(self.root)),
-            )
-            self._cache_file_signatures = (
-                *self._cache_file_signatures,
-                self._file_signature(final),
-            )
-            self._cache_directory_signature = self._directory_signature()
+            if committed[-1] != event:
+                raise ExactAuthorityGateError(
+                    "journal append committed a substituted event"
+                )
             return copy.deepcopy(event)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -2580,11 +2907,19 @@ class InputBundleReceipt:
 class _ReducerCheckpoint:
     """Validated journal-derived state at one exact hash-chain head.
 
-    The checkpoint contains no authority beyond the immutable journal prefix:
-    every file that can still affect execution or promotion is revalidated
-    after suffix reduction on every ``state()`` call.  Closed-generation bytes
-    remain the full audit's concern, exactly as before.  Independent mutable
-    shells prevent a caller's returned view from poisoning this reducer cache.
+    The checkpoint is deliberately retained across successful supervision
+    cycles in one runner process so deterministic reduction can resume at its
+    exact sequence/digest coordinate and replay only the authenticated suffix.
+    A restart is cold, an exceptional cycle discards it, and every reuse first
+    requires the journal reader to authenticate the complete current chain and
+    match the recorded genesis and head.
+
+    This is semantic replay state, not effect or admission authority.  Full
+    external audits independently reopen current artifacts, operation-local
+    exact gates reauthenticate their inputs immediately before each external
+    effect, and all other pointer/receipt memos are cleared at cycle boundaries.
+    Deep copies prevent a caller's returned mutable view from poisoning the
+    retained checkpoint.
     """
 
     head_sequence: int
@@ -2610,6 +2945,26 @@ class _ReducerCheckpoint:
     substrate_incident: dict[str, Any] | None
     storage_incident: dict[str, Any] | None
     storage_quiescence: dict[str, Any] | None
+
+
+@dataclass
+class _CycleValidationContext:
+    """Authority-free optimization state scoped to one held cycle lock."""
+
+    public_observation_registry_sha256: str
+    journal_prefix: dict[str, Any]
+    authoritative_inventory: dict[str, int]
+    cached_state: dict[str, Any] | None = None
+    cached_journal_head: tuple[int, str] | None = None
+
+
+@dataclass(frozen=True)
+class _CycleExecutionOwner:
+    """Exact host execution context allowed to consume cycle-local state."""
+
+    process_id: int
+    thread_id: int
+    task_id: int | None
 
 
 def _clone_reducer_lanes(
@@ -4471,13 +4826,15 @@ def _validate_bound_receipt(
     if (
         path != expected_path
         or not path.is_absolute()
-        or path.is_symlink()
-        or _sha256_file(path) != digest
     ):
         raise ContiguousRunnerError(
             f"{expected_kind} receipt path/hash mismatch"
         )
-    value = _read_json_file(path)
+    value, observed_digest, _ = _read_stable_bounded_json(path)
+    if observed_digest != digest:
+        raise ContiguousRunnerError(
+            f"{expected_kind} receipt path/hash mismatch"
+        )
     required_binding = {
         "schema": 1,
         "kind": expected_kind,
@@ -5229,7 +5586,11 @@ def _validate_preparation_receipts(
         / "containment_canary_escrow"
         / f"{spec.generation_id}.json"
     )
-    escrow_sha256, escrow_metadata = _sha256_file_identity(escrow)
+    _, escrow_sha256, escrow_metadata = (
+        _read_stable_bounded_regular_bytes(
+            escrow, maximum=MAX_AUXILIARY_RECEIPT_BYTES
+        )
+    )
     escrow_identity_sha256 = hashlib.sha256(
         _canonical_json(
             {
@@ -5244,7 +5605,11 @@ def _validate_preparation_receipts(
             }
         )
     ).hexdigest()
-    attestation_value = _read_json_file(attestation)
+    (
+        attestation_value,
+        attestation_sha256,
+        attestation_metadata,
+    ) = _read_stable_bounded_json(attestation)
     expected_canary_anchor = {
         "escrow_path": prepared.controller_canary_escrow_path,
         "escrow_sha256": prepared.controller_canary_escrow_sha256,
@@ -5263,8 +5628,10 @@ def _validate_preparation_receipts(
     if (
         prepared.observed_image_digest != spec.image_digest
         or attestation != host_root / "launch_attestation.json"
-        or _sha256_file(attestation)
-        != prepared.launch_attestation_sha256
+        or attestation_sha256 != prepared.launch_attestation_sha256
+        or attestation_metadata.st_uid != os.getuid()
+        or attestation_metadata.st_nlink != 1
+        or not stat.S_ISREG(attestation_metadata.st_mode)
         or escrow != expected_escrow
         or escrow_metadata.st_uid != os.getuid()
         or escrow_metadata.st_nlink != 1
@@ -5300,14 +5667,16 @@ def _validate_preparation_receipts(
     relay_preparation_path = Path(
         prepared.arena_relay_preparation_receipt_path
     )
-    relay_readiness_sha256, relay_readiness_metadata = (
-        _sha256_file_identity(relay_readiness_path)
-    )
-    relay_preparation_sha256, relay_preparation_metadata = (
-        _sha256_file_identity(relay_preparation_path)
-    )
-    relay_readiness = _read_json_file(relay_readiness_path)
-    relay_preparation = _read_json_file(relay_preparation_path)
+    (
+        relay_readiness,
+        relay_readiness_sha256,
+        relay_readiness_metadata,
+    ) = _read_stable_bounded_json(relay_readiness_path)
+    (
+        relay_preparation,
+        relay_preparation_sha256,
+        relay_preparation_metadata,
+    ) = _read_stable_bounded_json(relay_preparation_path)
     expected_volume_name = _arena_volume_name(spec)
     relay_common = {
         "campaign_id": spec.campaign_id,
@@ -5993,16 +6362,15 @@ def _validate_launch_receipts(
     guardian_path = Path(
         launched.controller_guardian_start_receipt_path
     )
-    if (
-        guardian_path
-        != host_root / "controller_guardian_start.json"
-        or _sha256_file(guardian_path)
-        != launched.controller_guardian_start_receipt_sha256
-    ):
+    if guardian_path != host_root / "controller_guardian_start.json":
         raise ContiguousRunnerError(
             "controller guardian start receipt is substituted"
         )
-    guardian = _read_json_file(guardian_path)
+    guardian, _guardian_metadata = _read_stable_digest_bound_json(
+        guardian_path,
+        launched.controller_guardian_start_receipt_sha256,
+        label="controller guardian start receipt",
+    )
     if (
         guardian.get("schema") != 1
         or guardian.get("kind")
@@ -6582,8 +6950,7 @@ def _validate_arena_volume_teardown_receipt(
     """
 
     path = Path(receipt_path)
-    digest, metadata = _sha256_file_identity(path)
-    value = _read_json_file(path)
+    value, digest, metadata = _read_stable_bounded_json(path)
     attachment = value.get("attachment_receipt")
     attachment_sha256 = (
         hashlib.sha256(_canonical_json(attachment)).hexdigest()
@@ -6843,7 +7210,7 @@ def _validate_terminal_canary_reveal(
         / f"{spec.generation_id}.json"
     )
     path = Path(proof.canary_reveal_path)
-    raw_sha256, metadata = _sha256_file_identity(path)
+    value, raw_sha256, metadata = _read_stable_bounded_json(path)
     if (
         path != expected_path
         or raw_sha256 != proof.canary_reveal_sha256
@@ -6854,7 +7221,6 @@ def _validate_terminal_canary_reveal(
         raise ContiguousRunnerError(
             "terminal canary reveal path/identity is substituted"
         )
-    value = _read_json_file(path)
     fields = {
         "schema",
         "kind",
@@ -6954,18 +7320,34 @@ def _validate_terminal_canary_reveal(
         / "retained_canary_scan_receipt.json"
     )
     if (
-        _sha256_file(state_scan_path)
-        != value.get("controller_state_scan_receipt_sha256")
-        or _sha256_file(retained_scan_path)
-        != value.get("retained_canary_scan_receipt_sha256")
+        not _is_sha256(
+            value.get("controller_state_scan_receipt_sha256")
+        )
+        or not _is_sha256(
+            value.get("retained_canary_scan_receipt_sha256")
+        )
     ):
         raise ContiguousRunnerError(
-            "terminal canary reveal scan receipts changed"
+            "terminal canary reveal scan receipt digests are malformed"
         )
-    state_scan = _read_json_file(state_scan_path).get(
+    state_scan_receipt, _state_scan_metadata = (
+        _read_stable_digest_bound_json(
+            state_scan_path,
+            value["controller_state_scan_receipt_sha256"],
+            label="terminal controller-state scan receipt",
+        )
+    )
+    retained_scan_receipt, _retained_scan_metadata = (
+        _read_stable_digest_bound_json(
+            retained_scan_path,
+            value["retained_canary_scan_receipt_sha256"],
+            label="terminal retained-canary scan receipt",
+        )
+    )
+    state_scan = state_scan_receipt.get(
         "controller_state_scan"
     )
-    retained_scan = _read_json_file(retained_scan_path).get(
+    retained_scan = retained_scan_receipt.get(
         "retained_canary_scan"
     )
     if (
@@ -7073,8 +7455,8 @@ def _validate_terminal_canary_cleanup(
             "formal canary planting lacks terminal cleanup proof"
         )
     receipt_path = Path(proof.canary_cleanup_receipt_path)
-    receipt_sha256, receipt_metadata = _sha256_file_identity(
-        receipt_path
+    receipt, receipt_sha256, receipt_metadata = (
+        _read_stable_bounded_json(receipt_path)
     )
     if (
         receipt_path != expected_receipt_path
@@ -7087,7 +7469,6 @@ def _validate_terminal_canary_cleanup(
         raise ContiguousRunnerError(
             "terminal canary cleanup receipt identity is substituted"
         )
-    receipt = _read_json_file(receipt_path)
     expected_absence = [
         {
             "category": row["category"],
@@ -7139,10 +7520,9 @@ def _validate_terminal_canary_cleanup(
         raise ContiguousRunnerError(
             "terminal canary cleanup receipt lineage differs"
         )
-    intent_sha256, intent_metadata = _sha256_file_identity(
-        expected_intent_path
+    intent, intent_sha256, intent_metadata = (
+        _read_stable_bounded_json(expected_intent_path)
     )
-    intent = _read_json_file(expected_intent_path)
     expected_intent_fields = {
         "schema",
         "kind",
@@ -7516,16 +7896,7 @@ class ContiguousCampaignRunner:
         self.clock = clock
         self.id_factory = id_factory
         self.journal = DurableAttemptJournal(self.root / "attempt_journal")
-        self._reducer_checkpoint: _ReducerCheckpoint | None = None
-        self._verified_lane_checkpoints: dict[
-            tuple[object, ...], None
-        ] = {}
-        self._verified_lane_sources: dict[
-            tuple[object, ...], None
-        ] = {}
-        self._verified_attempt_inputs: dict[
-            tuple[object, ...], None
-        ] = {}
+        self._initialize_validation_state()
         self.generations = self.root / "generations"
         self.auxiliary = self.root / "auxiliary"
         self.zero_checkpoints = self.root / "zero_checkpoints"
@@ -7895,6 +8266,9 @@ class ContiguousCampaignRunner:
         sidecar_requests: tuple[
             Scheduler.SidecarRequestEvidence, ...
         ] = (),
+        selection_evidence_cache: (
+            dict[tuple[object, ...], Any] | None
+        ) = None,
     ) -> Scheduler.CampaignSnapshot:
         try:
             frontiers: list[Scheduler.Frontier] = []
@@ -7907,20 +8281,72 @@ class ContiguousCampaignRunner:
                     else None
                 )
                 wip = cls._scheduler_wip(lane["wip"])
-                evidence = Scheduler.selection_evidence(
-                    parent_source_path=lane["source_path"],
-                    parent_source_tree_sha256=(
-                        lane["source_tree_sha256"]
-                    ),
-                    candidate_source_path=(
+                parent_source_pointer = _regular_tree_pointer(
+                    Path(str(lane["source_path"]))
+                )
+                candidate_source_pointer = (
+                    None
+                    if wip is None
+                    else _regular_tree_pointer(
+                        Path(str(wip.solver_source_path))
+                    )
+                )
+                evidence_key = (
+                    lane["source_path"],
+                    lane["source_tree_sha256"],
+                    parent_source_pointer,
+                    (
                         wip.solver_source_path
                         if wip is not None else None
                     ),
-                    candidate_source_tree_sha256=(
+                    (
                         wip.solver_source_tree_sha256
                         if wip is not None else None
                     ),
+                    candidate_source_pointer,
                 )
+                cached_evidence = (
+                    selection_evidence_cache.get(evidence_key)
+                    if selection_evidence_cache is not None
+                    else None
+                )
+                if cached_evidence is None:
+                    evidence = Scheduler.selection_evidence(
+                        parent_source_path=lane["source_path"],
+                        parent_source_tree_sha256=(
+                            lane["source_tree_sha256"]
+                        ),
+                        candidate_source_path=evidence_key[3],
+                        candidate_source_tree_sha256=evidence_key[4],
+                    )
+                    if selection_evidence_cache is not None:
+                        selection_evidence_cache[evidence_key] = (
+                            copy.deepcopy(evidence)
+                        )
+                else:
+                    # Pointers are sampled into the key on every lookup and
+                    # then sampled once more before consumption.  A source
+                    # rewrite therefore cannot reuse a same-path evidence cell,
+                    # and a frozen result mutated with object.__setattr__ never
+                    # aliases the reducer-local cache.
+                    if (
+                        _regular_tree_pointer(
+                            Path(str(lane["source_path"]))
+                        )
+                        != parent_source_pointer
+                        or (
+                            wip is not None
+                            and _regular_tree_pointer(
+                                Path(str(wip.solver_source_path))
+                            )
+                            != candidate_source_pointer
+                        )
+                    ):
+                        raise ContiguousRunnerError(
+                            "scheduler source pointer changed during evidence "
+                            "selection"
+                        )
+                    evidence = copy.deepcopy(cached_evidence)
                 public_receipts = tuple(
                     sorted(
                         set(
@@ -8096,8 +8522,776 @@ class ContiguousCampaignRunner:
             )
         self._remember_verified_pointer(cache, key)
 
+    def _validate_generation_tree(
+        self, attempts: Mapping[str, Mapping[str, Any]]
+    ) -> None:
+        expected = {
+            attempt["reservation"].generation_id
+            for attempt in attempts.values()
+        }
+        actual: set[str] = set()
+        for path in self.generations.iterdir():
+            if (
+                path.is_symlink()
+                or not path.is_dir()
+                or not _is_uuid4(path.name)
+            ):
+                raise ContiguousRunnerError(
+                    f"unexpected generation entry: {path}"
+                )
+            actual.add(path.name)
+        if not actual <= expected:
+            raise ContiguousRunnerError(
+                "generation tree contains an unjournaled identity"
+            )
+
+    def _validate_lane_authority(
+        self,
+        *,
+        game: str,
+        lane: Mapping[str, Any],
+        uncached: bool = False,
+    ) -> None:
+        if not 0 <= lane["reached"] <= lane["target"]:
+            raise ContiguousRunnerError(
+                f"lane exceeds authoritative target: {game}"
+            )
+        if uncached:
+            self._verified_lane_checkpoints = {}
+            self._verified_lane_sources = {}
+        self._validate_lane_checkpoint_cached(game=game, lane=lane)
+        self._validate_lane_source_cached(game=game, lane=lane)
+
+    def _validate_attempt_external_authority(
+        self,
+        attempt: Mapping[str, Any],
+        *,
+        uncached: bool = False,
+    ) -> None:
+        """Reopen all external evidence that can affect one attempt."""
+
+        if uncached:
+            self._verified_attempt_inputs = {}
+            self.__dict__.pop(
+                "_verified_quiescent_collections", None
+            )
+        if attempt["phase"] == "CLOSED":
+            settled = attempt.get("settled_result")
+            if (
+                isinstance(settled, AttemptResult)
+                and settled.kind == "blocker"
+                and self._sanitize_result(
+                    attempt["spec"], settled
+                ) != settled
+            ):
+                raise ContiguousRunnerError(
+                    "closed blocker authority changed after settlement"
+                )
+            if attempt.get("protocol_invalid") is not None:
+                spec = attempt["spec"]
+                protocol_invalid = attempt["protocol_invalid"]
+                receipt = _validate_bound_receipt(
+                    protocol_invalid["path"],
+                    protocol_invalid["sha256"],
+                    expected_path=Path(
+                        spec.host_transcript_path
+                    ).parent
+                    / (
+                        "arena_public_action_protocol_invalid_"
+                        "receipt.json"
+                    ),
+                    expected_kind=(
+                        "contiguous_arena_public_action_protocol_"
+                        "invalid"
+                    ),
+                    spec=spec,
+                )
+                if (
+                    receipt.get("status") != "PROTOCOL_INVALID"
+                    or not isinstance(settled, AttemptResult)
+                    or receipt.get("cost_used") != settled.cost_used
+                ):
+                    raise ContiguousRunnerError(
+                        "closed protocol-invalid evidence changed"
+                    )
+                _validate_protocol_invalid_terminal_evidence(
+                    spec=spec,
+                    receipt=receipt,
+                    evidence=protocol_invalid["terminal_evidence"],
+                )
+            preparation_quarantine = attempt.get(
+                "preparation_quarantine"
+            )
+            if preparation_quarantine is not None:
+                _validate_preparation_quarantine_receipt(
+                    attempt["spec"],
+                    preparation_quarantine["path"],
+                    preparation_quarantine["sha256"],
+                )
+            return
+        if attempt["phase"] == "RESERVED":
+            return
+        spec = attempt["spec"]
+        self._validate_prepared_input(
+            spec,
+            require_initial_workspace=attempt["phase"]
+            in {"PREPARED", "BACKEND_PREPARED"},
+        )
+        if attempt["prepared"] is not None:
+            _validate_preparation_receipts(
+                spec, attempt["prepared"]
+            )
+        if attempt["launched"] is not None:
+            _validate_launch_receipts(
+                spec, attempt["prepared"], attempt["launched"]
+            )
+        if attempt["collection"] is not None:
+            self._validate_collection(
+                spec,
+                attempt["prepared"],
+                attempt["launched"],
+                attempt["collection"],
+                allow_arena_teardown_receipt=(
+                    attempt["teardown"] is not None
+                ),
+                teardown=attempt["teardown"],
+            )
+        if attempt.get("protocol_invalid") is not None:
+            protocol_invalid = attempt["protocol_invalid"]
+            receipt = _validate_bound_receipt(
+                protocol_invalid["path"],
+                protocol_invalid["sha256"],
+                expected_path=Path(
+                    spec.host_transcript_path
+                ).parent
+                / "arena_public_action_protocol_invalid_receipt.json",
+                expected_kind=(
+                    "contiguous_arena_public_action_protocol_invalid"
+                ),
+                spec=spec,
+            )
+            if (
+                receipt.get("status") != "PROTOCOL_INVALID"
+                or receipt.get("cost_used")
+                != attempt["outcome"].cost_used
+            ):
+                raise ContiguousRunnerError(
+                    "live protocol-invalid authority changed"
+                )
+            _validate_protocol_invalid_terminal_evidence(
+                spec=spec,
+                receipt=receipt,
+                evidence=protocol_invalid["terminal_evidence"],
+            )
+
+    def _validation_cache_snapshot(self) -> tuple[object, ...]:
+        self._initialize_validation_state()
+        return (
+            self._reducer_checkpoint,
+            self._trusted_auxiliary_event_digests,
+            self._verified_lane_checkpoints,
+            self._verified_lane_sources,
+            self._verified_attempt_inputs,
+            getattr(self, "_verified_quiescent_collections", None),
+        )
+
+    def _restore_validation_cache_snapshot(
+        self, snapshot: tuple[object, ...]
+    ) -> None:
+        self._initialize_validation_state()
+        (
+            self._reducer_checkpoint,
+            self._trusted_auxiliary_event_digests,
+            self._verified_lane_checkpoints,
+            self._verified_lane_sources,
+            self._verified_attempt_inputs,
+            quiescent,
+        ) = snapshot
+        if quiescent is None:
+            self.__dict__.pop(
+                "_verified_quiescent_collections", None
+            )
+        else:
+            self._verified_quiescent_collections = quiescent
+
+    def _discard_validation_caches(
+        self, *, retain_reducer: bool = False
+    ) -> None:
+        """Drop every authority memo that must not cross a cycle boundary."""
+
+        self._initialize_validation_state()
+        if not retain_reducer:
+            self._reducer_checkpoint = None
+        self._trusted_auxiliary_event_digests = set()
+        self._verified_lane_checkpoints = {}
+        self._verified_lane_sources = {}
+        self._verified_attempt_inputs = {}
+        self.__dict__.pop("_verified_quiescent_collections", None)
+
+    @staticmethod
+    def _current_execution_owner() -> _CycleExecutionOwner:
+        """Identify both the current native thread and asynchronous task."""
+
+        try:
+            task = asyncio.current_task()
+        except RuntimeError:
+            task = None
+        return _CycleExecutionOwner(
+            process_id=os.getpid(),
+            thread_id=threading.get_ident(),
+            task_id=None if task is None else id(task),
+        )
+
+    def _acquire_campaign_cycle_lock(self) -> tuple[Any, str]:
+        """Acquire the process lock without permitting same-thread recursion."""
+
+        self._initialize_validation_state()
+        owner = self._current_execution_owner()
+        current_owner = self._cycle_execution_owner
+        if (
+            self._cycle_lock_held
+            and (
+                current_owner is None
+                or current_owner.thread_id == owner.thread_id
+            )
+        ) or (
+            self._cycle_validation_context is not None
+            and (
+                current_owner is None
+                or current_owner.thread_id == owner.thread_id
+            )
+        ):
+            raise ContiguousRunnerError(
+                "reentrant supervision cycle is forbidden"
+            )
+        lock_path = self.root / ".cycle.lock"
+        registry_key = os.path.abspath(os.fspath(lock_path))
+        if _CAMPAIGN_LOCK_REGISTRY_PID != os.getpid():
+            _reset_campaign_lock_registry_after_fork()
+        with _CAMPAIGN_LOCK_REGISTRY_GUARD:
+            registered = _CAMPAIGN_LOCK_OWNERS.get(registry_key)
+            if (
+                registered is not None
+                and registered[0] == owner.process_id
+                and registered[2].thread_id == owner.thread_id
+            ):
+                raise ContiguousRunnerError(
+                    "same-thread campaign lock recursion is forbidden"
+                )
+        descriptor = _open_unaliased(
+            lock_path, os.O_RDWR | os.O_CREAT
+        )
+        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        except BaseException:
+            handle.close()
+            raise
+        # A foreign thread using this same instance is allowed to wait.  Once
+        # it acquires the kernel lock, the prior owner must have completed its
+        # lifecycle teardown; retain this post-acquisition invariant check.
+        if (
+            self._cycle_lock_held
+            or self._cycle_validation_context is not None
+        ):
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+            handle.close()
+            raise ContiguousRunnerError(
+                "campaign lock acquired before prior lifecycle teardown"
+            )
+        token = uuid.uuid4().hex
+        with _CAMPAIGN_LOCK_REGISTRY_GUARD:
+            _CAMPAIGN_LOCK_OWNERS[registry_key] = (
+                owner.process_id,
+                token,
+                owner,
+            )
+        return handle, token
+
+    def _release_campaign_cycle_lock(
+        self, handle: Any, token: str
+    ) -> None:
+        """Release one acquired lock without deleting a successor's token."""
+
+        registry_key = os.path.abspath(
+            os.fspath(self.root / ".cycle.lock")
+        )
+        try:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+            with _CAMPAIGN_LOCK_REGISTRY_GUARD:
+                registered = _CAMPAIGN_LOCK_OWNERS.get(registry_key)
+                if (
+                    registered is not None
+                    and registered[0] == os.getpid()
+                    and registered[1] == token
+                ):
+                    _CAMPAIGN_LOCK_OWNERS.pop(registry_key, None)
+
+    def _initialize_validation_state(self) -> None:
+        """Install all ephemeral validation fields for every construction path.
+
+        Production construction, read-only ``object.__new__`` audits, and
+        deliberately synthetic test runners all enter the same initializer.
+        Existing values are retained so this method is safe as a lazy guard.
+        """
+
+        current_process_id = os.getpid()
+        prior_process_id = self.__dict__.get(
+            "_validation_process_id"
+        )
+        if (
+            prior_process_id is not None
+            and prior_process_id != current_process_id
+        ):
+            # A child must not inherit the parent's held-cycle flags, reducer
+            # authority, or journal prefix-trust marker.  The kernel flock is
+            # still inherited only by the parent's open file description and
+            # therefore remains the serialization authority.
+            self._cycle_validation_context = None
+            self._cycle_lock_held = False
+            self._cycle_execution_owner = None
+            self._reducer_checkpoint = None
+            self._trusted_auxiliary_event_digests = set()
+            self._verified_lane_checkpoints = {}
+            self._verified_lane_sources = {}
+            self._verified_attempt_inputs = {}
+            self.__dict__.pop(
+                "_verified_quiescent_collections", None
+            )
+            if isinstance(
+                getattr(self, "journal", None),
+                DurableAttemptJournal,
+            ):
+                self.journal._cycle_trusted_thread_id = None
+        self._validation_process_id = current_process_id
+        values: tuple[tuple[str, object], ...] = (
+            ("_cycle_validation_context", None),
+            ("_cycle_lock_held", False),
+            ("_cycle_execution_owner", None),
+            ("_reducer_checkpoint", None),
+            ("_trusted_auxiliary_event_digests", set()),
+            ("_verified_lane_checkpoints", {}),
+            ("_verified_lane_sources", {}),
+            ("_verified_attempt_inputs", {}),
+        )
+        for name, default in values:
+            if name not in self.__dict__:
+                setattr(self, name, default)
+
+    def _assert_cycle_execution_owner(self) -> None:
+        """Reject cross-thread/task access to shared cycle-local memos."""
+
+        self._initialize_validation_state()
+        owner = self._cycle_execution_owner
+        if (
+            not self._cycle_lock_held
+            or owner is None
+            or owner != self._current_execution_owner()
+        ):
+            raise ContiguousRunnerError(
+                "cycle-local validation state has a foreign execution owner"
+            )
+
     def state(self) -> dict[str, Any]:
-        events = self.journal._read_authenticated()
+        """Return a fresh full audit, including during reentrant callbacks."""
+
+        self._initialize_validation_state()
+        if self._cycle_lock_held:
+            self._assert_cycle_execution_owner()
+        saved = (
+            self._validation_cache_snapshot()
+            if self._cycle_validation_context is not None
+            else None
+        )
+        self._discard_validation_caches()
+        try:
+            return self._execute_state_reduction(
+                full_external_audit=True
+            )
+        finally:
+            self._discard_validation_caches()
+            if saved is not None:
+                self._restore_validation_cache_snapshot(saved)
+
+    def _cycle_boundary_state(self) -> dict[str, Any]:
+        """Run a full audit while retaining only this cycle's reducer seed."""
+
+        self._assert_cycle_execution_owner()
+        if type(self).state is not ContiguousCampaignRunner.state:
+            return self.state()
+        # The immutable journal prefix is fully signature-authenticated below,
+        # so its deep-copied semantic reducer checkpoint may safely seed only
+        # the suffix.  All external pointers/receipts remain deliberately cold.
+        self._discard_validation_caches(retain_reducer=True)
+        return self._execute_state_reduction(
+            full_external_audit=True
+        )
+
+    def _cycle_state(
+        self, *, authenticate: bool = False
+    ) -> dict[str, Any]:
+        """Reduce a journal suffix only inside the current locked cycle."""
+
+        self._initialize_validation_state()
+        if type(self).state is not ContiguousCampaignRunner.state:
+            return self.state()
+        context = getattr(self, "_cycle_validation_context", None)
+        lock_held = getattr(self, "_cycle_lock_held", False)
+        if context is None:
+            if lock_held:
+                raise ContiguousRunnerError(
+                    "held cycle lacks its validation context"
+                )
+            return self.state()
+        if not lock_held:
+            raise ContiguousRunnerError(
+                "cycle-local reducer used outside the held cycle lock"
+            )
+        self._assert_cycle_execution_owner()
+        cached_head = (
+            None
+            if not self.journal._cache
+            else (
+                int(self.journal._cache[-1]["sequence"]),
+                str(self.journal._cache[-1]["digest"]),
+            )
+        )
+        if (
+            not authenticate
+            and context.cached_state is not None
+            and context.cached_journal_head == cached_head
+        ):
+            return context.cached_state
+        reduced = self._execute_state_reduction(
+            full_external_audit=False
+        )
+        authenticated = self.journal._cache
+        context.cached_state = reduced
+        context.cached_journal_head = (
+            None
+            if not authenticated
+            else (
+                int(authenticated[-1]["sequence"]),
+                str(authenticated[-1]["digest"]),
+            )
+        )
+        return reduced
+
+    def _cycle_state_with_full_journal_prefix(self) -> dict[str, Any]:
+        """Reauthenticate the complete journal before an authority transfer."""
+
+        journal = self.journal
+        if not isinstance(journal, DurableAttemptJournal):
+            return self._cycle_state(authenticate=True)
+        trusted_thread = getattr(
+            journal, "_cycle_trusted_thread_id", None
+        )
+        journal._cycle_trusted_thread_id = None
+        try:
+            return self._cycle_state(authenticate=True)
+        finally:
+            journal._cycle_trusted_thread_id = trusted_thread
+
+    def _execute_state_reduction(
+        self, *, full_external_audit: bool
+    ) -> dict[str, Any]:
+        """Bound source-evidence memoization to one reducer invocation."""
+
+        selection_token = (
+            Scheduler.begin_selection_evidence_validation_scope()
+        )
+        snapshot_token = (
+            Scheduler.begin_snapshot_validation_scope()
+        )
+        context = getattr(self, "_cycle_validation_context", None)
+        inventory_token = Scheduler.begin_inventory_validation_scope(
+            None
+            if full_external_audit or context is None
+            else context.authoritative_inventory
+        )
+        try:
+            return self._state_reduced(
+                full_external_audit=full_external_audit
+            )
+        finally:
+            Scheduler.end_snapshot_validation_scope(snapshot_token)
+            Scheduler.end_inventory_validation_scope(
+                inventory_token
+            )
+            Scheduler.end_selection_evidence_validation_scope(
+                selection_token
+            )
+
+    def _start_locked_validation_pass(self) -> dict[str, Any]:
+        """Create one fresh cycle-local reducer from a full entry audit."""
+
+        self._initialize_validation_state()
+        self._assert_cycle_execution_owner()
+        if (
+            not self._cycle_lock_held
+            or self._cycle_validation_context is not None
+        ):
+            raise ContiguousRunnerError(
+                "locked validation pass has an invalid lifecycle"
+            )
+        entry = self._cycle_boundary_state()
+        self._cycle_validation_context = _CycleValidationContext(
+            public_observation_registry_sha256=entry.get(
+                "public_observation_registry_sha256", "0" * 64
+            ),
+            journal_prefix=copy.deepcopy(
+                entry.get("journal_prefix", {})
+            ),
+            authoritative_inventory=dict(entry["inventory"]),
+        )
+        if isinstance(self.journal, DurableAttemptJournal):
+            self.journal._cycle_trusted_thread_id = (
+                threading.get_ident()
+            )
+        return entry
+
+    def _finish_locked_validation_pass(self) -> dict[str, Any]:
+        """Destroy the local context and perform the full return audit."""
+
+        self._initialize_validation_state()
+        self._assert_cycle_execution_owner()
+        if (
+            not self._cycle_lock_held
+            or self._cycle_validation_context is None
+        ):
+            raise ContiguousRunnerError(
+                "locked validation pass cannot finish from this state"
+            )
+        # The return audit may reuse the entry pass's semantic reducer only at
+        # its exact authenticated journal head.  Authority-bearing exact-file
+        # pointers and receipt memos, auxiliary event digests, and quiescent
+        # collection memos are deliberately cold after an external effect.
+        self._cycle_validation_context = None
+        if isinstance(self.journal, DurableAttemptJournal):
+            self.journal._cycle_trusted_thread_id = None
+        self._discard_validation_caches(retain_reducer=True)
+        if type(self).state is not ContiguousCampaignRunner.state:
+            return self.state()
+        return self._execute_state_reduction(
+            full_external_audit=True
+        )
+
+    def _exact_cycle_attempt(
+        self,
+        attempt_id: str,
+        allowed_phases: str | set[str],
+    ) -> dict[str, Any]:
+        """Run one fatal, cycle-wide primary authority gate."""
+
+        try:
+            return self._exact_cycle_attempt_checked(
+                attempt_id, allowed_phases
+            )
+        except ExactAuthorityGateError:
+            raise
+        except ContiguousRunnerError as exc:
+            raise ExactAuthorityGateError(str(exc)) from exc
+
+    def _exact_cycle_attempt_checked(
+        self,
+        attempt_id: str,
+        allowed_phases: str | set[str],
+    ) -> dict[str, Any]:
+        """Reselect and uncached-validate one effect's exact authority."""
+
+        phases = (
+            {allowed_phases}
+            if isinstance(allowed_phases, str)
+            else set(allowed_phases)
+        )
+        # Every primary effect, not only promotion, starts from a complete
+        # anchored signature pass over the immutable journal prefix.
+        state = self._cycle_state_with_full_journal_prefix()
+        attempt = state["attempts"].get(attempt_id)
+        if attempt is None or attempt["phase"] not in phases:
+            raise ContiguousRunnerError(
+                "external effect targets a stale attempt phase: "
+                f"{attempt_id}"
+            )
+        if attempt["phase"] == "RESERVED":
+            reservation = attempt["reservation"]
+            lane = state["lanes"].get(reservation.game)
+            if lane is None:
+                raise ContiguousRunnerError(
+                    "reserved attempt lost its lane"
+                )
+            self._validate_lane_authority(
+                game=reservation.game,
+                lane=lane,
+                uncached=True,
+            )
+            if (
+                reservation.parent_checkpoint_path
+                != lane["checkpoint_path"]
+                or reservation.parent_checkpoint_sha256
+                != lane["checkpoint_sha256"]
+                or reservation.parent_source_path
+                != lane["source_path"]
+                or reservation.parent_source_tree_sha256
+                != lane["source_tree_sha256"]
+            ):
+                raise ContiguousRunnerError(
+                    "reserved attempt no longer binds the lane frontier"
+                )
+            if reservation.wip is not None:
+                wip = reservation.wip
+                try:
+                    Contract._validate_regular_tree(
+                        Path(wip.wip_root_path),
+                        label="selected reserved WIP",
+                    )
+                    ProductionInputBundleBuilder._validate_parent_source(
+                        Path(wip.solver_source_path),
+                        expected_tree_sha256=(
+                            wip.solver_source_tree_sha256
+                        ),
+                        label="selected reserved WIP solver source",
+                    )
+                except Exception as exc:
+                    raise ContiguousRunnerError(
+                        "reserved WIP is unsafe"
+                    ) from exc
+                if (
+                    Contract._tree_hash(Path(wip.wip_root_path))
+                    != wip.wip_tree_sha256
+                ):
+                    raise ContiguousRunnerError(
+                        "reserved WIP changed before input construction"
+                    )
+            return attempt
+        spec = attempt["spec"]
+        lane = state["lanes"].get(spec.game)
+        if lane is None:
+            raise ContiguousRunnerError(
+                "attempt lost its lane"
+            )
+        self._validate_lane_authority(
+            game=spec.game, lane=lane, uncached=True
+        )
+        if (
+            spec.parent_checkpoint_path != lane["checkpoint_path"]
+            or spec.parent_checkpoint_sha256
+            != lane["checkpoint_sha256"]
+            or spec.parent_source_path != lane["source_path"]
+            or spec.parent_source_tree_sha256
+            != lane["source_tree_sha256"]
+        ):
+            raise ContiguousRunnerError(
+                "attempt no longer binds the current lane frontier"
+            )
+        self._validate_attempt_external_authority(
+            attempt, uncached=True
+        )
+        return attempt
+
+    def _exact_cycle_auxiliary(
+        self,
+        assignment_id: str,
+        allowed_phases: str | set[str],
+        *,
+        include_teardown: bool = False,
+    ) -> dict[str, Any]:
+        """Run one fatal, cycle-wide auxiliary authority gate."""
+
+        try:
+            return self._exact_cycle_auxiliary_checked(
+                assignment_id,
+                allowed_phases,
+                include_teardown=include_teardown,
+            )
+        except ExactAuthorityGateError:
+            raise
+        except ContiguousRunnerError as exc:
+            raise ExactAuthorityGateError(str(exc)) from exc
+
+    def _exact_cycle_auxiliary_checked(
+        self,
+        assignment_id: str,
+        allowed_phases: str | set[str],
+        *,
+        include_teardown: bool = False,
+    ) -> dict[str, Any]:
+        """Reselect and validate one auxiliary effect's prerequisites."""
+
+        phases = (
+            {allowed_phases}
+            if isinstance(allowed_phases, str)
+            else set(allowed_phases)
+        )
+        state = self._cycle_state_with_full_journal_prefix()
+        assignment = state["auxiliary_assignments"].get(
+            assignment_id
+        )
+        if (
+            assignment is None
+            or assignment["state"].phase not in phases
+        ):
+            raise ContiguousRunnerError(
+                "external effect targets a stale auxiliary phase: "
+                f"{assignment_id}"
+            )
+        self._rebind_auxiliary_prerequisites(
+            assignment, include_teardown=include_teardown
+        )
+        return assignment
+
+    def _exact_substrate_attempt(
+        self, attempt_id: str
+    ) -> dict[str, Any]:
+        """Run one fatal, cycle-wide substrate authority gate."""
+
+        try:
+            return self._exact_substrate_attempt_checked(attempt_id)
+        except ExactAuthorityGateError:
+            raise
+        except ContiguousRunnerError as exc:
+            raise ExactAuthorityGateError(str(exc)) from exc
+
+    def _exact_substrate_attempt_checked(
+        self, attempt_id: str
+    ) -> dict[str, Any]:
+        """Reopen a closed substrate failure before a health probe."""
+
+        if getattr(self, "_cycle_validation_context", None) is not None:
+            # Substrate probes are rare.  Replay the semantic journal from
+            # genesis so the failure and authorization receipts are reopened
+            # rather than relying on a cycle-local reducer prefix.
+            self._reducer_checkpoint = None
+        state = self._cycle_state_with_full_journal_prefix()
+        attempt = state["attempts"].get(attempt_id)
+        if (
+            attempt is None
+            or attempt["phase"] != "CLOSED"
+            or attempt.get("substrate_failure") is None
+        ):
+            raise ContiguousRunnerError(
+                "substrate probe lost its exact failed attempt"
+            )
+        spec = attempt["spec"]
+        lane = state["lanes"][spec.game]
+        self._validate_lane_authority(
+            game=spec.game, lane=lane, uncached=True
+        )
+        self._verified_attempt_inputs = {}
+        self._validate_prepared_input(
+            spec, require_initial_workspace=True
+        )
+        _validate_preparation_receipts(spec, attempt["prepared"])
+        return attempt
+
+    def _state_reduced(
+        self, *, full_external_audit: bool
+    ) -> dict[str, Any]:
+        events = self.journal._read_authenticated(
+            trust_cycle_prefix=not full_external_audit
+        )
         if not events or events[0]["kind"] != "GENESIS":
             raise ContiguousRunnerError("missing durable genesis")
         auxiliary_events = tuple(
@@ -8133,7 +9327,12 @@ class ContiguousCampaignRunner:
             )
         genesis = events[0]["payload"]
         inventory = genesis.get("inventory")
-        Contract.validate_inventory(inventory)
+        try:
+            inventory = Scheduler.validate_inventory(inventory)
+        except Scheduler.SchedulerError as exc:
+            raise ContiguousRunnerError(
+                "campaign inventory is not authoritative"
+            ) from exc
         zero = genesis.get("zero_checkpoints")
         if not isinstance(zero, dict) or set(zero) != set(inventory):
             raise ContiguousRunnerError("zero-checkpoint map mismatch")
@@ -8210,6 +9409,12 @@ class ContiguousCampaignRunner:
         substrate_incident: dict[str, Any] | None = None
         storage_incident: dict[str, Any] | None = None
         storage_quiescence: dict[str, Any] | None = None
+        # Pure source evidence may recur at many historical decision points.
+        # Reuse it only within this one authenticated reduction; the mapping
+        # never crosses a public/full audit or supervision cycle.
+        selection_evidence_cache: dict[
+            tuple[object, ...], Any
+        ] = {}
 
         reducer_start = 1
         cached_reducer = getattr(self, "_reducer_checkpoint", None)
@@ -8281,7 +9486,12 @@ class ContiguousCampaignRunner:
             )
             reducer_start = cached_reducer.head_sequence
 
+        replay_observer = getattr(
+            self, "_semantic_replay_observer", None
+        )
         for event in events[reducer_start:]:
+            if callable(replay_observer):
+                replay_observer(event)
             kind = event["kind"]
             payload = event["payload"]
             if (
@@ -9230,6 +10440,9 @@ class ContiguousCampaignRunner:
                             for item in sidecar_requests.values()
                             if not item["invalidated"]
                         ),
+                        selection_evidence_cache=(
+                            selection_evidence_cache
+                        ),
                     )
                     Scheduler.verify_decision(snapshot, decision)
                 except Scheduler.SchedulerError as exc:
@@ -9293,6 +10506,9 @@ class ContiguousCampaignRunner:
                         auxiliary_assignments=tuple(
                             item["state"]
                             for item in auxiliary_assignments.values()
+                        ),
+                        selection_evidence_cache=(
+                            selection_evidence_cache
                         ),
                         sidecar_requests=tuple(
                             item["request"]
@@ -10259,9 +11475,11 @@ class ContiguousCampaignRunner:
                     raise ContiguousRunnerError(
                         "backend observed the wrong image digest"
                     )
-                _validate_preparation_receipts(
-                    attempt["spec"], prepared
-                )
+                # Receipt bytes are validated before this host event is
+                # appended, by the exact gate before the next backend effect,
+                # and once in the full audit tail below.  Semantic journal
+                # replay must not repeat the expensive compatibility-closure
+                # scan for the same event before every phase transition.
                 attempt.update(
                     phase="BACKEND_PREPARED", prepared=prepared
                 )
@@ -11800,11 +13018,10 @@ class ContiguousCampaignRunner:
                         "invalid ATTEMPT_LAUNCHED payload"
                     )
                 launched = _backend_launch_from_dict(payload["launched"])
-                _validate_launch_receipts(
-                    attempt["spec"],
-                    attempt["prepared"],
-                    launched,
-                )
+                # External launch receipts share the same three gates as
+                # preparation: pre-append host validation, the exact next-
+                # effect rebind, and the full external-audit tail.  This
+                # branch reduces authenticated event semantics only.
                 attempt.update(
                     phase="RUNNING",
                     launched=launched,
@@ -12179,7 +13396,7 @@ class ContiguousCampaignRunner:
                     ) != result
                 ):
                     raise ContiguousRunnerError(
-                        "attempt blocker lacks current host authentication"
+                        "closed blocker authority changed after settlement"
                     )
                 attempt["settled_result"] = result
                 try:
@@ -12439,165 +13656,36 @@ class ContiguousCampaignRunner:
             else:
                 raise ContiguousRunnerError(f"unknown journal event: {kind}")
 
-        expected_generations = {
-            attempt["reservation"].generation_id
-            for attempt in attempts.values()
-        }
-        actual_generations: set[str] = set()
-        for path in self.generations.iterdir():
-            if (
-                path.is_symlink()
-                or not path.is_dir()
-                or not _is_uuid4(path.name)
-            ):
+        if full_external_audit:
+            self._validate_generation_tree(attempts)
+            for attempt in attempts.values():
+                self._validate_attempt_external_authority(attempt)
+            for game, lane in lanes.items():
+                self._validate_lane_authority(game=game, lane=lane)
+            public_observation_registry_sha256 = (
+                self._validate_public_observation_registry(attempts)
+            )
+            try:
+                journal_prefix = Scheduler.journal_prefix_status(
+                    self.root
+                )
+            except Scheduler.SchedulerError as exc:
                 raise ContiguousRunnerError(
-                    f"unexpected generation entry: {path}"
-                )
-            actual_generations.add(path.name)
-        if not actual_generations <= expected_generations:
-            raise ContiguousRunnerError(
-                "generation tree contains an unjournaled identity"
-            )
-
-        # Only files that can still influence execution/promotion are rehashed
-        # on every scheduler pass.  Closed blocker and preparation-quarantine
-        # receipts are exceptions: their external evidence remains live and
-        # must be reopened on every pass, including cached reducer recovery.
-        for attempt in attempts.values():
-            if attempt["phase"] == "CLOSED":
-                settled = attempt.get("settled_result")
-                if (
-                    isinstance(settled, AttemptResult)
-                    and settled.kind == "blocker"
-                    and self._sanitize_result(
-                        attempt["spec"], settled
-                    ) != settled
-                ):
-                    raise ContiguousRunnerError(
-                        "closed blocker authority changed after settlement"
-                    )
-                if attempt.get("protocol_invalid") is not None:
-                    spec = attempt["spec"]
-                    protocol_invalid = attempt["protocol_invalid"]
-                    receipt = _validate_bound_receipt(
-                        protocol_invalid["path"],
-                        protocol_invalid["sha256"],
-                        expected_path=Path(
-                            spec.host_transcript_path
-                        ).parent
-                        / (
-                            "arena_public_action_protocol_invalid_"
-                            "receipt.json"
-                        ),
-                        expected_kind=(
-                            "contiguous_arena_public_action_protocol_"
-                            "invalid"
-                        ),
-                        spec=spec,
-                    )
-                    if (
-                        receipt.get("status")
-                        != "PROTOCOL_INVALID"
-                        or receipt.get("cost_used")
-                        != settled.cost_used
-                    ):
-                        raise ContiguousRunnerError(
-                            "closed protocol-invalid evidence changed"
-                        )
-                    _validate_protocol_invalid_terminal_evidence(
-                        spec=spec,
-                        receipt=receipt,
-                        evidence=protocol_invalid[
-                            "terminal_evidence"
-                        ],
-                    )
-                preparation_quarantine = attempt.get(
-                    "preparation_quarantine"
-                )
-                if preparation_quarantine is not None:
-                    _validate_preparation_quarantine_receipt(
-                        attempt["spec"],
-                        preparation_quarantine["path"],
-                        preparation_quarantine["sha256"],
-                    )
-                continue
-            if attempt["phase"] == "RESERVED":
-                continue
-            spec = attempt["spec"]
-            self._validate_prepared_input(
-                spec,
-                require_initial_workspace=attempt["phase"]
-                in {"PREPARED", "BACKEND_PREPARED"},
-            )
-            if attempt["prepared"] is not None:
-                prepared = attempt["prepared"]
-                _validate_preparation_receipts(spec, prepared)
-            if attempt["launched"] is not None:
-                _validate_launch_receipts(
-                    spec, attempt["prepared"], attempt["launched"]
-                )
-            if attempt["collection"] is not None:
-                self._validate_collection(
-                    spec,
-                    attempt["prepared"],
-                    attempt["launched"],
-                    attempt["collection"],
-                    allow_arena_teardown_receipt=(
-                        attempt["teardown"] is not None
-                    ),
-                    teardown=attempt["teardown"],
-                )
-            if attempt.get("protocol_invalid") is not None:
-                protocol_invalid = attempt["protocol_invalid"]
-                receipt = _validate_bound_receipt(
-                    protocol_invalid["path"],
-                    protocol_invalid["sha256"],
-                    expected_path=Path(
-                        spec.host_transcript_path
-                    ).parent
-                    / "arena_public_action_protocol_invalid_receipt.json",
-                    expected_kind=(
-                        "contiguous_arena_public_action_protocol_invalid"
-                    ),
-                    spec=spec,
-                )
-                if (
-                    receipt.get("status") != "PROTOCOL_INVALID"
-                    or receipt.get("cost_used")
-                    != attempt["outcome"].cost_used
-                ):
-                    raise ContiguousRunnerError(
-                        "live protocol-invalid authority changed"
-                    )
-                _validate_protocol_invalid_terminal_evidence(
-                    spec=spec,
-                    receipt=receipt,
-                    evidence=protocol_invalid[
-                        "terminal_evidence"
-                    ],
-                )
-
-        for game, lane in lanes.items():
-            if not 0 <= lane["reached"] <= lane["target"]:
+                    "journal prefix exceeds scheduler evidence bounds"
+                ) from exc
+        else:
+            context = self._cycle_validation_context
+            if context is None or not self._cycle_lock_held:
                 raise ContiguousRunnerError(
-                    f"lane exceeds authoritative target: {game}"
+                    "reduced state lacks its held cycle context"
                 )
-            self._validate_lane_checkpoint_cached(
-                game=game, lane=lane
+            public_observation_registry_sha256 = (
+                context.public_observation_registry_sha256
             )
-            self._validate_lane_source_cached(game=game, lane=lane)
-        public_observation_registry_sha256 = (
-            self._validate_public_observation_registry(attempts)
-        )
+            journal_prefix = copy.deepcopy(context.journal_prefix)
         solved = sum(lane["reached"] for lane in lanes.values())
         if solved > Contract.EXPECTED_LEVELS:
             raise ContiguousRunnerError("campaign solved count exceeds inventory")
-        try:
-            journal_prefix = Scheduler.journal_prefix_status(self.root)
-        except Scheduler.SchedulerError as exc:
-            raise ContiguousRunnerError(
-                "journal prefix exceeds scheduler evidence bounds"
-            ) from exc
         # Publish the reducer checkpoint only after every current executable
         # artifact and journal-prefix bound has passed.  It is an optimization
         # of deterministic replay, never an alternate admission path.
@@ -12657,8 +13745,13 @@ class ContiguousCampaignRunner:
                 Scheduler.auxiliary_launch_configuration_to_dict(
                     auxiliary_configuration
                 ),
-            "auxiliary_launch_ready":
-                CONTIGUOUS_AUXILIARY_LAUNCH_READY,
+            "auxiliary_dispatch_configured": bool(
+                auxiliary_configuration.automatic_dispatch_enabled
+            ),
+            # Deprecated schema-1 compatibility field.  It is intentionally
+            # constant false and cannot mirror configuration or confer launch
+            # authority.
+            "auxiliary_launch_ready": False,
             "pending_scheduler_decision": (
                 json.loads(_canonical_json(
                     Scheduler.decision_to_dict(pending_decision)
@@ -12855,7 +13948,13 @@ class ContiguousCampaignRunner:
                 "WIP evidence paths do not form one canonical generation"
             )
 
-        publication = _read_json_file(publication_path)
+        publication, _publication_metadata = (
+            _read_stable_digest_bound_json(
+                publication_path,
+                wip.wip_publication_receipt_sha256,
+                label="WIP publication receipt",
+            )
+        )
         publication_base = {
             "schema": 1,
             "kind": "contiguous_wip_publication",
@@ -12880,9 +13979,7 @@ class ContiguousCampaignRunner:
                 proposer_attempt_binding_sha256(bound_spec),
         }
         if (
-            _sha256_file(publication_path)
-            != wip.wip_publication_receipt_sha256
-            or any(
+            any(
                 publication.get(key) != value
                 for key, value in publication_base.items()
             )
@@ -12913,10 +14010,13 @@ class ContiguousCampaignRunner:
             digest: str,
             kind: str,
         ) -> dict[str, Any]:
-            value = _read_json_file(path)
+            value, _metadata = _read_stable_digest_bound_json(
+                path,
+                digest,
+                label=f"retained WIP {kind} receipt",
+            )
             if (
-                _sha256_file(path) != digest
-                or value.get("schema") != 1
+                value.get("schema") != 1
                 or value.get("kind") != kind
                 or any(
                     value.get(key) != expected
@@ -13208,8 +14308,12 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "attempt restores ineligible or wrong WIP"
                 )
-            publication = _read_json_file(
-                Path(spec.wip.wip_publication_receipt_path)
+            publication, _publication_metadata = (
+                _read_stable_digest_bound_json(
+                    Path(spec.wip.wip_publication_receipt_path),
+                    spec.wip.wip_publication_receipt_sha256,
+                    label="selected WIP publication receipt",
+                )
             )
             origin = attempts.get(str(publication.get("attempt_id")))
             origin_spec = (
@@ -13346,46 +14450,35 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "attempt input bundle is not a regular tree"
             ) from exc
+        receipt, _receipt_metadata = _read_stable_digest_bound_json(
+            receipt_path,
+            spec.input_bundle_receipt_sha256,
+            label="input-bundle receipt",
+        )
+        brief, _brief_metadata = _read_stable_digest_bound_json(
+            Path(spec.frontier_brief_path),
+            spec.frontier_brief_sha256,
+            label="frontier brief",
+        )
+        policy, _policy_metadata = _read_stable_digest_bound_json(
+            Path(spec.bridge_policy_path),
+            spec.bridge_policy_sha256,
+            label="bridge policy",
+        )
         if (
             Contract._tree_hash(input_root) != spec.input_tree_sha256
             or Contract._tree_hash(Path(spec.parent_source_path))
             != spec.parent_source_tree_sha256
             or Contract._tree_hash(input_root / "parent_source")
             != spec.parent_source_tree_sha256
-            or _sha256_file(receipt_path)
-            != spec.input_bundle_receipt_sha256
             or _sha256_file(Path(spec.parent_checkpoint_path))
             != spec.parent_checkpoint_sha256
             or _sha256_file(input_root / "checkpoint.json")
             != spec.parent_checkpoint_sha256
-            or _sha256_file(Path(spec.frontier_brief_path))
-            != spec.frontier_brief_sha256
-            or (
-                spec.supervisory_handoff is not None
-                and (
-                    _sha256_file(
-                        Path(str(spec.supervisory_handoff_path))
-                    )
-                    != spec.supervisory_handoff_sha256
-                    or _sha256_file(
-                        Path(
-                            str(
-                                spec
-                                .supervisory_handoff_binding_receipt_path
-                            )
-                        )
-                    )
-                    != spec
-                    .supervisory_handoff_binding_receipt_sha256
-                )
-            )
-            or _sha256_file(Path(spec.bridge_policy_path))
-            != spec.bridge_policy_sha256
         ):
             raise ContiguousRunnerError(
                 "attempt input bundle or receipt changed"
             )
-        receipt = _read_json_file(receipt_path)
         required = {
             "schema",
             "campaign_id",
@@ -13497,7 +14590,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "source/workspace seed changed after construction"
             )
-        brief = _read_json_file(Path(spec.frontier_brief_path))
         expected_brief = {
             "schema": 1,
             "kind": "arc_agi3_contiguous_frontier_brief",
@@ -13532,7 +14624,6 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "frontier brief is nonminimal, stale, or malformed"
             )
-        policy = _read_json_file(Path(spec.bridge_policy_path))
         expected_policy = {
             "schema": 1,
             "kind": "arc_agi3_contiguous_bridge_policy",
@@ -13580,15 +14671,26 @@ class ContiguousCampaignRunner:
             )
         if spec.supervisory_handoff is not None:
             binding = spec.supervisory_handoff
-            handoff_document = _read_json_file(
-                Path(str(spec.supervisory_handoff_path))
+            handoff_document, _handoff_metadata = (
+                _read_stable_digest_bound_json(
+                    Path(str(spec.supervisory_handoff_path)),
+                    str(spec.supervisory_handoff_sha256),
+                    label="supervisory handoff",
+                )
             )
-            binding_receipt = _read_json_file(
-                Path(
+            binding_receipt, _binding_metadata = (
+                _read_stable_digest_bound_json(
+                    Path(
+                        str(
+                            spec
+                            .supervisory_handoff_binding_receipt_path
+                        )
+                    ),
                     str(
                         spec
-                        .supervisory_handoff_binding_receipt_path
-                    )
+                        .supervisory_handoff_binding_receipt_sha256
+                    ),
+                    label="supervisory handoff binding receipt",
                 )
             )
             expected_handoff = (
@@ -14079,22 +15181,35 @@ class ContiguousCampaignRunner:
             collection.native_public_observation_receipt_sha256s
         ):
             source = source_root / f"{digest}.json"
-            raw = _bounded_regular_bytes(
+            raw, observed_digest, _ = (
+                _read_stable_bounded_regular_bytes(
                 source, maximum=MAX_HOST_TRANSCRIPT_BYTES
+                )
             )
-            if hashlib.sha256(raw).hexdigest() != digest:
+            if observed_digest != digest:
                 raise ContiguousRunnerError(
                     "validated public receipt changed before registration"
                 )
             target = self.public_observation_registry / (
                 f"{digest}.json"
             )
+            # Registry publication is an authority-bearing storage effect,
+            # not part of collection's pure validation.  Reopen the complete
+            # prefix at the exact install and permission-change boundaries.
+            self._exact_cycle_attempt(spec.attempt_id, "EXITED")
             _install_regular_bytes(target, raw)
+            self._exact_cycle_attempt(spec.attempt_id, "EXITED")
             os.chmod(target, 0o400, follow_symlinks=False)
-            if _sha256_file(target) != digest:
+            _target_raw, target_digest, _ = (
+                _read_stable_bounded_regular_bytes(
+                    target, maximum=MAX_HOST_TRANSCRIPT_BYTES
+                )
+            )
+            if target_digest != digest:
                 raise ContiguousRunnerError(
                     "host public-observation registry changed content"
                 )
+        self._exact_cycle_attempt(spec.attempt_id, "EXITED")
         _fsync_directory(self.public_observation_registry)
 
     def _validate_public_observation_registry(
@@ -16413,7 +17528,7 @@ class ContiguousCampaignRunner:
         decision = self._append_scheduler_decision(state)
         if decision is None:
             return None
-        pending_state = self.state()
+        pending_state = self._cycle_state()
         return self._consume_scheduler_decision(
             decision, pending_state
         )
@@ -16803,7 +17918,7 @@ class ContiguousCampaignRunner:
         if decision is None:
             return None
         return self._consume_auxiliary_decision(
-            decision, self.state()
+            decision, self._cycle_state()
         )
 
     @staticmethod
@@ -17114,6 +18229,10 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot prepare auxiliary input without a backend"
             )
+        assignment_id = assignment["decision"].assignment_id
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id, "RESERVED"
+        )
         decision = assignment["decision"]
         try:
             prepared_value = self._call_auxiliary_backend(
@@ -17159,6 +18278,10 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot launch auxiliary without a backend"
             )
+        assignment_id = assignment["decision"].assignment_id
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id, "INPUT_PREPARED"
+        )
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         if not isinstance(prepared, AuxiliaryPreparedInput):
@@ -17226,6 +18349,10 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "auxiliary abort targets a terminal assignment"
             )
+        assignment = self._exact_cycle_auxiliary(
+            state.assignment_id, prior_phase
+        )
+        state = assignment["state"]
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         launched = assignment["launched"]
@@ -17334,6 +18461,10 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot poll auxiliary without a backend"
             )
+        assignment_id = assignment["decision"].assignment_id
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id, "RUNNING"
+        )
         decision = assignment["decision"]
         prepared = assignment["prepared"]
         launched = assignment["launched"]
@@ -17384,7 +18515,12 @@ class ContiguousCampaignRunner:
                 reason=terminal.reason or "containment_fault",
             )
             return True
-        self._rebind_auxiliary_prerequisites(assignment)
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id, "RUNNING"
+        )
+        decision = assignment["decision"]
+        prepared = assignment["prepared"]
+        launched = assignment["launched"]
         try:
             collection = self._validate_auxiliary_value(
                 self._call_auxiliary_backend(
@@ -17430,7 +18566,12 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "auxiliary collection is not quarantine-only evidence"
             ) from exc
-        self._rebind_auxiliary_prerequisites(assignment)
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id, "RUNNING"
+        )
+        decision = assignment["decision"]
+        prepared = assignment["prepared"]
+        launched = assignment["launched"]
         try:
             teardown = self._validate_auxiliary_value(
                 self._call_auxiliary_backend(
@@ -17490,6 +18631,12 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "cannot admit auxiliary output without a backend"
             )
+        assignment_id = assignment["decision"].assignment_id
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id,
+            "QUARANTINED",
+            include_teardown=True,
+        )
         decision = assignment["decision"]
         output = assignment["state"].output
         if output is None:
@@ -17519,7 +18666,7 @@ class ContiguousCampaignRunner:
                         item["state"].output
                     )
                     == semantic_identity
-                    for item in self.state()[
+                    for item in self._cycle_state()[
                         "auxiliary_assignments"
                     ].values()
                     if item["state"].assignment_id
@@ -17774,6 +18921,12 @@ class ContiguousCampaignRunner:
         *,
         reason: str,
     ) -> None:
+        assignment_id = assignment["decision"].assignment_id
+        assignment = self._exact_cycle_auxiliary(
+            assignment_id,
+            "QUARANTINED",
+            include_teardown=True,
+        )
         decision = assignment["decision"]
         output = assignment["state"].output
         if output is None:
@@ -17900,7 +19053,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "failure circuit identity is malformed"
             )
-        state = self.state()
+        state = self._cycle_state()
         operation_key = f"{operation}:{fault_domain}"
         operation_state = state["failure_operation_circuits"].get(
             operation_key,
@@ -18003,7 +19156,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "failure circuit success identity is malformed"
             )
-        state = self.state()
+        state = self._cycle_state()
         prefix = operation + ":"
         for operation_key, operation_state in sorted(
             state["failure_operation_circuits"].items()
@@ -18050,7 +19203,7 @@ class ContiguousCampaignRunner:
     def _record_retry(
         self, attempt_id: str, operation: str, exc: Exception
     ) -> None:
-        attempt = self.state()["attempts"].get(attempt_id)
+        attempt = self._cycle_state()["attempts"].get(attempt_id)
         if attempt is None:
             raise ContiguousRunnerError(
                 "cannot record retry for unknown attempt"
@@ -18158,6 +19311,14 @@ class ContiguousCampaignRunner:
     def _materialize_reserved(
         self, reservation: AttemptReservation
     ) -> AttemptSpec:
+        exact = self._exact_cycle_attempt(
+            reservation.attempt_id, "RESERVED"
+        )["reservation"]
+        if exact != reservation:
+            raise ContiguousRunnerError(
+                "input construction received a stale reservation"
+            )
+        reservation = exact
         generation = Path(reservation.generation_dir)
         if generation.is_symlink() or (
             generation.exists() and not generation.is_dir()
@@ -18293,6 +19454,13 @@ class ContiguousCampaignRunner:
             wip=reservation.wip,
             supervisory_handoff=reservation.supervisory_handoff,
         )
+        exact = self._exact_cycle_attempt(
+            reservation.attempt_id, "RESERVED"
+        )["reservation"]
+        if exact != reservation:
+            raise ContiguousRunnerError(
+                "reservation changed before input construction"
+            )
         try:
             receipt = self.input_builder.prepare(layout)
         except BaseException as exc:
@@ -18512,6 +19680,14 @@ class ContiguousCampaignRunner:
     def _prepare_backend(
         self, attempt_id: str, spec: AttemptSpec
     ) -> None:
+        exact = self._exact_cycle_attempt(
+            attempt_id, "PREPARED"
+        )
+        if exact["spec"] != spec:
+            raise ContiguousRunnerError(
+                "backend preparation received a stale attempt"
+            )
+        spec = exact["spec"]
         try:
             prepared = self.backend.prepare(spec)
         except BaseException as exc:
@@ -18759,7 +19935,7 @@ class ContiguousCampaignRunner:
         spec: AttemptSpec,
         exc: BackendPreparationQuarantinedError,
     ) -> None:
-        attempt = self.state()["attempts"].get(attempt_id)
+        attempt = self._cycle_state()["attempts"].get(attempt_id)
         if (
             attempt is None
             or attempt["phase"] != "PREPARED"
@@ -18780,7 +19956,7 @@ class ContiguousCampaignRunner:
         )
         # Reopen state after the circuit event (and possible threshold
         # incident) before binding the terminal budget coordinates below.
-        attempt = self.state()["attempts"][attempt_id]
+        attempt = self._cycle_state()["attempts"][attempt_id]
         result = AttemptResult(
             kind="infrastructure",
             cost_used=0.0,
@@ -18816,7 +19992,7 @@ class ContiguousCampaignRunner:
         attempt_id: str,
         exc: BackendSubstratePreflightError,
     ) -> None:
-        attempt = self.state()["attempts"].get(attempt_id)
+        attempt = self._cycle_state()["attempts"].get(attempt_id)
         if (
             attempt is None
             or attempt["phase"] != "BACKEND_PREPARED"
@@ -18858,6 +20034,18 @@ class ContiguousCampaignRunner:
         spec: AttemptSpec,
         prepared: BackendPreparation,
     ) -> bool:
+        exact = self._exact_cycle_attempt(
+            attempt_id, "BACKEND_PREPARED"
+        )
+        if (
+            exact["spec"] != spec
+            or exact["prepared"] != prepared
+        ):
+            raise ContiguousRunnerError(
+                "backend launch received stale preparation authority"
+            )
+        spec = exact["spec"]
+        prepared = exact["prepared"]
         try:
             launched = self.backend.launch(spec, prepared)
         except BaseException as exc:
@@ -19208,6 +20396,11 @@ class ContiguousCampaignRunner:
         *,
         now: float,
     ) -> None:
+        exact = self._exact_cycle_attempt(
+            attempt_id, {"RUNNING", "DRAINING"}
+        )
+        if exact != attempt:
+            attempt = exact
         try:
             observation = self.backend.poll(
                 spec=attempt["spec"],
@@ -19303,6 +20496,9 @@ class ContiguousCampaignRunner:
     def _collect_exited(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
+        exact = self._exact_cycle_attempt(attempt_id, "EXITED")
+        if exact != attempt:
+            attempt = exact
         try:
             collection = self.backend.collect(
                 spec=attempt["spec"],
@@ -19512,6 +20708,8 @@ class ContiguousCampaignRunner:
                 self._register_native_public_observation_receipts(
                     attempt["spec"], collection
                 )
+            except ExactAuthorityGateError:
+                raise
             except ContiguousRunnerError as exc:
                 self._record_retry(
                     attempt_id,
@@ -19544,6 +20742,11 @@ class ContiguousCampaignRunner:
     def _teardown_collected(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
+        exact = self._exact_cycle_attempt(
+            attempt_id, {"COLLECTED", "COLLECTION_REJECTED"}
+        )
+        if exact != attempt:
+            attempt = exact
         cause: Literal["normal_exit", "containment_fault"] = (
             "containment_fault"
             if attempt["terminal"].status == "containment_fault"
@@ -19667,6 +20870,9 @@ class ContiguousCampaignRunner:
     def _record_torn_down_result(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
+        exact = self._exact_cycle_attempt(attempt_id, "TORN_DOWN")
+        if exact != attempt:
+            attempt = exact
         collected_result = self._sanitize_result(
             attempt["spec"], attempt["outcome"]
         )
@@ -19766,6 +20972,9 @@ class ContiguousCampaignRunner:
     def _commit_pending(
         self, attempt_id: str, attempt: dict[str, Any], *, now: float
     ) -> None:
+        exact = self._exact_cycle_attempt(attempt_id, "PROMOTING")
+        if exact != attempt:
+            attempt = exact
         spec = attempt["spec"]
         candidate = attempt["candidate"]
         assert isinstance(candidate, PromotionCandidate)
@@ -19819,6 +21028,11 @@ class ContiguousCampaignRunner:
                     "durable reconciliation is unavailable"
                 ) from exc
             try:
+                exact = self._exact_cycle_attempt(
+                    attempt_id, "PROMOTING"
+                )
+                spec = exact["spec"]
+                candidate = exact["candidate"]
                 commit = recover(spec=spec, candidate=candidate)
                 if commit is None:
                     self._record_retry(
@@ -19827,6 +21041,8 @@ class ContiguousCampaignRunner:
                     raise ContiguousRunnerError(
                         "promotion outcome remains ambiguous and recoverable"
                     )
+            except ExactAuthorityGateError:
+                raise
             except PromotionRejected as recovery_exc:
                 del recovery_exc
                 reject_integrity("promotion_gate_rejected")
@@ -19850,7 +21066,7 @@ class ContiguousCampaignRunner:
             self._validate_commit(
                 spec,
                 commit,
-                self.state()["lanes"],
+                self._cycle_state()["lanes"],
                 candidate,
             )
         except ContiguousRunnerError as exc:
@@ -20032,24 +21248,33 @@ class ContiguousCampaignRunner:
     ) -> dict[str, Any]:
         """Trusted operator early override; no caller supplies an epoch."""
 
-        lock_path = self.root / ".cycle.lock"
-        descriptor = _open_unaliased(
-            lock_path, os.O_RDWR | os.O_CREAT
-        )
-        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        handle, lock_token = self._acquire_campaign_cycle_lock()
+        self._cycle_lock_held = True
+        self._cycle_execution_owner = self._current_execution_owner()
+        completed = False
         try:
-            return self._authorize_substrate_health_reprobe_locked(
-                self.state(),
+            state = self._start_locked_validation_pass()
+            result = self._authorize_substrate_health_reprobe_locked(
+                state,
                 issued_at=float(self.clock()),
                 authorization_mode=(
                     "trusted_operator_early_override"
                 ),
                 reason_code=reason_code,
             )
+            self._finish_locked_validation_pass()
+            completed = True
+            return result
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
+            self._cycle_validation_context = None
+            if isinstance(self.journal, DurableAttemptJournal):
+                self.journal._cycle_trusted_thread_id = None
+            self._discard_validation_caches(
+                retain_reducer=completed
+            )
+            self._cycle_execution_owner = None
+            self._cycle_lock_held = False
+            self._release_campaign_cycle_lock(handle, lock_token)
 
     def _authorize_meta_substrate_recovery_locked(
         self,
@@ -20201,10 +21426,11 @@ class ContiguousCampaignRunner:
         if not isinstance(meta, dict):
             return dict(state)
         if meta["phase"] == "AUTHORIZED":
-            attempt = state["attempts"].get(incident["attempt_id"])
+            attempt = self._exact_substrate_attempt(
+                incident["attempt_id"]
+            )
             if (
-                attempt is None
-                or attempt["phase"] != "CLOSED"
+                attempt["phase"] != "CLOSED"
                 or attempt["substrate_failure"] is None
             ):
                 raise ContiguousRunnerError(
@@ -20340,7 +21566,7 @@ class ContiguousCampaignRunner:
                 },
                 recorded_at=self.clock(),
             )
-            state = self.state()
+            state = self._cycle_state()
             incident = state["substrate_incident"]
             if incident is None:
                 raise ContiguousRunnerError(
@@ -20468,7 +21694,7 @@ class ContiguousCampaignRunner:
                 },
                 recorded_at=self.clock(),
             )
-            state = self.state()
+            state = self._cycle_state()
         return dict(state)
 
     def apply_meta_substrate_recovery(
@@ -20481,14 +21707,12 @@ class ContiguousCampaignRunner:
     ) -> dict[str, Any]:
         """Apply the sole allowlisted meta recommendation exactly once."""
 
-        lock_path = self.root / ".cycle.lock"
-        descriptor = _open_unaliased(
-            lock_path, os.O_RDWR | os.O_CREAT
-        )
-        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        handle, lock_token = self._acquire_campaign_cycle_lock()
+        self._cycle_lock_held = True
+        self._cycle_execution_owner = self._current_execution_owner()
+        completed = False
         try:
-            state = self.state()
+            state = self._start_locked_validation_pass()
             incident = state["substrate_incident"]
             meta = (
                 None
@@ -20504,7 +21728,7 @@ class ContiguousCampaignRunner:
                     recommendation=recommendation,
                     issued_at=float(self.clock()),
                 )
-                state = self.state()
+                state = self._cycle_state()
             elif any(
                 meta.get(name) != value
                 for name, value in (
@@ -20517,12 +21741,22 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "meta recovery replay changed its recommendation"
                 )
-            return self._advance_meta_substrate_recovery_locked(
+            self._advance_meta_substrate_recovery_locked(
                 state
             )
+            result = self._finish_locked_validation_pass()
+            completed = True
+            return result
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
+            self._cycle_validation_context = None
+            if isinstance(self.journal, DurableAttemptJournal):
+                self.journal._cycle_trusted_thread_id = None
+            self._discard_validation_caches(
+                retain_reducer=completed
+            )
+            self._cycle_execution_owner = None
+            self._cycle_lock_held = False
+            self._release_campaign_cycle_lock(handle, lock_token)
 
     def _execute_pending_substrate_reprobe(
         self, state: dict[str, Any]
@@ -20533,10 +21767,11 @@ class ContiguousCampaignRunner:
         pending = incident["pending_reprobe"]
         if pending is None:
             return
-        attempt = state["attempts"].get(incident["attempt_id"])
+        attempt = self._exact_substrate_attempt(
+            incident["attempt_id"]
+        )
         if (
-            attempt is None
-            or attempt["phase"] != "CLOSED"
+            attempt["phase"] != "CLOSED"
             or attempt["substrate_failure"] is None
         ):
             raise ContiguousRunnerError(
@@ -20726,7 +21961,7 @@ class ContiguousCampaignRunner:
                 operation="substrate_health_reprobe",
                 fault_domain="controller_substrate",
             )
-            state = self.state()
+            state = self._cycle_state()
             incident = state["substrate_incident"]
             if (
                 incident is None
@@ -20754,7 +21989,7 @@ class ContiguousCampaignRunner:
                 authorization_mode="sealed_autonomous_circuit",
                 reason_code="substrate_circuit_deadline_reached",
             )
-            state = self.state()
+            state = self._cycle_state()
         if (
             state["operator_incident"] is None
             and state["substrate_incident"] is not None
@@ -20765,26 +22000,68 @@ class ContiguousCampaignRunner:
 
     def cycle(self, *, now: float | None = None) -> dict[str, Any]:
         """Serialize one recovery/poll/dispatch pass across host processes."""
-        lock_path = self.root / ".cycle.lock"
-        descriptor = _open_unaliased(
-            lock_path, os.O_RDWR | os.O_CREAT
-        )
-        handle = os.fdopen(descriptor, "r+", encoding="utf-8")
-        fcntl.flock(handle.fileno(), fcntl.LOCK_EX)
+        handle, lock_token = self._acquire_campaign_cycle_lock()
+        self._cycle_lock_held = True
+        self._cycle_execution_owner = self._current_execution_owner()
+        completed = False
+
+        def run_one_locked_pass() -> dict[str, Any]:
+            snapshot_token = (
+                Scheduler.begin_snapshot_validation_scope()
+            )
+            try:
+                entry = self._start_locked_validation_pass()
+                try:
+                    report = self._cycle_locked(
+                        now=now, initial_state=entry
+                    )
+                except BaseException:
+                    self._cycle_validation_context = None
+                    raise
+                final = self._finish_locked_validation_pass()
+                if (
+                    report.get("solved_levels")
+                    != final["solved_levels"]
+                    or report.get("total_levels")
+                    != final["total_levels"]
+                    or report.get("complete") is not final["complete"]
+                ):
+                    raise ContiguousRunnerError(
+                        "cycle report disagrees with its full return audit"
+                    )
+                return report
+            finally:
+                Scheduler.end_snapshot_validation_scope(
+                    snapshot_token
+                )
+
         try:
             try:
-                return self._cycle_locked(now=now)
+                result = run_one_locked_pass()
             except JournalStorageExhausted as exc:
+                self._cycle_validation_context = None
+                if isinstance(self.journal, DurableAttemptJournal):
+                    self.journal._cycle_trusted_thread_id = None
+                self._discard_validation_caches(retain_reducer=True)
                 recorded_at = float(
                     self.clock() if now is None else now
                 )
                 self.journal.commit_storage_incident(
                     exc, recorded_at=recorded_at
                 )
-                return self._cycle_locked(now=now)
+                result = run_one_locked_pass()
+            completed = True
+            return result
         finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-            handle.close()
+            self._cycle_validation_context = None
+            if isinstance(self.journal, DurableAttemptJournal):
+                self.journal._cycle_trusted_thread_id = None
+            self._discard_validation_caches(
+                retain_reducer=completed
+            )
+            self._cycle_execution_owner = None
+            self._cycle_lock_held = False
+            self._release_campaign_cycle_lock(handle, lock_token)
 
     @staticmethod
     def _storage_emergency_report(
@@ -20934,6 +22211,9 @@ class ContiguousCampaignRunner:
             return self._storage_emergency_report(
                 state, newly_quiesced=False
             )
+        # Releasing the emergency reserve is an external filesystem effect.
+        # Reauthenticate the complete prefix immediately before it.
+        self._cycle_state_with_full_journal_prefix()
         self.journal.release_quiescence_reserve()
 
         primary_containments: list[dict[str, Any]] = []
@@ -20952,6 +22232,9 @@ class ContiguousCampaignRunner:
             prior_phase = attempt["phase"]
             if prior_phase not in contained_phases:
                 continue
+            attempt = self._exact_cycle_attempt(
+                attempt_id, prior_phase
+            )
             prepared = attempt.get("prepared")
             launched = attempt.get("launched")
             if not isinstance(prepared, BackendPreparation):
@@ -20998,7 +22281,9 @@ class ContiguousCampaignRunner:
                     "storage emergency found auxiliary work without its "
                     "backend"
                 )
-            self._rebind_auxiliary_prerequisites(assignment)
+            assignment = self._exact_cycle_auxiliary(
+                assignment_id, prior_phase
+            )
             try:
                 aborted = self._validate_auxiliary_value(
                     backend.abort(
@@ -21072,6 +22357,9 @@ class ContiguousCampaignRunner:
         ):
             if attempt["phase"] != "PROMOTING":
                 continue
+            attempt = self._exact_cycle_attempt(
+                attempt_id, "PROMOTING"
+            )
             recover = getattr(self.promotion_gate, "recover", None)
             if not callable(recover):
                 raise ContiguousRunnerError(
@@ -21134,7 +22422,7 @@ class ContiguousCampaignRunner:
             payload=payload,
             recorded_at=now,
         )
-        quiesced = self.state()
+        quiesced = self._cycle_state()
         if quiesced["storage_quiescence"] != payload:
             raise ContiguousRunnerError(
                 "storage emergency event did not reduce to exact "
@@ -21145,11 +22433,18 @@ class ContiguousCampaignRunner:
         )
 
     def _cycle_locked(
-        self, *, now: float | None = None
+        self,
+        *,
+        now: float | None = None,
+        initial_state: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         """Advance recovery/polling once, then fill eligible independent lanes."""
         selected_now = float(self.clock() if now is None else now)
-        state = self.state()
+        state = (
+            initial_state
+            if initial_state is not None
+            else self._cycle_state()
+        )
         if state["storage_incident"] is not None:
             return self._emergency_quiesce_storage(
                 state, now=selected_now
@@ -21178,13 +22473,13 @@ class ContiguousCampaignRunner:
             and state["pending_auxiliary_decision"] is not None
         ):
             self._reserve_auxiliary(state)
-            state = self.state()
+            state = self._cycle_state()
         if (
             state["storage_incident"] is None
             and state["pending_scheduler_decision"] is not None
         ):
             self._reserve_attempt(state)
-            state = self.state()
+            state = self._cycle_state()
         if state["substrate_incident"] is not None:
             meta_recovery = state["substrate_incident"].get(
                 "meta_recovery"
@@ -21201,7 +22496,7 @@ class ContiguousCampaignRunner:
                 self._advance_substrate_health_circuit(
                     state, now=selected_now
                 )
-            state = self.state()
+            state = self._cycle_state()
 
         # Poll durable live containers before admitting any unlaunched turn.  A
         # process restart may occur after a soft deadline, and polling first must
@@ -21225,12 +22520,14 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: poll: {exc}"
                     )
 
-        state = self.state()
+        state = self._cycle_state()
         enter_stage("collect_terminal_evidence")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if (
@@ -21250,12 +22547,14 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: collect: {exc}"
                     )
 
-        state = self.state()
+        state = self._cycle_state()
         enter_stage("prove_teardown")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if attempt["phase"] in {
@@ -21274,12 +22573,14 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: teardown: {exc}"
                     )
 
-        state = self.state()
+        state = self._cycle_state()
         enter_stage("classify_and_settle")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if attempt["phase"] == "TORN_DOWN":
@@ -21290,22 +22591,26 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: result: {exc}"
                     )
         try:
             self._admit_pending_native_sidecar_requests(
-                self.state()
+                self._cycle_state()
             )
         except JournalStorageExhausted:
+            raise
+        except ExactAuthorityGateError:
             raise
         except ContiguousRunnerError as exc:
             recoverable_errors.append(
                 f"native sidecar request admission: {exc}"
             )
 
-        state = self.state()
+        state = self._cycle_state()
         enter_stage("commit_exact_promotions")
         for attempt_id, attempt in sorted(state["attempts"].items()):
             if (
@@ -21332,6 +22637,8 @@ class ContiguousCampaignRunner:
                     )
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{attempt_id}: promotion: {exc}"
@@ -21341,7 +22648,7 @@ class ContiguousCampaignRunner:
         # Promotion never waits for a sidecar.  Its journal transition marks
         # old-frontier assignments invalid, after which containment/teardown and
         # authenticated usage settlement run before any capacity is reused.
-        state = self.state()
+        state = self._cycle_state()
         enter_stage("invalidate_or_admit_auxiliary_outputs")
         for assignment_id, assignment in sorted(
             state["auxiliary_assignments"].items()
@@ -21389,15 +22696,19 @@ class ContiguousCampaignRunner:
                     self._admit_auxiliary(assignment)
             except JournalStorageExhausted:
                 raise
+            except ExactAuthorityGateError:
+                raise
             except ContiguousRunnerError as exc:
                 recoverable_errors.append(
                     f"{assignment_id}: auxiliary {phase.lower()}: {exc}"
                 )
         try:
             self._admit_pending_supervisory_sidecar_requests(
-                self.state()
+                self._cycle_state()
             )
         except JournalStorageExhausted:
+            raise
+        except ExactAuthorityGateError:
             raise
         except ContiguousRunnerError as exc:
             recoverable_errors.append(
@@ -21408,7 +22719,7 @@ class ContiguousCampaignRunner:
         # reservation-before-side-effect discipline as proposer attempts.
         enter_stage("recover_reserved_auxiliary_work")
         for phase in ("RESERVED", "INPUT_PREPARED"):
-            current = self.state()
+            current = self._cycle_state()
             if (
                 current["operator_incident"] is not None
                 or current["substrate_incident"] is not None
@@ -21418,7 +22729,7 @@ class ContiguousCampaignRunner:
             for assignment_id, assignment in sorted(
                 current["auxiliary_assignments"].items()
             ):
-                live_state = self.state()
+                live_state = self._cycle_state()
                 if (
                     live_state["operator_incident"] is not None
                     or live_state["substrate_incident"] is not None
@@ -21448,7 +22759,7 @@ class ContiguousCampaignRunner:
                     else:
                         self._launch_auxiliary(assignment)
                         if (
-                            self.state()["auxiliary_assignments"][
+                            self._cycle_state()["auxiliary_assignments"][
                                 assignment_id
                             ]["state"].phase
                             == "RUNNING"
@@ -21456,17 +22767,19 @@ class ContiguousCampaignRunner:
                             started_auxiliary.append(assignment_id)
                 except JournalStorageExhausted:
                     raise
+                except ExactAuthorityGateError:
+                    raise
                 except ContiguousRunnerError as exc:
                     recoverable_errors.append(
                         f"{assignment_id}: auxiliary "
                         f"{phase.lower()}: {exc}"
                     )
         # A just-prepared sidecar can be launched in this pass.
-        current = self.state()
+        current = self._cycle_state()
         for assignment_id, assignment in sorted(
             current["auxiliary_assignments"].items()
         ):
-            live_state = self.state()
+            live_state = self._cycle_state()
             if (
                 live_state["operator_incident"] is not None
                 or live_state["substrate_incident"] is not None
@@ -21489,7 +22802,7 @@ class ContiguousCampaignRunner:
                 else:
                     self._launch_auxiliary(assignment)
                     if (
-                        self.state()["auxiliary_assignments"][
+                        self._cycle_state()["auxiliary_assignments"][
                             assignment_id
                         ]["state"].phase
                         == "RUNNING"
@@ -21497,12 +22810,14 @@ class ContiguousCampaignRunner:
                         started_auxiliary.append(assignment_id)
             except JournalStorageExhausted:
                 raise
+            except ExactAuthorityGateError:
+                raise
             except ContiguousRunnerError as exc:
                 recoverable_errors.append(
                     f"{assignment_id}: auxiliary launch: {exc}"
                 )
 
-        state = self.state()
+        state = self._cycle_state()
         started: list[str] = []
         enter_stage("recover_or_dispatch_distinct_primary_frontiers")
         # DRAINING is lane-local: that game's active identity prevents overlap,
@@ -21521,7 +22836,7 @@ class ContiguousCampaignRunner:
             # already admitted before the cutoff must finish materialization
             # and launch; abandoning it would make recovery non-idempotent.
             if not state["complete"]:
-                current = self.state()
+                current = self._cycle_state()
                 for attempt_id, attempt in sorted(
                     current["attempts"].items()
                 ):
@@ -21543,6 +22858,8 @@ class ContiguousCampaignRunner:
                         )
                     except JournalStorageExhausted:
                         raise
+                    except ExactAuthorityGateError:
+                        raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
                             f"{attempt_id}: materialize: {exc}"
@@ -21552,11 +22869,11 @@ class ContiguousCampaignRunner:
                 # to be idempotent because a crash can occur after the external
                 # transition and before its journal acknowledgement.
                 for phase in ("PREPARED", "BACKEND_PREPARED"):
-                    current = self.state()
+                    current = self._cycle_state()
                     for attempt_id, attempt in sorted(
                         current["attempts"].items()
                     ):
-                        live_state = self.state()
+                        live_state = self._cycle_state()
                         if (
                             live_state["operator_incident"] is not None
                             or live_state["substrate_incident"]
@@ -21595,17 +22912,19 @@ class ContiguousCampaignRunner:
                                     started.append(attempt_id)
                         except JournalStorageExhausted:
                             raise
+                        except ExactAuthorityGateError:
+                            raise
                         except ContiguousRunnerError as exc:
                             recoverable_errors.append(
                                 f"{attempt_id}: {phase.lower()}: {exc}"
                             )
 
-                current = self.state()
+                current = self._cycle_state()
                 # PREPARED just acknowledged above becomes BACKEND_PREPARED.
                 for attempt_id, attempt in sorted(
                     current["attempts"].items()
                 ):
-                    live_state = self.state()
+                    live_state = self._cycle_state()
                     if (
                         live_state["operator_incident"] is not None
                         or live_state["substrate_incident"] is not None
@@ -21633,13 +22952,15 @@ class ContiguousCampaignRunner:
                             started.append(attempt_id)
                     except JournalStorageExhausted:
                         raise
+                    except ExactAuthorityGateError:
+                        raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
                             f"{attempt_id}: launch: {exc}"
                         )
 
                 while True:
-                    current = self.state()
+                    current = self._cycle_state()
                     active_count = sum(
                         lane["active"] is not None
                         for lane in current["lanes"].values()
@@ -21670,7 +22991,7 @@ class ContiguousCampaignRunner:
                     try:
                         spec = self._materialize_reserved(reservation)
                         self._prepare_backend(spec.attempt_id, spec)
-                        prepared_attempt = self.state()["attempts"][
+                        prepared_attempt = self._cycle_state()["attempts"][
                             spec.attempt_id
                         ]
                         if prepared_attempt["phase"] == "CLOSED":
@@ -21692,6 +23013,8 @@ class ContiguousCampaignRunner:
                             started.append(spec.attempt_id)
                     except JournalStorageExhausted:
                         raise
+                    except ExactAuthorityGateError:
+                        raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
                             f"{reservation.game}: dispatch: {exc}"
@@ -21700,7 +23023,7 @@ class ContiguousCampaignRunner:
                 # may otherwise-idle capacity become an independent sidecar.
                 enter_stage("dispatch_eligible_auxiliary_analysis")
                 while True:
-                    current = self.state()
+                    current = self._cycle_state()
                     active_total = sum(
                         lane["active"] is not None
                         for lane in current["lanes"].values()
@@ -21728,11 +23051,11 @@ class ContiguousCampaignRunner:
                     if assignment_id is None:
                         break
                     try:
-                        assignment = self.state()[
+                        assignment = self._cycle_state()[
                             "auxiliary_assignments"
                         ][assignment_id]
                         self._prepare_auxiliary(assignment)
-                        assignment = self.state()[
+                        assignment = self._cycle_state()[
                             "auxiliary_assignments"
                         ][assignment_id]
                         if (
@@ -21741,7 +23064,7 @@ class ContiguousCampaignRunner:
                         ):
                             self._launch_auxiliary(assignment)
                             if (
-                                self.state()[
+                                self._cycle_state()[
                                     "auxiliary_assignments"
                                 ][assignment_id]["state"].phase
                                 == "RUNNING"
@@ -21750,6 +23073,8 @@ class ContiguousCampaignRunner:
                                     assignment_id
                                 )
                     except JournalStorageExhausted:
+                        raise
+                    except ExactAuthorityGateError:
                         raise
                     except ContiguousRunnerError as exc:
                         recoverable_errors.append(
@@ -21764,7 +23089,7 @@ class ContiguousCampaignRunner:
             raise ContiguousRunnerError(
                 "supervision cycle did not execute the complete policy"
             )
-        final = self.state()
+        final = self._cycle_state()
         return {
             "supervision_stage_trace": stage_trace,
             "started_attempts": started,
@@ -21870,6 +23195,7 @@ def _terminal_retention_state(
 
     root = Path(campaign_root)
     reducer = object.__new__(ContiguousCampaignRunner)
+    reducer._initialize_validation_state()
     reducer.root = root
     reducer.journal = ReadOnlyAttemptJournal(
         root / "attempt_journal"
@@ -23570,8 +24896,8 @@ __all__ = [
     "AuxiliaryPreparedInput",
     "AuxiliaryTeardown",
     "ContiguousCampaignRunner",
-    "CONTIGUOUS_AUXILIARY_LAUNCH_READY",
     "ContiguousRunnerError",
+    "CONTIGUOUS_AUXILIARY_LAUNCH_READY",
     "DurableAttemptJournal",
     "InputBundleBuilder",
     "InputBundleReceipt",

@@ -1549,6 +1549,7 @@ def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
         }
         result.append({
             "thread_id": row.get("thread_id"),
+            "transcript": row.get("transcript"),
             "started_at": row.get("started_at"),
             "run_label": row.get("run_label"),
             "failure_class": failure_class,

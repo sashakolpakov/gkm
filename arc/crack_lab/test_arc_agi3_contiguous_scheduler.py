@@ -2042,6 +2042,151 @@ def test_selection_evidence_measures_conditional_novelty_and_reuse(tmp_path):
         S.verify_selection_evidence(evidence)
 
 
+def test_selection_evidence_scope_revalidates_source_pointer_drift(tmp_path):
+    parent = tmp_path / "parent"
+    parent_sha = _write_source(parent)
+    candidate = tmp_path / "candidate"
+    candidate_sha = _write_source(candidate)
+
+    token = S.begin_selection_evidence_validation_scope()
+    try:
+        S.selection_evidence(
+            parent_source_path=str(parent),
+            parent_source_tree_sha256=parent_sha,
+            candidate_source_path=str(candidate),
+            candidate_source_tree_sha256=candidate_sha,
+        )
+        (candidate / "legs.py").write_text(
+            "def retained(env):\n    return 200\n"
+        )
+        with pytest.raises(S.SchedulerError, match="hash changed"):
+            S.selection_evidence(
+                parent_source_path=str(parent),
+                parent_source_tree_sha256=parent_sha,
+                candidate_source_path=str(candidate),
+                candidate_source_tree_sha256=candidate_sha,
+            )
+    finally:
+        S.end_selection_evidence_validation_scope(token)
+
+
+def test_selection_evidence_cache_isolated_from_frozen_object_poisoning(
+    tmp_path,
+):
+    parent = tmp_path / "parent"
+    parent_sha = _write_source(parent)
+    candidate = tmp_path / "candidate"
+    candidate_sha = _write_source(candidate)
+    arguments = {
+        "parent_source_path": str(parent),
+        "parent_source_tree_sha256": parent_sha,
+        "candidate_source_path": str(candidate),
+        "candidate_source_tree_sha256": candidate_sha,
+    }
+
+    token = S.begin_selection_evidence_validation_scope()
+    try:
+        first = S.selection_evidence(**arguments)
+        expected = dataclasses.replace(first)
+        object.__setattr__(first, "conditional_novelty", 999_999)
+        object.__setattr__(first, "evidence_sha256", "0" * 64)
+
+        scoped = S.selection_evidence(**arguments)
+        assert scoped is not first
+        assert scoped == expected
+        object.__setattr__(scoped, "retained_normalized_units", -1)
+    finally:
+        S.end_selection_evidence_validation_scope(token)
+
+    persistent = S.selection_evidence(**arguments)
+    assert persistent is not scoped
+    assert persistent == expected
+    S.verify_selection_evidence(persistent)
+
+
+def test_snapshot_validation_scope_isolated_from_frozen_object_poisoning(
+    tmp_path,
+):
+    snapshot = _snapshot(tmp_path)
+    original_sequence = snapshot.journal_head_sequence
+
+    token = S.begin_snapshot_validation_scope()
+    try:
+        first = S.validate_snapshot(snapshot)
+        assert first is not snapshot
+        object.__setattr__(
+            first, "journal_head_sequence", original_sequence + 100
+        )
+
+        second = S.validate_snapshot(snapshot)
+        assert second is not first
+        assert second is not snapshot
+        assert second.journal_head_sequence == original_sequence
+
+        object.__setattr__(
+            snapshot, "journal_head_sequence", original_sequence + 1
+        )
+        with pytest.raises(
+            S.SchedulerError,
+            match="validated snapshot changed while its scope remained live",
+        ):
+            S.validate_snapshot(snapshot)
+    finally:
+        S.end_snapshot_validation_scope(token)
+
+
+def test_snapshot_validation_scope_reopens_frontier_sources_on_cache_hit(
+    tmp_path,
+):
+    snapshot = _snapshot(tmp_path)
+    source_root = Path(snapshot.frontiers[0].parent_source_path)
+
+    token = S.begin_snapshot_validation_scope()
+    try:
+        S.validate_snapshot(snapshot)
+        (source_root / "legs.py").write_text(
+            "def retained(env):\n    return 200\n"
+        )
+        with pytest.raises(S.SchedulerError, match="hash changed"):
+            S.validate_snapshot(snapshot)
+    finally:
+        S.end_snapshot_validation_scope(token)
+
+
+def test_inventory_scope_rejects_unvalidated_same_total_substitution():
+    inventory = _inventory()
+    decreasing = next(
+        game for game, target in inventory.items() if target > 1
+    )
+    increasing = next(
+        game for game in inventory if game != decreasing
+    )
+    forged = dict(inventory)
+    forged[decreasing] -= 1
+    forged[increasing] += 1
+    assert len(forged) == S.EXPECTED_GAMES
+    assert sum(forged.values()) == S.EXPECTED_LEVELS
+
+    with pytest.raises(
+        S.SchedulerError,
+        match="no prior authoritative validation",
+    ):
+        S.begin_inventory_validation_scope(forged)
+
+    # A genuinely validated snapshot can be reused in a bounded scope.
+    assert S.validate_inventory(inventory) == inventory
+    token = S.begin_inventory_validation_scope(inventory)
+    try:
+        assert S.validate_inventory(inventory) == inventory
+        with pytest.raises(
+            S.SchedulerError,
+            match="does not exactly match",
+        ):
+            S.validate_inventory(forged)
+    finally:
+        S.end_inventory_validation_scope(token)
+
+
 def test_dead_unreachable_call_does_not_witness_reuse(tmp_path):
     parent = tmp_path / "parent"
     parent_sha = _write_source(parent)

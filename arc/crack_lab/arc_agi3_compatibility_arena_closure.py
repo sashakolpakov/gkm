@@ -420,6 +420,20 @@ def analyze_client_source(raw: bytes) -> dict[str, Any]:
         raise CompatibilityClosureError(
             "Arena RPC client source is empty or oversized"
         )
+    # The exact canonical client was parsed before its analysis was published
+    # below.  Reuse only that immutable byte-for-byte result.  Besides avoiding
+    # repeated AST work during a runner audit, this keeps every caller on the
+    # same import-time proof while returning an isolated object that cannot
+    # poison later validations.  Noncanonical bytes always take the full parse
+    # path.
+    loaded_raw = globals().get("_LOADED_CLIENT_RAW")
+    loaded_analysis = globals().get("_LOADED_CLIENT_ANALYSIS")
+    if (
+        isinstance(loaded_raw, bytes)
+        and isinstance(loaded_analysis, dict)
+        and raw == loaded_raw
+    ):
+        return copy.deepcopy(loaded_analysis)
     try:
         source = raw.decode("utf-8")
         tree = ast.parse(source, filename=CLIENT_NAME)

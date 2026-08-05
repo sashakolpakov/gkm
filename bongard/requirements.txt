@@ -1,0 +1,12 @@
+# Core numerical and rendering stack
+numpy>=2.0
+scipy>=1.13
+scikit-image>=0.24
+Pillow>=10
+pandas>=2.0
+
+# Live typed-cone proposer
+anthropic>=0.70
+
+# Verification
+pytest>=8

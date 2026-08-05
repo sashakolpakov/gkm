@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import json
 import sys
+from pathlib import Path
 from types import SimpleNamespace
 import fcntl
 
@@ -327,7 +329,9 @@ def test_live_policy_restore_rejects_changed_wip_capsule(monkeypatch):
 
 def test_active_workspace_lock_detects_other_tag(tmp_path, monkeypatch):
     monkeypatch.setattr(R, "HERE", tmp_path)
-    workspace = tmp_path / "runs" / "scratch" / "gkm_legs_ws_sk48_other"
+    scratch = tmp_path / "runs" / "scratch"
+    monkeypatch.setattr(R.Legs, "SCRATCH", str(scratch))
+    workspace = scratch / "gkm_legs_ws_sk48_other"
     workspace.mkdir(parents=True)
     path = workspace / ".orchestrate.lock"
     lock = path.open("a+")
@@ -480,3 +484,548 @@ def test_run_item_turns_expected_headroom_failure_into_reserve_stop(monkeypatch)
     result = R._run_item(plan, _item(), allowance=allowance)
     assert result["result"] == "reserve_stop"
     assert "requires 6%" in result["reason"]
+
+
+def _taint_dispatch_fixture(
+    tmp_path, monkeypatch, *, duplicate_exec=False, child_mutation=None
+):
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    scratch = tmp_path / "scratch"
+    protected_root = scratch / ".proposer_transcripts"
+    protected_root.mkdir(parents=True)
+    lock_root = scratch / ".workspace_locks"
+    lock_root.mkdir()
+    tag = "arc_agi3_n0_fresh_frontier"
+    workspace_name = f"gkm_legs_ws_ar25_{tag}_deadbeef"
+    workspace = scratch / workspace_name
+    workspace.mkdir()
+    protected = protected_root / workspace_name
+    protected.mkdir()
+    transcript_name = "codex_turn_20260805T000000000000Z_ar25_L1_propose.jsonl"
+    diagnostics_name = (
+        "codex_turn_20260805T000000000000Z_ar25_L1_propose.stderr.log"
+    )
+    transcript = (
+        json.dumps({"type": "thread.started", "thread_id": "tainted-thread"})
+        + "\n"
+        + json.dumps({
+            "type": "item.completed",
+            "item": {
+                "id": "process-query",
+                "type": "command_execution",
+                "command": "/bin/zsh -lc 'ps -axo pid,command'",
+                "aggregated_output": "operation not permitted",
+            },
+        })
+        + "\n"
+        + json.dumps({"type": "turn.completed", "usage": {}})
+        + "\n"
+    ).encode()
+    diagnostics = b""
+    (protected / transcript_name).write_bytes(transcript)
+    (protected / diagnostics_name).write_bytes(diagnostics)
+
+    sibling = scratch / f"gkm_legs_ws_ar25_{tag}_sibling"
+    sibling.mkdir()
+    sibling_protected = protected_root / sibling.name
+    sibling_protected.mkdir()
+    (sibling / "keep.txt").write_text("keep")
+    (sibling_protected / "keep.txt").write_text("keep")
+    exact_lock = R.Legs._workspace_lock_path(str(workspace))
+    exact_lock.write_text("")
+    sibling_lock = R.Legs._workspace_lock_path(str(sibling))
+    sibling_lock.write_text("")
+
+    ledger = tmp_path / "usage.jsonl"
+    item = copy.deepcopy(_item())
+    item["argv"].extend([
+        f"--tag={tag}",
+        f"--codex-ledger={ledger}",
+    ])
+    record = {
+        "event": "codex_exec",
+        "started_at": "2026-08-05T00:00:00+00:00",
+        "thread_id": "tainted-thread",
+        "transcript": transcript_name,
+        "diagnostics": diagnostics_name,
+        "workspace": workspace_name,
+        "game": "ar25",
+        "target_level": 1,
+        "run_label": "ar25:L1:propose",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": "medium",
+        "minutes_limit": 15,
+        "allocation_policy": "drain",
+        "reached": 0,
+        "parent_action_count": 0,
+        **{
+            field: item[field]
+            for field in R.Status.FRONTIER_BINDING_FIELDS
+        },
+        "returncode": 0,
+        "failure_class": None,
+        "protected_transcript_status": "sealed",
+        "protected_transcript_sha256": hashlib.sha256(transcript).hexdigest(),
+        "protected_diagnostics_status": "sealed",
+        "protected_diagnostics_sha256": hashlib.sha256(diagnostics).hexdigest(),
+        "observed_tokens": 123,
+    }
+
+    monkeypatch.setattr(R.Legs, "SCRATCH", str(scratch))
+    monkeypatch.setattr(
+        R.Legs, "_compatibility_arena_control_reason", lambda: None
+    )
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda game: 0)
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {"ar25": 8})
+    monkeypatch.setattr(R, "validate_live_policy_item", lambda selected: None)
+    expected_binding = R.Status.validate_frontier_binding({
+        field: item[field]
+        for field in (
+            *R.Status.FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    })
+    monkeypatch.setattr(
+        R.Status,
+        "exact_frontier_binding",
+        lambda *args, **kwargs: expected_binding,
+    )
+    monkeypatch.setattr(R, "_taint_gate", lambda: None)
+
+    def failed_child(*args, **kwargs):
+        if child_mutation is not None:
+            child_mutation(tmp_path)
+        R.Guard.append_ledger(record, ledger)
+        if duplicate_exec:
+            R.Guard.append_ledger(record, ledger)
+        return SimpleNamespace(returncode=1)
+
+    monkeypatch.setattr(R.subprocess, "run", failed_child)
+    plan = {
+        "not_before_epoch": 0,
+        "reserve_percent": 25,
+        "cost_control_enabled": True,
+    }
+    allowance = SimpleNamespace(
+        remaining_percent=100, window_name="weekly"
+    )
+    return {
+        "item": item,
+        "plan": plan,
+        "allowance": allowance,
+        "ledger": ledger,
+        "workspace": workspace,
+        "protected": protected,
+        "sibling": sibling,
+        "sibling_protected": sibling_protected,
+        "exact_lock": exact_lock,
+        "sibling_lock": sibling_lock,
+        "record": record,
+    }
+
+
+def test_nonzero_confirmed_taint_is_noncounting_and_exactly_cleaned(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    result = R._run_item(
+        fixture["plan"],
+        fixture["item"],
+        allowance=fixture["allowance"],
+    )
+
+    assert result["result"] == "tainted_noncounting"
+    assert result["retry_complexity_n"] == 0
+    assert "host process introspection" in result["reason"]
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert not fixture["exact_lock"].exists()
+    assert fixture["sibling_lock"].is_file()
+    assert (fixture["sibling"] / "keep.txt").read_text() == "keep"
+    assert (fixture["sibling_protected"] / "keep.txt").read_text() == "keep"
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_taint_cleanup_completed",
+    ]
+    correction = rows[1]
+    assert correction["failure_class"] == "taint"
+    assert correction["failure_detail_class"] == "host_process_introspection"
+    assert correction["taint_verdict"] == "tainted"
+    assert correction["solved_target"] is None
+    assert correction["retry_increment"] == 0
+    assert rows[0]["observed_tokens"] == 123
+
+
+def test_nonzero_taint_recovery_fails_closed_on_ambiguous_exec_records(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(
+        tmp_path, monkeypatch, duplicate_exec=True
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="exact-dispatch"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert all(
+        row["event"] == "codex_exec"
+        for row in R.Guard.read_ledger(fixture["ledger"])
+    )
+
+
+def test_nonzero_taint_recovery_fails_closed_on_hash_mismatch(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    fixture["record"]["protected_transcript_sha256"] = "f" * 64
+
+    with pytest.raises(R.CampaignPlanError, match="hash does not match"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_nonzero_child_without_independent_taint_confirmation_is_not_cleaned(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R.Legs, "_workspace_or_protected_taint_reason", lambda workspace: None
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="no independently confirmed"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_nonzero_taint_recovery_rejects_unsafe_workspace_record(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    fixture["record"]["workspace"] = "../tainted-workspace"
+
+    with pytest.raises(R.CampaignPlanError, match="unsafe workspace"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_nonzero_taint_recovery_refuses_active_exact_workspace(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(R, "_workspace_lock_is_active", lambda workspace: True)
+
+    with pytest.raises(R.CampaignPlanError, match="remains active"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_nonzero_taint_recovery_refuses_changed_canonical_frontier(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    changed = {
+        **{
+            field: fixture["item"][field]
+            for field in (
+                *R.Status.FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        },
+        "parent_source_tree_sha256": "e" * 64,
+    }
+    monkeypatch.setattr(
+        R.Status, "exact_frontier_binding", lambda *args, **kwargs: changed
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="canonical exact frontier"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+@pytest.mark.parametrize("category", ["successful_candidate_wip", "discarded_wip"])
+def test_taint_gate_rejects_wip_hits_even_when_canonical_verdict_passes(
+    tmp_path, monkeypatch, category
+):
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    report = {
+        "automated_verdict": "PASS",
+        "successful_candidate_wip": {"hits": []},
+        "discarded_wip": {"hits": []},
+    }
+    report[category]["hits"] = [{"attempt": "forensic"}]
+    monkeypatch.setattr(
+        R.subprocess,
+        "run",
+        lambda *args, **kwargs: SimpleNamespace(
+            returncode=0, stdout=json.dumps(report)
+        ),
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="forensic WIP taint"):
+        R._taint_gate()
+
+
+def _historical_single_transcript_fixture(tmp_path, monkeypatch, *, tainted=True):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    diagnostics = fixture["record"].pop("diagnostics")
+    fixture["record"].pop("protected_diagnostics_status")
+    fixture["record"].pop("protected_diagnostics_sha256")
+    (fixture["protected"] / diagnostics).unlink()
+    fixture["exact_lock"].unlink()
+    in_workspace_lock = fixture["workspace"] / ".orchestrate.lock"
+    in_workspace_lock.write_text("")
+    (fixture["workspace"] / "gkm_try.py").write_text(
+        "import sys\nsys.path.insert(0, '/receipt-bound/historical/arena')\n"
+    )
+    fixture["item"]["historical_runner"] = {
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    if not tainted:
+        clean = (
+            json.dumps({
+                "type": "thread.started", "thread_id": "tainted-thread",
+            })
+            + "\n"
+            + json.dumps({"type": "turn.completed", "usage": {}})
+            + "\n"
+        ).encode()
+        transcript = fixture["protected"] / fixture["record"]["transcript"]
+        transcript.write_bytes(clean)
+        fixture["record"]["protected_transcript_sha256"] = hashlib.sha256(
+            clean
+        ).hexdigest()
+    fixture["in_workspace_lock"] = in_workspace_lock
+    return fixture
+
+
+def test_historical_single_transcript_taint_is_cleaned_without_hash_lock(
+    tmp_path, monkeypatch
+):
+    fixture = _historical_single_transcript_fixture(
+        tmp_path, monkeypatch, tainted=True
+    )
+    before = R.Guard.read_ledger(fixture["ledger"])
+    R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+
+    result = R._recover_confirmed_taint(
+        fixture["item"],
+        ledger=fixture["ledger"],
+        ledger_before=before,
+        reached_before=0,
+        wip_snapshot_before=R._target_wip_snapshot(fixture["item"]),
+        child_returncode=1,
+    )
+
+    assert result["result"] == "tainted_noncounting"
+    assert result["retry_complexity_n"] == 0
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert fixture["sibling"].is_dir()
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_taint_cleanup_completed",
+    ]
+    assert "diagnostics" not in rows[1]
+    assert "diagnostics" not in rows[2]
+
+
+def test_clean_historical_nonzero_is_not_misclassified_by_old_scaffold(
+    tmp_path, monkeypatch
+):
+    fixture = _historical_single_transcript_fixture(
+        tmp_path, monkeypatch, tainted=False
+    )
+    before = R.Guard.read_ledger(fixture["ledger"])
+    R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+
+    with pytest.raises(
+        R.CampaignPlanError, match="no independently confirmed"
+    ):
+        R._recover_confirmed_taint(
+            fixture["item"],
+            ledger=fixture["ledger"],
+            ledger_before=before,
+            reached_before=0,
+            wip_snapshot_before=R._target_wip_snapshot(fixture["item"]),
+            child_returncode=1,
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert R.Guard.read_ledger(fixture["ledger"]) == [fixture["record"]]
+
+
+def test_plan_runner_receipt_projects_initial_and_adaptive_commands(
+    tmp_path, monkeypatch
+):
+    worktree = tmp_path / "submitted"
+    worktree.mkdir()
+    scratch = tmp_path / "scratch"
+    scratch.mkdir()
+    artifacts = tmp_path / "agent_solutions"
+    artifacts.mkdir()
+    ledger = tmp_path / "usage.jsonl"
+    source_sha = "b" * 64
+    head = "a" * 40
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    monkeypatch.setattr(R.Legs, "SCRATCH", str(scratch))
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", ledger)
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha: {
+            "head_commit": head,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    receipt = {
+        "schema": R.RUNNER_RECEIPT_SCHEMA,
+        "worktree": str(worktree),
+        "cwd": str(worktree),
+        "interpreter": str(Path(sys.executable).absolute()),
+        "head_commit": head,
+        "source_sha256": source_sha,
+        "artifacts_root": str(artifacts),
+        "scratch_root": str(scratch),
+        "ledger": str(ledger),
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    }
+    plan = {"runner_receipt": receipt}
+
+    initial = R._project_runner_receipt(plan, _item())
+    adaptive = R._project_runner_receipt(plan, copy.deepcopy(_item()))
+
+    for projected in (initial, adaptive):
+        assert projected["historical_runner"] == receipt
+        assert projected["argv"][:3] == [
+            receipt["interpreter"],
+            "-u",
+            str(worktree / "arc" / "crack_lab" / "gkm_legs.py"),
+        ]
+        assert f"--artifacts-root={artifacts}" in projected["argv"]
+        assert f"--codex-ledger={ledger}" in projected["argv"]
+
+
+def test_pre_dispatch_taint_gate_stops_before_child(tmp_path, monkeypatch):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_called = False
+
+    def forbidden_child(*_args, **_kwargs):
+        nonlocal child_called
+        child_called = True
+        raise AssertionError("child launched after failed pre-dispatch gate")
+
+    monkeypatch.setattr(R.subprocess, "run", forbidden_child)
+    monkeypatch.setattr(
+        R,
+        "_taint_gate",
+        lambda: (_ for _ in ()).throw(
+            R.CampaignPlanError("pre-dispatch forensic WIP taint")
+        ),
+    )
+
+    with pytest.raises(R.CampaignPlanError, match="pre-dispatch"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert child_called is False
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+
+
+def test_nested_wip_mutation_blocks_taint_cleanup(tmp_path, monkeypatch):
+    nested = (
+        tmp_path / "agent_solutions" / "ar25_legs" / "wip_context"
+        / "level_01" / "old_attempt" / "files" / "probe.py"
+    )
+
+    def mutate(_root):
+        nested.write_text("changed\n")
+
+    fixture = _taint_dispatch_fixture(
+        tmp_path, monkeypatch, child_mutation=mutate
+    )
+    nested.parent.mkdir(parents=True)
+    nested.write_text("original\n")
+
+    with pytest.raises(R.CampaignPlanError, match="WIP inventory"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        "codex_exec"
+    ]
+
+
+def test_incomplete_prior_taint_cleanup_blocks_new_dispatch(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    R.Guard.append_ledger({
+        "event": "codex_exec_classification_correction",
+        "classification_authority": "scheduler_exact_generation_taint_scan_v1",
+        "thread_id": "old-thread",
+        "transcript": "codex_turn_old.jsonl",
+        "workspace": "gkm_legs_ws_ar25_old_deadbeef",
+        "failure_class": "taint",
+    }, fixture["ledger"])
+
+    with pytest.raises(R.CampaignPlanError, match="lacks cleanup completion"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert fixture["workspace"].is_dir()
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1

@@ -148,6 +148,51 @@ def test_registry_represents_every_required_invariant_exactly_once():
         C.validate_registry(missing)
 
 
+def test_runner_hardening_guarantees_have_exact_launch_owners():
+    expected = {
+        "runner_exact_authority_failure_stops_later_effects": (
+            "test_exact_authority_failure_stops_all_later_lanes_and_effects",
+            "S11",
+        ),
+        "runner_campaign_lock_serializes_threads_and_processes": (
+            "test_foreign_thread_and_process_block_then_serialize_campaign_lock",
+            "S05",
+        ),
+        "runner_bound_receipt_read_is_descriptor_stable": (
+            "test_bound_receipt_hash_and_parse_share_one_stable_descriptor",
+            "S11",
+        ),
+        "runner_auxiliary_effects_reopen_full_journal_prefix": (
+            "test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate",
+            "S06",
+        ),
+        "runner_promotion_effect_reauthenticates_full_journal_prefix": (
+            "test_promotion_effect_gate_reauthenticates_complete_journal_prefix",
+            "S10",
+        ),
+    }
+    invariants = {
+        item.invariant_id: item for item in C.validate_registry()
+    }
+    requirements = {
+        item["invariant_id"]: item
+        for item in C.launch_requirements_snapshot()["body"][
+            "requirements"
+        ]
+    }
+    for invariant_id, (test_name, scenario_id) in expected.items():
+        invariant = invariants[invariant_id]
+        requirement = requirements[invariant_id]
+        assert invariant.component == "runner"
+        assert invariant.nodeid.endswith(f"::{test_name}")
+        assert requirement == {
+            "invariant_id": invariant_id,
+            "component": "runner",
+            "owner_nodeid": invariant.nodeid,
+            "scenario_id": scenario_id,
+        }
+
+
 def test_loaded_control_modules_classify_pseudo_origins_by_control_name(
     monkeypatch,
 ):

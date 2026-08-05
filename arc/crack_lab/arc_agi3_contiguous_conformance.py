@@ -116,8 +116,8 @@ INVARIANTS = (
         "scenario_driver_never_synthesizes_pass",
         "conformance",
         "arc/crack_lab/test_arc_agi3_contiguous_scenario_driver.py::"
-        "test_s01_s12_driver_emits_only_typed_blocked_receipts",
-        "The production S01-S12 run/verify driver emits typed BLOCKED receipts for unavailable observers and cannot derive PASS from unit metadata.",
+        "test_missing_production_observers_emit_typed_blocked_receipts",
+        "The production S01-S12 run/verify driver leaves unavailable observers typed BLOCKED and cannot derive PASS from caller-supplied status metadata.",
     ),
     Invariant(
         "formal_operator_rejects_cli_before_mutation",
@@ -447,6 +447,41 @@ INVARIANTS = (
         "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
         "test_full_scale_journal_authentication_reads_only_appended_suffix_bytes",
         "At the configured full journal-byte scale, an authenticated cached prefix is metadata-revalidated while event-byte parsing remains bounded to the new suffix.",
+    ),
+    Invariant(
+        "runner_exact_authority_failure_stops_later_effects",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_exact_authority_failure_stops_all_later_lanes_and_effects",
+        "An exact authority-gate failure aborts the complete cycle before any later lane poll, promotion, or filesystem effect.",
+    ),
+    Invariant(
+        "runner_campaign_lock_serializes_threads_and_processes",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_foreign_thread_and_process_block_then_serialize_campaign_lock",
+        "Same-thread recursive acquisition is rejected before flock, while foreign native threads and forked processes block and serialize on one campaign lock.",
+    ),
+    Invariant(
+        "runner_bound_receipt_read_is_descriptor_stable",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_bound_receipt_hash_and_parse_share_one_stable_descriptor",
+        "Bound receipt hashing and parsing use one stable descriptor and reject an in-read directory-entry replacement.",
+    ),
+    Invariant(
+        "runner_auxiliary_effects_reopen_full_journal_prefix",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_auxiliary_prepare_launch_poll_admit_and_abort_use_full_prefix_gate",
+        "Auxiliary prepare, launch, poll, admission, and abort each reopen the complete authenticated journal prefix before effect.",
+    ),
+    Invariant(
+        "runner_promotion_effect_reauthenticates_full_journal_prefix",
+        "runner",
+        "arc/crack_lab/test_arc_agi3_contiguous_runner.py::"
+        "test_promotion_effect_gate_reauthenticates_complete_journal_prefix",
+        "Promotion reopens the complete journal prefix immediately before the gate call, so prior-prefix mutation prevents gate invocation.",
     ),
     Invariant(
         "runner_rejects_wip_provider_path_substitution",

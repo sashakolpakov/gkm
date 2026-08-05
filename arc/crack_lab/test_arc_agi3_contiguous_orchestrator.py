@@ -1565,11 +1565,15 @@ def test_formal_auxiliary_backend_executes_only_policy_selected_quarantine_path(
         restarted_tamper_backend
     )
     calls_before_tamper = len(old_driver.calls)
-    tamper_report = restart_tamper_runner.cycle()
-    assert any(
-        "auxiliary backend launch digest changed" in error
-        for error in tamper_report["recoverable_errors"]
-    )
+    # Exact authority drift is campaign-wide fatal for the current cycle.  It
+    # must not be downgraded to a lane-local recoverable diagnostic because a
+    # later lane could otherwise act after the host has observed corrupted
+    # authenticated state.
+    with pytest.raises(
+        Runner.ExactAuthorityGateError,
+        match="auxiliary backend launch digest changed",
+    ):
+        restart_tamper_runner.cycle()
     assert len(old_driver.calls) == calls_before_tamper
 
     # A successful response is canonical and has a durable raw-byte binding.
@@ -3445,8 +3449,11 @@ def test_positive_per_file_growth_does_not_cross_cancel():
     assert marginal == 10
     assert before_map["legs.py"] == 100
     assert after_map["legs.py"] == 10
+    # Preserve valid pinned-runtime Python while changing every byte at the
+    # same per-file length; source-schema validation is part of this helper's
+    # contract.
     rewritten = {
-        name: bytes((value + 1) % 256 for value in raw)
+        name: b"q" * len(raw)
         for name, raw in before.items()
     }
     assert O._marginal_description_growth(

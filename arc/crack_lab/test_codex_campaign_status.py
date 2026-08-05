@@ -220,6 +220,60 @@ def test_append_only_failure_classification_correction_updates_old_turn():
     assert turn["retry_increment"] == 0
 
 
+def test_taint_correction_remains_noncounting_after_generation_cleanup(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    frontier = _frontier(
+        "lf52", 8, incumbent_kind="promoted", priority_score=1.0
+    )
+    records = [
+        {
+            **{
+                field: frontier[field]
+                for field in (
+                    *S.FRONTIER_BINDING_FIELDS,
+                    "reached",
+                    "parent_action_count",
+                )
+            },
+            "event": "codex_exec",
+            "thread_id": "tainted",
+            "workspace": "deleted-workspace",
+            "transcript": "deleted-transcript.jsonl",
+            "game": "lf52",
+            "target_level": 9,
+            "reasoning_effort": "max",
+            "failure_class": None,
+            "observed_tokens": 12345,
+        },
+        {
+            "event": "codex_exec_classification_correction",
+            "thread_id": "tainted",
+            "transcript": "deleted-transcript.jsonl",
+            "game": "lf52",
+            "target_level": 9,
+            "failure_class": "taint",
+            "failure_detail_class": "host_process_introspection",
+            "solved_target": None,
+            "taint_verdict": "tainted",
+            "retry_increment": 0,
+        },
+    ]
+
+    turn = S.joined_turns(records)[0]
+    assert turn["transcript"] == "deleted-transcript.jsonl"
+    assert turn["failure_class"] == "taint"
+    assert turn["taint_verdict"] == "tainted"
+    assert turn["clean_no_progress"] is False
+    assert turn["retry_increment"] == 0
+    ranked = S.ranked_frontiers([frontier], [turn])[0]
+    assert ranked["retry_complexity_n"] == 0
+    assert ranked["failed_attempts_at_frontier"] == 0
+    assert ranked["non_solver_turns_at_frontier"] == 1
+    assert S.Guard.local_window_totals([records[0]])["observed_tokens"] == 12345
+
+
 def test_hard_timeout_correction_nulls_false_no_progress(tmp_path, monkeypatch):
     monkeypatch.setattr(S, "HERE", tmp_path)
     ws = tmp_path / "runs" / "scratch" / "timeout-ws"

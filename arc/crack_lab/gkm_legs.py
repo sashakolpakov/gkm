@@ -394,29 +394,6 @@ EXTERNAL_NETWORK_RE = re.compile(
     r"\[?::1\]?(?::\d+)?(?:/|\b))",
     re.IGNORECASE,
 )
-HOST_PROCESS_INTROSPECTION_RE = re.compile(
-    r"(?:^|[\n;&|'\"|])\s*(?:sudo\s+)?"
-    r"(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)"
-    r"(?:\s|$)",
-    re.IGNORECASE,
-)
-OPERATIONAL_PROCESS_MONITORING_RE = re.compile(
-    r"(?:ps|pgrep)\b[^\n]*\|\s*rg\s+['\"][^'\"]*"
-    r"[A-Za-z0-9_.-]+\.py(?:\s|['\"])"
-    r"|\bpgrep\s+-[A-Za-z]*f[A-Za-z]*\s+"
-    r"['\"][A-Za-z0-9_.-]+\.py"
-    r"(?:\s+[A-Za-z0-9_.-]+)*['\"]",
-    re.IGNORECASE,
-)
-HOST_PROCESS_COMMAND_WORD_RE = re.compile(
-    r"\b(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)\b",
-    re.IGNORECASE,
-)
-SHELL_HEREDOC_OPEN_RE = re.compile(
-    r"<<(?P<strip_tabs>-)?\s*"
-    r"(?:(?P<quote>['\"])(?P<quoted>[A-Za-z_][A-Za-z0-9_]*)"
-    r"(?P=quote)|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))"
-)
 """Strings that make a proposer workspace inadmissible.
 
 The arena may execute the hidden game implementation internally, but the
@@ -565,54 +542,6 @@ def _codex_protocol_self_report(text: str) -> bool:
     return False
 
 
-def _shell_command_surface_without_heredoc_bodies(text: str) -> Optional[str]:
-    """Return shell syntax while excluding literal heredoc payloads.
-
-    Codex command records retain a complete ``zsh -lc`` string.  A Python
-    heredoc can therefore contain an ordinary variable named ``ps`` at the
-    start of an indented line.  Treating the heredoc payload as shell syntax
-    falsely classifies that identifier as the host ``ps`` command.  Preserve
-    the command header, terminator, and all syntax after the terminator, but
-    remove payload lines before applying the shell-process policy.
-
-    ``None`` is fail-closed: the command opened a heredoc whose delimiter was
-    not present in the retained command string.
-    """
-
-    lines = text.splitlines(keepends=True)
-    if not lines:
-        return text
-    kept: list[str] = []
-    pending: list[tuple[str, bool]] = []
-    active: Optional[tuple[str, bool]] = None
-
-    for line in lines:
-        if active is not None:
-            delimiter, strip_tabs = active
-            candidate = line.rstrip("\r\n")
-            if strip_tabs:
-                candidate = candidate.lstrip("\t")
-            # The command recorder may retain the closing quote of the outer
-            # ``zsh -lc \"...\"`` argument on the delimiter line.
-            if re.fullmatch(re.escape(delimiter) + r"(?:['\"])?\s*", candidate):
-                kept.append(line)
-                active = pending.pop(0) if pending else None
-            else:
-                kept.append("\n" if line.endswith(("\n", "\r")) else "")
-            continue
-
-        kept.append(line)
-        for match in SHELL_HEREDOC_OPEN_RE.finditer(line):
-            delimiter = match.group("quoted") or match.group("bare")
-            pending.append((delimiter, bool(match.group("strip_tabs"))))
-        if pending:
-            active = pending.pop(0)
-
-    if active is not None or pending:
-        return None
-    return "".join(kept)
-
-
 def _has_forbidden_host_process_command(text: str) -> bool:
     """Classify each host-process command, never a transcript as one blob.
 
@@ -620,23 +549,7 @@ def _has_forbidden_host_process_command(text: str) -> bool:
     mask a separate broad query or process-control command elsewhere in the
     same turn.
     """
-    shell_surface = _shell_command_surface_without_heredoc_bodies(text)
-    if shell_surface is None:
-        return True
-    for host_match in HOST_PROCESS_INTROSPECTION_RE.finditer(shell_surface):
-        word_match = HOST_PROCESS_COMMAND_WORD_RE.search(
-            shell_surface, host_match.start(), host_match.end()
-        )
-        if word_match is None:
-            return True
-        command = word_match.group(0).lower()
-        allowed = OPERATIONAL_PROCESS_MONITORING_RE.match(
-            shell_surface, word_match.start()
-        )
-        if command in {"ps", "pgrep"} and allowed is not None:
-            continue
-        return True
-    return False
+    return APB.has_forbidden_host_process_command(text)
 
 
 def _file_taint_reason(path: str, display_name: str) -> Optional[str]:
@@ -4261,6 +4174,27 @@ def _scan_transcript_protocol_marker(
     return found, new_offset, combined[-keep:] if keep else b""
 
 
+def _taint_failure_detail_class(reason: Optional[str]) -> str:
+    """Map a scanner reason to one stable accounting classification."""
+
+    normalized = (reason or "").lower()
+    if (
+        "host_process_introspection" in normalized
+        or "host process introspection" in normalized
+    ):
+        return "host_process_introspection"
+    if "external web/network" in normalized or "external_network" in normalized:
+        return "external_web_or_network"
+    if (
+        "private game/runtime introspection" in normalized
+        or "runtime_introspection" in normalized
+    ):
+        return "private_runtime_introspection"
+    if "public action protocol violation" in normalized:
+        return "public_action_protocol_violation"
+    return "filesystem_boundary_violation"
+
+
 def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                  reasoning_effort: str = "medium",
                  allocation_policy: str = DEFAULT_CODEX_ALLOCATION_POLICY,
@@ -4360,6 +4294,7 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
         transcript_bytes = None
         diagnostics_bytes = None
         transcript_evidence_error = None
+        postflight_taint_reason = None
         surviving_process_group = False
         process_group_quiesced = True
         process_group_stop_attempted = False
@@ -4568,6 +4503,20 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                     )
                     in diagnostics_bytes
                 )
+                # The incremental monitor is the early-stop mechanism.  This
+                # terminal reopening is the accounting choke point: every
+                # scanner class, including a fast broad ``ps``/``pgrep`` that
+                # completed between polls, must become a typed taint row
+                # before control can return to orchestration or the scheduler.
+                if (
+                    not protocol_violation
+                    and boundary_violation_reason is None
+                ):
+                    postflight_taint_reason = (
+                        _workspace_or_protected_taint_reason(ws)
+                    )
+                    if postflight_taint_reason is not None:
+                        boundary_violation_reason = postflight_taint_reason
         usage = (
             _codex_usage_from_jsonl(workspace_log_path)
             if transcript_bytes is not None
@@ -4648,7 +4597,9 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
                 if surviving_process_group
                 else "public_action_protocol_violation"
                 if protocol_violation
-                else "filesystem_boundary_violation"
+                else _taint_failure_detail_class(
+                    boundary_violation_reason
+                )
                 if boundary_violation_reason is not None
                 else "hard_wall_time"
                 if timed_out
@@ -4688,6 +4639,11 @@ def _codex_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
             ),
             "surviving_process_group": surviving_process_group,
             "public_action_protocol_violation": protocol_violation,
+            "taint_verdict": (
+                "tainted"
+                if protocol_violation or boundary_violation_reason is not None
+                else None
+            ),
             "filesystem_boundary_violation": (
                 boundary_violation_reason is not None
             ),
@@ -5689,7 +5645,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
                     credit_out = True
                     break
                 except (ProposerProtocolViolation,
-                        ProposerBoundaryViolation) as ex:
+                        ProposerBoundaryViolation,
+                        WorkspaceTainted) as ex:
                     # A caught invalid action invalidates the complete generation.
                     # The protected transcript is the authority; do not
                     # recover, snapshot, retry, or promote any workspace byte.
@@ -5955,6 +5912,19 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
             if reached <= K - 1:
                 break
 
+    except WorkspaceTainted as ex:
+        # A defense-in-depth scan can fail inside a sibling exception handler
+        # (credit, containment, or infrastructure) as well as after a normal
+        # proposer return.  Converge every such path on the same terminal
+        # generation-taint result; never inspect, recover, snapshot, or
+        # promote its bytes.
+        protocol_tainted = True
+        protocol_taint_detail = str(ex)
+        if verbose:
+            print(
+                f"PROTOCOL TAINT: {ex}; discarding this complete proposer "
+                "generation without WIP reuse or promotion"
+            )
     except KeyboardInterrupt:
         taint_reason = _workspace_or_protected_taint_reason(ws)
         if taint_reason:
@@ -5978,8 +5948,8 @@ def orchestrate(game="wa30", max_level=9, model=None, minutes_per=40,
         _release_workspace_lock(run_lock)
         _release_workspace_lock(lineage_lock)
         raise WorkspaceTainted(
-            "public-action protocol violation invalidated the complete proposer "
-            "generation; no WIP or promotion was written"
+            "clean-room taint invalidated the complete proposer generation; "
+            "no WIP or promotion was written"
             + (
                 f": {protocol_taint_detail}"
                 if protocol_taint_detail

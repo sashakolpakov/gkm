@@ -685,6 +685,36 @@ def test_shell_boundary_unwraps_and_scans_inline_interpreters():
         ), label
 
 
+def test_shell_boundary_types_broad_host_process_introspection_only():
+    broad = L.APB.scan_shell_command(
+        "/bin/zsh -lc 'ps -axo pid,command'",
+        logical_path="turn.jsonl",
+        line=7,
+    )
+    assert [finding.code for finding in broad] == [
+        "host_process_introspection"
+    ]
+
+    assert L.APB.scan_shell_command(
+        "/bin/zsh -lc \"pgrep -f 'probe_worker.py'\"",
+        logical_path="turn.jsonl",
+        line=8,
+    ) == ()
+    assert L.APB.scan_shell_command(
+        "/bin/zsh -lc \"ps -axo pid,command | rg 'probe_worker.py '\"",
+        logical_path="turn.jsonl",
+        line=9,
+    ) == ()
+
+    heredoc = (
+        "/bin/zsh -lc \"python - <<'PY'\n"
+        "ps = 'ordinary variable'\n"
+        "print(ps)\n"
+        "PY\""
+    )
+    assert not L.APB.has_forbidden_host_process_command(heredoc)
+
+
 def test_transcript_unknown_or_malformed_lifecycle_cannot_hide_action(tmp_path):
     workspace = tmp_path / "gkm_legs_ws_schema"
     workspace.mkdir()
@@ -2112,6 +2142,143 @@ def test_codex_agent_immediately_terminates_public_action_violation(
     assert row["public_action_protocol_violation"] is True
     assert row["protected_transcript_status"] == "sealed"
     assert L._workspace_or_protected_taint_reason(str(ws)) is not None
+
+
+def test_codex_agent_types_and_terminates_broad_host_process_introspection(
+    tmp_path, monkeypatch
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    ledger = tmp_path / "usage.jsonl"
+    snapshot = {
+        "rateLimitsByLimitId": {
+            "codex": {
+                "planType": "plus",
+                "secondary": {
+                    "usedPercent": 0,
+                    "resetsAt": 1_800_000_000,
+                    "windowDurationMins": 10_080,
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
+    command_event = json.dumps({
+        "type": "item.completed",
+        "item": {
+            "id": "host-process-command",
+            "type": "command_execution",
+            "command": "/bin/zsh -lc 'ps -axo pid,command'",
+            "aggregated_output": "command denied",
+        },
+    })
+    monkeypatch.setattr(
+        L,
+        "_codex_command",
+        lambda ws, task, model, effort: [
+            sys.executable,
+            "-u",
+            "-c",
+            (
+                "import json,time; "
+                "print(json.dumps({'type':'thread.started',"
+                "'thread_id':'host-process'}), flush=True); "
+                f"print({command_event!r}, flush=True); "
+                "time.sleep(60)"
+            ),
+        ],
+    )
+
+    started = time.monotonic()
+    with pytest.raises(
+        L.ProposerBoundaryViolation,
+        match="clean-room filesystem boundary",
+    ):
+        L._codex_agent(
+            str(ws),
+            "offline host-process poison",
+            None,
+            1,
+            ledger_path=str(ledger),
+            run_label="host-process:L1:propose",
+            game="host-process",
+            target_level=1,
+        )
+    assert time.monotonic() - started < 10
+
+    row = json.loads(ledger.read_text())
+    assert row["thread_id"] == "host-process"
+    assert row["failure_class"] == "taint"
+    assert row["failure_detail_class"] == "host_process_introspection"
+    assert row["taint_verdict"] == "tainted"
+    assert row["protected_transcript_status"] == "sealed"
+    assert row["protected_diagnostics_status"] == "sealed"
+    assert "host_process_introspection" in (
+        row["filesystem_boundary_violation_reason"]
+    )
+
+
+def test_codex_agent_allows_exact_own_worker_process_monitoring(
+    tmp_path, monkeypatch
+):
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    ledger = tmp_path / "usage.jsonl"
+    snapshot = {
+        "rateLimitsByLimitId": {
+            "codex": {
+                "planType": "plus",
+                "secondary": {
+                    "usedPercent": 0,
+                    "resetsAt": 1_800_000_000,
+                    "windowDurationMins": 10_080,
+                },
+            }
+        }
+    }
+    monkeypatch.setattr(L.CUG, "query_rate_limits", lambda: snapshot)
+    events = [
+        {
+            "type": "thread.started",
+            "thread_id": "own-worker",
+        },
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "own-worker-command",
+                "type": "command_execution",
+                "command": "/bin/zsh -lc \"pgrep -f 'probe_worker.py'\"",
+                "aggregated_output": "1234",
+            },
+        },
+        {"type": "turn.completed", "usage": {}},
+    ]
+    program = "; ".join(
+        f"print({json.dumps(event)!r}, flush=True)" for event in events
+    )
+    monkeypatch.setattr(
+        L,
+        "_codex_command",
+        lambda ws, task, model, effort: [
+            sys.executable, "-u", "-c", program
+        ],
+    )
+
+    row = L._codex_agent(
+        str(ws),
+        "offline own-worker monitoring",
+        None,
+        1,
+        ledger_path=str(ledger),
+        run_label="own-worker:L1:propose",
+        game="own-worker",
+        target_level=1,
+    )
+
+    assert row["returncode"] == 0
+    assert row["failure_class"] is None
+    assert row["failure_detail_class"] is None
+    assert row["taint_verdict"] is None
 
 
 @pytest.mark.parametrize("phase", ["live", "terminal"])
@@ -4758,6 +4925,65 @@ def test_interrupt_does_not_create_resumable_wip_from_tainted_turn(
     assert not (
         artifact_root / "taintedinterrupt_legs" / "wip_context" / "level_01"
     ).exists()
+
+
+def test_normal_return_taint_skips_verify_snapshot_and_promotion(
+    tmp_path, monkeypatch
+):
+    artifact_root = tmp_path / "artifacts"
+    scratch_root = tmp_path / "scratch"
+    monkeypatch.setattr(L, "SCRATCH", str(scratch_root))
+    monkeypatch.setattr(
+        L,
+        "artifact_dir",
+        lambda game, tag="": str(artifact_root / f"{game}_legs"),
+    )
+    verification_calls = 0
+    verification_calls_at_propose = None
+
+    def verify(_game, _path):
+        nonlocal verification_calls
+        verification_calls += 1
+        return 0, [], None
+
+    def propose(ws, _level):
+        nonlocal verification_calls_at_propose
+        verification_calls_at_propose = verification_calls
+        (Path(ws) / "probe_private.py").write_text(
+            "print(env._game)\n", encoding="utf-8"
+        )
+
+    monkeypatch.setattr(
+        L,
+        "snapshot_wip_context",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("tainted generation was snapshotted")
+        ),
+    )
+    monkeypatch.setattr(
+        L,
+        "promote_verified_artifact",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("tainted generation was promoted")
+        ),
+    )
+
+    with pytest.raises(
+        L.WorkspaceTainted,
+        match="clean-room taint invalidated",
+    ):
+        L.orchestrate(
+            "normalreturntaint",
+            max_level=1,
+            propose_fn=propose,
+            verify_fn=verify,
+            debrief_fn=lambda _workspace, _level: None,
+            verbose=False,
+        )
+
+    assert verification_calls_at_propose is not None
+    assert verification_calls == verification_calls_at_propose
+    assert not (artifact_root / "normalreturntaint_legs").exists()
 
 
 def test_snapshot_wip_context_fails_closed_on_tainted_workspace(

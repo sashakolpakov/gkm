@@ -83,6 +83,29 @@ PYTHON_HEREDOC_RE = re.compile(
     r"(.*?)\n\2(?:\s|$)",
     re.DOTALL,
 )
+HOST_PROCESS_INTROSPECTION_RE = re.compile(
+    r"(?:^|[\n;&|'\"|])\s*(?:sudo\s+)?"
+    r"(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)"
+    r"(?:\s|$)",
+    re.IGNORECASE,
+)
+OPERATIONAL_PROCESS_MONITORING_RE = re.compile(
+    r"(?:ps|pgrep)\b[^\n]*\|\s*rg\s+['\"][^'\"]*"
+    r"[A-Za-z0-9_.-]+\.py(?:\s|['\"])"
+    r"|\bpgrep\s+-[A-Za-z]*f[A-Za-z]*\s+"
+    r"['\"][A-Za-z0-9_.-]+\.py"
+    r"(?:\s+[A-Za-z0-9_.-]+)*['\"]",
+    re.IGNORECASE,
+)
+HOST_PROCESS_COMMAND_WORD_RE = re.compile(
+    r"\b(?:ps|pgrep|pkill|lsof|top|htop|launchctl|systemctl)\b",
+    re.IGNORECASE,
+)
+SHELL_HEREDOC_OPEN_RE = re.compile(
+    r"<<(?P<strip_tabs>-)?\s*"
+    r"(?:(?P<quote>['\"])(?P<quoted>[A-Za-z_][A-Za-z0-9_]*)"
+    r"(?P=quote)|(?P<bare>[A-Za-z_][A-Za-z0-9_]*))"
+)
 QUOTED_SHELL_DATA_RE = re.compile(
     r"'(?:[^']|'\"'\"')*'|\"(?:\\.|[^\"\\])*\"", re.DOTALL
 )
@@ -948,6 +971,78 @@ def scan_python_source(
     return tuple(sorted(set(findings)))
 
 
+def _shell_command_surface_without_heredoc_bodies(
+    text: str,
+) -> str | None:
+    """Return shell syntax while excluding literal heredoc payloads.
+
+    A command transcript retains the complete shell wrapper.  Identifiers in
+    Python or data heredocs are not shell process commands, while syntax after
+    the closing delimiter still is.  An unterminated heredoc fails closed.
+    """
+
+    lines = text.splitlines(keepends=True)
+    if not lines:
+        return text
+    kept: list[str] = []
+    pending: list[tuple[str, bool]] = []
+    active: tuple[str, bool] | None = None
+    for source_line in lines:
+        if active is not None:
+            delimiter, strip_tabs = active
+            candidate = source_line.rstrip("\r\n")
+            if strip_tabs:
+                candidate = candidate.lstrip("\t")
+            if re.fullmatch(
+                re.escape(delimiter) + r"(?:['\"])?\s*", candidate
+            ):
+                kept.append(source_line)
+                active = pending.pop(0) if pending else None
+            else:
+                kept.append(
+                    "\n" if source_line.endswith(("\n", "\r")) else ""
+                )
+            continue
+
+        kept.append(source_line)
+        for match in SHELL_HEREDOC_OPEN_RE.finditer(source_line):
+            delimiter = match.group("quoted") or match.group("bare")
+            pending.append((delimiter, bool(match.group("strip_tabs"))))
+        if pending:
+            active = pending.pop(0)
+    if active is not None or pending:
+        return None
+    return "".join(kept)
+
+
+def has_forbidden_host_process_command(command: str) -> bool:
+    """Reject host-wide process inspection/control, with one narrow exception.
+
+    A proposer may check whether its own explicitly named ``*.py`` worker is
+    still alive.  Broad process enumeration and process control remain outside
+    the clean-room capability.  Each occurrence is classified independently,
+    so one allowed own-worker check cannot mask another forbidden command.
+    """
+
+    shell_surface = _shell_command_surface_without_heredoc_bodies(command)
+    if shell_surface is None:
+        return True
+    for host_match in HOST_PROCESS_INTROSPECTION_RE.finditer(shell_surface):
+        word_match = HOST_PROCESS_COMMAND_WORD_RE.search(
+            shell_surface, host_match.start(), host_match.end()
+        )
+        if word_match is None:
+            return True
+        process_command = word_match.group(0).lower()
+        allowed = OPERATIONAL_PROCESS_MONITORING_RE.match(
+            shell_surface, word_match.start()
+        )
+        if process_command in {"ps", "pgrep"} and allowed is not None:
+            continue
+        return True
+    return False
+
+
 def scan_shell_command(
     command: str,
     *,
@@ -994,6 +1089,12 @@ def scan_shell_command(
         findings.append(BoundaryFinding(
             "shell_wrapper_escape", logical_path, line,
             "only the exact host-owned /bin/* -lc wrapper is permitted",
+        ))
+
+    if has_forbidden_host_process_command(payload):
+        findings.append(BoundaryFinding(
+            "host_process_introspection", logical_path, line,
+            "host-wide process inspection/control is outside the clean room",
         ))
 
     if PARENT_REFERENCE_RE.search(payload):
