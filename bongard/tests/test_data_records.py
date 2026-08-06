@@ -172,3 +172,54 @@ def test_checked_in_support_prototype_drill_plan_is_canonical_and_bound() -> Non
         "polarity_flip_allowed": False,
         "support_gate_must_be_exactly_aligned": True,
     }
+
+
+def test_checked_in_support_prototype_drill_result_is_canonical_and_bound() -> None:
+    result = _canonical_record("support_prototype_drill_result_v1.json")
+    content = dict(result)
+    declared_digest = content.pop("digest")
+    computed_digest = "sha256:" + hashlib.sha256(
+        canonical_json(content) + b"\n"
+    ).hexdigest()
+    plan = _canonical_record("support_prototype_drill_plan_v1.json")
+
+    assert declared_digest == computed_digest == (
+        "sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca"
+    )
+    assert result["schema"] == "gkm.bongard-support-prototype-drill-result.v1"
+    assert result["campaign_id"] == plan["campaign_id"]
+    assert result["campaign_plan_digest"] == plan["digest"]
+    assert result["calibration_record_digest"] == plan["calibration_record_digest"]
+    assert result["predicate_policy_digest"] == plan["predicate_policy_digest"]
+    assert result["corpus_manifest_digest"] == plan["corpus_manifest_digest"]
+    assert result["split_source_digest"] == plan["split_source_digest"]
+    assert result["initial_exposure_ledger_digest"] == (
+        plan["exposure_ledger_head_digest"]
+    )
+    assert result["episode_count"] == 12
+    assert result["status_counts"] == {
+        "complete": 0,
+        "proposal_error": 1,
+        "support_rejected": 11,
+    }
+    assert result["support_gate_passes"] == 0
+    assert result["query_panels_released"] == 0
+    assert result["executable_support_panels"] == 132
+    assert result["support_forward_matches"] == 46
+    assert result["support_reverse_matches"] == 10
+    assert result["support_indeterminate"] == 76
+
+    episodes = result["episodes"]
+    assert isinstance(episodes, list)
+    assert [episode["task_id"] for episode in episodes] == plan["task_ids"]
+    repository = DATA.parents[1]
+    for episode in episodes:
+        run_payload = (repository / episode["run_file"]).read_bytes()
+        assert hashlib.sha256(run_payload).hexdigest() == (
+            episode["run_file_sha256"]
+        )
+        run = json.loads(run_payload)
+        assert canonical_json(run) == run_payload
+        assert run["record_digest"] == episode["record_digest"]
+        assert run["episode"]["status"] == episode["status"]
+        assert not episode["query_released"]
