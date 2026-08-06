@@ -7,10 +7,12 @@ Python-Authoritative Protocol*.
 The paper describes the implemented visual-semantic boundary, not a successful
 benchmark result. Its central claims are deliberately narrow:
 
-- Python alone defines predicate execution, calibration, replay, benchmark
-  decisions, and scientific artifact IDs. Lean or another proof checker may
-  only consume a frozen artifact as a detached optional sidecar; deleting it
-  cannot change a result, decision, or ID.
+- Python is the sole authoritative semantics. It defines predicates, the closed
+  IR, evidence dispositions and projections, calibration, synthesis, selection,
+  evaluation, persistence, cold replay, decisions, and every scientific result
+  or artifact ID. Lean is neither imported nor required. Any checker emits only
+  a detached, non-authoritative sidecar; its presence, failure, disagreement,
+  change, or deletion cannot alter Python authority.
 - The direct catalog contains exactly ten positive count families, with target
   counts 1 through 8. Angle bands, complete point-contact signatures, and
   persistent object/part identity are not implemented direct predicates.
@@ -81,22 +83,24 @@ benchmark result. Its central claims are deliberately narrow:
   `sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1`.
 - A3's theoretical hole was concrete: descriptions were audit-only, proposal
   was one irreversible bundled guess, and no formula was evaluated. The atomic
-  successor now freezes neutral descriptions, proposes 1--12 single-phrase
-  atoms from labelled descriptions only, records a complete atom-by-panel
-  matrix, and selects a deterministic positive conjunction before query
-  release.
+  successor freezes neutral descriptions and proposes 1--12 pairwise-distinct
+  exact observer questions from labelled descriptions only. Each is at most
+  192 UTF-8 bytes, matches `[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?`, has one final
+  ASCII `?`, and receives no normalization or repair. Python records the full
+  atom-by-panel matrix and selects a positive conjunction before query release.
 - The exact atomic success path has 29 causal model receipts. It has no `Not`
   or polarity flip. Its operational archive hard-codes calibration,
   semantic-truth, benchmark, and official-test authority false; calibrated
   semantic selection is disabled pending a cold-validatable typed calibration
   artifact.
 - The historical first N=1 frame contained ten repeated-generator exact-unseen
-  training tasks. It tested transport/synthesis, not independent
-  generalization. One task was exposed and consumed, so the active successor
-  frame contains exactly nine IDs, digest
-  `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
-  Richer typed grounding and powered label-blind evaluation remain future
-  work. Lean remains an optional removable sidecar.
+  training tasks. Attempt one consumed one. Attempt two historically selected
+  from the remaining nine IDs, digest
+  `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`,
+  and consumed another. Attempt three's active frame therefore contains eight
+  IDs, digest
+  `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
+  This is transport/synthesis work, not independent generalization.
 - The first live N=1 attempt, from commit
   `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
   `bongard-atomic-pre-smoke-20260806`, is an operational wrapper failure, not a
@@ -115,28 +119,45 @@ benchmark result. Its central claims are deliberately narrow:
   [`../data/atomic_smoke_n1_operational_failure_v1.json`](../data/atomic_smoke_n1_operational_failure_v1.json).
 - Atomic stores require mode `0700`. A pre-exposure setup invocation rejected
   a `0755` cache store and consumed nothing.
-- Attempt two is a distinct pre-live successor, not a reroll. It binds the
-  incident, the historical A3 ledger
-  `sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`,
-  and active predecessor
-  `sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
-  The native launcher stages before secret generation and exact-task
-  exposure. A fresh empty mode-`0700` journal persists a bound header, an
-  exact intent before each of 29 transports, each validated result before the
-  next intent, and its terminal before runner return. Existing or partial
-  journals cannot be resumed or retried. No attempt-two outcome is claimed.
+- Atomic attempt two ran once from commit
+  `d0864525146a05795c030674fa0159feb43913c1`, tag
+  `bongard-atomic-successor-pre-smoke-20260806`. It appended successor
+  `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`
+  and closed 13 intents/results: twelve support descriptions and one valid
+  text-only proposal receipt. All ten observer questions ended in the `?`
+  demanded by the prompt, but the soft-cue parser rejected U+003F. The exact
+  error was `invalid positive_description: soft cue positive_description
+  contains a forbidden prose character U+003F`, reason digest
+  `34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f`.
+  There was no support scoring, formula, query call, prediction, label reveal,
+  or score. Run and terminal artifacts persisted and cold replay passed. This
+  implementation-contract failure supplies no vision, predicate, negation, or
+  benchmark evidence. The sanitized record file SHA-256 is
+  `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
+- **Atomic attempt three is PRE-LIVE / PENDING.** It binds the exact attempt-two
+  record, active predecessor
+  `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
+  and the eight-ID universe above. Python is frozen around complete-release
+  authentication. A staged
+  launcher performs a fixed non-Bongard transport preflight; all stores must be
+  pristine; and an exclusive seed-independent claim is persisted beside the
+  canonical predecessor path before secrets or exposure. No attempt-three
+  result is claimed here.
 - New receipts bind the complete executable Bongard Python source boundary;
   post-exposure source drift
   now persists a typed failed receipt with labels withheld. Exact-identity
   caches cut the synthetic Stage-A path from 161.15 s to 11.50 s and Stage B
   from 218.88 s to 51.10 s.
-- Visual-semantic SEALED/test execution is hard-disabled.
+- Visual-semantic official-test model execution is hard-disabled. Full-release
+  authentication still hashes official-test bytes; no test panel is selected,
+  exposed to a proposer/scorer, evaluated, or scored.
 
 The pinned extracted-corpus manifest is
 `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138`.
-There are no result placeholders: A2 is an invalidated incident and A3 is a
-terminal scientific failure, not a pending measurement. The journaled atomic
-attempt two is pre-live and has no outcome in this manuscript state.
+There are no result placeholders: A2 is an invalidated incident, A3 is a
+terminal scientific failure, and atomic attempts one and two are terminal
+operational/contract failures. Only atomic attempt three is explicitly
+**PRE-LIVE / PENDING** in this manuscript state.
 
 Build the canonical paper from the repository root:
 

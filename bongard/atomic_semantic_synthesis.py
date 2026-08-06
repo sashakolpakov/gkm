@@ -85,6 +85,55 @@ _BUNDLING_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("semicolon", re.compile(r";")),
 )
 
+ATOMIC_AFFIRMATIVE_SURFACE_POLICY_SCHEMA = (
+    "gkm.bongard-atomic-affirmative-surface-policy.v1"
+)
+_ATOMIC_AFFIRMATIVE_PATTERN_FAMILIES: tuple[
+    tuple[str, tuple[tuple[str, re.Pattern[str]], ...]], ...
+] = (
+    ("disjunction", _DISJUNCTION_PATTERNS),
+    ("negation-laundering", _NEGATION_LAUNDERING_PATTERNS),
+    ("bundling", _BUNDLING_PATTERNS),
+)
+
+
+def atomic_affirmative_surface_policy_data() -> dict[str, object]:
+    """Return the exact closed regex policy used by ``_atomic_affirmative``."""
+
+    return {
+        "schema": ATOMIC_AFFIRMATIVE_SURFACE_POLICY_SCHEMA,
+        "matching_normalization": "NFKC-then-casefold",
+        "closed_families": [
+            {
+                "family": family,
+                "patterns": [
+                    {
+                        "name": name,
+                        "regex": pattern.pattern,
+                        "flags": pattern.flags,
+                    }
+                    for name, pattern in patterns
+                ],
+            }
+            for family, patterns in _ATOMIC_AFFIRMATIVE_PATTERN_FAMILIES
+        ],
+    }
+
+
+def atomic_affirmative_surface_policy_description() -> str:
+    """Describe every closed forbidden family for model-visible contracts."""
+
+    families = "; ".join(
+        family + " [" + ", ".join(name for name, _ in patterns) + "]"
+        for family, patterns in _ATOMIC_AFFIRMATIVE_PATTERN_FAMILIES
+    )
+    return (
+        "After NFKC casefold matching, the exact closed forbidden atomicity "
+        "surface families are "
+        + families
+        + "."
+    )
+
 _DESCRIPTION_ROLE_LEAK_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     (
         "support label",
@@ -221,20 +270,26 @@ def _atomic_affirmative(value: object, label: str) -> str:
     if not isinstance(value, str):
         raise AtomicSemanticSynthesisError(f"{label} must be a string")
     normalised = unicodedata.normalize("NFKC", value).casefold()
-    for name, pattern in (
-        *_DISJUNCTION_PATTERNS,
-        *_NEGATION_LAUNDERING_PATTERNS,
-        *_BUNDLING_PATTERNS,
-    ):
-        if pattern.search(normalised) is not None:
-            raise AtomicSemanticSynthesisError(
-                f"{label} contains non-atomic surface token {name!r}"
-            )
+    for family, patterns in _ATOMIC_AFFIRMATIVE_PATTERN_FAMILIES:
+        for name, pattern in patterns:
+            if pattern.search(normalised) is not None:
+                raise AtomicSemanticSynthesisError(
+                    f"{label} contains non-atomic {family} surface token "
+                    f"{name!r}"
+                )
     try:
         TypedSoftCue("cue-00", value)
     except TypedVisualProposalError as exc:
         raise AtomicSemanticSynthesisError(f"invalid {label}: {exc}") from exc
     return value
+
+
+def validate_atomic_affirmative_surface(
+    value: object, label: str = "observer phrase"
+) -> str:
+    """Apply the public, exact closed atomicity surface validator."""
+
+    return _atomic_affirmative(value, label)
 
 
 @dataclass(frozen=True, slots=True)
@@ -2476,6 +2531,7 @@ def cold_decode_and_recompute_no_exact_separator(
 
 
 __all__ = [
+    "ATOMIC_AFFIRMATIVE_SURFACE_POLICY_SCHEMA",
     "ATOMIC_SELECTION_ARCHIVE_SCHEMA",
     "ATOMIC_EVIDENCE_BINDING_SCHEMA",
     "ATOMIC_SOFT_PREDICATE_SCHEMA",
@@ -2497,8 +2553,11 @@ __all__ = [
     "NoExactSeparatorError",
     "OperationalNonmatchRecord",
     "PanelDescriptionBinding",
+    "atomic_affirmative_surface_policy_data",
+    "atomic_affirmative_surface_policy_description",
     "cold_decode_and_replay_atomic_selection",
     "cold_decode_and_recompute_no_exact_separator",
     "evaluate_atomic_formula",
     "synthesize_atomic_conjunction",
+    "validate_atomic_affirmative_surface",
 ]

@@ -58,7 +58,7 @@ _IDENTIFIER = re.compile(r"[a-z][a-z0-9_.-]{0,127}\Z")
 _ARGUMENT_NAME = re.compile(r"[a-z][a-z0-9_]{0,63}\Z")
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _ASSIGNED_ID = re.compile(r"(?:atom|cue)-[0-9]+", re.IGNORECASE)
-_ALLOWED_NATURAL_PROSE_PUNCTUATION = frozenset(" .,'()-/;")
+_ALLOWED_NATURAL_PROSE_PUNCTUATION = frozenset(" .,'()-/;?")
 
 
 class TypedVisualProposalError(ValueError):
@@ -366,6 +366,56 @@ _CONTROL_TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("prompt vocabulary", re.compile(r"\bprompt[\s-]+injection\b")),
 )
 
+AFFIRMATIVE_PROSE_SURFACE_POLICY_SCHEMA = (
+    "gkm.bongard-affirmative-prose-surface-policy.v1"
+)
+_AFFIRMATIVE_PROSE_PATTERN_FAMILIES: tuple[
+    tuple[str, tuple[tuple[str, re.Pattern[str]], ...]], ...
+] = (
+    ("explicit-negation", _NEGATION_PATTERNS),
+    ("support-relative", _SUPPORT_RELATIVE_PATTERNS),
+    ("support-index-count", _SUPPORT_INDEX_COUNT_PATTERNS),
+    ("control-text", _CONTROL_TEXT_PATTERNS),
+)
+
+
+def affirmative_prose_surface_policy_data() -> dict[str, object]:
+    """Return every exact regex applied to rule and soft-cue prose."""
+
+    return {
+        "schema": AFFIRMATIVE_PROSE_SURFACE_POLICY_SCHEMA,
+        "matching_normalization": "NFKC-casefold-with-canonical-punctuation-folds",
+        "closed_families": [
+            {
+                "family": family,
+                "patterns": [
+                    {
+                        "name": name,
+                        "regex": pattern.pattern,
+                        "flags": pattern.flags,
+                    }
+                    for name, pattern in patterns
+                ],
+            }
+            for family, patterns in _AFFIRMATIVE_PROSE_PATTERN_FAMILIES
+        ],
+    }
+
+
+def affirmative_prose_surface_policy_description() -> str:
+    """Describe every downstream TypedSoftCue forbidden surface family."""
+
+    families = "; ".join(
+        family + " [" + ", ".join(name for name, _ in patterns) + "]"
+        for family, patterns in _AFFIRMATIVE_PROSE_PATTERN_FAMILIES
+    )
+    return (
+        "The downstream affirmative-prose guard additionally rejects the exact "
+        "closed surface families "
+        + families
+        + "."
+    )
+
 
 def _require_affirmative_text(
     value: object,
@@ -375,17 +425,13 @@ def _require_affirmative_text(
 ) -> str:
     text = _exact_text(value, name)
     normalised = _normalise_text(text)
-    for label, pattern in (
-        *_NEGATION_PATTERNS,
-        *_SUPPORT_RELATIVE_PATTERNS,
-        *_SUPPORT_INDEX_COUNT_PATTERNS,
-        *_CONTROL_TEXT_PATTERNS,
-    ):
-        if pattern.search(normalised) is not None:
-            raise TypedVisualProposalError(
-                f"{name} contains forbidden {label}; proposals must be "
-                "affirmative and single-panel checkable"
-            )
+    for _family, patterns in _AFFIRMATIVE_PROSE_PATTERN_FAMILIES:
+        for label, pattern in patterns:
+            if pattern.search(normalised) is not None:
+                raise TypedVisualProposalError(
+                    f"{name} contains forbidden {label}; proposals must be "
+                    "affirmative and single-panel checkable"
+                )
     return _bounded_natural_prose(
         text,
         name,
@@ -1457,9 +1503,9 @@ All rule and soft-claim descriptions are limited to
 {MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES} UTF-8 bytes; each panel audit description
 is limited to {MAX_PANEL_DESCRIPTION_UTF8_BYTES} UTF-8 bytes.  Use one-line
 NFKC ASCII prose containing only letters, digits, spaces, and the punctuation
-period, comma, apostrophe, parentheses, hyphen, slash, and semicolon.  Do not
-write role headers, prompts, instructions, JSON, markup, support item indices,
-support-set counts, or support-set fractions in rule or cue prose.
+period, comma, apostrophe, parentheses, hyphen, slash, semicolon, and question
+mark.  Do not write role headers, prompts, instructions, JSON, markup, support
+item indices, support-set counts, or support-set fractions in rule or cue prose.
 
 At least one deterministic or soft atom is required.  formula.kind must be
 exactly "all".  formula.atom_indices must contain each overall atom position
@@ -1515,6 +1561,7 @@ build_typed_visual_proposal_prompt = typed_visual_proposal_prompt
 
 
 __all__ = [
+    "AFFIRMATIVE_PROSE_SURFACE_POLICY_SCHEMA",
     "ArgumentKind",
     "AtomArgument",
     "MAX_DETERMINISTIC_ATOMS",
@@ -1538,6 +1585,8 @@ __all__ = [
     "TypedVisualProposal",
     "TypedVisualProposalError",
     "TypedVisualProposalIntegrityError",
+    "affirmative_prose_surface_policy_data",
+    "affirmative_prose_surface_policy_description",
     "VIEWS",
     "build_typed_visual_proposal_prompt",
     "parse_typed_visual_proposal",

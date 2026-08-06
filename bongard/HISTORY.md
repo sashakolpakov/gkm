@@ -58,8 +58,10 @@ formal-language claims to:
 - four explicit evidence dispositions;
 - conjunction evaluation inside retained correlated preprocessing scenarios;
 - exact support freeze before query access;
-- pure-Python evaluation, selection, persistence, IDs, and cold replay;
-- an optional/removable proof-checker boundary;
+- pure-Python predicate, IR, evidence, evaluation, selection, persistence,
+  decision, ID, and cold-replay semantics;
+- a detached, non-authoritative optional proof-checker sidecar whose presence,
+  failure, disagreement, change, or deletion cannot change Python authority;
 - descriptive Stage A and Stage B only, with visual-semantic SEALED disabled.
 
 The first visual-semantic Stage-A experiment, A1, used no-reroll seed
@@ -160,7 +162,9 @@ but that post-hoc value is not causal evidence about A3. This is an
 authentication limitation, not evidence that the client actually changed.
 
 A3 exposed 22 tasks and left 10,047 exact-unused train/validation IDs: FF
-2,998, BD 3,434, and HD 3,615. SEALED/test remained untouched.
+2,998, BD 3,434, and HD 3,615. Complete-release authentication hashed
+official-test bytes, but no official-test task or panel was selected, exposed
+to the proposer or scorer, evaluated, or scored.
 
 Forensic replay also showed exactly what A3 omitted: all 264 panel
 descriptions were audit-only, only 15 one-panel soft bundles were scored, and
@@ -179,7 +183,10 @@ search. That diagnosis led to a Python-authoritative design using one-cue soft
 atoms, an atom-by-panel score matrix, deterministic positive
 atom/conjunction selection without `Not` or polarity flipping, structured
 grounding, and label-blind recruitment powered for attrition and bin occupancy.
-Lean remains only an optional removable sidecar over frozen artifacts.
+Python remains the sole authoritative semantics. Lean may only emit a detached,
+non-authoritative sidecar over an already-frozen Python artifact; its presence,
+failure, disagreement, change, or deletion changes no result, decision, replay,
+or ID.
 
 ## Atomic operational successor
 
@@ -239,25 +246,54 @@ incident record is
 Its file SHA-256 is
 `2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`.
 
-The next pre-live hardening step defines attempt two as a distinct successor,
-not a reroll. Its active predecessor is the first attempt's exact exposure
-successor,
+Atomic attempt two then ran exactly once from commit
+`d0864525146a05795c030674fa0159feb43913c1`, tagged
+`bongard-atomic-successor-pre-smoke-20260806`. Its active predecessor was the
+first attempt's successor
 `sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`,
-which must validate as exactly one canonical append after historical A3 ledger
-`sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`.
-The incident record and its prior config/reason lineage are also mandatory
-inputs. With the consumed first task excluded, the active frame has exactly
-nine IDs, digest
+and its historical input universe contained nine IDs, digest
 `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+It durably appended exposure successor
+`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
 
-Attempt two also closes the lost-call-count hole. The pinned native launcher is
-staged before any selection, episode, or label secret and before exact-task
-exposure. A fresh empty mode-`0700` journal durably records a bound header, an
-exact intent before each of the fixed 29 transports, each validated result
-before the next intent, and the terminal before the runner returns. A journal
-header consumes the attempt: an identical header or partial prefix cannot be
-resumed or retried. This paragraph records a frozen pre-live protocol; it does
-not record an attempt-two outcome.
+The journal closed with exactly 13 intents and 13 validated results: twelve
+neutral support descriptions and one text-only atom proposal. The proposal
+receipt and schema were valid. All ten emitted observer questions ended in the
+question mark demanded by the prompt, but the shared soft-cue parser rejected
+U+003F. The exact error was `invalid positive_description: soft cue
+positive_description contains a forbidden prose character U+003F`, phase
+`atom-proposal`, reason digest
+`34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f`.
+
+No support-scoring call, formula, selection archive, query call, prediction,
+label materialization, label reveal, or score occurred. The run, journal
+terminal, and command terminal persisted, and cold replay passed. This is an
+implementation-contract failure, not evidence about vision, predicates,
+negation, or Bongard performance. The selected task is consumed. The sanitized
+record is
+[`data/atomic_smoke_attempt2_proposal_contract_failure_v1.json`](data/atomic_smoke_attempt2_proposal_contract_failure_v1.json),
+file SHA-256
+`242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
+
+## Atomic attempt three: PRE-LIVE / PENDING
+
+Attempt three is the distinct successor of
+`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
+Exactly eight
+eligible tasks remain, digest
+`sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
+The repaired proposal contract admits 1--12 pairwise-distinct exact affirmative
+observer questions, each at most 192 UTF-8 bytes, with no outer whitespace,
+matching `[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?`, exactly one final ASCII `?`,
+and no normalization or repair.
+
+Before any secret or exposure, the production boundary freezes Python around
+complete-release authentication, stages the native launcher, runs and persists
+a fixed non-Bongard transport preflight, verifies pristine stores, and
+exclusively persists a seed-independent claim beside the canonical predecessor
+path. The claim is local-path protection rather than a distributed lock. The
+call journal separately prevents resume or retry. No live attempt-three result
+is recorded in this pre-live history block.
 
 The A2 incident also led to source-bound v2 command receipts and durable
 operational failures for any post-precommit source change. Identity-preserving

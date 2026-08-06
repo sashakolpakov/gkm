@@ -1,6 +1,6 @@
 """One-panel execution and cold replay for compiled visual semantics.
 
-The compiler freezes a backend-neutral closed formula with at most two runtime
+The compiler freezes a canonical Python closed formula with at most two runtime
 boundaries: a deterministic :class:`VisualWitnessBundle` and, when the
 proposal contains a soft claim, one :class:`BlindSoftScoreRecord`.  This module
 materializes those boundaries from one exact neutral PNG, evaluates every

@@ -745,6 +745,28 @@ def test_legitimate_open_visual_prose_survives_conservative_policy(
     )
 
 
+def test_ascii_question_mark_is_safe_bounded_affirmative_prose(
+    catalog: RegisteredAtomCatalog,
+) -> None:
+    phrase = "Are hollow circles arranged in a row along an edge?"
+    payload = _bird_payload()
+    payload["positive_description"] = phrase
+    payload["soft_claim"]["positive_description"] = phrase
+    payload["soft_claim"]["cue_descriptions"] = [phrase]
+
+    proposal = parse_typed_visual_proposal(
+        payload,
+        catalog=catalog,
+        scorer_protocol_digest=SCORER_PROTOCOL_DIGEST,
+    )
+
+    assert proposal.positive_description == phrase
+    assert proposal.soft_claim is not None
+    assert proposal.soft_claim.positive_description == phrase
+    assert proposal.soft_claim.cues[0].positive_description == phrase
+    assert "question mark" in " ".join(typed_visual_proposal_prompt(catalog).split())
+
+
 def test_python_parser_enforces_prose_byte_limits_omitted_by_strict_schema(
     catalog: RegisteredAtomCatalog,
 ) -> None:

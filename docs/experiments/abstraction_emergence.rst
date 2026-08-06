@@ -38,10 +38,13 @@ be combined numerically with the current Stage-A or Stage-B protocol.
 Relationship to the active track
 --------------------------------
 
-The active track uses Python alone as the authority for predicate execution,
-calibration, replay, benchmark decisions, and scientific artifact IDs.  Lean
-or another proof checker may only consume a frozen artifact as a detached
-optional sidecar; deleting it cannot change a result, decision, or ID.  The
+The active track uses Python as the sole authoritative semantics for predicates,
+the closed IR, evidence, calibration, synthesis, selection, evaluation,
+persistence, replay, decisions, and every scientific result or artifact ID.
+Lean is neither imported nor required.  Any checker consumes only an
+already-frozen Python artifact and emits a detached, non-authoritative sidecar;
+its presence, failure, disagreement, change, or deletion cannot alter Python
+authority.  The
 immediate problem is not macro syntax: it is obtaining useful typed direct and
 soft observations from pixels, calibrating them honestly, and preventing
 support-set artifacts or negation from masquerading as concepts.  See

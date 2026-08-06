@@ -1,0 +1,78 @@
+{
+  "artifacts": {
+    "command_config_content_address": "sha256:c99557c15548555c63119d3255b4c2421521a9f22f5759aea105c182d24415bc",
+    "command_config_file_sha256": "sha256:7526fe5a3f64e39ae39f7bbc2709e6e86e9374fdf4668713dca8895e4aa3a92b",
+    "evidence_digest": "078840ed37dd32620203d9f161ba497b504f6fbfc4acd61c87fd6969a2ab137a",
+    "exposure_predecessor_content_address": "sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a",
+    "exposure_successor_content_address": "sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d",
+    "journal_header_digest": "da72ce24630b2278c471b3841d1ca12eece5524805fb8af77a078a0cbe158c49",
+    "journal_receipt_digest": "016de55609959aeb92300fe0dbe094c5888fbf51b86ed824c805899691200c80",
+    "precommit_content_address": "sha256:efd6ab6b84836f0a55ec88f32169b6e91e5c213d194fe8126100a522c28b160a",
+    "run_content_address": "sha256:1dfd18b2e7a7b4f721e34473282d9eafa28f64bbf7e4e9be945ad101e0123bd9",
+    "run_file_sha256": "sha256:f1309a4573059ad1bf5c95f7bbc908e877bc6cab15efa2ee7fac1c1a1816e8ba",
+    "terminal_content_address": "sha256:c6de2ba54c51f25e2635a953b2bceb8a30b3a46f0d29c4a2b820ad5c3060ead8",
+    "terminal_file_sha256": "sha256:72c75254899785a8e539af9e0a23357c58d09226cb75cf7ba1d798533091d465"
+  },
+  "call_boundary": {
+    "atom_proposal_calls": 1,
+    "durable_intent_count": 13,
+    "durable_result_count": 13,
+    "journal_terminal_persisted": true,
+    "formula_frozen": false,
+    "neutral_support_description_calls": 12,
+    "prediction_persisted": false,
+    "proposed_phrase_count": 10,
+    "proposed_phrases_ending_in_question_mark": 10,
+    "proposal_receipt_valid": true,
+    "proposal_schema_valid": true,
+    "query_calls": 0,
+    "query_labels_materialized": false,
+    "query_labels_revealed": false,
+    "run_persisted": true,
+    "score": null,
+    "selection_archive_persisted": false,
+    "support_scoring_calls": 0
+  },
+  "claim_policy": {
+    "benchmark_claim_authorized": false,
+    "calibration_authorized": false,
+    "dependence_design_authorized": false,
+    "is_bongard_result": false,
+    "negation_evidence_claim_authorized": false,
+    "official_test_authorized": false,
+    "score_claim_authorized": false,
+    "semantic_claim_authorized": false,
+    "vision_accuracy_claim_authorized": false
+  },
+  "consuming_attempt": {
+    "attempt_ordinal": 2,
+    "result_class": "implementation_contract_failure",
+    "selected_task_consumed": true,
+    "selected_task_may_be_rerolled": false
+  },
+  "failure": {
+    "error_type": "AtomicSemanticSynthesisError",
+    "exact_error": "invalid positive_description: soft cue positive_description contains a forbidden prose character U+003F",
+    "phase": "atom-proposal",
+    "reason_digest": "34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f"
+  },
+  "forensics": {
+    "cold_replay_passed": true,
+    "contract_contradiction": "The atom-proposal prompt required each phrase to be the exact affirmative observer question used downstream, while the soft-predicate positive_description prose allowlist rejected U+003F QUESTION MARK. All ten schema-valid proposed phrases ended with the demanded character.",
+    "interpretation": "This is an implementation contract failure. It is not evidence about vision accuracy, predicate quality, negation, or Bongard-task performance."
+  },
+  "launcher": {
+    "digest": "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02",
+    "version": "codex-cli 0.146.0"
+  },
+  "remaining_universe": {
+    "count": 8,
+    "task_ids_digest": "sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9"
+  },
+  "schema": "gkm.bongard-atomic-smoke-attempt2-proposal-contract-failure.v1",
+  "source_snapshot": {
+    "commit": "d0864525146a05795c030674fa0159feb43913c1",
+    "source_dependency_digest": "d0a4e25a8a3d75401bf452b73635372ff12b9a8b4971d9f00be9272eec2850cf",
+    "tag": "bongard-atomic-successor-pre-smoke-20260806"
+  }
+}

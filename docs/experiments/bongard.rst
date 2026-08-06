@@ -1,8 +1,8 @@
 Bongard Visual Concept Induction
 ================================
 
-Status: A1 failed; A2 invalidated; A3 failed; atomic N=1 failed operationally
------------------------------------------------------------------------------
+Status: A1 failed; A2 invalidated; A3 failed; atomic attempts 1--2 failed; attempt 3 PRE-LIVE
+------------------------------------------------------------------------------------------------
 
 The active target is the complete official ``ShapeBongard_V2`` corpus: 12,000
 tasks and 168,000 PNG panels.  The normalized primary split contains 9,300
@@ -31,23 +31,44 @@ sanitized record is
 must have mode ``0700``.  An earlier setup launch rejected a ``0755`` cache
 store before exposure and consumed nothing.
 
-Attempt two is frozen as a distinct successor, not a reroll.  Its active
-predecessor is the first attempt's exposure successor,
+Atomic attempt two ran exactly once from commit
+``d0864525146a05795c030674fa0159feb43913c1`` and tag
+``bongard-atomic-successor-pre-smoke-20260806``.  Its historical input was the
+nine-ID universe, digest
+``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``,
+with predecessor
 ``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``.
-That ledger must be exactly one canonical append after historical A3 ledger
-``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``,
-and the command also binds the exact incident and prior config/reason lineage.
-After excluding the consumed first task, the active universe is exactly nine
-IDs with digest
-``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
+It appended exposure successor
+``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
 
-The pinned native launcher is staged and authenticated before any selection,
-episode, or label secret and before exact-task exposure.  Attempt two requires
-a fresh empty mode-``0700`` call-journal store.  The journal durably writes a
-bound header, an exact intent before each slot in the fixed 29-call schedule,
-each validated result before the next intent, and its terminal before runner
-return.  An existing header, open intent, or partial prefix cannot be resumed
-or retried.  No live attempt-two result is claimed.
+The journal closed with exactly 13 intents and 13 validated results: twelve
+neutral support descriptions and one text-only atom proposal.  The proposal
+receipt and schema were valid.  All ten observer questions ended in the ``?``
+explicitly required by the prompt, but the shared soft-cue parser rejected
+U+003F.  The exact error was ``invalid positive_description: soft cue
+positive_description contains a forbidden prose character U+003F``, phase
+``atom-proposal``, reason digest
+``34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f``.
+
+No support-scoring call, formula, selection archive, query call, prediction,
+label materialization, label reveal, or score occurred.  The run, journal
+terminal, and command terminal persisted, and cold replay passed.  This is an
+implementation-contract failure, not evidence about vision, predicate quality,
+negation, or Bongard performance.  The selected task is consumed.  The
+sanitized record has file SHA-256
+``242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3``.
+
+**Atomic attempt three is PRE-LIVE / PENDING.**  It binds the exact attempt-two
+record and active predecessor
+``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
+The active universe
+contains exactly eight IDs, digest
+``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
+Python is frozen around complete-release authentication.  A staged native
+launcher performs a fixed non-Bongard structured-text transport preflight; all
+stores must be pristine; and an exclusive seed-independent claim is persisted
+beside the canonical predecessor path before secrets or exposure.  The journal
+separately prevents resume or retry.  No live attempt-three result is claimed.
 
 The first visual-semantic calibration experiment, A1, is terminal:
 
@@ -129,7 +150,9 @@ the naive ``score >= 0.5`` threshold, orientation was 12/15 versus 3/15.
 Negation did not win.  With only 15 scoreable claims, two bins of eight were
 mathematically impossible; A3 exposed a recruitment/bin-power failure.  It
 consumed 22 tasks and leaves 10,047 exact-unused train/validation IDs (FF 2,998,
-BD 3,434, HD 3,615).  SEALED/test remained untouched.
+BD 3,434, HD 3,615).  Complete-release authentication hashed official-test
+bytes, but no official-test task or panel was selected, exposed to the proposer
+or scorer, evaluated, or scored.
 
 The single typed-parser rejection came from matching ``def`` at the start of
 the ordinary cue word ``defines``.  The expression now requires a complete
@@ -249,7 +272,7 @@ separates empirical observation from deterministic synthesis:
    12 support PNGs
        -> 12 isolated neutral vision descriptions
        -> one text-only proposer over labeled descriptions
-       -> 1..12 affirmative single-phrase observer predicates
+       -> 1..12 pairwise-distinct exact affirmative observer questions
        -> 12 isolated one-panel calls covering the full atom matrix
        -> deterministic positive conjunction of at most four atoms
        -> frozen formula
@@ -266,8 +289,14 @@ protocol, validated receipt, run commitment, phase, and call ordinal.  The
 one-panel observer then evaluates every proposed phrase, and every observation
 is joined to the exact scorer producer, output, receipt, run, and call ordinal.
 
-A phrase such as ``bird-like object`` is therefore an exact operational
-observer question, not a theorem about the pixels.  ``operational_nonmatch``
+A phrase such as ``Does the panel contain a bird-like object?`` is therefore an
+exact operational observer question, not a theorem about the pixels.
+Each question is at most 192 UTF-8 bytes, has no outer whitespace, matches
+``[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?``, contains exactly one final ASCII
+question mark, and receives no normalization or repair.  The same closed Python
+policy rejects negation, disjunction, laundering, bundling, support-relative
+language, and control/code text.  This surface guard is not proof of semantic
+atomicity.  ``operational_nonmatch``
 may act as false only in an archive explicitly scoped to that observer.  Its
 general semantic projection is ``indeterminate``, never
 ``certified_absent``.  The archive fixes
@@ -307,17 +336,19 @@ Why Python is authoritative
 ---------------------------
 
 The serialized Boolean IR is closed and unit-aware, and comparisons are safe
-for interval evidence.  Python alone is authoritative for its typechecking and
-predicate execution, calibration, cold replay, benchmark decisions, and
-scientific artifact IDs.  This is the benchmark contract.
+for interval evidence.  Python is the sole authoritative semantics.  It defines
+predicates, the IR, evidence dispositions and projections, calibration,
+synthesis, selection, evaluation, persistence, cold replay, admission and
+benchmark decisions, and every scientific result or artifact ID.
 
-Lean or any other proof checker is optional.  It may only consume and
-independently check a translation of an already-frozen Python artifact as a
-detached sidecar; it may not propose a different predicate, change an
-evaluation, admit a run, or alter an artifact ID.  Deleting the sidecar must
-leave every result, decision, and ID unchanged.  Even a successful proof would
-be conditional on the empirical visual witnesses; it would not verify the
-pixels-to-description step.
+Lean is neither imported nor required by the authoritative path.  A Lean or
+other checker may consume only an already-frozen Python artifact and emit a
+detached, non-authoritative sidecar; it may not propose a different predicate,
+change an evaluation, admit a run, or alter an artifact ID.  Installing,
+changing, failing, disagreeing, or deleting the sidecar must leave every
+predicate, evidence value, formula, result, decision, replay, and ID unchanged.
+Even a successful proof is conditional on empirical observations; it does not
+verify the pixels-to-description step.
 
 Information and exposure boundaries
 -----------------------------------
@@ -327,6 +358,10 @@ inventory, and extracted corpus manifest.  An exposure ledger records exact
 task IDs and conservative semantic collision keys.  Basic numbered morphology
 siblings share a key; all 20 instances of an Abstract ordered attribute pair
 share a key.  A task is not fresh merely because its exact ID is new.
+
+That integrity boundary hashes all release bytes, including official-test
+bytes.  The model-use boundary is separate: no official-test task or panel is
+selected for an episode, exposed to a proposer or scorer, evaluated, or scored.
 
 The proposer receives labeled support panels.  Panel evaluators receive
 neutral, candidate-independent single-panel views, not source paths, task IDs,
@@ -347,11 +382,12 @@ A1's valid terminal result is failure, not a pending value.  A2 is an
 invalidated source-mutation incident, not a pending score.  A3 is a canonical
 underpopulated-bin failure after successful proposer/scorer transport, not
 evidence for negation.  Stage B is unauthorized by all three experiments.  No
-official complete-corpus visual-semantic score currently exists.  The first
-live atomic N=1 adds only an operational wrapper failure: exposure persisted,
-no prediction or terminal persisted, the task is consumed without reroll, and
-the successful-call count is irrecoverably unknown in 0--29.  The distinct
-nine-ID, incident-bound attempt two remains pre-live and has no outcome.
+official complete-corpus visual-semantic score currently exists.  Atomic
+attempt one adds an operational wrapper failure with irrecoverable 0--29 call
+count.  Atomic attempt two adds a cold-replayable 13-call implementation
+contract failure before support scoring.  Both selected tasks are consumed.
+The distinct eight-ID atomic attempt-three successor is **PRE-LIVE / PENDING**
+and has no outcome in this snapshot.
 
 See :doc:`reproduction` for the exact Stage-A command and current artifact
 addresses.

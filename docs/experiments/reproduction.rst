@@ -13,11 +13,13 @@ Create a local environment and run the canonical Python tests:
    .venv/bin/python -m pytest -q bongard/tests
 
 The tests use small temporary fixtures; the 1.76 GB official archive is not
-needed.  No Lean installation is required.  Python alone is authoritative for
-predicate execution, calibration, replay, benchmark decisions, and scientific
-artifact IDs.  A future Lean or other proof checker may only be a detached
-optional sidecar over an already-frozen artifact; deleting it must change none
-of those results, decisions, or IDs.
+needed.  Python is the sole authoritative semantics.  It defines predicates,
+the closed IR, evidence dispositions and projections, calibration, synthesis,
+selection, evaluation, persistence, cold replay, decisions, and every
+scientific result or artifact ID.  Lean is neither installed nor required.  Any
+checker may consume only an already-frozen Python artifact and emit a detached,
+non-authoritative sidecar; its presence, failure, disagreement, change, or
+deletion cannot alter Python authority.
 
 Verify the official corpus
 --------------------------
@@ -199,7 +201,9 @@ was fitted and Stage B was not authorized.  Intended-bin orientation was
 13/15 versus 2/15 for its exact complement; at the naive ``score >= 0.5``
 threshold it was 12/15 versus 3/15.  Negation did not win.  A3 consumed 22
 tasks and leaves 10,047 exact-unused train/validation task IDs (FF 2,998, BD
-3,434, HD 3,615).  SEALED/test remained untouched.
+3,434, HD 3,615).  Complete-release authentication hashed official-test bytes,
+but no official-test task or panel was selected, exposed to a proposer or
+scorer, evaluated, or scored.
 
 The typed rejection was caused by a parser expression matching the prefix
 ``def`` in the ordinary word ``defines``.  The parser now requires a complete
@@ -258,20 +262,26 @@ score-bin occupancy.
 New Stage-A command receipts use schema v2 and bind the complete authoritative
 Python source snapshot.  The exact non-authoritative
 ``bongard/semantic_checker.py`` proof-checker sidecar is excluded: installing,
-editing, or deleting it cannot change a receipt identity, while a mutation to
-any potentially authoritative Python module remains fail-closed.  Historical
+editing, failing, disagreeing, or deleting it cannot change a predicate,
+evidence value, formula, result, decision, replay, receipt, or ID, while a
+mutation to any potentially authoritative Python module remains fail-closed.  Historical
 failed v1 receipts remain exactly auditable but cannot authorize Stage B.  Any
 post-precommit source mutation now produces a durable typed operational failure
 with labels withheld.
 
-SEALED is unavailable
----------------------
+Official-test model evaluation is unavailable
+---------------------------------------------
 
 There is no visual-semantic official-test command.  ``--sealed-test`` with
 ``--predicate-mode visual-semantic`` is rejected before corpus/panel release,
 and the benchmark API independently rejects the same official-test execution.
 Do not substitute the generic single-episode command or call an internal
 runner to bypass this control.
+
+This does not mean the bytes are absent from integrity checks.  Complete-release
+authentication hashes the official-test partition.  No official-test task or
+panel is selected for an episode, exposed to a proposer or scorer, evaluated,
+or scored.
 
 What cold replay establishes
 ----------------------------
@@ -288,6 +298,16 @@ the durable prediction-before-label boundary.  A successful run contains
 exactly 29 distinct causal receipts.  ``operational_nonmatch`` remains a
 distinct operational record and projects to semantic ``indeterminate``; replay
 cannot upgrade it to certified absence.
+
+A failed run instead replays its exact closed journal prefix.  Atomic attempt
+two cold-replayed 13 validated calls: twelve descriptions and one proposal,
+with no support scoring or query call.  Its proposal contract now requires
+1--12 pairwise-distinct questions of at most 192 UTF-8 bytes, no outer
+whitespace, exact ASCII surface
+``[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?``, one final question mark, and no
+normalization or repair.  The same Python parser applies the closed negation,
+disjunction, laundering, bundling, support-relative, and control-text policy.
+This validates syntax and provenance, not perceptual truth.
 
 It establishes that the recorded computation is internally consistent and
 tamper-evident.  It does not prove that a model's phrase such as ``bird-like``
@@ -311,24 +331,32 @@ atoms, complete atom-by-panel observations, deterministic positive
 conjunctions, no ``Not``, and no polarity flip.  The proposer is causally
 restricted to the frozen support descriptions.  The remaining perception gap
 is richer typed object/part/angle/relation grounding; a one-sentence vision
-description is still lossy.  Lean or another checker may inspect a frozen
-artifact only as an optional removable sidecar; it is not part of the
-predicate, result, or ID.
+description is still lossy.  Lean is neither imported nor required by the
+authoritative path.  A checker may inspect only an already-frozen Python
+artifact and emit a detached, non-authoritative sidecar; its presence, failure,
+disagreement, change, or deletion cannot alter a predicate, evidence value,
+formula, result, decision, replay, or ID.
 
-Exploratory atomic successor attempt two
-----------------------------------------
+Exploratory atomic successor attempt three: PRE-LIVE / PENDING
+--------------------------------------------------------------
 
-The production command authenticates the complete 12,000-task release, exact
-split, complete manifest, exact first-attempt incident, and active predecessor
-ledger before selection.  The active predecessor is
-``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``;
-it must be exactly one append after historical A3 ledger
-``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``.
-The command persists a secret-free configuration, then stages and
-authenticates the pinned native Codex bytes before generating any selection,
-episode, or label-seal secret and before exact-task exposure.  It guards the
-authoritative source across exposure, every call, replay, and terminal
-persistence.
+The production command freezes authoritative Python before authenticating the
+complete 12,000-task release and rechecks it after that potentially long
+operation.  It authenticates the exact split, manifest, attempt-two machine
+record, and active predecessor
+``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
+That predecessor is exactly the second append in the A3 -> ``b053`` -> ``bfd``
+lineage.  Complete-release authentication hashes official-test bytes, but the
+selection policy admits only the exact training universe below.
+
+The command stages and authenticates the pinned native Codex bytes, executes a
+fixed non-Bongard structured-text transport preflight, and durably persists the
+preflight receipt and secret-free configuration.  The preflight sees no
+Bongard data and is outside the 29-call smoke schedule.  Every attempt-owned store
+must begin pristine.  It then exclusively persists a seed-independent claim
+beside the canonical predecessor path before generating any selection, episode,
+or label-seal secret and before exact-task exposure.  This is local canonical-
+path protection, not a distributed lock against copying ledger bytes elsewhere.
 
 Run it only from a committed immutable checkout.  Every store argument must
 name an already existing absolute, non-symlink directory with mode ``0700``:
@@ -339,31 +367,38 @@ name an already existing absolute, non-symlink directory with mode ``0700``:
    python -B -m bongard.atomic_smoke_command \
      --corpus /absolute/path/to/ShapeBongard_V2 \
      --archive /absolute/path/to/ShapeBongard_V2.zip \
-     --predecessor-ledger /absolute/path/to/b053-successor.exposure.json \
+     --predecessor-ledger /absolute/path/to/bfd-successor.exposure.json \
+     --prior-attempt-record /absolute/path/to/atomic_smoke_attempt2_proposal_contract_failure_v1.json \
      --config-store /absolute/path/to/config-store \
      --exposure-store /absolute/path/to/exposure-store \
      --journal-store /absolute/path/to/fresh-empty-journal-store \
      --prediction-store /absolute/path/to/prediction-store \
      --terminal-store /absolute/path/to/terminal-store \
-     --cache-store /absolute/path/to/cache-store
+     --cache-store /absolute/path/to/cache-store \
+     --preflight-store /absolute/path/to/preflight-store
 
-The journal store must be fresh and empty.  Its durable header binds the public
-precommit, exact command config, source, protocol, launcher, model, and
-reasoning effort.  Each of the fixed 29 slots persists an exact intent before
+Every store must be pristine and mode ``0700``.  The journal's durable header
+binds the public precommit, exact command config, source, protocol, launcher,
+model, and reasoning effort.  Each slot persists an exact intent before
 transport and its validated result before the next intent.  The journal
-terminal is durable before the runner returns.  A pre-existing identical
-header, open intent, or partial prefix is not resumable or retryable.
+terminal is durable before runner return.  A pre-existing header, open intent,
+or partial prefix is not resumable or retryable.  The successful schedule has
+29 calls; a failed run persists and replays its exact shorter closed prefix.
 
 The command prints one selected-ID-redacted JSON line.  The original first
 attempt selected from ten exact-unseen repeated-generator training tasks,
 historical digest
 ``sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8``.
-Its exposed task is consumed.  Attempt two selects from the exact remaining
-nine-ID universe, digest
-``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
+Attempt one consumed one task.  Attempt two historically selected from the
+remaining nine-ID universe, digest
+``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``,
+and consumed a second.  Attempt three selects from the exact remaining eight-ID
+universe, digest
+``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
 Consequently this is an exploratory transport/synthesis smoke, not an
 independent calibration, DEV estimate, or official benchmark.  All four
 authorization flags remain false regardless of its two-query score.
+No live attempt-three outcome is claimed in this pre-live block.
 
 First live N=1 incident
 -------------------------------
@@ -398,7 +433,29 @@ setup invocation had rejected a cache store at mode ``0755`` instead of the
 required ``0700``.  That setup invocation persisted no exposure and consumed
 nothing.
 
-Do not rerun that task or point attempt two at the A3 ledger.  The only valid
-attempt-two predecessor is the ``b053...97de0a`` successor above.  This
-document records the successor protocol before live execution; it contains no
-attempt-two prediction, score, or outcome.
+Atomic attempt-two proposal-contract failure
+--------------------------------------------
+
+Attempt two ran exactly once from commit
+``d0864525146a05795c030674fa0159feb43913c1`` and tag
+``bongard-atomic-successor-pre-smoke-20260806``.  Its predecessor was
+``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``
+and its exposure successor is
+``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
+
+The journal closed 13 intents and 13 validated results: twelve support
+descriptions and one atom proposal.  The proposal receipt and schema were
+valid.  All ten questions ended in the question mark required by the prompt,
+but the shared soft-cue parser rejected U+003F.  The exact error is ``invalid
+positive_description: soft cue positive_description contains a forbidden prose
+character U+003F``, phase ``atom-proposal``, reason digest
+``34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f``.
+
+There was no support scoring, formula, selection archive, query call,
+prediction, label materialization, label reveal, or score.  The run, journal
+terminal, and command terminal persisted, and cold replay passed.  This is an
+implementation-contract failure, not vision, predicate, negation, or benchmark
+evidence.  The selected task is consumed.  The sanitized machine record is
+``bongard/data/atomic_smoke_attempt2_proposal_contract_failure_v1.json``, file
+SHA-256
+``242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3``.

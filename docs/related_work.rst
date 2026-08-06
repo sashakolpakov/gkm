@@ -22,13 +22,15 @@ point-contact signature, or persistent part-ownership predicate.  Soft
 observations can still be wrong.  A closed predicate layer composes the
 recorded observations and can be replayed mechanically.
 
-Python alone is authoritative for predicate execution, calibration, cold
-replay, benchmark decisions, and scientific artifact IDs.  Lean or another
-proof checker may only consume an already-frozen artifact as a detached
-optional sidecar; deleting it cannot change a result, decision, or ID.  Neither
-Python nor Lean proves that a phrase such as ``bird-like object`` corresponds
-to the pixels; formal verification starts after the empirical observation
-boundary.
+Python is the sole authoritative semantics.  It defines predicates, the closed
+IR, evidence dispositions and projections, calibration, synthesis, selection,
+evaluation, persistence, cold replay, decisions, and every scientific result
+or artifact ID.  Lean is neither imported nor required.  Any checker may only
+consume an already-frozen Python artifact and emit a detached,
+non-authoritative sidecar; its presence, failure, disagreement, change, or
+deletion cannot alter Python authority.  Neither Python nor Lean proves that a
+phrase such as ``bird-like object`` corresponds to pixels; formal verification
+starts after the empirical observation boundary.
 
 What the current evidence does not show
 ---------------------------------------
@@ -61,9 +63,21 @@ edit after freeze invalidated it before any Stage-A terminal artifact was
 written.  Process output showed 48 proposer and 34 scorer launches only;
 outputs were lost, labels were not revealed, no semantic inference is valid,
 and the cohort may not be rerun.  The incident file digest is
-``sha256:4ace426b...7ccd4``.  Stage B is unauthorized by both A1 and A2.
-Official SEALED/test visual-semantic execution is hard-disabled.  Accordingly,
-the project makes no current claim of complete-corpus visual-semantic
+``sha256:4ace426b...7ccd4``.  A3 subsequently completed transport but failed its
+fixed calibration fit because its upper bin held six clusters against a minimum
+of eight; negation did not win.  Stage B is unauthorized by A1, A2, and A3.
+
+The atomic path then recorded two consuming failures.  Attempt one was an
+operational wrapper failure with an irrecoverable 0--29 call count.  Attempt two
+cold-replayed exactly twelve support descriptions and one valid proposal before
+the prompt/parser question-mark contradiction stopped parsing; it made no
+support-scoring or query call and produced no score.  Atomic attempt three is
+an explicitly pre-live eight-ID successor, not a reported outcome.
+
+Official-test visual-semantic model execution is hard-disabled.  Full-release
+authentication nevertheless hashes official-test bytes; no test task or panel
+is selected, exposed to a proposer or scorer, evaluated, or scored.  The
+project makes no current claim of complete-corpus visual-semantic
 generalization.
 
 A post-A2 dependency audit also corrected the unit of independence.  Distinct

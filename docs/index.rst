@@ -10,11 +10,12 @@ Current Bongard status
 ----------------------
 
 The active Bongard track targets the complete official ``ShapeBongard_V2``
-release.  Python alone is authoritative for predicate execution, calibration,
-cold replay, benchmark decisions, and scientific artifact IDs.  Lean or any
-other proof checker may only consume an already-frozen artifact as a detached
-optional sidecar; installing or deleting it must not change any result,
-decision, or ID.
+release.  Python is the sole authoritative semantics: it defines predicates,
+the closed IR, evidence dispositions and projections, calibration, synthesis,
+selection, evaluation, persistence, cold replay, decisions, and every
+scientific result or artifact ID.  Lean is neither imported nor required.  Any
+checker emits only a detached, non-authoritative sidecar; its presence, failure,
+disagreement, change, or deletion cannot alter Python authority.
 
 The scientific and operational record is explicit:
 
@@ -40,19 +41,28 @@ The scientific and operational record is explicit:
   prediction nor a terminal.  Its successful-call count is irrecoverably
   unknown in 0--29.  The task is consumed without reroll, and the incident is
   operational rather than a Bongard result.
-* Attempt two is frozen as a distinct successor.  Active predecessor
-  ``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``
-  is exactly one append after A3 ledger
-  ``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``.
-  The remaining universe is exactly nine IDs, digest
-  ``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
-  The pinned launcher stages before secrets and exposure; a fresh
-  mode-``0700`` journal writes an intent before each of 29 transports, each
-  result before the next, and its terminal before runner return.  Journals
-  cannot be resumed or retried.  No live successor outcome is claimed.
+* Atomic attempt two ran once from commit ``d0864525...13c1``.  Its journal
+  closed 13 intents/results: twelve neutral support descriptions and one valid
+  proposal receipt.  All ten questions ended in the ``?`` demanded by the
+  prompt, but the shared soft-cue parser rejected U+003F.  No support scoring,
+  formula, query call, prediction, label reveal, or score occurred.  Run and
+  terminal artifacts persisted and cold replay passed.  This is an
+  implementation-contract failure, not vision or benchmark evidence.  Its
+  exposure successor is
+  ``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
+* **Atomic attempt three is PRE-LIVE / PENDING.**  It binds that predecessor and
+  an eight-ID universe, digest
+  ``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
+  Python is frozen around release authentication; a staged launcher performs a
+  fixed non-Bongard preflight; all stores must be pristine; and an exclusive
+  seed-independent canonical-path claim persists before secrets or exposure.
+  No attempt-three outcome is claimed.
 * Stage B is unauthorized by A1, A2, and A3.  Strict DRILL capacity after A3 is
   zero; DEV remains 16 BD + 0 HD under the same ledger-disjoint policy.
-* Visual-semantic execution on the official SEALED/test split is hard-disabled.
+* Visual-semantic model execution on the official test split is hard-disabled.
+  Complete-release authentication still hashes official-test bytes, but no
+  test task or panel is selected, exposed to a proposer or scorer, evaluated,
+  or scored.
 
 No score from this sequence is an official benchmark result.  Old
 symbolic, generated, and small-pilot results belong to an earlier protocol and

@@ -32,17 +32,26 @@ from bongard.atomic_semantic_synthesis import (
     OPERATIONAL_SELECTION_SCOPE,
     AtomicEvidenceBinding,
     AtomicSelectionArchive,
+    AtomicSemanticSynthesisError,
     AtomicSoftPredicate,
     AtomicSupportCell,
     AtomicSupportMatrix,
     OperationalNonmatchRecord,
     PanelDescriptionBinding,
+    atomic_affirmative_surface_policy_data,
+    atomic_affirmative_surface_policy_description,
     cold_decode_and_replay_atomic_selection,
     evaluate_atomic_formula,
     synthesize_atomic_conjunction,
+    validate_atomic_affirmative_surface,
 )
 from bongard.atomic_smoke_precommit import AtomicSmokePrecommit
 from bongard.evidence import Disposition, Evidence, Provenance
+from bongard.typed_visual_proposal import (
+    MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES,
+    affirmative_prose_surface_policy_data,
+    affirmative_prose_surface_policy_description,
+)
 from bongard.transport import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_REASONING_EFFORT,
@@ -78,7 +87,42 @@ ATOMIC_SMOKE_PREDICTION_SCHEMA = "gkm.bongard-atomic-smoke-predictions.v1"
 ATOMIC_SMOKE_LABEL_REVEAL_SCHEMA = "gkm.bongard-atomic-smoke-label-reveal.v1"
 ATOMIC_SMOKE_PERSISTENCE_SCHEMA = "gkm.bongard-atomic-smoke-persistence.v1"
 ATOMIC_SMOKE_SUCCESS_CALL_COUNT = 29
+ATOMIC_SMOKE_MIN_ATOMS = 1
 ATOMIC_SMOKE_MAX_ATOMS = 12
+
+_OBSERVER_QUESTION_ASCII_REGEX_TEXT = r"[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?"
+_OBSERVER_QUESTION_ASCII_REGEX = re.compile(
+    _OBSERVER_QUESTION_ASCII_REGEX_TEXT + r"\Z"
+)
+_OBSERVER_QUESTION_CONTRACT = (
+    "Each phrase must be one exact affirmative single-panel observer question "
+    f"of at most {MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES} UTF-8 bytes, with no "
+    "outer whitespace, matching the exact ASCII regular expression "
+    f"{_OBSERVER_QUESTION_ASCII_REGEX_TEXT}. This admits only ASCII letters, "
+    "digits, single spaces, hyphens, and exactly one final ASCII question mark. "
+    "The verifier preserves the model output byte-for-byte and performs no "
+    "normalization or post-hoc repair. "
+    + atomic_affirmative_surface_policy_description()
+    + " "
+    + affirmative_prose_surface_policy_description()
+)
+_OBSERVER_QUESTION_COLLECTION_CONTRACT = (
+    f"atoms must contain {ATOMIC_SMOKE_MIN_ATOMS}..{ATOMIC_SMOKE_MAX_ATOMS} "
+    "phrase objects whose exact phrase strings are pairwise distinct. "
+    + _OBSERVER_QUESTION_CONTRACT
+)
+_PROPOSAL_PROMPT_PREFIX = (
+    "Using only the frozen labelled panel descriptions below, propose reusable "
+    "affirmative one-cue visual atoms. Every atom must be single-panel "
+    "checkable. Do not write code, inspect images, flip polarity, use negation, "
+    "or use class-relative wording."
+)
+_ATOMIC_SMOKE_SCORER_DISPOSITIONS = (
+    "present",
+    "operational_nonmatch",
+    "indeterminate",
+    "error",
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -98,36 +142,50 @@ def _description_schema() -> dict[str, object]:
     }
 
 
-def _proposal_schema() -> dict[str, object]:
+def atomic_smoke_proposal_schema() -> dict[str, object]:
+    """Return the exact strict schema used by the atomic proposal call."""
+
     atom = {
         "type": "object",
         "properties": {
-            "phrase": {"type": "string"},
+            "phrase": {
+                "type": "string",
+                "description": _OBSERVER_QUESTION_CONTRACT,
+            },
         },
         "required": ["phrase"],
         "additionalProperties": False,
     }
     return {
         "type": "object",
-        "properties": {"atoms": {"type": "array", "items": atom}},
+        "properties": {
+            "atoms": {
+                "type": "array",
+                "items": atom,
+                "description": _OBSERVER_QUESTION_COLLECTION_CONTRACT,
+            }
+        },
         "required": ["atoms"],
         "additionalProperties": False,
     }
 
 
-def _scorer_schema() -> dict[str, object]:
+def _proposal_schema() -> dict[str, object]:
+    """Backward-compatible private spelling for internal call sites."""
+
+    return atomic_smoke_proposal_schema()
+
+
+def atomic_smoke_scorer_schema() -> dict[str, object]:
+    """Return the exact strict schema used by every atomic scorer call."""
+
     result = {
         "type": "object",
         "properties": {
             "atom_id": {"type": "string"},
             "disposition": {
                 "type": "string",
-                "enum": [
-                    "present",
-                    "operational_nonmatch",
-                    "indeterminate",
-                    "error",
-                ],
+                "enum": list(_ATOMIC_SMOKE_SCORER_DISPOSITIONS),
             },
             "explanation": {"type": "string"},
         },
@@ -140,6 +198,12 @@ def _scorer_schema() -> dict[str, object]:
         "required": ["results"],
         "additionalProperties": False,
     }
+
+
+def _scorer_schema() -> dict[str, object]:
+    """Backward-compatible private spelling for internal call sites."""
+
+    return atomic_smoke_scorer_schema()
 
 
 _DESCRIPTION_PROMPT = (
@@ -177,13 +241,8 @@ def atomic_smoke_scorer_protocol_digest() -> str:
         {
             "schema": "gkm.bongard-atomic-smoke-scorer-protocol.v1",
             "instructions": _SCORER_INSTRUCTIONS,
-            "output_schema": _scorer_schema(),
-            "model_output_vocabulary": [
-                "present",
-                "operational_nonmatch",
-                "indeterminate",
-                "error",
-            ],
+            "output_schema": atomic_smoke_scorer_schema(),
+            "model_output_vocabulary": list(_ATOMIC_SMOKE_SCORER_DISPOSITIONS),
             "internal_nonmatch_representation": (
                 "operational-nonmatch-record-projects-to-indeterminate/v1"
             ),
@@ -197,13 +256,37 @@ def atomic_smoke_run_protocol_digest() -> str:
 
     return canonical_digest(
         {
-            "schema": "gkm.bongard-atomic-smoke-run-protocol.v2",
+            "schema": "gkm.bongard-atomic-smoke-run-protocol.v4",
             "run_schema": ATOMIC_SMOKE_RUN_SCHEMA,
             "call_schema": ATOMIC_SMOKE_CALL_SCHEMA,
             "description_prompt": _DESCRIPTION_PROMPT,
             "description_schema": _description_schema(),
             "description_protocol_digest": atomic_smoke_description_protocol_digest(),
-            "proposal_schema": _proposal_schema(),
+            "proposal_schema": atomic_smoke_proposal_schema(),
+            "proposal_prompt_prefix": _PROPOSAL_PROMPT_PREFIX,
+            "proposal_phrase_contract": {
+                "contract": _OBSERVER_QUESTION_CONTRACT,
+                "collection_contract": _OBSERVER_QUESTION_COLLECTION_CONTRACT,
+                "minimum_phrases": ATOMIC_SMOKE_MIN_ATOMS,
+                "maximum_phrases": ATOMIC_SMOKE_MAX_ATOMS,
+                "pairwise_distinct_exact_phrases": True,
+                "speech_act": "affirmative-single-panel-observer-question",
+                "maximum_utf8_bytes": MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES,
+                "outer_whitespace": False,
+                "exact_ascii_regex": _OBSERVER_QUESTION_ASCII_REGEX_TEXT,
+                "allowed_non_alphanumeric_characters": [" ", "-", "?"],
+                "single_spaces_only": True,
+                "ascii_question_mark_count": 1,
+                "ascii_question_mark_position": "final-character",
+                "internal_question_marks": False,
+                "normalization_or_post_hoc_repair": False,
+                "atomicity_surface_policy": (
+                    atomic_affirmative_surface_policy_data()
+                ),
+                "downstream_affirmative_prose_surface_policy": (
+                    affirmative_prose_surface_policy_data()
+                ),
+            },
             "scorer_protocol_digest": atomic_smoke_scorer_protocol_digest(),
             "success_call_order": [
                 "support-description"
@@ -1956,23 +2039,12 @@ def _validate_scorer_call_and_records(
         or set(records) != set(expected_ids)
     ):
         raise AtomicSmokeRunError("scorer call differs from its frozen atom/panel inputs")
-    raw = _mapping(
-        call.payload, frozenset({"results"}), "authorized scorer payload"
-    )["results"]
-    if not isinstance(raw, (list, tuple)) or len(raw) != len(atoms):
-        raise AtomicSmokeRunError("authorized scorer payload is incomplete")
-    payload_by_id: dict[str, Mapping[str, Any]] = {}
-    for item in raw:
-        parsed = _mapping(
-            item,
-            frozenset({"atom_id", "disposition", "explanation"}),
-            "authorized scorer result",
+    payload_by_id = {
+        atom_id: {"disposition": disposition, "explanation": explanation}
+        for atom_id, disposition, explanation in validate_atomic_smoke_scorer_payload(
+            call.payload, expected_atom_ids=expected_ids
         )
-        if parsed["atom_id"] in payload_by_id:
-            raise AtomicSmokeRunError("authorized scorer payload repeats an atom")
-        payload_by_id[parsed["atom_id"]] = parsed
-    if set(payload_by_id) != set(expected_ids):
-        raise AtomicSmokeRunError("authorized scorer payload atom IDs differ")
+    }
     atoms_by_id = {atom.atom_id: atom for atom in atoms}
     for atom_id, record in records.items():
         _validate_authorized_scorer_record(record, call=call, run_id=run_id)
@@ -2671,14 +2743,72 @@ def _proposal_prompt(
         for binding in bindings
     ]
     return (
-        "Using only the frozen labelled panel descriptions below, propose 1 to "
-        "12 reusable affirmative one-cue visual atoms. Each atom must be "
-        "single-panel checkable, contain no negation or class-relative wording, "
-        "and contain no alternative joined by or/either. Do not combine cues, "
-        "write code, flip polarity, or inspect images. phrase is the one exact "
-        "affirmative observer question used everywhere downstream.\n"
+        _PROPOSAL_PROMPT_PREFIX
+        + " "
+        + _OBSERVER_QUESTION_COLLECTION_CONTRACT
+        + "\n"
         + canonical_json({"support": support}).decode("utf-8")
     )
+
+
+def _canonical_observer_question(value: object) -> str:
+    """Enforce the exact atomic-smoke observer-question surface contract."""
+
+    if not isinstance(value, str):
+        raise AtomicSmokeRunError("proposed atom phrase must be a string")
+    if value != value.strip():
+        raise AtomicSmokeRunError(
+            "proposed atom phrase must have no outer whitespace"
+        )
+    if len(value.encode("utf-8")) > MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES:
+        raise AtomicSmokeRunError(
+            "proposed atom phrase exceeds the exact soft-cue limit of "
+            f"{MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES} UTF-8 bytes"
+        )
+    if value.count("?") != 1 or not value.endswith("?"):
+        raise AtomicSmokeRunError(
+            "proposed atom phrase violates the canonical observer-question "
+            "form: exactly one ASCII question mark must be final, with no "
+            "internal question mark"
+        )
+    if _OBSERVER_QUESTION_ASCII_REGEX.fullmatch(value) is None:
+        raise AtomicSmokeRunError(
+            "proposed atom phrase violates the exact narrow ASCII observer-"
+            "question surface"
+        )
+    try:
+        validate_atomic_affirmative_surface(value, "proposed atom phrase")
+    except AtomicSemanticSynthesisError as exc:
+        raise AtomicSmokeRunError(
+            "proposed atom phrase violates the closed atomicity surface policy: "
+            f"{exc}"
+        ) from exc
+    return value
+
+
+def validate_atomic_smoke_proposal_payload(
+    payload: Mapping[str, Any],
+) -> tuple[str, ...]:
+    """Validate the exact model proposal surface without Bongard bindings."""
+
+    data = _mapping(payload, frozenset({"atoms"}), "atom proposal payload")
+    raw_atoms = data["atoms"]
+    if not isinstance(raw_atoms, (list, tuple)) or not (
+        ATOMIC_SMOKE_MIN_ATOMS <= len(raw_atoms) <= ATOMIC_SMOKE_MAX_ATOMS
+    ):
+        raise AtomicSmokeRunError(
+            "atom proposal must contain "
+            f"{ATOMIC_SMOKE_MIN_ATOMS}..{ATOMIC_SMOKE_MAX_ATOMS} atoms"
+        )
+    phrases: list[str] = []
+    for raw in raw_atoms:
+        item = _mapping(raw, frozenset({"phrase"}), "proposed atom")
+        phrases.append(_canonical_observer_question(item["phrase"]))
+    if len(phrases) != len(set(phrases)):
+        raise AtomicSmokeRunError(
+            "atom proposal phrases must be pairwise-distinct exact strings"
+        )
+    return tuple(phrases)
 
 
 def _parse_atoms(
@@ -2687,23 +2817,15 @@ def _parse_atoms(
     proposal_digest: str,
     panel_bindings: Sequence[PanelDescriptionBinding],
 ) -> tuple[AtomicSoftPredicate, ...]:
-    data = _mapping(payload, frozenset({"atoms"}), "atom proposal payload")
-    raw_atoms = data["atoms"]
-    if not isinstance(raw_atoms, (list, tuple)) or not 1 <= len(raw_atoms) <= ATOMIC_SMOKE_MAX_ATOMS:
-        raise AtomicSmokeRunError("atom proposal must contain 1..12 atoms")
+    phrases = validate_atomic_smoke_proposal_payload(payload)
     atoms: list[AtomicSoftPredicate] = []
-    for raw in raw_atoms:
-        item = _mapping(
-            raw,
-            frozenset({"phrase"}),
-            "proposed atom",
-        )
+    for phrase in phrases:
         atoms.append(
             AtomicSoftPredicate.create(
                 source_proposal_digest=proposal_digest,
                 scorer_protocol_digest=atomic_smoke_scorer_protocol_digest(),
-                positive_description=item["phrase"],
-                cue_description=item["phrase"],
+                positive_description=phrase,
+                cue_description=phrase,
                 panel_descriptions=panel_bindings,
             )
         )
@@ -2741,6 +2863,56 @@ def _scorer_prompt(
     )
 
 
+def validate_atomic_smoke_scorer_payload(
+    payload: Mapping[str, Any],
+    *,
+    expected_atom_ids: Sequence[str],
+) -> tuple[tuple[str, str, str], ...]:
+    """Validate the exact model scorer surface without pixel provenance."""
+
+    if isinstance(expected_atom_ids, (str, bytes)):
+        raise AtomicSmokeRunError("expected scorer atom IDs must be a sequence")
+    expected = tuple(
+        _digest(atom_id, "expected scored atom ID") for atom_id in expected_atom_ids
+    )
+    if not (
+        ATOMIC_SMOKE_MIN_ATOMS <= len(expected) <= ATOMIC_SMOKE_MAX_ATOMS
+    ) or len(expected) != len(set(expected)):
+        raise AtomicSmokeRunError(
+            "expected scorer atom IDs must be unique and contain 1..12 values"
+        )
+    data = _mapping(payload, frozenset({"results"}), "scorer payload")
+    raw_results = data["results"]
+    if not isinstance(raw_results, (list, tuple)) or len(raw_results) != len(
+        expected
+    ):
+        raise AtomicSmokeRunError("scorer result does not cover every frozen atom")
+    parsed: list[tuple[str, str, str]] = []
+    seen: set[str] = set()
+    for raw in raw_results:
+        item = _mapping(
+            raw,
+            frozenset({"atom_id", "disposition", "explanation"}),
+            "scorer result",
+        )
+        atom_id = _digest(item["atom_id"], "scored atom ID")
+        if atom_id in seen:
+            raise AtomicSmokeRunError("scorer returned an atom twice")
+        seen.add(atom_id)
+        disposition = item["disposition"]
+        if disposition not in _ATOMIC_SMOKE_SCORER_DISPOSITIONS:
+            raise AtomicSmokeRunError(
+                "scorer used vocabulary outside its static schema"
+            )
+        explanation = _text(
+            item["explanation"], "scorer explanation", maximum=2048
+        )
+        parsed.append((atom_id, disposition, explanation))
+    if seen != set(expected):
+        raise AtomicSmokeRunError("scorer atom IDs differ from frozen atoms")
+    return tuple(parsed)
+
+
 def _parse_scorer_evidence(
     payload: Mapping[str, Any],
     *,
@@ -2749,25 +2921,13 @@ def _parse_scorer_evidence(
     call: AtomicSmokeCallRecord,
     run_id: str,
 ) -> dict[str, Evidence[bool]]:
-    data = _mapping(payload, frozenset({"results"}), "scorer payload")
-    raw_results = data["results"]
-    if not isinstance(raw_results, (list, tuple)) or len(raw_results) != len(atoms):
-        raise AtomicSmokeRunError("scorer result does not cover every frozen atom")
-    by_id: dict[str, Mapping[str, Any]] = {}
-    for raw in raw_results:
-        item = _mapping(
-            raw,
-            frozenset({"atom_id", "disposition", "explanation"}),
-            "scorer result",
+    by_id = {
+        atom_id: {"disposition": disposition, "explanation": explanation}
+        for atom_id, disposition, explanation in validate_atomic_smoke_scorer_payload(
+            payload,
+            expected_atom_ids=tuple(atom.atom_id for atom in atoms),
         )
-        atom_id = _digest(item["atom_id"], "scored atom ID")
-        if atom_id in by_id:
-            raise AtomicSmokeRunError("scorer returned an atom twice")
-        _text(item["explanation"], "scorer explanation", maximum=2048)
-        by_id[atom_id] = item
-    expected = {atom.atom_id for atom in atoms}
-    if set(by_id) != expected:
-        raise AtomicSmokeRunError("scorer atom IDs differ from frozen atoms")
+    }
     evidence: dict[str, Evidence[bool]] = {}
     for atom in atoms:
         item = by_id[atom.atom_id]
@@ -3591,6 +3751,8 @@ __all__ = [
     "ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA",
     "ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA",
     "ATOMIC_SMOKE_LABEL_REVEAL_SCHEMA",
+    "ATOMIC_SMOKE_MAX_ATOMS",
+    "ATOMIC_SMOKE_MIN_ATOMS",
     "ATOMIC_SMOKE_PREDICTION_SCHEMA",
     "ATOMIC_SMOKE_PERSISTENCE_SCHEMA",
     "ATOMIC_SMOKE_RUN_SCHEMA",
@@ -3604,8 +3766,12 @@ __all__ = [
     "AtomicSmokeRunError",
     "PredictionPersistenceReceipt",
     "atomic_smoke_description_protocol_digest",
+    "atomic_smoke_proposal_schema",
     "atomic_smoke_run_protocol_digest",
+    "atomic_smoke_scorer_schema",
     "atomic_smoke_scorer_protocol_digest",
     "cold_decode_and_replay_atomic_smoke_run",
     "run_atomic_smoke",
+    "validate_atomic_smoke_proposal_payload",
+    "validate_atomic_smoke_scorer_payload",
 ]

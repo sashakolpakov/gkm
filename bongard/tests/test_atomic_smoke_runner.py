@@ -17,6 +17,7 @@ import pytest
 
 from bongard import benchmark
 from bongard.artifacts import canonical_digest
+import bongard.atomic_semantic_synthesis as S
 from bongard.atomic_semantic_synthesis import (
     OPERATIONAL_SELECTION_SCOPE,
     AtomicSelectionArchive,
@@ -42,6 +43,7 @@ from bongard.corpus import BongardTask, ShapeBongardCorpus, SplitIndex
 from bongard.exposure import ExposureLedger
 from bongard.semantic_calibration_campaign import semantic_generator_cluster_id
 import bongard.transport as T
+import bongard.typed_visual_proposal as V
 
 
 TASK_ID = "bd_mismatch_triangle_rec1_0000"
@@ -55,6 +57,18 @@ COMMAND_CONFIG_DIGEST = "sha256:" + hashlib.sha256(
 ).hexdigest()
 MODEL = "gpt-test"
 EFFORT = "medium"
+LIVE_OBSERVER_QUESTIONS = (
+    "Are hollow circles arranged in a row along an edge?",
+    "Are hollow squares arranged in a row along an edge?",
+    "Are outlined triangles arranged in a row along an edge?",
+    "Does a polygonal loop have symbol-lined edges?",
+    "Is a chain of small symbols attached to a larger contour?",
+    "Does a smaller loop meet a larger loop at one junction?",
+    "Is a cluster of repeated marks attached at a corner?",
+    "Does a contour include a jagged black edge?",
+    "Is there a tilted quadrilateral loop?",
+    "Is there a triangular arrangement of repeated small marks?",
+)
 
 
 @dataclass(frozen=True)
@@ -286,10 +300,17 @@ def _redigest_receipt(
 class _OfflineCodex:
     """Deterministic visual observer with optional receipt-boundary faults."""
 
-    def __init__(self, *, fault_ordinal: int | None = None, fault: str | None = None):
+    def __init__(
+        self,
+        *,
+        fault_ordinal: int | None = None,
+        fault: str | None = None,
+        proposal_phrases: Sequence[str] = (LIVE_OBSERVER_QUESTIONS[0],),
+    ):
         self.calls = 0
         self.fault_ordinal = fault_ordinal
         self.fault = fault
+        self.proposal_phrases = tuple(proposal_phrases)
 
     def _next(self) -> int:
         self.calls += 1
@@ -356,7 +377,7 @@ class _OfflineCodex:
     ) -> T.CodexStructuredResult:
         ordinal = self._next()
         payload = {
-            "atoms": [{"phrase": "A sharp triangular form is visible."}]
+            "atoms": [{"phrase": phrase} for phrase in self.proposal_phrases]
         }
         receipt = _receipt(
             prompt=prompt,
@@ -449,6 +470,7 @@ def test_exact_29_call_python_end_to_end_and_operational_scope(
     archive = AtomicSelectionArchive.from_data(
         run.to_data()["selection_archive_data"]
     )
+    assert archive.matrix.atoms[0].positive_description == LIVE_OBSERVER_QUESTIONS[0]
     assert archive.selection_scope == OPERATIONAL_SELECTION_SCOPE
     claim_authority = run.selection_archive_data["claim_authority"]
     assert claim_authority == {
@@ -473,6 +495,226 @@ def test_exact_29_call_python_end_to_end_and_operational_scope(
     assert cold_decode_and_replay_atomic_smoke_run(
         **_cold_kwargs(run, fixture)
     ).to_data() == run.to_data()
+
+
+def test_question_contract_is_identical_in_schema_prompt_and_protocol(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = R._OBSERVER_QUESTION_CONTRACT
+    collection_contract = R._OBSERVER_QUESTION_COLLECTION_CONTRACT
+    schema = R._proposal_schema()
+    prompt = R._proposal_prompt((), {})
+    protocol_digest = atomic_smoke_run_protocol_digest()
+
+    atoms_schema = schema["properties"]["atoms"]
+    assert atoms_schema["description"] == collection_contract
+    assert atoms_schema["items"]["properties"]["phrase"]["description"] == contract
+    assert collection_contract in prompt
+
+    monkeypatch.setattr(
+        R,
+        "_OBSERVER_QUESTION_COLLECTION_CONTRACT",
+        collection_contract + " Revised.",
+    )
+    assert R._proposal_schema() != schema
+    assert R._proposal_prompt((), {}) != prompt
+    assert atomic_smoke_run_protocol_digest() != protocol_digest
+
+
+def test_all_ten_live_question_phrases_parse_byte_identically(
+    tmp_path: Path,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path)
+    observer = _OfflineCodex(proposal_phrases=LIVE_OBSERVER_QUESTIONS)
+    run = _run(fixture, observer)
+
+    assert run.status == "complete"
+    raw_phrases = tuple(
+        item["phrase"] for item in run.calls[12].payload["atoms"]
+    )
+    assert tuple(phrase.encode("ascii") for phrase in raw_phrases) == tuple(
+        phrase.encode("ascii") for phrase in LIVE_OBSERVER_QUESTIONS
+    )
+    assert R.validate_atomic_smoke_proposal_payload(run.calls[12].payload) == (
+        LIVE_OBSERVER_QUESTIONS
+    )
+    archive = AtomicSelectionArchive.from_data(
+        run.to_data()["selection_archive_data"]
+    )
+    assert {atom.positive_description for atom in archive.matrix.atoms} == set(
+        LIVE_OBSERVER_QUESTIONS
+    )
+
+
+def test_contract_discloses_and_protocol_binds_every_downstream_surface_pattern(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    contract = R._OBSERVER_QUESTION_CONTRACT
+    atomic_policy = S.atomic_affirmative_surface_policy_data()
+    prose_policy = V.affirmative_prose_surface_policy_data()
+
+    assert {item["family"] for item in atomic_policy["closed_families"]} == {
+        "disjunction",
+        "negation-laundering",
+        "bundling",
+    }
+    assert {item["family"] for item in prose_policy["closed_families"]} == {
+        "explicit-negation",
+        "support-relative",
+        "support-index-count",
+        "control-text",
+    }
+    for policy in (atomic_policy, prose_policy):
+        for family in policy["closed_families"]:
+            assert family["family"] in contract
+            for pattern in family["patterns"]:
+                assert pattern["name"] in contract
+                assert isinstance(pattern["regex"], str) and pattern["regex"]
+                assert isinstance(pattern["flags"], int)
+
+    protocol_digest = atomic_smoke_run_protocol_digest()
+    monkeypatch.setattr(
+        R,
+        "affirmative_prose_surface_policy_data",
+        lambda: {**prose_policy, "audit_mutation": True},
+    )
+    assert atomic_smoke_run_protocol_digest() != protocol_digest
+
+
+def test_duplicate_question_phrases_are_rejected_exactly() -> None:
+    phrase = LIVE_OBSERVER_QUESTIONS[0]
+    with pytest.raises(AtomicSmokeRunError, match="pairwise-distinct"):
+        R.validate_atomic_smoke_proposal_payload(
+            {"atoms": [{"phrase": phrase}, {"phrase": phrase}]}
+        )
+
+
+def test_observer_question_soft_cue_byte_limit_is_exact() -> None:
+    prefix = "Is "
+    overlength = (
+        prefix
+        + "a" * (V.MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES - len(prefix))
+        + "?"
+    )
+    assert len(overlength.encode("utf-8")) == (
+        V.MAX_SOFT_CUE_DESCRIPTION_UTF8_BYTES + 1
+    )
+    with pytest.raises(AtomicSmokeRunError, match="soft-cue limit"):
+        R.validate_atomic_smoke_proposal_payload(
+            {"atoms": [{"phrase": overlength}]}
+        )
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    (
+        "Are hollow circles, arranged along an edge?",
+        " Are hollow circles arranged along an edge?",
+        "Are hollow circles arranged along an edge? ",
+        "Are hollow  circles arranged along an edge?",
+        "Are hollow_circles arranged along an edge?",
+    ),
+)
+def test_illegal_punctuation_whitespace_and_non_surface_characters_are_rejected(
+    phrase: str,
+) -> None:
+    with pytest.raises(AtomicSmokeRunError):
+        R.validate_atomic_smoke_proposal_payload(
+            {"atoms": [{"phrase": phrase}]}
+        )
+
+
+@pytest.mark.parametrize(
+    ("family", "phrase"),
+    (
+        ("disjunction", "Does the shape contain circles or squares?"),
+        ("negation-laundering", "Does the shape avoid circles?"),
+        ("bundling", "Does the shape contain circles and squares?"),
+    ),
+)
+def test_every_atomicity_pattern_family_is_rejected(
+    family: str, phrase: str
+) -> None:
+    with pytest.raises(AtomicSmokeRunError, match=family):
+        R.validate_atomic_smoke_proposal_payload(
+            {"atoms": [{"phrase": phrase}]}
+        )
+
+
+@pytest.mark.parametrize(
+    ("surface", "phrase"),
+    (
+        ("not", "Is the shape not circular?"),
+        ("labelled support item", "Is this a positive support panel?"),
+        ("support label", "Is the shape in class A?"),
+        ("indexed support item", "Does the first panel have circles?"),
+        ("support-set cardinality", "Do all six panels have circles?"),
+        ("threshold", "Does the threshold mark a circle?"),
+        ("prompt vocabulary", "Is prompt-injection visible?"),
+        ("code instruction", "Does code describe a circle?"),
+    ),
+)
+def test_every_reachable_downstream_affirmative_surface_is_rejected(
+    surface: str, phrase: str
+) -> None:
+    with pytest.raises(AtomicSmokeRunError, match=surface):
+        R.validate_atomic_smoke_proposal_payload(
+            {"atoms": [{"phrase": phrase}]}
+        )
+
+
+@pytest.mark.parametrize("count", (0, 13))
+def test_proposal_count_contract_is_exactly_one_through_twelve(count: int) -> None:
+    payload = {
+        "atoms": [
+            {"phrase": f"Is there visible shape {index}?"}
+            for index in range(count)
+        ]
+    }
+    with pytest.raises(AtomicSmokeRunError, match="1..12"):
+        R.validate_atomic_smoke_proposal_payload(payload)
+
+
+def test_public_preflight_schemas_and_scorer_surface_are_runner_exact() -> None:
+    assert R.atomic_smoke_proposal_schema() == R._proposal_schema()
+    assert R.atomic_smoke_scorer_schema() == R._scorer_schema()
+    atom_id = "a" * 64
+    payload = {
+        "results": [
+            {
+                "atom_id": atom_id,
+                "disposition": "indeterminate",
+                "explanation": "The visible geometry is ambiguous.",
+            }
+        ]
+    }
+    assert R.validate_atomic_smoke_scorer_payload(
+        payload, expected_atom_ids=(atom_id,)
+    ) == ((atom_id, "indeterminate", "The visible geometry is ambiguous."),)
+
+
+@pytest.mark.parametrize(
+    "phrase",
+    (
+        "Hollow circles are arranged in a row along an edge.",
+        "Are hollow circles arranged in a row? along an edge?",
+        "Are hollow circles arranged in a row along an edge??",
+    ),
+)
+def test_atom_proposal_rejects_noncanonical_or_internal_question_marks(
+    tmp_path: Path, phrase: str
+) -> None:
+    fixture = _synthetic_precommit(tmp_path)
+    observer = _OfflineCodex(proposal_phrases=(phrase,))
+    run = _run(fixture, observer)
+
+    assert run.status == "failed"
+    assert run.terminal_phase == "atom-proposal"
+    assert observer.calls == 13
+    assert len(run.calls) == 13
+    assert "canonical observer-question form" in run.failure["reason"]
+    assert run.selection_archive_data is None
+    assert run.prediction_commitment_data is None
 
 
 def test_query_pixels_are_unavailable_until_formula_is_frozen(

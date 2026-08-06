@@ -1,15 +1,16 @@
-"""Backend boundary for typed Bongard predicates.
+"""Internal pure-Python execution facade for typed Bongard predicates.
 
-The scientific contract is the serialized closed IR plus its typed registry
-snapshot and four-disposition evidence. It is not a Lean term, a Python source
-string, or the identity of a particular checker. Backends consume that
-contract; they do not define it.
+Python is the sole authoritative semantics.  The scientific contract is the
+Python-defined serialized closed IR, typed registry snapshot, and
+four-disposition evidence; no interchangeable execution backend may redefine
+their meaning.  The legacy ``PredicateBackend`` name below describes only an
+internal Python protocol used to keep validation, online evaluation, and cold
+replay behind one narrow facade.
 
-The canonical reference backend is pure Python. It can both invoke registered
-Python legs during an online episode and replay already committed atom evidence
-without invoking a leg, model, subprocess, or proof assistant. A future Lean
-backend may independently check the latter operation, but benchmark execution
-and cold replay must not depend on it.
+An external checker must consume an already-frozen Python artifact through
+``bongard.semantic_checker`` and emit a detached, non-authoritative sidecar.
+Installing, changing, failing, disagreeing, or deleting such a checker cannot
+change a predicate, evidence value, formula, result, decision, replay, or ID.
 """
 
 from __future__ import annotations
@@ -34,11 +35,11 @@ from bongard.legs.contracts import (
 
 @runtime_checkable
 class PredicateBackend(Protocol):
-    """Operational contract shared by predicate implementations.
+    """Legacy-named internal protocol for the authoritative Python executor.
 
     ``backend_id`` is diagnostic metadata only. It is deliberately absent
-    from formula and evidence digests: changing or adding an independent
-    checker must not change the scientific statement being checked.
+    from formula and evidence digests. This protocol is not an extension
+    point for proof assistants or alternative scientific semantics.
     """
 
     backend_id: str
@@ -75,7 +76,7 @@ class PredicateBackend(Protocol):
 
 
 class PythonPredicateBackend:
-    """Pure-Python reference semantics for the backend-neutral contract."""
+    """The sole authoritative execution semantics for the closed Python IR."""
 
     backend_id = "python-closed-ir/v1"
 

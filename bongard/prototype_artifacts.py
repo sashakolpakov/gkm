@@ -6,7 +6,7 @@ to the frozen digest.  This split is intentional: no query packet can enter
 the object whose digest freezes the feature space, support sides, fit,
 positive formula, and decision margin.
 
-These are backend-neutral canonical-JSON records.  They contain no Lean
+These are Python-authoritative canonical-JSON records.  They contain no Lean
 identity and do not execute candidate-authored code.
 """
 
