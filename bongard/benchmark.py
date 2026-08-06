@@ -57,13 +57,13 @@ from bongard.ir import AllOf, AnyOf, Atom, Formula
 from bongard.legs import PANEL, LegRegistry, TypedValue
 from bongard.predicate_backend import (
     PYTHON_PREDICATE_BACKEND,
-    PredicateBackend,
 )
 
 
 PROTOCOL_VERSION = "official-two-query-benchmark/v3"
 DEFAULT_VERIFIER = "canonical-bongard-verifier"
 SUPPORT_PROTOTYPE_PREDICATE_MODE = "support_prototype"
+VISUAL_SEMANTIC_PREDICATE_MODE = "visual_semantic"
 _SHA256 = re.compile(r"(?:sha256:)?([0-9a-f]{64})\Z")
 _NEUTRAL_QUERY_ID = "query"
 _NEUTRAL_QUERY_BLOB_ID = "query-panel"
@@ -89,6 +89,7 @@ class SupportGateMode(str, Enum):
 
     EMPIRICAL_REPLAY = "empirical_replay"
     SUPPORT_PROTOTYPE_REPLAY = "support_prototype_replay"
+    VISUAL_SEMANTIC_REPLAY = "visual_semantic_replay"
     TEST_BYPASS = "verifier_test_bypass"
 
 
@@ -102,6 +103,7 @@ class SupportGateResult(str, Enum):
 
 SUPPORT_GATE_POLICY_VERSION = "headless-hybrid-support-replay/v2"
 SUPPORT_PROTOTYPE_GATE_POLICY_VERSION = "support-prototype-replay/v1"
+VISUAL_SEMANTIC_GATE_POLICY_VERSION = "visual-semantic-support-replay/v1"
 _PENDING_SUPPORT_GATE_DIGEST = canonical_digest(
     {"schema": SUPPORT_GATE_POLICY_VERSION, "state": "pending"}
 )
@@ -126,6 +128,11 @@ class SupportGatePolicy:
                 raise ValueError("unsupported support-prototype replay policy")
             if self.reason is not None:
                 raise ValueError("support-prototype replay has no bypass reason")
+        elif self.mode is SupportGateMode.VISUAL_SEMANTIC_REPLAY:
+            if self.version != VISUAL_SEMANTIC_GATE_POLICY_VERSION:
+                raise ValueError("visual-semantic support replay policy")
+            if self.reason is not None:
+                raise ValueError("visual-semantic replay has no bypass reason")
         elif self.mode is SupportGateMode.TEST_BYPASS:
             if self.version != SUPPORT_GATE_POLICY_VERSION:
                 raise ValueError("unsupported test support-gate bypass policy")
@@ -147,6 +154,15 @@ class SupportGatePolicy:
         return cls(
             SupportGateMode.SUPPORT_PROTOTYPE_REPLAY,
             version=SUPPORT_PROTOTYPE_GATE_POLICY_VERSION,
+        )
+
+    @classmethod
+    def visual_semantic(cls) -> "SupportGatePolicy":
+        """Require joint typed witnesses and frozen semantic replay."""
+
+        return cls(
+            SupportGateMode.VISUAL_SEMANTIC_REPLAY,
+            version=VISUAL_SEMANTIC_GATE_POLICY_VERSION,
         )
 
     @classmethod
@@ -173,6 +189,47 @@ class SupportGatePolicy:
                 "dispositions": [item.value for item in Disposition],
                 "fresh_candidate_independent_extraction_per_panel": True,
                 "fresh_frozen_predicate_evaluation_per_panel": True,
+                "polarity_flip_allowed": False,
+            }
+        if self.mode is SupportGateMode.VISUAL_SEMANTIC_REPLAY:
+            return {
+                "version": self.version,
+                "mode": self.mode.value,
+                "reason": self.reason,
+                "call_count": 12,
+                "positive_count": 6,
+                "negative_count": 6,
+                "witness_extractor_input_contract": (
+                    "panel_bytes_only_no_task_candidate_side_or_role_context_v1"
+                ),
+                "soft_scorer_input_contract": (
+                    "one_panel_plus_frozen_positive_cue_rubric_no_task_side_or_role_v1"
+                ),
+                "direct_formula_evaluation": (
+                    "complete_direct_conjunction_inside_each_joint_scenario"
+                ),
+                "outer_formula_evaluation": (
+                    "positive_all_of_direct_composite_and_optional_soft"
+                ),
+                "scenario_aggregation": {
+                    "unanimous_true": Disposition.PRESENT.value,
+                    "unanimous_constructive_or_calibrated_nonmatch": (
+                        Disposition.CERTIFIED_ABSENT.value
+                    ),
+                    "scenario_disagreement": Disposition.INDETERMINATE.value,
+                    "extraction_or_receipt_failure": Disposition.ERROR.value,
+                },
+                "direct_absence_semantics": "constructive_witness_nonmatch",
+                "soft_absence_semantics": (
+                    "development_frozen_scorer_family_calibrated_nonmatch"
+                ),
+                "dispositions": [item.value for item in Disposition],
+                "fresh_witness_extraction_per_panel": True,
+                "blind_soft_transport_requirement": (
+                    "required_for_all_12_panels_iff_formula_has_soft_claim"
+                ),
+                "vision_model_emits_final_boolean": False,
+                "vision_model_emits_certified_absence": False,
                 "polarity_flip_allowed": False,
             }
         return {
@@ -282,6 +339,7 @@ class SupportGateArtifact:
         if self.policy.mode in {
             SupportGateMode.EMPIRICAL_REPLAY,
             SupportGateMode.SUPPORT_PROTOTYPE_REPLAY,
+            SupportGateMode.VISUAL_SEMANTIC_REPLAY,
         }:
             if len(self.entries) != 12:
                 raise ValueError("replay support gate requires twelve entries")
@@ -289,11 +347,22 @@ class SupportGateArtifact:
                 raise ValueError("support gate dispositions do not cover twelve panels")
             if self.result is SupportGateResult.TEST_BYPASSED:
                 raise ValueError("replay support gate cannot be marked bypassed")
-            if (
-                self.result is SupportGateResult.ALIGNED
-                and self.transport_attempt_count != 12
-            ):
-                raise ValueError("aligned support gate requires twelve transport attempts")
+            if self.result is SupportGateResult.ALIGNED:
+                if (
+                    self.policy.mode is SupportGateMode.VISUAL_SEMANTIC_REPLAY
+                    and self.transport_attempt_count not in {0, 12}
+                ):
+                    raise ValueError(
+                        "aligned visual-semantic gate requires either zero "
+                        "direct-only model transports or twelve soft-score transports"
+                    )
+                if (
+                    self.policy.mode is not SupportGateMode.VISUAL_SEMANTIC_REPLAY
+                    and self.transport_attempt_count != 12
+                ):
+                    raise ValueError(
+                        "aligned support gate requires twelve transport attempts"
+                    )
         else:
             if self.entries or any(counts):
                 raise ValueError("test bypass cannot contain empirical observations")
@@ -506,21 +575,17 @@ def _atoms_by_path(
 class ClosedIRObserver:
     """Default adapter for registered one-panel predicates.
 
-    The reference backend is pure Python. Injection exists so an independent
-    checker can be tested without changing the frozen IR or evidence formats.
+    Pure Python is authoritative.  An optional proof assistant may replay the
+    resulting canonical artifacts out of band, but it cannot replace this
+    evaluator or supply benchmark evidence.
     """
-
-    def __init__(
-        self,
-        *,
-        backend: PredicateBackend = PYTHON_PREDICATE_BACKEND,
-    ) -> None:
-        self._backend = backend
 
     def observe(self, query: ObservationInput) -> Mapping[AtomPath, Evidence[bool]]:
         bindings = {"panel": TypedValue(PANEL, query.panel_path)}
         return {
-            path: self._backend.evaluate(atom, query.registry, bindings)
+            path: PYTHON_PREDICATE_BACKEND.evaluate(
+                atom, query.registry, bindings
+            )
             for path, atom in _atoms_by_path(query.freeze.formula).items()
         }
 
@@ -755,7 +820,10 @@ class EpisodePlan:
                 "predicate mode and policy digest must be committed together"
             )
         if self.predicate_mode is not None:
-            if self.predicate_mode != SUPPORT_PROTOTYPE_PREDICATE_MODE:
+            if self.predicate_mode not in {
+                SUPPORT_PROTOTYPE_PREDICATE_MODE,
+                VISUAL_SEMANTIC_PREDICATE_MODE,
+            }:
                 raise ValueError(
                     f"unsupported predicate mode {self.predicate_mode!r}"
                 )
@@ -1609,6 +1677,14 @@ def run_episode(
     """
 
     phases: list[str] = ["plan_committed"]
+    if (
+        plan.split == "test"
+        and plan.predicate_mode == VISUAL_SEMANTIC_PREDICATE_MODE
+    ):
+        raise BenchmarkProtocolError(
+            "visual-semantic official-test execution is disabled until an "
+            "authenticated authorizing DEV design exists"
+        )
     _verify_integrity(plan, sealed_guard)
     _verify_predicate_policy_binding(plan, proposer)
     try:
@@ -1939,6 +2015,7 @@ __all__ = [
     "ObserverFactory",
     "PROTOCOL_VERSION",
     "SUPPORT_PROTOTYPE_PREDICATE_MODE",
+    "VISUAL_SEMANTIC_PREDICATE_MODE",
     "ProposedRule",
     "Proposer",
     "SealedMutationError",
@@ -1951,6 +2028,7 @@ __all__ = [
     "SupportGatePolicy",
     "SupportGateResult",
     "SUPPORT_PROTOTYPE_GATE_POLICY_VERSION",
+    "VISUAL_SEMANTIC_GATE_POLICY_VERSION",
     "SupportReplayFactory",
     "SupportReplayObserver",
     "prepare_episode",

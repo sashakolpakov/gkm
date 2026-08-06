@@ -21,6 +21,7 @@ from bongard.artifacts import (
 )
 from bongard.benchmark import (
     SUPPORT_PROTOTYPE_PREDICATE_MODE,
+    VISUAL_SEMANTIC_PREDICATE_MODE,
     SealedTestGuard,
     SupportGatePolicy,
     prepare_episode,
@@ -42,6 +43,8 @@ from bongard.prototype_calibration import (
     PrototypeCalibrationRecord,
 )
 from bongard.prototype_episode import HeadlessPrototypeEpisode
+from bongard.semantic_episode import VisualSemanticEpisode
+from bongard.semantic_protocol import build_visual_semantic_policy
 from bongard.release import (
     DEFAULT_RELEASE_PATH,
     OfficialReleaseDescriptor,
@@ -60,6 +63,7 @@ from bongard.transport import (
     DEFAULT_REASONING_EFFORT,
     CodexProposerFailure,
     codex_cli_fingerprint,
+    snapshot_cloud_policy_cache,
 )
 
 
@@ -174,6 +178,65 @@ def _validate_codex_launcher(
     return fingerprint
 
 
+def _freeze_semantic_execution_environment(
+    *,
+    externally_expected_launcher_digest: str | None,
+    stage_a_execution_config: object,
+    official_release: bool,
+) -> tuple[Mapping[str, str], Any]:
+    """Preflight and freeze the exact transport environment calibrated in Stage A."""
+
+    expected_launcher_digest = getattr(
+        stage_a_execution_config, "expected_codex_launcher_digest", None
+    )
+    expected_cache_binding = getattr(
+        stage_a_execution_config, "cloud_policy_cache_binding", None
+    )
+    if not _is_digest(expected_launcher_digest):
+        raise CliError(
+            "cold-verified Stage-A campaign has no valid launcher identity"
+        )
+    if expected_cache_binding != "absent" and not _is_prefixed_digest(
+        expected_cache_binding
+    ):
+        raise CliError(
+            "cold-verified Stage-A campaign has no valid cloud-policy cache "
+            "identity"
+        )
+    if externally_expected_launcher_digest is None:
+        raise CliError(
+            "--predicate-mode visual-semantic requires "
+            "--expected-codex-launcher-sha256"
+        )
+    if not _is_digest(externally_expected_launcher_digest):
+        raise CliError(
+            "expected Codex launcher SHA-256 must be exactly 64 lowercase "
+            "hex digits"
+        )
+    if externally_expected_launcher_digest != expected_launcher_digest:
+        raise CliError(
+            "externally expected Codex launcher differs from the "
+            "cold-verified Stage-A campaign"
+        )
+    fingerprint = _validate_codex_launcher(
+        expected_sha256=expected_launcher_digest,
+        official_release=official_release,
+    )
+    assert fingerprint is not None
+    try:
+        cache_snapshot = snapshot_cloud_policy_cache()
+    except (CodexProposerFailure, OSError, TypeError, ValueError) as exc:
+        raise CliError(
+            f"cannot snapshot the Stage-A cloud-policy environment: {exc}"
+        ) from exc
+    if cache_snapshot.binding != expected_cache_binding:
+        raise CliError(
+            "current cloud-policy cache differs from the cold-verified "
+            "Stage-A campaign"
+        )
+    return fingerprint, cache_snapshot
+
+
 def _load_corpus(args: argparse.Namespace) -> ShapeBongardCorpus:
     return ShapeBongardCorpus.discover(
         args.corpus,
@@ -238,6 +301,81 @@ def _load_prototype_calibration(path: str | Path) -> PrototypeCalibrationRecord:
     # A stale calibration fails before corpus support pixels are released.
     record.to_freeze_policy()
     return record
+
+
+def _load_semantic_calibration_campaign(
+    path: str | Path,
+    *,
+    expected_campaign_digest: str,
+    corpus: ShapeBongardCorpus,
+    corpus_manifest: object,
+) -> Any:
+    """Load and cold-replay one externally pinned full Stage-A campaign.
+
+    ``expected_campaign_digest`` is ``campaign.digest``: the SHA-256 of the
+    campaign's canonical ``content_data()``.  It is deliberately not the file
+    SHA-256, which would also cover the self-address field and trailing newline.
+    """
+
+    from bongard.corpus import CorpusManifest
+    from bongard.semantic_calibration_campaign import (
+        SEMANTIC_CALIBRATION_CAMPAIGN_SCHEMA,
+        SemanticCalibrationCampaignError,
+        verify_semantic_campaign_against_corpus,
+    )
+
+    if not _is_digest(expected_campaign_digest):
+        raise CliError(
+            "expected semantic calibration campaign digest must be exactly "
+            "64 lowercase hex digits"
+        )
+    if not isinstance(corpus_manifest, CorpusManifest):
+        raise CliError(
+            "semantic calibration campaign requires a trusted full corpus manifest"
+        )
+    source = Path(path)
+    try:
+        payload = source.read_bytes()
+        decoded = json.loads(payload)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CliError(
+            f"cannot read semantic calibration campaign {source}: {exc}"
+        ) from exc
+    if not isinstance(decoded, Mapping):
+        raise CliError("semantic calibration campaign root must be a JSON object")
+    if decoded.get("schema") != SEMANTIC_CALIBRATION_CAMPAIGN_SCHEMA:
+        raise CliError(
+            "visual-semantic runtime requires a full canonical Stage-A campaign; "
+            "a bare semantic calibration artifact is not accepted"
+        )
+    if decoded.get("campaign_digest") != expected_campaign_digest:
+        raise CliError(
+            "semantic calibration campaign differs from the expected content digest"
+        )
+    if canonical_json(decoded) + b"\n" != payload:
+        raise CliError(
+            "semantic calibration campaign must be exact canonical JSON plus one newline"
+        )
+    try:
+        campaign, _panel_map = verify_semantic_campaign_against_corpus(
+            decoded,
+            corpus=corpus,
+            corpus_manifest=corpus_manifest,
+        )
+        build_visual_semantic_policy(
+            campaign.calibration.family,
+            prospective_protocol=campaign.calibration.protocol,
+        )
+    except (SemanticCalibrationCampaignError, TypeError, ValueError) as exc:
+        raise CliError(
+            f"semantic calibration campaign is invalid: {exc}"
+        ) from exc
+    if campaign.digest != expected_campaign_digest:
+        raise CliError(
+            "cold-replayed semantic calibration campaign differs from the "
+            "expected content digest"
+        )
+    return campaign
 
 
 def _inventory(args: argparse.Namespace) -> int:
@@ -575,6 +713,179 @@ def _cohorts(args: argparse.Namespace) -> int:
     if args.out:
         _write_once(Path(args.out), encoded)
     sys.stdout.write(encoded.decode("utf-8") + "\n")
+    return 0
+
+
+def _calibrate_semantic_stage_a(args: argparse.Namespace) -> int:
+    """Run the official, exploratory-only visual-semantic calibration."""
+
+    from bongard.semantic_calibration_command import (
+        DESCRIPTIVE_STAGE_A_DESIGN,
+        StageACalibrationCommandConfig,
+        StageAPersistenceConfig,
+        StageATrustedCorpus,
+        run_stage_a_calibration_command,
+    )
+
+    corpus = ShapeBongardCorpus.discover(
+        args.corpus,
+        split_file=args.split_file,
+        require_complete=True,
+    )
+    release = load_official_release(args.release_descriptor)
+    trusted = StageATrustedCorpus.from_official_release(
+        corpus=corpus,
+        release=release,
+        archive_path=args.archive,
+    )
+    ledger = _load_bound_ledger(
+        ledger_in=args.ledger_in,
+        manifest=trusted.full_manifest,
+        corpus=corpus,
+    )
+    config = StageACalibrationCommandConfig(
+        expected_codex_launcher_digest=args.expected_codex_launcher_sha256,
+        expected_exposure_ledger_digest=args.expected_ledger_digest,
+        design_mode=DESCRIPTIVE_STAGE_A_DESIGN,
+        selection_seed=args.selection_seed,
+        selection_seed_provenance=args.selection_seed_provenance,
+        candidate_count=args.candidate_count,
+        semantic_cohort="drill",
+        families=("bd", "hd"),
+        proposer_model_id=args.model,
+        proposer_reasoning_effort=args.reasoning_effort,
+        scorer_model_id=args.model,
+        scorer_reasoning_effort=args.reasoning_effort,
+        minimum_clusters_per_bin=args.minimum_clusters_per_bin,
+        proposer_minutes=args.proposer_minutes,
+        scorer_minutes=args.scorer_minutes,
+        proposer_max_workers=args.workers,
+        scorer_max_workers=args.workers,
+        executable=CODEX_EXECUTABLE,
+        verbose=args.verbose,
+    )
+    persistence = StageAPersistenceConfig(
+        artifact_directory=Path(args.artifact_dir),
+        exposure_directory=Path(args.exposure_dir),
+        cache_snapshot_directory=Path(args.private_cache_dir),
+    )
+    result = run_stage_a_calibration_command(
+        trusted,
+        ledger,
+        config,
+        persistence,
+    )
+    sys.stdout.write(canonical_json(result.to_data()).decode("utf-8") + "\n")
+    return 0 if result.status == "succeeded" else 2
+
+
+def _validate_semantic_stage_b(args: argparse.Namespace) -> int:
+    """Run the strict-disjoint, descriptive-only visual-semantic DEV batch."""
+
+    from bongard.semantic_calibration_command import (
+        load_stage_a_command_receipt,
+    )
+    from bongard.semantic_gated_dev_validation import (
+        GatedDevAcceptancePolicy,
+        plan_gated_dev_validation,
+        run_gated_dev_validation,
+    )
+
+    corpus = ShapeBongardCorpus.discover(
+        args.corpus,
+        split_file=args.split_file,
+        require_complete=True,
+    )
+    release = load_official_release(args.release_descriptor)
+    release.verify_archive(args.archive)
+    manifest = release.verify_corpus(corpus)
+    receipt = load_stage_a_command_receipt(
+        args.stage_a_command_receipt,
+        args.expected_stage_a_command_receipt_digest,
+    )
+    campaign = _load_semantic_calibration_campaign(
+        receipt.terminal_artifact_path,
+        expected_campaign_digest=receipt.terminal_internal_digest,
+        corpus=corpus,
+        corpus_manifest=manifest,
+    )
+    cache_snapshot = receipt.load_cache_snapshot()
+    predecessor = _load_bound_ledger(
+        ledger_in=receipt.exposure_ledger_path,
+        manifest=manifest,
+        corpus=corpus,
+    )
+    if predecessor.digest != receipt.exposure_ledger_digest:
+        raise CliError(
+            "Stage-A command receipt exposure successor differs from its file"
+        )
+    policy = build_visual_semantic_policy(
+        campaign.calibration.family,
+        prospective_protocol=campaign.calibration.protocol,
+    )
+    split_digest = corpus.split.source_digest
+    if split_digest is None:
+        raise CliError("Stage-B requires the authenticated official split digest")
+    plan = plan_gated_dev_validation(
+        corpus,
+        source_corpus_manifest=manifest,
+        expected_source_corpus_manifest_digest=release.corpus_manifest_sha256,
+        expected_split_source_digest=release.split_sha256,
+        stage_a_campaign=campaign,
+        stage_a_command_receipt=receipt,
+        visual_semantic_policy=policy,
+        exposure_predecessor=predecessor,
+        expected_exposure_predecessor_digest=receipt.exposure_ledger_digest,
+        public_seed=args.selection_seed,
+        selection_seed_provenance=args.selection_seed_provenance,
+        requested_task_count=args.task_count,
+        exposure_observed_at=args.exposure_observed_at,
+        cloud_policy_cache_snapshot=cache_snapshot,
+        acceptance_policy=GatedDevAcceptancePolicy(),
+        families=("bd", "hd"),
+        task_max_workers=args.workers,
+    )
+    artifact = run_gated_dev_validation(
+        corpus,
+        plan,
+        source_corpus_manifest=manifest,
+        stage_a_campaign=campaign,
+        stage_a_command_receipt=receipt,
+        visual_semantic_policy=policy,
+        exposure_predecessor=predecessor,
+        exposure_output_directory=Path(args.exposure_dir),
+        artifact_output_directory=Path(args.artifact_dir),
+        cloud_policy_cache_snapshot=cache_snapshot,
+        verbose=args.verbose,
+    )
+    artifact_path = (
+        Path(args.artifact_dir)
+        / f"{artifact.digest}.gated-dev-validation.json"
+    ).resolve()
+    exposure_path = (
+        Path(args.exposure_dir)
+        / (
+            artifact.exposure_successor.digest.removeprefix("sha256:")
+            + ".exposure.json"
+        )
+    ).resolve()
+    output = {
+        "schema": "gkm.bongard-stage-b-command-result.v1",
+        "scientific_status": "descriptive-pilot",
+        "authorizes_sealed_benchmark": False,
+        "plan_digest": plan.digest,
+        "validation_artifact_digest": artifact.digest,
+        "validation_artifact_path": str(artifact_path),
+        "exposure_successor_digest": artifact.exposure_successor.digest,
+        "exposure_successor_path": str(exposure_path),
+        "stage_a_command_receipt_digest": receipt.receipt_digest,
+        "selected_by_family": {
+            family: sum(item.family == family for item in plan.selections)
+            for family in plan.families
+        },
+        "summary": artifact.summary.to_data(),
+    }
+    sys.stdout.write(canonical_json(output).decode("utf-8") + "\n")
     return 0
 
 
@@ -951,13 +1262,17 @@ def _run_record(
     artifact_field: str = "vision",
     record_additions: Mapping[str, Any] | None = None,
     record_verifier: Callable[..., Any] | None = None,
+    expected_corpus_manifest_digest: str | None = None,
+    expected_split_source_digest: str | None = None,
 ) -> tuple[dict[str, Any], Any]:
     if (session is None) == (session_factory is None):
         raise CliError("run requires exactly one session or post-plan session factory")
     if not isinstance(record_schema, str) or not record_schema.strip():
         raise CliError("run record schema must be a non-empty string")
-    if artifact_field not in {"vision", "prototype"}:
-        raise CliError("run artifact field must be vision or prototype")
+    if artifact_field not in {"vision", "prototype", "visual_semantic"}:
+        raise CliError(
+            "run artifact field must be vision, prototype, or visual_semantic"
+        )
     additions = dict(record_additions or {})
     reserved = {
         "schema",
@@ -969,6 +1284,7 @@ def _run_record(
         "episode",
         "vision",
         "prototype",
+        "visual_semantic",
         "run_archive",
         "exposure",
         "record_digest",
@@ -999,6 +1315,20 @@ def _run_record(
         manifest = release.verify_corpus(corpus)
     else:
         manifest = corpus.build_manifest()
+    if (
+        expected_corpus_manifest_digest is not None
+        and manifest.digest != expected_corpus_manifest_digest
+    ):
+        raise CliError(
+            "run corpus manifest differs from the cold-verified calibration campaign"
+        )
+    if (
+        expected_split_source_digest is not None
+        and corpus.split.source_digest != expected_split_source_digest
+    ):
+        raise CliError(
+            "run split source differs from the cold-verified calibration campaign"
+        )
     plan = prepare_episode(
         corpus,
         task_id,
@@ -1057,12 +1387,15 @@ def _run_record(
     archive = result.bundle.to_archive_data() if result.bundle else None
     if archive is not None:
         verified = verify_archive_data(archive)
-        proposal = session_artifact.get("proposal")
-        if not isinstance(proposal, Mapping):
-            raise CliError("completed run is missing its visual proposal artifact")
-        proposal_digest = canonical_digest(proposal)
-        if proposal_digest != verified.bundle.freeze.proposer_digest:
-            raise CliError("visual proposal bytes differ from frozen proposer digest")
+        if artifact_field != "visual_semantic":
+            proposal = session_artifact.get("proposal")
+            if not isinstance(proposal, Mapping):
+                raise CliError("completed run is missing its visual proposal artifact")
+            proposal_digest = canonical_digest(proposal)
+            if proposal_digest != verified.bundle.freeze.proposer_digest:
+                raise CliError(
+                    "visual proposal bytes differ from frozen proposer digest"
+                )
     content: dict[str, Any] = {
         "schema": record_schema,
         "corpus_manifest_digest": manifest.digest,
@@ -1168,21 +1501,50 @@ def _run(args: argparse.Namespace) -> int:
         sealed_test=args.sealed_test,
         expected_cohort=expected_cohort,
     )
-    launcher_fingerprint = _validate_codex_launcher(
-        expected_sha256=getattr(args, "expected_codex_launcher_sha256", None),
-        official_release=args.official_release,
+    predicate_mode = getattr(args, "predicate_mode", "hybrid")
+    if args.sealed_test and predicate_mode == "visual-semantic":
+        raise CliError(
+            "visual-semantic SEALED execution is disabled: the current "
+            "Stage-A calibration is exploratory and the descriptive DEV "
+            "benchmark cannot authorize a sealed run"
+        )
+    # A visual-semantic run gets its environment authority from the fully
+    # cold-authenticated Stage-A campaign below.  Other modes retain their
+    # existing external launcher preflight here.
+    launcher_fingerprint = (
+        None
+        if predicate_mode == "visual-semantic"
+        else _validate_codex_launcher(
+            expected_sha256=getattr(
+                args, "expected_codex_launcher_sha256", None
+            ),
+            official_release=args.official_release,
+        )
     )
     corpus = _load_corpus(args)
-    predicate_mode = getattr(args, "predicate_mode", "hybrid")
-    calibration_path = getattr(args, "prototype_calibration", None)
+    prototype_calibration_path = getattr(args, "prototype_calibration", None)
+    semantic_campaign_path = getattr(
+        args, "semantic_calibration_campaign", None
+    )
+    expected_semantic_campaign_digest = getattr(
+        args, "expected_semantic_calibration_campaign_digest", None
+    )
     run_options: dict[str, Any]
     if predicate_mode == "support-prototype":
-        if calibration_path is None:
+        if prototype_calibration_path is None:
             raise CliError(
                 "--predicate-mode support-prototype requires "
                 "--prototype-calibration"
             )
-        calibration = _load_prototype_calibration(calibration_path)
+        if (
+            semantic_campaign_path is not None
+            or expected_semantic_campaign_digest is not None
+        ):
+            raise CliError(
+                "semantic calibration campaign arguments are valid only with "
+                "--predicate-mode visual-semantic"
+            )
+        calibration = _load_prototype_calibration(prototype_calibration_path)
         policy = calibration.to_freeze_policy()
         from bongard.prototype_run_verification import (
             PROTOTYPE_OUTER_RUN_SCHEMA,
@@ -1211,11 +1573,131 @@ def _run(args: argparse.Namespace) -> int:
             "record_additions": {"calibration": calibration.to_data()},
             "record_verifier": verify_prototype_run_data,
         }
-    elif predicate_mode == "hybrid":
-        if calibration_path is not None:
+    elif predicate_mode == "visual-semantic":
+        if semantic_campaign_path is None:
+            raise CliError(
+                "--predicate-mode visual-semantic requires "
+                "--semantic-calibration-campaign"
+            )
+        if expected_semantic_campaign_digest is None:
+            raise CliError(
+                "--predicate-mode visual-semantic requires "
+                "--expected-semantic-calibration-campaign-digest"
+            )
+        if prototype_calibration_path is not None:
             raise CliError(
                 "--prototype-calibration is valid only with "
                 "--predicate-mode support-prototype"
+            )
+        if args.official_release:
+            assert args.archive is not None
+            semantic_release = load_official_release(args.release_descriptor)
+            semantic_release.verify_archive(args.archive)
+            semantic_manifest = semantic_release.verify_corpus(corpus)
+        else:
+            semantic_manifest = corpus.build_manifest()
+        semantic_campaign = _load_semantic_calibration_campaign(
+            semantic_campaign_path,
+            expected_campaign_digest=expected_semantic_campaign_digest,
+            corpus=corpus,
+            corpus_manifest=semantic_manifest,
+        )
+        execution_config = (
+            semantic_campaign.score_batch.commitment_batch.proposal_archive
+            .execution_config
+        )
+        launcher_fingerprint, semantic_cache_snapshot = (
+            _freeze_semantic_execution_environment(
+                externally_expected_launcher_digest=getattr(
+                    args, "expected_codex_launcher_sha256", None
+                ),
+                stage_a_execution_config=execution_config,
+                official_release=args.official_release,
+            )
+        )
+        semantic_calibration = semantic_campaign.calibration
+        semantic_policy = build_visual_semantic_policy(
+            semantic_calibration.family,
+            prospective_protocol=semantic_calibration.protocol,
+        )
+        protocol = semantic_calibration.protocol
+        if args.model != protocol.proposer_model_id:
+            raise CliError(
+                "--model differs from the proposer model frozen in the "
+                "semantic calibration"
+            )
+        if args.reasoning_effort != protocol.proposer_reasoning_effort:
+            raise CliError(
+                "--reasoning-effort differs from the proposer effort frozen "
+                "in the semantic calibration"
+            )
+        from bongard.semantic_run_verification import (
+            VISUAL_SEMANTIC_OUTER_RUN_SCHEMA,
+            verify_visual_semantic_run_data,
+        )
+
+        def verify_semantic_record(
+            record: Mapping[str, Any], *, blob_bytes_by_id: Mapping[str, bytes]
+        ) -> Any:
+            return verify_visual_semantic_run_data(
+                record,
+                blob_bytes_by_id=blob_bytes_by_id,
+                calibration_campaign=semantic_campaign,
+            )
+
+        def semantic_session(plan: Any) -> VisualSemanticEpisode:
+            return VisualSemanticEpisode(
+                task_id=plan.task_id,
+                support_commitment=plan.support,
+                policy=semantic_policy,
+                family=semantic_calibration.family,
+                protocol=semantic_calibration.protocol,
+                proposer_minutes=args.proposer_minutes,
+                scorer_minutes=args.observer_minutes,
+                verbose=args.verbose,
+                executable=CODEX_EXECUTABLE,
+                cloud_policy_cache_snapshot=semantic_cache_snapshot,
+                expected_codex_launcher_digest=(
+                    execution_config.expected_codex_launcher_digest
+                ),
+                expected_cloud_policy_cache_binding=(
+                    execution_config.cloud_policy_cache_binding
+                ),
+            )
+
+        session = None
+        run_options = {
+            "session_factory": semantic_session,
+            "support_gate_policy": SupportGatePolicy.visual_semantic(),
+            "predicate_mode": VISUAL_SEMANTIC_PREDICATE_MODE,
+            "predicate_policy_digest": semantic_policy.digest(),
+            "record_schema": VISUAL_SEMANTIC_OUTER_RUN_SCHEMA,
+            "artifact_field": "visual_semantic",
+            "record_additions": {
+                "calibration_campaign_digest": semantic_campaign.digest,
+                "calibration": semantic_calibration.to_data(),
+            },
+            "record_verifier": verify_semantic_record,
+            "expected_corpus_manifest_digest": (
+                semantic_calibration.plan.corpus_manifest_digest
+            ),
+            "expected_split_source_digest": (
+                semantic_calibration.plan.split_source_digest
+            ),
+        }
+    elif predicate_mode == "hybrid":
+        if prototype_calibration_path is not None:
+            raise CliError(
+                "--prototype-calibration is valid only with "
+                "--predicate-mode support-prototype"
+            )
+        if (
+            semantic_campaign_path is not None
+            or expected_semantic_campaign_digest is not None
+        ):
+            raise CliError(
+                "semantic calibration campaign arguments are valid only with "
+                "--predicate-mode visual-semantic"
             )
         session = HeadlessCodexEpisode(
             observable_catalog={},
@@ -1254,6 +1736,9 @@ def _run(args: argparse.Namespace) -> int:
         "record_sha256": hashlib.sha256(encoded).hexdigest(),
         "status": result.status.value,
         "score": result.score.to_data(),
+        "calibration_campaign_digest": record.get(
+            "calibration_campaign_digest"
+        ),
         "exposure_ledger_before_digest": record["exposure"][
             "ledger_before_digest"
         ],
@@ -1640,6 +2125,11 @@ def _verify(args: argparse.Namespace) -> int:
         PrototypeRunVerificationError,
         verify_prototype_run_data,
     )
+    from bongard.semantic_run_verification import (
+        VISUAL_SEMANTIC_OUTER_RUN_SCHEMA,
+        VisualSemanticRunVerificationError,
+        verify_visual_semantic_run_data,
+    )
 
     run_path = Path(args.run)
     expected_sha256 = args.expected_sha256
@@ -1671,6 +2161,22 @@ def _verify(args: argparse.Namespace) -> int:
             "support_commitment",
             "episode",
             "prototype",
+            "run_archive",
+            "exposure",
+            "record_digest",
+        }
+    elif schema == VISUAL_SEMANTIC_OUTER_RUN_SCHEMA:
+        expected = {
+            "schema",
+            "corpus_manifest_digest",
+            "split_source_digest",
+            "official_release",
+            "calibration_campaign_digest",
+            "calibration",
+            "plan",
+            "support_commitment",
+            "episode",
+            "visual_semantic",
             "run_archive",
             "exposure",
             "record_digest",
@@ -1767,6 +2273,82 @@ def _verify(args: argparse.Namespace) -> int:
             **verified_prototype.to_data(),
             "exposure_ledger_before_digest": exposure["ledger_before_digest"],
             "exposure_ledger_after_digest": exposure["ledger_after_digest"],
+            "exposure_event_digest": exposure["event_digest"],
+            "exposure_external_anchor": None,
+            "official_release_digest": trusted_release.digest,
+        }
+        sys.stdout.write(json.dumps(output, sort_keys=True) + "\n")
+        return 0
+
+    if schema == VISUAL_SEMANTIC_OUTER_RUN_SCHEMA:
+        semantic_campaign_path = getattr(
+            args, "semantic_calibration_campaign", None
+        )
+        expected_semantic_campaign_digest = getattr(
+            args, "expected_semantic_calibration_campaign_digest", None
+        )
+        if semantic_campaign_path is None:
+            raise CliError(
+                "visual-semantic verify requires "
+                "--semantic-calibration-campaign"
+            )
+        if expected_semantic_campaign_digest is None:
+            raise CliError(
+                "visual-semantic verify requires "
+                "--expected-semantic-calibration-campaign-digest"
+            )
+        semantic_campaign = _load_semantic_calibration_campaign(
+            semantic_campaign_path,
+            expected_campaign_digest=expected_semantic_campaign_digest,
+            corpus=corpus,
+            corpus_manifest=manifest,
+        )
+        try:
+            support = verify_support_commitment_data(record["support_commitment"])
+        except (TypeError, ValueError) as exc:
+            raise CliError(
+                f"visual-semantic support commitment is invalid: {exc}"
+            ) from exc
+        if archive is None:
+            blob_bytes = _map_official_support_blob_bytes(task_manifest, support)
+        else:
+            try:
+                semantic_archive = verify_archive_data(archive)
+            except (TypeError, ValueError) as exc:
+                raise CliError(
+                    f"visual-semantic run archive is invalid: {exc}"
+                ) from exc
+            blob_bytes = _map_official_task_blob_bytes(
+                task_manifest, semantic_archive
+            )
+        try:
+            verified_semantic = verify_visual_semantic_run_data(
+                record,
+                blob_bytes_by_id=blob_bytes,
+                calibration_campaign=semantic_campaign,
+                expected_task_manifest_digest=(
+                    task_manifest.digest.removeprefix("sha256:")
+                ),
+            )
+        except VisualSemanticRunVerificationError as exc:
+            raise CliError(
+                f"cross-layer visual-semantic verification failed: {exc}"
+            ) from exc
+        output = {
+            "verified": True,
+            "verification_scope": (
+                "exact-official-visual-semantic-pixel-reextraction-"
+                "full-stage-a-campaign-python-atom-and-cold-replay"
+            ),
+            "record_sha256": expected_sha256,
+            "external_anchor_verified": True,
+            **verified_semantic.to_data(),
+            "exposure_ledger_before_digest": exposure[
+                "ledger_before_digest"
+            ],
+            "exposure_ledger_after_digest": exposure[
+                "ledger_after_digest"
+            ],
             "exposure_event_digest": exposure["event_digest"],
             "exposure_external_anchor": None,
             "official_release_digest": trusted_release.digest,
@@ -1971,6 +2553,79 @@ def build_parser() -> argparse.ArgumentParser:
     cohorts.add_argument("--out")
     cohorts.set_defaults(handler=_cohorts)
 
+    stage_a = commands.add_parser(
+        "calibrate-semantic-stage-a",
+        help=(
+            "run the official descriptive-only visual-semantic calibration "
+            "with a durable pre-model semantic-exposure precommit"
+        ),
+    )
+    stage_a.add_argument("--corpus", required=True)
+    stage_a.add_argument("--split-file")
+    stage_a.add_argument("--archive", required=True)
+    stage_a.add_argument(
+        "--release-descriptor",
+        default=str(DEFAULT_RELEASE_PATH),
+    )
+    stage_a.add_argument("--ledger-in", required=True)
+    stage_a.add_argument("--expected-ledger-digest", required=True)
+    stage_a.add_argument("--selection-seed", required=True)
+    stage_a.add_argument("--selection-seed-provenance", required=True)
+    stage_a.add_argument("--artifact-dir", required=True)
+    stage_a.add_argument("--exposure-dir", required=True)
+    stage_a.add_argument("--private-cache-dir", required=True)
+    stage_a.add_argument(
+        "--expected-codex-launcher-sha256",
+        required=True,
+        help="externally recorded SHA-256 of the fixed `codex` launcher",
+    )
+    stage_a.add_argument("--candidate-count", type=int, default=48)
+    stage_a.add_argument(
+        "--minimum-clusters-per-bin",
+        type=int,
+        default=12,
+        help=(
+            "frozen minimum distinct dependence clusters required in every "
+            "calibration score bin"
+        ),
+    )
+    stage_a.add_argument("--model", default="gpt-5.6-sol")
+    stage_a.add_argument("--reasoning-effort", default="medium")
+    stage_a.add_argument("--proposer-minutes", type=int, default=15)
+    stage_a.add_argument("--scorer-minutes", type=int, default=10)
+    stage_a.add_argument("--workers", type=int, default=4)
+    stage_a.add_argument("--verbose", action="store_true")
+    stage_a.set_defaults(handler=_calibrate_semantic_stage_a)
+
+    stage_b = commands.add_parser(
+        "validate-semantic-stage-b",
+        help=(
+            "run the strict-disjoint descriptive DEV validation from one "
+            "successful Stage-A command receipt"
+        ),
+    )
+    stage_b.add_argument("--corpus", required=True)
+    stage_b.add_argument("--split-file")
+    stage_b.add_argument("--archive", required=True)
+    stage_b.add_argument(
+        "--release-descriptor",
+        default=str(DEFAULT_RELEASE_PATH),
+    )
+    stage_b.add_argument("--stage-a-command-receipt", required=True)
+    stage_b.add_argument(
+        "--expected-stage-a-command-receipt-digest",
+        required=True,
+    )
+    stage_b.add_argument("--selection-seed", required=True)
+    stage_b.add_argument("--selection-seed-provenance", required=True)
+    stage_b.add_argument("--exposure-observed-at", required=True)
+    stage_b.add_argument("--artifact-dir", required=True)
+    stage_b.add_argument("--exposure-dir", required=True)
+    stage_b.add_argument("--task-count", type=int, default=24)
+    stage_b.add_argument("--workers", type=int, default=4)
+    stage_b.add_argument("--verbose", action="store_true")
+    stage_b.set_defaults(handler=_validate_semantic_stage_b)
+
     run = commands.add_parser("run", help="run one frozen two-query episode")
     run.add_argument("--corpus", required=True)
     run.add_argument("--split-file")
@@ -1992,11 +2647,13 @@ def build_parser() -> argparse.ArgumentParser:
     run.add_argument("--reasoning-effort", default=DEFAULT_REASONING_EFFORT)
     run.add_argument(
         "--predicate-mode",
-        choices=("hybrid", "support-prototype"),
+        choices=("hybrid", "support-prototype", "visual-semantic"),
         default="hybrid",
         help=(
             "HYBRID uses model support/query judgments; support-prototype uses "
-            "one Codex catalog selection and deterministic Python evaluation"
+            "one Codex catalog selection and deterministic Python evaluation; "
+            "visual-semantic uses typed direct predicates plus an optional "
+            "calibrated blind soft scorer with Python-authoritative replay"
         ),
     )
     run.add_argument(
@@ -2006,13 +2663,27 @@ def build_parser() -> argparse.ArgumentParser:
             "--predicate-mode support-prototype"
         ),
     )
+    run.add_argument(
+        "--semantic-calibration-campaign",
+        help=(
+            "canonical full Stage-A campaign; required only for "
+            "--predicate-mode visual-semantic"
+        ),
+    )
+    run.add_argument(
+        "--expected-semantic-calibration-campaign-digest",
+        help=(
+            "externally recorded canonical content digest of the full Stage-A "
+            "campaign; required for --predicate-mode visual-semantic"
+        ),
+    )
     run.add_argument("--proposer-minutes", type=int, default=15)
     run.add_argument("--observer-minutes", type=int, default=10)
     run.add_argument(
         "--expected-codex-launcher-sha256",
         help=(
             "externally recorded SHA-256 of the fixed `codex` launcher; "
-            "required for official-release runs"
+            "required for official-release and visual-semantic runs"
         ),
     )
     run.add_argument("--verbose", action="store_true")
@@ -2031,6 +2702,17 @@ def build_parser() -> argparse.ArgumentParser:
         "--expected-sha256",
         required=True,
         help="externally recorded SHA-256 of the canonical run file",
+    )
+    verify.add_argument(
+        "--semantic-calibration-campaign",
+        help="canonical full Stage-A campaign used by a visual-semantic run",
+    )
+    verify.add_argument(
+        "--expected-semantic-calibration-campaign-digest",
+        help=(
+            "externally recorded canonical content digest of that full "
+            "Stage-A campaign"
+        ),
     )
     verify.set_defaults(handler=_verify)
     return parser

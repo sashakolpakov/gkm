@@ -68,6 +68,18 @@ WORKSPACE_ROOT = os.path.realpath(
 
 _MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _IMAGE_NAME_RE = re.compile(r"[a-z][a-z0-9_-]{0,63}\.png\Z")
+_STRICT_SCHEMA_FORBIDDEN_KEYWORDS = frozenset({
+    "oneOf",
+    "uniqueItems",
+    "minItems",
+    "maxItems",
+    "minimum",
+    "maximum",
+    "minLength",
+    "maxLength",
+    "const",
+    "not",
+})
 _PANEL_NAMES = tuple(
     [f"pos_{index}.png" for index in range(6)]
     + [f"neg_{index}.png" for index in range(6)])
@@ -1203,6 +1215,37 @@ def codex_cli_fingerprint(executable: str = "codex") -> dict[str, str]:
     }
 
 
+def codex_cli_authenticated_fingerprint(
+        executable: str = "codex", *,
+        expected_launcher_digest: str) -> dict[str, str]:
+    """Authenticate launcher bytes before executing even ``--version``.
+
+    The ordinary fingerprint helper is appropriate for inventory.  A causal
+    benchmark boundary already has an external byte commitment, so it must
+    compare the read-only launcher hash before allowing those bytes to run.
+    The second identity read closes changes made by the version invocation.
+    """
+
+    if not isinstance(expected_launcher_digest, str) or re.fullmatch(
+            r"[0-9a-f]{64}", expected_launcher_digest) is None:
+        raise CodexProposerFailure(
+            "expected Codex launcher digest must be 64 lowercase hex digits")
+    resolved, identity = _codex_launcher_identity(executable)
+    if identity[-1] != expected_launcher_digest:
+        raise CodexProposerFailure(
+            "Codex launcher bytes differ from the external commitment")
+    temp_parent = _safe_temp_parent()
+    version = _codex_cli_version(resolved, temp_parent=temp_parent)
+    resolved_after, identity_after = _codex_launcher_identity(resolved)
+    if resolved_after != resolved or identity_after != identity:
+        raise CodexProposerFailure(
+            "Codex launcher changed during authenticated fingerprinting")
+    return {
+        "version": version,
+        "launcher_digest": identity[-1],
+    }
+
+
 def _codex_command(
         *, executable: str, view_dir: str, image_paths: Sequence[str],
         schema_path: str, model: str, reasoning_effort: str) -> list[str]:
@@ -1233,6 +1276,39 @@ def _codex_command(
         "-",
     ))
     return command
+
+
+def validate_codex_strict_output_schema(schema: Mapping[str, Any]) -> None:
+    """Reject schema features outside the frozen Responses strict subset."""
+
+    if not isinstance(schema, Mapping):
+        raise CodexProposerFailure("strict output schema must be an object")
+    stack: list[object] = [schema]
+    while stack:
+        node = stack.pop()
+        if isinstance(node, Mapping):
+            forbidden = _STRICT_SCHEMA_FORBIDDEN_KEYWORDS.intersection(node)
+            if forbidden:
+                raise CodexProposerFailure(
+                    "strict output schema uses unsupported keywords: "
+                    + ", ".join(sorted(forbidden))
+                )
+            if node.get("type") == "object":
+                properties = node.get("properties")
+                required = node.get("required")
+                if (
+                    not isinstance(properties, Mapping)
+                    or node.get("additionalProperties") is not False
+                    or not isinstance(required, list)
+                    or set(required) != set(properties)
+                ):
+                    raise CodexProposerFailure(
+                        "strict object schemas must require every declared field "
+                        "and forbid additional properties"
+                    )
+            stack.extend(node.values())
+        elif isinstance(node, list):
+            stack.extend(node)
 
 
 def _wait_for_process(process: subprocess.Popen, timeout: float) -> bool:
@@ -1748,6 +1824,7 @@ def run_codex_structured(
         verbose: bool = False,
         executable: str = "codex",
         cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        expected_launcher_digest: str | None = None,
         ) -> CodexStructuredResult:
     """Run one schema-constrained, tool-free Codex turn."""
     task = _bounded_utf8(task, "task", MAX_TASK_UTF8_BYTES)
@@ -1764,9 +1841,17 @@ def run_codex_structured(
     schema_digest = _bytes_digest(schema_bytes)
     temp_parent = _safe_temp_parent()
     resolved_executable, launcher_identity = _codex_launcher_identity(executable)
+    launcher_digest = launcher_identity[-1]
+    if expected_launcher_digest is not None:
+        if not isinstance(expected_launcher_digest, str) or re.fullmatch(
+                r"[0-9a-f]{64}", expected_launcher_digest) is None:
+            raise CodexProposerFailure(
+                "expected Codex launcher digest must be 64 lowercase hex digits")
+        if launcher_digest != expected_launcher_digest:
+            raise CodexProposerFailure(
+                "Codex launcher bytes differ from the external commitment")
     cli_version = _codex_cli_version(
         resolved_executable, temp_parent=temp_parent)
-    launcher_digest = launcher_identity[-1]
 
     with tempfile.TemporaryDirectory(
             prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
@@ -1837,11 +1922,13 @@ def run_codex_structured(
                 f"Codex exited {returncode}: {detail or 'no diagnostic'}")
         resolved_after, launcher_identity_after = _codex_launcher_identity(
             resolved_executable)
+        if resolved_after != resolved_executable \
+                or launcher_identity_after != launcher_identity:
+            raise CodexProposerFailure(
+                "Codex CLI launcher changed during proposer execution")
         cli_version_after = _codex_cli_version(
             resolved_after, temp_parent=temp_parent)
-        if resolved_after != resolved_executable \
-                or launcher_identity_after != launcher_identity \
-                or cli_version_after != cli_version:
+        if cli_version_after != cli_version:
             raise CodexProposerFailure(
                 "Codex CLI version changed during proposer execution")
         payload, receipt = _parse_jsonl(
@@ -1868,6 +1955,7 @@ def run_codex_named_images_structured(
         verbose: bool = False,
         executable: str = "codex",
         cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        expected_launcher_digest: str | None = None,
         ) -> CodexStructuredResult:
     """Run a schema-only turn over neutral, caller-declared image names.
 
@@ -1885,6 +1973,7 @@ def run_codex_named_images_structured(
         raise CodexProposerFailure("Codex timeout minutes must be in [1, 120]")
     if not isinstance(output_schema, Mapping):
         raise CodexProposerFailure("Codex output schema must be a mapping")
+    validate_codex_strict_output_schema(output_schema)
     # Validate before creating any private state.
     _named_image_snapshot(image_png_paths, image_names)
     schema_bytes = _canonical_json_bytes(dict(output_schema))
@@ -1893,9 +1982,17 @@ def run_codex_named_images_structured(
     schema_digest = _bytes_digest(schema_bytes)
     temp_parent = _safe_temp_parent()
     resolved_executable, launcher_identity = _codex_launcher_identity(executable)
+    launcher_digest = launcher_identity[-1]
+    if expected_launcher_digest is not None:
+        if not isinstance(expected_launcher_digest, str) or re.fullmatch(
+                r"[0-9a-f]{64}", expected_launcher_digest) is None:
+            raise CodexProposerFailure(
+                "expected Codex launcher digest must be 64 lowercase hex digits")
+        if launcher_digest != expected_launcher_digest:
+            raise CodexProposerFailure(
+                "Codex launcher bytes differ from the external commitment")
     cli_version = _codex_cli_version(
         resolved_executable, temp_parent=temp_parent)
-    launcher_digest = launcher_identity[-1]
 
     with tempfile.TemporaryDirectory(
             prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
@@ -1952,18 +2049,28 @@ def run_codex_named_images_structured(
             schema_path, schema_digest)
         if returncode != 0:
             try:
-                detail = stderr.decode("utf-8", errors="strict").strip()[-800:]
+                stderr_detail = stderr.decode(
+                    "utf-8", errors="strict").strip()[-800:]
             except UnicodeError:
-                detail = "non-UTF-8 diagnostic output"
+                stderr_detail = "non-UTF-8 diagnostic output"
+            try:
+                stdout_detail = stdout.decode(
+                    "utf-8", errors="strict").strip()[-1600:]
+            except UnicodeError:
+                stdout_detail = "non-UTF-8 JSONL diagnostic output"
+            detail = " | ".join(
+                part for part in (stderr_detail, stdout_detail) if part)
             raise CodexProposerFailure(
                 f"Codex exited {returncode}: {detail or 'no diagnostic'}")
         resolved_after, launcher_identity_after = _codex_launcher_identity(
             resolved_executable)
+        if resolved_after != resolved_executable \
+                or launcher_identity_after != launcher_identity:
+            raise CodexProposerFailure(
+                "Codex CLI launcher changed during blind scoring")
         cli_version_after = _codex_cli_version(
             resolved_after, temp_parent=temp_parent)
-        if resolved_after != resolved_executable \
-                or launcher_identity_after != launcher_identity \
-                or cli_version_after != cli_version:
+        if cli_version_after != cli_version:
             raise CodexProposerFailure(
                 "Codex CLI version changed during blind scoring")
         payload, receipt = _parse_jsonl(
@@ -1990,6 +2097,7 @@ __all__ = [
     "CodexReceipt",
     "CodexStructuredResult",
     "CloudPolicyCacheSnapshot",
+    "codex_cli_authenticated_fingerprint",
     "codex_cli_fingerprint",
     "codex_cli_version",
     "named_image_set_digest",
@@ -1999,5 +2107,6 @@ __all__ = [
     "run_codex_structured",
     "semantic_panel_set_digest",
     "snapshot_cloud_policy_cache",
+    "validate_codex_strict_output_schema",
     "validate_codex_receipt",
 ]

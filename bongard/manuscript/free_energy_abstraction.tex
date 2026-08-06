@@ -20,11 +20,9 @@
 }
 
 \newcommand{\IR}{\mathcal{I}}
-\newcommand{\Legs}{\mathcal{L}}
-\newcommand{\Archive}{\mathcal{A}}
 
-\title{Growing Verified Visual Predicates for Bongard-LOGO\\
-       A Complete-Corpus Protocol}
+\title{Operational Visual Predicates for Bongard-LOGO\\
+       A Python-Authoritative Protocol}
 \author{GKM research manuscript}
 \date{August 2026}
 
@@ -32,1023 +30,380 @@
 \maketitle
 
 \begin{abstract}
-A Bongard support set admits many accidental separators, and a vision model's
-fluent description is not a proof that the described property is present in
-the pixels.  We specify a benchmark protocol that treats those facts as the
-central problem.  The protocol inventories all 12,000 official
-Bongard-LOGO tasks by content and preserves the released train, validation, and
-four-way test split.  The official CLI checks a supplied append-only exposure
-ledger and records one task-level event before support release; direct API or
-manual reads remain an operational responsibility.  The only task pixels a
-headless proposer sees are the labelled support panels, and it
-may suggest phrases such as ``bird-like'' or ``contains oblique angles.''  Such
-phrases do not execute.  They must be realized by versioned, typed visual legs
-whose outputs carry uncertainty and provenance.  A closed positive-only
-intermediate representation composes exact leg references; failed extraction
-is an abstention or error, never a negative example.  Typed attachment,
-nuisance evaluation, candidate replay, normalized implementation-source
-binding, and full archive replay are separate admission obligations.  Accepted
-legs are grown and glued to the frozen registry only on development tasks.  On
-sealed tasks the reusable admitted registry is fixed;
-the separate HYBRID baseline still creates one task-local empirical leg after
-support.  Its support replay gate and final formula commitment precede query
-pixels, predictions precede labels, and model-free replay checks the committed
-symbolic computation.  This manuscript is a protocol and systems
-specification, not a report of complete-corpus
-accuracy.  It states the remaining limits plainly: visual grounding remains
-empirical, public-data pretraining contamination cannot be excluded, and formal
-verification cannot turn an uncalibrated prose judgment into pixel-level truth.
+Bongard problems are underdetermined by their small support sets: a fluent
+description, an accidental pixel separator, and the intended concept may all
+fit the same twelve labelled panels.  The missing layer is therefore not a
+theorem prover after prose, but an auditable connection from pixels to
+observations.  We define a headless visual-semantic protocol over the complete
+12,000-task ShapeBongard V2 release.  A support-only proposer may select from a
+finite catalog of deterministic visual counts and may emit one affirmative
+soft claim.  Candidate-independent Python extractors, a blind ordinal scorer,
+a separately fitted development calibration, four-valued evidence, a
+positive-only formula language, an exact support gate, and model-free replay
+can turn that proposal into an operational predicate.  Soft prose remains a
+model observation, not a proof about depicted objects.  Python alone defines predicate execution,
+calibration, replay, benchmark decisions, and scientific artifact identity; a
+proof assistant may only consume a frozen artifact as a detached optional
+sidecar whose deletion changes no result, decision, or identifier.  The first
+Stage-A experiment, A1, failed before scoring and produced no calibration or
+accuracy estimate.  A distinct repaired-protocol experiment, A2, was
+invalidated by a concurrent agent source edit after protocol/cohort freeze and
+wrote no Stage-A terminal artifact.  Stage B is unauthorized by both A1 and A2.
+Official test execution is disabled.  Thus this paper
+specifies a benchmark protocol and its present representational gaps, not a
+positive accuracy result.
 \end{abstract}
 
-\section{The missing layer}
+\section{The theoretical hole}
 
-A Bongard task is a pair
+A Bongard task supplies six positive and six negative support panels, followed
+by one held-out panel from each side \cite{bongard1970pattern}.  Many rules can
+separate twelve examples.  A proposed rule can exploit renderer artifacts,
+generator-family regularities, a model's lexical habits, or extraction failure
+instead of the intended visual concept.  Support accuracy alone does not say
+which rule was learned.
+
+The tempting account
 \begin{equation}
-  T=(P^+,P^-), \qquad |P^+|=|P^-|=7,
+  \text{panel}\longrightarrow\text{verbal description}
+  \longrightarrow\text{formal predicate}\longrightarrow\text{proof}
+  \label{eq:wrong}
 \end{equation}
-where the panels in $P^+$ share a rule that the panels in $P^-$ violate
-\cite{bongard1970pattern}.  The problem is deliberately underdetermined.  Six
-positive and six negative support panels can be separated by semantic rules,
-incidental pixel statistics, task identifiers, renderer artifacts, or a broken
-extractor that fails more often on one side.  Perfect support accuracy alone
-does not distinguish them.
+misplaces the hard problem.  A prover can check consequences of recorded
+premises.  It cannot establish from syntax that ``bird-like object'' is a true
+description of a PNG.  Formalizing the sentence only makes the unverified
+perceptual premise look precise.
 
-The tempting pipeline
+The implemented boundary is instead
 \begin{equation}
-  \text{panel}\longrightarrow\text{prose}\longrightarrow
-  \text{formal predicate}\longrightarrow\text{proof}
-  \label{eq:tempting-pipeline}
+\begin{aligned}
+\text{exact panel bytes}
+ &\longrightarrow \text{typed empirical observations}\nonumber\\
+ &\longrightarrow \text{closed positive formula}
+ \longrightarrow \text{support gate and replay}.
+\end{aligned}
+\label{eq:actual}
 \end{equation}
-has a gap at its first arrow.  A theorem prover can establish that a formula is
-well typed and that its Boolean result follows from supplied observations.  It
-cannot establish, from syntax alone, that a vision model's statement
-``bird-like object'' is faithful to a raster image.  Calling the prose a
-predicate merely hides the perceptual assumption.
+The first arrow is empirical and must carry provenance, uncertainty, and a
+declared failure state.  The later arrows are deterministic Python
+computations.  Related visual-language and program-synthesis approaches also
+make the representation boundary central \cite{depeweg2018solving,
+sonwane2021using}; our contribution here is a narrower benchmark contract that
+does not confuse replay with perceptual truth.
 
-Our replacement is
-\begin{equation}
-  \begin{aligned}
-  \text{panel bytes}&\longrightarrow
-  \text{versioned empirical observations}\\
-  &\longrightarrow\text{closed typed formula}
-  \longrightarrow\text{empirical gates and replay}.
-  \end{aligned}
-  \label{eq:actual-pipeline}
-\end{equation}
-The first arrow is empirical.  In the soft-predicate track, calibration is
-conditional on externally authenticated scorer and annotation inputs,
-preregistration timing, and the stated cross-cluster sampling assumption; the
-current HYBRID path instead archives uncalibrated categorical judgments.  The
-second arrow is statically checked, and the final arrow combines held-out
-evidence with tamper-evident symbolic replay.  No stage is allowed to inherit a
-stronger epistemic status than it has earned.
+\section{Pinned corpus and exposure boundary}
 
-\subsection{Why the negation of a bad predicate can win}
-
-The recurring ``negation wins'' pathology has several concrete causes.
-Suppose a search procedure evaluates a score $s(x)$ and, after looking at the
-support labels, retains whichever of $s(x)\geq\tau$ and $s(x)<\tau$ scores
-better.  It has searched over both a claim and its complement while charging
-for one.  On a small support set, an accidental direction is easy to select.
-If a detector exception or failed fit is encoded as \texttt{False}, the problem
-is worse: detector failure becomes negative evidence, and Boolean negation
-turns failure into a positive witness.  Reusing query panels during threshold,
-phrase, or polarity selection completes the leak.
-
-The canonical track removes those escape routes:
-\begin{enumerate}[leftmargin=1.5em]
-  \item class orientation is fixed by a verifier-issued support commitment;
-  \item the proposer states one positive-class claim and one relation before
-  queries exist in its workspace;
-  \item the formula language has no \texttt{Not}, polarity bit, inequality
-  complement, arbitrary expression, or dynamic code lookup;
-  \item missing evidence has four explicit outcomes and cannot silently become
-  false; and
-  \item selection uses development data, while sealed queries are scored only
-  after formula and prediction commitments.
-\end{enumerate}
-Positive-only syntax does not by itself prevent support overfitting.  Near-miss,
-anti-memorization, calibration, nuisance, and sealed-query tests remain
-necessary.
-
-\section{Complete official corpus boundary}
-
-Bongard-LOGO contains 12,000 tasks and pairs each panel with a generating action
-program \cite{nie2020bongardlogo}.  The primary visual track uses the official
-PNG files only.  Action programs, rule-bearing directory names, family labels,
-and sampler metadata remain verifier-side; they may be used in a separately
-labelled oracle audit but never in a visual score.
-
-\subsection{Released task split}
-
-Table~\ref{tab:official-split} gives the exact released split.  The source JSON
-contains \texttt{train}, \texttt{val}, \texttt{test\_ff},
-\texttt{test\_bd}, \texttt{test\_hd\_comb}, and
-\texttt{test\_hd\_novel}.  The protocol calls the four test regimes FF, BA,
-CM, and NV and defines \texttt{test} as their disjoint union.  These aliases do
-not rewrite the source split.
-
-\begin{table}[ht]
-\centering
+ShapeBongard V2 contains 12,000 tasks and 168,000 panels
+\cite{nie2020bongardlogo}.  The pinned release contains 3,600 Freeform
+(\texttt{ff}), 4,000 Basic (\texttt{bd}), and 4,400 Abstract (\texttt{hd})
+tasks.  Its primary split is 9,300 train, 900 validation, and 1,800 test tasks.
+The extracted corpus manifest used by this protocol is
+\begin{center}
 \small
-\begin{tabular}{@{}lrrrrl@{}}
-\toprule
-Source family & Train & Validation & Test & Total & Test regime \\
-\midrule
-Free-form (\texttt{ff}) & 2700 & 300 & 600 & 3600 & FF \\
-Basic (\texttt{bd})     & 3238 & 282 & 480 & 4000 & BA \\
-Abstract (\texttt{hd})  & 3362 & 318 & 720 & 4400 & CM: 400; NV: 320 \\
-\midrule
-All                        & 9300 & 900 & 1800 & 12000 & \\
-\bottomrule
-\end{tabular}
-\caption{Official ShapeBongard\_V2 task counts.}
-\label{tab:official-split}
-\end{table}
+\nolinkurl{sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138}.
+\end{center}
+Each task and panel is also content-addressed.  Action programs, rule-bearing
+paths, source filenames, family labels, and query labels remain verifier-side;
+the proposer and scorer see staged neutral filenames and pixels only.
 
-For each task, six panels from each class are support and the remaining one from
-each class is query.  The implementation derives support/query choice and query
-ordering deterministically from a caller-supplied seed and commits the schedule
-before support release.  It does not establish external preregistration or
-randomness, and the archive contains only the seed digest.  The proposer
-receives staged canonical labelled filenames \texttt{pos\_0.png} through
-\texttt{pos\_5.png} and \texttt{neg\_0.png} through \texttt{neg\_5.png}, not
-official task or source-file names.  Support replay and query observation use
-the neutral filename \texttt{query.png}.  The two query labels remain
-verifier-only until both predictions are committed.
+The released split and the local exposure ledger answer different questions.
+The first supports comparison with the dataset.  The second prevents this
+project from calling previously inspected tasks or semantic siblings unseen.
+An append-only successor ledger is durably written before selected pixels or
+model calls are released.  This controls the declared experiment, but it cannot
+exclude foundation-model pretraining contamination in a public dataset.
 
-\subsection{Content identity and structural validation}
+\section{Executable visual semantics}
 
-The loader accepts both upstream layouts,
-\begin{align*}
-  &\texttt{\{ff,bd,hd\}/images/task/\{1,0\}/\{0,...,6\}.png},\\
-  &\texttt{\{ff,bd,hd\}/png/task/\{1,0\}/\{0,...,6\}.png},
-\end{align*}
-used respectively by the archive and generator.  It rejects malformed tasks,
-duplicate identifiers, unknown split members, overlapping primary splits, and
-incorrect official counts.  Each panel is addressed by its byte digest.  A
-task manifest hashes its ordered fourteen panel records, and a corpus manifest
-hashes the ordered task manifests and normalized split.  Absolute paths are not
-part of these content identities.
+\subsection{One proposal, candidate-independent observations}
 
-This boundary matters scientifically.  ``Same task name'' is insufficient if
-one image was regenerated, recompressed, or replaced.  Every result must name
-the corpus digest, task digest, panel digests, and split source digest against
-which it was obtained.
+The proposer sees only the labelled support pixels and returns one typed
+affirmative proposal: zero to three registered direct atoms and at most one
+soft claim containing one to four positive cues.  It cannot return executable
+code, feature weights, a threshold, a polarity bit, or a final Boolean.
 
-For the release used here, the 1,762,748,636-byte archive has SHA-256
-\nolinkurl{8c5542ac7b9ce8a6a14d157a0656dbde9da5b7843424eade4bd653759d9a27d0}.
-The exact split file has SHA-256
-\nolinkurl{ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230},
-and the extracted 168,000-panel corpus manifest has SHA-256
-\nolinkurl{6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138}.
-These values are pinned in a checked-in release descriptor rather than inferred
-from directory names.
+Independently, each panel's exact PNG bytes are converted to a frozen visual
+witness bundle.  The extractor receives no task identifier, side, label,
+support/query role, proposed phrase, or formula.  It retains three fixed,
+correlated preprocessing scenarios.  A complete conjunction is evaluated
+inside each scenario before scenario outcomes are combined; coordinate-wise
+feature intervals are not allowed to splice mutually inconsistent witnesses.
 
-Compressed-byte identity does not establish successful decoding.  We therefore
-ran one property-agnostic audit and an independent strict pass over every
-panel.  All 168,000 files are single-frame, $512\times512$, RGB PNGs with no
-Pillow information keys; both passes found zero anomalies.  The strict audit
-report has canonical digest
-\nolinkurl{d3485ada3605d708db82fbcfe6ecfc73506ce51ed85fcd1ce6ccd798e3bff9f8}.
-
-\subsection{Exposure is a second, orthogonal split}
-
-The official split controls comparability; a local exposure ledger contributes
-to what this project may call unseen.  In an official CLI run,
-\texttt{--require-unseen --cohort} checks exact and semantic collisions and
-records one task-level event, with phase, actor, purpose, provenance source,
-time, and predecessor digest, before support release.  That event marks all
-panels of the task exposed.  Recording produces a new immutable ledger value
-and write-once JSON artifact.  Unknown and sealed identifiers fail closed when
-the caller supplies the corresponding universes, as the official CLI does.
-Direct API or manual reads are not intercepted, and cold verification cannot
-authenticate the unavailable history behind a non-empty predecessor ledger.
-
-If prior experiments contaminate part of an official development split, the
-remaining eligible task identifiers can be SHA-256 ranked into deterministic
-\emph{drill}, \emph{development}, and \emph{sealed confirmation} subsets.
-The namespace, counts, membership lists, and partition digest are published.
-This local partition never licenses development on the official test set.
-
-``Unseen'' in this manuscript therefore means ``not present in the declared
-project exposure ledger for the scoped actors.''  Bongard-LOGO is public.  A
-foundation model may have encountered its repository, gallery, paper, or images
-during pretraining, and the ledger cannot rule that out.
-
-The frozen reconstruction marks 3,868 official tasks as semantically
-historically clean: 1,328 Basic tasks drawn from unused generator families and
-2,540 Abstract tasks drawn from unused admissible attribute pairs.  All 3,600
-Freeform tasks remain indeterminate rather than being called clean.  This is a
-local evidence classification, not a theorem that the image bytes were absent
-from model pretraining or human memory.  Partitioning is by generator concept,
-not exact task identifier: all twenty instances of an ordered Abstract pair
-remain together.  The resulting clean cohorts contain 2,769 drill tasks, 542
-development tasks, and 557 sealed tasks.  For HD, ``unseen'' qualifies only the
-ordered attribute combination: either component attribute may already be
-familiar, and the twenty generated instances are one sibling group rather than
-independent unseen concepts.
-
-The frozen drill cohort is not a live availability count.  At the current
-checked-in sixteen-event campaign ledger head
-\nolinkurl{sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a},
-the resolver-v2 overlay leaves 1,744 drill tasks and excludes 1,025 through
-semantic-key collisions; sixteen excluded tasks are also exact-task collisions.
-The ledger records twenty-two tasks and thirty-eight semantic keys, producing 199
-effective exposed keys after policy blocking.  The overlay
-digest is
-\nolinkurl{sha256:9e7ad95bc0fe2200d647c7ef9c34b81f8b041115265175be6fe63d6c67562dde},
-and its live-membership digest is
-\nolinkurl{sha256:be680542b28a855d54cedcda6726d140af1ce4a8ad97c008511d5843f4e4b7e1}.
-The ledger is
-\path{downloads/ShapeBongard_V2_full/exposure/abstract_006/da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a.exposure.json}.
-
-Resolver v1's earlier 2,609 count was an overclaim: numbered Basic generator
-names were treated as separate families, so obvious morphology siblings were
-missed.  Resolver v2 adds a conservative key that removes a terminal number or
-\texttt{\_newN} and blocks groups crossing frozen cohort boundaries.  Its policy
-digest is
-\nolinkurl{sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a}.
-Before v7--v9, the initial v2 training intersection contained 1,290 tasks
-across 161 retained semantic groups.  At the current head, the official
-train-and-drill scope contains 2,096 tasks: 1,238 live and 858 excluded,
-including sixteen exact-task collisions.  Its
-overlay digest is
-\nolinkurl{sha256:64c7f3cbd4444829d1bd8c50d1a99cc95d5830ec6459879a5a7f6668868eee90},
-and its live-membership digest is
-\nolinkurl{sha256:2619ea03a9f32bddef941818791fee9d477040f073043da2c715547474813a23}.
-Resolver collision domains are not statistically independent samples.  The
-retrospective montage event and v6--v12 support releases filter their related
-groups.  Neither overlay changes the frozen cohort or certifies unseen panel
-bytes.  Run-time \texttt{external\_anchor} fields are null; a later Git commit
-is after-the-fact publication, not preregistration or proof that this was the
-latest authentic ledger head.
-
-\section{The visual measurement boundary}
-
-\subsection{Candidate-independent observations}
-
-The verifier owns a registry $\Legs_k$ of visual \emph{legs}.  A leg is a
-version-pinned callable with a declared input type, output type and unit,
-implementation digest, parameters, cost, provenance policy, and behavior under
-named transformations.  Typical types include panels, objects, witnesses,
-counts, angles in degrees or radians, pixel distances, fractions, and
-probabilities.  A formula contains an exact leg name, version, and contract
-digest; it cannot ask the runtime to discover a function by string or execute
-proposer-supplied code.
-
-The intended admitted-predicate track requires the registry to be frozen before
-the support task is issued.  Candidates may then compose those measurements but
-cannot create a panel-specific detector after seeing the task.  The generic
-episode runner does not enforce that timing; it only validates that the
-proposer-returned registry is frozen.  The present headless HYBRID
-baseline is deliberately weaker: support pixels produce one task-local prose
-claim and model-judgment leg.  Before any query release, twelve fresh isolated
-model calls must replay that fixed claim on the support panels with the correct
-orientation.  Reversal, mismatch, indeterminacy, or error rejects the proposal;
-the runner never negates it.  This is a same-support consistency gate, not
-calibration or evidence of generalization, so HYBRID results are reported
-separately from admitted-registry results.  New reusable leg code is considered
-only in the developmental growth loop described in
-Section~\ref{sec:growing-legs}.
-
-There is no universal image normalization.  A leg must declare the typed view
-it consumes: \emph{literal ink} when stroke or rendering style is part of the
-claim, \emph{carrier shape} when those nuisances may be quotiented out, or a
-\emph{relational view} for objects, contact, containment, repetition, symmetry,
-and ownership.  A global skeletonization or cleanup step would silently erase
-valid concepts that depend on line width, texture, or raster detail.
-
-The implementation now includes one candidate-independent quantitative example:
-a bilateral-symmetry leg consumes exact panel bytes, applies a fixed luminance
-threshold ensemble and reflection-axis grid, and returns reflected-ink agreement
-with a deterministic preprocessing-sensitivity interval.  It preserves all four
-evidence dispositions and registers only the affirmative
-\texttt{AT\_LEAST} relation.  The interval is not an externally calibrated
-confidence interval.  A post-hoc application to v9 is scientifically negative:
-multiple negative panels score as more symmetric than positive panels.  Thus the
-missing leg is not simply a better threshold on global symmetry.  It must expose
-part or lobe ownership, the central junction, and correspondence between the
-owned parts.
-
-A separate PURE support-prototype path supplies an executable task-relative
-comparison layer without a polarity search.  A candidate-independent extractor
-consumes exact PNG bytes at three fixed thresholds and freezes eighteen
-interval-valued measurements in four closed groups: topology, global geometry,
-moments/symmetry, and boundary/angle.  It receives no task identifier, side
-label, prose claim, formula, or query role.  All twelve full support packets are
-computed before one Codex call selects exactly one precommitted group.
-Support-only fitting then commits positive and negative centroids.  Its sole
-contrastive score is
-\begin{equation}
-  m(x)=d(x,c_{-})-d(x,c_{+}),
-\end{equation}
-so larger values always mean closer to positive support, and a
-development-frozen positive margin defines the predicate.  No operation swaps
-the sides after query outcomes.  The adapter performs fresh deterministic
-support and query extraction through the generic episode runner; Codex supplies
-no code, threshold, weight, polarity, or query observer.
-
-The first fixed twelve-task development calibration falsifies this baseline.
-Every group has zero strict support passes.  The best group obtains only 10/24
-development images and 2/12 puzzles; one border-clipped support panel remains
-in every denominator as an unfittable-support error.  The failure is
-representational: coordinate-wise interval boxes discard correlation among
-preprocessing scenarios, one centroid assumes a convex unimodal class, the
-proposal language permits only one group, and global raster statistics omit
-parts, ownership, correspondence, signed curvature, and open semantic
-concepts.  The proposal prose is hash-bound but not load-bearing evidence; the
-compiled atom proves only an operational match to the frozen support
-prototype.  This development result is not an official benchmark score.
-
-The preregistered twelve-task headless PURE drill subsequently exercised this
-path end to end.  Zero episodes completed: eleven were rejected by support and
-one ended in a replayable proposal-parser error, giving zero support-gate passes
-out of twelve.  Consequently no query pixels were released and the campaign
-has no query-accuracy estimate.  The eleven parsed proposals produced 132
-executable support labels: 46 correct, 10 wrong, and 76 indeterminate.  Codex
-often articulated object-level relations in prose, but the single-group
-interval-centroid bridge discarded those relations when it compiled the
-description.  The remaining attempt exposed a separate lexical defect: the
-parser mistook descriptive asymmetry language for logical negation.  The
-canonical result is
-\path{bongard/data/support_prototype_drill_result_v1.json}, with content digest
-\nolinkurl{sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca}.
-Predicate serialization, execution, and replay use the canonical pure-Python
-backend; Lean remains optional and removable.
-
-\subsection{Four evidence dispositions}
-
-Every leg invocation yields exactly one of
+Every observation has exactly one disposition:
 \begin{description}[leftmargin=3.1cm,style=nextline]
-  \item[present] a value and provenance, optionally with an uncertainty
-  interval;
-  \item[certified absence] no value, plus a certificate valid relative to the
-  leg contract;
-  \item[indeterminate] insufficient evidence and an explicit reason; or
-  \item[error] a failed computation with an error type and reason.
+  \item[\texttt{present}] constructive evidence for the affirmative atom;
+  \item[\texttt{certified\_absent}] an operational nonmatch under the frozen
+    direct or calibrated contract;
+  \item[\texttt{indeterminate}] scenarios disagree or an interval cannot
+    decide the fixed boundary; or
+  \item[\texttt{error}] extraction, transport, parsing, identity, or replay
+    failed.
 \end{description}
-A failed fit, missing contour, timeout, malformed response, or uncalibrated
-score is therefore not a negative prediction.  Only present formula evidence
-predicts the positive class; only certified formula absence predicts the
-negative class.  Indeterminate and error outcomes abstain and count against
-unconditional benchmark performance.
+A failed fit or model call is never interpreted as evidence for the negative
+class.  Indeterminate and error outcomes abstain and remain in the headline
+denominator.
 
-The generic HYBRID model observer reports an empirical \texttt{nonmatch}, not
-pixel-level certified absence.  The archive can mechanically certify only that
-the frozen model procedure emitted that nonmatch for the operational claim.
-Calling the depicted property absent requires a dedicated registered certifier
-or a calibrated predictive interval wholly below its frozen threshold.
+\subsection{The complete direct catalog}
 
-The episode withholds exactly one positive and one negative panel.  If the
-caller-supplied seed makes query order uniform and independent of the
-predictor, a no-vision policy that assigns opposite labels to the two opaque
-slots attains 50\% expected puzzle and image accuracy.  Puzzle accuracy then
-does not have a 25\% independent-label baseline.  The code does not enforce
-seed randomness, secrecy, or external preregistration, and cold verification
-cannot recompute the schedule from the seed digest.  We report this conditional
-50\% baseline together with per-image and per-side accuracy across
-independently selected semantic groups.
-
-\subsection{Soft predicates grounded in vision}
-
-A vision proposer may say ``bird-like object,'' ``mostly oblique angles,'' or
-``two loops touching at one point.''  The sentence is useful for discovery,
-but prose is not executable evidence.  A complete soft semantic path for
-phrase $\phi$ requires two distinct legs,
-\begin{equation}
-  \begin{aligned}
-    v_\phi &: \mathrm{Panel}\longrightarrow\mathrm{FrozenVisualScore},\\
-    c_\phi &: \mathrm{FrozenVisualScore}\longrightarrow\\[-0.25em]
-           &\quad
-             \mathrm{Evidence}\bigl(
-               \mathrm{CalibratedPredictiveSupport}[0,1]
-             \bigr).
-  \end{aligned}
-\end{equation}
-The first leg is the empirical pixels-to-score operation and must bind the
-exact panel bytes, model, prompt, decoder, implementation, and raw receipt.  The
-current development module does not implement or authenticate this leg; it
-begins from an externally admitted frozen-score packet.  Given a caller-supplied
-expected plan digest, the second leg maps that packet to a bin-level predictive
-interval $[l,u]$ using exact declared development groups, annotation protocol,
-population, sampling design, and scorer identity.  The module checks those
-content identities and prevents a task, generator group, or model call from
-being split across dependence clusters.  It does not authenticate receipts or
-publication time, nor establish independence between clusters; the Hoeffding
-bounds are valid only if the outer sampling design justifies that assumption.
-A batch of correlated judgments from one model call is one replication unit,
-not many independent votes.  The interval is predictive support for the
-registered population, not an interval for an individual panel's metaphysical
-semantic truth.
-
-For an atom $\ell_\phi(x)\geq\tau$, interval-safe evaluation gives
-\begin{equation}
-  \begin{cases}
-  \text{present}, & l\geq\tau,\\
-  \text{certified absent relative to the contract}, & u<\tau,\\
-  \text{indeterminate}, & l<\tau\leq u.
-  \end{cases}
-  \label{eq:interval-decision}
-\end{equation}
-The threshold and direction are frozen with the positive-class claim; the
-runner does not try both polarities and keep the winner.
-
-Soft does not mean arbitrary.  ``Bird-like'' remains an empirical category and
-must retain that label.  ``Oblique angles'' can often be sharpened: vision may
-bind candidate strokes or corners, after which a deterministic leg returns an
-angle interval in degrees.  The growth process should prefer this transition
-from a free phrase to a typed witness and measurement whenever the pixels
-support it.  The two-loop point-contact example similarly needs explicit loop
-owners, a contact witness, incident rays, exterior gaps, uncertainty, and
-provenance; a successful contour fit alone is not that signature.
-
-\section{Closed positive-only predicate IR}
-
-The canonical intermediate representation $\IR$ contains three formula nodes:
-\begin{equation}
-  F ::= \mathrm{Atom}\mid \mathrm{AllOf}(F_1,\ldots,F_m)
-      \mid \mathrm{AnyOf}(F_1,\ldots,F_m).
-\end{equation}
-The general proposal schema can represent positive atoms and conjunctions, but
-the canonical headless HYBRID CLI supplies no observable catalog and requires
-exactly one positive \texttt{hybrid\_claim} atom.  \texttt{AnyOf} remains
-available for verifier-owned retained-library formulas with an explicit
-semantic justification; the canonical proposer cannot synthesize it.
-An atom is an exact static leg call with one of four declared relations:
-\texttt{present}, \texttt{at\_least}, \texttt{at\_most}, or
-\texttt{between}.  Scalar thresholds must have the leg's unit.  An
-\texttt{at\_most} claim is admitted for an intrinsically small-valued positive
-property such as low closure error; it is not a license to test both directions
-of an unrelated score after seeing labels.  Conjunctions and disjunctions carry
-an explicit semantic justification.
-
-Formally, each leg contract contains a signed set of affirmative relations
-$A_\ell$.  A scalar call is well formed only when its relation is a member of
-$A_\ell\subseteq\{\texttt{at\_least},\texttt{at\_most},\texttt{between}\}$;
-a non-scalar witness leg admits only \texttt{present}.  This
-\texttt{AffirmativeRelation} set is fixed and digest-bound when the leg is
-registered.  It is not a parameter that synthesis may fit.  Consequently, a
-feature registered as increasing evidence cannot win by an undeclared
-\texttt{at\_most} rewrite, even if that rewrite happens to separate the labeled
-support panels.
-
-There is no negation node, post-hoc polarity flag, not-equal relation, Python
-expression, import, callback, or dynamic leg lookup.  The compiler typechecks
-every boundary argument, parameter, unit, registry version, and contract digest
-before execution.  Composite evaluation preserves the four evidence states;
-exceptions and uncertainty propagate rather than being coerced to Boolean
-false.
-
-The reference typechecker, evaluator, and cold replay are implemented in pure
-Python.  Their input contract---the serialized formula, registry snapshot, and
-four-disposition evidence---does not contain Python source or proof-assistant
-terms.  Thus Python is sufficient for both benchmark execution and
-tamper-detecting replay.
-
-This division also gives a precise optional formal-verification target.  A
-proof assistant could independently verify grammar closure, type preservation,
-interval comparison, evidence propagation, and the theorem
-\begin{equation}
-  \text{committed observations}\vdash_{\IR}\text{committed prediction}.
-\end{equation}
-It could not prove the premise that a particular panel is bird-like without a
-formal image model or a trusted empirical axiom for the visual leg.  Lean is
-therefore neither required nor currently used; any future Lean checker must be
-removable without changing formula identities, admission, or replay.  The
-current Python cold replay checks the symbolic implication and artifact
-integrity; it does not re-establish perceptual correctness.
-
-Removability is an explicit portability objective.  Python predicates are the
-reference executable semantics; adding and later ``un-Leaning'' an optional
-checker must not translate the leg library or invalidate historical artifacts.
-
-\section{Three distinct contracts}
-
-Three obligations are easy to blur and must remain separate.
+Table~\ref{tab:catalog} is the entire executable direct catalog.  Every atom
+asserts equality to a target integer from one through eight.  Zero is excluded:
+``count equals zero'' would be a negated existence claim disguised as a
+positive equality.
 
 \begin{table}[ht]
 \centering
 \small
-\begin{tabularx}{\textwidth}{@{}lXX@{}}
+\begin{tabularx}{\textwidth}{@{}lX@{}}
 \toprule
-Contract & What it establishes & What it does not establish \\
+Catalog key & Affirmative measurement \\
 \midrule
-Typed attachment & The formula plugs into an exact frozen registry through
-declared types, units, parameters, versions, and digests. & That a leg measures
-the intended visual property or generalizes under rendering changes. \\
-Nuisance evaluation & The candidate empirically preserves or transforms its
-decision as declared under required translation, rotation, reflection, scale,
-stroke-width, resolution, or style trials. & Static type safety, semantic
-uniqueness, calibration on new concepts, or preservation of earlier legs. \\
-Archive preservation & Every previously accepted attachment cold-replays under
-the candidate archive, with exact candidate and replay receipts. & That the new
-attachment is useful, calibrated, non-memorizing, or nuisance-stable. \\
+\texttt{component.count} & separated ink components \\
+\texttt{hole.owner\_count} & enclosed regions having one component owner \\
+\texttt{topology.endpoint\_count} & open-stroke endpoints \\
+\texttt{topology.branchpoint\_count} & skeleton branchpoints \\
+\texttt{topology.cycle\_count} & stroke cycles \\
+\texttt{topology.crossing\_count} & certified four-arm geometric X junctions \\
+\texttt{curvature.reversal\_count} & persistent signed-curvature reversals \\
+\texttt{curvature.run\_count} & persistent signed-curvature runs \\
+\texttt{curvature.s\_like\_count} & simple open strokes with reversing curvature \\
+\texttt{curvature.u\_like\_count} & simple open strokes with substantive one-direction curvature \\
 \bottomrule
 \end{tabularx}
-\caption{Independent obligations for admitting a visual leg or composite.}
-\label{tab:contracts}
+\caption{The ten direct atom families.  Each selects one exact target count in
+the closed set $\{1,\ldots,8\}$.}
+\label{tab:catalog}
 \end{table}
 
-Admission additionally checks soft-score calibration against a baseline,
-near-miss contrasts, anti-memorization challenges, zero train/query content
-overlap, forbidden identifier access, candidate replay, and a source-structure
-novelty charge.  The SHA-256 of stripped submitted candidate source must match
-the registered leg's stripped \texttt{inspect.getsource} digest, or its selected
-bytecode-tuple fallback, and the formula must directly call that leg; the
-comparison source must match a verifier precommit.  This binds normalized
-source or bytecode identity, not dependencies, globals, closure contents,
-package environment, or machine code.  Thus harmless decoy text cannot purchase
-a cheap novelty score for different registered code.  All receipts bind the same
-candidate digest and verifier identity.  The current receipt structures are
-data contracts, not cryptographic signatures, so production evaluation must
-construct them inside the verifier-owned process or authenticate them
-externally.  Promotion is atomic: a rejected candidate cannot partially mutate
-the registry or archive, and an accepted decision applies only if the archive
-has not changed since evaluation.
+This catalog is intentionally modest.  It has no direct oblique-angle band or
+typed corner-angle interval.  It has no two-loop point-contact predicate with
+explicit loop owners, one contact witness, four owner-labelled incident rays,
+and both exterior gaps.  It also lacks persistent object and part identity,
+part correspondence, and open categories such as bird-likeness.  The crossing
+count recognizes a geometric X in a thinned raster graph; it does not infer an
+over/under crossing or identify four attached objects.  These are missing
+perceptual legs, not alternate names for existing counts.
 
-\section{Growing legs by cofibrant-style gluing}
-\label{sec:growing-legs}
+\subsection{Soft prose as an operational observation}
 
-A fixed vocabulary merely moves the hand-engineering problem.  The development
-system therefore alternates two loops.
-
-\paragraph{Composition loop.}
-Given a drill task and frozen $\Legs_k$, the headless proposer describes the
-positive side, inspects counterexamples, and emits only a formula over registered
-leg references.  The verifier fits permitted parameters on support, evaluates
-development panels, and returns typed counterexamples.  If a composition works,
-no new leg is needed.
-
-\paragraph{Growth loop.}
-If the current registry cannot express a stable solution, the proposer may
-stage one new leg or refactoring.  Its boundary $A_k$ consists of the declared
-input and output types, units, parameters, invariance obligations, provenance,
-and cost.  Its implementation and verifier-owned tests form a cell $B_k$.
-The map $A_k\to\Legs_k$ states how the cell attaches to the existing registry.
-After all gates pass, the operational pushout analogue is
-\begin{equation}
-  \Legs_{k+1}=\Legs_k\cup_{A_k}B_k.
-  \label{eq:gluing}
-\end{equation}
-This ``cofibrant-style'' language is an engineering discipline, not a claim
-that the Python implementation proves a categorical universal property.  The
-important properties are explicit boundary data, least compatible extension,
-and replay of the full incumbent archive.  Repeated successful compositions can
-be factored into a shared derived leg; one-off task code is not promoted merely
-because it separates a support set.
-
-The outer objective may rank gate-passing candidates by
-\begin{equation}
-  F(h)=R_{\mathrm{drill/dev}}(h)+\lambda C(h),
-  \label{eq:free-energy}
-\end{equation}
-where $C$ charges leg source structure, contracts, calls, bindings, and
-parameters.  Description-length pressure is useful for choosing among
-empirically admissible candidates \cite{rissanen1978modeling,
-grunwald2007minimum}.  It is not a semantics test and cannot create novelty.
-The proposer supplies novelty; the verifier decides whether the new cell earns
-attachment.  This resembles library learning and continual problem invention
-\cite{ellis2020dreamcoder,bowers2023stitch,schmidhuber2013powerplay}, but the
-present protocol insists on a visual measurement boundary and full archive
-replay.
-
-No reusable-leg growth, threshold fitting, phrase revision, or admitted-registry
-mutation occurs during official sealed evaluation.  The HYBRID baseline remains
-separate because it constructs one task-local empirical leg after support.
-
-\section{Sealed headless-proposer evaluation}
-
-The canonical run is a verifier-controlled commit/release sequence.
-
+Open descriptions are still useful proposal language.  For example, a model
+may propose ``bird-like object'' or ``mostly oblique parts.''  The fixed soft
+path does not promote that text to a theorem:
 \begin{enumerate}[leftmargin=1.5em]
-  \item \textbf{Preregister.}  The intended outer protocol externally commits
-  corpus and exposure-ledger heads, official and local partition digests,
-  proposer/model and prompt versions, reusable registry and archive digests,
-  support/query schedule, nuisance suite, scoring rules, and resource limits.
-  The current CLI content-addresses its plan and writes the exposure event
-  before support, but does not prove external publication time or that the
-  supplied ledger head is latest; HYBRID's task-local registry is compiled only
-  after support.
-  \item \textbf{Issue support.}  Copy six positive and six negative panels into
-  a fresh sandbox under canonical labelled names \texttt{pos\_0.png} through
-  \texttt{neg\_5.png}.  Commit their bytes and labels.  The headless proposer
-  has no access to corpus paths, official task identifiers, action programs,
-  query store, labels outside support, or prior sealed artifacts.
-  \item \textbf{Fix and compile the proposal.}  The proposer returns one
-  positive-class description.  Verifier-owned code compiles the canonical
-  HYBRID path into one task-local atom and frozen registry.  A generic proposer
-  need only return a registry that is already frozen; the runner does not prove
-  it was frozen before support.
-  \item \textbf{Replay support and freeze.}  Make twelve fresh isolated calls,
-  each with the fixed claim and one support panel named \texttt{query.png}, and
-  join the hidden labels inside the verifier.  Reject unless every positive is
-  present and every negative is operationally certified absent.  The final
-  proposal freeze binds the complete support-gate digest.
-  \item \textbf{Release queries.}  Only after the accepted gate and final
-  freeze, release the remaining
-  two distinct query panels without labels.  Run registered legs, retaining
-  atom-level evidence, uncertainty, and provenance.
-  \item \textbf{Commit predictions.}  Reduce the evidence through the frozen
-  formula.  Commit both predictions or abstentions and their evidence digests.
-  \item \textbf{Reveal labels.}  Release the two labels only after the
-  prediction commitment.  The task-level exposure event written before support
-  already marks every panel of this task exposed; later disclosures are not
-  separate ledger events in the current CLI.
-  \item \textbf{Verify and cold-replay.}  Check an externally anchored raw
-  run-file digest, the trusted release descriptor, split assignment, task
-  manifest, a bijection to all fourteen official panel byte preimages, the
-  support gate, and each vision receipt's internal request/response bindings.
-  Reparse the proposal and canonically recompile the verifier-owned HYBRID
-  registry, formula, source and operational identities, and attachment contract
-  without invoking the model; then replay committed atom dispositions.  The
-  receipts are not provider signatures, and re-running perceptual legs from
-  panel bytes is a separate warm-replay audit.
+  \item the support-only proposer freezes one affirmative claim and one to four
+    affirmative cues;
+  \item an isolated one-panel scorer sees the exact claim, cues, neutral
+    \texttt{query.png}, and short verifier-produced witness summaries, but no
+    task identity, side, role, or label;
+  \item for every cue it returns \texttt{supported}, \texttt{ambiguous}, or
+    \texttt{unsupported}; Python maps these to $1$, $1/2$, and $0$ and takes
+    the fixed minimum across cues; and
+  \item only if a valid scorer-family calibration has been fitted on
+    development data does Python map the ordinal score to an interval and
+    compare it with one fixed affirmative boundary.
 \end{enumerate}
+The artifact binds the text, cue inventory, panel digest, model and prompt,
+raw receipt, ordinal map, aggregation rule, calibration bin, interval, and
+evaluator.  A cited witness ID proves only that the response referred to an
+offered witness; it does not prove bird-likeness.  Calibration estimates the
+behavior of this operational scorer under a stated population and sampling
+design.  It does not prove individual-panel semantics or transfer to another
+family.
 
-The chain is
-\begin{equation}
-  \begin{aligned}
-    \text{support}
-      &\to\text{fixed claim}\to\text{support replay gate}\\
-      &\to\text{final proposal freeze}\to\text{query release}\\
-      &\to\text{cold inputs}\to\text{predictions}\to\text{labels},
-  \end{aligned}
-\end{equation}
-with every artifact containing or being bound by its parent's digest.  This
-establishes temporal ordering and tamper evidence.  It does not establish that
-the caller-supplied seed was random or preregistered, that a non-empty exposure
-predecessor is the latest authentic ledger head, or that the operating system,
-remote model provider, or model pretraining corpus contained no side channel;
-those are additional deployment assumptions that must be reported.
+Whenever possible, development should replace a soft phrase with a direct
+measurement.  ``Oblique'' should eventually bind specific corners or stroke
+segments and return angle intervals in declared units.  ``Two loops touching''
+needs object ownership and a complete contact signature.  This is the relevant
+sense in which the predicate library can grow, analogous to reusable library
+learning rather than task-local separator invention
+\cite{ellis2020dreamcoder,bowers2023stitch}.
 
-\section{Evaluation and falsification}
+\section{Positive-only synthesis and reverse-alignment pathology}
 
-The primary unit is a task, not a panel or an API response.  A task is exactly
-correct only when both held-out queries receive determinate, correct labels.
-The report must include:
+The canonical Python IR contains positive atoms and their conjunction.  The
+headless proposer has no \texttt{Not}, complement, disjunction, arbitrary
+comparison, or dynamic function lookup.  Every selected atom is used once, and
+the verifier assigns its identity.  A proposal must agree with all six positive
+and all six negative support panels under fresh isolated evaluation.  The
+formula and registry are then frozen before any query pixel is created in the
+proposer's workspace.
+
+The earlier PURE support diagnostic recorded 10 reversed outcomes among 132
+executable support-panel outcomes.  It did not execute an A1 complement or
+measure whether negation improved semantic accuracy.  The observation motivates
+a concrete failure mode: if synthesis tries both
+$p(x)$ and $\neg p(x)$ after seeing the labels, an incorrectly oriented or
+spurious predicate can be rescued by its complement.  If an extractor failure
+has first been collapsed to Boolean false, negation turns failure itself into
+a positive witness.  With only twelve support panels, family correlations and
+reused generator attributes make such accidental separators especially easy
+to select.
+
+The repaired protocol fixes the positive orientation at proposal time, has no
+negation operation, distinguishes absence from failure, and rejects any rule
+that misses the exact 12/12 support gate.  Query observations, joint
+predictions, and labels occur only after the formula commitment.  Exact-byte
+cold replay then reconstructs the deterministic computation without another
+model call.  These restrictions prevent a \texttt{Not} rescue; they do not
+make a poor visual vocabulary expressive or turn a support fit into evidence
+of generalization.
+
+\section{Experimental design and current status}
+
+\subsection{A1 terminal failure and distinct A2 experiment}
+
+A1 attempted exploratory DRILL calibration under the design label
+\nolinkurl{descriptive-exploratory-only/v1}.  Its command receipt is
+\begin{center}
+\small
+\nolinkurl{sha256:9aa247d953204bb12c06a09af6c081c47ae884be8e9c642a9a2bb6d587ba40cb},
+\end{center}
+and its terminal scoring-failure digest is
+\begin{center}
+\small
+\nolinkurl{sha256:a130d9e608c38581d34043d4d9c071f93483026592ec9c27a406dbad46d65b83}.
+\end{center}
+All 48 proposer calls succeeded: 37 emitted accepted soft claims, 10 were
+direct-only attrition, and one was rejected by the typed parser.  All 37 scorer
+calls were transport errors.  There were zero scores, labels remained withheld,
+and no fitted calibration, semantic accuracy, or negation evidence was
+produced.  The consumed A1 seed was
+\nolinkurl{f9ee0fc4433df603049734153ae5eeac7e7227873fd2f3f36bc163449f107857};
+its durable successor remains
+\nolinkurl{sha256:99597cf6477cd7e145c3bf62daf885fe7bf5ef5c0c829741353b5d6a0f5d7a78}.
+
+A1's frozen scorer schema used provider-incompatible \texttt{minItems},
+\texttt{maxItems}, and \texttt{uniqueItems}.  A2 removed those transport-schema
+keywords while retaining exact cue coverage, ordering, uniqueness, and witness
+ownership as fail-closed Python decoder checks.  This repair changes the
+protocol identity, so A2 was not an A1 retry.  It used protocol
+\nolinkurl{sha256:2d9261c763d3f9242ffc7cf42d773f54aa1a51f29b610e10b75c9ae59dea81ca},
+fresh no-reroll seed
+\nolinkurl{eb031fe199b7d7553444d29cd213663c8afaf99d9b9cccec896f862f445a40b1},
+and durable successor
+\nolinkurl{sha256:9b7cb7ee7d759e899f5194d115a8bd20ebf8e078397a64de8f4b32e6805b1ce8}.
+A concurrent agent edited \texttt{bongard/typed\_visual\_proposal.py} after the
+protocol and cohort were frozen.  The changed live grammar invalidated A2, and
+the process exited without writing a Stage-A terminal artifact.  The incident
+file digest is
+\nolinkurl{sha256:4ace426bafbc051f2ad620dd8cdb3742a365b43503c673a9acc462665d47ccd4}.
+Process output showed 48 proposer and 34 scorer launches only; outputs were
+lost, labels were not revealed, and no calibration, accuracy, or semantic
+inference is valid.  The cohort may not be rerun.
+
+Neither experiment supports intervals or semantic inference.
+
+\subsection{Stage B: conditional descriptive DEV run}
+
+Neither the failed A1 receipt nor the invalidated A2 incident can authorize
+Stage B.  The completed metadata-only audit shows why raw task count was
+misleading.  Once semantic siblings and every HD constituent exposed by the
+complete A2 ledger are removed, the remaining DRILL maximum is 24 BD plus zero
+HD units, so the old 48-task calibration cannot be repeated.  DEV against the complete live ledger
+has 16 BD and zero HD units.  The default 24-task request therefore fails before
+pixels or model calls, while a 16-task BD-only pilot cannot meet the frozen
+24-cluster minimum.  Any later run remains descriptive and records
+\texttt{dependence\_design\_authorized = false}.
+
+This strict capacity is not corpus exhaustion.  The train/validation split has
+10,200 tasks, and 10,069 exact task identifiers remain absent from the complete
+A2 ledger: 2,998 FF, 3,456 BD, and 3,615 HD.  An intermediate 28-unit upper
+bound enforced HD constituent disjointness only within the proposed new batch;
+the live 24-unit result also seeds exclusions from the predecessor ledger.  It
+exposes a design conflation: scorer calibration and semantic-transfer
+evaluation were forced through the same constituent-disjoint frame.  A future calibration
+frame should use exact-unused training tasks with explicit shared-generator
+dependence, score both held-out panels before label opening, and reserve a
+separate evaluation frame.  HD evaluation must be partitioned by constituent
+attribute rather than ordered pair.
+
+New command receipts bind the complete executable Bongard Python source
+boundary.  Source drift
+after exposure now produces a durable typed failure with labels withheld.
+Identity-preserving canonical caches reduced the same synthetic Stage-A replay
+from 161.15 seconds to 11.50 seconds and Stage B from 218.88 seconds to
+51.10 seconds.
+
+Visual-semantic SEALED and official-test execution are hard-disabled in both
+the CLI and direct benchmark runner.  Stage B has not run, and this manuscript
+reports no Stage-B query score and no official-test accuracy.
+
+\section{What formal verification can and cannot add}
+
+Python is the sole authority for predicate construction and execution, type
+checking, calibration, selection, persistence, cold replay, benchmark
+decisions, and scientific artifact identities.  Canonical JSON is the
+interchange representation.  A benchmark run does not require Lean or any
+other proof assistant.
+
+A future proof checker may consume a frozen artifact and independently check,
+for example, that a conjunction follows from its recorded evidence.  It must be
+a detached, removable sidecar:
 \begin{itemize}[leftmargin=1.5em]
-  \item exact-task accuracy and unconditional panel accuracy, counting
-  abstentions as failures;
-  \item coverage, conditional accuracy on determinate predictions, and the
-  complete four-disposition table;
-  \item results separately for FF, BA, CM, and NV, with uncertainty resampled
-  by task;
-  \item Brier score and reliability information for soft semantic legs;
-  \item proposer calls, latency, token or compute use, registry size, new-leg
-  attachments, rejected attachments, novelty charges, and archive regressions;
-  and
-  \item preregistered results separately from post-hoc diagnostics.  A useful
-  predicate discovered after query labels are visible earns no benchmark
-  credit.
+  \item no proof term enters a predicate or artifact identity;
+  \item installation or deletion of the checker cannot change a result,
+  benchmark or admission decision, digest, identifier, or replay;
+  \item the checker cannot alter the canonical Python semantics; and
+  \item a proof about recorded observations cannot certify the correctness of
+  the original visual observation.
 \end{itemize}
+This ``un-Lean'' invariant keeps formal checking useful without making the
+benchmark depend on a particular prover.  Stage-A source identity enforces the
+boundary mechanically: it hashes every potentially authoritative Bongard
+Python module but excludes the exact non-authoritative
+\nolinkurl{bongard/semantic_checker.py} sidecar, so changing or removing that
+adapter leaves receipt identities unchanged.
 
-Necessary controls include direct headless vision classification, prose without
-executable grounding, the frozen deterministic-leg registry without soft
-semantics, soft semantics without leg growth, the full growing-leg system, and
-an unrestricted complement/negation diagnostic.  Action-program and official
-rule metadata form an explicitly non-visual oracle arm.  Nuisance, near-miss,
-label-shuffle, identifier-leak, and archive-replay ablations test different
-failure modes and must not be collapsed into one score.
+\section{Limitations and next work}
 
-The protocol is falsified, rather than rescued, when a candidate needs query
-feedback, succeeds only after polarity reversal, converts errors to negatives,
-uses official identifiers, fails required nuisance trials, loses calibration,
-memorizes panel bytes, or breaks any accepted archive entry.
+The protocol makes failures legible, but the central perception problem
+remains.  The direct catalog lacks angle, contact, ownership, object identity,
+and part-correspondence legs.  The soft scorer may be self-consistent yet
+semantically wrong.  A model provider and public-data training history cannot
+be reproduced by exact-byte symbolic replay.  One held-out panel per side gives
+high task-level variance.  The post-A2 frame has no ledger-disjoint HD DEV unit,
+so descriptive BD-only results must not be dressed as broad population
+inference.
 
-\section{Implementation boundary}
-
-The canonical package implements the following contracts:
-\begin{itemize}[leftmargin=1.5em]
-  \item official-layout discovery, exact task and split validation, and
-  content-addressed panel/task/corpus manifests;
-  \item immutable exposure ledgers, exact and semantic unseen checks,
-  deterministic partitions for drill, development, and sealed use, and
-  historical exposure imports; the official CLI applies these checks to its
-  supplied ledger head, but direct reads and predecessor authenticity remain
-  outside that mechanism;
-  \item typed, version-pinned leg contracts with units, transformation
-  declarations, signed affirmative relations, implementation digests, and a
-  verifier-owned frozen registry; the reusable pre-support registry discipline
-  remains distinct from the post-support task-local HYBRID registry;
-  \item a deterministic candidate-independent bilateral-symmetry leg, and a
-  support-prototype core with neutral interval feature packets, committed
-  positive and negative centroids, and one fixed positive contrastive margin;
-  neither is yet an externally calibrated official-runner vision solution;
-  \item provenance-bearing four-state evidence, soft semantic observations, and
-  a conditional score-to-predictive-support calibration bridge;
-  \item the closed positive-only formula IR and interval-safe evaluator;
-  \item typed attachment, calibration, nuisance, near-miss,
-  anti-memorization, candidate replay, normalized implementation-source
-  binding, novelty, and
-  archive-preservation admission gates; and
-  \item immutable support/gate/freeze/query/prediction/label artifacts,
-  verifier-owned canonical HYBRID recompilation, exact-PNG PURE prototype
-  refitting, and model-free replay.
-\end{itemize}
-
-These are executable and testable protocol components.  They are not, by
-themselves, a completed end-to-end benchmark, a trained visual vocabulary, or
-evidence of high Bongard accuracy.  Earlier exploratory runs under different
-datasets, latent generators, mutable candidate vocabularies, or post-hoc
-analysis are development history and are not results of this protocol.
-
-A pre-current-protocol v1 drill on the training task
-\path{bd_trapez_parallelogram_0000} classified both held-out query panels
-correctly (2/2).  It used the old corpus identity and predates exact official
-release binding, current receipt/schema checks, canonical HYBRID recompilation,
-and the twelve-panel support gate.  The checked-in complete-release v2 completed
-drill scored 1/2.
-
-The first checked-in current-protocol v3 drill attempt,
-\path{hd_exist_quadrangle-exist_sector_0000_v4.json}, has file
-SHA-256
-\nolinkurl{bf60a36bc7a48e61c61c8de2153753fa2996db54eacf53fe4c861bf06a9b4f41}.
-It ended \texttt{support\_rejected} before query release, with no query
-observations or run archive and zero determinate query outcomes.  All twelve
-support observer calls otherwise succeeded, but the verifier converted every
-raw judgment to \texttt{TransportIdentityError} because the supposedly stable
-\path{cloud_config_bundle_cache_binding} changed across calls.  Before
-that conversion, the raw judgments fit 10/12 support labels: all six positives
-were \texttt{present}, while four negatives were \texttt{nonmatch} and two were
-\texttt{present}.  This exposes a transport-identity protocol bug; it is not a
-held-out score.
-
-The checked-in v5 drill attempt,
-\path{bd_advanced_lamp3_0000_v5.json}, has file SHA-256
-\nolinkurl{e3fbe8f76290bb93f33def26c36b50f9ae451e43456a52e4796976a71662255a}.
-Its proposal and support receipts share the cache binding
-\nolinkurl{sha256:6860e08631caee1357061bd727e93f7d200931b3bb2d925f873aea3d669d22f2},
-so the v4 transport-identity defect is absent.  It nevertheless ended
-\texttt{support\_rejected} before query release, with no query observations or
-run archive and zero determinate query outcomes.  The immutable artifact's
-version-3 observation/version-1 gate records six forward matches, one reverse
-match, and five parser errors.
-
-The raw outputs were six positive \texttt{present} judgments, five negative
-\texttt{nonmatch} judgments, and one negative \texttt{present} judgment.  The
-five nonmatches exposed a prompt/schema/parser contradiction: a top-level
-\texttt{reason} was allowed or inferred, while the archived parser required
-null.  Current observation schema v4 and support policy v2 make that field
-optional and certificate-bound; the repaired implementation passes all 418
-package tests.  Post-hoc re-evaluation of the archived raw payloads gives
-eleven forward matches and one reverse match, hence \texttt{unsupported}.
-This does not rewrite or salvage v5: its archived result remains
-\texttt{observer\_failure}.
-
-Even under the intended parse, “bent double-ended arrow” is overbroad.  An
-explicitly oracle-only, post-hoc inspection of privileged Basic action programs
-shows that the positive class shares one precise nine-action template, while
-the false-positive negative is a distinct near-miss geometric program.  The
-proposer and gate never received those programs, and they cannot count as
-benchmark evidence.  They instead show why prose should specify a candidate
-while a frozen visual contour/template or prototype scorer operationalizes it
-from pixels.
-
-The upstream sampler definitions provide a broader post-hoc oracle diagnosis.
-Basic multi-shape and Abstract attribute-pair positives are conjunctions, while
-their negative panels can form distinct near-miss subgroups that fail different
-conjuncts.  Task identifiers and action programs were never supplied to the
-proposer, support observer, synthesis path, or predictor.  The current proposer
-prompt therefore requires all-positive cue coverage and requires every negative
-to fail at least one cue; it tells the model to preserve separate near-miss
-conjuncts instead of replacing them with one vague word such as ``matched'' or
-``symmetric.''  This is a proposal-discipline correction, not calibrated visual
-evidence.
-
-The subsequent v6 attempt selected the first lexicographic task in the
-then-current live-eligible list,
-\path{bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json}, before any
-of its pixels had been inspected.  This is inspection-unbiased but deterministic
-selection, not random sampling.  Its file SHA-256 is
-\nolinkurl{6a120eabd4efeeee60b5555cbb581d6cced3d33206bb0ed556e61a29fb213057}.
-The support-release event
-\nolinkurl{sha256:b8fe3ea944d118058ac52e6f849ab5c1c1f6e08737f155e8b23f87569610877a}
-advanced the ledger to its then-current ten-event head.
-
-V6 ended \texttt{proposal\_error} through the phases
-\texttt{plan\_committed}, \texttt{support\_released}, and
-\texttt{proposal\_failed}.  It contains no accepted proposal, support gate,
-query observation, or run archive.  The archived failure reports the blanket
-lexical category \texttt{negative morphological complement}.  This is a
-benchmark-attempt failure, not a query score, and belongs in attempt coverage.
-
-The old run schema did not retain the rejected raw proposer payload or its
-receipt, so the lexical decision cannot be independently audited or replayed.
-The next protocol revision must distinguish constructive morphological
-descriptions from logical negation and persist every rejected payload and
-receipt.  A corrected future run would be a new attempt; v6 cannot be salvaged.
-
-The v7 artifact, \path{bd_arc_cup_0000_v7.json}, has file SHA-256
-\nolinkurl{9801dbec0928f59667993a993b99f2cfcd6d5c02264bb10ef467ac98c427a462}.
-Its event
-\nolinkurl{sha256:dbd578e1d3951837f25378721cf61e664eb96240e8f7c3fc108d1ff1db280a21}
-produced successor
-\nolinkurl{sha256:fc82fcebf4686c36f85f9efa0944ef4fc57b5da41dfccb19126c33b372c146dc}.
-V7 ended \texttt{proposal\_error} because DNS resolution failed before a Codex
-response.  It has no rejected proposal attempt, accepted proposal, support
-gate, query observation, or run archive, so it is a transport failure rather
-than a score.
-
-The v8 artifact, \path{bd_asymm_bridge_0000_v8.json}, has file SHA-256
-\nolinkurl{ef50e35732c9a02d933ca1d7628589071270b06bc3d87fd0bb2543cdff16ccdb}
-and status \texttt{complete}.  Its phrase is ``An enclosed region has a
-glyph-decorated boundary.''  Its frozen operational rule requires an enclosed
-cell whose boundary includes repeated small geometric glyphs such as circles,
-squares, triangles, or zigzag teeth.  All twelve isolated support replays
-aligned, both committed query predictions matched their revealed labels, and
-every phase from \texttt{plan\_committed} through
-\texttt{cold\_replay\_verified} is present.  Cold verification checks all
-fourteen official panel-byte preimages.  The archive digest is
-\nolinkurl{4f679fe175383a3ceb85333bf85f644dbe2a1ab69033747ae4b7d133893dc2ef},
-and the chain digest is
-\nolinkurl{c2cefb76126cc18d5f5b4e39c4b506fc259cb6fdb02ebf1a7dfa666f92631f4d}.
-Event
-\nolinkurl{sha256:25317bb78b0cf60b7585f59c93c7331c0f6743c3553ae044008b14b69d76fd35}
-produced the twelve-event ledger successor
-\nolinkurl{sha256:7cf70dcb4e15aa8f0d8f82f4e5ff1e32f3018fb1f467061a5c947b0a5cf742d3}.
-
-V8 is one integration episode, not an accuracy estimate.  Its two-query result
-has the conditional 50\% paired baseline.  HYBRID remains an uncalibrated
-categorical self-observer: one model family proposes the phrase and judges each
-panel match.  Replay establishes the archived computation, not pixel-level
-truth.
-
-V9, \path{hd_balanced_two-symmetric_transposed_0000_v9.json}, is a schema-v4
-official-training HD (Abstract) ordered-combination attempt with file SHA-256
-\nolinkurl{6171b6bca42ffa6423d0e7e1ef753da325ef3d000e6f39d2ca28b5afccf8e655}.
-It proposed ``A matched opposing pair of lobes joined at one center,'' with
-cues for paired lobes, matched geometry, a central junction, and opposing
-extents.  All twelve calls shared a stable transport binding, but the support
-gate rejected it: nine forward and three reverse matches, seven
-\texttt{present}, five \texttt{nonmatch}, and no errors or indeterminate
-outcomes.  One positive missed \texttt{matched\_geometry}; two negatives were
-false positives.  Its phases stop at \texttt{proposal\_frozen} and
-\texttt{support\_gate\_rejected}, before query release or a run archive.
-Event
-\nolinkurl{sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8}
-produced the intermediate thirteen-event ledger head
-\nolinkurl{sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b}.
-
-V9 also exposes an audit limitation.  A support-rejected schema-v4 result has
-no \texttt{run\_archive}, while its outer public plan stores only the
-support-commitment digest, not the nonce-bearing commitment preimage.  Public
-\texttt{verify} therefore cannot fully cold-bind and replay that immutable v9
-file; v9 does not have v8's fourteen-preimage verification scope.
-
-Outer schema v5 closes this forward-path gap.  New records persist the exact
-\texttt{support\_commitment} on every exit.  For an ordinary
-\texttt{support\_rejected} result, cold verification binds it to the public
-plan, fixed proposal, verifier-owned compilation, proposal freeze, all twelve
-support receipts and evidence records, the reproduced non-aligned gate
-outcome, and twelve exact official PNG preimages.  The
-\texttt{run\_archive} remains null: no query, prediction, or label artifact is
-invented for a run that stopped before query release.  Legacy schema-v4
-completed and proposal-rejected files remain readable, whereas a schema-v4
-support rejection produces an explicit missing-preimage diagnosis.
-
-V9 sharpens the same theoretical hole: vague visual correspondence needs a
-quantitative symmetry and shape-matching leg.  A frozen, independently
-calibrated pixels-to-score operation remains missing for both open semantics
-and precise geometric near misses.  No current result estimates accuracy on
-the 1,800-task official test split.
-
-V10, \path{bd_asymm_trap_bridge-trans_arc_cup_0000_v10.json}, is a schema-v5
-artifact with file SHA-256
-\nolinkurl{0bdf82438b3b85b368f0c0fb93298f184fbae55b0b5777c06759670b53c3b8a7}.
-Sandbox DNS failed before a Codex response, so the run ended
-\texttt{proposal\_error}.  The support-commitment preimage is persisted, but
-there is no validated response, proposal receipt, support gate, query, or run
-archive.  Event
-\nolinkurl{sha256:dee13f7dae4e949882f516b8e8ca54eec7af8db0aa1fc47ca8a90aadb50195d7}
-produced successor
-\nolinkurl{sha256:1a547a92e7897558e2f5f3e209545309d1f2ec41b4650d7b724ab4193840eff7}.
-
-V11, \path{bd_asymm_unbala_goldfish-asymmetric_crown_0000_v11.json}, has file
-SHA-256
-\nolinkurl{0a324a7fc780dea392443a9afd54dbfe19fe5631d06ff1287abba7da342ac561}.
-It proposed ``Complete paired motifs with shared rotational handedness.''  The
-support gate rejected it with eight forward and four reverse matches: ten
-\texttt{present}, two \texttt{nonmatch}, and no errors or indeterminate
-outcomes.  Public verification reproduced all twelve exact official support
-preimages.  Event
-\nolinkurl{sha256:395fbacc33c3bc206a581e2d85cf856b89e978ce6133a3a2574e193d6d7484ab}
-produced successor
-\nolinkurl{sha256:8841cac62c203a2895a176c2cfbef8b97b46cfb33a6e0db2072c24efb54dc171}.
-
-V12, \path{hd_closed_shape-has_obtuse_angle_0000_v12.json}, has file SHA-256
-\nolinkurl{e7c62b4eb96e910d5ea2738fb6622ab9b469993befc7e0897906f5ed223960df}.
-Its phrase was ``A cyclic enclosure with an inward re-entrant feature.''  It
-ended \texttt{support\_rejected} with seven forward and five reverse matches:
-nine \texttt{present}, three \texttt{nonmatch}, and no errors or indeterminate
-outcomes.  Public verification again reproduced all twelve exact support
-preimages.  Event
-\nolinkurl{sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e}
-produced the current sixteen-event ledger head above.
-
-Across the three-attempt v10--v12 smoke campaign, proposer success was 2/3,
-support-gate pass was 0/2, query release was 0/3, and completion was 0/3.  The
-twenty-six successful receipts record 233,921 known input tokens, 23,552 cached
-input tokens, 15,001 output tokens, and 10,694 reasoning tokens.  These are
-attempt-coverage and resource measures.  No query pixels were released, so the
-campaign has no query accuracy.
-The canonical aggregate is
-\path{bongard/data/official_complete_drill_smoke_v10_v12.json}, with digest
-\nolinkurl{sha256:137536083875f40197d58363af5359750a10b385c1b0a5f1f9f2b11b882d3a66};
-its pure-Python builder checks the exposure chain, identities, support counts,
-and unique receipts and emits no accuracy object for a zero-query campaign.
-
-The later preregistered twelve-task PURE campaign is recorded in
-\path{bongard/data/support_prototype_drill_result_v1.json}, with canonical
-content digest
-\nolinkurl{sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca}.
-It produced zero completed episodes, eleven support rejections, and one
-replayable proposal-parser error.  Thus the support gate passed zero of twelve
-attempts, no query pixels were released, and no query-accuracy estimate exists.
-Across the 132 executable support labels from the eleven parsed proposals, 46
-were correct, 10 were wrong, and 76 were indeterminate.
-
-This campaign locates the failure between description and executable evidence.
-Codex prose frequently named object-level relations, whereas the compiler was
-allowed to retain only one closed interval-feature group and fit one centroid
-per side.  The bridge therefore discarded relations already present in the
-description.  The parser failure is distinct: it falsely read descriptive
-asymmetry language as logical negation.  Neither support rejection nor parser
-failure may be converted into a query prediction.  The canonical implementation
-and verifier are pure Python; Lean was not used and remains an optional,
-removable conformance layer.
-
-\section{Limitations}
-
-The remaining limitations are substantive.
-\begin{enumerate}[leftmargin=1.5em]
-  \item Soft visual semantics can be calibrated empirical measurements, not
-  mathematical definitions of bird-likeness or other open phrases.  The current
-  bridge starts after scoring, authenticates neither scorer nor annotations,
-  and relies on an outer cross-cluster sampling assumption.
-  \item A cold replay verifies committed symbolic evaluation but trusts the
-  committed perceptual observations.  Independent warm replay and provider
-  reproducibility remain necessary.
-  \item Synthetic nuisance transformations test declared changes, not every
-  semantic alternative or real renderer shift.
-  \item With one query per class, a single task has very high variance.  Claims
-  require many sealed tasks and task-level uncertainty.
-  \item The official NV label is a property of the released dataset split.  It
-  does not prove novelty to a foundation model or to this project's prior
-  conceptual vocabulary.
-  \item The public corpus and galleries may be present in model pretraining.
-  Local exposure accounting supports procedural honesty, not a global
-  non-contamination theorem.
-  \item Positive-only syntax removes a major rescue path but cannot make an
-  impoverished visual registry expressive.  Honest abstention and subsequent
-  development-time leg growth are expected outcomes.
-  \item The cofibrant-gluing analogy guides modular admission; no proof
-  assistant currently certifies the Python implementation or its category-level
-  universal properties.
-\end{enumerate}
+The immediate work is therefore to preserve both failed histories and run A3,
+if at all, from frozen source with one fresh no-reroll seed and its exact
+seed-ranked capacity.  Before that seed exists, A3 fixes eight clusters in each
+of the two score bins.  At 90\% simultaneous confidence the Hoeffding radius is
+0.480161, so eight is the smallest bin that can possibly decide against the
+unchanged 0.5 boundary.  This is a weaker descriptive design, not an
+authorization result.  Independently, add the missing typed observables and
+redesign the larger calibration frame.  Only a future, separately justified
+design can decide whether official test access is warranted.
 
 \section{Conclusion}
 
-The missing component in Bongard predicate synthesis is not another separator
-search.  It is a defensible boundary between pixels and claims.  Vision may
-propose human-scale phrases, including soft ones.  In the calibrated soft track,
-executable use must pass through a typed, provenance-bearing predictive-support
-observation whose validity is conditional on authenticated inputs and sampling
-assumptions.  The current HYBRID baseline instead uses task-local categorical
-judgments plus support replay and is uncalibrated.  Closed positive composition
-prevents complement rescue; four-state evidence prevents
-failed extraction from masquerading as absence; separate attachment,
-invariance, and archive contracts prevent one successful check from standing in
-for all others.  Growing legs can then expand the vocabulary on development
-tasks without permitting sealed-task invention, and the official 12,000-task
-corpus provides enough room to drill, validate, and retain a real sealed test.
-
-The first preregistered headless PURE drill now exists, and it falsifies the
-current one-group interval-centroid bridge before query release.  The immediate
-scientific deliverable is therefore a richer candidate-independent visual
-representation---including parts, ownership, correspondence, and relational
-geometry---followed by another preregistered campaign with coverage,
-calibration, per-regime results, exposure provenance, and both cold and
-perceptual replay.  Until a campaign passes support and reaches sealed queries,
-this work should be cited as a protocol and a negative drill result, not as a
-successful Bongard benchmark.
+The project does not need Lean to make a visual predicate executable.  It needs
+an honest empirical measurement boundary.  Exact-byte candidate-independent
+witnesses, conditionally calibrated operational soft observations, four dispositions,
+positive-only synthesis, a 12/12 support gate, commitment before query release,
+and Python cold replay provide such a boundary.  The earlier reversal
+diagnostics explain why post-hoc complementation is dangerous; A1 did not
+measure negation.  The positive-only language prevents that repair from
+receiving benchmark credit.  These controls also expose the real missing work:
+angles, point contact,
+ownership, and stable object identity.  Until those legs improve and the
+descriptive stages complete, the correct result is one terminal A1 failure and
+one invalidated A2 incident with no terminal artifact---not a successful
+Bongard benchmark.
 
 \section*{Reproducibility note}
 
-From the repository root, the canonical protocol tests and this manuscript are
-built with:
+From the repository root:
 \begin{verbatim}
 python3 -m pytest -q bongard/tests
 make -C bongard/manuscript
 \end{verbatim}
-The compatibility target \texttt{make -C bongard/manuscript compatibility}
-builds the deprecated \texttt{semantic\_cones.tex} entry point from this same
-source; it does not maintain a second manuscript.
-
-Pre-rewrite controls and exploratory pilots are preserved at the annotated Git
-tag \nolinkurl{pre-bongard-complete-rewrite-20260805}.  Stale working-tree copies
-remain physically present pending explicit deletion, but they are excluded from
-the canonical reproduction path.
+The compatibility entry point is built with:
+\begin{verbatim}
+make -C bongard/manuscript compatibility
+\end{verbatim}
+It inputs this same source; it is not a second manuscript.  Historical
+manuscript material is preserved at the annotated Git tag
+\nolinkurl{pre-bongard-complete-rewrite-20260805}.
 
 \bibliographystyle{plain}
 \bibliography{references}

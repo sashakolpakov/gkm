@@ -1,71 +1,48 @@
 Historical Abstraction-Emergence Control
 =========================================
 
-Status
-------
-
-This experiment is a retained internal control. It is not a visual Bongard
-benchmark, does not use the complete ``ShapeBongard_V2`` corpus, and does not
-discover primitive observations from pixels.
+This is a retained internal control, not a visual Bongard benchmark.  It does
+not use the complete ``ShapeBongard_V2`` corpus and does not learn primitive
+observations from pixels.
 
 Question tested
 ---------------
 
-The scaffold asks a narrow question: when the same predefined conjunction is
-used repeatedly, does conditional description-length accounting favor a
-shared predicate macro over duplicated inline rule bodies?
+The experiment asks whether conditional description-length accounting favors
+one shared predicate macro when the same predefined conjunction is reused,
+rather than paying for duplicated inline rule bodies:
 
 .. code-block:: text
 
-   F = task loss + lambda * (library complexity + task-rule complexity)
+   objective = task loss + lambda * (library complexity + rule complexity)
 
-The candidate primitive atoms are supplied by the experiment. The discovery
-claim, where supported, concerns encapsulation and reuse of those atoms rather
-than perception or semantic grounding.
+The primitive Boolean atoms are supplied by the experiment.  Conditions
+compare inline rules, a shared macro, macro syntax that repays the definition
+at every use, and an oracle upper bound.  The historical result was that
+repeated structure could make the shared macro cheaper, while single-use,
+unrelated-disjunction, and no-sharing controls did not.
 
-Controls
---------
+Claim boundary
+--------------
 
-.. list-table::
-   :header-rows: 1
+This demonstrates an accounting incentive for encapsulation and reuse.  It
+does not demonstrate visual grounding, semantic predicate discovery, Bongard
+generalization, or self-improvement on the official corpus.  In particular,
+it supplies the atoms that the active visual track must obtain from fallible
+panel observations.
 
-   * - Condition
-     - Purpose
-   * - ``inline``
-     - Solve with primitive atoms and duplicated bodies
-   * - ``shared``
-     - Define a macro once and pay cheap calls on reuse
-   * - ``no_share``
-     - Permit macro syntax but repay its definition per use
-   * - ``oracle``
-     - Supply the target predicate directly as a privileged upper bound
+The original implementation and detailed reports are preserved at the
+annotated Git tag ``pre-bongard-complete-rewrite-20260805``.  They should not
+be combined numerically with the current Stage-A or Stage-B protocol.
 
-The historical observation was that repeated shared structure could favor a
-macro, while single-use, unrelated-OR, and no-share controls did not. This is
-useful evidence that the accounting mechanism can express a reuse incentive.
-It is not evidence that a visual system can find ``bird-like``, contact,
-closure, or any other primitive from a panel.
+Relationship to the active track
+--------------------------------
 
-Archived implementation
------------------------
-
-The original control, tests, and reports are preserved at the annotated Git
-tag ``pre-bongard-complete-rewrite-20260805``. Check out that tag in a separate
-worktree to inspect or reproduce the historical mechanism; do not mix its
-supplied-atom score with current visual benchmark results.
-
-Relationship to the canonical track
------------------------------------
-
-In the current visual track, pure Python defines the canonical predicate,
-evaluation, and replay semantics. Lean is an optional, removable cross-check;
-it is not required to run or interpret an episode.
-
-The first PURE support-prototype baseline did not pass development
-calibration. Coordinate-wise interval boxes lost correlation between
-preprocessing scenarios, one centroid per side mismatched multimodal classes,
-the one-group restriction ruled out cross-group concepts, and the neutral
-raster features lacked semantic and relational vision. The next visual rung
-must repair those representation limits before reuse can be credited through
-calibration, nuisance, near-miss, anti-memorization, and archive replay gates.
-See :doc:`bongard` for the current claim boundary.
+The active track uses Python alone as the authority for predicate execution,
+calibration, replay, benchmark decisions, and scientific artifact IDs.  Lean
+or another proof checker may only consume a frozen artifact as a detached
+optional sidecar; deleting it cannot change a result, decision, or ID.  The
+immediate problem is not macro syntax: it is obtaining useful typed direct and
+soft observations from pixels, calibrating them honestly, and preventing
+support-set artifacts or negation from masquerading as concepts.  See
+:doc:`bongard` for the current design and status.

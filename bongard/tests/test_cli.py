@@ -240,6 +240,276 @@ def test_run_parser_exposes_python_prototype_profile() -> None:
     assert args.prototype_calibration == "calibration.json"
 
 
+def test_stage_b_parser_requires_external_authority_and_uses_live_defaults() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "validate-semantic-stage-b",
+            "--corpus",
+            "corpus",
+            "--archive",
+            "ShapeBongard_V2.zip",
+            "--stage-a-command-receipt",
+            "stage-a-command-receipt.json",
+            "--expected-stage-a-command-receipt-digest",
+            "a" * 64,
+            "--selection-seed",
+            "b" * 64,
+            "--selection-seed-provenance",
+            "external-beacon:v1",
+            "--exposure-observed-at",
+            "2026-08-06T12:00:00Z",
+            "--artifact-dir",
+            "artifacts",
+            "--exposure-dir",
+            "exposure",
+        ]
+    )
+
+    assert args.handler is cli._validate_semantic_stage_b
+    assert args.expected_stage_a_command_receipt_digest == "a" * 64
+    assert args.selection_seed == "b" * 64
+    assert args.task_count == 24
+    assert args.workers == 4
+
+
+def test_stage_a_parser_exposes_preregistered_bin_population() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "calibrate-semantic-stage-a",
+            "--corpus",
+            "corpus",
+            "--archive",
+            "ShapeBongard_V2.zip",
+            "--ledger-in",
+            "predecessor.exposure.json",
+            "--expected-ledger-digest",
+            "sha256:" + "1" * 64,
+            "--selection-seed",
+            "2" * 64,
+            "--selection-seed-provenance",
+            "external-beacon:v1",
+            "--artifact-dir",
+            "artifacts",
+            "--exposure-dir",
+            "exposure",
+            "--private-cache-dir",
+            "private-cache",
+            "--expected-codex-launcher-sha256",
+            "3" * 64,
+            "--candidate-count",
+            "28",
+            "--minimum-clusters-per-bin",
+            "8",
+        ]
+    )
+
+    assert args.handler is cli._calibrate_semantic_stage_a
+    assert args.candidate_count == 28
+    assert args.minimum_clusters_per_bin == 8
+
+
+def test_stage_b_handler_preserves_receipt_campaign_cache_ledger_and_release_joins(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from bongard import semantic_calibration_command as stage_a_command
+    from bongard import semantic_gated_dev_validation as stage_b
+
+    manifest_digest = "sha256:" + "1" * 64
+    split_digest = "sha256:" + "2" * 64
+    ledger_digest = "sha256:" + "3" * 64
+    receipt_digest = "4" * 64
+    campaign_digest = "5" * 64
+    plan_digest = "6" * 64
+    artifact_digest = "7" * 64
+    successor_digest = "sha256:" + "8" * 64
+    calls: dict[str, object] = {}
+
+    corpus = SimpleNamespace(split=SimpleNamespace(source_digest=split_digest))
+    manifest = SimpleNamespace(digest=manifest_digest)
+
+    class Release:
+        corpus_manifest_sha256 = manifest_digest
+        split_sha256 = split_digest
+
+        def verify_archive(self, path: str) -> None:
+            calls["archive"] = path
+
+        def verify_corpus(self, supplied_corpus: object) -> object:
+            calls["release_corpus"] = supplied_corpus
+            return manifest
+
+    cache_snapshot = object()
+    receipt = SimpleNamespace(
+        terminal_artifact_path=tmp_path / "stage-a-campaign.json",
+        terminal_internal_digest=campaign_digest,
+        exposure_ledger_path=tmp_path / "stage-a-successor.exposure.json",
+        exposure_ledger_digest=ledger_digest,
+        receipt_digest=receipt_digest,
+        load_cache_snapshot=lambda: cache_snapshot,
+    )
+    calibration = SimpleNamespace(family=object(), protocol=object())
+    campaign = SimpleNamespace(calibration=calibration)
+    predecessor = SimpleNamespace(digest=ledger_digest)
+    policy = object()
+    plan = SimpleNamespace(
+        digest=plan_digest,
+        families=("bd", "hd"),
+        selections=(SimpleNamespace(family="bd"), SimpleNamespace(family="hd")),
+    )
+    summary_data = {"validation_status": "pilot"}
+    artifact = SimpleNamespace(
+        digest=artifact_digest,
+        exposure_successor=SimpleNamespace(digest=successor_digest),
+        summary=SimpleNamespace(to_data=lambda: summary_data),
+    )
+
+    monkeypatch.setattr(
+        cli.ShapeBongardCorpus,
+        "discover",
+        lambda root, *, split_file, require_complete: (
+            calls.update(
+                corpus_discovery=(root, split_file, require_complete)
+            )
+            or corpus
+        ),
+    )
+    monkeypatch.setattr(cli, "load_official_release", lambda path: Release())
+
+    def load_receipt(path: str, expected: str) -> object:
+        calls["receipt"] = (path, expected)
+        return receipt
+
+    monkeypatch.setattr(stage_a_command, "load_stage_a_command_receipt", load_receipt)
+
+    def load_campaign(path, **kwargs):
+        calls["campaign"] = (path, kwargs)
+        return campaign
+
+    monkeypatch.setattr(cli, "_load_semantic_calibration_campaign", load_campaign)
+
+    def load_ledger(**kwargs):
+        calls["ledger"] = kwargs
+        return predecessor
+
+    monkeypatch.setattr(cli, "_load_bound_ledger", load_ledger)
+    monkeypatch.setattr(
+        cli,
+        "build_visual_semantic_policy",
+        lambda family, *, prospective_protocol: (
+            calls.update(policy=(family, prospective_protocol)) or policy
+        ),
+    )
+
+    def plan_validation(supplied_corpus, **kwargs):
+        calls["plan"] = (supplied_corpus, kwargs)
+        return plan
+
+    def run_validation(supplied_corpus, supplied_plan, **kwargs):
+        calls["run"] = (supplied_corpus, supplied_plan, kwargs)
+        return artifact
+
+    monkeypatch.setattr(stage_b, "plan_gated_dev_validation", plan_validation)
+    monkeypatch.setattr(stage_b, "run_gated_dev_validation", run_validation)
+
+    artifact_dir = tmp_path / "stage-b-artifacts"
+    exposure_dir = tmp_path / "stage-b-exposure"
+    args = SimpleNamespace(
+        corpus="official-corpus",
+        split_file="official-split.json",
+        archive="ShapeBongard_V2.zip",
+        release_descriptor="release.json",
+        stage_a_command_receipt="stage-a-command-receipt.json",
+        expected_stage_a_command_receipt_digest=receipt_digest,
+        selection_seed="9" * 64,
+        selection_seed_provenance="external-beacon:v1",
+        exposure_observed_at="2026-08-06T12:00:00Z",
+        artifact_dir=str(artifact_dir),
+        exposure_dir=str(exposure_dir),
+        task_count=24,
+        workers=4,
+        verbose=False,
+    )
+
+    assert cli._validate_semantic_stage_b(args) == 0
+    output = json.loads(capsys.readouterr().out)
+
+    assert calls["archive"] == args.archive
+    assert calls["receipt"] == (
+        args.stage_a_command_receipt,
+        receipt_digest,
+    )
+    campaign_path, campaign_kwargs = calls["campaign"]
+    assert campaign_path == receipt.terminal_artifact_path
+    assert campaign_kwargs == {
+        "expected_campaign_digest": campaign_digest,
+        "corpus": corpus,
+        "corpus_manifest": manifest,
+    }
+    supplied_corpus, plan_kwargs = calls["plan"]
+    assert supplied_corpus is corpus
+    assert plan_kwargs["source_corpus_manifest"] is manifest
+    assert plan_kwargs["expected_source_corpus_manifest_digest"] == manifest_digest
+    assert plan_kwargs["expected_split_source_digest"] == split_digest
+    assert plan_kwargs["stage_a_command_receipt"] is receipt
+    assert plan_kwargs["stage_a_campaign"] is campaign
+    assert plan_kwargs["cloud_policy_cache_snapshot"] is cache_snapshot
+    assert plan_kwargs["exposure_predecessor"] is predecessor
+    assert plan_kwargs["expected_exposure_predecessor_digest"] == ledger_digest
+    assert plan_kwargs["public_seed"] == "9" * 64
+    assert plan_kwargs["requested_task_count"] == 24
+    _, supplied_plan, run_kwargs = calls["run"]
+    assert supplied_plan is plan
+    assert run_kwargs["stage_a_command_receipt"] is receipt
+    assert run_kwargs["stage_a_campaign"] is campaign
+    assert run_kwargs["cloud_policy_cache_snapshot"] is cache_snapshot
+    assert run_kwargs["exposure_predecessor"] is predecessor
+    assert run_kwargs["exposure_output_directory"] == exposure_dir
+    assert run_kwargs["artifact_output_directory"] == artifact_dir
+    assert output["authorizes_sealed_benchmark"] is False
+    assert output["validation_artifact_path"] == str(
+        (artifact_dir / f"{artifact_digest}.gated-dev-validation.json").resolve()
+    )
+    assert output["exposure_successor_path"] == str(
+        (
+            exposure_dir
+            / f"{successor_digest.removeprefix('sha256:')}.exposure.json"
+        ).resolve()
+    )
+
+
+def test_visual_semantic_sealed_run_is_disabled_before_corpus_load(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    corpus_loaded = False
+
+    def forbidden_load(_args: object) -> object:
+        nonlocal corpus_loaded
+        corpus_loaded = True
+        raise AssertionError("SEALED guard must run before corpus loading")
+
+    monkeypatch.setattr(cli, "_load_corpus", forbidden_load)
+    args = SimpleNamespace(
+        exposure_dir=tmp_path / "exposure",
+        ledger_in=tmp_path / "ledger.json",
+        require_unseen=True,
+        sealed_test=True,
+        official_release=True,
+        archive=tmp_path / "ShapeBongard_V2.zip",
+        cohort="sealed",
+        predicate_mode="visual-semantic",
+    )
+
+    with pytest.raises(cli.CliError, match="SEALED execution is disabled"):
+        cli._run(args)
+
+    assert corpus_loaded is False
+
+
 def test_checked_in_prototype_calibration_loader_is_exact(tmp_path: Path) -> None:
     source = Path("bongard/data/support_prototype_calibration_v1.json")
     record = cli._load_prototype_calibration(source)

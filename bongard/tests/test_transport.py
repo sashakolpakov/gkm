@@ -213,6 +213,95 @@ def _fake_launcher(tmp_path: Path) -> str:
     return str(launcher.resolve())
 
 
+def test_authenticated_fingerprint_rejects_bytes_before_version_execution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _fake_launcher(tmp_path)
+    calls: list[object] = []
+
+    def forbidden_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("mismatched launcher must not execute")
+
+    monkeypatch.setattr(T.subprocess, "run", forbidden_run)
+    with pytest.raises(
+        T.CodexProposerFailure,
+        match="external commitment",
+    ):
+        T.codex_cli_authenticated_fingerprint(
+            launcher,
+            expected_launcher_digest="0" * 64,
+        )
+    assert calls == []
+
+
+def test_structured_turn_rejects_launcher_before_version_execution(
+    panel_paths: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _fake_launcher(tmp_path)
+    calls: list[object] = []
+
+    def forbidden_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("mismatched launcher must not execute")
+
+    monkeypatch.setattr(T.subprocess, "run", forbidden_run)
+    with pytest.raises(
+        T.CodexProposerFailure,
+        match="external commitment",
+    ):
+        T.run_codex_structured(
+            "task",
+            panel_paths,
+            SIMPLE_SCHEMA,
+            executable=launcher,
+            expected_launcher_digest="0" * 64,
+        )
+    assert calls == []
+
+
+def test_named_transport_rejects_unsupported_schema_before_launcher(
+    panel_paths: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    launcher = _fake_launcher(tmp_path)
+    calls: list[object] = []
+
+    def forbidden_run(*args, **kwargs):
+        calls.append((args, kwargs))
+        raise AssertionError("invalid schema must fail before launcher execution")
+
+    monkeypatch.setattr(T.subprocess, "run", forbidden_run)
+    invalid = {
+        "type": "object",
+        "properties": {
+            "items": {
+                "type": "array",
+                "minItems": 1,
+                "items": {"type": "string"},
+            }
+        },
+        "required": ["items"],
+        "additionalProperties": False,
+    }
+    with pytest.raises(
+        T.CodexProposerFailure,
+        match="unsupported keywords: minItems",
+    ):
+        T.run_codex_named_images_structured(
+            "task",
+            (panel_paths[0],),
+            ("query.png",),
+            invalid,
+            executable=launcher,
+        )
+    assert calls == []
+
+
 def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
     panel_paths: tuple[str, ...],
     tmp_path: Path,

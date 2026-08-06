@@ -10,10 +10,12 @@ from bongard.admission import TypedAttachmentContract
 from bongard.artifacts import atom_paths, canonical_digest
 from bongard.benchmark import (
     BenchmarkProtocolError,
+    ClosedIRObserver,
     EpisodeStatus,
     ObservationInput,
     ProposedRule,
     SUPPORT_PROTOTYPE_PREDICATE_MODE,
+    VISUAL_SEMANTIC_PREDICATE_MODE,
     SealedMutationError,
     SealedTestGuard,
     SupportInput,
@@ -34,6 +36,14 @@ from bongard.legs import BOOLEAN_WITNESS, PANEL, LegContract, LegRegistry
 PNG = b"\x89PNG\r\n\x1a\n"
 VERIFIER = "canonical-bongard-verifier"
 TEST_GATE = SupportGatePolicy.verifier_test_bypass("unit fixture")
+
+
+def test_closed_ir_observer_has_no_authoritative_backend_injection() -> None:
+    class ReplacementBackend:
+        backend_id = "would-change-evidence"
+
+    with pytest.raises(TypeError, match="takes no arguments"):
+        ClosedIRObserver(backend=ReplacementBackend())  # type: ignore[call-arg]
 
 
 def test_support_gate_policy_keeps_legacy_bytes_and_separates_prototype_replay() -> None:
@@ -98,6 +108,59 @@ def test_support_gate_policy_keeps_legacy_bytes_and_separates_prototype_replay()
     assert "cue" not in encoded.lower()
     assert "polarity_flip_allowed\": false" in encoded
 
+    semantic = SupportGatePolicy.visual_semantic()
+    assert semantic.mode is SupportGateMode.VISUAL_SEMANTIC_REPLAY
+    assert canonical_digest(semantic.to_data()) == (
+        "05173094671307ffc963f96f27553c520d9f7696233c3cf1e2cc9378f15865a7"
+    )
+    assert semantic.to_data() == {
+        "version": "visual-semantic-support-replay/v1",
+        "mode": "visual_semantic_replay",
+        "reason": None,
+        "call_count": 12,
+        "positive_count": 6,
+        "negative_count": 6,
+        "witness_extractor_input_contract": (
+            "panel_bytes_only_no_task_candidate_side_or_role_context_v1"
+        ),
+        "soft_scorer_input_contract": (
+            "one_panel_plus_frozen_positive_cue_rubric_no_task_side_or_role_v1"
+        ),
+        "direct_formula_evaluation": (
+            "complete_direct_conjunction_inside_each_joint_scenario"
+        ),
+        "outer_formula_evaluation": (
+            "positive_all_of_direct_composite_and_optional_soft"
+        ),
+        "scenario_aggregation": {
+            "unanimous_true": "present",
+            "unanimous_constructive_or_calibrated_nonmatch": "certified_absent",
+            "scenario_disagreement": "indeterminate",
+            "extraction_or_receipt_failure": "error",
+        },
+        "direct_absence_semantics": "constructive_witness_nonmatch",
+        "soft_absence_semantics": (
+            "development_frozen_scorer_family_calibrated_nonmatch"
+        ),
+        "dispositions": [
+            "present",
+            "certified_absent",
+            "indeterminate",
+            "error",
+        ],
+        "fresh_witness_extraction_per_panel": True,
+        "blind_soft_transport_requirement": (
+            "required_for_all_12_panels_iff_formula_has_soft_claim"
+        ),
+        "vision_model_emits_final_boolean": False,
+        "vision_model_emits_certified_absence": False,
+        "polarity_flip_allowed": False,
+    }
+    semantic_encoded = json.dumps(semantic.to_data(), sort_keys=True)
+    assert "query" not in semantic_encoded.lower()
+    assert "final_boolean\": false" in semantic_encoded
+    assert "polarity_flip_allowed\": false" in semantic_encoded
+
 
 def test_support_gate_policy_rejects_cross_version_or_bypass_semantics() -> None:
     with pytest.raises(ValueError, match="support-prototype replay policy"):
@@ -112,6 +175,14 @@ def test_support_gate_policy_rejects_cross_version_or_bypass_semantics() -> None
         SupportGatePolicy(
             SupportGateMode.EMPIRICAL_REPLAY,
             version="support-prototype-replay/v1",
+        )
+    with pytest.raises(ValueError, match="visual-semantic support replay policy"):
+        SupportGatePolicy(SupportGateMode.VISUAL_SEMANTIC_REPLAY)
+    with pytest.raises(ValueError, match="has no bypass reason"):
+        SupportGatePolicy(
+            SupportGateMode.VISUAL_SEMANTIC_REPLAY,
+            reason="candidate requested bypass",
+            version="visual-semantic-support-replay/v1",
         )
 
 
@@ -294,17 +365,34 @@ class GateReplayObserver:
                 "panel_sha256": panel.panel.sha256,
                 "disposition": disposition,
             },
+            transport_attempted=self.owner.transport_attempted(self.index),
         )
 
 
 class GateReplayProposer(RecordingProposer):
     requires_empirical_support_gate = True
 
-    def __init__(self, task_id: str, behaviour: str = "aligned") -> None:
+    def __init__(
+        self,
+        task_id: str,
+        behaviour: str = "aligned",
+        *,
+        transport_mode: str = "all",
+    ) -> None:
         super().__init__(task_id, [])
         self.behaviour = behaviour
+        if transport_mode not in {"all", "none", "partial"}:
+            raise ValueError("unknown fixture transport mode")
+        self.transport_mode = transport_mode
         self.support_calls = 0
         self.support_instances: list[GateReplayObserver] = []
+
+    def transport_attempted(self, index: int) -> bool:
+        if self.transport_mode == "none":
+            return False
+        if self.transport_mode == "partial":
+            return index != 0
+        return True
 
     def create_support_observer(self) -> GateReplayObserver:
         observer = GateReplayObserver(self, len(self.support_instances))
@@ -481,6 +569,18 @@ def test_episode_plan_optionally_commits_pre_support_predicate_policy(
     )
     assert changed.digest != committed.digest
 
+    semantic = prepare_episode(
+        corpus,
+        task_id,
+        seed="policy-commitment",
+        corpus_manifest=manifest,
+        label_seal_nonce=nonce,
+        predicate_mode=VISUAL_SEMANTIC_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+    assert semantic.to_data()["predicate_mode"] == VISUAL_SEMANTIC_PREDICATE_MODE
+    assert semantic.digest != committed.digest
+
 
 @pytest.mark.parametrize(
     ("predicate_mode", "predicate_policy_digest", "message"),
@@ -630,6 +730,94 @@ def test_empirical_support_gate_uses_exactly_twelve_fresh_neutral_calls(
     assert result.support_gate.transport_attempt_count == 12
     assert result.proposal_freeze is not None
     assert result.proposal_freeze.support_gate_digest == result.support_gate.digest
+
+
+def test_visual_semantic_direct_only_gate_records_zero_model_transports(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    policy_digest = hashlib.sha256(b"visual semantic direct-only policy").hexdigest()
+    plan = prepare_episode(
+        corpus,
+        task_id,
+        seed="visual-semantic-direct-only",
+        predicate_mode=VISUAL_SEMANTIC_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+    proposer = GateReplayProposer(task_id, transport_mode="none")
+    proposer.predicate_mode = VISUAL_SEMANTIC_PREDICATE_MODE
+    proposer.predicate_policy_digest = policy_digest
+
+    result = run_episode(
+        plan,
+        proposer,
+        PixelObserverFactory(task_id),
+        support_gate_policy=SupportGatePolicy.visual_semantic(),
+    )
+
+    assert result.status is EpisodeStatus.COMPLETE
+    assert result.support_gate is not None
+    assert result.support_gate.result is SupportGateResult.ALIGNED
+    assert result.support_gate.transport_attempt_count == 0
+
+
+def test_visual_semantic_official_test_is_disabled_before_support_release(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path, test=True)
+    policy_digest = hashlib.sha256(b"disabled semantic test policy").hexdigest()
+    plan = prepare_episode(
+        corpus,
+        task_id,
+        seed="visual-semantic-test-hard-stop",
+        predicate_mode=VISUAL_SEMANTIC_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+    proposer = GateReplayProposer(task_id, transport_mode="none")
+    proposer.predicate_mode = VISUAL_SEMANTIC_PREDICATE_MODE
+    proposer.predicate_policy_digest = policy_digest
+
+    with pytest.raises(
+        BenchmarkProtocolError,
+        match="official-test execution is disabled",
+    ):
+        run_episode(
+            plan,
+            proposer,
+            PixelObserverFactory(task_id),
+            support_gate_policy=SupportGatePolicy.visual_semantic(),
+        )
+
+    assert proposer.support_calls == 0
+
+
+def test_visual_semantic_gate_rejects_partial_soft_transport_pattern(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    policy_digest = hashlib.sha256(b"visual semantic soft policy").hexdigest()
+    plan = prepare_episode(
+        corpus,
+        task_id,
+        seed="visual-semantic-partial-transport",
+        predicate_mode=VISUAL_SEMANTIC_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+    proposer = GateReplayProposer(task_id, transport_mode="partial")
+    proposer.predicate_mode = VISUAL_SEMANTIC_PREDICATE_MODE
+    proposer.predicate_policy_digest = policy_digest
+
+    result = run_episode(
+        plan,
+        proposer,
+        PixelObserverFactory(task_id),
+        support_gate_policy=SupportGatePolicy.visual_semantic(),
+    )
+
+    assert result.status is EpisodeStatus.SUPPORT_REJECTED
+    assert result.failure is not None
+    assert "zero direct-only" in result.failure.reason
+    assert "twelve soft-score" in result.failure.reason
 
 
 def test_prototype_support_gate_uses_the_same_strict_classifier(
