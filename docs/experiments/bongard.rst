@@ -398,6 +398,22 @@ record, and its verifier re-extracts exact PNG bytes, refits prototypes,
 recompiles the Python IR, and replays support and query evidence without Codex
 or Lean.
 
+The preregistered twelve-task headless PURE drill has now exercised that path.
+It produced zero completed episodes, eleven support rejections, and one
+replayable proposal-parser error: no attempt passed the support gate (0/12), so
+no query pixels were released and the campaign has no query-accuracy estimate.
+Across the 132 executable support labels from the eleven parsed proposals, 46
+were correct, 10 were wrong, and 76 were indeterminate. Codex often described
+object-level relations that could distinguish the panels, but compilation
+reduced each description to one interval-centroid feature group and therefore
+discarded those relations. The remaining failure was separate: the parser
+mistook descriptive asymmetry language for logical negation. The canonical
+aggregate is ``bongard/data/support_prototype_drill_result_v1.json`` with
+content digest
+``sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca``.
+Predicate execution and verification are canonically Python-only; Lean remains
+an optional, removable conformance layer rather than a benchmark dependency.
+
 Why negation used to win
 ------------------------
 

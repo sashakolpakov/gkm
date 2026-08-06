@@ -223,3 +223,36 @@ def test_checked_in_support_prototype_drill_result_is_canonical_and_bound() -> N
         assert run["record_digest"] == episode["record_digest"]
         assert run["episode"]["status"] == episode["status"]
         assert not episode["query_released"]
+
+
+def test_checked_in_support_prototype_drill_verification_is_bound() -> None:
+    verification = _canonical_record(
+        "support_prototype_drill_verification_v1.json"
+    )
+    content = dict(verification)
+    declared_digest = content.pop("digest")
+    computed_digest = "sha256:" + hashlib.sha256(
+        canonical_json(content) + b"\n"
+    ).hexdigest()
+    result = _canonical_record("support_prototype_drill_result_v1.json")
+
+    assert declared_digest == computed_digest == (
+        "sha256:2fdfd965916450cf4165201464e68369dd523ed44806caa5994e7e5ddaa07729"
+    )
+    assert verification["schema"] == (
+        "gkm.bongard-support-prototype-drill-verification.v1"
+    )
+    assert verification["campaign_result_digest"] == result["digest"]
+    assert verification["all_records_verified"] is True
+    assert verification["verified_record_count"] == result["episode_count"] == 12
+    assert verification["status_counts"] == result["status_counts"]
+    assert verification["verified_blob_preimages"] == 144
+    assert verification["missing_blob_preimages"] == 0
+    assert verification["neutral_extraction_replays"] == 276
+    assert verification["query_panel_replays"] == 0
+    assert [item["task_id"] for item in verification["records"]] == [
+        item["task_id"] for item in result["episodes"]
+    ]
+    assert [item["run_file_sha256"] for item in verification["records"]] == [
+        item["run_file_sha256"] for item in result["episodes"]
+    ]

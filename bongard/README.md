@@ -6,8 +6,10 @@ typed perceptual observations while preventing support-set tricks, polarity
 flips, and parser failures from masquerading as concepts.
 
 The current code establishes the corpus, information boundary, evidence type,
-closed predicate language, immutable run artifacts, and promotion gates. A
-full official-corpus score is not reported yet. Pre-rewrite symbolic and
+closed predicate language, immutable run artifacts, and promotion gates. The
+first preregistered twelve-task headless PURE drill is complete, but every
+attempt stopped before query release, so it provides no query-accuracy
+estimate and is not a full official-corpus score. Pre-rewrite symbolic and
 rendered pilots are preserved at the annotated Git tag
 `pre-bongard-complete-rewrite-20260805`; none is an official ShapeBongard
 benchmark result.
@@ -323,7 +325,7 @@ has digest
 `sha256:55de04a582ffa3a4fbf26466ab88f265ddd7839ae10004210cca4d9ffa4f8e9d`.
 
 The frozen 2,769-task drill cohort is not a live availability count. Against
-the checked-in sixteen-event campaign ledger head
+the pre-PURE sixteen-event campaign ledger head
 `sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a`,
 the resolver-v2 live overlay leaves 1,744 drill tasks and excludes 1,025
 through semantic-key collisions; sixteen excluded tasks are also exact-task
@@ -350,9 +352,9 @@ one pair are siblings rather than independent unseen concepts.
 
 Before the v7–v9 support releases, the initial resolver-v2 training
 intersection contained 1,290 tasks across 161 retained semantic groups. At the
-current head, the official train-and-drill scope contains 2,096 historically
-clean tasks, of which 1,238 remain live and 858 are excluded, including sixteen
-exact-task collisions; that overlay has
+pre-PURE head above, the official train-and-drill scope contains 2,096
+historically clean tasks, of which 1,238 remain live and 858 are excluded,
+including sixteen exact-task collisions; that overlay has
 digest
 `sha256:64c7f3cbd4444829d1bd8c50d1a99cc95d5830ec6459879a5a7f6668868eee90`
 and live-membership digest
@@ -462,6 +464,44 @@ support panel; it remains in every denominator as an unfittable-support error.
 The calibration record digest is
 `sha256:cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6`.
 This is a development result, not a benchmark score.
+
+### Preregistered headless PURE drill
+
+The subsequent headless campaign was fixed by plan digest
+`sha256:f04dbccc9b3518f0df69c1fa4566d98653de6354c48e50f4ccc80365b8c9c67b`
+at prebenchmark commit `ada9bc895bd8110327133c746d1eeeb5479dafe6`.
+It ran twelve previously designated drill tasks, six Basic (`bd`) and six
+Abstract (`hd`). The outcome was 0/12 complete, 11/12 `support_rejected`, one
+replayable `proposal_error`, and 0/12 support-gate passes. Consequently, the
+runner released zero query pixels and this campaign has no query-accuracy
+estimate.
+
+The eleven proposals that reached support replay produced 132 executable
+support-panel decisions: 46 forward/correct, 10 reverse/wrong, and 76
+indeterminate. The remaining attempt exposed a proposal-parser false positive
+on semantic wording rather than a visual result. The parser now permits
+constructive component relations such as `separated`, `disconnected`,
+`isolated`, and `disjoint`; formula structure, rather than that lexical false
+positive, enforces the no-`Not` boundary. Codex's prose often identified
+relational concepts, but prose was not the executable predicate: the closed
+single-group selection and global interval-centroid scorers discarded component
+identity and relations. That is the measured representation failure to fix;
+adding a proof layer would not recover the missing visual information.
+
+The canonical aggregate is
+[`support_prototype_drill_result_v1.json`](data/support_prototype_drill_result_v1.json),
+with content digest
+`sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca`.
+All twelve raw records then passed the public exact-official verifier, totaling
+276 fresh extraction replays with no missing panel preimages. The verification
+summary is
+[`support_prototype_drill_verification_v1.json`](data/support_prototype_drill_verification_v1.json),
+content digest
+`sha256:2fdfd965916450cf4165201464e68369dd523ed44806caa5994e7e5ddaa07729`.
+The campaign ended at exposure-ledger head
+`sha256:6f7d048d34ecb43a843eb84df5130aee2c61616dcdd223afdd50bf47c2b90303`.
+The reference predicate, gate, artifact, and replay semantics remain pure
+Python. Lean is optional and removable.
 
 The failure has four concrete causes. Coordinate-wise interval boxes discard
 correlation between the three preprocessing scenarios; one centroid per side
@@ -844,7 +884,7 @@ ended `support_rejected`: seven forward and five reverse matches, nine
 `present`, three `nonmatch`, and no errors or indeterminate outcomes. Public
 verification again reproduced all twelve exact support preimages. Event
 `sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e`
-produced the current sixteen-event ledger head above.
+produced the then-current sixteen-event ledger head above.
 
 Across this deliberately tiny v10–v12 smoke campaign, the proposer returned a
 validated proposal in 2/3 attempts; 0/2 proposals passed the support gate; no

@@ -167,13 +167,6 @@ _NEGATION_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("devoid of", re.compile(r"\bdevoid\s+of\b")),
     ("absence synonym", re.compile(r"\b(?:empty|vacant|void|bare)\b")),
     (
-        "relational absence synonym",
-        re.compile(
-            r"\b(?:separate|separated|detached|isolated|disjoint|"
-            r"disconnected|unconnected)\b"
-        ),
-    ),
-    (
         "explicit un- absence complement",
         re.compile(
             r"\b(?:unfilled|unclosed|unfinished|unattached|unmarked|"

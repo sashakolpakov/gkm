@@ -189,7 +189,6 @@ def test_hybrid_proposal_is_grounded_in_all_twelve_descriptions() -> None:
         "a form free of corners",
         "a form devoid of corners",
         "an empty circle",
-        "an isolated circle",
         "a form omitting one corner",
         "a form excluding triangles",
         "every shape except circles",
@@ -383,6 +382,31 @@ def test_positive_soft_bird_like_and_oblique_claims_remain_representable() -> No
         "beak_like_point",
         "oblique_junctions",
     )
+
+
+@pytest.mark.parametrize(
+    "relation",
+    (
+        "two separated figures",
+        "two disconnected components",
+        "one isolated circle",
+        "two disjoint loops",
+    ),
+)
+def test_constructive_component_relations_are_not_treated_as_logical_not(
+    relation: str,
+) -> None:
+    payload = pure_payload()
+    payload["positive_description"] = relation
+    payload["observable_requests"][0]["affirmative_interpretation"] = relation
+    proposal = parse_rule_proposal(
+        payload,
+        receipt=FakeReceipt(),  # type: ignore[arg-type]
+        observable_catalog={
+            "prototype.topology": "support-relative topology"
+        },
+    )
+    assert proposal.positive_description == relation
 
 
 def test_v1_free_text_cues_and_duplicate_or_invalid_v2_ids_fail_closed() -> None:

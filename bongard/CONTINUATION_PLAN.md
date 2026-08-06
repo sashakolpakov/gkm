@@ -19,7 +19,7 @@ Implemented and covered by focused tests:
   projection: 3,868 tasks are semantically historically clean under the
   stated, limited evidence model, split by generator group into 2,769 drill,
   542 development, and 557 sealed tasks;
-- a live filtering overlay at the checked-in sixteen-event campaign ledger
+- a live filtering overlay at the pre-PURE sixteen-event campaign ledger
   head
   `sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a`:
   1,744 of the frozen 2,769 drill tasks remain live-eligible and 1,025 have
@@ -97,6 +97,20 @@ task remained in every denominator as error. The canonical record digest is
 This foundation therefore defines honest accounting and a falsified baseline,
 not a good vision system or an official benchmark number.
 
+The preregistered headless PURE drill has now also completed. Its plan digest
+is
+`sha256:f04dbccc9b3518f0df69c1fa4566d98653de6354c48e50f4ccc80365b8c9c67b`,
+fixed at prebenchmark commit `ada9bc895bd8110327133c746d1eeeb5479dafe6`.
+Across twelve tasks (six `bd`, six `hd`), it produced zero completed episodes,
+eleven `support_rejected` episodes, one replayable `proposal_error`, and zero
+support-gate passes. No query pixels were released, so there is no query
+accuracy to estimate. The 132 executable support-panel outcomes were 46
+forward/correct, 10 reverse/wrong, and 76 indeterminate. The result record is
+`bongard/data/support_prototype_drill_result_v1.json`, content digest
+`sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca`,
+and the final exposure head is
+`sha256:6f7d048d34ecb43a843eb84df5130aee2c61616dcdd223afdd50bf47c2b90303`.
+
 ## Scientific boundary
 
 The canonical factorization is:
@@ -112,6 +126,36 @@ score or judgment must retain its model, prompt/method, input digest, receipt,
 and—when a score is calibrated—its predictive interval and calibration
 record. The last arrows are mechanical. They establish what follows from
 those recorded observations, not what is metaphysically true of the pixels.
+
+The next reference design is therefore not `panel -> prose -> Lean`. It is:
+
+```text
+support panels -> frozen typed claim specification
+each panel     -> verifier-owned witness packet
+               -> registered deterministic atoms plus at most one blind soft scorer
+               -> development-calibrated four-valued evidence
+               -> closed Python AllOf predicate
+```
+
+Directly measurable language compiles to registered atoms: for example,
+“two components and one loop” becomes component count, hole count, and
+hole-owner relations; “oblique” becomes a contour-segment angle interval.
+Residual open semantics such as “bird-like” become a small positive cue rubric
+scored in a fresh side-free one-panel call. The model emits ordinal cue
+judgments (`supported`, `ambiguous`, `unsupported`) and witness references,
+never the final Boolean or `certified_absent`. Python validates every cue,
+aggregates the frozen scores, applies a scorer-family calibration fixed on
+development tasks, and produces the disposition.
+
+The three preprocessing scenarios must remain joint witness alternatives.
+Evaluate the complete predicate inside each scenario: unanimous constructive
+truth is `present`, unanimous calibrated nonmatch is `certified_absent`,
+scenario disagreement is `indeterminate`, and extraction/receipt failure is
+`error`. This preserves correlation, component identity, hole ownership, and
+contour relations instead of replacing them with independent coordinate
+intervals. Calibration must cover the complete dynamic-claim proposer/scorer
+family; fitting a threshold for each newly proposed phrase on its own support
+panels would be selection leakage.
 
 Lean is not needed for the benchmark. The current reference typechecker,
 evaluator, and cold replay are pure Python, while the serialized IR, registry
@@ -283,6 +327,20 @@ feature can fit twelve seen panels.
 
 ## Current drill evidence
 
+The latest evidence is the completed preregistered twelve-task headless PURE
+campaign described above. It did not reach the query stage: 0/12 complete,
+11/12 support-rejected, one replayable proposal error, and 0/12 gate passes.
+One proposal-parser rejection was a false positive on semantic wording. Among
+the eleven proposals that reached replay, 46/132 support decisions were
+forward/correct, 10/132 were reverse/wrong, and 76/132 were indeterminate.
+Codex prose often named the relevant relational structure, but the executable
+schema could select only one closed raster group and its global
+interval-centroid scorer had no component identity or relational state. The
+next work is therefore richer frozen visual observables and relational
+composition, not a post-hoc polarity flip or a stronger proof assistant. Pure
+Python remains the canonical predicate and replay implementation; Lean must
+remain optional and removable.
+
 The old resolver-v1 live count of 2,609 was too permissive, not evidence of a
 larger clean pool. It treated numbered Basic names as independent families and
 missed morphology siblings such as `advanced_lamp3`/`advanced_lamp4`. Resolver
@@ -294,7 +352,7 @@ from the bound history; its component attributes need not be new, and its 20
 instances are one sibling group rather than 20 independent concepts.
 
 Before v7–v9, the initial resolver-v2 train-and-drill overlay held 1,290
-tasks across 161 semantic groups. At the current head the full drill overlay
+tasks across 161 semantic groups. At the pre-PURE head the full drill overlay
 is 1,744 live and 1,025 excluded, with sixteen exact-task collisions, while the
 official train-and-drill scope is 1,238 live and 858 excluded, also with sixteen
 exact-task collisions. The latter
@@ -464,7 +522,7 @@ It proposed “A cyclic enclosure with an inward re-entrant feature” and ended
 three `nonmatch`, and no errors or indeterminate outcomes. Public verification
 again reproduced all twelve exact support preimages. Event
 `sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e`
-produced the current sixteen-event ledger head above.
+produced the then-current sixteen-event ledger head above.
 
 The v10–v12 smoke campaign therefore has proposer success 2/3, support-gate
 pass 0/2, query release 0/3, and completion 0/3. Its 26 successful receipts

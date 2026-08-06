@@ -212,9 +212,10 @@ The canonical development calibration keeps all twelve tasks in the
 denominator and obtains 0/12 strict support passes for every group; its best
 query result is 10/24 images and 2/12 puzzles. Do not cite this as a benchmark
 score. Component cold replay verifies archived receipts, feature packets,
-fitting, formula, and evidence. A whole-run verifier must additionally rerun
-pixel extraction from each embedded PNG byte preimage; that public PURE
-serializer/verifier is still being integrated.
+fitting, formula, and evidence. The public whole-run PURE verifier additionally
+reruns pixel extraction from every exact PNG byte preimage, refits the frozen
+prototypes, recompiles the Python IR, and checks support and any released query
+evidence without Codex or Lean.
 
 Cold replay
 -----------
@@ -490,6 +491,42 @@ support-gate pass 0/2, query release 0/3, and completion 0/3. Its 26 successful
 receipts report 233,921 known input tokens, 23,552 cached input tokens, 15,001
 output tokens, and 10,694 reasoning tokens. No query pixels were released, so
 there is no query accuracy to reproduce or report.
+
+Twelve-task PURE drill campaign
+-------------------------------
+
+The completed headless PURE campaign is recorded in
+``bongard/data/support_prototype_drill_result_v1.json``. Its canonical content
+digest is
+``sha256:38a89b3f78afa7c89f2f9dc881d209fce7b791ef3a346e54ee9ee3abaffa7fca``.
+All twelve raw records passed the public exact-official verifier, totaling 276
+fresh neutral-extraction replays and no missing panel preimages. The canonical
+verification summary is
+``bongard/data/support_prototype_drill_verification_v1.json``, content digest
+``sha256:2fdfd965916450cf4165201464e68369dd523ed44806caa5994e7e5ddaa07729``.
+All twelve preregistered attempts remain in the denominator: zero completed,
+eleven ended ``support_rejected``, and one ended in a replayable proposal-parser
+error. The support gate therefore passed 0/12. No query pixels were released,
+so the result contains neither a query score nor an accuracy estimate.
+
+The eleven parsed proposals produced 132 executable support labels. Of those,
+46 were correct, 10 were wrong, and 76 were indeterminate. This distribution is
+the concrete failure, not a hidden query result. Codex prose often articulated
+object-level relations between shapes, parts, and orientations, while the
+bridge compiled the proposal to exactly one precommitted interval-centroid
+feature group. The executable predicate consequently discarded much of the
+information present in the description. The twelfth attempt exposed an
+independent parser bug: descriptive asymmetry language was falsely classified
+as logical negation. That parser error is replayable and is not a negative
+prediction. The parser now admits constructive component relations such as
+``separated`` and ``disconnected`` while the closed formula grammar continues
+to forbid logical ``Not`` and polarity reversal.
+
+The campaign therefore falsifies the current one-group prototype bridge before
+query release; it does not show that headless vision supplied no useful
+description. Predicate serialization, evaluation, and whole-run replay use the
+canonical pure-Python backend. Lean was not required and remains optional and
+removable.
 
 Completed-run verification recomputes each Codex receipt's internal hashes and
 request/response bindings. The receipt is not a provider signature and may
