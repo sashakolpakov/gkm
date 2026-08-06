@@ -1186,6 +1186,37 @@ def _freeze_from_data(value: object) -> ProposalFreeze:
         raise ArtifactTamperError(f"invalid proposal freeze: {exc}") from exc
 
 
+def verify_support_commitment_data(value: object) -> SupportCommitment:
+    """Decode one support commitment without weakening its JSON types.
+
+    Full run archives validate this object as part of their hash chain.  An
+    episode that stops before query release has no full archive, so the outer
+    protocol persists this same nonce-bearing preimage directly.  The exact
+    round-trip check prevents the decoder's defensive string conversions from
+    accepting a differently typed JSON object as the committed value.
+    """
+
+    support = _support_from_data(value)
+    data = _mapping(value, "support commitment")
+    if support.to_data() != dict(data):
+        raise ArtifactTamperError(
+            "support commitment does not reproduce from its archived fields"
+        )
+    return support
+
+
+def verify_proposal_freeze_data(value: object) -> ProposalFreeze:
+    """Decode and exactly reproduce a standalone pre-query proposal freeze."""
+
+    freeze = _freeze_from_data(value)
+    data = _mapping(value, "proposal freeze")
+    if freeze.to_data() != dict(data):
+        raise ArtifactTamperError(
+            "proposal freeze does not reproduce from its archived fields"
+        )
+    return freeze
+
+
 def _query_panel_from_data(value: object) -> QueryPanel:
     data = _mapping(value, "query panel")
     _expect_fields(data, {"query_id", "panel"}, "query panel")

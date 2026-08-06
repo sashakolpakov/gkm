@@ -87,6 +87,10 @@ The canonical package surface is:
   soft observations;
 - `legs/contracts.py` — typed units, domains, codomains, transformations, and
   exact version-and-digest-pinned leg registration;
+- `legs/bilateral_symmetry.py` — a candidate-independent deterministic
+  reflected-ink measurement with a fixed preprocessing-sensitivity interval;
+- `support_prototypes.py` — support-only interval feature centroids and a
+  fixed positive contrastive margin, ready for later runner integration;
 - `ir.py` — the closed positive predicate language and interval-safe
   evaluator;
 - `predicate_backend.py` — the backend interface and pure-Python reference
@@ -104,6 +108,8 @@ The canonical package surface is:
   and scoring;
 - `admission.py` — typed attachment, archive preservation, novelty accounting,
   and all-or-nothing promotion;
+- `campaign_report.py` — fail-closed aggregation of bounded headless campaigns,
+  including exposure-chain, receipt, identity, and stage-yield checks;
 - `cli.py` — official inventory, cohort planning, one-episode execution, and
   externally anchored cold verification.
 
@@ -306,18 +312,18 @@ has digest
 `sha256:55de04a582ffa3a4fbf26466ab88f265ddd7839ae10004210cca4d9ffa4f8e9d`.
 
 The frozen 2,769-task drill cohort is not a live availability count. Against
-the checked-in thirteen-event campaign ledger head
-`sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b`,
-the resolver-v2 live overlay leaves 1,777 drill tasks and excludes 992 through
-semantic-key collisions; thirteen excluded tasks are also exact-task
-collisions. The ledger records 19 task IDs and 29 semantic keys, producing 190
+the checked-in sixteen-event campaign ledger head
+`sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a`,
+the resolver-v2 live overlay leaves 1,744 drill tasks and excludes 1,025
+through semantic-key collisions; sixteen excluded tasks are also exact-task
+collisions. The ledger records 22 task IDs and 38 semantic keys, producing 199
 effective exposed keys after policy blocking. The overlay
 digest is
-`sha256:5012df37f3cf273e0ce3d3696e574df7ec4ce458639cda79d340603a6d3e3320`
+`sha256:9e7ad95bc0fe2200d647c7ef9c34b81f8b041115265175be6fe63d6c67562dde`
 and its live-membership digest is
-`sha256:9db3805bded543e492103fa7f8198ca88c79bc8c71055459ac4a738356216589`.
+`sha256:be680542b28a855d54cedcda6726d140af1ce4a8ad97c008511d5843f4e4b7e1`.
 The ledger file is
-`downloads/ShapeBongard_V2_full/exposure/abstract_005/65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b.exposure.json`.
+`downloads/ShapeBongard_V2_full/exposure/abstract_006/da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a.exposure.json`.
 
 The earlier resolver-v1 count of 2,609 was an overclaim: it treated numbered
 Basic generator names as distinct families and therefore failed to exclude
@@ -334,19 +340,19 @@ one pair are siblings rather than independent unseen concepts.
 Before the v7–v9 support releases, the initial resolver-v2 training
 intersection contained 1,290 tasks across 161 retained semantic groups. At the
 current head, the official train-and-drill scope contains 2,096 historically
-clean tasks, of which 1,268 remain live and 828 are excluded across 158
-resolver-v2 collision groups; that overlay has
+clean tasks, of which 1,238 remain live and 858 are excluded, including sixteen
+exact-task collisions; that overlay has
 digest
-`sha256:338a2b3745169f2c9511043e43893b58f0cb6d8f320a50245fd5d17030f33185`
+`sha256:64c7f3cbd4444829d1bd8c50d1a99cc95d5830ec6459879a5a7f6668868eee90`
 and live-membership digest
-`sha256:c06e028ea669242ff423d3035d6c23ac653fc51b90f130e3413db0b5f60f1a2b`.
-The 158 groups are resolver collision domains, not statistically independent
-samples. The other 509 live drill tasks must not be consumed as training data.
-The retrospective montage disclosure and the v6, v7, v8, and v9 support
-releases all remove their related semantic groups. This overlay does not alter the frozen
-cohort or certify unseen panel bytes. The run-time `external_anchor` fields are
-null; the later Git commit is an after-the-fact publication anchor, not a
-preregistered ledger anchor or proof that this was the latest authentic head.
+`sha256:2619ea03a9f32bddef941818791fee9d477040f073043da2c715547474813a23`.
+The 506 other live drill tasks must not be consumed as training data. Resolver
+collision domains are not statistically independent samples. The retrospective
+montage disclosure and the v6–v12 support releases all remove their related
+semantic groups. This overlay does not alter the frozen cohort or certify
+unseen panel bytes. The run-time `external_anchor` fields are null; the later
+Git commit is an after-the-fact publication anchor, not a preregistered ledger
+anchor or proof that this was the latest authentic head.
 
 Freshness is global state, not a command-line option. Import known historical
 disclosures first, then partition only the remaining eligible task IDs:
@@ -409,6 +415,27 @@ when those nuisances may be quotiented out, or a relational view for objects,
 contacts, containment, repetition, symmetry, and ownership. Erasing stroke
 width or raster detail globally would silently destroy concepts that depend on
 them.
+
+Two new development components make this boundary more concrete. The
+bilateral-symmetry leg measures reflected-ink agreement directly from panel
+bytes with fixed thresholds and a fixed reflection-axis search. It is
+candidate-independent, preserves all four evidence dispositions, and registers
+only the affirmative `AT_LEAST` direction. Its interval records preprocessing
+sensitivity, not population calibration. Applied post hoc to v9, the score
+does not recover that Bongard rule: multiple negative panels are more
+bilaterally symmetric than positive panels. The missing representation is
+therefore not simply “more symmetry.” It needs part/lobe ownership, the central
+junction, and correspondence between the owned parts.
+
+`support_prototypes.py` supplies the next task-relative layer without hiding a
+polarity search. A neutral extractor first freezes panel-only interval feature
+vectors without task ID, side, prose claim, or query role. The support fitter
+then commits separate positive and negative centroids. Its only score is
+`distance(query, negative) - distance(query, positive)`, so larger always means
+more like the positive support; a fixed positive margin decides the predicate.
+There is no side-swap or polarity-flip operation. This core is replayable but
+is not yet wired into the official episode runner, does not extract pixels by
+itself, and has not been externally calibrated.
 
 ## Why negation used to win
 
@@ -626,6 +653,17 @@ be used as benchmark evidence. The diagnosis instead sharpens the architecture:
 prose proposes a candidate, while a frozen visual contour/template or prototype
 scorer must operationalize it from pixels.
 
+The upstream sampler definitions explain a broader failure mode, again only as
+a post-hoc oracle diagnostic. Basic multi-shape tasks and Abstract
+attribute-pair tasks construct the positive side as a conjunction. Their
+negative panels can be several near-miss subgroups, each violating a different
+positive conjunct. The proposer received neither task IDs nor action programs,
+so it had to infer that structure from pixels. Its current prompt now demands
+that every proposed cue cover every positive panel and that each negative fail
+at least one cue; it explicitly warns against collapsing distinct near-miss
+subgroups into one vague resemblance word. This prompt change is a hypothesis
+about proposal quality, not evidence that the visual predicates are solved.
+
 The subsequent v6 attempt selected the first lexicographic task in the
 then-current live-eligible drill list,
 [`bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json`](runs/official_complete_drill_20260805/bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json),
@@ -707,19 +745,86 @@ outcomes. One positive missed `matched_geometry`, while two negatives were
 false positives. Its phases stop at `proposal_frozen -> support_gate_rejected`,
 with no query release or run archive. Event
 `sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8`
-produced the current thirteen-event ledger head above.
+produced the intermediate thirteen-event ledger head
+`sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b`.
 
 V9 also exposes an audit limitation. A support-rejected schema-v4 result has no
 `run_archive`, while its outer public plan stores only the support-commitment
-digest, not the nonce-bearing commitment preimage. Current public `verify`
-therefore cannot fully cold-bind and replay v9. A future outer schema must
-persist that preimage on every post-proposal exit path. This is deliberately
+digest, not the nonce-bearing commitment preimage. Public `verify` therefore
+cannot fully cold-bind and replay that immutable v9 file. This is deliberately
 not described as v8-style fourteen-preimage verification.
+
+Outer schema v5 closes the gap for new runs. Every exit now persists the exact
+`support_commitment` object as well as its digest. For an ordinary
+`support_rejected` result, cold verification binds that preimage to the public
+plan, proposal receipt, canonically recompiled predicate, proposal freeze, all
+twelve label-blind support receipts, verifier-side labels, gate counts, and
+exact official PNG bytes. It requires the gate to reproduce a non-aligned
+result and rejects any query observation or completed `run_archive`; no query
+artifact is fabricated for a run that stopped before query release. Completed
+and proposal-rejected schema-v4 files remain readable, while a schema-v4
+support rejection is explicitly reported as lacking the required preimage.
 
 Scientifically, v9 shows that vague visual correspondence needs a quantitative
 symmetry and shape-matching leg; categorical self-judgment produced both a
 positive miss and negative false positives. No result here estimates accuracy
 on the 1,800-task official test split.
+
+The schema-v5 v10 artifact,
+[`bd_asymm_trap_bridge-trans_arc_cup_0000_v10.json`](runs/official_complete_drill_20260805/bd_asymm_trap_bridge-trans_arc_cup_0000_v10.json),
+has file SHA-256
+`0bdf82438b3b85b368f0c0fb93298f184fbae55b0b5777c06759670b53c3b8a7`.
+It ended `proposal_error` because the sandbox could not resolve DNS before a
+Codex response arrived. Its support-commitment preimage is nevertheless
+present, but there is no validated structured response, proposal receipt,
+support gate, query observation, or archive. Event
+`sha256:dee13f7dae4e949882f516b8e8ca54eec7af8db0aa1fc47ca8a90aadb50195d7`
+produced successor
+`sha256:1a547a92e7897558e2f5f3e209545309d1f2ec41b4650d7b724ab4193840eff7`.
+This is infrastructure failure, not evidence for either side.
+
+V11,
+[`bd_asymm_unbala_goldfish-asymmetric_crown_0000_v11.json`](runs/official_complete_drill_20260805/bd_asymm_unbala_goldfish-asymmetric_crown_0000_v11.json),
+has file SHA-256
+`0a324a7fc780dea392443a9afd54dbfe19fe5631d06ff1287abba7da342ac561`.
+It proposed “Complete paired motifs with shared rotational handedness.” The
+support gate rejected the claim with eight forward and four reverse matches:
+ten `present`, two `nonmatch`, no errors, and no indeterminate outcomes. Public
+verification successfully bound and reproduced all twelve exact official
+support preimages; rejection is the verified result, not a missing archive.
+Event
+`sha256:395fbacc33c3bc206a581e2d85cf856b89e978ce6133a3a2574e193d6d7484ab`
+produced successor
+`sha256:8841cac62c203a2895a176c2cfbef8b97b46cfb33a6e0db2072c24efb54dc171`.
+
+V12,
+[`hd_closed_shape-has_obtuse_angle_0000_v12.json`](runs/official_complete_drill_20260805/hd_closed_shape-has_obtuse_angle_0000_v12.json),
+has file SHA-256
+`e7c62b4eb96e910d5ea2738fb6622ab9b469993befc7e0897906f5ed223960df`.
+Its phrase was “A cyclic enclosure with an inward re-entrant feature.” It also
+ended `support_rejected`: seven forward and five reverse matches, nine
+`present`, three `nonmatch`, and no errors or indeterminate outcomes. Public
+verification again reproduced all twelve exact support preimages. Event
+`sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e`
+produced the current sixteen-event ledger head above.
+
+Across this deliberately tiny v10–v12 smoke campaign, the proposer returned a
+validated proposal in 2/3 attempts; 0/2 proposals passed the support gate; no
+attempt released query pixels; and 0/3 completed. The two successful proposal
+calls plus their 24 support observations produced 26 successful receipts:
+233,921 known input tokens, 23,552 cached input tokens, 15,001 output tokens,
+of which 10,694 were reasoning tokens. These are transport and gate-yield
+statistics. Because no query was released, the campaign has no query accuracy.
+The two verified rejections are useful diagnostics: verbose positive prose can
+still collapse a conjunction or confuse different near-miss subgroups.
+
+The canonical machine-readable aggregate is
+[`official_complete_drill_smoke_v10_v12.json`](data/official_complete_drill_smoke_v10_v12.json),
+with digest
+`sha256:137536083875f40197d58363af5359750a10b385c1b0a5f1f9f2b11b882d3a66`.
+`campaign_report.py` reproduces it from the three exact run records, checks the
+exposure chain and unique receipts, and deliberately emits no score or accuracy
+object when query release is zero.
 
 ## Historical material
 

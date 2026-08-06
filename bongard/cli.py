@@ -12,10 +12,12 @@ from typing import Any, Mapping, Sequence
 
 from bongard.artifacts import (
     BlobRef,
+    SupportCommitment,
     VerifiedRunArchive,
     canonical_digest,
     canonical_json,
     verify_archive_data,
+    verify_support_commitment_data,
 )
 from bongard.benchmark import (
     SealedTestGuard,
@@ -40,10 +42,12 @@ from bongard.release import (
     load_official_release,
 )
 from bongard.run_verification import (
+    LEGACY_OUTER_RUN_SCHEMA,
     OUTER_RUN_SCHEMA,
     RunVerificationError,
     verify_completed_run_data,
     verify_rejected_run_data,
+    verify_support_rejected_run_data,
 )
 from bongard.transport import (
     DEFAULT_CODEX_MODEL,
@@ -996,6 +1000,7 @@ def _run_record(
         "split_source_digest": corpus.split.source_digest,
         "official_release": release.to_dict() if release is not None else None,
         "plan": plan.to_data(),
+        "support_commitment": plan.support.to_data(),
         "episode": result.to_data(),
         "vision": vision,
         "run_archive": archive,
@@ -1037,6 +1042,22 @@ def _run_record(
         except (RunVerificationError, OSError) as exc:
             raise CliError(
                 f"rejected proposal failed immediate strict cold verification: {exc}"
+            ) from exc
+    elif result.status.value == "support_rejected" \
+            and result.support_gate is not None \
+            and result.proposal_freeze is not None:
+        support_blob_bytes = {
+            source.panel.blob_id: source.read_verified()
+            for source in plan._support_sources
+        }
+        try:
+            verify_support_rejected_run_data(
+                record,
+                blob_bytes_by_id=support_blob_bytes,
+            )
+        except (RunVerificationError, OSError) as exc:
+            raise CliError(
+                f"rejected support gate failed immediate strict cold verification: {exc}"
             ) from exc
     return record, result
 
@@ -1392,6 +1413,59 @@ def _map_official_rejected_support_bytes(
     return result
 
 
+def _map_official_support_blob_bytes(
+    task_manifest: TaskManifest,
+    support: SupportCommitment,
+) -> dict[str, bytes]:
+    """Resolve a v5 support preimage to exact bytes in one official task."""
+
+    expected_ids = {
+        *(f"support-negative-{slot}" for slot in range(6)),
+        *(f"support-positive-{slot}" for slot in range(6)),
+    }
+    by_id = {item.panel.blob_id: item for item in support.support}
+    if set(by_id) != expected_ids:
+        raise CliError("support commitment does not use the canonical twelve slots")
+
+    buckets: dict[tuple[str, str, int], list[PanelManifest]] = {}
+    for panel in task_manifest.panels:
+        buckets.setdefault(
+            (
+                panel.polarity,
+                panel.sha256.removeprefix("sha256:"),
+                panel.size_bytes,
+            ),
+            [],
+        ).append(panel)
+    for values in buckets.values():
+        values.sort(key=lambda item: (item.index, item.panel_id))
+
+    result: dict[str, bytes] = {}
+    for blob_id in sorted(expected_ids):
+        item = by_id[blob_id]
+        polarity = "positive" if item.positive else "negative"
+        if not blob_id.startswith(f"support-{polarity}-"):
+            raise CliError(f"{blob_id!r} has the wrong support polarity")
+        identity = (polarity, item.panel.sha256, item.panel.byte_count)
+        candidates = buckets.get(identity, [])
+        if not candidates:
+            raise CliError(
+                f"{blob_id}: support identity is absent from the official task"
+            )
+        panel = candidates.pop(0)
+        try:
+            payload = panel.path.read_bytes()
+        except OSError as exc:
+            raise CliError(f"cannot read official support PNG {panel.path}: {exc}") from exc
+        if len(payload) != item.panel.byte_count \
+                or hashlib.sha256(payload).hexdigest() != item.panel.sha256:
+            raise CliError(
+                f"{blob_id}: official support PNG changed after manifest build"
+            )
+        result[blob_id] = payload
+    return result
+
+
 def _bind_record_to_official_corpus(
     record: Mapping[str, Any],
     corpus: ShapeBongardCorpus,
@@ -1432,7 +1506,7 @@ def _verify(args: argparse.Namespace) -> int:
         run_path,
         expected_sha256=expected_sha256,
     )
-    expected = {
+    legacy_expected = {
         "schema",
         "corpus_manifest_digest",
         "split_source_digest",
@@ -1444,7 +1518,16 @@ def _verify(args: argparse.Namespace) -> int:
         "exposure",
         "record_digest",
     }
-    if set(record) != expected or record.get("schema") != RUN_SCHEMA:
+    schema = record.get("schema")
+    expected = (
+        legacy_expected | {"support_commitment"}
+        if schema == RUN_SCHEMA
+        else legacy_expected
+    )
+    if set(record) != expected or schema not in {
+        RUN_SCHEMA,
+        LEGACY_OUTER_RUN_SCHEMA,
+    }:
         raise CliError("run record fields or schema differ")
     content = {key: value for key, value in record.items() if key != "record_digest"}
     if canonical_digest(content) != record["record_digest"]:
@@ -1498,6 +1581,58 @@ def _verify(args: argparse.Namespace) -> int:
 
     if archive is None:
         vision = record.get("vision")
+        status = episode.get("status") if isinstance(episode, Mapping) else None
+        if status == "support_rejected":
+            if schema == LEGACY_OUTER_RUN_SCHEMA:
+                raise CliError(
+                    "legacy v4 support-rejected run lacks the nonce-bearing "
+                    "support commitment preimage required for cold verification"
+                )
+            try:
+                support = verify_support_commitment_data(
+                    record["support_commitment"]
+                )
+            except (TypeError, ValueError) as exc:
+                raise CliError(f"support commitment is invalid: {exc}") from exc
+            support_blob_bytes = _map_official_support_blob_bytes(
+                task_manifest,
+                support,
+            )
+            try:
+                rejected_gate = verify_support_rejected_run_data(
+                    record,
+                    blob_bytes_by_id=support_blob_bytes,
+                )
+            except RunVerificationError as exc:
+                raise CliError(
+                    f"cross-layer support-rejection verification failed: {exc}"
+                ) from exc
+            output = {
+                "verified": True,
+                "verification_scope": (
+                    "exact-official-support-rejection-byte-preimage-gate-replay"
+                ),
+                "record_sha256": expected_sha256,
+                "external_anchor_verified": True,
+                "run_id": rejected_gate.run_id,
+                "support_commitment_digest": (
+                    rejected_gate.support_commitment_digest
+                ),
+                "proposal_digest": rejected_gate.proposal_digest,
+                "proposal_freeze_digest": rejected_gate.proposal_freeze_digest,
+                "support_gate_digest": rejected_gate.support_gate_digest,
+                "support_gate_result": rejected_gate.support_gate_result,
+                "exposure_ledger_before_digest": exposure["ledger_before_digest"],
+                "exposure_ledger_after_digest": exposure["ledger_after_digest"],
+                "exposure_event_digest": exposure["event_digest"],
+                "exposure_external_anchor": None,
+                "verified_support_preimages": len(
+                    rejected_gate.verified_blob_ids
+                ),
+                "official_release_digest": trusted_release.digest,
+            }
+            sys.stdout.write(json.dumps(output, sort_keys=True) + "\n")
+            return 0
         attempt = (
             vision.get("rejected_proposal_attempt")
             if isinstance(vision, Mapping)

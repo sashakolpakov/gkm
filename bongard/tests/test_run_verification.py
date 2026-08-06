@@ -20,6 +20,7 @@ from bongard.artifacts import (
     ProposalFreeze,
     QueryRelease,
     RunArtifactBundle,
+    TruthEvidenceRecord,
     canonical_digest,
     canonical_json,
     verify_archive_data,
@@ -41,18 +42,22 @@ from bongard.proposer import (
 from bongard.release import OfficialReleaseDescriptor
 from bongard.run_verification import (
     EXPOSURE_SCHEMA,
+    LEGACY_OUTER_RUN_SCHEMA,
     OUTER_RUN_SCHEMA,
     MissingBlobPreimagesError,
     MissingSupportPreimagesError,
     RunVerificationError,
     audit_completed_run_commitments,
     audit_rejected_run_commitments,
+    audit_support_rejected_run_commitments,
     verify_completed_run_bytes,
     verify_completed_run_data,
     verify_rejected_run_bytes,
     verify_rejected_run_data,
+    verify_support_rejected_run_bytes,
+    verify_support_rejected_run_data,
 )
-from bongard.synthesis import compile_hybrid_proposal
+from bongard.synthesis import compile_hybrid_proposal, truth_from_hybrid_observation
 import bongard.transport as T
 
 
@@ -341,6 +346,7 @@ def completed_run(tmp_path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         "split_source_digest": corpus.split.source_digest,
         "official_release": None,
         "plan": plan.to_data(),
+        "support_commitment": plan.support.to_data(),
         "episode": result.to_data(),
         "vision": vision,
         "run_archive": archive,
@@ -465,6 +471,7 @@ def rejected_run(tmp_path: Path) -> tuple[dict[str, Any], dict[str, bytes]]:
         "split_source_digest": corpus.split.source_digest,
         "official_release": None,
         "plan": plan.to_data(),
+        "support_commitment": plan.support.to_data(),
         "episode": result.to_data(),
         "vision": vision,
         "run_archive": None,
@@ -514,6 +521,99 @@ def _receipt_object(receipt: Mapping[str, Any]) -> T.CodexReceipt:
             "item_types": tuple(receipt["item_types"]),
         }
     )
+
+
+@pytest.fixture
+def support_rejected_run(
+    completed_run,
+) -> tuple[dict[str, Any], dict[str, bytes]]:
+    """Turn the valid fixture gate into a sealed 9-forward/3-reverse rejection."""
+
+    completed_record, all_blob_bytes = completed_run
+    record = copy.deepcopy(completed_record)
+    proposal_data = record["vision"]["proposal"]
+    proposal = parse_rule_proposal(
+        proposal_data["model_payload"],
+        receipt=_receipt_object(proposal_data["receipt"]),
+        observable_catalog={},
+    )
+    gate = record["vision"]["support_gate"]
+
+    for index, payload in (
+        (0, _present_payload()),
+        (1, _present_payload()),
+        (6, _nonmatch_payload()),
+    ):
+        entry = gate["ordered_entries"][index]
+        observation_data = entry["observer_artifact"]
+        receipt_data = observation_data["receipt"]
+        receipt_data["structured_output_digest"] = canonical_digest(payload)
+        _reseal_receipt(receipt_data)
+        observation = parse_hybrid_observation_or_error(
+            proposal,
+            payload,
+            _receipt_object(receipt_data),
+        )
+        entry["observer_artifact"] = observation.to_dict()
+        entry["evidence"] = TruthEvidenceRecord.from_evidence(
+            truth_from_hybrid_observation(observation)
+        ).to_data()
+
+    gate["counts"] = {
+        "forward_matches": 9,
+        "reverse_matches": 3,
+        "present": 7,
+        "nonmatch": 5,
+        "indeterminate": 0,
+        "error": 0,
+        "transport_attempts": 12,
+    }
+    gate["result"] = "unsupported"
+    gate_content = {key: value for key, value in gate.items() if key != "gate_digest"}
+    gate["gate_digest"] = canonical_digest(gate_content)
+    record["vision"]["proposal_freeze"]["support_gate_digest"] = gate[
+        "gate_digest"
+    ]
+    record["vision"]["observations"] = {}
+    record["run_archive"] = None
+    episode = record["episode"]
+    episode["status"] = "support_rejected"
+    episode["score"] = {
+        "image_correct": 0,
+        "image_total": 2,
+        "image_accuracy": 0.0,
+        "puzzle_correct": False,
+        "puzzle_accuracy": 0.0,
+        "determinate": 0,
+        "abstentions": 2,
+        "errors": 0,
+    }
+    episode["phases"] = [
+        "plan_committed",
+        "support_released",
+        "proposal_fixed",
+        "support_gate_replayed",
+        "proposal_frozen",
+        "support_gate_rejected",
+    ]
+    episode["artifact_chain"] = None
+    episode["failure"] = {
+        "stage": "support_gate",
+        "error_type": "SupportGateRejected",
+        "reason": "unsupported",
+    }
+    _reseal_outer(record)
+    support_blob_ids = {
+        item["panel"]["blob_id"]
+        for item in record["support_commitment"]["support"]
+    }
+    support_bytes = {
+        blob_id: payload
+        for blob_id, payload in all_blob_bytes.items()
+        if blob_id in support_blob_ids
+    }
+    assert len(support_bytes) == 12
+    return record, support_bytes
 
 
 def _alternate_hybrid_leg(panel: object):
@@ -677,8 +777,8 @@ def test_rejected_proposal_is_archived_and_replayed_without_becoming_a_rule(
 
     audit = audit_rejected_run_commitments(record)
     assert len(audit.missing_support_preimages) == 12
-    assert any(
-        "support_commitment_digest" in limitation
+    assert not any(
+        "support_commitment" in limitation
         for limitation in audit.unbound_outer_fields
     )
     with pytest.raises(MissingSupportPreimagesError):
@@ -693,6 +793,111 @@ def test_rejected_proposal_is_archived_and_replayed_without_becoming_a_rule(
         canonical_json(record), support_bytes_by_name=support_bytes
     )
     assert from_bytes.to_data() == verified.to_data()
+
+
+def test_support_rejection_binds_nonce_gate_receipts_and_exact_support_bytes(
+    support_rejected_run,
+) -> None:
+    record, support_bytes = support_rejected_run
+    audit = audit_support_rejected_run_commitments(record)
+    assert audit.support_gate_result == "unsupported"
+    assert audit.support_commitment_digest == record["plan"][
+        "support_commitment_digest"
+    ]
+    assert len(audit.receipt_digests) == 13
+    assert len(audit.support_observations) == 12
+    assert len(audit.missing_blob_preimages) == 12
+    assert not audit.byte_preimages_verified
+
+    with pytest.raises(MissingBlobPreimagesError):
+        verify_support_rejected_run_data(record)
+    verified = verify_support_rejected_run_data(
+        record,
+        blob_bytes_by_id=support_bytes,
+    )
+    assert verified.byte_preimages_verified
+    assert len(verified.verified_blob_ids) == 12
+    assert verify_support_rejected_run_bytes(
+        canonical_json(record),
+        blob_bytes_by_id=support_bytes,
+    ).to_data() == verified.to_data()
+
+
+@pytest.mark.parametrize(
+    "tamper",
+    ("support_nonce", "support_panel", "gate_entry", "gate_result", "freeze"),
+)
+def test_support_rejection_rejects_resealed_cross_layer_tampering(
+    support_rejected_run,
+    tamper: str,
+) -> None:
+    record, _support_bytes = support_rejected_run
+    changed = copy.deepcopy(record)
+    if tamper == "support_nonce":
+        changed["support_commitment"]["verifier_nonce"] = "0" * 64
+    elif tamper == "support_panel":
+        changed["support_commitment"]["support"][0]["panel"]["sha256"] = "0" * 64
+    elif tamper == "gate_entry":
+        changed["vision"]["support_gate"]["ordered_entries"][0]["positive"] = True
+    elif tamper == "gate_result":
+        changed["vision"]["support_gate"]["result"] = "misoriented"
+    else:
+        changed["vision"]["proposal_freeze"]["verifier_nonce"] = "0" * 64
+    _reseal_outer(changed)
+
+    with pytest.raises(RunVerificationError):
+        audit_support_rejected_run_commitments(changed)
+
+
+def test_support_rejection_rejects_wrong_support_byte_preimage(
+    support_rejected_run,
+) -> None:
+    record, support_bytes = support_rejected_run
+    changed_bytes = dict(support_bytes)
+    blob_id = sorted(changed_bytes)[0]
+    changed_bytes[blob_id] = changed_bytes[blob_id] + b"tamper"
+    with pytest.raises(RunVerificationError, match="byte preimage differs"):
+        verify_support_rejected_run_data(
+            record,
+            blob_bytes_by_id=changed_bytes,
+        )
+
+
+def test_v4_completed_runs_remain_auditable_but_v4_support_rejections_name_gap(
+    completed_run,
+    rejected_run,
+    support_rejected_run,
+) -> None:
+    completed, _completed_bytes = completed_run
+    legacy_completed = copy.deepcopy(completed)
+    legacy_completed["schema"] = LEGACY_OUTER_RUN_SCHEMA
+    del legacy_completed["support_commitment"]
+    _reseal_outer(legacy_completed)
+    assert audit_completed_run_commitments(legacy_completed).run_id == completed[
+        "episode"
+    ]["run_id"]
+
+    proposal_rejected, proposal_support_bytes = rejected_run
+    legacy_proposal_rejected = copy.deepcopy(proposal_rejected)
+    legacy_proposal_rejected["schema"] = LEGACY_OUTER_RUN_SCHEMA
+    del legacy_proposal_rejected["support_commitment"]
+    _reseal_outer(legacy_proposal_rejected)
+    legacy_audit = verify_rejected_run_data(
+        legacy_proposal_rejected,
+        support_bytes_by_name=proposal_support_bytes,
+    )
+    assert any(
+        "legacy v4" in limitation
+        for limitation in legacy_audit.unbound_outer_fields
+    )
+
+    rejected, _support_bytes = support_rejected_run
+    legacy_rejected = copy.deepcopy(rejected)
+    legacy_rejected["schema"] = LEGACY_OUTER_RUN_SCHEMA
+    del legacy_rejected["support_commitment"]
+    _reseal_outer(legacy_rejected)
+    with pytest.raises(RunVerificationError, match="legacy v4.*preimage"):
+        audit_support_rejected_run_commitments(legacy_rejected)
 
 
 @pytest.mark.parametrize(

@@ -268,15 +268,17 @@ novel primitive attributes: each component may already be familiar, and the
 unseen concepts.
 
 The frozen 2,769-task drill cohort is not a live availability count. Against
-the checked-in thirteen-event campaign ledger head
-``sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b``,
-the resolver-v2 overlay leaves 1,777 drill tasks and excludes 992 through
-semantic-key collisions; thirteen are also exact-task collisions. The ledger
-records 19 tasks and 29 semantic keys, producing 190 effective exposed keys
+the checked-in sixteen-event campaign ledger head
+``sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a``,
+the resolver-v2 overlay leaves 1,744 drill tasks and excludes 1,025 through
+semantic-key collisions; sixteen are also exact-task collisions. The ledger
+records 22 tasks and 38 semantic keys, producing 199 effective exposed keys
 after policy blocking. The overlay digest is
-``sha256:5012df37f3cf273e0ce3d3696e574df7ec4ce458639cda79d340603a6d3e3320``
+``sha256:9e7ad95bc0fe2200d647c7ef9c34b81f8b041115265175be6fe63d6c67562dde``
 and the live-membership digest is
-``sha256:9db3805bded543e492103fa7f8198ca88c79bc8c71055459ac4a738356216589``.
+``sha256:be680542b28a855d54cedcda6726d140af1ce4a8ad97c008511d5843f4e4b7e1``.
+The ledger file is
+``downloads/ShapeBongard_V2_full/exposure/abstract_006/da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a.exposure.json``.
 
 The older resolver-v1 count of 2,609 was an overclaim because numbered Basic
 generator names were treated as distinct families. Resolver v2 adds
@@ -287,17 +289,17 @@ or if siblings cross frozen cohort boundaries. The resolver-policy digest is
 ``sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a``.
 Before v7–v9, the initial resolver-v2 training intersection contained
 1,290 tasks across 161 semantic groups. At the current head, the official
-train-and-drill scope contains 2,096 tasks: 1,268 live and 828 excluded across
-158 resolver-v2 collision groups. Its overlay digest is
-``sha256:338a2b3745169f2c9511043e43893b58f0cb6d8f320a50245fd5d17030f33185``
+train-and-drill scope contains 2,096 tasks: 1,238 live and 858 excluded.
+Sixteen of those exclusions are exact-task collisions. Its overlay digest is
+``sha256:64c7f3cbd4444829d1bd8c50d1a99cc95d5830ec6459879a5a7f6668868eee90``
 and its live-membership digest is
-``sha256:c06e028ea669242ff423d3035d6c23ac653fc51b90f130e3413db0b5f60f1a2b``.
-Those 158 groups are collision domains, not statistically independent samples.
-The montage record and v6, v7, v8, and v9 support releases remove their related
-groups. The overlay neither changes the frozen cohort nor certifies unseen
-panel bytes. Run-time ``external_anchor`` fields are null; the later Git commit
-is an after-the-fact publication anchor, not preregistration or proof that the
-ledger was the latest authentic head.
+``sha256:2619ea03a9f32bddef941818791fee9d477040f073043da2c715547474813a23``.
+Resolver collision domains are not statistically independent samples. The
+montage record and v6–v12 support releases remove their related groups. The
+overlay neither changes the frozen cohort nor certifies unseen panel bytes.
+Run-time ``external_anchor`` fields are null; the later Git commit is an
+after-the-fact publication anchor, not preregistration or proof that the ledger
+was the latest authentic head.
 
 For an official CLI run, ``bongard.exposure.ExposureLedger`` and the semantic
 cohort check are used together. With ``--require-unseen --cohort``, the runner
@@ -355,6 +357,26 @@ nonmatch for the frozen operational claim; it does not mechanically certify
 that the semantic property is absent from the pixels. Pixel-level absence
 requires a dedicated registered certifier or a calibrated interval wholly
 below its frozen threshold.
+
+The deterministic bilateral-symmetry leg is one concrete candidate-independent
+measurement. It consumes only panel bytes, uses a fixed threshold ensemble and
+reflection-axis grid, preserves all four dispositions, and registers only the
+affirmative ``AT_LEAST`` direction. Its interval is preprocessing sensitivity,
+not a calibrated population confidence interval. A post-hoc v9 audit found
+multiple negative panels with higher symmetry scores than positive panels.
+Global symmetry therefore does not express the target. The next missing leg
+must represent part/lobe ownership, the central junction, and correspondence
+between owned parts.
+
+``bongard.support_prototypes`` supplies a separate support-relative scoring
+core. Candidate-independent extraction first freezes neutral panel-only
+interval vectors without task ID, side, prose claim, or query role. The fitter
+then commits positive and negative support centroids and evaluates only the
+fixed margin ``distance(query, negative) - distance(query, positive)``. A
+larger margin always has positive orientation; neither fitting nor evaluation
+can flip polarity. This core is replayable and bridged to the closed IR, but it
+is not yet wired into the official episode runner, does not itself extract
+pixels, and is not externally calibrated.
 
 Why negation used to win
 ------------------------
@@ -470,8 +492,18 @@ compilation, the support gate, every vision receipt's internal hashes and
 request/response bindings, and cold logical replay. Codex receipts are not
 provider signatures and may record that JSONL omitted the reported model. The
 cold verifier also cannot authenticate the unavailable history behind a
-non-empty exposure-ledger predecessor. Proposal-failure records are not
-replayable.
+non-empty exposure-ledger predecessor. A transport failure before a validated
+structured response is not replayable.
+
+Outer schema v5 also persists the nonce-bearing ``support_commitment``
+preimage on every exit. If a fixed proposal fails the twelve-panel gate, the
+verifier binds that preimage to the plan, proposal receipt, canonical HYBRID
+compilation, proposal freeze, all twelve gate receipts and evidence records,
+the reproduced non-aligned outcome, and the twelve exact official support
+PNGs. It rejects query observations and leaves ``run_archive`` null, because
+no query, prediction, or label artifact exists. Completed and
+proposal-rejected schema-v4 records remain readable; a schema-v4 support
+rejection is explicitly diagnosed as lacking the required preimage.
 
 Admission and reporting
 -----------------------
@@ -563,6 +595,16 @@ received those programs, and they cannot count as benchmark evidence. They
 instead show why prose should specify a candidate while a frozen visual
 contour/template or prototype scorer operationalizes it from pixels.
 
+The upstream sampler definitions give a broader, explicitly post-hoc oracle
+diagnosis. Basic multi-shape and Abstract attribute-pair positives are
+conjunctions; their negatives may split into several near-miss subgroups that
+fail different conjuncts. Task IDs and action programs were unavailable to the
+proposer and observer. The current proposer prompt now requires every positive
+to satisfy every cue and each negative to fail at least one cue, and tells the
+model to preserve distinct near-miss conjuncts instead of replacing them with
+one vague word such as ``matched`` or ``symmetric``. This changes proposal
+discipline; it does not make the categorical observer calibrated.
+
 The subsequent v6 attempt selected the first lexicographic task in the
 then-current live-eligible list,
 ``bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json``, before
@@ -637,25 +679,71 @@ positives. Its phases stop at
 ``proposal_frozen -> support_gate_rejected`` with no query or run archive.
 Event
 ``sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8``
-produced the current thirteen-event ledger head above.
+produced intermediate thirteen-event ledger head
+``sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b``.
 
 V9 shows why vague visual correspondence needs a quantitative symmetry and
 shape-matching leg. It also exposes an audit gap: a support-rejected schema-v4
 run has no ``run_archive``, and the outer public plan stores only the
-support-commitment digest rather than its nonce-bearing preimage. Current
-public ``verify`` therefore cannot fully cold-bind and replay v9. A future
-outer schema must persist the preimage on every post-proposal path; v9 does not
-have v8's fourteen-preimage verification scope. Nothing here estimates
-performance on the 1,800-task official test split.
+support-commitment digest rather than its nonce-bearing preimage. Public
+``verify`` therefore cannot fully cold-bind and replay that immutable v9 file;
+v9 does not have v8's fourteen-preimage verification scope. Outer schema v5
+closes this gap for new runs through the support-rejection verification path
+described above. Nothing here estimates performance on the 1,800-task official
+test split.
+
+The schema-v5 v10 artifact,
+``bd_asymm_trap_bridge-trans_arc_cup_0000_v10.json``, has file SHA-256
+``0bdf82438b3b85b368f0c0fb93298f184fbae55b0b5777c06759670b53c3b8a7``.
+It ended ``proposal_error`` when sandbox DNS failed before a Codex response.
+The support-commitment preimage is persisted, but there is no validated
+response, proposal receipt, support gate, query, or archive. Event
+``sha256:dee13f7dae4e949882f516b8e8ca54eec7af8db0aa1fc47ca8a90aadb50195d7``
+produced successor
+``sha256:1a547a92e7897558e2f5f3e209545309d1f2ec41b4650d7b724ab4193840eff7``.
+
+V11, ``bd_asymm_unbala_goldfish-asymmetric_crown_0000_v11.json``, has file
+SHA-256
+``0a324a7fc780dea392443a9afd54dbfe19fe5631d06ff1287abba7da342ac561``.
+It proposed “Complete paired motifs with shared rotational handedness.” The
+gate rejected it with eight forward and four reverse matches: ten ``present``,
+two ``nonmatch``, no errors, and no indeterminate outcomes. Public verification
+reproduced all twelve exact official support preimages. Event
+``sha256:395fbacc33c3bc206a581e2d85cf856b89e978ce6133a3a2574e193d6d7484ab``
+produced successor
+``sha256:8841cac62c203a2895a176c2cfbef8b97b46cfb33a6e0db2072c24efb54dc171``.
+
+V12, ``hd_closed_shape-has_obtuse_angle_0000_v12.json``, has file SHA-256
+``e7c62b4eb96e910d5ea2738fb6622ab9b469993befc7e0897906f5ed223960df``.
+Its phrase was “A cyclic enclosure with an inward re-entrant feature.” It
+ended ``support_rejected`` with seven forward and five reverse matches: nine
+``present``, three ``nonmatch``, no errors, and no indeterminate outcomes.
+Public verification again reproduced all twelve exact support preimages. Event
+``sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e``
+produced the current sixteen-event ledger head above.
+
+Across v10–v12, proposer success was 2/3, support-gate pass was 0/2, query
+release was 0/3, and completion was 0/3. The 26 successful receipts record
+233,921 known input tokens, 23,552 cached input tokens, 15,001 output tokens,
+and 10,694 reasoning tokens. These are attempt-coverage and resource metrics.
+No query pixels were released, so this campaign has no query accuracy.
+The canonical aggregate is
+``bongard/data/official_complete_drill_smoke_v10_v12.json`` with digest
+``sha256:137536083875f40197d58363af5359750a10b385c1b0a5f1f9f2b11b882d3a66``.
+``bongard.campaign_report`` reproduces it from the three exact records, checks
+their exposure chain and unique receipts, and omits every score or accuracy
+field when query release is zero.
 
 Operational guide
 -----------------
 
 The canonical implementation surface is ``corpus.py``, ``release.py``,
 ``image_audit.py``, ``cohorts.py``, ``exposure.py``, ``evidence.py``,
-``legs/contracts.py``, ``ir.py``, ``predicate_backend.py``, ``transport.py``,
-``proposer.py``, ``synthesis.py``, ``artifacts.py``, ``benchmark.py``,
-``admission.py``, and ``cli.py`` under ``bongard``.
+``legs/contracts.py``, ``legs/bilateral_symmetry.py``,
+``support_prototypes.py``, ``ir.py``, ``predicate_backend.py``,
+``transport.py``, ``proposer.py``, ``synthesis.py``, ``artifacts.py``,
+``benchmark.py``, ``admission.py``, ``campaign_report.py``, and ``cli.py``
+under ``bongard``.
 
 The repository entry page is
 `bongard/README.md <https://github.com/sashakolpakov/gkm/blob/master/bongard/README.md>`_.

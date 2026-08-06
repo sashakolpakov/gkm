@@ -844,6 +844,16 @@ feature, return Not, attach a polarity flag, or say merely that positives lack
 a negative-side feature.  An affirmative absence concept is allowed only when
 the catalog contains a dedicated observable that can certify that absence.
 
+Treat the support set as a contrastive conjunction test, not as a request for
+one memorable resemblance.  Before emitting the JSON, check the proposed cues
+against all twelve panels: every positive panel must visibly satisfy every
+required cue, and every negative panel must visibly fail at least one required
+cue.  The negative panels may form different near-miss subgroups that each
+violate a different conjunct.  In that case preserve the separate positive
+cues instead of collapsing them into one vague word such as matched, regular,
+balanced, animal-like, or symmetric.  Perform this coverage check internally;
+return only the requested schema.
+
 Use registered observables only when their stated affirmative meaning really
 matches the rule.  Every requested observable must be load-bearing.  If the
 catalog is insufficient, request no observables and return one HYBRID claim:

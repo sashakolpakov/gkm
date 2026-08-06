@@ -24,6 +24,33 @@ from bongard.historical_exposure import load_historical_exposure
 TASK_ID = "bd_fixture_0000"
 MODEL = "headless-codex-test"
 MANIFEST_DIGEST = "sha256:" + "1" * 64
+SUPPORT_DATA = {
+    "run_id": "run-fixture",
+    "issued_by": "canonical-bongard-verifier",
+    "corpus_digest": "1" * 64,
+    "support": [
+        {
+            "panel": {
+                "blob_id": "support-negative-0",
+                "sha256": "7" * 64,
+                "byte_count": 1,
+                "media_type": "image/png",
+            },
+            "positive": False,
+        },
+        {
+            "panel": {
+                "blob_id": "support-positive-0",
+                "sha256": "8" * 64,
+                "byte_count": 1,
+                "media_type": "image/png",
+            },
+            "positive": True,
+        },
+    ],
+    "verifier_nonce": "9" * 64,
+    "version": "support-commitment/v1",
+}
 PLAN_DATA = {
     "version": "official-two-query-benchmark/v3",
     "task_id": TASK_ID,
@@ -35,7 +62,7 @@ PLAN_DATA = {
     "seed_digest": "2" * 64,
     "corpus_digest": "1" * 64,
     "task_manifest_digest": "3" * 64,
-    "support_commitment_digest": "4" * 64,
+    "support_commitment_digest": canonical_digest(SUPPORT_DATA),
     "latent_query_digest": "5" * 64,
     "label_commitment_digest": "6" * 64,
 }
@@ -120,6 +147,7 @@ def _plan(split: str = "train") -> SimpleNamespace:
         split=split,
         regime=None,
         digest=digest,
+        support=SimpleNamespace(to_data=lambda: dict(SUPPORT_DATA)),
         to_data=lambda: dict(data),
     )
 
@@ -242,9 +270,10 @@ def test_precommit_is_persisted_before_proposal_failure(
     assert PLAN_DIGEST in event.purpose
 
     exposure = record["exposure"]
-    assert record["schema"] == "gkm.bongard-episode-run.v4"
+    assert record["schema"] == "gkm.bongard-episode-run.v5"
     assert "complete-run" not in record["schema"]
     assert record["plan"] == _plan().to_data()
+    assert record["support_commitment"] == SUPPORT_DATA
     assert canonical_digest(record["plan"]) == record["episode"]["plan_digest"]
     assert exposure["ledger_after_digest"] == successor.digest
     assert exposure["event_digest"] == event.digest

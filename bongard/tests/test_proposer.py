@@ -23,6 +23,7 @@ from bongard.proposer import (
     observe_hybrid_panel,
     parse_hybrid_observation_or_error,
     parse_rule_proposal,
+    proposer_prompt,
     propose_rule,
 )
 from bongard.benchmark import SupportInput
@@ -858,6 +859,14 @@ def test_observer_prompt_declares_empirical_status_and_exact_cue_protocol() -> N
     assert "Copy cue IDs exactly" in prompt
     assert "overall summary of why the image is a nonmatch" in prompt
     assert "never substitutes for cue-keyed findings" in prompt
+
+
+def test_proposer_prompt_requires_conjunctive_near_miss_coverage() -> None:
+    prompt = proposer_prompt({})
+    assert "every positive panel must visibly satisfy every" in prompt
+    assert "every negative panel must visibly fail at least one" in prompt
+    assert "different near-miss subgroups" in prompt
+    assert "collapsing them into one vague word" in prompt
 
 
 def test_episode_adapter_keeps_raw_proposal_and_two_observer_receipts(

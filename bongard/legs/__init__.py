@@ -20,6 +20,17 @@ from .contracts import (
     ValueType,
     implementation_sha256,
 )
+from .bilateral_symmetry import (
+    ALGORITHM_ID as BILATERAL_SYMMETRY_ALGORITHM_ID,
+    BILATERAL_SYMMETRY_SCORE,
+    BilateralSymmetryInputError,
+    BilateralSymmetryObservation,
+    bilateral_symmetry_contract,
+    bilateral_symmetry_score,
+    measure_bilateral_symmetry,
+    operation_digest as bilateral_symmetry_operation_digest,
+    register_bilateral_symmetry_leg,
+)
 
 __all__ = (
     "AffirmativeRelation",
@@ -40,4 +51,13 @@ __all__ = (
     "Unit",
     "ValueType",
     "implementation_sha256",
+    "BILATERAL_SYMMETRY_ALGORITHM_ID",
+    "BILATERAL_SYMMETRY_SCORE",
+    "BilateralSymmetryInputError",
+    "BilateralSymmetryObservation",
+    "bilateral_symmetry_contract",
+    "bilateral_symmetry_operation_digest",
+    "bilateral_symmetry_score",
+    "measure_bilateral_symmetry",
+    "register_bilateral_symmetry_leg",
 )

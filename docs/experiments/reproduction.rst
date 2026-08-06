@@ -106,18 +106,18 @@ the bound history. Its component attributes may be familiar, and all 20
 generated instances of the pair are one semantic sibling group.
 
 The frozen drill membership contains 2,769 tasks, but live availability must be
-recomputed with ``--ledger-in``. At the checked-in thirteen-event campaign head
-``sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b``,
-``python3 -m bongard cohorts --cohort drill --ledger-in ...`` reports 1,777
-resolver-v2 live tasks and 992 semantic exclusions, including thirteen
-exact-task collisions. The ledger records 19 tasks and 29 semantic keys,
-producing 190 effective exposed keys after policy blocking. The overlay digest
+recomputed with ``--ledger-in``. At the checked-in sixteen-event campaign head
+``sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a``,
+``python3 -m bongard cohorts --cohort drill --ledger-in ...`` reports 1,744
+resolver-v2 live tasks and 1,025 semantic exclusions, including sixteen
+exact-task collisions. The ledger records 22 tasks and 38 semantic keys,
+producing 199 effective exposed keys after policy blocking. The overlay digest
 is
-``sha256:5012df37f3cf273e0ce3d3696e574df7ec4ce458639cda79d340603a6d3e3320``;
+``sha256:9e7ad95bc0fe2200d647c7ef9c34b81f8b041115265175be6fe63d6c67562dde``;
 its live-membership digest is
-``sha256:9db3805bded543e492103fa7f8198ca88c79bc8c71055459ac4a738356216589``.
+``sha256:be680542b28a855d54cedcda6726d140af1ce4a8ad97c008511d5843f4e4b7e1``.
 The checked-in ledger file is
-``downloads/ShapeBongard_V2_full/exposure/abstract_005/65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b.exposure.json``.
+``downloads/ShapeBongard_V2_full/exposure/abstract_006/da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a.exposure.json``.
 
 Resolver v1's earlier 2,609 count was an overclaim because it did not group
 numbered Basic morphology siblings. Resolver v2 removes a terminal number or
@@ -126,18 +126,18 @@ cohort boundaries. Its policy digest is
 ``sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a``.
 Before v7–v9, its initial training intersection contained 1,290 tasks
 across 161 groups. At the current head, ``--split train --cohort drill`` has a
-2,096-task historical scope, 1,268 live tasks, and 828 exclusions across 158
-resolver-v2 collision groups; its overlay
+2,096-task historical scope, 1,238 live tasks, and 858 exclusions, including
+sixteen exact-task collisions; its overlay
 digest is
-``sha256:338a2b3745169f2c9511043e43893b58f0cb6d8f320a50245fd5d17030f33185``;
+``sha256:64c7f3cbd4444829d1bd8c50d1a99cc95d5830ec6459879a5a7f6668868eee90``;
 its live-membership digest is
-``sha256:c06e028ea669242ff423d3035d6c23ac653fc51b90f130e3413db0b5f60f1a2b``.
-Those 158 groups are collision domains, not statistically independent samples.
-The retrospective montage event and v6, v7, v8, and v9 support releases filter
-their related groups from subsequent runs. The overlay is not a new frozen
-partition and does not certify unseen bytes. Run-time ``external_anchor``
-fields are null; committing the ledger later is only after-the-fact publication,
-not preregistration or proof that it was the globally latest head.
+``sha256:2619ea03a9f32bddef941818791fee9d477040f073043da2c715547474813a23``.
+Resolver collision domains are not statistically independent samples. The
+retrospective montage event and v6–v12 support releases filter their related
+groups from subsequent runs. The overlay is not a new frozen partition and
+does not certify unseen bytes. Run-time ``external_anchor`` fields are null;
+committing the ledger later is only after-the-fact publication, not
+preregistration or proof that it was the globally latest head.
 
 Canonical episode
 -----------------
@@ -178,6 +178,35 @@ The proposer and observer are protocols rather than trusted classifiers. They
 receive staged panel bytes and neutral temporary paths; they must not receive
 source paths, source filenames, task IDs, split/regime metadata, or labels
 outside the support view.
+
+Reproduce the new measurement cores
+-----------------------------------
+
+The focused deterministic checks are:
+
+.. code-block:: bash
+
+   .venv/bin/python -m pytest -q \
+       bongard/tests/test_bilateral_symmetry.py \
+       bongard/tests/test_support_prototypes.py
+
+``bongard.legs.bilateral_symmetry`` consumes only panel bytes, uses fixed
+thresholds and a fixed reflection-axis grid, returns all four evidence
+dispositions, and registers only ``AT_LEAST``. Its interval is a deterministic
+preprocessing-sensitivity envelope, not external calibration. The post-hoc v9
+audit is deliberately a failed scientific check: several negatives score as
+more symmetric than positives. The next geometry extractor must expose
+part/lobe ownership, junctions, and part correspondence rather than merely tune
+this score.
+
+``bongard.support_prototypes`` accepts neutral panel-only interval feature
+vectors, freezes positive and negative support centroids, and computes the
+single orientation
+``distance(query, negative) - distance(query, positive)``. The fixed positive
+margin has no polarity-flip operation, and its serialized preimages can be
+re-fitted and replayed. This core is not yet connected to the official runner,
+does not authenticate or perform pixel extraction, and is not externally
+calibrated; do not cite its focused tests as a benchmark result.
 
 Cold replay
 -----------
@@ -297,7 +326,7 @@ were all six positives ``present``; among negatives, five were
 Those five nonmatches exposed a contract mismatch: their top-level
 ``reason`` was prompt/schema-allowed or inferred, but the archived parser
 required null. The current observation schema v4 and support policy v2 make a
-nonmatch reason optional and certificate-bound; all 370 package tests pass.
+nonmatch reason optional and certificate-bound; all 418 package tests pass.
 Re-evaluating only the archived raw payloads under that repaired parser gives
 11 forward and one reverse match, whose gate result is ``unsupported``.
 This post-hoc diagnostic does not alter the v5 file: its archived result remains
@@ -312,6 +341,16 @@ oracle metadata. It was unavailable to the proposer and support gate and must
 not enter a visual benchmark run. The actionable reproduction target is a
 frozen contour/template or prototype scorer that operationalizes the prose
 claim from panel pixels.
+
+The upstream sampler definitions provide a broader post-hoc oracle diagnosis:
+Basic multi-shape and Abstract attribute-pair positives are conjunctions, and
+their negatives may be different near-miss subgroups that fail different
+conjuncts. The proposer, support observer, synthesis path, and predictor never
+received task IDs or action programs. The current proposer prompt therefore
+requires all-positive cue coverage and requires each negative to fail at least
+one cue while preserving the distinct failed conjuncts. This prompt constraint
+does not authorize action-program metadata or turn prose into calibrated
+evidence.
 
 The next attempt chose the first lexicographic entry in the then-current
 live-eligible list, without prior inspection of that task's pixels:
@@ -388,15 +427,59 @@ positives. Its phases end at
 ``proposal_frozen -> support_gate_rejected``, before query release or a run
 archive. Event
 ``sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8``
-produced the current thirteen-event ledger head above.
+produced intermediate thirteen-event ledger head
+``sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b``.
 
 Public verification cannot fully cold-bind v9. A support-rejected schema-v4
 artifact has no ``run_archive``, and its outer plan stores only the
 support-commitment digest, not the nonce-bearing commitment preimage. Reproduce
 this as an expected audit limitation, not as v8-style fourteen-preimage replay.
-The next outer schema must retain the support commitment preimage on every
-post-proposal exit path. Scientifically, the positive miss and two false
-positives make a quantitative symmetry/shape-matching leg the next target.
+Outer schema v5 retains that preimage on every new exit and verifies an ordinary
+support rejection against all twelve exact support PNGs. It cannot retroactively
+repair v9. Scientifically, the positive miss and two false positives make a
+quantitative symmetry/shape-matching leg the next target.
+
+The schema-v5 artifact
+``bongard/runs/official_complete_drill_20260805/bd_asymm_trap_bridge-trans_arc_cup_0000_v10.json``
+has file SHA-256
+``0bdf82438b3b85b368f0c0fb93298f184fbae55b0b5777c06759670b53c3b8a7``.
+V10 ended ``proposal_error`` because sandbox DNS failed before a Codex
+response. Its support-commitment preimage is present, but there is no validated
+response, proposal receipt, support gate, query observation, or archive. Event
+``sha256:dee13f7dae4e949882f516b8e8ca54eec7af8db0aa1fc47ca8a90aadb50195d7``
+produced successor
+``sha256:1a547a92e7897558e2f5f3e209545309d1f2ec41b4650d7b724ab4193840eff7``.
+This reproduces as infrastructure failure, not a class outcome.
+
+The v11 artifact
+``bongard/runs/official_complete_drill_20260805/bd_asymm_unbala_goldfish-asymmetric_crown_0000_v11.json``
+has file SHA-256
+``0a324a7fc780dea392443a9afd54dbfe19fe5631d06ff1287abba7da342ac561``.
+Its phrase is “Complete paired motifs with shared rotational handedness.” The
+support gate rejected it with eight forward and four reverse matches: ten
+``present``, two ``nonmatch``, no errors, and no indeterminate outcomes. Public
+verification successfully reproduces all twelve exact official support
+preimages. Event
+``sha256:395fbacc33c3bc206a581e2d85cf856b89e978ce6133a3a2574e193d6d7484ab``
+produced successor
+``sha256:8841cac62c203a2895a176c2cfbef8b97b46cfb33a6e0db2072c24efb54dc171``.
+
+The v12 artifact
+``bongard/runs/official_complete_drill_20260805/hd_closed_shape-has_obtuse_angle_0000_v12.json``
+has file SHA-256
+``e7c62b4eb96e910d5ea2738fb6622ab9b469993befc7e0897906f5ed223960df``.
+Its phrase is “A cyclic enclosure with an inward re-entrant feature.” The gate
+rejected it with seven forward and five reverse matches: nine ``present``,
+three ``nonmatch``, no errors, and no indeterminate outcomes. Public
+verification again reproduces all twelve exact support preimages. Event
+``sha256:ce8f67fc54e3775932951c622d9f87dac805a12ac082bc66f5bc258764492c2e``
+produced the current sixteen-event ledger head above.
+
+Treat v10–v12 as one three-attempt smoke campaign: proposer success 2/3,
+support-gate pass 0/2, query release 0/3, and completion 0/3. Its 26 successful
+receipts report 233,921 known input tokens, 23,552 cached input tokens, 15,001
+output tokens, and 10,694 reasoning tokens. No query pixels were released, so
+there is no query accuracy to reproduce or report.
 
 Completed-run verification recomputes each Codex receipt's internal hashes and
 request/response bindings. The receipt is not a provider signature and may

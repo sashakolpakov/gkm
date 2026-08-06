@@ -28,11 +28,15 @@ from typing import Any, Mapping
 from bongard.artifacts import (
     ArtifactTamperError,
     BlobRef,
+    ProposalFreeze,
+    SupportCommitment,
     TruthEvidenceRecord,
     VerifiedRunArchive,
     canonical_digest,
     canonical_json,
     verify_archive_data,
+    verify_proposal_freeze_data,
+    verify_support_commitment_data,
 )
 from bongard.benchmark import (
     PROTOCOL_VERSION,
@@ -81,7 +85,8 @@ from bongard.transport import (
 )
 
 
-OUTER_RUN_SCHEMA = "gkm.bongard-episode-run.v4"
+OUTER_RUN_SCHEMA = "gkm.bongard-episode-run.v5"
+LEGACY_OUTER_RUN_SCHEMA = "gkm.bongard-episode-run.v4"
 VISION_EPISODE_SCHEMA = HEADLESS_EPISODE_SCHEMA_VERSION
 EXPOSURE_SCHEMA = "gkm.bongard-support-release-precommit.v2"
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -99,7 +104,7 @@ _COMPLETE_PHASES = (
     "labels_revealed",
     "cold_replay_verified",
 )
-_OUTER_FIELDS = {
+_LEGACY_OUTER_FIELDS = {
     "schema",
     "corpus_manifest_digest",
     "split_source_digest",
@@ -111,6 +116,7 @@ _OUTER_FIELDS = {
     "exposure",
     "record_digest",
 }
+_OUTER_FIELDS = _LEGACY_OUTER_FIELDS | {"support_commitment"}
 _PLAN_FIELDS = {
     "version",
     "task_id",
@@ -284,6 +290,47 @@ def _image_identity(name: str, blob: BlobRef) -> dict[str, object]:
         "byte_count": blob.byte_count,
         "content_digest": blob.sha256,
     }
+
+
+def _outer_fields_for_schema(schema: object) -> set[str]:
+    if schema == OUTER_RUN_SCHEMA:
+        return _OUTER_FIELDS
+    if schema == LEGACY_OUTER_RUN_SCHEMA:
+        return _LEGACY_OUTER_FIELDS
+    raise RunVerificationError(f"unsupported outer run schema {schema!r}")
+
+
+def _outer_support_commitment(
+    record: Mapping[str, Any],
+) -> SupportCommitment | None:
+    """Decode the v5 support preimage; v4 records remain readable as legacy."""
+
+    if record["schema"] == LEGACY_OUTER_RUN_SCHEMA:
+        return None
+    try:
+        return verify_support_commitment_data(record["support_commitment"])
+    except (ArtifactTamperError, TypeError, ValueError) as exc:
+        raise RunVerificationError(
+            f"outer support commitment is invalid: {exc}"
+        ) from exc
+
+
+def _bind_support_to_plan(
+    support: SupportCommitment,
+    *,
+    plan: Mapping[str, Any],
+    corpus_address: str,
+) -> None:
+    if support.run_id != plan["run_id"]:
+        raise RunVerificationError("outer support commitment belongs to another run")
+    if support.issued_by != plan["verifier_id"]:
+        raise RunVerificationError("outer support issuer differs from public plan")
+    if support.corpus_digest != corpus_address.removeprefix("sha256:"):
+        raise RunVerificationError("outer support corpus differs from public run")
+    if support.digest() != plan["support_commitment_digest"]:
+        raise RunVerificationError(
+            "outer support preimage differs from public support commitment"
+        )
 
 
 def _receipt_from_data(value: object, label: str) -> CodexReceipt:
@@ -619,6 +666,52 @@ class RejectedRunVerification:
         }
 
 
+@dataclass(frozen=True)
+class SupportRejectedRunVerification:
+    """Cold audit of a fixed proposal rejected by its twelve-panel gate."""
+
+    run_id: str
+    record_digest: str
+    plan_digest: str
+    support_commitment_digest: str
+    proposal_digest: str
+    proposal_freeze_digest: str
+    support_gate_digest: str
+    support_gate_result: str
+    official_release_digest: str | None
+    receipt_digests: tuple[str, ...]
+    verified_blob_ids: tuple[str, ...]
+    missing_blob_preimages: tuple[str, ...]
+    unbound_outer_fields: tuple[str, ...]
+    support: SupportCommitment = field(repr=False, compare=False)
+    proposal: RuleProposal = field(repr=False, compare=False)
+    support_observations: tuple[tuple[str, HybridObservation], ...] = field(
+        repr=False, compare=False
+    )
+
+    @property
+    def byte_preimages_verified(self) -> bool:
+        return not self.missing_blob_preimages
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "run_id": self.run_id,
+            "record_digest": self.record_digest,
+            "plan_digest": self.plan_digest,
+            "support_commitment_digest": self.support_commitment_digest,
+            "proposal_digest": self.proposal_digest,
+            "proposal_freeze_digest": self.proposal_freeze_digest,
+            "support_gate_digest": self.support_gate_digest,
+            "support_gate_result": self.support_gate_result,
+            "official_release_digest": self.official_release_digest,
+            "receipt_digests": list(self.receipt_digests),
+            "verified_blob_ids": list(self.verified_blob_ids),
+            "missing_blob_preimages": list(self.missing_blob_preimages),
+            "byte_preimages_verified": self.byte_preimages_verified,
+            "unbound_outer_fields": list(self.unbound_outer_fields),
+        }
+
+
 def _verify_rejected_episode(value: object) -> Mapping[str, Any]:
     episode = _mapping(value, "outer rejected episode")
     _expect_fields(episode, _EPISODE_FIELDS, "outer rejected episode")
@@ -668,6 +761,50 @@ def _verify_rejected_episode(value: object) -> Mapping[str, Any]:
     return episode
 
 
+def _verify_support_rejected_episode(value: object) -> Mapping[str, Any]:
+    episode = _mapping(value, "outer support-rejected episode")
+    _expect_fields(episode, _EPISODE_FIELDS, "outer support-rejected episode")
+    if episode["version"] != PROTOCOL_VERSION:
+        raise RunVerificationError("support-rejected episode protocol version differs")
+    task_id = _text(episode["task_id"], "episode.task_id")
+    family = episode["family"]
+    if family not in {"ff", "bd", "hd"} or not task_id.startswith(f"{family}_"):
+        raise RunVerificationError(
+            "support-rejected episode task/family identity is malformed"
+        )
+    if episode["split"] not in {None, "train", "val", "test"}:
+        raise RunVerificationError("support-rejected episode split is invalid")
+    if episode["regime"] not in {None, "FF", "BA", "CM", "NV"}:
+        raise RunVerificationError("support-rejected episode regime is invalid")
+    _text(episode["run_id"], "episode.run_id")
+    _hex(episode["plan_digest"], "episode.plan_digest")
+    if episode["status"] != "support_rejected":
+        raise RunVerificationError("episode status must be support_rejected")
+    if episode["artifact_chain"] is not None:
+        raise RunVerificationError(
+            "support-rejected episode cannot claim a completed artifact chain"
+        )
+    phases = episode["phases"]
+    if not isinstance(phases, list) or tuple(phases) != (
+        "plan_committed",
+        "support_released",
+        "proposal_fixed",
+        "support_gate_replayed",
+        "proposal_frozen",
+        "support_gate_rejected",
+    ):
+        raise RunVerificationError("support-rejected episode phases are not canonical")
+    failure = _mapping(episode["failure"], "support-rejected episode.failure")
+    _expect_fields(failure, {"stage", "error_type", "reason"}, "episode.failure")
+    if failure["stage"] != "support_gate" \
+            or failure["error_type"] != "SupportGateRejected":
+        raise RunVerificationError("support-rejected episode failure is not canonical")
+    _text(failure["reason"], "episode.failure.reason")
+    score = _mapping(episode["score"], "support-rejected episode.score")
+    _expect_fields(score, _SCORE_FIELDS, "support-rejected episode.score")
+    return episode
+
+
 def _verify_rejected_public_plan(
     value: object,
     *,
@@ -710,11 +847,11 @@ def audit_rejected_run_commitments(
     """Audit a semantic proposal rejection without inventing a completed run."""
 
     record = _mapping(record_value, "outer rejected run record")
-    _expect_fields(record, _OUTER_FIELDS, "outer rejected run record")
-    if record["schema"] != OUTER_RUN_SCHEMA:
-        raise RunVerificationError(
-            f"unsupported outer rejected run schema {record['schema']!r}"
-        )
+    _expect_fields(
+        record,
+        _outer_fields_for_schema(record.get("schema")),
+        "outer rejected run record",
+    )
     record_digest = _hex(record["record_digest"], "record.record_digest")
     content = {key: value for key, value in record.items() if key != "record_digest"}
     if canonical_digest(content) != record_digest:
@@ -756,6 +893,9 @@ def audit_rejected_run_commitments(
     plan = _verify_rejected_public_plan(
         record["plan"], episode=episode, corpus_address=corpus_address
     )
+    support = _outer_support_commitment(record)
+    if support is not None:
+        _bind_support_to_plan(support, plan=plan, corpus_address=corpus_address)
     exposure = _mapping(record["exposure"], "rejected run exposure")
     _verify_semantic_exposure(
         exposure,
@@ -794,6 +934,17 @@ def audit_rejected_run_commitments(
         vision["rejected_proposal_attempt"],
         support_bytes_by_name=support_bytes_by_name,
     )
+    if support is not None:
+        expected_presentation, _named_support = _support_presentation_from_commitment(
+            support
+        )
+        actual_presentation = [
+            item.to_dict() for item in attempt_report.attempt.support_presentation
+        ]
+        if actual_presentation != expected_presentation:
+            raise RunVerificationError(
+                "rejected proposal presentation differs from outer support commitment"
+            )
     failure = _mapping(episode["failure"], "rejected episode.failure")
     if failure["error_type"] != RejectedProposalError.__name__ \
             or failure["reason"] != attempt_report.parse_error_reason:
@@ -803,8 +954,15 @@ def audit_rejected_run_commitments(
     if exposure.get("model") != attempt_report.attempt.receipt.requested_model:
         raise RunVerificationError("exposure model differs from rejected receipt model")
 
+    support_limitation = (
+        ()
+        if support is not None
+        else (
+            "legacy v4 public support_commitment_digest has no embedded commitment preimage",
+        )
+    )
     unbound = (
-        "the public support_commitment_digest has no embedded commitment preimage on a pre-freeze failure",
+        *support_limitation,
         "task manifest bytes and split assignment require the supplied corpus",
         "seed_digest commits the private seed but the seed preimage is intentionally absent",
         "split source bytes are not embedded",
@@ -824,6 +982,241 @@ def audit_rejected_run_commitments(
         missing_support_preimages=attempt_report.missing_support_preimages,
         unbound_outer_fields=unbound,
         attempt=attempt_report.attempt,
+    )
+
+
+def audit_support_rejected_run_commitments(
+    record_value: Mapping[str, Any],
+    *,
+    blob_bytes_by_id: Mapping[str, bytes] | None = None,
+) -> SupportRejectedRunVerification:
+    """Verify a fixed proposal and rejected support gate without query release.
+
+    This is deliberately a pre-query archive, not a truncated completed-run
+    archive.  The v5 outer record supplies the nonce-bearing support
+    commitment preimage; the proposal, freeze, and all twelve isolated gate
+    receipts are then replayed against that exact commitment.
+    """
+
+    record = _mapping(record_value, "outer support-rejected run record")
+    if record.get("schema") != OUTER_RUN_SCHEMA:
+        if record.get("schema") == LEGACY_OUTER_RUN_SCHEMA:
+            raise RunVerificationError(
+                "legacy v4 support-rejected runs lack the persisted support "
+                "commitment preimage required for cold verification"
+            )
+        raise RunVerificationError(
+            f"unsupported outer support-rejected schema {record.get('schema')!r}"
+        )
+    _expect_fields(record, _OUTER_FIELDS, "outer support-rejected run record")
+    record_digest = _hex(record["record_digest"], "record.record_digest")
+    content = {key: value for key, value in record.items() if key != "record_digest"}
+    if canonical_digest(content) != record_digest:
+        raise RunVerificationError("outer support-rejected run digest mismatch")
+    if record["run_archive"] is not None:
+        raise RunVerificationError(
+            "support-rejected run cannot contain a completed run archive"
+        )
+
+    corpus_address = _hex(
+        record["corpus_manifest_digest"],
+        "record.corpus_manifest_digest",
+        prefixed=True,
+    )
+    split_digest = record["split_source_digest"]
+    if split_digest is not None:
+        _hex(split_digest, "record.split_source_digest", prefixed=True)
+    release_value = record["official_release"]
+    official_release: OfficialReleaseDescriptor | None
+    if release_value is None:
+        official_release = None
+    else:
+        try:
+            official_release = OfficialReleaseDescriptor.from_dict(
+                _mapping(release_value, "official_release")
+            )
+        except (ReleaseIdentityError, TypeError, ValueError) as exc:
+            raise RunVerificationError(
+                f"official_release descriptor is invalid: {exc}"
+            ) from exc
+        if official_release.corpus_manifest_sha256 != corpus_address:
+            raise RunVerificationError(
+                "official_release corpus manifest differs from support-rejected run"
+            )
+        if official_release.split_sha256 != split_digest:
+            raise RunVerificationError(
+                "official_release split digest differs from support-rejected run"
+            )
+
+    episode = _verify_support_rejected_episode(record["episode"])
+    plan = _verify_rejected_public_plan(
+        record["plan"], episode=episode, corpus_address=corpus_address
+    )
+    support = _outer_support_commitment(record)
+    assert support is not None  # v5 field/schema validation above.
+    _bind_support_to_plan(support, plan=plan, corpus_address=corpus_address)
+
+    exposure = _mapping(record["exposure"], "support-rejected run exposure")
+    _verify_semantic_exposure(
+        exposure,
+        episode=episode,
+        corpus_address=corpus_address,
+    )
+    if exposure.get("plan_digest") != canonical_digest(dict(plan)):
+        raise RunVerificationError("support-rejected exposure plan_digest differs")
+
+    vision = _mapping(record["vision"], "support-rejected vision artifact")
+    _expect_fields(
+        vision,
+        {
+            "schema",
+            "proposal",
+            "rejected_proposal_attempt",
+            "support_gate",
+            "proposal_freeze",
+            "observations",
+        },
+        "support-rejected vision artifact",
+    )
+    if vision["schema"] != VISION_EPISODE_SCHEMA:
+        raise RunVerificationError("support-rejected vision schema differs")
+    if vision["rejected_proposal_attempt"] is not None:
+        raise RunVerificationError(
+            "support-rejected vision cannot contain a rejected proposal attempt"
+        )
+    if vision["observations"] != {}:
+        raise RunVerificationError(
+            "support-rejected vision cannot contain query observations"
+        )
+
+    proposal_data = _mapping(vision["proposal"], "support-rejected proposal")
+    _expect_fields(proposal_data, _PROPOSAL_FIELDS, "support-rejected proposal")
+    if proposal_data["schema"] != PROPOSAL_SCHEMA_VERSION:
+        raise RunVerificationError("support-rejected proposal schema differs")
+    proposal_payload = _mapping(
+        proposal_data["model_payload"], "support-rejected proposal payload"
+    )
+    proposal_receipt = _receipt_from_data(
+        proposal_data["receipt"], "support-rejected proposal"
+    )
+    try:
+        proposal = parse_rule_proposal(
+            proposal_payload,
+            receipt=proposal_receipt,
+            observable_catalog={},
+        )
+    except (ProposalError, TypeError, ValueError) as exc:
+        raise RunVerificationError(
+            f"support-rejected proposal cannot be parsed: {exc}"
+        ) from exc
+    if proposal.to_dict() != dict(proposal_data):
+        raise RunVerificationError(
+            "support-rejected proposal does not reproduce from payload/receipt"
+        )
+
+    support_identities, named_support = _support_presentation_from_commitment(support)
+    support_blobs = tuple(blob for _name, blob in named_support)
+    verified_blob_ids, missing_blob_ids, supplied_bytes = _verify_supplied_blob_bytes(
+        support_blobs,
+        blob_bytes_by_id,
+    )
+    support_panel_set = proposal_receipt.panel_set_digest
+    support_blob_ids = {blob.blob_id for blob in support_blobs}
+    if support_blob_ids <= set(supplied_bytes):
+        support_panel_set = _semantic_support_digest_from_bytes(
+            named_support,
+            supplied_bytes,
+        )
+    _verify_receipt_payload(
+        proposal_receipt,
+        proposal_payload,
+        HYBRID_ONLY_RULE_PROPOSAL_SCHEMA,
+        proposer_prompt({}),
+        input_schema=STRUCTURED_INPUT_DIGEST_SCHEMA,
+        identities=support_identities,
+        panel_set_digest=support_panel_set,
+        label="support-rejected proposal",
+    )
+    freeze = _verify_prequery_hybrid_freeze(
+        vision["proposal_freeze"],
+        proposal=proposal,
+        support=support,
+        plan=plan,
+    )
+
+    receipt_digests = [proposal_receipt.receipt_digest]
+    thread_ids = {proposal_receipt.thread_id}
+    support_observations, gate_result = _verify_support_replay_gate(
+        vision["support_gate"],
+        archived_freeze=vision["proposal_freeze"],
+        support=support,
+        freeze=freeze,
+        proposal=proposal,
+        proposal_receipt=proposal_receipt,
+        receipt_digests=receipt_digests,
+        thread_ids=thread_ids,
+        require_aligned=False,
+    )
+    failure = _mapping(episode["failure"], "support-rejected episode.failure")
+    if failure["reason"] != gate_result:
+        raise RunVerificationError(
+            "support-rejected episode reason differs from replayed gate result"
+        )
+    expected_errors = 2 if gate_result == "observer_failure" else 0
+    expected_score = {
+        "image_correct": 0,
+        "image_total": 2,
+        "image_accuracy": 0.0,
+        "puzzle_correct": False,
+        "puzzle_accuracy": 0.0,
+        "determinate": 0,
+        "abstentions": 2,
+        "errors": expected_errors,
+    }
+    if dict(_mapping(episode["score"], "support-rejected episode.score")) \
+            != expected_score:
+        raise RunVerificationError(
+            "support-rejected episode score differs from replayed gate result"
+        )
+    if exposure.get("model") != proposal_receipt.requested_model:
+        raise RunVerificationError(
+            "support-rejected exposure model differs from proposal receipt model"
+        )
+
+    gate = _mapping(vision["support_gate"], "support-rejected support gate")
+    unbound = (
+        "corpus manifest bytes are not embedded; only its digest is tied to support",
+        "task manifest bytes and split assignment require the supplied corpus",
+        "seed_digest commits the private seed but the seed preimage is intentionally absent",
+        "split source bytes are not embedded",
+        "exposure-ledger predecessor authenticity needs the ledger or an external anchor",
+        "transport JSONL event-stream bytes are not embedded; receipt digests are bound",
+    )
+    if missing_blob_ids:
+        unbound = (
+            *unbound,
+            "support byte preimages are absent or partial; semantic-panel "
+            "decoding was not replayed",
+        )
+    return SupportRejectedRunVerification(
+        run_id=support.run_id,
+        record_digest=record_digest,
+        plan_digest=canonical_digest(dict(plan)),
+        support_commitment_digest=support.digest(),
+        proposal_digest=proposal.digest.removeprefix("sha256:"),
+        proposal_freeze_digest=freeze.digest(),
+        support_gate_digest=str(gate["gate_digest"]),
+        support_gate_result=gate_result,
+        official_release_digest=(
+            official_release.digest if official_release is not None else None
+        ),
+        receipt_digests=tuple(receipt_digests),
+        verified_blob_ids=verified_blob_ids,
+        missing_blob_preimages=missing_blob_ids,
+        unbound_outer_fields=unbound,
+        support=support,
+        proposal=proposal,
+        support_observations=support_observations,
     )
 
 
@@ -966,10 +1359,10 @@ def _verify_public_plan(
     return plan
 
 
-def _support_presentation(
-    archive: VerifiedRunArchive,
+def _support_presentation_from_commitment(
+    support: SupportCommitment,
 ) -> tuple[list[dict[str, object]], tuple[tuple[str, BlobRef], ...]]:
-    by_id = {item.panel.blob_id: item for item in archive.bundle.support.support}
+    by_id = {item.panel.blob_id: item for item in support.support}
     expected: list[tuple[str, str, bool]] = [
         (f"pos_{index}.png", f"support-positive-{index}", True)
         for index in range(6)
@@ -990,6 +1383,12 @@ def _support_presentation(
     return [_image_identity(name, blob) for name, blob in named], tuple(named)
 
 
+def _support_presentation(
+    archive: VerifiedRunArchive,
+) -> tuple[list[dict[str, object]], tuple[tuple[str, BlobRef], ...]]:
+    return _support_presentation_from_commitment(archive.bundle.support)
+
+
 def _blob_from_gate_data(value: object, label: str) -> BlobRef:
     data = _mapping(value, label)
     _expect_fields(data, {"blob_id", "sha256", "byte_count", "media_type"}, label)
@@ -1008,18 +1407,20 @@ def _verify_support_replay_gate(
     value: object,
     *,
     archived_freeze: object,
-    archive: VerifiedRunArchive,
+    support: SupportCommitment,
+    freeze: ProposalFreeze,
     proposal: RuleProposal,
     proposal_receipt: CodexReceipt,
     receipt_digests: list[str],
     thread_ids: set[str],
-) -> tuple[tuple[str, HybridObservation], ...]:
-    """Replay all twelve label-blind support observations from the archive."""
+    require_aligned: bool,
+) -> tuple[tuple[tuple[str, HybridObservation], ...], str]:
+    """Replay twelve label-blind support observations against their preimage."""
 
     freeze_data = _mapping(archived_freeze, "vision proposal_freeze")
-    if dict(freeze_data) != archive.bundle.freeze.to_data():
+    if dict(freeze_data) != freeze.to_data():
         raise RunVerificationError(
-            "vision proposal_freeze differs from the sealed run archive"
+            "vision proposal_freeze differs from the verified proposal freeze"
         )
 
     gate = _mapping(value, "vision support gate")
@@ -1037,12 +1438,12 @@ def _verify_support_replay_gate(
     _expect_fields(gate, gate_fields, "vision support gate")
     if gate["version"] != "support-replay-gate-artifact/v1":
         raise RunVerificationError("support gate artifact version differs")
-    if gate["run_id"] != archive.bundle.support.run_id:
-        raise RunVerificationError("support gate run differs from archive")
+    if gate["run_id"] != support.run_id:
+        raise RunVerificationError("support gate run differs from support commitment")
     proposer_digest = proposal.digest.removeprefix("sha256:")
     if gate["proposal_digest"] != proposer_digest:
         raise RunVerificationError("support gate proposal digest differs")
-    if gate["support_commitment_digest"] != archive.bundle.support.digest():
+    if gate["support_commitment_digest"] != support.digest():
         raise RunVerificationError("support gate support commitment differs")
     expected_policy = SupportGatePolicy.empirical().to_data()
     policy = _mapping(gate["policy"], "support gate policy")
@@ -1052,9 +1453,9 @@ def _verify_support_replay_gate(
     entries_value = gate["ordered_entries"]
     if not isinstance(entries_value, list) or len(entries_value) != 12:
         raise RunVerificationError("support gate must contain exactly twelve ordered entries")
-    expected_support = archive.bundle.support.support
+    expected_support = support.support
     if len(expected_support) != 12:
-        raise RunVerificationError("archive support is not exactly six plus six")
+        raise RunVerificationError("support commitment is not exactly six plus six")
 
     observations: list[tuple[str, HybridObservation]] = []
     dispositions: list[Disposition] = []
@@ -1169,17 +1570,21 @@ def _verify_support_replay_gate(
         expected_result = "unsupported"
     if gate["result"] != expected_result:
         raise RunVerificationError("support gate result does not reproduce")
-    if expected_result != "aligned":
+    if require_aligned and expected_result != "aligned":
         raise RunVerificationError(
             "completed run did not pass the strict six-present/six-nonmatch gate"
+        )
+    if not require_aligned and expected_result == "aligned":
+        raise RunVerificationError(
+            "support-rejected run contains an aligned support gate"
         )
     gate_content = {key: gate[key] for key in gate_fields if key != "gate_digest"}
     gate_digest = canonical_digest(gate_content)
     if gate["gate_digest"] != gate_digest:
         raise RunVerificationError("support gate digest does not reproduce")
-    if archive.bundle.freeze.support_gate_digest != gate_digest:
+    if freeze.support_gate_digest != gate_digest:
         raise RunVerificationError("proposal freeze does not bind the support gate")
-    return tuple(observations)
+    return tuple(observations), expected_result
 
 
 def _verify_canonical_hybrid_compilation(
@@ -1233,6 +1638,59 @@ def _verify_canonical_hybrid_compilation(
         raise RunVerificationError(
             "frozen attachment contract differs from verifier-owned HYBRID compilation"
         )
+
+
+def _verify_prequery_hybrid_freeze(
+    value: object,
+    *,
+    proposal: RuleProposal,
+    support: SupportCommitment,
+    plan: Mapping[str, Any],
+) -> ProposalFreeze:
+    """Rebuild and bind a freeze from a run that stopped before query release."""
+
+    try:
+        freeze = verify_proposal_freeze_data(value)
+        compiled = compile_hybrid_proposal(
+            proposal,
+            issued_by=_text(plan["verifier_id"], "plan.verifier_id"),
+        )
+    except (ArtifactTamperError, SynthesisError, TypeError, ValueError) as exc:
+        raise RunVerificationError(
+            f"support-rejected proposal freeze is invalid: {exc}"
+        ) from exc
+
+    proposal_digest = proposal.digest.removeprefix("sha256:")
+    if freeze.run_id != support.run_id:
+        raise RunVerificationError("proposal freeze belongs to another run")
+    if freeze.proposal_id != "proposal-" + proposal_digest[:16]:
+        raise RunVerificationError("proposal freeze has a noncanonical proposal id")
+    if freeze.support_commitment_digest != support.digest():
+        raise RunVerificationError("proposal freeze does not bind outer support")
+    if freeze.proposer_digest != proposal_digest:
+        raise RunVerificationError("proposal freeze does not bind visual proposal")
+    if freeze.formula.to_data() != compiled.formula.to_data():
+        raise RunVerificationError(
+            "proposal freeze formula differs from verifier-owned HYBRID compilation"
+        )
+    if freeze.registry_digest != compiled.registry.digest():
+        raise RunVerificationError(
+            "proposal freeze registry differs from verifier-owned HYBRID compilation"
+        )
+    if freeze.attachment_contract_digest != compiled.attachment_contract.digest():
+        raise RunVerificationError(
+            "proposal freeze attachment differs from verifier-owned HYBRID compilation"
+        )
+    expected_nonce = hashlib.sha256(
+        (
+            PROTOCOL_VERSION
+            + "\0proposal-freeze-nonce\0"
+            + canonical_digest(dict(plan))
+        ).encode("utf-8")
+    ).hexdigest()
+    if freeze.verifier_nonce != expected_nonce:
+        raise RunVerificationError("proposal freeze verifier nonce does not reproduce")
+    return freeze
 
 
 def _query_presentation(
@@ -1444,9 +1902,11 @@ def audit_completed_run_commitments(
     """
 
     record = _mapping(record_value, "outer run record")
-    _expect_fields(record, _OUTER_FIELDS, "outer run record")
-    if record["schema"] != OUTER_RUN_SCHEMA:
-        raise RunVerificationError(f"unsupported outer run schema {record['schema']!r}")
+    _expect_fields(
+        record,
+        _outer_fields_for_schema(record.get("schema")),
+        "outer run record",
+    )
     record_digest = _hex(record["record_digest"], "record.record_digest")
     content = {key: value for key, value in record.items() if key != "record_digest"}
     if canonical_digest(content) != record_digest:
@@ -1494,6 +1954,17 @@ def audit_completed_run_commitments(
         archive=archive,
         corpus_address=corpus_address,
     )
+    outer_support = _outer_support_commitment(record)
+    if outer_support is not None:
+        _bind_support_to_plan(
+            outer_support,
+            plan=plan,
+            corpus_address=corpus_address,
+        )
+        if outer_support != archive.bundle.support:
+            raise RunVerificationError(
+                "outer support commitment differs from completed run archive"
+            )
 
     exposure = _mapping(record["exposure"], "run exposure")
     _verify_semantic_exposure(
@@ -1591,14 +2062,16 @@ def audit_completed_run_commitments(
 
     receipt_digests = [proposal_receipt.receipt_digest]
     thread_ids = {proposal_receipt.thread_id}
-    support_observations = _verify_support_replay_gate(
+    support_observations, _gate_result = _verify_support_replay_gate(
         vision["support_gate"],
         archived_freeze=vision["proposal_freeze"],
-        archive=archive,
+        support=archive.bundle.support,
+        freeze=archive.bundle.freeze,
         proposal=proposal,
         proposal_receipt=proposal_receipt,
         receipt_digests=receipt_digests,
         thread_ids=thread_ids,
+        require_aligned=True,
     )
 
     exposure_model = exposure.get("model")
@@ -1730,6 +2203,22 @@ def verify_rejected_run_data(
     return report
 
 
+def verify_support_rejected_run_data(
+    record: Mapping[str, Any],
+    *,
+    blob_bytes_by_id: Mapping[str, bytes] | None = None,
+) -> SupportRejectedRunVerification:
+    """Strictly replay a rejected support gate and all support PNG preimages."""
+
+    report = audit_support_rejected_run_commitments(
+        record,
+        blob_bytes_by_id=blob_bytes_by_id,
+    )
+    if report.missing_blob_preimages:
+        raise MissingBlobPreimagesError(report.missing_blob_preimages)
+    return report
+
+
 def _reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -1801,21 +2290,66 @@ def verify_rejected_run_bytes(
     )
 
 
+def verify_support_rejected_run_bytes(
+    payload: bytes | str,
+    *,
+    blob_bytes_by_id: Mapping[str, bytes] | None = None,
+    require_blob_preimages: bool = True,
+) -> SupportRejectedRunVerification:
+    """Reject non-canonical JSON, then replay one rejected support gate."""
+
+    raw = payload.encode("utf-8") if isinstance(payload, str) else payload
+    try:
+        decoded = json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
+    except RunVerificationError:
+        raise
+    except (UnicodeError, json.JSONDecodeError, TypeError) as exc:
+        raise RunVerificationError(
+            f"cannot decode outer support-rejected run: {exc}"
+        ) from exc
+    if not isinstance(decoded, Mapping):
+        raise RunVerificationError(
+            "outer support-rejected run root must be a JSON object"
+        )
+    try:
+        expected = canonical_json(decoded)
+    except ValueError as exc:
+        raise RunVerificationError(str(exc)) from exc
+    if raw != expected:
+        raise RunVerificationError(
+            "outer support-rejected run bytes are not canonical JSON"
+        )
+    if require_blob_preimages:
+        return verify_support_rejected_run_data(
+            decoded,
+            blob_bytes_by_id=blob_bytes_by_id,
+        )
+    return audit_support_rejected_run_commitments(
+        decoded,
+        blob_bytes_by_id=blob_bytes_by_id,
+    )
+
+
 __all__ = [
     "CompletedRunVerification",
     "EXPOSURE_SCHEMA",
+    "LEGACY_OUTER_RUN_SCHEMA",
     "MissingBlobPreimagesError",
     "MissingSupportPreimagesError",
     "OUTER_RUN_SCHEMA",
     "RejectedProposalAttemptVerification",
     "RejectedRunVerification",
+    "SupportRejectedRunVerification",
     "RunVerificationError",
     "VISION_EPISODE_SCHEMA",
     "audit_completed_run_commitments",
     "audit_rejected_proposal_attempt_data",
     "audit_rejected_run_commitments",
+    "audit_support_rejected_run_commitments",
     "verify_completed_run_bytes",
     "verify_completed_run_data",
     "verify_rejected_run_bytes",
     "verify_rejected_run_data",
+    "verify_support_rejected_run_bytes",
+    "verify_support_rejected_run_data",
 ]
