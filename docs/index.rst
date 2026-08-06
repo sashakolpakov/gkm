@@ -16,8 +16,7 @@ other proof checker may only consume an already-frozen artifact as a detached
 optional sidecar; installing or deleting it must not change any result,
 decision, or ID.
 
-The current experiment has a terminal first attempt and a distinct repaired
-attempt:
+The scientific and operational record is explicit:
 
 * A1 failed before scoring.  All 48 proposer calls succeeded, producing 37
   accepted soft claims, 10 direct-only records, and one parser rejection, but
@@ -33,17 +32,26 @@ attempt:
   but outputs were lost, labels were not revealed, and no semantic inference is
   valid.  Its incident file digest is ``sha256:4ace426b...7ccd4``.  The same
   cohort may not be rerun.
-* Stage B is unauthorized by both A1 and A2.  Any separately authorized future
-  run would remain descriptive.  The completed semantic audit leaves exactly
-  24 BD + 0 constituent-disjoint HD = 24 DRILL units.  The earlier 28-unit
-  upper bound did not project complete-A2 HD constituent exposures.  DEV
-  against the full ledger has 16 BD + 0 HD units, so the default 24-task request fails before
-  pixels and cannot authorize SEALED.
-* New Stage-A receipts bind the complete executable Bongard Python source
-  boundary.  Source drift
-  after exposure now persists a typed failure with labels withheld.  Exact-ID
-  caches reduced synthetic Stage-A replay from 161.15 s to 11.50 s and Stage B
-  from 218.88 s to 51.10 s.
+* A3 completed 22 proposer calls and 15 scorer calls, but its fixed upper bin
+  had only six clusters against a minimum of eight.  It is a terminal
+  underpopulated-bin failure, not a benchmark score.  Intended orientation was
+  13/15 versus 2/15 for the complement; negation did not win.
+* The first live atomic N=1 persisted exact-task exposure but neither a
+  prediction nor a terminal.  Its successful-call count is irrecoverably
+  unknown in 0--29.  The task is consumed without reroll, and the incident is
+  operational rather than a Bongard result.
+* Attempt two is frozen as a distinct successor.  Active predecessor
+  ``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``
+  is exactly one append after A3 ledger
+  ``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``.
+  The remaining universe is exactly nine IDs, digest
+  ``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
+  The pinned launcher stages before secrets and exposure; a fresh
+  mode-``0700`` journal writes an intent before each of 29 transports, each
+  result before the next, and its terminal before runner return.  Journals
+  cannot be resumed or retried.  No live successor outcome is claimed.
+* Stage B is unauthorized by A1, A2, and A3.  Strict DRILL capacity after A3 is
+  zero; DEV remains 16 BD + 0 HD under the same ledger-disjoint policy.
 * Visual-semantic execution on the official SEALED/test split is hard-disabled.
 
 No score from this sequence is an official benchmark result.  Old

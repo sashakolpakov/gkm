@@ -90,10 +90,13 @@ benchmark result. Its central claims are deliberately narrow:
   semantic-truth, benchmark, and official-test authority false; calibrated
   semantic selection is disabled pending a cold-validatable typed calibration
   artifact.
-- The first N=1 frame contains ten repeated-generator exact-unseen training
-  tasks. It tests transport/synthesis, not independent generalization. Richer
-  typed grounding and powered label-blind evaluation remain future work. Lean
-  remains an optional removable sidecar.
+- The historical first N=1 frame contained ten repeated-generator exact-unseen
+  training tasks. It tested transport/synthesis, not independent
+  generalization. One task was exposed and consumed, so the active successor
+  frame contains exactly nine IDs, digest
+  `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+  Richer typed grounding and powered label-blind evaluation remain future
+  work. Lean remains an optional removable sidecar.
 - The first live N=1 attempt, from commit
   `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
   `bongard-atomic-pre-smoke-20260806`, is an operational wrapper failure, not a
@@ -112,6 +115,16 @@ benchmark result. Its central claims are deliberately narrow:
   [`../data/atomic_smoke_n1_operational_failure_v1.json`](../data/atomic_smoke_n1_operational_failure_v1.json).
 - Atomic stores require mode `0700`. A pre-exposure setup invocation rejected
   a `0755` cache store and consumed nothing.
+- Attempt two is a distinct pre-live successor, not a reroll. It binds the
+  incident, the historical A3 ledger
+  `sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`,
+  and active predecessor
+  `sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+  The native launcher stages before secret generation and exact-task
+  exposure. A fresh empty mode-`0700` journal persists a bound header, an
+  exact intent before each of 29 transports, each validated result before the
+  next intent, and its terminal before runner return. Existing or partial
+  journals cannot be resumed or retried. No attempt-two outcome is claimed.
 - New receipts bind the complete executable Bongard Python source boundary;
   post-exposure source drift
   now persists a typed failed receipt with labels withheld. Exact-identity
@@ -122,7 +135,8 @@ benchmark result. Its central claims are deliberately narrow:
 The pinned extracted-corpus manifest is
 `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138`.
 There are no result placeholders: A2 is an invalidated incident and A3 is a
-terminal scientific failure, not a pending measurement.
+terminal scientific failure, not a pending measurement. The journaled atomic
+attempt two is pre-live and has no outcome in this manuscript state.
 
 Build the canonical paper from the repository root:
 

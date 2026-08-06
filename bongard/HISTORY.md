@@ -199,13 +199,13 @@ archive permanently denies calibration, semantic-truth, benchmark, and
 official-test authority. Calibrated semantic selection is hard-disabled until
 Python can cold-validate a real typed calibration artifact and interval rule.
 
-The production precommit authenticates all 12,000 tasks and the exact A3
-successor ledger before metadata-only selection. Its N=1 frame contains ten
-exact-unseen training tasks from already exposed Basic-shape generators,
-digest
+The first production precommit authenticated all 12,000 tasks and the exact
+A3 successor ledger before metadata-only selection. Its original N=1 frame
+historically contained ten exact-unseen training tasks from already exposed
+Basic-shape generators, digest
 `sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8`.
-The selected exact-task exposure is durably persisted before any selected
-panel is hashed. This frame is intentionally useful only for an exploratory
+The selected exact-task exposure was durably persisted before any selected
+panel was hashed. This frame was intentionally useful only for an exploratory
 transport/synthesis smoke; it is not independent evaluation.
 
 Before the first live atomic run, the offline genuine-receipt harness completed
@@ -238,6 +238,26 @@ incident record is
 [`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
 Its file SHA-256 is
 `2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`.
+
+The next pre-live hardening step defines attempt two as a distinct successor,
+not a reroll. Its active predecessor is the first attempt's exact exposure
+successor,
+`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`,
+which must validate as exactly one canonical append after historical A3 ledger
+`sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`.
+The incident record and its prior config/reason lineage are also mandatory
+inputs. With the consumed first task excluded, the active frame has exactly
+nine IDs, digest
+`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+
+Attempt two also closes the lost-call-count hole. The pinned native launcher is
+staged before any selection, episode, or label secret and before exact-task
+exposure. A fresh empty mode-`0700` journal durably records a bound header, an
+exact intent before each of the fixed 29 transports, each validated result
+before the next intent, and the terminal before the runner returns. A journal
+header consumes the attempt: an identical header or partial prefix cannot be
+resumed or retried. This paragraph records a frozen pre-live protocol; it does
+not record an attempt-two outcome.
 
 The A2 incident also led to source-bound v2 command receipts and durable
 operational failures for any post-precommit source change. Identity-preserving

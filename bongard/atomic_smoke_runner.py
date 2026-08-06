@@ -60,8 +60,20 @@ from bongard.transport import (
 )
 
 
-ATOMIC_SMOKE_RUN_SCHEMA = "gkm.bongard-atomic-smoke-run.v1"
+ATOMIC_SMOKE_RUN_SCHEMA = "gkm.bongard-atomic-smoke-run.v2"
 ATOMIC_SMOKE_CALL_SCHEMA = "gkm.bongard-atomic-smoke-call.v1"
+ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA = (
+    "gkm.bongard-atomic-smoke-call-journal-header.v1"
+)
+ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA = (
+    "gkm.bongard-atomic-smoke-call-journal-intent.v1"
+)
+ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA = (
+    "gkm.bongard-atomic-smoke-call-journal-result.v1"
+)
+ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA = (
+    "gkm.bongard-atomic-smoke-call-journal-receipt.v1"
+)
 ATOMIC_SMOKE_PREDICTION_SCHEMA = "gkm.bongard-atomic-smoke-predictions.v1"
 ATOMIC_SMOKE_LABEL_REVEAL_SCHEMA = "gkm.bongard-atomic-smoke-label-reveal.v1"
 ATOMIC_SMOKE_PERSISTENCE_SCHEMA = "gkm.bongard-atomic-smoke-persistence.v1"
@@ -185,7 +197,7 @@ def atomic_smoke_run_protocol_digest() -> str:
 
     return canonical_digest(
         {
-            "schema": "gkm.bongard-atomic-smoke-run-protocol.v1",
+            "schema": "gkm.bongard-atomic-smoke-run-protocol.v2",
             "run_schema": ATOMIC_SMOKE_RUN_SCHEMA,
             "call_schema": ATOMIC_SMOKE_CALL_SCHEMA,
             "description_prompt": _DESCRIPTION_PROMPT,
@@ -216,6 +228,22 @@ def atomic_smoke_run_protocol_digest() -> str:
                 "protocol": "exclusive-create-or-identical-fsync-reload/v1",
                 "core_owned": True,
                 "arbitrary_callback": False,
+            },
+            "forensic_call_journal": {
+                "header_schema": ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA,
+                "intent_schema": ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA,
+                "result_schema": ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA,
+                "receipt_schema": ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA,
+                "chain": "header-intent-result/v1",
+                "intent_before_external_transport": True,
+                "result_after_receipt_validation": True,
+                "next_call_after_durable_result_only": True,
+                "persistence": "exclusive-create-or-identical-fsync-reload/v1",
+                "directory": "preexisting-canonical-nonsymlink-0700-current-uid/v1",
+                "external_command_config_digest_required": True,
+                "resume": False,
+                "retry": False,
+                "terminal_run_persisted_before_return": True,
             },
             "cold_replay_external_label_nonce_required": True,
             "cold_replay_external_precommit_required": True,
@@ -851,6 +879,970 @@ def _append_call(
     calls.append(call)
 
 
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeJournalHeader:
+    """Durable identity of one call journal; creation consumes the attempt."""
+
+    precommit_digest: str
+    precommit_public_data: Mapping[str, Any]
+    command_config_digest: str
+    source_dependency_digest: str
+    protocol_digest: str
+    expected_launcher_digest: str
+    model: str
+    reasoning_effort: str
+    persistence_protocol: str
+    header_digest: str
+
+    def __post_init__(self) -> None:
+        _address(self.precommit_digest, "journal precommit digest")
+        precommit = AtomicSmokePrecommit.from_data(
+            _thaw_json(self.precommit_public_data)  # type: ignore[arg-type]
+        )
+        if (
+            precommit.digest != self.precommit_digest
+            or precommit.source_dependency_digest != self.source_dependency_digest
+        ):
+            raise AtomicSmokeRunError("journal header differs from public precommit")
+        _address(self.command_config_digest, "journal command config digest")
+        _digest(self.source_dependency_digest, "journal source dependency digest")
+        if self.protocol_digest != atomic_smoke_run_protocol_digest():
+            raise AtomicSmokeRunError("journal protocol digest differs")
+        _digest(self.expected_launcher_digest, "journal launcher digest")
+        _text(self.model, "journal model", maximum=128)
+        _text(self.reasoning_effort, "journal reasoning effort", maximum=32)
+        if self.persistence_protocol != (
+            "exclusive-create-or-identical-fsync-reload/v1"
+        ):
+            raise AtomicSmokeRunError("journal persistence protocol differs")
+        _digest(self.header_digest, "journal header digest")
+        if self.header_digest != canonical_digest(self.content_data()):
+            raise AtomicSmokeRunError("journal header digest differs")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA,
+            "precommit_digest": self.precommit_digest,
+            "precommit_public_data": _thaw_json(self.precommit_public_data),
+            "command_config_digest": self.command_config_digest,
+            "source_dependency_digest": self.source_dependency_digest,
+            "protocol_digest": self.protocol_digest,
+            "expected_launcher_digest": self.expected_launcher_digest,
+            "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "persistence_protocol": self.persistence_protocol,
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "header_digest": self.header_digest}
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        precommit: AtomicSmokePrecommit,
+        command_config_digest: str,
+        source_dependency_digest: str,
+        protocol_digest: str,
+        expected_launcher_digest: str,
+        model: str,
+        reasoning_effort: str,
+    ) -> "AtomicSmokeJournalHeader":
+        values: dict[str, Any] = {
+            "precommit_digest": precommit.digest,
+            "precommit_public_data": _freeze_json(precommit.to_data()),
+            "command_config_digest": command_config_digest,
+            "source_dependency_digest": source_dependency_digest,
+            "protocol_digest": protocol_digest,
+            "expected_launcher_digest": expected_launcher_digest,
+            "model": model,
+            "reasoning_effort": reasoning_effort,
+            "persistence_protocol": (
+                "exclusive-create-or-identical-fsync-reload/v1"
+            ),
+        }
+        content = {
+            "schema": ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA,
+            **{
+                key: _thaw_json(value)
+                if key == "precommit_public_data"
+                else value
+                for key, value in values.items()
+            },
+        }
+        return cls(**values, header_digest=canonical_digest(content))
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeJournalHeader":
+        data = _mapping(
+            value,
+            frozenset(
+                {
+                    "schema",
+                    "precommit_digest",
+                    "precommit_public_data",
+                    "command_config_digest",
+                    "source_dependency_digest",
+                    "protocol_digest",
+                    "expected_launcher_digest",
+                    "model",
+                    "reasoning_effort",
+                    "persistence_protocol",
+                    "header_digest",
+                }
+            ),
+            "atomic smoke journal header",
+        )
+        if data["schema"] != ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA or not isinstance(
+            data["precommit_public_data"], Mapping
+        ):
+            raise AtomicSmokeRunError("unsupported or malformed journal header")
+        result = cls(
+            precommit_digest=data["precommit_digest"],
+            precommit_public_data=_freeze_json(
+                _clone_json(data["precommit_public_data"], "journal precommit")
+            ),  # type: ignore[arg-type]
+            command_config_digest=data["command_config_digest"],
+            source_dependency_digest=data["source_dependency_digest"],
+            protocol_digest=data["protocol_digest"],
+            expected_launcher_digest=data["expected_launcher_digest"],
+            model=data["model"],
+            reasoning_effort=data["reasoning_effort"],
+            persistence_protocol=data["persistence_protocol"],
+            header_digest=data["header_digest"],
+        )
+        if result.to_data() != _clone_json(value, "journal header"):
+            raise AtomicSmokeRunError("journal header is not canonical")
+        return result
+
+
+def _expected_call_panel(ordinal: int) -> str | None:
+    if 1 <= ordinal <= 12:
+        return f"support-panel-{ordinal - 1:02d}"
+    if ordinal == 13:
+        return None
+    if 14 <= ordinal <= 25:
+        return f"support-panel-{ordinal - 14:02d}"
+    if 26 <= ordinal <= 27:
+        return f"query-{ordinal - 26}"
+    if 28 <= ordinal <= 29:
+        return f"query-{ordinal - 28}"
+    raise AtomicSmokeRunError("journal ordinal is outside the 29-call schedule")
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeCallIntent:
+    """Exact input envelope durably committed before one external call."""
+
+    header_digest: str
+    previous_head_digest: str
+    ordinal: int
+    phase: str
+    domain: str
+    panel_id: str | None
+    image_name: str | None
+    image_digest: str | None
+    image_byte_count: int | None
+    atom_ids: tuple[str, ...]
+    prompt: str
+    output_schema: Mapping[str, Any]
+    intent_digest: str
+
+    def __post_init__(self) -> None:
+        _digest(self.header_digest, "journal intent header digest")
+        _digest(self.previous_head_digest, "journal intent previous head")
+        if type(self.ordinal) is not int or not 1 <= self.ordinal <= 29:
+            raise AtomicSmokeRunError(
+                "journal intent ordinal must be a literal integer in 1..29"
+            )
+        if self.phase != _SUCCESS_PHASES[self.ordinal - 1]:
+            raise AtomicSmokeRunError("journal intent phase differs from schedule")
+        if self.panel_id != _expected_call_panel(self.ordinal):
+            raise AtomicSmokeRunError("journal intent panel differs from schedule")
+        expected_domain = "text" if self.ordinal == 13 else "named-image"
+        if self.domain != expected_domain:
+            raise AtomicSmokeRunError("journal intent domain differs from schedule")
+        if self.atom_ids != tuple(sorted(self.atom_ids)) or len(self.atom_ids) != len(
+            set(self.atom_ids)
+        ):
+            raise AtomicSmokeRunError("journal intent atom IDs are not canonical")
+        for atom_id in self.atom_ids:
+            _digest(atom_id, "journal intent atom ID")
+        _prompt_text(self.prompt, "journal intent prompt")
+        validate_codex_strict_output_schema(
+            _clone_json(_thaw_json(self.output_schema), "journal output schema")
+        )
+        if self.domain == "text":
+            if any(
+                value is not None
+                for value in (
+                    self.panel_id,
+                    self.image_name,
+                    self.image_digest,
+                    self.image_byte_count,
+                )
+            ):
+                raise AtomicSmokeRunError("text intent contains image evidence")
+        else:
+            if (
+                self.image_name != "panel.png"
+                or self.image_digest is None
+                or self.image_byte_count is None
+            ):
+                raise AtomicSmokeRunError("named-image intent lacks image evidence")
+            _digest(self.image_digest, "journal intent image digest")
+            if type(self.image_byte_count) is not int or self.image_byte_count <= 0:
+                raise AtomicSmokeRunError(
+                    "journal intent image byte count must be a literal positive integer"
+                )
+        _digest(self.intent_digest, "journal intent digest")
+        if self.intent_digest != canonical_digest(self.content_data()):
+            raise AtomicSmokeRunError("journal intent digest differs")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA,
+            "header_digest": self.header_digest,
+            "previous_head_digest": self.previous_head_digest,
+            "ordinal": self.ordinal,
+            "phase": self.phase,
+            "domain": self.domain,
+            "panel_id": self.panel_id,
+            "image_name": self.image_name,
+            "image_digest": self.image_digest,
+            "image_byte_count": self.image_byte_count,
+            "atom_ids": list(self.atom_ids),
+            "prompt": self.prompt,
+            "output_schema": _thaw_json(self.output_schema),
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "intent_digest": self.intent_digest}
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        header_digest: str,
+        previous_head_digest: str,
+        ordinal: int,
+        phase: str,
+        panel_id: str | None,
+        atom_ids: Sequence[str],
+        prompt: str,
+        output_schema: Mapping[str, Any],
+        image_payload: bytes | None,
+    ) -> "AtomicSmokeCallIntent":
+        schema = _freeze_json(_clone_json(output_schema, "journal output schema"))
+        values: dict[str, Any] = {
+            "header_digest": header_digest,
+            "previous_head_digest": previous_head_digest,
+            "ordinal": ordinal,
+            "phase": phase,
+            "domain": "text" if image_payload is None else "named-image",
+            "panel_id": panel_id,
+            "image_name": None if image_payload is None else "panel.png",
+            "image_digest": (
+                None
+                if image_payload is None
+                else hashlib.sha256(image_payload).hexdigest()
+            ),
+            "image_byte_count": (
+                None if image_payload is None else len(image_payload)
+            ),
+            "atom_ids": tuple(sorted(atom_ids)),
+            "prompt": prompt,
+            "output_schema": schema,
+        }
+        content = {
+            "schema": ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA,
+            **{
+                key: list(value)
+                if key == "atom_ids"
+                else _thaw_json(value)
+                if key == "output_schema"
+                else value
+                for key, value in values.items()
+            },
+        }
+        return cls(**values, intent_digest=canonical_digest(content))
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCallIntent":
+        data = _mapping(
+            value,
+            frozenset(
+                {
+                    "schema",
+                    "header_digest",
+                    "previous_head_digest",
+                    "ordinal",
+                    "phase",
+                    "domain",
+                    "panel_id",
+                    "image_name",
+                    "image_digest",
+                    "image_byte_count",
+                    "atom_ids",
+                    "prompt",
+                    "output_schema",
+                    "intent_digest",
+                }
+            ),
+            "atomic smoke journal intent",
+        )
+        if (
+            data["schema"] != ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA
+            or not isinstance(data["atom_ids"], list)
+            or not isinstance(data["output_schema"], Mapping)
+        ):
+            raise AtomicSmokeRunError("unsupported or malformed journal intent")
+        result = cls(
+            header_digest=data["header_digest"],
+            previous_head_digest=data["previous_head_digest"],
+            ordinal=data["ordinal"],
+            phase=data["phase"],
+            domain=data["domain"],
+            panel_id=data["panel_id"],
+            image_name=data["image_name"],
+            image_digest=data["image_digest"],
+            image_byte_count=data["image_byte_count"],
+            atom_ids=tuple(data["atom_ids"]),
+            prompt=data["prompt"],
+            output_schema=_freeze_json(
+                _clone_json(data["output_schema"], "journal intent schema")
+            ),  # type: ignore[arg-type]
+            intent_digest=data["intent_digest"],
+        )
+        if result.to_data() != _clone_json(value, "journal intent"):
+            raise AtomicSmokeRunError("journal intent is not canonical")
+        return result
+
+
+def _validate_call_against_intent(
+    call: AtomicSmokeCallRecord, intent: AtomicSmokeCallIntent
+) -> None:
+    if (
+        call.ordinal != intent.ordinal
+        or call.phase != intent.phase
+        or call.domain != intent.domain
+        or call.panel_id != intent.panel_id
+        or call.image_name != intent.image_name
+        or call.image_digest != intent.image_digest
+        or call.image_byte_count != intent.image_byte_count
+        or call.atom_ids != intent.atom_ids
+        or call.prompt != intent.prompt
+        or canonical_json(_thaw_json(call.output_schema))
+        != canonical_json(_thaw_json(intent.output_schema))
+    ):
+        raise AtomicSmokeRunError("journal result differs from exact durable intent")
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeCallJournalResult:
+    """A validated call record durably closing exactly one intent."""
+
+    header_digest: str
+    previous_head_digest: str
+    call: AtomicSmokeCallRecord
+    result_digest: str
+
+    def __post_init__(self) -> None:
+        _digest(self.header_digest, "journal result header digest")
+        _digest(self.previous_head_digest, "journal result previous head")
+        _digest(self.result_digest, "journal result digest")
+        if self.result_digest != canonical_digest(self.content_data()):
+            raise AtomicSmokeRunError("journal result digest differs")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA,
+            "header_digest": self.header_digest,
+            "previous_head_digest": self.previous_head_digest,
+            "call": self.call.to_data(),
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "result_digest": self.result_digest}
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        header_digest: str,
+        intent: AtomicSmokeCallIntent,
+        call: AtomicSmokeCallRecord,
+    ) -> "AtomicSmokeCallJournalResult":
+        _validate_call_against_intent(call, intent)
+        values = {
+            "header_digest": header_digest,
+            "previous_head_digest": intent.intent_digest,
+            "call": call,
+        }
+        content = {
+            "schema": ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA,
+            "header_digest": header_digest,
+            "previous_head_digest": intent.intent_digest,
+            "call": call.to_data(),
+        }
+        return cls(**values, result_digest=canonical_digest(content))
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCallJournalResult":
+        data = _mapping(
+            value,
+            frozenset(
+                {
+                    "schema",
+                    "header_digest",
+                    "previous_head_digest",
+                    "call",
+                    "result_digest",
+                }
+            ),
+            "atomic smoke journal result",
+        )
+        if data["schema"] != ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA or not isinstance(
+            data["call"], Mapping
+        ):
+            raise AtomicSmokeRunError("unsupported or malformed journal result")
+        result = cls(
+            header_digest=data["header_digest"],
+            previous_head_digest=data["previous_head_digest"],
+            call=AtomicSmokeCallRecord.from_data(data["call"]),
+            result_digest=data["result_digest"],
+        )
+        if result.to_data() != _clone_json(value, "journal result"):
+            raise AtomicSmokeRunError("journal result is not canonical")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeJournalReceipt:
+    """Typed durable-prefix receipt embedded in every terminal run."""
+
+    header_digest: str
+    head_digest: str
+    intent_count: int
+    result_count: int
+    open_intent_ordinal: int | None
+    state: str
+    persistence_protocol: str
+    receipt_digest: str
+
+    def __post_init__(self) -> None:
+        _digest(self.header_digest, "journal receipt header digest")
+        _digest(self.head_digest, "journal receipt head digest")
+        if type(self.intent_count) is not int or not 0 <= self.intent_count <= 29:
+            raise AtomicSmokeRunError("journal intent count must be a literal integer")
+        if type(self.result_count) is not int or not 0 <= self.result_count <= 29:
+            raise AtomicSmokeRunError("journal result count must be a literal integer")
+        if self.intent_count not in {self.result_count, self.result_count + 1}:
+            raise AtomicSmokeRunError("journal counts do not form a causal prefix")
+        expected_open = (
+            self.intent_count if self.intent_count == self.result_count + 1 else None
+        )
+        if self.open_intent_ordinal != expected_open or (
+            self.open_intent_ordinal is not None
+            and type(self.open_intent_ordinal) is not int
+        ):
+            raise AtomicSmokeRunError("journal open intent marker differs")
+        expected_state = (
+            "header-only"
+            if self.intent_count == 0
+            else "intent-open"
+            if expected_open is not None
+            else "result-closed"
+        )
+        if self.state != expected_state:
+            raise AtomicSmokeRunError("journal receipt state differs from counts")
+        if self.persistence_protocol != (
+            "exclusive-create-or-identical-fsync-reload/v1"
+        ):
+            raise AtomicSmokeRunError("journal receipt persistence differs")
+        _digest(self.receipt_digest, "journal receipt digest")
+        if self.receipt_digest != canonical_digest(self.content_data()):
+            raise AtomicSmokeRunError("journal receipt digest differs")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA,
+            "header_digest": self.header_digest,
+            "head_digest": self.head_digest,
+            "intent_count": self.intent_count,
+            "result_count": self.result_count,
+            "open_intent_ordinal": self.open_intent_ordinal,
+            "state": self.state,
+            "persistence_protocol": self.persistence_protocol,
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "receipt_digest": self.receipt_digest}
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        header_digest: str,
+        head_digest: str,
+        intent_count: int,
+        result_count: int,
+    ) -> "AtomicSmokeJournalReceipt":
+        open_ordinal = (
+            intent_count if intent_count == result_count + 1 else None
+        )
+        state = (
+            "header-only"
+            if intent_count == 0
+            else "intent-open"
+            if open_ordinal is not None
+            else "result-closed"
+        )
+        values = {
+            "header_digest": header_digest,
+            "head_digest": head_digest,
+            "intent_count": intent_count,
+            "result_count": result_count,
+            "open_intent_ordinal": open_ordinal,
+            "state": state,
+            "persistence_protocol": (
+                "exclusive-create-or-identical-fsync-reload/v1"
+            ),
+        }
+        content = {"schema": ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA, **values}
+        return cls(**values, receipt_digest=canonical_digest(content))
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeJournalReceipt":
+        data = _mapping(
+            value,
+            frozenset(
+                {
+                    "schema",
+                    "header_digest",
+                    "head_digest",
+                    "intent_count",
+                    "result_count",
+                    "open_intent_ordinal",
+                    "state",
+                    "persistence_protocol",
+                    "receipt_digest",
+                }
+            ),
+            "atomic smoke journal receipt",
+        )
+        if data["schema"] != ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA:
+            raise AtomicSmokeRunError("unsupported journal receipt")
+        result = cls(
+            header_digest=data["header_digest"],
+            head_digest=data["head_digest"],
+            intent_count=data["intent_count"],
+            result_count=data["result_count"],
+            open_intent_ordinal=data["open_intent_ordinal"],
+            state=data["state"],
+            persistence_protocol=data["persistence_protocol"],
+            receipt_digest=data["receipt_digest"],
+        )
+        if result.to_data() != _clone_json(value, "journal receipt"):
+            raise AtomicSmokeRunError("journal receipt is not canonical")
+        return result
+
+
+def _open_journal_store(journal_store_dir: str | Path) -> tuple[Path, int]:
+    raw = Path(journal_store_dir)
+    absolute = raw.absolute()
+    try:
+        supplied = os.lstat(absolute)
+        resolved = raw.resolve(strict=True)
+    except OSError as exc:
+        raise AtomicSmokeRunError(
+            "journal store directory must already exist"
+        ) from exc
+    if absolute != resolved or stat.S_ISLNK(supplied.st_mode):
+        raise AtomicSmokeRunError("journal store path must be canonical and non-symlink")
+    if (
+        not stat.S_ISDIR(supplied.st_mode)
+        or stat.S_IMODE(supplied.st_mode) != 0o700
+        or supplied.st_uid != os.getuid()
+    ):
+        raise AtomicSmokeRunError(
+            "journal store must be a current-uid directory with exact mode 0700"
+        )
+    flags = os.O_RDONLY
+    if hasattr(os, "O_DIRECTORY"):
+        flags |= os.O_DIRECTORY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    descriptor = -1
+    try:
+        descriptor = os.open(resolved, flags)
+        opened = os.fstat(descriptor)
+    except OSError as exc:
+        if descriptor >= 0:
+            os.close(descriptor)
+        raise AtomicSmokeRunError("cannot open journal store") from exc
+    if (
+        not stat.S_ISDIR(opened.st_mode)
+        or stat.S_IMODE(opened.st_mode) != 0o700
+        or opened.st_uid != os.getuid()
+        or (opened.st_dev, opened.st_ino) != (supplied.st_dev, supplied.st_ino)
+    ):
+        os.close(descriptor)
+        raise AtomicSmokeRunError("journal store identity changed during open")
+    return resolved, descriptor
+
+
+def _read_journal_file(directory_fd: int, filename: str) -> bytes:
+    flags = os.O_RDONLY
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    try:
+        descriptor = os.open(filename, flags, dir_fd=directory_fd)
+    except OSError as exc:
+        raise AtomicSmokeRunError("journal file cannot be opened") from exc
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or stat.S_IMODE(before.st_mode) != 0o600
+            or before.st_uid != os.getuid()
+            or before.st_nlink != 1
+            or before.st_size <= 0
+            or before.st_size > 32 * 1024 * 1024
+        ):
+            raise AtomicSmokeRunError("journal file metadata is not private canonical data")
+        chunks: list[bytes] = []
+        while True:
+            chunk = os.read(descriptor, 65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        after = os.fstat(descriptor)
+        before_identity = (
+            before.st_dev,
+            before.st_ino,
+            before.st_size,
+            before.st_mtime_ns,
+            before.st_ctime_ns,
+        )
+        after_identity = (
+            after.st_dev,
+            after.st_ino,
+            after.st_size,
+            after.st_mtime_ns,
+            after.st_ctime_ns,
+        )
+        payload = b"".join(chunks)
+        if before_identity != after_identity or len(payload) != before.st_size:
+            raise AtomicSmokeRunError("journal file changed during stable reload")
+        return payload
+    finally:
+        os.close(descriptor)
+
+
+def _read_optional_journal_json(
+    directory_fd: int, filename: str
+) -> Mapping[str, Any] | None:
+    try:
+        payload = _read_journal_file(directory_fd, filename)
+    except AtomicSmokeRunError as exc:
+        try:
+            os.stat(filename, dir_fd=directory_fd, follow_symlinks=False)
+        except FileNotFoundError:
+            return None
+        except OSError:
+            pass
+        raise exc
+    try:
+        decoded = json.loads(payload)
+    except (json.JSONDecodeError, UnicodeError) as exc:
+        raise AtomicSmokeRunError("journal JSON cannot be decoded") from exc
+    if not isinstance(decoded, Mapping) or canonical_json(decoded) != payload:
+        raise AtomicSmokeRunError("journal JSON is not a canonical object")
+    return decoded
+
+
+def _persist_journal_json(
+    directory_fd: int, filename: str, value: Mapping[str, Any]
+) -> bool:
+    payload = canonical_json(_clone_json(value, "journal payload"))
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    if hasattr(os, "O_CLOEXEC"):
+        flags |= os.O_CLOEXEC
+    created = False
+    try:
+        descriptor = os.open(filename, flags, 0o600, dir_fd=directory_fd)
+    except FileExistsError:
+        descriptor = -1
+    except OSError as exc:
+        raise AtomicSmokeRunError("cannot create journal file") from exc
+    if descriptor >= 0:
+        created = True
+        try:
+            offset = 0
+            while offset < len(payload):
+                written = os.write(descriptor, payload[offset:])
+                if written <= 0:
+                    raise AtomicSmokeRunError("journal write made no progress")
+                offset += written
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        os.fsync(directory_fd)
+    if _read_journal_file(directory_fd, filename) != payload:
+        raise AtomicSmokeRunError("existing journal file differs from exact payload")
+    return created
+
+
+def _journal_header_filename(header_digest: str) -> str:
+    return f"{header_digest}.000.header.json"
+
+
+def _journal_intent_filename(header_digest: str, ordinal: int) -> str:
+    return f"{header_digest}.{ordinal:03d}.intent.json"
+
+
+def _journal_result_filename(header_digest: str, ordinal: int) -> str:
+    return f"{header_digest}.{ordinal:03d}.result.json"
+
+
+def _journal_terminal_filename(header_digest: str) -> str:
+    return f"{header_digest}.terminal-run.json"
+
+
+@dataclass(frozen=True, slots=True)
+class _AtomicSmokeJournalState:
+    header: AtomicSmokeJournalHeader
+    intents: tuple[AtomicSmokeCallIntent, ...]
+    results: tuple[AtomicSmokeCallJournalResult, ...]
+    receipt: AtomicSmokeJournalReceipt
+
+    @property
+    def calls(self) -> tuple[AtomicSmokeCallRecord, ...]:
+        return tuple(result.call for result in self.results)
+
+
+def _load_journal_state(
+    directory_fd: int, expected_header: AtomicSmokeJournalHeader
+) -> _AtomicSmokeJournalState:
+    header_raw = _read_optional_journal_json(
+        directory_fd, _journal_header_filename(expected_header.header_digest)
+    )
+    if header_raw is None:
+        raise AtomicSmokeRunError("journal header is missing")
+    header = AtomicSmokeJournalHeader.from_data(header_raw)
+    if header.to_data() != expected_header.to_data():
+        raise AtomicSmokeRunError("journal belongs to another run identity")
+    intents: list[AtomicSmokeCallIntent] = []
+    results: list[AtomicSmokeCallJournalResult] = []
+    calls: list[AtomicSmokeCallRecord] = []
+    head = header.header_digest
+    stopped = False
+    allowed = {_journal_header_filename(header.header_digest)}
+    for ordinal in range(1, 30):
+        intent_name = _journal_intent_filename(header.header_digest, ordinal)
+        result_name = _journal_result_filename(header.header_digest, ordinal)
+        allowed.update({intent_name, result_name})
+        intent_raw = _read_optional_journal_json(directory_fd, intent_name)
+        result_raw = _read_optional_journal_json(directory_fd, result_name)
+        if stopped and (intent_raw is not None or result_raw is not None):
+            raise AtomicSmokeRunError("journal contains entries after an open prefix")
+        if intent_raw is None:
+            if result_raw is not None:
+                raise AtomicSmokeRunError("journal result exists without its intent")
+            stopped = True
+            continue
+        intent = AtomicSmokeCallIntent.from_data(intent_raw)
+        if (
+            intent.header_digest != header.header_digest
+            or intent.previous_head_digest != head
+            or intent.ordinal != ordinal
+        ):
+            raise AtomicSmokeRunError("journal intent breaks the hash chain")
+        intents.append(intent)
+        head = intent.intent_digest
+        if result_raw is None:
+            stopped = True
+            continue
+        result = AtomicSmokeCallJournalResult.from_data(result_raw)
+        if (
+            result.header_digest != header.header_digest
+            or result.previous_head_digest != head
+        ):
+            raise AtomicSmokeRunError("journal result breaks the hash chain")
+        _validate_call_against_intent(result.call, intent)
+        _append_call(calls, result.call)
+        results.append(result)
+        head = result.result_digest
+    allowed.add(_journal_terminal_filename(header.header_digest))
+    try:
+        names = os.listdir(directory_fd)
+    except OSError as exc:
+        raise AtomicSmokeRunError("cannot enumerate journal store") from exc
+    owned = {name for name in names if name.startswith(header.header_digest + ".")}
+    if not owned <= allowed:
+        raise AtomicSmokeRunError("journal store contains malformed owned entries")
+    receipt = AtomicSmokeJournalReceipt.create(
+        header_digest=header.header_digest,
+        head_digest=head,
+        intent_count=len(intents),
+        result_count=len(results),
+    )
+    return _AtomicSmokeJournalState(
+        header=header,
+        intents=tuple(intents),
+        results=tuple(results),
+        receipt=receipt,
+    )
+
+
+class _AtomicSmokeCallJournal:
+    """Live descriptor-owned journal. It has deliberately no resume method."""
+
+    def __init__(self, path: Path, directory_fd: int, header: AtomicSmokeJournalHeader):
+        self.path = path
+        self.directory_fd = directory_fd
+        self.header = header
+        self._closed = False
+
+    @classmethod
+    def create(
+        cls, journal_store_dir: str | Path, header: AtomicSmokeJournalHeader
+    ) -> "_AtomicSmokeCallJournal":
+        path, directory_fd = _open_journal_store(journal_store_dir)
+        try:
+            try:
+                existing_names = os.listdir(directory_fd)
+            except OSError as exc:
+                raise AtomicSmokeRunError("cannot enumerate fresh journal store") from exc
+            if existing_names:
+                raise AtomicSmokeRunError(
+                    "journal store is already consumed; resume/retry is forbidden"
+                )
+            created = _persist_journal_json(
+                directory_fd,
+                _journal_header_filename(header.header_digest),
+                header.to_data(),
+            )
+            if not created:
+                raise AtomicSmokeRunError(
+                    "journal header already exists; resume/retry is forbidden"
+                )
+            journal = cls(path, directory_fd, header)
+            journal.state()
+            return journal
+        except Exception:
+            os.close(directory_fd)
+            raise
+
+    def close(self) -> None:
+        if not self._closed:
+            os.close(self.directory_fd)
+            self._closed = True
+
+    def state(self) -> _AtomicSmokeJournalState:
+        if self._closed:
+            raise AtomicSmokeRunError("journal descriptor is closed")
+        return _load_journal_state(self.directory_fd, self.header)
+
+    def persist_intent(
+        self,
+        *,
+        ordinal: int,
+        phase: str,
+        panel_id: str | None,
+        atom_ids: Sequence[str],
+        prompt: str,
+        output_schema: Mapping[str, Any],
+        image_payload: bytes | None,
+    ) -> AtomicSmokeCallIntent:
+        before = self.state()
+        if before.receipt.open_intent_ordinal is not None:
+            raise AtomicSmokeRunError("journal already has an attempted open call")
+        if ordinal != len(before.results) + 1:
+            raise AtomicSmokeRunError("journal intent would skip or repeat an ordinal")
+        intent = AtomicSmokeCallIntent.create(
+            header_digest=self.header.header_digest,
+            previous_head_digest=before.receipt.head_digest,
+            ordinal=ordinal,
+            phase=phase,
+            panel_id=panel_id,
+            atom_ids=atom_ids,
+            prompt=prompt,
+            output_schema=output_schema,
+            image_payload=image_payload,
+        )
+        created = _persist_journal_json(
+            self.directory_fd,
+            _journal_intent_filename(self.header.header_digest, ordinal),
+            intent.to_data(),
+        )
+        if not created:
+            raise AtomicSmokeRunError("journal intent reuse/retry is forbidden")
+        after = self.state()
+        if (
+            after.receipt.open_intent_ordinal != ordinal
+            or after.intents[-1].to_data() != intent.to_data()
+        ):
+            raise AtomicSmokeRunError("durable journal intent reload differs")
+        return after.intents[-1]
+
+    def persist_result(
+        self, intent: AtomicSmokeCallIntent, call: AtomicSmokeCallRecord
+    ) -> AtomicSmokeCallJournalResult:
+        before = self.state()
+        if (
+            before.receipt.open_intent_ordinal != intent.ordinal
+            or before.intents[-1].to_data() != intent.to_data()
+        ):
+            raise AtomicSmokeRunError("journal result has no exact open intent")
+        candidate_calls = list(before.calls)
+        _append_call(candidate_calls, call)
+        result = AtomicSmokeCallJournalResult.create(
+            header_digest=self.header.header_digest,
+            intent=intent,
+            call=call,
+        )
+        created = _persist_journal_json(
+            self.directory_fd,
+            _journal_result_filename(self.header.header_digest, call.ordinal),
+            result.to_data(),
+        )
+        if not created:
+            raise AtomicSmokeRunError("journal result reuse/retry is forbidden")
+        after = self.state()
+        if (
+            after.receipt.open_intent_ordinal is not None
+            or len(after.results) != call.ordinal
+            or after.results[-1].to_data() != result.to_data()
+        ):
+            raise AtomicSmokeRunError("durable journal result reload differs")
+        return after.results[-1]
+
+    def persist_terminal(self, run: "AtomicSmokeRun") -> "AtomicSmokeRun":
+        state = self.state()
+        if run.journal_receipt != state.receipt:
+            raise AtomicSmokeRunError("terminal run differs from durable journal head")
+        filename = _journal_terminal_filename(self.header.header_digest)
+        created = _persist_journal_json(
+            self.directory_fd, filename, run.to_data()
+        )
+        if not created:
+            raise AtomicSmokeRunError("terminal run already exists; retry is forbidden")
+        raw = _read_optional_journal_json(self.directory_fd, filename)
+        assert raw is not None
+        reloaded = AtomicSmokeRun.from_data(raw)
+        if reloaded.to_data() != run.to_data():
+            raise AtomicSmokeRunError("durable terminal run reload differs")
+        return reloaded
+
+
 def _description_binding_from_call(
     call: AtomicSmokeCallRecord,
     *,
@@ -1257,15 +2249,17 @@ def _evidence_digest(
     archive_digest: str | None,
     prediction_digest: str | None,
     persistence_receipt_digest: str | None,
+    journal_receipt_digest: str,
 ) -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-atomic-smoke-evidence-set.v1",
+            "schema": "gkm.bongard-atomic-smoke-evidence-set.v2",
             "call_digests": [call.call_digest for call in calls],
             "receipt_digests": [call.receipt["receipt_digest"] for call in calls],
             "selection_archive_digest": archive_digest,
             "prediction_commitment_digest": prediction_digest,
             "prediction_persistence_receipt_digest": persistence_receipt_digest,
+            "journal_receipt_digest": journal_receipt_digest,
         }
     )
 
@@ -1278,12 +2272,14 @@ class AtomicSmokeRun:
     terminal_phase: str
     precommit_digest: str
     precommit_public_data: Mapping[str, Any]
+    command_config_digest: str
     run_id: str
     source_dependency_digest: str
     protocol_digest: str
     expected_launcher_digest: str
     model: str
     reasoning_effort: str
+    journal_receipt: AtomicSmokeJournalReceipt
     calls: tuple[AtomicSmokeCallRecord, ...]
     selection_archive_data: Mapping[str, Any] | None
     selection_archive_digest: str | None
@@ -1317,12 +2313,32 @@ class AtomicSmokeRun:
         ):
             raise AtomicSmokeRunError("run differs from exact public precommit")
         _text(self.run_id, "run ID", maximum=128)
+        _address(self.command_config_digest, "run command config digest")
         _digest(self.source_dependency_digest, "source dependency digest")
         if self.protocol_digest != atomic_smoke_run_protocol_digest():
             raise AtomicSmokeRunError("run protocol digest differs")
         _digest(self.expected_launcher_digest, "expected launcher digest")
         _text(self.model, "model", maximum=128)
         _text(self.reasoning_effort, "reasoning effort", maximum=32)
+        expected_header = AtomicSmokeJournalHeader.create(
+            precommit=public_precommit,
+            command_config_digest=self.command_config_digest,
+            source_dependency_digest=self.source_dependency_digest,
+            protocol_digest=self.protocol_digest,
+            expected_launcher_digest=self.expected_launcher_digest,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+        )
+        if self.journal_receipt.header_digest != expected_header.header_digest:
+            raise AtomicSmokeRunError("run journal receipt belongs to another header")
+        if self.journal_receipt.result_count != len(self.calls):
+            raise AtomicSmokeRunError("run calls differ from durable journal results")
+        if self.status == "complete" and (
+            self.journal_receipt.intent_count != 29
+            or self.journal_receipt.result_count != 29
+            or self.journal_receipt.open_intent_ordinal is not None
+        ):
+            raise AtomicSmokeRunError("complete run lacks a closed 29-call journal")
         if any(
             getattr(self, name) is not False
             for name in (
@@ -1497,6 +2513,7 @@ class AtomicSmokeRun:
             None
             if self.prediction_persistence_receipt is None
             else self.prediction_persistence_receipt.receipt_digest,
+            self.journal_receipt.receipt_digest,
         )
         if self.evidence_digest != expected_evidence:
             raise AtomicSmokeRunError("run evidence digest differs")
@@ -1515,12 +2532,14 @@ class AtomicSmokeRun:
             "terminal_phase": self.terminal_phase,
             "precommit_digest": self.precommit_digest,
             "precommit_public_data": _thaw_json(self.precommit_public_data),
+            "command_config_digest": self.command_config_digest,
             "run_id": self.run_id,
             "source_dependency_digest": self.source_dependency_digest,
             "protocol_digest": self.protocol_digest,
             "expected_launcher_digest": self.expected_launcher_digest,
             "model": self.model,
             "reasoning_effort": self.reasoning_effort,
+            "journal_receipt": self.journal_receipt.to_data(),
             "calls": [call.to_data() for call in self.calls],
             "selection_archive_data": _thaw_json(self.selection_archive_data),
             "selection_archive_digest": self.selection_archive_digest,
@@ -1553,6 +2572,7 @@ class AtomicSmokeRun:
             "status",
             "terminal_phase",
             "precommit_digest",
+            "command_config_digest",
             "run_id",
             "source_dependency_digest",
             "protocol_digest",
@@ -1575,6 +2595,7 @@ class AtomicSmokeRun:
                 {
                     "schema",
                     "calls",
+                    "journal_receipt",
                     "precommit_public_data",
                     "selection_archive_data",
                     "prediction_commitment_data",
@@ -1609,6 +2630,9 @@ class AtomicSmokeRun:
             )
         result = cls(
             **values,
+            journal_receipt=AtomicSmokeJournalReceipt.from_data(
+                data["journal_receipt"]
+            ),
             calls=tuple(AtomicSmokeCallRecord.from_data(item) for item in data["calls"]),
             precommit_public_data=_freeze_json(
                 _clone_json(data["precommit_public_data"], "precommit public data")
@@ -1794,8 +2818,18 @@ def _invoke_named(
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
     expected_launcher_digest: str,
     verbose: bool,
+    journal: _AtomicSmokeCallJournal,
 ) -> AtomicSmokeCallRecord:
     before = source.read_verified()
+    intent = journal.persist_intent(
+        ordinal=ordinal,
+        phase=phase,
+        panel_id=panel_id,
+        atom_ids=atom_ids,
+        prompt=prompt,
+        output_schema=schema,
+        image_payload=before,
+    )
     result = transport(
         prompt,
         (str(source.path),),
@@ -1820,7 +2854,7 @@ def _invoke_named(
     after = source.read_verified()
     if before != after or hashlib.sha256(before).hexdigest() != source.panel.sha256:
         raise AtomicSmokeRunError("panel bytes changed across isolated Codex call")
-    return AtomicSmokeCallRecord.capture(
+    call = AtomicSmokeCallRecord.capture(
         ordinal=ordinal,
         phase=phase,
         panel_id=panel_id,
@@ -1830,6 +2864,7 @@ def _invoke_named(
         result=result,
         image_payload=before,
     )
+    return journal.persist_result(intent, call).call
 
 
 def _invoke_text(
@@ -1845,7 +2880,17 @@ def _invoke_text(
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
     expected_launcher_digest: str,
     verbose: bool,
+    journal: _AtomicSmokeCallJournal,
 ) -> AtomicSmokeCallRecord:
+    intent = journal.persist_intent(
+        ordinal=ordinal,
+        phase="atom-proposal",
+        panel_id=None,
+        atom_ids=(),
+        prompt=prompt,
+        output_schema=schema,
+        image_payload=None,
+    )
     result = transport(
         prompt,
         schema,
@@ -1858,7 +2903,7 @@ def _invoke_text(
         expected_launcher_digest=expected_launcher_digest,
     )
     validate_codex_text_receipt(result.receipt.to_dict(), prompt, schema)
-    return AtomicSmokeCallRecord.capture(
+    call = AtomicSmokeCallRecord.capture(
         ordinal=ordinal,
         phase="atom-proposal",
         panel_id=None,
@@ -1867,6 +2912,7 @@ def _invoke_text(
         output_schema=schema,
         result=result,
     )
+    return journal.persist_result(intent, call).call
 
 
 def _prediction_commitment(
@@ -1926,11 +2972,13 @@ def _make_terminal(
     status: str,
     terminal_phase: str,
     precommit: AtomicSmokePrecommit,
+    command_config_digest: str,
     source_dependency_digest: str,
     protocol_digest: str,
     expected_launcher_digest: str,
     model: str,
     reasoning_effort: str,
+    journal_receipt: AtomicSmokeJournalReceipt,
     calls: Sequence[AtomicSmokeCallRecord],
     archive: AtomicSelectionArchive | None,
     prediction: Mapping[str, Any] | None,
@@ -1950,12 +2998,14 @@ def _make_terminal(
         "terminal_phase": terminal_phase,
         "precommit_digest": precommit.digest,
         "precommit_public_data": _freeze_json(precommit.to_data()),
+        "command_config_digest": command_config_digest,
         "run_id": precommit.episode_plan.run_id,
         "source_dependency_digest": source_dependency_digest,
         "protocol_digest": protocol_digest,
         "expected_launcher_digest": expected_launcher_digest,
         "model": model,
         "reasoning_effort": reasoning_effort,
+        "journal_receipt": journal_receipt,
         "calls": tuple(calls),
         "selection_archive_data": (
             None if archive_data is None else _freeze_json(archive_data)
@@ -1973,6 +3023,7 @@ def _make_terminal(
             archive_digest,
             prediction_digest,
             None if persistence_receipt is None else persistence_receipt.receipt_digest,
+            journal_receipt.receipt_digest,
         ),
         "failure": None if failure is None else _freeze_json(failure),
         "dependence_design_authorized": False,
@@ -1988,7 +3039,8 @@ def _make_terminal(
                 [item.to_data() for item in value]
                 if key == "calls"
                 else value.to_data()
-                if key == "prediction_persistence_receipt" and value is not None
+                if key in {"prediction_persistence_receipt", "journal_receipt"}
+                and value is not None
                 else _thaw_json(value)
                 if key
                 in {
@@ -2011,9 +3063,11 @@ def run_atomic_smoke(
     precommit: AtomicSmokePrecommit,
     *,
     source_dependency_digest: str,
+    command_config_digest: str,
     expected_protocol_digest: str,
     expected_launcher_digest: str,
     prediction_store_dir: str | Path,
+    journal_store_dir: str | Path,
     model: str = DEFAULT_CODEX_MODEL,
     reasoning_effort: str = DEFAULT_REASONING_EFFORT,
     minutes: int = 15,
@@ -2039,6 +3093,7 @@ def run_atomic_smoke(
     if protocol_digest != atomic_smoke_run_protocol_digest():
         raise AtomicSmokeRunError("external run protocol pin differs")
     launcher_digest = _digest(expected_launcher_digest, "expected launcher digest")
+    config_digest = _address(command_config_digest, "command config digest")
     # Resolve and authenticate the store before spending a model call.
     _store_path, store_descriptor = _open_prediction_store(prediction_store_dir)
     os.close(store_descriptor)
@@ -2050,6 +3105,16 @@ def run_atomic_smoke(
     plan = precommit.episode_plan
     if plan.split == "test":
         raise AtomicSmokeRunError("atomic smoke cannot run on official test")
+    journal_header = AtomicSmokeJournalHeader.create(
+        precommit=precommit,
+        command_config_digest=config_digest,
+        source_dependency_digest=source_digest,
+        protocol_digest=protocol_digest,
+        expected_launcher_digest=launcher_digest,
+        model=model,
+        reasoning_effort=reasoning_effort,
+    )
+    journal = _AtomicSmokeCallJournal.create(journal_store_dir, journal_header)
     calls: list[AtomicSmokeCallRecord] = []
     archive: AtomicSelectionArchive | None = None
     prediction: dict[str, Any] | None = None
@@ -2082,6 +3147,7 @@ def run_atomic_smoke(
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
                 expected_launcher_digest=launcher_digest,
                 verbose=verbose,
+                journal=journal,
             )
             _append_call(calls, call)
             binding = _description_binding_from_call(
@@ -2109,6 +3175,7 @@ def run_atomic_smoke(
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
             expected_launcher_digest=launcher_digest,
             verbose=verbose,
+            journal=journal,
         )
         _append_call(calls, proposal_call)
         atoms = _parse_atoms(
@@ -2144,6 +3211,7 @@ def run_atomic_smoke(
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
                 expected_launcher_digest=launcher_digest,
                 verbose=verbose,
+                journal=journal,
             )
             _append_call(calls, call)
             observations = _parse_scorer_evidence(
@@ -2193,6 +3261,7 @@ def run_atomic_smoke(
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
                 expected_launcher_digest=launcher_digest,
                 verbose=verbose,
+                journal=journal,
             )
             _append_call(calls, call)
             binding = _description_binding_from_call(
@@ -2226,6 +3295,7 @@ def run_atomic_smoke(
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
                 expected_launcher_digest=launcher_digest,
                 verbose=verbose,
+                journal=journal,
             )
             _append_call(calls, call)
             evidence = _parse_scorer_evidence(
@@ -2307,11 +3377,13 @@ def run_atomic_smoke(
             status="complete",
             terminal_phase="cold-replay-verified",
             precommit=precommit,
+            command_config_digest=config_digest,
             source_dependency_digest=source_digest,
             protocol_digest=protocol_digest,
             expected_launcher_digest=launcher_digest,
             model=model,
             reasoning_effort=reasoning_effort,
+            journal_receipt=journal.state().receipt,
             calls=calls,
             archive=archive,
             prediction=prediction,
@@ -2321,28 +3393,35 @@ def run_atomic_smoke(
             failure=None,
         )
         # Decode into detached JSON and replay before returning a success.
-        return cold_decode_and_replay_atomic_smoke_run(
+        terminal = cold_decode_and_replay_atomic_smoke_run(
             terminal.to_data(),
             expected_run_digest=terminal.digest,
             expected_source_dependency_digest=source_digest,
             expected_precommit_digest=precommit.digest,
+            expected_command_config_digest=config_digest,
             expected_protocol_digest=protocol_digest,
             expected_launcher_digest=launcher_digest,
             expected_evidence_digest=terminal.evidence_digest,
             precommit_public_data=precommit.to_data(),
             label_seal_nonce=plan._label_nonce,
             prediction_store_dir=prediction_store_dir,
+            journal_store_dir=journal_store_dir,
+            require_persisted_terminal=False,
         )
     except Exception as exc:  # noqa: BLE001 - terminalize one no-reroll attempt.
-        return _make_terminal(
+        durable_state = journal.state()
+        calls = list(durable_state.calls)
+        terminal = _make_terminal(
             status="failed",
             terminal_phase=phase,
             precommit=precommit,
+            command_config_digest=config_digest,
             source_dependency_digest=source_digest,
             protocol_digest=protocol_digest,
             expected_launcher_digest=launcher_digest,
             model=model,
             reasoning_effort=reasoning_effort,
+            journal_receipt=durable_state.receipt,
             calls=calls,
             archive=archive,
             prediction=prediction,
@@ -2355,6 +3434,10 @@ def run_atomic_smoke(
                 "reason": _failure_text(exc),
             },
         )
+    try:
+        return journal.persist_terminal(terminal)
+    finally:
+        journal.close()
 
 
 def cold_decode_and_replay_atomic_smoke_run(
@@ -2363,12 +3446,15 @@ def cold_decode_and_replay_atomic_smoke_run(
     expected_run_digest: str,
     expected_source_dependency_digest: str,
     expected_precommit_digest: str,
+    expected_command_config_digest: str,
     expected_protocol_digest: str,
     expected_launcher_digest: str,
     expected_evidence_digest: str,
     precommit_public_data: Mapping[str, Any],
     label_seal_nonce: str,
     prediction_store_dir: str | Path,
+    journal_store_dir: str | Path,
+    require_persisted_terminal: bool = True,
 ) -> AtomicSmokeRun:
     """Model-free replay under external precommit, nonce and evidence pins."""
 
@@ -2381,6 +3467,11 @@ def cold_decode_and_replay_atomic_smoke_run(
     expected_precommit = _address(
         expected_precommit_digest, "expected precommit digest"
     )
+    expected_config = _address(
+        expected_command_config_digest, "expected command config digest"
+    )
+    if type(require_persisted_terminal) is not bool:
+        raise AtomicSmokeRunError("terminal persistence requirement must be Boolean")
     if external_precommit.digest != expected_precommit:
         raise AtomicSmokeRunError("external precommit differs from exact digest pin")
     nonce = _digest(label_seal_nonce, "external label seal nonce")
@@ -2398,6 +3489,8 @@ def cold_decode_and_replay_atomic_smoke_run(
         raise AtomicSmokeRunError("run differs from external source dependency pin")
     if run.precommit_digest != expected_precommit:
         raise AtomicSmokeRunError("run differs from external precommit pin")
+    if run.command_config_digest != expected_config:
+        raise AtomicSmokeRunError("run differs from external command config pin")
     if canonical_json(_thaw_json(run.precommit_public_data)) != canonical_json(
         external_precommit.to_data()
     ):
@@ -2420,6 +3513,34 @@ def cold_decode_and_replay_atomic_smoke_run(
         expected_evidence_digest, "expected evidence digest"
     ):
         raise AtomicSmokeRunError("run differs from external evidence pin")
+    expected_header = AtomicSmokeJournalHeader.create(
+        precommit=external_precommit,
+        command_config_digest=expected_config,
+        source_dependency_digest=run.source_dependency_digest,
+        protocol_digest=run.protocol_digest,
+        expected_launcher_digest=run.expected_launcher_digest,
+        model=run.model,
+        reasoning_effort=run.reasoning_effort,
+    )
+    _journal_path, journal_fd = _open_journal_store(journal_store_dir)
+    try:
+        journal_state = _load_journal_state(journal_fd, expected_header)
+        if (
+            journal_state.receipt != run.journal_receipt
+            or tuple(call.to_data() for call in journal_state.calls)
+            != tuple(call.to_data() for call in run.calls)
+        ):
+            raise AtomicSmokeRunError("run differs from exact durable journal prefix")
+        if require_persisted_terminal:
+            terminal_raw = _read_optional_journal_json(
+                journal_fd, _journal_terminal_filename(expected_header.header_digest)
+            )
+            if terminal_raw is None or canonical_json(terminal_raw) != canonical_json(
+                run.to_data()
+            ):
+                raise AtomicSmokeRunError("persisted terminal run differs or is missing")
+    finally:
+        os.close(journal_fd)
     if run.selection_archive_data is not None:
         assert run.selection_archive_digest is not None
         cold_decode_and_replay_atomic_selection(
@@ -2465,12 +3586,20 @@ def cold_decode_and_replay_atomic_smoke_run(
 
 __all__ = [
     "ATOMIC_SMOKE_CALL_SCHEMA",
+    "ATOMIC_SMOKE_JOURNAL_HEADER_SCHEMA",
+    "ATOMIC_SMOKE_JOURNAL_INTENT_SCHEMA",
+    "ATOMIC_SMOKE_JOURNAL_RECEIPT_SCHEMA",
+    "ATOMIC_SMOKE_JOURNAL_RESULT_SCHEMA",
     "ATOMIC_SMOKE_LABEL_REVEAL_SCHEMA",
     "ATOMIC_SMOKE_PREDICTION_SCHEMA",
     "ATOMIC_SMOKE_PERSISTENCE_SCHEMA",
     "ATOMIC_SMOKE_RUN_SCHEMA",
     "ATOMIC_SMOKE_SUCCESS_CALL_COUNT",
     "AtomicSmokeCallRecord",
+    "AtomicSmokeCallIntent",
+    "AtomicSmokeCallJournalResult",
+    "AtomicSmokeJournalHeader",
+    "AtomicSmokeJournalReceipt",
     "AtomicSmokeRun",
     "AtomicSmokeRunError",
     "PredictionPersistenceReceipt",

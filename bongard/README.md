@@ -52,6 +52,33 @@ An earlier pre-exposure setup launch found a cache store at mode `0755`; the
 required mode is `0700`. That launch persisted no exposure and consumed
 nothing.
 
+### Successor attempt two: frozen but not yet run
+
+Attempt two is a new consuming successor, not a reroll of the first task. Its
+active predecessor is the first attempt's exposure successor,
+`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+The precommit authenticates that ledger as exactly one append after the A3
+ledger
+`sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`,
+binds the exact incident record above, and excludes every predecessor task ID,
+including the consumed first atomic task. The remaining eligible universe is
+exactly nine task IDs with set digest
+`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+These are repeated-generator, exact-unseen training tasks, so attempt two is
+still only an exploratory transport/synthesis smoke.
+
+Before any selection, episode, or label secret is generated—and before exact
+task exposure—the command stages, hashes, and authenticates the pinned native
+Codex launcher. The run then creates a fresh, empty, mode-`0700` call-journal
+store. Its durable header binds the public precommit, exact command config,
+source, protocol, launcher, model, and reasoning effort. For each slot in the
+fixed 29-call schedule it persists the exact call intent before transport and
+the validated result before the next intent. It persists the journal terminal
+before the runner returns. An existing identical header, an open intent, or a
+partial prefix is not resumable or retryable. This closes the forensic hole
+that left the first attempt's call count unknown. No live result for attempt
+two is claimed here.
+
 ### A1 terminal record
 
 A1 was a descriptive, exploratory calibration attempt on the clean DRILL
@@ -231,6 +258,7 @@ only after that freeze:
   -> durable joint prediction commitment
   -> label reveal and score
   -> model-free cold replay of all 29 call receipts
+  -> durable call-journal terminal before runner return
 ```
 
 That is the implemented successor to A3. In A3, the descriptions were
@@ -488,7 +516,9 @@ model selection in this pipeline.
 - `atomic_smoke_precommit.py`: complete-corpus authentication, metadata-only
   selection, and durable exposure before selected pixels are hashed.
 - `atomic_smoke_runner.py`: the exact 29-call description/proposal/observer
-  schedule, prediction persistence, label reveal, score, and model-free replay.
+  schedule, intent-before-transport/result-before-next call journal,
+  prediction persistence, label reveal, score, terminal persistence, and
+  model-free replay.
 - `atomic_smoke_command.py`: source-frozen, native-launcher-authenticated,
   no-reroll production command boundary for one exploratory train smoke.
 - `semantic_gated_dev_validation.py`: strict-disjoint descriptive Stage B.
@@ -516,16 +546,22 @@ exact task before reading its selected pixels. Its production entry point is:
 python -B -m bongard.atomic_smoke_command \
   --corpus /absolute/path/to/ShapeBongard_V2 \
   --archive /absolute/path/to/ShapeBongard_V2.zip \
-  --exposure-ledger /absolute/path/to/a3-successor.exposure.json \
+  --predecessor-ledger /absolute/path/to/b053-successor.exposure.json \
   --config-store /absolute/path/to/config-store \
   --exposure-store /absolute/path/to/exposure-store \
+  --journal-store /absolute/path/to/fresh-empty-journal-store \
   --prediction-store /absolute/path/to/prediction-store \
   --terminal-store /absolute/path/to/terminal-store \
   --cache-store /absolute/path/to/cache-store
 ```
 
 All stores must already exist as canonical, non-symlink directories with mode
-`0700`. The CLI
+`0700`; the journal store must also be fresh and empty. The active predecessor
+must have digest
+`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`,
+and the exact remaining universe must be the nine-ID set with digest
+`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+The CLI
 prints one ID-redacted JSON status line. This run remains an exploratory
 repeated-generator train smoke even if both query predictions are correct.
 

@@ -1,10 +1,11 @@
 """No-reroll production command boundary for the atomic Bongard smoke.
 
-The boundary authenticates the complete official release and the exact A3
-ledger, freezes every authoritative Python source, persists a secret-free
-command commitment, and only then creates the three private seeds.  It owns
-the exposure, prediction, and terminal durability boundaries.  Nothing in
-this module prints task identities.
+The boundary authenticates the complete official release, the consumed first
+attempt, and its exact exposure successor before starting attempt two.  It
+freezes every authoritative Python source, persists a secret-free command
+commitment, and only then creates the three private seeds.  It owns the
+exposure, journal, prediction, and terminal durability boundaries.  Nothing
+in this module prints task identities.
 """
 
 from __future__ import annotations
@@ -22,14 +23,16 @@ from typing import Any, Callable, ContextManager, Mapping
 
 from bongard.artifacts import canonical_digest, canonical_json
 from bongard.atomic_smoke_precommit import (
-    OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
+    OFFICIAL_A3_LEDGER_DIGEST,
     OFFICIAL_CORPUS_MANIFEST_DIGEST,
     OFFICIAL_RELEASE_DESCRIPTOR_DIGEST,
     OFFICIAL_SPLIT_SOURCE_DIGEST,
+    OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST,
     AtomicSmokePrecommit,
     prepare_atomic_smoke_precommit,
 )
 from bongard.atomic_smoke_runner import (
+    AtomicSmokeJournalReceipt,
     AtomicSmokeRun,
     atomic_smoke_run_protocol_digest,
     run_atomic_smoke,
@@ -61,11 +64,34 @@ from bongard.transport import (
 )
 
 
-ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA = "gkm.bongard-atomic-smoke-command-config.v1"
-ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA = "gkm.bongard-atomic-smoke-command-terminal.v1"
+ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA = (
+    "gkm.bongard-atomic-smoke-authenticated-inputs.v2"
+)
+ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA = "gkm.bongard-atomic-smoke-command-config.v2"
+ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA = "gkm.bongard-atomic-smoke-command-terminal.v2"
 ATOMIC_SMOKE_COMMAND_RECEIPT_SCHEMA = "gkm.bongard-atomic-smoke-command-receipt.v1"
+ATOMIC_SMOKE_ATTEMPT_ORDINAL = 2
+ATOMIC_SMOKE_COMMAND_SCOPE = (
+    "one-exploratory-repeated-generator-train-successor-smoke/v2"
+)
 ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST = (
     "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02"
+)
+ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256 = (
+    "2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad"
+)
+ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST = (
+    "sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451"
+)
+ATOMIC_SMOKE_PRIOR_OUTER_REASON_DIGEST = (
+    "2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d"
+)
+ATOMIC_SMOKE_PRIOR_CALL_COUNT_LOWER = 0
+ATOMIC_SMOKE_PRIOR_CALL_COUNT_UPPER = 29
+DEFAULT_PRIOR_INCIDENT_PATH = (
+    Path(__file__).resolve().parent
+    / "data"
+    / "atomic_smoke_n1_operational_failure_v1.json"
 )
 
 _HEX = re.compile(r"[0-9a-f]{64}\Z")
@@ -331,12 +357,150 @@ def _write_content_addressed(
 
 
 @dataclass(frozen=True, slots=True)
+class AtomicSmokePriorIncident:
+    """Exact machine-readable lineage of the consumed first live attempt."""
+
+    file_sha256: str
+    command_config_digest: str
+    exposure_successor_digest: str
+    outer_reason_digest: str
+    prediction_persisted: bool
+    terminal_persisted: bool
+    successful_call_count_known: bool
+    successful_call_count_lower: int
+    successful_call_count_upper: int
+    selected_task_consumed: bool
+    selected_task_may_be_rerolled: bool
+    runner_returned_typed_run: bool
+    typed_run_output_recoverable: bool
+
+    def __post_init__(self) -> None:
+        if (
+            self.file_sha256 != ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256
+            or self.command_config_digest != ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST
+            or self.exposure_successor_digest
+            != OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
+            or self.outer_reason_digest != ATOMIC_SMOKE_PRIOR_OUTER_REASON_DIGEST
+            or self.prediction_persisted is not False
+            or self.terminal_persisted is not False
+            or self.successful_call_count_known is not False
+            or type(self.successful_call_count_lower) is not int
+            or type(self.successful_call_count_upper) is not int
+            or self.successful_call_count_lower
+            != ATOMIC_SMOKE_PRIOR_CALL_COUNT_LOWER
+            or self.successful_call_count_upper
+            != ATOMIC_SMOKE_PRIOR_CALL_COUNT_UPPER
+            or self.selected_task_consumed is not True
+            or self.selected_task_may_be_rerolled is not False
+            or self.runner_returned_typed_run is not True
+            or self.typed_run_output_recoverable is not False
+        ):
+            raise AtomicSmokeCommandError("prior incident lineage differs")
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": "gkm.bongard-atomic-smoke-prior-incident-binding.v1",
+            "incident_record_schema": (
+                "gkm.bongard-atomic-smoke-n1-operational-failure.v1"
+            ),
+            "incident_file_sha256": self.file_sha256,
+            "prior_command_config_digest": self.command_config_digest,
+            "active_exposure_predecessor_digest": (
+                self.exposure_successor_digest
+            ),
+            "prior_outer_reason_digest": self.outer_reason_digest,
+            "prediction_persisted": self.prediction_persisted,
+            "terminal_persisted": self.terminal_persisted,
+            "successful_model_call_count": {
+                "known": self.successful_call_count_known,
+                "lower_bound_inclusive": self.successful_call_count_lower,
+                "upper_bound_inclusive": self.successful_call_count_upper,
+            },
+            "selected_task_consumed": self.selected_task_consumed,
+            "selected_task_may_be_rerolled": self.selected_task_may_be_rerolled,
+            "runner_returned_typed_atomic_smoke_run": (
+                self.runner_returned_typed_run
+            ),
+            "typed_run_output_recoverable": self.typed_run_output_recoverable,
+        }
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + canonical_digest(self.to_data())
+
+    @classmethod
+    def load(cls, path: str | Path) -> "AtomicSmokePriorIncident":
+        incident_path = Path(path).expanduser().absolute()
+        payload = _stable_read(incident_path, maximum=1_048_576)
+        file_sha256 = hashlib.sha256(payload).hexdigest()
+        if file_sha256 != ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256:
+            raise AtomicSmokeCommandError("prior incident file differs from exact pin")
+        try:
+            raw = json.loads(payload)
+        except (UnicodeError, json.JSONDecodeError) as exc:
+            raise AtomicSmokeCommandError("prior incident is not exact JSON") from exc
+        if not isinstance(raw, Mapping) or raw.get("schema") != (
+            "gkm.bongard-atomic-smoke-n1-operational-failure.v1"
+        ):
+            raise AtomicSmokeCommandError("prior incident schema differs")
+        try:
+            artifacts = raw["artifacts"]
+            attempt = raw["consuming_attempt"]
+            forensics = raw["forensics"]
+            count = forensics["successful_model_call_count"]
+            claims = raw["claim_policy"]
+            values = cls(
+                file_sha256=file_sha256,
+                command_config_digest=artifacts[
+                    "command_config_content_address"
+                ],
+                exposure_successor_digest=artifacts[
+                    "exposure_successor_content_address"
+                ],
+                outer_reason_digest=attempt["reason_digest"],
+                prediction_persisted=artifacts["prediction_persisted"],
+                terminal_persisted=artifacts["terminal_persisted"],
+                successful_call_count_known=count["known"],
+                successful_call_count_lower=count["lower_bound_inclusive"],
+                successful_call_count_upper=count["upper_bound_inclusive"],
+                selected_task_consumed=attempt["selected_task_consumed"],
+                selected_task_may_be_rerolled=attempt[
+                    "selected_task_may_be_rerolled"
+                ],
+                runner_returned_typed_run=forensics[
+                    "runner_returned_typed_atomic_smoke_run"
+                ],
+                typed_run_output_recoverable=forensics[
+                    "typed_run_output_recoverable"
+                ],
+            )
+        except (KeyError, TypeError) as exc:
+            raise AtomicSmokeCommandError("prior incident facts are malformed") from exc
+        if (
+            attempt.get("cli_error_type") != "AtomicSmokeCommandError"
+            or attempt.get("exact_error")
+            != "failed run precommit is not canonical JSON"
+            or attempt.get("labels_materialized") is not False
+            or attempt.get("labels_revealed") is not False
+            or attempt.get("result_class") != "operational_failure"
+            or forensics.get("runner_entered") is not True
+            or forensics.get("run_phase_known") is not False
+            or forensics.get("run_status_known") is not False
+            or not isinstance(claims, Mapping)
+            or any(value is not False for value in claims.values())
+        ):
+            raise AtomicSmokeCommandError("prior incident causal facts differ")
+        return values
+
+
+@dataclass(frozen=True, slots=True)
 class AtomicSmokeAuthenticatedInputs:
-    """Exact official release, full manifest, and A3 predecessor."""
+    """Official corpus, active predecessor, historical parent, and incident."""
 
     trusted: StageATrustedCorpus = field(repr=False)
     release: OfficialReleaseDescriptor
     predecessor: ExposureLedger
+    prior_incident: AtomicSmokePriorIncident
 
     def __post_init__(self) -> None:
         if not isinstance(self.trusted, StageATrustedCorpus):
@@ -345,8 +509,12 @@ class AtomicSmokeAuthenticatedInputs:
             raise TypeError("release must be OfficialReleaseDescriptor")
         if not isinstance(self.predecessor, ExposureLedger):
             raise TypeError("predecessor must be ExposureLedger")
+        if not isinstance(self.prior_incident, AtomicSmokePriorIncident):
+            raise TypeError("prior_incident must be AtomicSmokePriorIncident")
         if self.trusted.authentication_mode != "official-release-archive-and-corpus/v1":
-            raise AtomicSmokeCommandError("production smoke requires official-release authentication")
+            raise AtomicSmokeCommandError(
+                "production smoke requires official-release authentication"
+            )
         if self.release.digest != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST:
             raise AtomicSmokeCommandError("release descriptor differs from official pin")
         if (
@@ -359,21 +527,49 @@ class AtomicSmokeAuthenticatedInputs:
             or self.trusted.corpus.split.source_digest != OFFICIAL_SPLIT_SOURCE_DIGEST
         ):
             raise AtomicSmokeCommandError("split source differs from official pin")
-        if self.predecessor.digest != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST:
-            raise AtomicSmokeCommandError("A3 predecessor differs from official pin")
+        if self.predecessor.digest != OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST:
+            raise AtomicSmokeCommandError(
+                "active predecessor differs from official successor pin"
+            )
         if self.predecessor.corpus_digest != OFFICIAL_CORPUS_MANIFEST_DIGEST:
-            raise AtomicSmokeCommandError("A3 predecessor belongs to another corpus")
+            raise AtomicSmokeCommandError(
+                "active predecessor belongs to another corpus"
+            )
+        if not self.predecessor.events:
+            raise AtomicSmokeCommandError("active predecessor has no prior append")
+        historical_parent = ExposureLedger(
+            corpus_digest=self.predecessor.corpus_digest,
+            events=self.predecessor.events[:-1],
+        )
+        if historical_parent.digest != OFFICIAL_A3_LEDGER_DIGEST:
+            raise AtomicSmokeCommandError(
+                "active predecessor does not descend exactly from historical A3"
+            )
         if not self.predecessor.exposed_task_ids <= set(self.trusted.corpus.task_ids):
-            raise AtomicSmokeCommandError("A3 predecessor contains IDs outside the corpus")
+            raise AtomicSmokeCommandError(
+                "active predecessor contains IDs outside the corpus"
+            )
+        if (
+            self.prior_incident.exposure_successor_digest
+            != self.predecessor.digest
+        ):
+            raise AtomicSmokeCommandError(
+                "prior incident differs from active predecessor"
+            )
 
     def to_data(self) -> dict[str, object]:
         return {
-            "schema": "gkm.bongard-atomic-smoke-authenticated-inputs.v1",
+            "schema": ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA,
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "authentication": self.trusted.to_data(),
             "release_descriptor_digest": self.release.digest,
             "corpus_manifest_digest": self.trusted.full_manifest.digest,
             "split_source_digest": self.trusted.corpus.split.source_digest,
-            "exposure_predecessor_digest": self.predecessor.digest,
+            "active_exposure_predecessor_digest": self.predecessor.digest,
+            "historical_a3_parent_ledger_digest": OFFICIAL_A3_LEDGER_DIGEST,
+            "prior_incident": self.prior_incident.to_data(),
+            "prior_incident_binding_digest": self.prior_incident.digest,
         }
 
     @property
@@ -385,14 +581,18 @@ def authenticate_atomic_smoke_inputs(
     *,
     corpus_path: str | Path,
     archive_path: str | Path,
-    exposure_ledger_path: str | Path,
+    predecessor_ledger_path: str | Path,
+    prior_incident_path: str | Path = DEFAULT_PRIOR_INCIDENT_PATH,
     release_descriptor_path: str | Path = DEFAULT_RELEASE_PATH,
 ) -> AtomicSmokeAuthenticatedInputs:
-    """Discover and hash-authenticate the complete official release and ledger."""
+    """Authenticate the official release, successor predecessor, and incident."""
 
+    prior_incident = AtomicSmokePriorIncident.load(prior_incident_path)
     release = load_official_release(release_descriptor_path)
     if release.digest != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST:
-        raise AtomicSmokeCommandError("checked release descriptor differs from the command pin")
+        raise AtomicSmokeCommandError(
+            "checked release descriptor differs from the command pin"
+        )
     corpus = ShapeBongardCorpus.discover(
         corpus_path, require_complete=True, require_split=True
     )
@@ -401,15 +601,21 @@ def authenticate_atomic_smoke_inputs(
         release=release,
         archive_path=archive_path,
     )
-    ledger_path = Path(exposure_ledger_path).expanduser().absolute()
+    ledger_path = Path(predecessor_ledger_path).expanduser().absolute()
     try:
         ledger_raw = json.loads(_stable_read(ledger_path))
     except (UnicodeError, json.JSONDecodeError) as exc:
-        raise AtomicSmokeCommandError("A3 exposure ledger is not exact JSON") from exc
+        raise AtomicSmokeCommandError(
+            "active predecessor ledger is not exact JSON"
+        ) from exc
     if not isinstance(ledger_raw, Mapping):
-        raise AtomicSmokeCommandError("A3 exposure ledger root is not an object")
+        raise AtomicSmokeCommandError(
+            "active predecessor ledger root is not an object"
+        )
     predecessor = ExposureLedger.from_dict(ledger_raw)
-    return AtomicSmokeAuthenticatedInputs(trusted, release, predecessor)
+    return AtomicSmokeAuthenticatedInputs(
+        trusted, release, predecessor, prior_incident
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -452,15 +658,37 @@ class AtomicSmokeCommandConfig:
     def content_data(self) -> dict[str, object]:
         return {
             "schema": ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA,
-            "scope": "one-exploratory-repeated-generator-train-smoke/v1",
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "official_release_descriptor_digest": (
                 OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
             ),
             "official_corpus_manifest_digest": OFFICIAL_CORPUS_MANIFEST_DIGEST,
             "official_split_source_digest": OFFICIAL_SPLIT_SOURCE_DIGEST,
-            "official_a3_successor_ledger_digest": (
-                OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            "official_active_exposure_predecessor_digest": (
+                OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
             ),
+            "official_historical_a3_parent_ledger_digest": (
+                OFFICIAL_A3_LEDGER_DIGEST
+            ),
+            "prior_incident_file_sha256": (
+                ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256
+            ),
+            "prior_attempt_command_config_digest": (
+                ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST
+            ),
+            "prior_attempt_outer_reason_digest": (
+                ATOMIC_SMOKE_PRIOR_OUTER_REASON_DIGEST
+            ),
+            "prior_attempt_prediction_persisted": False,
+            "prior_attempt_terminal_persisted": False,
+            "prior_attempt_successful_model_call_count": {
+                "known": False,
+                "lower_bound_inclusive": ATOMIC_SMOKE_PRIOR_CALL_COUNT_LOWER,
+                "upper_bound_inclusive": ATOMIC_SMOKE_PRIOR_CALL_COUNT_UPPER,
+            },
+            "prior_attempt_selected_task_consumed": True,
+            "prior_attempt_selected_task_may_be_rerolled": False,
             "input_authentication_digest": self.input_authentication_digest,
             "source_dependencies": self.source_dependencies.to_data(),
             "source_dependency_digest": self.source_dependencies.digest,
@@ -475,6 +703,9 @@ class AtomicSmokeCommandConfig:
             "verifier_id": self.verifier_id,
             "verbose": self.verbose,
             "secrets_generated_after_persistence": True,
+            "launcher_authentication_required_before_secret_generation": True,
+            "call_journal_required": True,
+            "runner_command_config_binding_required": True,
             "secret_values_embedded": False,
             "dependence_design_authorized": False,
             "calibration_authorized": False,
@@ -492,32 +723,78 @@ class AtomicSmokeCommandConfig:
     @classmethod
     def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandConfig":
         expected = {
-            "schema", "scope", "official_release_descriptor_digest",
+            "schema", "scope", "attempt_ordinal",
+            "official_release_descriptor_digest",
             "official_corpus_manifest_digest", "official_split_source_digest",
-            "official_a3_successor_ledger_digest", "input_authentication_digest",
+            "official_active_exposure_predecessor_digest",
+            "official_historical_a3_parent_ledger_digest",
+            "prior_incident_file_sha256", "prior_attempt_command_config_digest",
+            "prior_attempt_outer_reason_digest",
+            "prior_attempt_prediction_persisted",
+            "prior_attempt_terminal_persisted",
+            "prior_attempt_successful_model_call_count",
+            "prior_attempt_selected_task_consumed",
+            "prior_attempt_selected_task_may_be_rerolled",
+            "input_authentication_digest",
             "source_dependencies", "source_dependency_digest",
             "cloud_policy_cache_binding",
             "cloud_policy_cache_snapshot_file_sha256",
             "cloud_policy_cache_snapshot_byte_count", "expected_launcher_digest",
             "run_protocol_digest", "model", "reasoning_effort", "minutes",
             "verifier_id", "verbose", "secrets_generated_after_persistence",
+            "launcher_authentication_required_before_secret_generation",
+            "call_journal_required", "runner_command_config_binding_required",
             "secret_values_embedded", "dependence_design_authorized",
             "calibration_authorized", "benchmark_claim_authorized",
             "official_test_authorized", "config_digest",
         }
         if not isinstance(value, Mapping) or set(value) != expected:
             raise AtomicSmokeCommandError("command config fields differ")
+        prior_count = value["prior_attempt_successful_model_call_count"]
+        if (
+            not isinstance(prior_count, Mapping)
+            or set(prior_count)
+            != {"known", "lower_bound_inclusive", "upper_bound_inclusive"}
+            or prior_count["known"] is not False
+            or type(prior_count["lower_bound_inclusive"]) is not int
+            or type(prior_count["upper_bound_inclusive"]) is not int
+        ):
+            raise AtomicSmokeCommandError("prior attempt call-count lineage differs")
         if (
             value["schema"] != ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA
-            or value["scope"] != "one-exploratory-repeated-generator-train-smoke/v1"
+            or value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
+            or value["attempt_ordinal"] != ATOMIC_SMOKE_ATTEMPT_ORDINAL
             or value["official_release_descriptor_digest"]
             != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
             or value["official_corpus_manifest_digest"]
             != OFFICIAL_CORPUS_MANIFEST_DIGEST
             or value["official_split_source_digest"] != OFFICIAL_SPLIT_SOURCE_DIGEST
-            or value["official_a3_successor_ledger_digest"]
-            != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            or value["official_active_exposure_predecessor_digest"]
+            != OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
+            or value["official_historical_a3_parent_ledger_digest"]
+            != OFFICIAL_A3_LEDGER_DIGEST
+            or value["prior_incident_file_sha256"]
+            != ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256
+            or value["prior_attempt_command_config_digest"]
+            != ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST
+            or value["prior_attempt_outer_reason_digest"]
+            != ATOMIC_SMOKE_PRIOR_OUTER_REASON_DIGEST
+            or value["prior_attempt_prediction_persisted"] is not False
+            or value["prior_attempt_terminal_persisted"] is not False
+            or value["prior_attempt_successful_model_call_count"]
+            != {
+                "known": False,
+                "lower_bound_inclusive": ATOMIC_SMOKE_PRIOR_CALL_COUNT_LOWER,
+                "upper_bound_inclusive": ATOMIC_SMOKE_PRIOR_CALL_COUNT_UPPER,
+            }
+            or value["prior_attempt_selected_task_consumed"] is not True
+            or value["prior_attempt_selected_task_may_be_rerolled"] is not False
             or value["secrets_generated_after_persistence"] is not True
+            or value[
+                "launcher_authentication_required_before_secret_generation"
+            ] is not True
+            or value["call_journal_required"] is not True
+            or value["runner_command_config_binding_required"] is not True
             or value["secret_values_embedded"] is not False
             or any(
                 value[name] is not False
@@ -665,6 +942,8 @@ class AtomicSmokeCommandTerminal:
     precommit_data: Mapping[str, Any] | None
     run_data: Mapping[str, Any] | None
     run_digest: str | None
+    journal_receipt_data: Mapping[str, Any] | None
+    journal_receipt_digest: str | None
     launcher_digest: str
     launcher_version: str | None
     failure_type: str | None
@@ -712,12 +991,21 @@ class AtomicSmokeCommandTerminal:
                     "terminal precommit data differs from its digest"
                 )
         if self.run_data is None:
-            if self.run_digest is not None:
-                raise AtomicSmokeCommandError("terminal run digest lacks run data")
+            if (
+                self.run_digest is not None
+                or self.journal_receipt_data is not None
+                or self.journal_receipt_digest is not None
+            ):
+                raise AtomicSmokeCommandError(
+                    "terminal run or journal receipt lacks run data"
+                )
         else:
             run = AtomicSmokeRun.from_data(self.run_data)
+            if not isinstance(run.journal_receipt, AtomicSmokeJournalReceipt):
+                raise AtomicSmokeCommandError("terminal run lacks typed journal receipt")
             if (
                 self.run_digest != run.digest
+                or run.command_config_digest != self.config_digest
                 or self.precommit_digest != run.precommit_digest
                 or (
                     self.precommit_data is not None
@@ -728,6 +1016,11 @@ class AtomicSmokeCommandTerminal:
                 )
                 or self.launcher_digest != run.expected_launcher_digest
                 or self.source_dependency_digest != run.source_dependency_digest
+                or self.journal_receipt_digest
+                != run.journal_receipt.receipt_digest
+                or self.journal_receipt_data is None
+                or canonical_json(self.journal_receipt_data)
+                != canonical_json(run.journal_receipt.to_data())
                 or (
                     self.status == "complete" and run.status != "complete"
                 )
@@ -751,6 +1044,8 @@ class AtomicSmokeCommandTerminal:
     def content_data(self) -> dict[str, object]:
         return {
             "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": self.status,
             "phase": self.phase,
             "config_digest": self.config_digest,
@@ -766,6 +1061,12 @@ class AtomicSmokeCommandTerminal:
             ),
             "run": None if self.run_data is None else dict(self.run_data),
             "run_digest": self.run_digest,
+            "journal_receipt": (
+                None
+                if self.journal_receipt_data is None
+                else dict(self.journal_receipt_data)
+            ),
+            "journal_receipt_digest": self.journal_receipt_digest,
             "launcher_digest": self.launcher_digest,
             "launcher_version": self.launcher_version,
             "failure": (
@@ -788,11 +1089,12 @@ class AtomicSmokeCommandTerminal:
     @classmethod
     def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandTerminal":
         expected = {
-            "schema", "status", "phase", "config_digest",
+            "schema", "scope", "attempt_ordinal", "status", "phase",
+            "config_digest",
             "source_dependency_digest", "source_dependency_state",
             "observed_source_dependency_digest", "source_observation_error_digest",
             "precommit_digest", "precommit",
-            "run", "run_digest",
+            "run", "run_digest", "journal_receipt", "journal_receipt_digest",
             "launcher_digest", "launcher_version", "failure",
             "dependence_design_authorized", "calibration_authorized",
             "benchmark_claim_authorized", "official_test_authorized",
@@ -800,21 +1102,33 @@ class AtomicSmokeCommandTerminal:
         }
         if not isinstance(value, Mapping) or set(value) != expected:
             raise AtomicSmokeCommandError("terminal fields differ")
-        if value["schema"] != ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA or any(
+        if (
+            value["schema"] != ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA
+            or value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
+            or value["attempt_ordinal"] != ATOMIC_SMOKE_ATTEMPT_ORDINAL
+            or any(
             value[name] is not False
             for name in (
                 "dependence_design_authorized", "calibration_authorized",
                 "benchmark_claim_authorized", "official_test_authorized",
             )
+            )
         ):
             raise AtomicSmokeCommandError("terminal authority differs")
         run = value["run"]
+        journal_receipt = value["journal_receipt"]
         precommit = value["precommit"]
         failure = value["failure"]
         if precommit is not None and not isinstance(precommit, Mapping):
             raise AtomicSmokeCommandError("terminal precommit must be object or null")
         if run is not None and not isinstance(run, Mapping):
             raise AtomicSmokeCommandError("terminal run must be object or null")
+        if journal_receipt is not None and not isinstance(
+            journal_receipt, Mapping
+        ):
+            raise AtomicSmokeCommandError(
+                "terminal journal receipt must be object or null"
+            )
         if failure is not None and (
             not isinstance(failure, Mapping)
             or set(failure) != {"error_type", "reason_digest"}
@@ -840,6 +1154,12 @@ class AtomicSmokeCommandTerminal:
             ),
             run_data=None if run is None else _canonical_clone(run, "terminal run"),
             run_digest=value["run_digest"],
+            journal_receipt_data=(
+                None
+                if journal_receipt is None
+                else _canonical_clone(journal_receipt, "terminal journal receipt")
+            ),
+            journal_receipt_digest=value["journal_receipt_digest"],
             launcher_digest=value["launcher_digest"],
             launcher_version=value["launcher_version"],
             failure_type=None if failure is None else failure["error_type"],
@@ -859,6 +1179,11 @@ class AtomicSmokeCommandTerminal:
         launcher_version: str,
     ) -> "AtomicSmokeCommandTerminal":
         run_data, precommit_data = _canonical_run_views(run)
+        if run.command_config_digest != config_digest:
+            raise AtomicSmokeCommandError("run differs from exact command config")
+        journal_receipt_data = _canonical_clone(
+            run.journal_receipt.to_data(), "run journal receipt"
+        )
         values = {
             "status": "complete" if run.status == "complete" else "failed",
             "phase": run.terminal_phase,
@@ -871,6 +1196,8 @@ class AtomicSmokeCommandTerminal:
             "precommit_data": precommit_data,
             "run_data": run_data,
             "run_digest": run.digest,
+            "journal_receipt_data": journal_receipt_data,
+            "journal_receipt_digest": run.journal_receipt.receipt_digest,
             "launcher_digest": run.expected_launcher_digest,
             "launcher_version": launcher_version,
             "failure_type": None,
@@ -878,6 +1205,8 @@ class AtomicSmokeCommandTerminal:
         }
         content = {
             "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": values["status"],
             "phase": values["phase"],
             "config_digest": values["config_digest"],
@@ -893,6 +1222,8 @@ class AtomicSmokeCommandTerminal:
             "precommit": values["precommit_data"],
             "run": values["run_data"],
             "run_digest": values["run_digest"],
+            "journal_receipt": values["journal_receipt_data"],
+            "journal_receipt_digest": values["journal_receipt_digest"],
             "launcher_digest": values["launcher_digest"],
             "launcher_version": values["launcher_version"],
             "failure": None,
@@ -921,6 +1252,8 @@ class AtomicSmokeCommandTerminal:
         run_precommit_data: dict[str, Any] | None = None
         if run is not None:
             run_data, run_precommit_data = _canonical_run_views(run)
+            if run.command_config_digest != config.digest:
+                raise AtomicSmokeCommandError("failed run differs from command config")
         effective_precommit_digest = (
             run.precommit_digest
             if run is not None
@@ -955,6 +1288,12 @@ class AtomicSmokeCommandTerminal:
             "precommit_data": effective_precommit_data,
             "run_data": run_data,
             "run_digest": None if run is None else run.digest,
+            "journal_receipt_data": (
+                None if run is None else run.journal_receipt.to_data()
+            ),
+            "journal_receipt_digest": (
+                None if run is None else run.journal_receipt.receipt_digest
+            ),
             "launcher_digest": config.expected_launcher_digest,
             "launcher_version": launcher_version,
             "failure_type": type(error).__name__,
@@ -962,6 +1301,8 @@ class AtomicSmokeCommandTerminal:
         }
         content = {
             "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": values["status"], "phase": values["phase"],
             "config_digest": values["config_digest"],
             "source_dependency_digest": values["source_dependency_digest"],
@@ -976,6 +1317,8 @@ class AtomicSmokeCommandTerminal:
             "precommit": values["precommit_data"],
             "run": values["run_data"],
             "run_digest": values["run_digest"],
+            "journal_receipt": values["journal_receipt_data"],
+            "journal_receipt_digest": values["journal_receipt_digest"],
             "launcher_digest": values["launcher_digest"],
             "launcher_version": values["launcher_version"],
             "failure": {"error_type": values["failure_type"], "reason_digest": values["failure_reason_digest"]},
@@ -1100,12 +1443,14 @@ def run_atomic_smoke_command(
     *,
     corpus_path: str | Path,
     archive_path: str | Path,
-    exposure_ledger_path: str | Path,
+    predecessor_ledger_path: str | Path,
     config_store_dir: str | Path,
     exposure_store_dir: str | Path,
+    journal_store_dir: str | Path,
     prediction_store_dir: str | Path,
     terminal_store_dir: str | Path,
     cache_store_dir: str | Path,
+    prior_incident_path: str | Path = DEFAULT_PRIOR_INCIDENT_PATH,
     release_descriptor_path: str | Path = DEFAULT_RELEASE_PATH,
     expected_launcher_digest: str = ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST,
     model: str = DEFAULT_CODEX_MODEL,
@@ -1120,17 +1465,19 @@ def run_atomic_smoke_command(
     named_image_transport: NamedImageTransport = run_codex_named_images_structured,
     text_transport: TextTransport = run_codex_text_structured,
 ) -> AtomicSmokeCommandResult:
-    """Run one authenticated exploratory smoke without exposing a task pre-ledger."""
+    """Run successor attempt two after authenticating the consumed first attempt."""
 
     inputs = authenticate_atomic_smoke_inputs(
         corpus_path=corpus_path,
         archive_path=archive_path,
-        exposure_ledger_path=exposure_ledger_path,
+        predecessor_ledger_path=predecessor_ledger_path,
+        prior_incident_path=prior_incident_path,
         release_descriptor_path=release_descriptor_path,
     )
     stores = {
         "config": _StoreBinding.freeze("config", config_store_dir),
         "exposure": _StoreBinding.freeze("exposure", exposure_store_dir),
+        "journal": _StoreBinding.freeze("journal", journal_store_dir),
         "prediction": _StoreBinding.freeze("prediction", prediction_store_dir),
         "terminal": _StoreBinding.freeze("terminal", terminal_store_dir),
         "cache": _StoreBinding.freeze("cache", cache_store_dir),
@@ -1173,32 +1520,12 @@ def run_atomic_smoke_command(
     config_receipt = _persist_config(config, config_store_dir)
     stores["config"].check("after-command-config-persistence")
     guard.check("after-command-config-persistence")
-    selection_seed, episode_seed, label_nonce = _fresh_secrets(secret_factory)
     precommit: AtomicSmokePrecommit | None = None
     launcher_version: str | None = None
     run: AtomicSmokeRun | None = None
     run_receipt: AtomicSmokeDurabilityReceipt | None = None
-    phase = "precommit"
+    phase = "launcher-staging"
     try:
-        guard.check("before-precommit")
-        stores["exposure"].check("before-exposure-precommit")
-        precommit = prepare_atomic_smoke_precommit(
-            inputs.trusted.corpus,
-            seed=selection_seed,
-            episode_seed=episode_seed,
-            full_corpus_manifest=inputs.trusted.full_manifest,
-            source_corpus_manifest_digest=OFFICIAL_CORPUS_MANIFEST_DIGEST,
-            source_dependency_digest=frozen_sources.digest,
-            exposure_ledger=inputs.predecessor,
-            expected_exposure_ledger_digest=OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
-            label_seal_nonce=label_nonce,
-            exposure_store_dir=exposure_store_dir,
-            verifier_id=verifier_id,
-        )
-        stores["exposure"].check("after-exposure-precommit")
-        guard.check("after-precommit")
-        _assert_non_test_precommit(precommit)
-        phase = "launcher-staging"
         guard.check("before-launcher-staging")
         with launcher_stager(
             executable,
@@ -1210,13 +1537,41 @@ def run_atomic_smoke_command(
                 raise AtomicSmokeCommandError("staged launcher differs from config")
             launcher_version = staged.version
             guard.check("after-launcher-staging")
+            phase = "secret-generation"
+            selection_seed, episode_seed, label_nonce = _fresh_secrets(
+                secret_factory
+            )
+            phase = "precommit"
+            guard.check("before-precommit")
+            stores["exposure"].check("before-exposure-precommit")
+            precommit = prepare_atomic_smoke_precommit(
+                inputs.trusted.corpus,
+                seed=selection_seed,
+                episode_seed=episode_seed,
+                full_corpus_manifest=inputs.trusted.full_manifest,
+                source_corpus_manifest_digest=OFFICIAL_CORPUS_MANIFEST_DIGEST,
+                source_dependency_digest=frozen_sources.digest,
+                exposure_ledger=inputs.predecessor,
+                expected_exposure_ledger_digest=(
+                    OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
+                ),
+                label_seal_nonce=label_nonce,
+                exposure_store_dir=exposure_store_dir,
+                verifier_id=verifier_id,
+            )
+            stores["exposure"].check("after-exposure-precommit")
+            guard.check("after-precommit")
+            _assert_non_test_precommit(precommit)
             phase = "atomic-run"
+            stores["journal"].check("before-atomic-run")
             stores["prediction"].check("before-atomic-run")
             run = run_atomic_smoke(
                 precommit,
                 source_dependency_digest=frozen_sources.digest,
                 expected_protocol_digest=config.run_protocol_digest,
                 expected_launcher_digest=config.expected_launcher_digest,
+                command_config_digest=config.digest,
+                journal_store_dir=journal_store_dir,
                 prediction_store_dir=prediction_store_dir,
                 model=config.model,
                 reasoning_effort=config.reasoning_effort,
@@ -1236,6 +1591,7 @@ def run_atomic_smoke_command(
             run_receipt = _persist_raw_run(run, terminal_store_dir)
             stores["terminal"].check("after-raw-run-persistence")
             phase = "atomic-run"
+            stores["journal"].check("after-atomic-run")
             stores["prediction"].check("after-atomic-run")
             guard.check("after-atomic-run")
         guard.check("after-launcher-context")
@@ -1331,9 +1687,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument("--corpus", required=True)
     parser.add_argument("--archive", required=True)
-    parser.add_argument("--exposure-ledger", required=True)
+    parser.add_argument(
+        "--predecessor-ledger",
+        "--exposure-ledger",
+        dest="predecessor_ledger",
+        required=True,
+    )
+    parser.add_argument(
+        "--prior-incident", default=str(DEFAULT_PRIOR_INCIDENT_PATH)
+    )
     parser.add_argument("--config-store", required=True)
     parser.add_argument("--exposure-store", required=True)
+    parser.add_argument("--journal-store", required=True)
     parser.add_argument("--prediction-store", required=True)
     parser.add_argument("--terminal-store", required=True)
     parser.add_argument("--cache-store", required=True)
@@ -1353,9 +1718,11 @@ def main(argv: list[str] | None = None) -> int:
         result = run_atomic_smoke_command(
             corpus_path=args.corpus,
             archive_path=args.archive,
-            exposure_ledger_path=args.exposure_ledger,
+            predecessor_ledger_path=args.predecessor_ledger,
+            prior_incident_path=args.prior_incident,
             config_store_dir=args.config_store,
             exposure_store_dir=args.exposure_store,
+            journal_store_dir=args.journal_store,
             prediction_store_dir=args.prediction_store,
             terminal_store_dir=args.terminal_store,
             cache_store_dir=args.cache_store,
@@ -1373,7 +1740,9 @@ def main(argv: list[str] | None = None) -> int:
             "utf-8", errors="replace"
         )[:4096]
         payload = {
-            "schema": "gkm.bongard-atomic-smoke-cli-result.v1",
+            "schema": "gkm.bongard-atomic-smoke-cli-result.v2",
+            "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+            "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": "operational-error-before-terminal",
             "error_type": type(exc).__name__,
             "reason_digest": hashlib.sha256(reason).hexdigest(),
@@ -1386,12 +1755,25 @@ def main(argv: list[str] | None = None) -> int:
         print(canonical_json(payload).decode("utf-8"), flush=True)
         return 2
     payload = {
-        "schema": "gkm.bongard-atomic-smoke-cli-result.v1",
+        "schema": "gkm.bongard-atomic-smoke-cli-result.v2",
+        "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
+        "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
         "status": result.terminal.status,
         "config_digest": result.config.digest,
         "terminal_digest": result.terminal.terminal_digest,
         "precommit_digest": result.terminal.precommit_digest,
         "run_digest": result.terminal.run_digest,
+        "journal_receipt_digest": result.terminal.journal_receipt_digest,
+        "journal_intent_count": (
+            None
+            if result.terminal.journal_receipt_data is None
+            else result.terminal.journal_receipt_data["intent_count"]
+        ),
+        "journal_result_count": (
+            None
+            if result.terminal.journal_receipt_data is None
+            else result.terminal.journal_receipt_data["result_count"]
+        ),
         "run_persistence": (
             None if result.run_receipt is None else result.run_receipt.to_data()
         ),
@@ -1408,15 +1790,23 @@ def main(argv: list[str] | None = None) -> int:
 
 
 __all__ = [
+    "ATOMIC_SMOKE_ATTEMPT_ORDINAL",
+    "ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA",
     "ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA",
+    "ATOMIC_SMOKE_COMMAND_SCOPE",
     "ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA",
     "ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST",
+    "ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST",
+    "ATOMIC_SMOKE_PRIOR_INCIDENT_FILE_SHA256",
+    "ATOMIC_SMOKE_PRIOR_OUTER_REASON_DIGEST",
     "AtomicSmokeAuthenticatedInputs",
     "AtomicSmokeCommandConfig",
     "AtomicSmokeCommandError",
     "AtomicSmokeCommandResult",
     "AtomicSmokeCommandTerminal",
     "AtomicSmokeDurabilityReceipt",
+    "AtomicSmokePriorIncident",
+    "DEFAULT_PRIOR_INCIDENT_PATH",
     "authenticate_atomic_smoke_inputs",
     "main",
     "run_atomic_smoke_command",

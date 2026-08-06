@@ -62,9 +62,13 @@ The short version:
   hard-codes calibration, semantic-truth, and benchmark authority false;
   calibrated semantic selection is disabled until a typed calibration
   artifact and interval rule can be cold-validated.
-- Exactly ten repeated-generator, exact-unseen training tasks are eligible for
-  the first no-reroll N=1 smoke. This tests transport and synthesis, not
-  independent generalization or benchmark accuracy.
+- The original first-attempt frame contained exactly ten repeated-generator,
+  exact-unseen training tasks. One selected task was exposed and consumed by
+  the failed N=1 command. The active successor frame therefore contains
+  exactly nine IDs, digest
+  `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+  This still tests transport and synthesis, not independent generalization or
+  benchmark accuracy.
 - The first live N=1 attempt, from commit
   `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
   `bongard-atomic-pre-smoke-20260806`, is an operational failure. Cache, config,
@@ -83,6 +87,18 @@ The short version:
   [`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
 - Atomic command stores require mode `0700`. A prior setup launch stopped on a
   `0755` cache store before exposure and consumed nothing.
+- Attempt two is not a reroll. It binds the exact incident, historical A3
+  ledger
+  `sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`,
+  and active predecessor
+  `sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+  The pinned native launcher is staged and authenticated before secret
+  generation or exact-task exposure.
+- Attempt two requires a fresh empty mode-`0700` call-journal store. The
+  journal durably writes its bound header, then an exact intent before each of
+  the 29 transports, each validated result before the next intent, and its
+  terminal before the runner returns. Existing or partial journals cannot be
+  resumed or retried. No live attempt-two outcome is claimed yet.
 - New command receipts bind the complete executable Bongard Python source
   boundary. Source drift
   after exposure produces a durable typed failure with labels withheld.

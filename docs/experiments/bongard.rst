@@ -31,6 +31,24 @@ sanitized record is
 must have mode ``0700``.  An earlier setup launch rejected a ``0755`` cache
 store before exposure and consumed nothing.
 
+Attempt two is frozen as a distinct successor, not a reroll.  Its active
+predecessor is the first attempt's exposure successor,
+``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``.
+That ledger must be exactly one canonical append after historical A3 ledger
+``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``,
+and the command also binds the exact incident and prior config/reason lineage.
+After excluding the consumed first task, the active universe is exactly nine
+IDs with digest
+``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
+
+The pinned native launcher is staged and authenticated before any selection,
+episode, or label secret and before exact-task exposure.  Attempt two requires
+a fresh empty mode-``0700`` call-journal store.  The journal durably writes a
+bound header, an exact intent before each slot in the fixed 29-call schedule,
+each validated result before the next intent, and its terminal before runner
+return.  An existing header, open intent, or partial prefix cannot be resumed
+or retried.  No live attempt-two result is claimed.
+
 The first visual-semantic calibration experiment, A1, is terminal:
 
 .. list-table::
@@ -240,6 +258,7 @@ separates empirical observation from deterministic synthesis:
        2 query PNGs -> 2 descriptions -> 2 selected-atom observations
        -> durable joint prediction -> label reveal -> score
        -> model-free replay of all 29 causal receipts
+       -> durable call-journal terminal before runner return
 
 The atom proposer receives only the frozen descriptions and support labels,
 not pixels.  Each description is bound to the panel bytes, neutral-description
@@ -331,7 +350,8 @@ evidence for negation.  Stage B is unauthorized by all three experiments.  No
 official complete-corpus visual-semantic score currently exists.  The first
 live atomic N=1 adds only an operational wrapper failure: exposure persisted,
 no prediction or terminal persisted, the task is consumed without reroll, and
-the successful-call count is irrecoverably unknown in 0--29.
+the successful-call count is irrecoverably unknown in 0--29.  The distinct
+nine-ID, incident-bound attempt two remains pre-live and has no outcome.
 
 See :doc:`reproduction` for the exact Stage-A command and current artifact
 addresses.

@@ -58,7 +58,8 @@ win.  Stage B is unauthorized by A1, A2, and A3.
 Official test execution is disabled.  The first atomic frame is an N=1
 repeated-generator training smoke, not an independent benchmark.  Thus this
 paper specifies a protocol and its present representational gaps, not a
-positive accuracy result.
+positive accuracy result.  Its first live task was consumed by an operational
+wrapper failure; a distinct journaled successor is frozen but has not yet run.
 \end{abstract}
 
 \section{The theoretical hole}
@@ -375,16 +376,16 @@ and atom digest.  There is no \texttt{Not}, disjunction, polarity flip, or
 post-hoc complement rescue.  Only after formula freeze are the two query
 sources described and scored.  The exact success schedule is 29 model calls.
 
-The production precommit authenticates the complete 12,000-task manifest and
-A3 successor ledger before metadata-only selection.  Exactly ten exact-unseen
-training tasks from already exposed Basic-shape generators are eligible; their
-universe digest is
+The first production precommit authenticated the complete 12,000-task manifest
+and A3 successor ledger before metadata-only selection.  Exactly ten
+exact-unseen training tasks from already exposed Basic-shape generators were
+historically eligible; their original universe digest is
 \begin{center}
 \small
 \nolinkurl{sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8}.
 \end{center}
-The exact selected-task exposure is durably written before any selected panel
-is hashed.  This dependence makes an N=1 run useful as a transport and
+The exact selected-task exposure was durably written before any selected panel
+was hashed.  This dependence made the first N=1 run useful as a transport and
 synthesis smoke but invalid as an independent accuracy estimate.  At source
 freeze, the genuine-receipt synthetic harness completed all 29 calls, scored
 both queries correctly, and cold-replayed; no live atomic result is claimed by
@@ -419,6 +420,31 @@ require mode \texttt{0700}; an earlier setup invocation rejected a
 \texttt{0755} cache store before exposure and consumed nothing.  The sanitized
 machine record is
 \texttt{bongard/data/atomic\_smoke\_n1\_operational\_failure\_v1.json}.
+
+Attempt two is frozen as a distinct successor, not a reroll.  Its active
+predecessor is the first attempt's exposure successor,
+\begin{center}
+\small
+\nolinkurl{sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a},
+\end{center}
+which must be exactly one canonical append after the historical A3 ledger
+\nolinkurl{sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4}.
+The exact incident and prior config/reason lineage are bound as well.  With the
+consumed first task excluded, the active eligible universe contains exactly
+nine IDs, digest
+\begin{center}
+\small
+\nolinkurl{sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed}.
+\end{center}
+
+Before secret generation or exact-task exposure, the command stages and
+authenticates the pinned native launcher.  Attempt two requires a fresh empty
+mode-\texttt{0700} call journal.  A durable header binds its precommit, command
+config, source, protocol, launcher, model, and effort.  Each of the fixed 29
+slots writes its exact intent before transport and its validated result before
+the next intent; the journal terminal is durable before runner return.  An
+existing header, open intent, or partial prefix cannot be resumed or retried.
+No live attempt-two result is claimed.
 
 \subsection{Stage B: conditional descriptive DEV run}
 
@@ -503,10 +529,11 @@ inference.
 
 The atomic implementation now supplies one-phrase claims, complete panel-wise
 observations, deterministic small positive conjunctions, and the absence of
-\texttt{Not} and polarity flipping.  Its first eligible frame is deliberately
-narrow: ten exact-unseen training tasks from already exposed Basic-shape
-generators.  An N=1 run can test transport and synthesis, but cannot estimate
-independent generalization.
+\texttt{Not} and polarity flipping.  Its original eligible frame was
+deliberately narrow: ten exact-unseen training tasks from already exposed
+Basic-shape generators.  The first failure consumed one, leaving the exact
+nine-ID successor frame above.  An N=1 run can test transport and synthesis,
+but cannot estimate independent generalization.
 
 The immediate work is richer structured vision.  One prose sentence remains a
 lossy bottleneck.  Typed object, part, angle, topology, and relation records
@@ -534,8 +561,8 @@ point contact, ownership, stable object identity, and a powered evaluation
 design.  Until those legs improve, the correct scientific record is one
 terminal A1 failure, one invalidated A2 incident with no terminal artifact,
 one terminal underpopulated-bin A3 failure, and one consumed atomic N=1
-operational wrapper failure with no recoverable score---not a successful
-Bongard benchmark.
+operational wrapper failure with no recoverable score.  The distinct journaled
+successor remains pre-live---there is still no successful Bongard benchmark.
 
 \section*{Reproducibility note}
 

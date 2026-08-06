@@ -6,9 +6,10 @@ path honestly and failed its calibration fit. The description-to-predicate
 search layer is now implemented as an exact operational atomic smoke. Its first
 live N=1 attempt failed in the command wrapper after exact-task exposure; it
 produced no Bongard result, and that task is consumed without reroll. The
-immediate work is to repair and test terminal construction, preserve the
-incident, then design richer typed perception and a defensible evaluation
-frame. It is not to produce a SEALED number at any cost.
+wrapper defect is repaired and the successor is hardened with a non-resumable
+per-call journal. The immediate work is to gate and run that distinct successor
+once, report it honestly, then design richer typed perception and a defensible
+evaluation frame. It is not to produce a SEALED number at any cost.
 
 ## 0. Preserve the first atomic N=1 operational failure
 
@@ -44,6 +45,40 @@ Before that consuming attempt, a setup launch correctly failed because the
 cache store was mode `0755`, not the required `0700`. It persisted no exposure
 and consumed nothing. Every future atomic store must be a canonical,
 non-symlink directory at mode `0700`.
+
+### 0.1 Run attempt two only as the exact journaled successor
+
+Attempt two is not a reroll. It must authenticate this complete lineage:
+
+- historical A3 ledger:
+  `sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4`;
+- first-attempt incident file:
+  `sha256:2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`;
+- first-attempt config:
+  `sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451`;
+- first-attempt outer reason:
+  `2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`;
+- active predecessor exposure ledger:
+  `sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+
+The active predecessor must be exactly one canonical exposure append after
+A3. The first selected task and every other predecessor ID stay excluded. The
+remaining eligible universe is exactly nine IDs, digest
+`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+A different predecessor, incident, lineage, count, or set digest stops before
+selection.
+
+The command must persist its secret-free config, then stage and authenticate
+the pinned native launcher before generating selection, episode, or label
+secrets and before exact-task exposure. It must use a fresh empty call-journal
+directory at mode `0700`. The journal writes a bound header; for every one of
+the fixed 29 call slots it writes the exact intent before transport and the
+validated result before the next intent. The terminal is durable before the
+runner returns. A pre-existing header, an open intent, or any partial prefix is
+terminal evidence for that attempt, not permission to resume or retry it.
+
+No attempt-two live outcome exists at this pre-live stage. Do not infer one
+from passing tests or from the synthetic 29-call harness.
 
 ## 1. Preserve A1 as a terminal failure
 
@@ -150,14 +185,19 @@ The larger-corpus audit also separates two quantities that had been conflated:
 | `bd` | 3,434 |
 | `hd` | 3,615 |
 
-Exactly ten of those tasks are exact-unseen training tasks from already
-exposed Basic-shape generator clusters. Their frozen universe digest is
+Before the first atomic attempt, exactly ten of those tasks were exact-unseen
+training tasks from already exposed Basic-shape generator clusters. That
+historical frozen-universe digest is
 `sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8`.
-They are useful for a no-reroll N=1 transport/synthesis smoke because selecting
-one consumes no new generator claim. They are not independent evaluation
-units. The production atomic precommit authenticates the full 12,000-task
-manifest and A3 ledger, selects from that exact universe metadata-only, and
-persists the exposure before hashing the selected pixels.
+The first attempt exposed and consumed one selected task. The active successor
+therefore has exactly nine remaining IDs, digest
+`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`.
+They are useful for a no-reroll transport/synthesis smoke because selecting one
+consumes no new generator claim. They are not independent evaluation units.
+The production successor precommit authenticates the full 12,000-task manifest,
+the exact A3-to-`b053` lineage, and the first incident, selects from the nine-ID
+universe metadata-only, and persists the exposure before hashing selected
+pixels.
 
 The pre-A3 24-unit ceiling and post-A3 zero are caused by demanding
 constituent-disjointness across the complete predecessor ledger and the new
@@ -362,8 +402,9 @@ underpopulated-bin failure after successful proposer/scorer transport, and the
 first atomic N=1 ended as an operational wrapper failure with no recoverable
 score. Before any new calibration is declared, a powered, label-blind
 recruitment rule must be frozen. The atomic matrix path is implemented but not
-itself a calibration. The consumed N=1 task may not be rerolled, and any future
-separately authorized smoke must still be reported as exploratory regardless
-of score. Stage B remains unauthorized. This phase is not complete merely
-because the code builds, one smoke scores 2/2, or a favorable complement can
-be found.
+itself a calibration. The consumed N=1 task may not be rerolled. Attempt two is
+a distinct, incident-bound, nine-ID successor and has not yet produced a live
+outcome. Any future separately authorized smoke must still be reported as
+exploratory regardless of score. Stage B remains unauthorized. This phase is
+not complete merely because the code builds, one smoke scores 2/2, or a
+favorable complement can be found.

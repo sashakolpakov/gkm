@@ -42,26 +42,31 @@ from bongard.historical_exposure import load_historical_exposure
 from bongard.semantic_calibration_campaign import semantic_generator_cluster_id
 
 
-ATOMIC_SMOKE_SELECTION_SCHEMA = "gkm.bongard-atomic-smoke-selection.v2"
-ATOMIC_SMOKE_PRECOMMIT_SCHEMA = "gkm.bongard-atomic-smoke-precommit.v2"
+ATOMIC_SMOKE_SELECTION_SCHEMA = "gkm.bongard-atomic-smoke-selection.v3"
+ATOMIC_SMOKE_PRECOMMIT_SCHEMA = "gkm.bongard-atomic-smoke-precommit.v3"
 ATOMIC_SMOKE_DEVELOPMENT_MANIFEST_SCHEMA = (
     "gkm.bongard-atomic-smoke-development-manifest-public.v2"
 )
 ATOMIC_SMOKE_PERSISTENCE_SCHEMA = "gkm.bongard-atomic-smoke-persistence.v1"
 ATOMIC_SMOKE_SELECTION_POLICY = (
-    "repeated-generator-drill-exact-unseen-train-bd/v1"
+    "repeated-generator-drill-exact-unseen-train-bd-successor/v2"
 )
 ATOMIC_SMOKE_SAMPLE_SIZE = 1
-OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT = 10
-OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST = (
-    "sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8"
+OFFICIAL_SUCCESSOR_UNIVERSE_COUNT = 9
+OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST = (
+    "sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed"
 )
 OFFICIAL_CORPUS_MANIFEST_DIGEST = (
     "sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138"
 )
-OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST = (
+OFFICIAL_A3_LEDGER_DIGEST = (
     "sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4"
 )
+OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST = (
+    "sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a"
+)
+OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE = 147
+OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR = benchmark.DEFAULT_VERIFIER
 OFFICIAL_SPLIT_SOURCE_DIGEST = (
     "sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230"
 )
@@ -86,9 +91,16 @@ ATOMIC_SMOKE_EXPOSURE_PHASE = "atomic-smoke-precommit"
 ATOMIC_SMOKE_EXPOSURE_PURPOSE = (
     "exploratory-repeated-generator-exact-task-smoke"
 )
+ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PHASE = "atomic-smoke-precommit"
+ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PURPOSE = (
+    "exploratory-repeated-generator-exact-task-smoke"
+)
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
+_ATOMIC_SMOKE_SELECTION_SOURCE = re.compile(
+    r"atomic-smoke-selection:sha256:[0-9a-f]{64}\Z"
+)
 
 
 class AtomicSmokePrecommitError(ValueError):
@@ -167,13 +179,13 @@ def _exact_int(value: object, label: str, *, minimum: int = 0) -> int:
 def _seed_commitment(seed: str) -> str:
     _text(seed, "post-freeze selection seed")
     return canonical_digest({
-        "schema": "gkm.bongard-atomic-smoke-seed-commitment.v1", "seed": seed,
+        "schema": "gkm.bongard-atomic-smoke-seed-commitment.v2", "seed": seed,
     })
 
 
 def _seed_rank(seed: str, task_id: str) -> str:
     return canonical_digest({
-        "schema": "gkm.bongard-atomic-smoke-seed-rank.v1",
+        "schema": "gkm.bongard-atomic-smoke-seed-rank.v2",
         "selection_policy": ATOMIC_SMOKE_SELECTION_POLICY,
         "post_freeze_seed": seed, "task_id": task_id,
     })
@@ -184,7 +196,7 @@ def atomic_smoke_protocol_digest() -> str:
 
     return canonical_digest(
         {
-            "schema": "gkm.bongard-atomic-smoke-protocol.v2",
+            "schema": "gkm.bongard-atomic-smoke-protocol.v3",
             "selection_schema": ATOMIC_SMOKE_SELECTION_SCHEMA,
             "precommit_schema": ATOMIC_SMOKE_PRECOMMIT_SCHEMA,
             "selection_policy": ATOMIC_SMOKE_SELECTION_POLICY,
@@ -194,11 +206,23 @@ def atomic_smoke_protocol_digest() -> str:
             "causal_order": (
                 "authenticate-full-manifest-then-metadata-selection-then-freeze-"
                 "canonical-task-paths-then-exposure-record-then-owned-exclusive-"
-                "fsync-reload-then-selected-panel-hash-then-episode-prepare/v2"
+                "fsync-reload-then-selected-panel-hash-then-episode-prepare/v3"
             ),
             "official_corpus_manifest_digest": OFFICIAL_CORPUS_MANIFEST_DIGEST,
-            "official_a3_successor_ledger_digest": (
-                OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            "official_a3_historical_parent_ledger_digest": (
+                OFFICIAL_A3_LEDGER_DIGEST
+            ),
+            "official_successor_predecessor_ledger_digest": (
+                OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
+            ),
+            "official_successor_predecessor_append_sequence": (
+                OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE
+            ),
+            "official_successor_predecessor_append_actor": (
+                OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR
+            ),
+            "predecessor_lineage": (
+                "exactly-one-atomic-smoke-task-only-append-after-a3/v1"
             ),
             "official_split_source_digest": OFFICIAL_SPLIT_SOURCE_DIGEST,
             "official_historical_seed_digest": OFFICIAL_HISTORICAL_SEED_DIGEST,
@@ -423,6 +447,71 @@ def _authenticate_full_manifest(
     )
 
 
+def _authenticate_successor_predecessor(
+    exposure_ledger: ExposureLedger,
+    *,
+    expected_exposure_ledger_digest: str,
+) -> None:
+    """Authenticate the consumed first smoke as one exact append after A3.
+
+    The active predecessor is not merely a ledger with a pinned outer digest.
+    Its prefix must reproduce the historical A3 ledger, and its sole append
+    must disclose exactly one previously unseen task under the closed atomic
+    smoke event shape.  ``ExposureEvent`` has no model-metadata field; the
+    source is restricted to the selection content address and panels are
+    forbidden.
+    """
+
+    if not isinstance(exposure_ledger, ExposureLedger):
+        raise TypeError("exposure_ledger must be ExposureLedger")
+    expected = _address(
+        expected_exposure_ledger_digest, "expected exposure ledger digest"
+    )
+    if expected != OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST:
+        raise AtomicSmokePrecommitError(
+            "expected predecessor is not the official successor pin"
+        )
+    if exposure_ledger.digest != expected:
+        raise AtomicSmokePrecommitError(
+            "exposure ledger differs from pinned successor predecessor"
+        )
+    if not exposure_ledger.events:
+        raise AtomicSmokePrecommitError(
+            "successor predecessor has no atomic smoke append"
+        )
+
+    historical_parent = ExposureLedger(
+        corpus_digest=exposure_ledger.corpus_digest,
+        events=exposure_ledger.events[:-1],
+    )
+    if historical_parent.digest != OFFICIAL_A3_LEDGER_DIGEST:
+        raise AtomicSmokePrecommitError(
+            "successor predecessor is not exactly one append after official A3"
+        )
+
+    event = exposure_ledger.events[-1]
+    if (
+        event.sequence != OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE
+        or event.actor != OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR
+        or event.phase != ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PHASE
+        or event.purpose != ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PURPOSE
+        or len(event.task_ids) != 1
+        or event.panel_ids
+        or event.source is None
+        or _ATOMIC_SMOKE_SELECTION_SOURCE.fullmatch(event.source) is None
+    ):
+        raise AtomicSmokePrecommitError(
+            "successor predecessor append differs from the atomic smoke protocol"
+        )
+    exact_task_delta = (
+        exposure_ledger.exposed_task_ids - historical_parent.exposed_task_ids
+    )
+    if exact_task_delta != frozenset(event.task_ids):
+        raise AtomicSmokePrecommitError(
+            "successor predecessor does not add exactly one new task identity"
+        )
+
+
 def _derive_official_universe(
     corpus: ShapeBongardCorpus,
     exposure_ledger: ExposureLedger,
@@ -431,18 +520,16 @@ def _derive_official_universe(
     source_corpus_manifest_digest: str,
     expected_exposure_ledger_digest: str,
 ) -> _Universe:
-    """Derive and authenticate the ten-ID universe without task materialization."""
+    """Derive and authenticate the nine-ID universe without task materialization."""
 
-    if not isinstance(exposure_ledger, ExposureLedger):
-        raise TypeError("exposure_ledger must be ExposureLedger")
     source_digest = _address(source_corpus_manifest_digest, "source corpus manifest digest")
     expected_ledger = _address(expected_exposure_ledger_digest, "expected ledger digest")
     if source_digest != OFFICIAL_CORPUS_MANIFEST_DIGEST:
         raise AtomicSmokePrecommitError("source corpus digest is not the official pin")
-    if expected_ledger != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST:
-        raise AtomicSmokePrecommitError("expected predecessor is not the official A3 pin")
-    if exposure_ledger.digest != expected_ledger:
-        raise AtomicSmokePrecommitError("exposure ledger differs from pinned predecessor")
+    _authenticate_successor_predecessor(
+        exposure_ledger,
+        expected_exposure_ledger_digest=expected_ledger,
+    )
     if exposure_ledger.corpus_digest != source_digest:
         raise AtomicSmokePrecommitError("exposure predecessor belongs to another corpus")
     if not corpus.split.groups or corpus.split.source_digest is None:
@@ -508,12 +595,16 @@ def _derive_official_universe(
             "cannot certify atomic smoke universe from frozen metadata") from exc
 
     universe_digest = _content_address(list(task_ids))
+    if set(task_ids) & set(exposure_ledger.exposed_task_ids):
+        raise AtomicSmokePrecommitError(
+            "atomic smoke universe includes a predecessor-exposed task"
+        )
     if (
-        len(task_ids) != OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT
-        or universe_digest != OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST
+        len(task_ids) != OFFICIAL_SUCCESSOR_UNIVERSE_COUNT
+        or universe_digest != OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST
     ):
         raise AtomicSmokePrecommitError(
-            "atomic smoke universe differs from the official A3 successor "
+            "atomic smoke universe differs from the official successor "
             f"commitment (count={len(task_ids)}, digest={universe_digest})"
         )
     blocked_policy_digest = _content_address(
@@ -555,8 +646,8 @@ class AtomicSmokeSelection:
     family: str = "bd"
     split: str = "train"
     semantic_cohort: str = "drill"
-    universe_count: int = OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT
-    universe_task_ids_digest: str = OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST
+    universe_count: int = OFFICIAL_SUCCESSOR_UNIVERSE_COUNT
+    universe_task_ids_digest: str = OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST
     dependence_design_authorized: bool = False
     calibration_authorized: bool = False
     benchmark_claim_authorized: bool = False
@@ -583,14 +674,14 @@ class AtomicSmokeSelection:
             or self.family != "bd"
             or self.split != "train"
             or self.semantic_cohort != "drill"
-            or self.universe_count != OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT
+            or self.universe_count != OFFICIAL_SUCCESSOR_UNIVERSE_COUNT
             or self.universe_task_ids_digest
-            != OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST
+            != OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST
             or self.source_corpus_manifest_digest
             != OFFICIAL_CORPUS_MANIFEST_DIGEST
             or self.split_source_digest != OFFICIAL_SPLIT_SOURCE_DIGEST
             or self.exposure_predecessor_digest
-            != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            != OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
             or self.historical_seed_digest != OFFICIAL_HISTORICAL_SEED_DIGEST
             or self.resolver_policy_digest != OFFICIAL_RESOLVER_POLICY_DIGEST
             or self.blocked_morphology_policy_digest
@@ -670,8 +761,8 @@ class AtomicSmokeSelection:
             "family": "bd",
             "split": "train",
             "semantic_cohort": "drill",
-            "universe_count": OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT,
-            "universe_task_ids_digest": OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST,
+            "universe_count": OFFICIAL_SUCCESSOR_UNIVERSE_COUNT,
+            "universe_task_ids_digest": OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST,
             "dependence_design_authorized": False,
             "calibration_authorized": False,
             "benchmark_claim_authorized": False,
@@ -722,7 +813,7 @@ def select_atomic_smoke_task(
     exposure_ledger: ExposureLedger,
     expected_exposure_ledger_digest: str,
 ) -> AtomicSmokeSelection:
-    """Select the seed-minimum task after freezing the exact ten-ID universe."""
+    """Select the seed-minimum task after freezing the exact nine-ID universe."""
 
     _text(seed, "post-freeze selection seed")
     authenticated = _authenticate_full_manifest(corpus, full_corpus_manifest)
@@ -1706,9 +1797,12 @@ __all__ = [
     "ATOMIC_SMOKE_SAMPLE_SIZE",
     "ATOMIC_SMOKE_SELECTION_POLICY",
     "ATOMIC_SMOKE_SELECTION_SCHEMA",
-    "OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST",
-    "OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT",
-    "OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST",
+    "OFFICIAL_A3_LEDGER_DIGEST",
+    "OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR",
+    "OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE",
+    "OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST",
+    "OFFICIAL_SUCCESSOR_UNIVERSE_COUNT",
+    "OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST",
     "OFFICIAL_BLOCKED_MORPHOLOGY_POLICY_DIGEST",
     "OFFICIAL_CORPUS_MANIFEST_DIGEST",
     "OFFICIAL_HISTORICAL_SEED_DIGEST",

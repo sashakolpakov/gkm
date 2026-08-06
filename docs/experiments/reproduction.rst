@@ -315,15 +315,20 @@ description is still lossy.  Lean or another checker may inspect a frozen
 artifact only as an optional removable sidecar; it is not part of the
 predicate, result, or ID.
 
-Exploratory atomic smoke
-------------------------
+Exploratory atomic successor attempt two
+----------------------------------------
 
 The production command authenticates the complete 12,000-task release, exact
-split, complete manifest, and A3 successor ledger before selection.  It
-persists a secret-free command configuration before generating any selection,
-episode, or label-seal secret.  It then durably records the exact selected-task
-exposure before hashing a selected panel, stages the pinned native Codex bytes,
-and guards the authoritative source before and after every call.
+split, complete manifest, exact first-attempt incident, and active predecessor
+ledger before selection.  The active predecessor is
+``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``;
+it must be exactly one append after historical A3 ledger
+``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``.
+The command persists a secret-free configuration, then stages and
+authenticates the pinned native Codex bytes before generating any selection,
+episode, or label-seal secret and before exact-task exposure.  It guards the
+authoritative source across exposure, every call, replay, and terminal
+persistence.
 
 Run it only from a committed immutable checkout.  Every store argument must
 name an already existing absolute, non-symlink directory with mode ``0700``:
@@ -334,15 +339,28 @@ name an already existing absolute, non-symlink directory with mode ``0700``:
    python -B -m bongard.atomic_smoke_command \
      --corpus /absolute/path/to/ShapeBongard_V2 \
      --archive /absolute/path/to/ShapeBongard_V2.zip \
-     --exposure-ledger /absolute/path/to/a3-successor.exposure.json \
+     --predecessor-ledger /absolute/path/to/b053-successor.exposure.json \
      --config-store /absolute/path/to/config-store \
      --exposure-store /absolute/path/to/exposure-store \
+     --journal-store /absolute/path/to/fresh-empty-journal-store \
      --prediction-store /absolute/path/to/prediction-store \
      --terminal-store /absolute/path/to/terminal-store \
      --cache-store /absolute/path/to/cache-store
 
-The command prints one selected-ID-redacted JSON line.  Selection is from the
-ten exact-unseen training tasks whose Basic-shape generator is already exposed.
+The journal store must be fresh and empty.  Its durable header binds the public
+precommit, exact command config, source, protocol, launcher, model, and
+reasoning effort.  Each of the fixed 29 slots persists an exact intent before
+transport and its validated result before the next intent.  The journal
+terminal is durable before the runner returns.  A pre-existing identical
+header, open intent, or partial prefix is not resumable or retryable.
+
+The command prints one selected-ID-redacted JSON line.  The original first
+attempt selected from ten exact-unseen repeated-generator training tasks,
+historical digest
+``sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8``.
+Its exposed task is consumed.  Attempt two selects from the exact remaining
+nine-ID universe, digest
+``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``.
 Consequently this is an exploratory transport/synthesis smoke, not an
 independent calibration, DEV estimate, or official benchmark.  All four
 authorization flags remain false regardless of its two-query score.
@@ -379,3 +397,8 @@ The sanitized machine record is
 setup invocation had rejected a cache store at mode ``0755`` instead of the
 required ``0700``.  That setup invocation persisted no exposure and consumed
 nothing.
+
+Do not rerun that task or point attempt two at the A3 ledger.  The only valid
+attempt-two predecessor is the ``b053...97de0a`` successor above.  This
+document records the successor protocol before live execution; it contains no
+attempt-two prediction, score, or outcome.

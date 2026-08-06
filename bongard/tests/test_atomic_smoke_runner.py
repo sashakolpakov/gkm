@@ -50,6 +50,9 @@ SOURCE_DEPENDENCY_DIGEST = hashlib.sha256(
 ).hexdigest()
 LABEL_NONCE = "a" * 64
 LAUNCHER_DIGEST = "b" * 64
+COMMAND_CONFIG_DIGEST = "sha256:" + hashlib.sha256(
+    b"synthetic atomic smoke command config"
+).hexdigest()
 MODEL = "gpt-test"
 EFFORT = "medium"
 
@@ -58,6 +61,7 @@ EFFORT = "medium"
 class _Fixture:
     precommit: AtomicSmokePrecommit
     prediction_store: Path
+    journal_store: Path
 
 
 def _synthetic_precommit(root: Path, *, source_digest: str = SOURCE_DEPENDENCY_DIGEST) -> _Fixture:
@@ -108,7 +112,7 @@ def _synthetic_precommit(root: Path, *, source_digest: str = SOURCE_DEPENDENCY_D
     selection = AtomicSmokeSelection.create(
         source_corpus_manifest_digest=P.OFFICIAL_CORPUS_MANIFEST_DIGEST,
         split_source_digest=P.OFFICIAL_SPLIT_SOURCE_DIGEST,
-        exposure_predecessor_digest=P.OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
+        exposure_predecessor_digest=P.OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST,
         historical_seed_digest=P.OFFICIAL_HISTORICAL_SEED_DIGEST,
         resolver_policy_digest=P.OFFICIAL_RESOLVER_POLICY_DIGEST,
         blocked_morphology_policy_digest=(
@@ -148,7 +152,13 @@ def _synthetic_precommit(root: Path, *, source_digest: str = SOURCE_DEPENDENCY_D
     )
     prediction_store = root / "prediction-store"
     prediction_store.mkdir()
-    return _Fixture(precommit=precommit, prediction_store=prediction_store)
+    journal_store = root / "journal-store"
+    journal_store.mkdir(mode=0o700)
+    return _Fixture(
+        precommit=precommit,
+        prediction_store=prediction_store,
+        journal_store=journal_store,
+    )
 
 
 def _receipt(
@@ -367,9 +377,11 @@ def _run(fixture: _Fixture, observer: _OfflineCodex) -> AtomicSmokeRun:
     return run_atomic_smoke(
         fixture.precommit,
         source_dependency_digest=fixture.precommit.source_dependency_digest,
+        command_config_digest=COMMAND_CONFIG_DIGEST,
         expected_protocol_digest=atomic_smoke_run_protocol_digest(),
         expected_launcher_digest=LAUNCHER_DIGEST,
         prediction_store_dir=fixture.prediction_store,
+        journal_store_dir=fixture.journal_store,
         model=MODEL,
         reasoning_effort=EFFORT,
         named_image_transport=observer.named,
@@ -383,12 +395,14 @@ def _cold_kwargs(run: AtomicSmokeRun, fixture: _Fixture) -> dict[str, Any]:
         "expected_run_digest": run.digest,
         "expected_source_dependency_digest": run.source_dependency_digest,
         "expected_precommit_digest": run.precommit_digest,
+        "expected_command_config_digest": run.command_config_digest,
         "expected_protocol_digest": run.protocol_digest,
         "expected_launcher_digest": run.expected_launcher_digest,
         "expected_evidence_digest": run.evidence_digest,
         "precommit_public_data": fixture.precommit.to_data(),
         "label_seal_nonce": LABEL_NONCE,
         "prediction_store_dir": fixture.prediction_store,
+        "journal_store_dir": fixture.journal_store,
     }
 
 
@@ -594,3 +608,183 @@ def test_cold_replay_rejects_nonce_precommit_transcript_formula_and_store_tamper
     persisted.write_bytes(b"{}\n")
     with pytest.raises(AtomicSmokeRunError, match="persisted prediction"):
         cold_decode_and_replay_atomic_smoke_run(**cold)
+
+
+def test_complete_journal_has_exact_header_29_intents_29_results_and_terminal(
+    tmp_path: Path,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path)
+    run = _run(fixture, _OfflineCodex())
+
+    assert run.status == "complete"
+    assert run.command_config_digest == COMMAND_CONFIG_DIGEST
+    assert run.journal_receipt.intent_count == 29
+    assert run.journal_receipt.result_count == 29
+    assert run.journal_receipt.state == "result-closed"
+    assert run.journal_receipt.open_intent_ordinal is None
+    assert len(tuple(fixture.journal_store.glob("*.intent.json"))) == 29
+    result_paths = tuple(sorted(fixture.journal_store.glob("*.result.json")))
+    assert len(result_paths) == 29
+    assert len(tuple(fixture.journal_store.glob("*.header.json"))) == 1
+    assert len(tuple(fixture.journal_store.glob("*.terminal-run.json"))) == 1
+    for ordinal, path in enumerate(result_paths, 1):
+        result = R.AtomicSmokeCallJournalResult.from_data(
+            json.loads(path.read_bytes())
+        )
+        assert result.call.ordinal == ordinal
+        assert result.call.to_data() == run.calls[ordinal - 1].to_data()
+    header_path = next(fixture.journal_store.glob("*.header.json"))
+    header = R.AtomicSmokeJournalHeader.from_data(json.loads(header_path.read_bytes()))
+    assert header.command_config_digest == COMMAND_CONFIG_DIGEST
+    assert header.header_digest == run.journal_receipt.header_digest
+
+
+def test_transport_failure_leaves_first_intent_attempted_with_unknown_completion(
+    tmp_path: Path,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path)
+    observer = _OfflineCodex()
+
+    def failed_named(*args: Any, **kwargs: Any) -> T.CodexStructuredResult:
+        observer._next()
+        raise RuntimeError("synthetic unknown transport completion")
+
+    run = run_atomic_smoke(
+        fixture.precommit,
+        source_dependency_digest=fixture.precommit.source_dependency_digest,
+        command_config_digest=COMMAND_CONFIG_DIGEST,
+        expected_protocol_digest=atomic_smoke_run_protocol_digest(),
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        prediction_store_dir=fixture.prediction_store,
+        journal_store_dir=fixture.journal_store,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        named_image_transport=failed_named,
+        text_transport=observer.text,
+    )
+
+    assert run.status == "failed"
+    assert observer.calls == 1
+    assert len(run.calls) == 0
+    assert run.journal_receipt.state == "intent-open"
+    assert run.journal_receipt.open_intent_ordinal == 1
+    assert run.journal_receipt.intent_count == 1
+    assert run.journal_receipt.result_count == 0
+    assert len(tuple(fixture.journal_store.glob("*.intent.json"))) == 1
+    assert not tuple(fixture.journal_store.glob("*.result.json"))
+    assert len(tuple(fixture.journal_store.glob("*.terminal-run.json"))) == 1
+    assert cold_decode_and_replay_atomic_smoke_run(
+        **_cold_kwargs(run, fixture)
+    ).to_data() == run.to_data()
+
+
+@pytest.mark.parametrize(
+    ("boundary", "observer_calls", "intent_count", "result_count"),
+    (
+        ("before-intent", 0, 0, 0),
+        ("before-result", 1, 1, 0),
+        ("after-result", 1, 1, 1),
+    ),
+)
+def test_journal_boundary_failures_preserve_exact_durable_prefix(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    boundary: str,
+    observer_calls: int,
+    intent_count: int,
+    result_count: int,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path)
+    observer = _OfflineCodex()
+    if boundary in {"before-intent", "before-result"}:
+        original = R._persist_journal_json
+        failed = {"value": False}
+
+        def inject(directory_fd: int, filename: str, value: Mapping[str, Any]) -> bool:
+            suffix = ".001.intent.json" if boundary == "before-intent" else ".001.result.json"
+            if filename.endswith(suffix) and not failed["value"]:
+                failed["value"] = True
+                raise OSError("synthetic persistence boundary fault")
+            return original(directory_fd, filename, value)
+
+        monkeypatch.setattr(R, "_persist_journal_json", inject)
+    else:
+        original_result = R._AtomicSmokeCallJournal.persist_result
+        failed = {"value": False}
+
+        def inject_after(
+            journal: Any, intent: Any, call: Any
+        ) -> Any:
+            durable = original_result(journal, intent, call)
+            if not failed["value"]:
+                failed["value"] = True
+                raise OSError("synthetic post-result durability fault")
+            return durable
+
+        monkeypatch.setattr(R._AtomicSmokeCallJournal, "persist_result", inject_after)
+
+    run = _run(fixture, observer)
+    assert run.status == "failed"
+    assert observer.calls == observer_calls
+    assert len(run.calls) == result_count
+    assert run.journal_receipt.intent_count == intent_count
+    assert run.journal_receipt.result_count == result_count
+    assert len(tuple(fixture.journal_store.glob("*.intent.json"))) == intent_count
+    assert len(tuple(fixture.journal_store.glob("*.result.json"))) == result_count
+    assert len(tuple(fixture.journal_store.glob("*.terminal-run.json"))) == 1
+    assert cold_decode_and_replay_atomic_smoke_run(
+        **_cold_kwargs(run, fixture)
+    ).to_data() == run.to_data()
+
+
+def test_journal_tamper_cross_run_and_second_attempt_are_rejected(
+    tmp_path: Path,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path / "primary")
+    first_observer = _OfflineCodex()
+    run = _run(fixture, first_observer)
+    assert run.status == "complete"
+
+    retry_observer = _OfflineCodex()
+    with pytest.raises(AtomicSmokeRunError, match="resume/retry"):
+        _run(fixture, retry_observer)
+    assert retry_observer.calls == 0
+
+    other = _synthetic_precommit(tmp_path / "other")
+    with pytest.raises(AtomicSmokeRunError, match="journal"):
+        cold_decode_and_replay_atomic_smoke_run(
+            **{**_cold_kwargs(run, fixture), "journal_store_dir": other.journal_store}
+        )
+
+    intent_path = sorted(fixture.journal_store.glob("*.intent.json"))[0]
+    intent_data = json.loads(intent_path.read_bytes())
+    intent_data["prompt"] = intent_data["prompt"] + " tampered"
+    intent_path.write_bytes(
+        json.dumps(intent_data, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    )
+    with pytest.raises(AtomicSmokeRunError, match="journal"):
+        cold_decode_and_replay_atomic_smoke_run(**_cold_kwargs(run, fixture))
+
+
+def test_journal_rejects_bool_coercion_and_non_private_directory(
+    tmp_path: Path,
+) -> None:
+    fixture = _synthetic_precommit(tmp_path / "typed")
+    run = _run(fixture, _OfflineCodex())
+    receipt = deepcopy(run.journal_receipt.to_data())
+    receipt["result_count"] = True
+    with pytest.raises(AtomicSmokeRunError, match="literal integer"):
+        R.AtomicSmokeJournalReceipt.from_data(receipt)
+
+    intent_path = sorted(fixture.journal_store.glob("*.intent.json"))[0]
+    intent = json.loads(intent_path.read_bytes())
+    intent["ordinal"] = True
+    with pytest.raises(AtomicSmokeRunError, match="literal integer"):
+        R.AtomicSmokeCallIntent.from_data(intent)
+
+    insecure = _synthetic_precommit(tmp_path / "insecure")
+    insecure.journal_store.chmod(0o755)
+    observer = _OfflineCodex()
+    with pytest.raises(AtomicSmokeRunError, match="exact mode 0700"):
+        _run(insecure, observer)
+    assert observer.calls == 0

@@ -12,8 +12,8 @@ from bongard.artifacts import canonical_digest
 import bongard.atomic_smoke_precommit as P
 from bongard.atomic_smoke_precommit import (
     ATOMIC_SMOKE_SELECTION_POLICY,
-    OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT,
-    OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST,
+    OFFICIAL_SUCCESSOR_UNIVERSE_COUNT,
+    OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST,
     AtomicSmokePrecommit,
     AtomicSmokePrecommitError,
     AtomicSmokeSelection,
@@ -40,10 +40,10 @@ EPISODE_SEED = hashlib.sha256(b"private synthetic episode seed").hexdigest()
 SEED = "post-freeze synthetic selection seed"
 OBSERVED_AT = "2026-08-06T12:00:00Z"
 
+PREDECESSOR_CONSUMED_TASK = "bd_mismatch_triangle_rec4_0000"
 UNIVERSE = (
     "bd_mismatch_triangle_rec1_0000",
     "bd_mismatch_triangle_rec2_0000",
-    "bd_mismatch_triangle_rec4_0000",
     "bd_mismatch_triangle_rec5_0000",
     "bd_mismatch_triangle_rec6_0000",
     "bd_open_equil_obtuse_triangle1_0000",
@@ -52,6 +52,7 @@ UNIVERSE = (
     "bd_thin_three_sides2_0000",
     "bd_thin_three_sides3_0000",
 )
+A3_SUCCESSOR_UNIVERSE = tuple(sorted((*UNIVERSE, PREDECESSOR_CONSUMED_TASK)))
 EXPOSED_SIBLINGS = (
     "bd_mismatch_triangle_rec3_0000",
     "bd_open_equil_obtuse_triangle2_0000",
@@ -102,7 +103,7 @@ def _fixture(
     train = tuple(
         task_id
         for task_id in (
-            *UNIVERSE,
+            *A3_SUCCESSOR_UNIVERSE,
             *EXPOSED_SIBLINGS,
             NON_DRILL_REPEATED,
             NEW_GENERATOR,
@@ -123,7 +124,7 @@ def _fixture(
         ),
     )
     manifest = corpus.build_manifest()
-    predecessor = ExposureLedger.create(manifest.digest).record(
+    historical_parent = ExposureLedger.create(manifest.digest).record(
         phase="stage-a3",
         actor="fixture",
         purpose="freeze already disclosed BD generators",
@@ -131,8 +132,31 @@ def _fixture(
         observed_at="2026-08-06T10:00:00Z",
         known_task_ids=corpus.task_ids,
     )
+    predecessor = historical_parent.record(
+        phase=P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PHASE,
+        actor="fixture-verifier",
+        purpose=P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PURPOSE,
+        task_ids=(PREDECESSOR_CONSUMED_TASK,),
+        source="atomic-smoke-selection:sha256:" + "1" * 64,
+        observed_at="2026-08-06T11:00:00Z",
+        known_task_ids=corpus.task_ids,
+        require_unseen=True,
+    )
     monkeypatch.setattr(P, "OFFICIAL_CORPUS_MANIFEST_DIGEST", manifest.digest)
-    monkeypatch.setattr(P, "OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST", predecessor.digest)
+    monkeypatch.setattr(P, "OFFICIAL_A3_LEDGER_DIGEST", historical_parent.digest)
+    monkeypatch.setattr(
+        P, "OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST", predecessor.digest
+    )
+    monkeypatch.setattr(
+        P,
+        "OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE",
+        predecessor.events[-1].sequence,
+    )
+    monkeypatch.setattr(
+        P,
+        "OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR",
+        predecessor.events[-1].actor,
+    )
     monkeypatch.setattr(P, "OFFICIAL_SPLIT_SOURCE_DIGEST", SPLIT_SOURCE)
     monkeypatch.setattr(P, "OFFICIAL_TASK_COUNT", len(task_ids))
     monkeypatch.setattr(
@@ -198,12 +222,46 @@ def _cold_kwargs(
 
 def test_production_official_anchors_are_exact() -> None:
     assert P.OFFICIAL_CORPUS_MANIFEST_DIGEST.endswith("51dce138")
-    assert P.OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST.endswith("30cd7c4")
+    assert P.OFFICIAL_A3_LEDGER_DIGEST == (
+        "sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4"
+    )
+    assert P.OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST == (
+        "sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a"
+    )
+    assert P.OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_SEQUENCE == 147
+    assert (
+        P.OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR
+        == "canonical-bongard-verifier"
+    )
     assert P.OFFICIAL_SPLIT_SOURCE_DIGEST.endswith("ed7230")
     assert P.OFFICIAL_HISTORICAL_SEED_DIGEST.endswith("e02ebf")
     assert P.OFFICIAL_RESOLVER_POLICY_DIGEST.endswith("47af9a")
     assert P.OFFICIAL_BLOCKED_MORPHOLOGY_POLICY_DIGEST.endswith("c5f6b8")
     assert P.OFFICIAL_RELEASE_DESCRIPTOR_DIGEST.endswith("56cd2b")
+
+
+def test_historical_a3_is_lineage_only_and_rejected_as_active_predecessor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus, manifest, predecessor, _store = _fixture(tmp_path, monkeypatch)
+    historical_parent = ExposureLedger(
+        corpus_digest=predecessor.corpus_digest,
+        events=predecessor.events[:-1],
+    )
+    assert historical_parent.digest == P.OFFICIAL_A3_LEDGER_DIGEST
+    assert predecessor.digest == P.OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
+    with pytest.raises(
+        AtomicSmokePrecommitError,
+        match="not the official successor pin",
+    ):
+        select_atomic_smoke_task(
+            corpus,
+            seed=SEED,
+            full_corpus_manifest=manifest,
+            source_corpus_manifest_digest=manifest.digest,
+            exposure_ledger=historical_parent,
+            expected_exposure_ledger_digest=historical_parent.digest,
+        )
 
 
 def test_metadata_selection_authenticates_exact_universe_without_pixel_access(
@@ -229,11 +287,13 @@ def test_metadata_selection_authenticates_exact_universe_without_pixel_access(
     assert first == second
     assert first.selected_task_id in UNIVERSE
     assert first.selection_policy == ATOMIC_SMOKE_SELECTION_POLICY
-    assert first.universe_count == OFFICIAL_A3_SUCCESSOR_UNIVERSE_COUNT == 10
-    assert first.universe_task_ids_digest == OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST
+    assert first.universe_count == OFFICIAL_SUCCESSOR_UNIVERSE_COUNT == 9
+    assert first.universe_task_ids_digest == OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST
     assert "sha256:" + canonical_digest(list(sorted(UNIVERSE))) == (
-        OFFICIAL_A3_SUCCESSOR_UNIVERSE_DIGEST
+        OFFICIAL_SUCCESSOR_UNIVERSE_DIGEST
     )
+    assert PREDECESSOR_CONSUMED_TASK not in UNIVERSE
+    assert not set(UNIVERSE) & set(predecessor.exposed_task_ids)
     assert all(
         getattr(first, name) is False
         for name in (
@@ -255,6 +315,89 @@ def test_metadata_selection_authenticates_exact_universe_without_pixel_access(
     ) == first
 
 
+def test_every_seed_excludes_all_predecessor_exposed_ids(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus, manifest, predecessor, _store = _fixture(tmp_path, monkeypatch)
+    selected: set[str] = set()
+    for index in range(64):
+        selection = select_atomic_smoke_task(
+            corpus,
+            seed=f"post-freeze-successor-seed-{index:02d}",
+            full_corpus_manifest=manifest,
+            source_corpus_manifest_digest=manifest.digest,
+            exposure_ledger=predecessor,
+            expected_exposure_ledger_digest=predecessor.digest,
+        )
+        selected.add(selection.selected_task_id)
+        assert selection.selected_task_id in UNIVERSE
+        assert selection.selected_task_id not in predecessor.exposed_task_ids
+    assert PREDECESSOR_CONSUMED_TASK not in selected
+
+
+def test_active_predecessor_requires_one_task_only_atomic_append(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    corpus, manifest, predecessor, _store = _fixture(tmp_path, monkeypatch)
+    historical_parent = ExposureLedger(
+        corpus_digest=predecessor.corpus_digest,
+        events=predecessor.events[:-1],
+    )
+    common = {
+        "phase": P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PHASE,
+        "actor": "fixture-verifier",
+        "purpose": P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PURPOSE,
+        "task_ids": (PREDECESSOR_CONSUMED_TASK,),
+        "source": "atomic-smoke-selection:sha256:" + "3" * 64,
+        "observed_at": "2026-08-06T11:00:00Z",
+    }
+    malformed = (
+        historical_parent.record(**{**common, "actor": "model-proposer"}),
+        historical_parent.record(**{**common, "phase": "model-run"}),
+        historical_parent.record(**{**common, "purpose": "retry"}),
+        historical_parent.record(**{**common, "source": "model:gpt"}),
+        historical_parent.record(
+            **common,
+            panel_ids=(f"bd/{PREDECESSOR_CONSUMED_TASK}/1/0.png",),
+        ),
+    )
+    for ledger in malformed:
+        monkeypatch.setattr(
+            P, "OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST", ledger.digest
+        )
+        with pytest.raises(AtomicSmokePrecommitError, match="atomic smoke protocol"):
+            select_atomic_smoke_task(
+                corpus,
+                seed=SEED,
+                full_corpus_manifest=manifest,
+                source_corpus_manifest_digest=manifest.digest,
+                exposure_ledger=ledger,
+                expected_exposure_ledger_digest=ledger.digest,
+            )
+
+    extra = predecessor.record(
+        phase=P.ATOMIC_SMOKE_EXPOSURE_PHASE,
+        actor="fixture-verifier",
+        purpose=P.ATOMIC_SMOKE_EXPOSURE_PURPOSE,
+        task_ids=(UNIVERSE[0],),
+        source="atomic-smoke-selection:sha256:" + "4" * 64,
+        observed_at="2026-08-06T12:00:00Z",
+        require_unseen=True,
+    )
+    monkeypatch.setattr(
+        P, "OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST", extra.digest
+    )
+    with pytest.raises(AtomicSmokePrecommitError, match="exactly one append"):
+        select_atomic_smoke_task(
+            corpus,
+            seed=SEED,
+            full_corpus_manifest=manifest,
+            source_corpus_manifest_digest=manifest.digest,
+            exposure_ledger=extra,
+            expected_exposure_ledger_digest=extra.digest,
+        )
+
+
 def test_owned_fsync_reload_precedes_all_selected_pixel_hashes(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -273,6 +416,16 @@ def test_owned_fsync_reload_precedes_all_selected_pixel_hashes(
     monkeypatch.setattr(BongardTask, "build_manifest", guarded_build)
     precommit = _prepare(corpus, manifest, predecessor, store)
     assert calls == [precommit.selection.selected_task_id] * 2
+    successor = precommit.exposure_successor
+    assert successor.events[:-1] == predecessor.events
+    assert len(successor.events) == len(predecessor.events) + 1
+    assert successor.exposed_task_ids - predecessor.exposed_task_ids == frozenset(
+        {precommit.selection.selected_task_id}
+    )
+    assert successor.events[-1].task_ids == (
+        precommit.selection.selected_task_id,
+    )
+    assert not successor.events[-1].panel_ids
     persisted_path = store / precommit.exposure_persistence_receipt.filename
     assert persisted_path.is_file()
     assert precommit.exposure_successor.digest == precommit.exposure_successor_digest
@@ -412,14 +565,21 @@ def test_redirected_task_binding_and_unknown_predecessor_fail_pixel_cold(
     corpus._by_id[selection.selected_task_id] = next(
         task for task in corpus.tasks if task.task_id == selection.selected_task_id
     )
-    forged = predecessor.record(
-        phase="forged",
-        actor="fixture",
-        purpose="unknown task",
+    historical_parent = ExposureLedger(
+        corpus_digest=predecessor.corpus_digest,
+        events=predecessor.events[:-1],
+    )
+    forged = historical_parent.record(
+        phase=P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PHASE,
+        actor=P.OFFICIAL_SUCCESSOR_PREDECESSOR_APPEND_ACTOR,
+        purpose=P.ATOMIC_SMOKE_PREDECESSOR_EXPOSURE_PURPOSE,
         task_ids=("bd_unknown_generator_0000",),
+        source="atomic-smoke-selection:sha256:" + "2" * 64,
         observed_at="2026-08-06T11:00:00Z",
     )
-    monkeypatch.setattr(P, "OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST", forged.digest)
+    monkeypatch.setattr(
+        P, "OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST", forged.digest
+    )
     with pytest.raises(AtomicSmokePrecommitError, match="outside the official inventory"):
         select_atomic_smoke_task(
             corpus,
