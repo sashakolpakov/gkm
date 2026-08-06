@@ -256,3 +256,97 @@ def test_checked_in_support_prototype_drill_verification_is_bound() -> None:
     assert [item["run_file_sha256"] for item in verification["records"]] == [
         item["run_file_sha256"] for item in result["episodes"]
     ]
+
+
+def test_checked_in_semantic_calibration_a3_outcome_is_canonical_and_bound() -> None:
+    outcome = _canonical_record("semantic_calibration_stage_a3_outcome_v1.json")
+    content = dict(outcome)
+    declared_digest = content.pop("record_digest")
+    computed_digest = "sha256:" + hashlib.sha256(
+        canonical_json(content) + b"\n"
+    ).hexdigest()
+
+    assert declared_digest == computed_digest == (
+        "sha256:3bca00d3bfac8d92292c73649cfcf1fe5adb48799eed972d07d43793f49a391f"
+    )
+    assert outcome["schema"] == (
+        "gkm.bongard-semantic-calibration-stage-a3-outcome.v1"
+    )
+    release = load_official_release()
+    assert outcome["identities"]["archive_sha256"] == release.archive_sha256
+    assert (
+        outcome["identities"]["corpus_manifest_digest"]
+        == release.corpus_manifest_sha256
+    )
+    assert outcome["identities"]["split_source_digest"] == release.split_sha256
+    assert outcome["funnel"] == {
+        "candidate_count": 22,
+        "direct_only_attrition": 6,
+        "proposer_transport_failed": 0,
+        "soft_claim_accepted": 15,
+        "typed_parser_rejected": 1,
+    }
+    assert sum(
+        outcome["funnel"][name]
+        for name in (
+            "direct_only_attrition",
+            "proposer_transport_failed",
+            "soft_claim_accepted",
+            "typed_parser_rejected",
+        )
+    ) == outcome["funnel"]["candidate_count"]
+    assert outcome["scoring"]["score_counts"] == {
+        "0.0": 8,
+        "0.5": 1,
+        "1.0": 6,
+    }
+    assert [item["n"] for item in outcome["scoring"]["bins"]] == [9, 6]
+    assert outcome["terminal"]["exact_reason"] == (
+        "calibration score bins are underpopulated: 1"
+    )
+    assert outcome["terminal"]["reason_digest"] == (
+        "42e086d19d4f6a3c4c75a9f6e01de3964bf5126995a984393f75081c2df343a7"
+    )
+    assert outcome["terminal"]["stage_b_authorized"] is False
+    assert outcome["corpus"]["sealed_or_test_touched"] is False
+    assert outcome["diagnostic_only"]["negation_won"] is False
+    assert outcome["selection"]["scoreable_task_labels_opened"] == 15
+    assert outcome["selection"]["unscoreable_task_labels_opened"] is False
+    assert outcome["authority"]["python_predicate_authoritative"] is True
+    assert outcome["authority"]["optional_checker_may_affect_result"] is False
+    assert outcome["capacity_after_a3"]["drill"] == {
+        "availability_by_family": {"bd": 0, "hd": 0},
+        "certificate_digest": (
+            "sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1"
+        ),
+        "eligible_group_count": 0,
+        "eligible_task_count": 0,
+        "maximum_capacity": 0,
+    }
+    assert outcome["capacity_after_a3"]["dev"]["maximum_capacity"] == 16
+    assert outcome["capacity_after_a3"]["dev"]["availability_by_family"] == {
+        "bd": 16,
+        "hd": 0,
+    }
+    assert outcome["forensics"]["panel_descriptions"] == {
+        "audit_only": True,
+        "distinct": 258,
+        "total": 264,
+    }
+    assert outcome["forensics"]["complete_synthesized_formulas_evaluated"] == 0
+    assert outcome["forensics"]["supported_cue_citations"][
+        "semantic_part_style_axis_curvature_or_gestalt"
+    ] == 0
+    assert outcome["transport"][
+        "a3_exact_native_client_bytes_authenticated"
+    ] is False
+    assert outcome["transport"]["posthoc_current_native_audit"] == {
+        "causal_for_a3": False,
+        "sha256": (
+            "sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02"
+        ),
+        "size_bytes": 271056976,
+    }
+    assert outcome["corpus"]["exact_unused_before_a3"]["total"] - 22 == (
+        outcome["corpus"]["exact_unused_after_a3"]["total"]
+    )

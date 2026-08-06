@@ -160,14 +160,67 @@ Process output showed 48 proposer and 34 scorer launches only; their outputs
 were lost.  Labels were not revealed, no calibration, accuracy, or semantic
 inference is valid, and the same cohort may not be rerun.
 
+Stage A3: terminal scientific failure
+-------------------------------------
+
+A3 ran the production headless-Codex path from the frozen source frame.  Its
+selection and artifact locations are write-once and its 22 selected tasks are
+exposed; the following addresses are for audit, not re-execution:
+
+.. code-block:: text
+
+   command_receipt = downloads/ShapeBongard_V2_full/semantic_calibration_stage_a3_20260806/artifacts/2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681.stage-a-command-receipt.json
+   command_receipt_digest = sha256:2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681
+   terminal_failure = downloads/ShapeBongard_V2_full/semantic_calibration_stage_a3_20260806/artifacts/cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb.semantic-calibration-failure.json
+   terminal_failure_digest = sha256:cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb
+   process_exit = 2
+   reason = calibration score bins are underpopulated: 1
+
+All 22 proposer calls succeeded.  Fifteen records contained accepted soft
+claims, six were direct-only attrition, and one was rejected by the typed
+parser.  All 15 resulting scorer calls succeeded.  Their ordinal distribution
+was eight ``0``, one ``0.5``, and six ``1``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Fixed score bin
+     - Clusters
+     - Affirmative labels
+   * - ``[0, 0.75)``
+     - 9
+     - 1
+   * - ``[0.75, 1]``
+     - 6
+     - 5
+
+The preregistered minimum was eight clusters in each bin, so no calibration
+was fitted and Stage B was not authorized.  Intended-bin orientation was
+13/15 versus 2/15 for its exact complement; at the naive ``score >= 0.5``
+threshold it was 12/15 versus 3/15.  Negation did not win.  A3 consumed 22
+tasks and leaves 10,047 exact-unused train/validation task IDs (FF 2,998, BD
+3,434, HD 3,615).  SEALED/test remained untouched.
+
+The typed rejection was caused by a parser expression matching the prefix
+``def`` in the ordinary word ``defines``.  The parser now requires a complete
+forbidden-keyword match.  This post-A3 fix does not change the A3 artifact.
+
+Do not overread A3's ``codex_launcher_digest``.  It is the digest of the
+installed JavaScript wrapper, which dynamically spawned a separate native
+client.  The receipt binds that wrapper and reported version
+``codex-cli 0.146.0``; it does not authenticate the native bytes.  The current
+native file's post-hoc digest cannot repair that historical gap.  A new live
+command must resolve and execute the native binary directly and bind its exact
+digest before and after every call.
+
 Stage B: unauthorized and capacity-limited
 -------------------------------------------
 
 No canonical Stage-B CLI reproduction command is published.  Do not improvise
 one from internal Python APIs.
 
-Neither the failed A1 receipt nor the invalidated A2 incident can authorize
-Stage B.  No Stage-B run is currently declared.  The completed metadata-only
+Neither the failed A1 receipt, the invalidated A2 incident, nor the failed A3
+fit can authorize Stage B.  No Stage-B run is currently declared.  The completed metadata-only
 audit gives remaining DRILL maximum 24 BD + 0 constituent-disjoint HD = 24 and
 full-ledger-disjoint DEV capacity 16 BD + 0 HD = 16.  The default request for
 24 fails before pixels/exposure/model; a 16-task BD-only pilot remains below
@@ -178,26 +231,29 @@ the proposed new batch; it did not initialize the exclusion set from every
 complete-A2 exposure.  Production selection v2 performs that projection, and
 every remaining DRILL HD pair shares a constituent with it.
 
-Do not confuse the strict 24-unit frame with the archive inventory.  Of 10,200
-train/validation tasks, 10,069 exact IDs are absent from the complete A2
-ledger: 2,998 FF, 3,456 BD, and 3,615 HD.  The current selector deliberately
+Those DRILL figures describe the reservoir before A3.  Running the exact v3
+selector against successor ledger
+``sha256:7c85922f238eb121a30d441ccf3528c665037a34240e07a06feef01cc30cd7c4``
+certifies post-A3 strict DRILL capacity zero, with zero eligible tasks and
+groups.  Its certificate is
+``sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1``.
+The corresponding DEV capacity remains 16 BD + 0 HD, certificate
+``sha256:434c0756e89891c4a10e31fdf0c97e2e9373930a2ed48e1ecfa011c36f15c4c8``.
+
+Do not confuse the strict 24-unit frame with the archive inventory.  After A3,
+10,047 of 10,200 train/validation task IDs remain exact-unused: 2,998 FF,
+3,434 BD, and 3,615 HD.  The current selector deliberately
 collapses or excludes shared semantic constituents.  A future expanded
 calibration frame may use exact-unused training tasks only with a newly frozen
 selection policy and explicit dependence accounting; these counts are not
 permission to weaken DEV or SEALED isolation.
 
-The prospective A3 engineering design uses the seed-ranked remaining capacity
-and ``minimum_clusters_per_bin = 8``.  With two bins, 90% confidence, and the
-fixed 0.5 boundary, its simultaneous Hoeffding radius is 0.480161; seven
-clusters cannot yield a decisive interval.  This parameter is fixed before
-the fresh seed and any pixel/model output.  A3 remains descriptive.
-
-Any live A3 command must run the production CLI from a detached immutable
-commit with a newly created empty ``PYTHONPYCACHEPREFIX`` and ``python -B``.
-Receipts hash Python source files, not arbitrary cached bytecode.  The direct
-Python API exposes dependency injection for tests and is not the operational
-authority.  The external precommit must record the interpreter identity,
-complete command, and initially empty private cache directory.
+A3 fixed ``minimum_clusters_per_bin = 8`` before its seed and model output.
+With two bins, 90% confidence, and the fixed 0.5 boundary, its simultaneous
+Hoeffding radius was 0.480161.  The upper bin reached only six.  Future
+calibration must recruit label-blind through a frozen order until bins are
+powered, or preregister a fixed batch sized for measured proposal attrition and
+score-bin occupancy.
 
 New Stage-A command receipts use schema v2 and bind the complete authoritative
 Python source snapshot.  The exact non-authoritative
@@ -225,7 +281,68 @@ registry snapshot, the closed Python formula, calibration campaign, support
 gate, query commitments, predictions, reveal, launcher fingerprint, and cache
 binding.  Cold replay reconstructs and checks those objects without a model.
 
+The atomic smoke has a narrower replay contract.  It binds 12 neutral support
+descriptions, one text-only atom proposal, the complete support atom matrix,
+the frozen positive conjunction, two query descriptions and observations, and
+the durable prediction-before-label boundary.  A successful run contains
+exactly 29 distinct causal receipts.  ``operational_nonmatch`` remains a
+distinct operational record and projects to semantic ``indeterminate``; replay
+cannot upgrade it to certified absence.
+
 It establishes that the recorded computation is internally consistent and
 tamper-evident.  It does not prove that a model's phrase such as ``bird-like``
 is perceptually correct, that public images were absent from model pretraining,
 or that any future exploratory DRILL/DEV accuracy generalizes to SEALED tasks.
+
+What A3 says about the implementation
+--------------------------------------
+
+A3 validates transport, not the synthesis architecture.  The proposer records
+rich descriptions of all twelve panels, but those descriptions are audit-only.
+It makes one irreversible guess from zero to three direct catalog atoms and at
+most one soft claim bundling one to four cues.  Python synthesis only lowers
+that guess to a conjunction; it does not derive atomic facts or search
+candidates.  The scorer collapses all cues for a panel by minimum into
+``0``, ``0.5``, or ``1``.
+
+That reproducible unit is now implemented in
+``atomic_semantic_synthesis.py`` and ``atomic_smoke_runner.py``: one-phrase
+atoms, complete atom-by-panel observations, deterministic positive
+conjunctions, no ``Not``, and no polarity flip.  The proposer is causally
+restricted to the frozen support descriptions.  The remaining perception gap
+is richer typed object/part/angle/relation grounding; a one-sentence vision
+description is still lossy.  Lean or another checker may inspect a frozen
+artifact only as an optional removable sidecar; it is not part of the
+predicate, result, or ID.
+
+Exploratory atomic smoke
+------------------------
+
+The production command authenticates the complete 12,000-task release, exact
+split, complete manifest, and A3 successor ledger before selection.  It
+persists a secret-free command configuration before generating any selection,
+episode, or label-seal secret.  It then durably records the exact selected-task
+exposure before hashing a selected panel, stages the pinned native Codex bytes,
+and guards the authoritative source before and after every call.
+
+Run it only from a committed immutable checkout.  Every store argument must
+name an already existing absolute, non-symlink directory:
+
+.. code-block:: bash
+
+   PYTHONPYCACHEPREFIX=/absolute/empty/pycache \
+   python -B -m bongard.atomic_smoke_command \
+     --corpus /absolute/path/to/ShapeBongard_V2 \
+     --archive /absolute/path/to/ShapeBongard_V2.zip \
+     --exposure-ledger /absolute/path/to/a3-successor.exposure.json \
+     --config-store /absolute/path/to/config-store \
+     --exposure-store /absolute/path/to/exposure-store \
+     --prediction-store /absolute/path/to/prediction-store \
+     --terminal-store /absolute/path/to/terminal-store \
+     --cache-store /absolute/path/to/cache-store
+
+The command prints one selected-ID-redacted JSON line.  Selection is from the
+ten exact-unseen training tasks whose Basic-shape generator is already exposed.
+Consequently this is an exploratory transport/synthesis smoke, not an
+independent calibration, DEV estimate, or official benchmark.  All four
+authorization flags remain false regardless of its two-query score.

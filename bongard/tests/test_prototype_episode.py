@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import hashlib
 import json
 from pathlib import Path
@@ -24,18 +23,7 @@ from bongard.legs.neutral_features import (
 )
 from bongard.prototype_artifacts import PrototypeFreezePolicy
 from bongard.prototype_episode import HeadlessPrototypeEpisode
-
-
-@dataclass(frozen=True)
-class Receipt:
-    receipt_digest: str = "fixture-receipt"
-    input_digest: str = "fixture-input"
-    thread_id: str = "fixture-thread"
-    requested_model: str = "gpt-test"
-    requested_reasoning_effort: str = "medium"
-
-    def to_dict(self):
-        return self.__dict__
+from bongard.tests.test_prototype_run_verification import _receipt
 
 
 def _draw_panel(path: Path, *, positive: bool, index: int) -> None:
@@ -119,14 +107,24 @@ def test_headless_prototype_episode_freezes_features_before_codex_and_queries(
         return extract_neutral_features(panel_bytes)
 
     def fake_transport(prompt, paths, schema, **kwargs):
-        del kwargs
         events.append(("codex", hashlib.sha256(prompt.encode("utf-8")).hexdigest()))
         assert tuple(Path(path).name for path in paths) == tuple(
             [f"pos_{index}.png" for index in range(6)]
             + [f"neg_{index}.png" for index in range(6)]
         )
         assert schema["properties"]["hybrid_claim"] == {"type": "null"}
-        return SimpleNamespace(payload=_proposal_payload(), receipt=Receipt())
+        payload = _proposal_payload()
+        return SimpleNamespace(
+            payload=payload,
+            receipt=_receipt(
+                prompt,
+                tuple(paths),
+                schema,
+                payload,
+                model=kwargs["model"],
+                reasoning_effort=kwargs["reasoning_effort"],
+            ),
+        )
 
     episode = HeadlessPrototypeEpisode(
         support_commitment=plan.support,

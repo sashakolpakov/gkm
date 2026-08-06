@@ -1,8 +1,8 @@
 Bongard Visual Concept Induction
 ================================
 
-Status: A1 failed; A2 was invalidated by live source mutation
-----------------------------------------------------------------
+Status: A1 failed; A2 invalidated; A3 failed; atomic smoke ready
+-----------------------------------------------------------------
 
 The active target is the complete official ``ShapeBongard_V2`` corpus: 12,000
 tasks and 168,000 PNG panels.  The normalized primary split contains 9,300
@@ -62,9 +62,54 @@ lost, labels were not revealed, and no calibration, accuracy, or semantic
 inference is valid.  The selected semantic groups remain consumed and the same
 cohort may not be rerun.
 
-Stage B did not run and is unauthorized by both A1 and A2.  No current receipt
+A3 then completed the headless proposer/scorer path and exited 2 as a canonical
+scientific failure.  Its exact reason was ``calibration score bins are
+underpopulated: 1``.
+
+.. list-table::
+   :header-rows: 1
+
+   * - Field
+     - A3 result
+   * - Command receipt / failure
+     - ``sha256:2a019333...5681`` / ``sha256:cc1b86d7...31eb``
+   * - Proposer funnel
+     - 22/22 transport successes; 15 accepted soft, 6 direct-only, 1 parser rejection
+   * - Scorer funnel
+     - 15/15 transport successes; scores 0:8, 0.5:1, 1:6
+   * - Lower bin ``[0, 0.75)``
+     - 9 clusters; 1 affirmative
+   * - Upper bin ``[0.75, 1]``
+     - 6 clusters; 5 affirmatives
+   * - Fit state
+     - failed: the fixed minimum was 8 clusters per bin
+
+Intended-bin orientation was 13/15 versus 2/15 for its exact complement.  At
+the naive ``score >= 0.5`` threshold, orientation was 12/15 versus 3/15.
+Negation did not win.  With only 15 scoreable claims, two bins of eight were
+mathematically impossible; A3 exposed a recruitment/bin-power failure.  It
+consumed 22 tasks and leaves 10,047 exact-unused train/validation IDs (FF 2,998,
+BD 3,434, HD 3,615).  SEALED/test remained untouched.
+
+The single typed-parser rejection came from matching ``def`` at the start of
+the ordinary cue word ``defines``.  The expression now requires a complete
+forbidden-keyword match.  That post-A3 fix does not revise the recorded result.
+
+A later audit found that A3's launcher receipt authenticated the installed
+JavaScript wrapper and reported ``codex-cli 0.146.0``, but not the native
+client dynamically spawned by that wrapper.  The wrapper digest was
+``134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477``.
+This does not supply evidence of executable drift, but it means exact native
+client bytes were not authenticated.  New runs prospectively repair the gap:
+the production boundary opens the native binary without following links,
+hashes and copies the same descriptor into a private executable, verifies the
+reported version, and rechecks the staged identity.  Its pinned digest is
+``sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02``.
+
+Stage B did not run and is unauthorized by A1, A2, and A3.  No current receipt
 permits a strict-disjoint DEV experiment.  The completed capacity audit found
-exactly 24 BD + 0 constituent-disjoint HD = 24 remaining DRILL units, so the old
+exactly 24 BD + 0 constituent-disjoint HD = 24 DRILL units immediately before
+A3, so the old
 48-task design is impossible.  The earlier 28-unit upper bound failed to seed
 HD constituent exclusions from the complete A2 ledger.  DEV against every
 live-ledger exposure has 16 BD + 0 HD units.  The default 24-task request fails
@@ -74,9 +119,16 @@ Any future design remains descriptive and sets
 ``dependence_design_authorized`` to false.  Official SEALED/test
 visual-semantic execution is hard-disabled in both the CLI and benchmark API.
 
-The 24-unit number is a strict independence-policy capacity, not corpus size.
-The official train/validation split contains 10,200 tasks; 10,069 exact task
-IDs remain absent from the complete A2 ledger (FF 2,998, BD 3,456, HD 3,615).
+Exact v3 replay against A3's successor ledger now certifies strict DRILL
+capacity zero: zero eligible tasks, zero eligible generator groups, and
+``0 BD + 0 HD``.  The certificate digest is
+``sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1``.
+DEV remains exactly ``16 BD + 0 HD`` under that ledger.
+
+The pre-A3 24 and post-A3 zero are strict independence-policy capacities, not
+corpus size.
+The official train/validation split contains 10,200 tasks; after A3, 10,047
+exact task IDs remain unused (FF 2,998, BD 3,434, HD 3,615).
 Calibration and evaluation were therefore using one unnecessarily strict
 frame.  A future calibration design should use exact-unused training tasks,
 account explicitly for shared generators, score both held-out task panels
@@ -84,13 +136,11 @@ before label reveal, and keep a separate semantic holdout for evaluation.  HD
 evaluation partitions must be built from constituent attributes, not merely
 ordered pairs.
 
-A3 is prospectively weaker than A1/A2.  After the code is frozen, it uses one
-fresh no-reroll seed and the deterministic seed-ranked capacity.  The fixed
-two-bin calibration requires eight clusters per bin.  At 90% simultaneous
-confidence the associated Hoeffding radius is 0.480161, making eight the
-smallest bin that can possibly decide against the frozen 0.5 boundary.  This
-repair is fixed before the A3 seed or model outputs and cannot authorize Stage
-B or SEALED.
+A3 fixed its two-bin minimum at eight before its seed, pixels, or model output.
+At 90% simultaneous confidence the associated Hoeffding radius was 0.480161,
+making eight the smallest bin that could possibly decide against the frozen
+0.5 boundary.  The high bin reached only six, so no fit or Stage-B authority
+exists.
 
 New Stage-A receipts are source-bound v2 records.  The runner rechecks the
 complete executable Bongard Python source boundary around exposure, transport, replay, and
@@ -118,6 +168,19 @@ point-contact signature, persistent part ownership, or bird-like predicate.
 Those remain perception work; only the bounded soft path can currently name
 such concepts operationally.
 
+The A3 synthesis hole was equally concrete.  Its proposer recorded rich
+descriptions of all twelve panels, but those descriptions were audit-only.  It
+made one irreversible guess from zero to three direct catalog atoms plus at
+most one bundled soft claim.  Synthesis merely lowered that guess, and the
+scorer collapsed one to four cues by their minimum into ``0``, ``0.5``, or
+``1``.
+
+The atomic successor now uses the frozen descriptions as the only atom-proposal
+input, records a complete atom-by-panel matrix, and deterministically selects a
+positive conjunction before query release.  Its remaining representation gap
+is not candidate search but the lossiness of one-sentence descriptions and the
+absence of richer typed object, part, angle, topology, and relation facts.
+
 The earlier PURE support diagnostic recorded 10 reversed outcomes among 132
 executable support-panel outcomes.  It did not execute an A1 complement or
 measure negation.  More generally, a bad predicate's complement can look better
@@ -138,28 +201,39 @@ explicit dependence or repeated-execution model.
 The actual pipeline
 -------------------
 
-The system is not ``panel -> prose -> Lean``.  It is:
+The system is not ``panel -> prose -> Lean -> truth``.  The new atomic smoke
+separates empirical observation from deterministic synthesis:
 
 .. code-block:: text
 
-   labeled support pixels
-       -> one typed positive proposal
-       -> candidate-independent witness bundles for every panel
-       -> direct registered atoms and, optionally, one soft visual claim
-       -> valid, separately fitted calibration and four-disposition Python evidence
-       -> a closed positive conjunction
-       -> exact 12/12 support gate
-       -> frozen formula and registry
-       -> query release, prediction commitment, label reveal
-       -> model-free, tamper-detecting Python replay
+   12 support PNGs
+       -> 12 isolated neutral vision descriptions
+       -> one text-only proposer over labeled descriptions
+       -> 1..12 affirmative single-phrase observer predicates
+       -> 12 isolated one-panel calls covering the full atom matrix
+       -> deterministic positive conjunction of at most four atoms
+       -> frozen formula
 
-The proposal can use prose to name a concept, but prose is neither the
-predicate nor proof.  Direct predicates consume typed panel observables.  A
-soft claim such as ``bird-like object`` is evaluated by a blind one-panel
-ordinal scorer against frozen references.  Only if a valid development
-calibration has been fitted is its score mapped to an operational,
-family-calibrated disposition.  It does not mean that Python proved the
-presence or absence of a bird.
+   only after the freeze:
+       2 query PNGs -> 2 descriptions -> 2 selected-atom observations
+       -> durable joint prediction -> label reveal -> score
+       -> model-free replay of all 29 causal receipts
+
+The atom proposer receives only the frozen descriptions and support labels,
+not pixels.  Each description is bound to the panel bytes, neutral-description
+protocol, validated receipt, run commitment, phase, and call ordinal.  The
+one-panel observer then evaluates every proposed phrase, and every observation
+is joined to the exact scorer producer, output, receipt, run, and call ordinal.
+
+A phrase such as ``bird-like object`` is therefore an exact operational
+observer question, not a theorem about the pixels.  ``operational_nonmatch``
+may act as false only in an archive explicitly scoped to that observer.  Its
+general semantic projection is ``indeterminate``, never
+``certified_absent``.  The archive fixes
+``calibration_authorized = false``, ``semantic_truth_claim = false``, and
+``benchmark_claim_authorized = false``.  Calibrated-semantic atomic selection
+is hard-disabled until Python can cold-validate a typed calibration artifact
+and its interval rule.
 
 Every observation has one of four dispositions:
 
@@ -167,8 +241,8 @@ Every observation has one of four dispositions:
    The registered measurement or calibrated soft protocol supports the atom.
 
 ``certified_absent``
-   The same declared protocol supports its operational absence.  This is not
-   produced merely because fitting or transport failed.
+   A direct or independently calibrated protocol supports absence.  The
+   uncalibrated atomic observer cannot produce this disposition.
 
 ``indeterminate``
    The evidence interval or calibration does not decide the atom.
@@ -180,6 +254,13 @@ Every observation has one of four dispositions:
 Witness IDs, intervals, units, producer versions, and content digests make an
 observation replayable.  They are provenance, not proof that a high-level
 description matches the pixels.
+
+That description/matrix/selection path is now implemented in authoritative
+Python.  It retains no ``Not`` and no polarity flip.  The remaining perception
+work is to replace lossy free prose with richer typed object, part, angle, and
+relation observations.  Any semantic claim additionally needs a powered,
+independently frozen calibration design; the operational smoke does not supply
+one.
 
 Why Python is authoritative
 ---------------------------
@@ -222,10 +303,10 @@ Result policy
 -------------
 
 A1's valid terminal result is failure, not a pending value.  A2 is an
-invalidated source-mutation incident, not a pending score.  It has no terminal
-artifact and supports no semantic inference.  Stage B is unauthorized by both
-experiments.  No official complete-corpus visual-semantic score currently
-exists.
+invalidated source-mutation incident, not a pending score.  A3 is a canonical
+underpopulated-bin failure after successful proposer/scorer transport, not
+evidence for negation.  Stage B is unauthorized by all three experiments.  No
+official complete-corpus visual-semantic score currently exists.
 
 See :doc:`reproduction` for the exact Stage-A command and current artifact
 addresses.

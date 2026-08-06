@@ -149,8 +149,22 @@ CAMPAIGN_SELECTION_ALGORITHM_V1 = (
 CAMPAIGN_SELECTION_ALGORITHM = (
     "round-robin-bd-morphology-hd-constituent-disjoint-v2"
 )
+CAMPAIGN_SELECTION_ALGORITHM_V2 = CAMPAIGN_SELECTION_ALGORITHM
+CAMPAIGN_SELECTION_ALGORITHM_V3 = (
+    "exact-maximum-cardinality-then-seed-tie-representative-order-v3"
+)
 _SELECTION_ALGORITHMS = frozenset(
     {CAMPAIGN_SELECTION_ALGORITHM_V1, CAMPAIGN_SELECTION_ALGORITHM}
+)
+
+CAMPAIGN_SELECTION_CAPACITY_CERTIFICATE_SCHEMA = (
+    "gkm.bongard-semantic-calibration-selection-capacity-certificate.v1"
+)
+CAMPAIGN_TASK_SELECTION_V3_SCHEMA = (
+    "gkm.bongard-semantic-calibration-task-selection.v3"
+)
+CAMPAIGN_SELECTION_V3_SOLVER = (
+    "exact-component-set-packing-rank2-matching-dp/v1"
 )
 
 SOFT_ACCEPTED = "soft_claim_accepted"
@@ -173,6 +187,27 @@ StructuredTransport = Callable[..., Any]
 
 class SemanticCalibrationCampaignError(ValueError):
     """A campaign phase, archive, or causal edge is invalid."""
+
+
+class SemanticCalibrationCapacityError(SemanticCalibrationCampaignError):
+    """A v3 request exceeds an exact, replayable metadata-only capacity."""
+
+    def __init__(
+        self,
+        requested_count: int,
+        certificate: "SemanticSelectionCapacityCertificate",
+    ) -> None:
+        self.requested_count = requested_count
+        self.certificate = certificate
+        breakdown = ", ".join(
+            f"{family.upper()}={count}"
+            for family, count in certificate.availability_by_family
+        )
+        super().__init__(
+            f"requested {requested_count} candidates but exact v3 capacity "
+            f"is {certificate.maximum_capacity} ({breakdown}); "
+            f"certificate={certificate.digest}"
+        )
 
 
 class SemanticCalibrationCampaignScoringFailed(
@@ -480,7 +515,9 @@ def _disclosure_key_tokens(
     *,
     selection_algorithm: str = CAMPAIGN_SELECTION_ALGORITHM,
 ) -> frozenset[str]:
-    if selection_algorithm not in _SELECTION_ALGORITHMS:
+    if selection_algorithm not in (
+        _SELECTION_ALGORITHMS | {CAMPAIGN_SELECTION_ALGORITHM_V3}
+    ):
         raise SemanticCalibrationCampaignError(
             "unknown campaign selection algorithm"
         )
@@ -597,6 +634,1017 @@ def _clean_cohort_whitelist(
         excluded,
         blocked_clusters,
     )
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticSelectionCapacityCertificate:
+    """Content-addressed optimal-capacity evidence for selector v3.
+
+    The certificate contains commitments rather than a second copy of the
+    source whitelist.  Cold replay joins those commitments to the authenticated
+    corpus, historical policy, and predecessor ledger and reruns the exact
+    optimizer.  In particular, ``maximum_capacity`` is not inferred from the
+    requested prefix.
+    """
+
+    eligible_group_count: int
+    eligible_task_count: int
+    eligible_universe_digest: str
+    conflict_graph_digest: str
+    ledger_ineligible_task_ids_digest: str
+    predecessor_token_ineligible_task_ids_digest: str
+    maximum_capacity: int
+    maximum_witness_cluster_ids: tuple[str, ...]
+    maximum_witness_digest: str
+    availability_by_family: tuple[tuple[str, int], ...]
+    solver: str = CAMPAIGN_SELECTION_V3_SOLVER
+
+    def __post_init__(self) -> None:
+        for name in (
+            "eligible_group_count",
+            "eligible_task_count",
+            "maximum_capacity",
+        ):
+            value = getattr(self, name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise SemanticCalibrationCampaignError(
+                    f"{name} must be a non-negative integer"
+                )
+        for name in (
+            "eligible_universe_digest",
+            "conflict_graph_digest",
+            "ledger_ineligible_task_ids_digest",
+            "predecessor_token_ineligible_task_ids_digest",
+            "maximum_witness_digest",
+        ):
+            _address(getattr(self, name), name.replace("_", " "))
+        if self.solver != CAMPAIGN_SELECTION_V3_SOLVER:
+            raise SemanticCalibrationCampaignError(
+                "selection capacity certificate solver differs"
+            )
+        if (
+            not isinstance(self.maximum_witness_cluster_ids, tuple)
+            or tuple(sorted(self.maximum_witness_cluster_ids))
+            != self.maximum_witness_cluster_ids
+            or len(self.maximum_witness_cluster_ids)
+            != len(set(self.maximum_witness_cluster_ids))
+        ):
+            raise SemanticCalibrationCampaignError(
+                "maximum witness cluster IDs must be uniquely sorted"
+            )
+        for cluster_id in self.maximum_witness_cluster_ids:
+            _identifier(cluster_id, "maximum witness cluster ID")
+        if len(self.maximum_witness_cluster_ids) != self.maximum_capacity:
+            raise SemanticCalibrationCampaignError(
+                "maximum witness size differs from certified capacity"
+            )
+        if self.maximum_witness_digest != "sha256:" + canonical_digest(
+            list(self.maximum_witness_cluster_ids)
+        ):
+            raise SemanticCalibrationCampaignError(
+                "maximum witness digest differs from exact cluster IDs"
+            )
+        if (
+            not isinstance(self.availability_by_family, tuple)
+            or not self.availability_by_family
+            or len({family for family, _ in self.availability_by_family})
+            != len(self.availability_by_family)
+        ):
+            raise SemanticCalibrationCampaignError(
+                "availability_by_family must contain unique families"
+            )
+        total = 0
+        for family, count in self.availability_by_family:
+            if family not in FAMILIES or (
+                isinstance(count, bool)
+                or not isinstance(count, int)
+                or count < 0
+            ):
+                raise SemanticCalibrationCampaignError(
+                    "availability_by_family is malformed"
+                )
+            total += count
+        if total != self.maximum_capacity:
+            raise SemanticCalibrationCampaignError(
+                "family availability does not sum to certified capacity"
+            )
+        if self.eligible_group_count < self.maximum_capacity:
+            raise SemanticCalibrationCampaignError(
+                "certified capacity exceeds the eligible universe"
+            )
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": CAMPAIGN_SELECTION_CAPACITY_CERTIFICATE_SCHEMA,
+            "selection_algorithm": CAMPAIGN_SELECTION_ALGORITHM_V3,
+            "solver": self.solver,
+            "eligible_group_count": self.eligible_group_count,
+            "eligible_task_count": self.eligible_task_count,
+            "eligible_universe_digest": self.eligible_universe_digest,
+            "conflict_graph_digest": self.conflict_graph_digest,
+            "ledger_ineligible_task_ids_digest": (
+                self.ledger_ineligible_task_ids_digest
+            ),
+            "predecessor_token_ineligible_task_ids_digest": (
+                self.predecessor_token_ineligible_task_ids_digest
+            ),
+            "maximum_capacity": self.maximum_capacity,
+            "maximum_witness_cluster_ids": list(
+                self.maximum_witness_cluster_ids
+            ),
+            "maximum_witness_digest": self.maximum_witness_digest,
+            "availability_by_family": [
+                {"family": family, "count": count}
+                for family, count in self.availability_by_family
+            ],
+            "optimality_claim": (
+                "exact-maximum-cardinality-over-complete-prefiltered-"
+                "conflict-universe/v1"
+            ),
+        }
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + canonical_digest(self.content_data())
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "certificate_digest": self.digest}
+
+    @classmethod
+    def from_data(
+        cls, value: Mapping[str, Any]
+    ) -> "SemanticSelectionCapacityCertificate":
+        data = _fields(
+            _mapping(value, "selection capacity certificate"),
+            {
+                "schema",
+                "selection_algorithm",
+                "solver",
+                "eligible_group_count",
+                "eligible_task_count",
+                "eligible_universe_digest",
+                "conflict_graph_digest",
+                "ledger_ineligible_task_ids_digest",
+                "predecessor_token_ineligible_task_ids_digest",
+                "maximum_capacity",
+                "maximum_witness_cluster_ids",
+                "maximum_witness_digest",
+                "availability_by_family",
+                "optimality_claim",
+                "certificate_digest",
+            },
+            "selection capacity certificate",
+        )
+        if (
+            data["schema"] != CAMPAIGN_SELECTION_CAPACITY_CERTIFICATE_SCHEMA
+            or data["selection_algorithm"] != CAMPAIGN_SELECTION_ALGORITHM_V3
+            or data["optimality_claim"]
+            != (
+                "exact-maximum-cardinality-over-complete-prefiltered-"
+                "conflict-universe/v1"
+            )
+        ):
+            raise SemanticCalibrationCampaignError(
+                "selection capacity certificate semantics differ"
+            )
+        availability: list[tuple[str, int]] = []
+        for raw in _list(
+            data["availability_by_family"], "family availability"
+        ):
+            entry = _fields(
+                _mapping(raw, "family availability entry"),
+                {"family", "count"},
+                "family availability entry",
+            )
+            availability.append((entry["family"], entry["count"]))
+        result = cls(
+            eligible_group_count=data["eligible_group_count"],
+            eligible_task_count=data["eligible_task_count"],
+            eligible_universe_digest=data["eligible_universe_digest"],
+            conflict_graph_digest=data["conflict_graph_digest"],
+            ledger_ineligible_task_ids_digest=data[
+                "ledger_ineligible_task_ids_digest"
+            ],
+            predecessor_token_ineligible_task_ids_digest=data[
+                "predecessor_token_ineligible_task_ids_digest"
+            ],
+            maximum_capacity=data["maximum_capacity"],
+            maximum_witness_cluster_ids=tuple(
+                _list(
+                    data["maximum_witness_cluster_ids"],
+                    "maximum witness cluster IDs",
+                )
+            ),
+            maximum_witness_digest=data["maximum_witness_digest"],
+            availability_by_family=tuple(availability),
+            solver=data["solver"],
+        )
+        if result.digest != _address(
+            data["certificate_digest"], "capacity certificate digest"
+        ) or result.to_data() != dict(data):
+            raise SemanticCalibrationCampaignError(
+                "selection capacity certificate is non-canonical or tampered"
+            )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class SemanticCalibrationTaskSelectionV3:
+    """Metadata-only v3 selection archive, detached from proposal archives."""
+
+    public_seed: str
+    requested_candidate_count: int
+    families: tuple[str, ...]
+    semantic_cohort: str
+    selected_task_ids: tuple[str, ...]
+    selected_task_ids_digest: str
+    exposure_predecessor_digest: str
+    historical_seed_digest: str
+    resolver_policy_digest: str
+    clean_cohort_whitelist_digest: str
+    capacity_certificate: SemanticSelectionCapacityCertificate
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.public_seed, str)
+            or not self.public_seed.strip()
+            or len(self.public_seed.encode("utf-8")) > 4_096
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 selection seed must be non-empty bounded text"
+            )
+        if (
+            isinstance(self.requested_candidate_count, bool)
+            or not isinstance(self.requested_candidate_count, int)
+            or self.requested_candidate_count < 1
+        ):
+            raise SemanticCalibrationCampaignError(
+                "requested_candidate_count must be a positive integer"
+            )
+        if (
+            not isinstance(self.families, tuple)
+            or not self.families
+            or len(self.families) != len(set(self.families))
+            or any(family not in FAMILIES for family in self.families)
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 selection families must be unique canonical IDs"
+            )
+        if self.semantic_cohort not in _ALLOWED_SEMANTIC_COHORTS:
+            raise SemanticCalibrationCampaignError(
+                "v3 semantic cohort must be drill or dev"
+            )
+        if (
+            not isinstance(self.selected_task_ids, tuple)
+            or len(self.selected_task_ids) != self.requested_candidate_count
+            or len(self.selected_task_ids) != len(set(self.selected_task_ids))
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 selected task IDs differ from requested cardinality"
+            )
+        for task_id in self.selected_task_ids:
+            _identifier(task_id, "selected task ID")
+            if parse_official_task_id(task_id).family not in self.families:
+                raise SemanticCalibrationCampaignError(
+                    "v3 selected task is outside the family scope"
+                )
+        for name in (
+            "selected_task_ids_digest",
+            "exposure_predecessor_digest",
+            "historical_seed_digest",
+            "resolver_policy_digest",
+            "clean_cohort_whitelist_digest",
+        ):
+            _address(getattr(self, name), name.replace("_", " "))
+        if self.selected_task_ids_digest != "sha256:" + canonical_digest(
+            list(self.selected_task_ids)
+        ):
+            raise SemanticCalibrationCampaignError(
+                "selected task digest differs from exact order"
+            )
+        if not isinstance(
+            self.capacity_certificate, SemanticSelectionCapacityCertificate
+        ):
+            raise TypeError(
+                "capacity_certificate must be SemanticSelectionCapacityCertificate"
+            )
+        if (
+            self.requested_candidate_count
+            > self.capacity_certificate.maximum_capacity
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 selection exceeds its capacity certificate"
+            )
+        if tuple(family for family, _ in (
+            self.capacity_certificate.availability_by_family
+        )) != self.families:
+            raise SemanticCalibrationCampaignError(
+                "v3 capacity families differ from selection scope"
+            )
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": CAMPAIGN_TASK_SELECTION_V3_SCHEMA,
+            "selection_algorithm": CAMPAIGN_SELECTION_ALGORITHM_V3,
+            "public_seed": self.public_seed,
+            "selection_seed_digest": hashlib.sha256(
+                self.public_seed.encode("utf-8")
+            ).hexdigest(),
+            "requested_candidate_count": self.requested_candidate_count,
+            "families": list(self.families),
+            "semantic_cohort": self.semantic_cohort,
+            "selected_task_ids": list(self.selected_task_ids),
+            "selected_task_ids_digest": self.selected_task_ids_digest,
+            "exposure_predecessor_digest": self.exposure_predecessor_digest,
+            "historical_seed_digest": self.historical_seed_digest,
+            "resolver_policy_digest": self.resolver_policy_digest,
+            "clean_cohort_whitelist_digest": self.clean_cohort_whitelist_digest,
+            "capacity_certificate": self.capacity_certificate.to_data(),
+            "capacity_certificate_digest": self.capacity_certificate.digest,
+            "pixel_access": "forbidden-metadata-only/v1",
+        }
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + canonical_digest(self.content_data())
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "selection_digest": self.digest}
+
+    @classmethod
+    def from_data(
+        cls, value: Mapping[str, Any]
+    ) -> "SemanticCalibrationTaskSelectionV3":
+        data = _fields(
+            _mapping(value, "v3 task selection"),
+            {
+                "schema",
+                "selection_algorithm",
+                "public_seed",
+                "selection_seed_digest",
+                "requested_candidate_count",
+                "families",
+                "semantic_cohort",
+                "selected_task_ids",
+                "selected_task_ids_digest",
+                "exposure_predecessor_digest",
+                "historical_seed_digest",
+                "resolver_policy_digest",
+                "clean_cohort_whitelist_digest",
+                "capacity_certificate",
+                "capacity_certificate_digest",
+                "pixel_access",
+                "selection_digest",
+            },
+            "v3 task selection",
+        )
+        if (
+            data["schema"] != CAMPAIGN_TASK_SELECTION_V3_SCHEMA
+            or data["selection_algorithm"] != CAMPAIGN_SELECTION_ALGORITHM_V3
+            or data["pixel_access"] != "forbidden-metadata-only/v1"
+            or data["selection_seed_digest"]
+            != hashlib.sha256(data["public_seed"].encode("utf-8")).hexdigest()
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 task selection semantics differ"
+            )
+        certificate = SemanticSelectionCapacityCertificate.from_data(
+            _mapping(data["capacity_certificate"], "capacity certificate")
+        )
+        if certificate.digest != _address(
+            data["capacity_certificate_digest"], "capacity certificate digest"
+        ):
+            raise SemanticCalibrationCampaignError(
+                "v3 capacity certificate parent differs"
+            )
+        result = cls(
+            public_seed=data["public_seed"],
+            requested_candidate_count=data["requested_candidate_count"],
+            families=tuple(_list(data["families"], "selection families")),
+            semantic_cohort=data["semantic_cohort"],
+            selected_task_ids=tuple(
+                _list(data["selected_task_ids"], "selected task IDs")
+            ),
+            selected_task_ids_digest=data["selected_task_ids_digest"],
+            exposure_predecessor_digest=data["exposure_predecessor_digest"],
+            historical_seed_digest=data["historical_seed_digest"],
+            resolver_policy_digest=data["resolver_policy_digest"],
+            clean_cohort_whitelist_digest=data[
+                "clean_cohort_whitelist_digest"
+            ],
+            capacity_certificate=certificate,
+        )
+        if result.digest != _address(
+            data["selection_digest"], "v3 selection digest"
+        ) or result.to_data() != dict(data):
+            raise SemanticCalibrationCampaignError(
+                "v3 task selection is non-canonical or tampered"
+            )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class _V3SelectionGroup:
+    family: str
+    cluster_id: str
+    collision_tokens: frozenset[str]
+    members: tuple[ParsedOfficialTaskId, ...]
+
+
+def _v3_collision_tokens(parsed: ParsedOfficialTaskId) -> frozenset[str]:
+    """Return only tokens that can collide across distinct generator groups."""
+
+    disclosure = _disclosure_key_tokens(
+        parsed, selection_algorithm=CAMPAIGN_SELECTION_ALGORITHM_V3
+    )
+    reduced = frozenset(
+        token
+        for token in disclosure
+        if not token.startswith("basic_family:")
+        and not token.startswith("abstract_pair:")
+    )
+    if not reduced:
+        raise SemanticCalibrationCampaignError(
+            "v3 candidate has no collision token"
+        )
+    return reduced
+
+
+def _v3_conflict_graph(
+    groups: Sequence[_V3SelectionGroup],
+) -> tuple[tuple[int, ...], tuple[tuple[str, str], ...]]:
+    owners: dict[str, list[int]] = {}
+    for index, group in enumerate(groups):
+        for token in group.collision_tokens:
+            owners.setdefault(token, []).append(index)
+    adjacency = [0] * len(groups)
+    edges: set[tuple[str, str]] = set()
+    for indices in owners.values():
+        for offset, left in enumerate(indices):
+            for right in indices[offset + 1 :]:
+                adjacency[left] |= 1 << right
+                adjacency[right] |= 1 << left
+                edges.add(
+                    tuple(
+                        sorted(
+                            (groups[left].cluster_id, groups[right].cluster_id)
+                        )
+                    )
+                )
+    return tuple(adjacency), tuple(sorted(edges))
+
+
+def _v3_exact_maximum_group_indices(
+    groups: Sequence[_V3SelectionGroup], *, seed: str
+) -> tuple[int, ...]:
+    """Solve maximum independent set exactly on each conflict component.
+
+    Official BD/HD collision sets have rank at most two.  If every token in a
+    component has a singleton group, those singletons attain the tight
+    token-count upper bound and no pair can occur in a maximum witness.
+    Otherwise a token-mask maximum-matching recurrence solves the much smaller
+    token graph, including singleton choices.  The generic group-mask
+    include/exclude recurrence remains the exact fallback for higher-rank
+    synthetic or future groups.  Seed-derived ranks are consulted only after
+    cardinality, so the seed cannot reduce certified capacity.
+    """
+
+    frozen = tuple(groups)
+    adjacency, _ = _v3_conflict_graph(frozen)
+    rank_keys = tuple(
+        (
+            _rank(
+                seed,
+                "v3-maximum-witness-tie",
+                {"family": group.family, "cluster_id": group.cluster_id},
+            ),
+            group.cluster_id,
+        )
+        for group in frozen
+    )
+
+    def tie_key(indices: tuple[int, ...]) -> tuple[tuple[str, str], ...]:
+        return tuple(sorted(rank_keys[index] for index in indices))
+
+    def better(left: tuple[int, ...], right: tuple[int, ...]) -> tuple[int, ...]:
+        if len(left) != len(right):
+            return left if len(left) > len(right) else right
+        return left if tie_key(left) < tie_key(right) else right
+
+    def solve_rank_two(component: int) -> tuple[int, ...]:
+        """Solve one rank-one/rank-two set-packing component exactly.
+
+        Parallel groups are interchangeable for feasibility, so only their
+        seed-ranked representatives can occur in the canonical witness.  A
+        complete singleton cover is a tight certificate: it selects one group
+        per token, while every feasible group consumes at least one distinct
+        token.  Components without that cover retain singleton alternatives in
+        the matching recurrence so the global seed tie is not changed.
+        """
+
+        component_indices = tuple(
+            index
+            for index in range(len(frozen))
+            if component & (1 << index)
+        )
+        singleton_representatives: dict[str, int] = {}
+        all_tokens: set[str] = set()
+        for index in component_indices:
+            tokens = frozen[index].collision_tokens
+            all_tokens.update(tokens)
+            if len(tokens) == 1:
+                token = next(iter(tokens))
+                incumbent = singleton_representatives.get(token)
+                if (
+                    incumbent is None
+                    or rank_keys[index] < rank_keys[incumbent]
+                ):
+                    singleton_representatives[token] = index
+
+        if set(singleton_representatives) == all_tokens:
+            return tuple(sorted(singleton_representatives.values()))
+
+        edge_representatives: dict[tuple[str, str], int] = {}
+        for index in component_indices:
+            tokens = frozen[index].collision_tokens
+            if len(tokens) != 2:
+                continue
+            edge = tuple(sorted(tokens))
+            incumbent = edge_representatives.get(edge)
+            if incumbent is None or rank_keys[index] < rank_keys[incumbent]:
+                edge_representatives[edge] = index
+
+        token_neighbors: dict[str, set[str]] = {
+            token: set() for token in all_tokens
+        }
+        edge_index: dict[tuple[str, str], int] = {}
+        for edge, index in edge_representatives.items():
+            left, right = edge
+            token_neighbors.setdefault(left, set()).add(right)
+            token_neighbors.setdefault(right, set()).add(left)
+            edge_index[edge] = index
+
+        unmatched_tokens = set(token_neighbors)
+        token_components: list[tuple[str, ...]] = []
+        while unmatched_tokens:
+            start = min(unmatched_tokens)
+            frontier = [start]
+            seen: set[str] = set()
+            while frontier:
+                token = frontier.pop()
+                if token in seen:
+                    continue
+                seen.add(token)
+                unmatched_tokens.discard(token)
+                frontier.extend(token_neighbors[token] - seen)
+            token_components.append(tuple(sorted(seen)))
+
+        selected: list[int] = []
+        for tokens in token_components:
+            position = {token: offset for offset, token in enumerate(tokens)}
+            adjacency_by_position: tuple[tuple[int, ...], ...] = tuple(
+                tuple(
+                    sorted(
+                        position[neighbor]
+                        for neighbor in token_neighbors[token]
+                    )
+                )
+                for token in tokens
+            )
+            memo: dict[int, tuple[int, ...]] = {0: ()}
+
+            def solve_matching(available: int) -> tuple[int, ...]:
+                cached = memo.get(available)
+                if cached is not None:
+                    return cached
+                positions = tuple(
+                    offset
+                    for offset in range(len(tokens))
+                    if available & (1 << offset)
+                )
+                pivot = max(
+                    positions,
+                    key=lambda offset: (
+                        sum(
+                            bool(available & (1 << neighbor))
+                            for neighbor in adjacency_by_position[offset]
+                        ),
+                        tokens[offset],
+                    ),
+                )
+                pivot_bit = 1 << pivot
+                without_pivot = available & ~pivot_bit
+                answer = solve_matching(without_pivot)
+                singleton = singleton_representatives.get(tokens[pivot])
+                if singleton is not None:
+                    answer = better(
+                        tuple(
+                            sorted(
+                                (
+                                    singleton,
+                                    *solve_matching(without_pivot),
+                                )
+                            )
+                        ),
+                        answer,
+                    )
+                for neighbor in adjacency_by_position[pivot]:
+                    neighbor_bit = 1 << neighbor
+                    if not (without_pivot & neighbor_bit):
+                        continue
+                    edge = tuple(sorted((tokens[pivot], tokens[neighbor])))
+                    candidate = tuple(
+                        sorted(
+                            (
+                                edge_index[edge],
+                                *solve_matching(
+                                    without_pivot & ~neighbor_bit
+                                ),
+                            )
+                        )
+                    )
+                    answer = better(candidate, answer)
+                memo[available] = answer
+                return answer
+
+            selected.extend(solve_matching((1 << len(tokens)) - 1))
+        return tuple(sorted(selected))
+
+    def solve_generic(component: int) -> tuple[int, ...]:
+        """Exact set-packing fallback for collision sets above rank two."""
+
+        memo: dict[int, tuple[int, ...]] = {0: ()}
+
+        def solve(available: int) -> tuple[int, ...]:
+            cached = memo.get(available)
+            if cached is not None:
+                return cached
+            vertices = tuple(
+                index
+                for index in range(len(frozen))
+                if available & (1 << index)
+            )
+            pivot = max(
+                vertices,
+                key=lambda index: (
+                    (adjacency[index] & available).bit_count(),
+                    frozen[index].cluster_id,
+                ),
+            )
+            pivot_bit = 1 << pivot
+            without = available & ~pivot_bit
+            excluded = solve(without)
+            included = tuple(
+                sorted(
+                    (
+                        pivot,
+                        *solve(without & ~adjacency[pivot]),
+                    )
+                )
+            )
+            answer = better(included, excluded)
+            memo[available] = answer
+            return answer
+
+        return solve(component)
+
+    unseen = (1 << len(frozen)) - 1
+    components: list[int] = []
+    while unseen:
+        start = unseen & -unseen
+        frontier = start
+        component = 0
+        while frontier:
+            bit = frontier & -frontier
+            frontier &= ~bit
+            index = bit.bit_length() - 1
+            component |= bit
+            frontier |= adjacency[index] & unseen & ~component
+        unseen &= ~component
+        components.append(component)
+
+    chosen: list[int] = []
+    for component in components:
+        component_indices = tuple(
+            index
+            for index in range(len(frozen))
+            if component & (1 << index)
+        )
+        rank_two = all(
+            len(frozen[index].collision_tokens) <= 2
+            for index in component_indices
+        )
+        chosen.extend(
+            solve_rank_two(component)
+            if rank_two
+            else solve_generic(component)
+        )
+    return tuple(sorted(chosen))
+
+
+def _select_from_whitelist_v3(
+    whitelist: Sequence[CleanCohortEntry],
+    *,
+    families: tuple[str, ...],
+    candidate_count: int,
+    seed: str,
+    exposure_ledger: ExposureLedger,
+    historical_seed_digest: str,
+    resolver_policy_digest: str,
+) -> tuple[tuple[ParsedOfficialTaskId, ...], SemanticSelectionCapacityCertificate]:
+    """Prefilter, optimize exact capacity, then apply seed-only choices."""
+
+    historical = load_historical_exposure()
+    if (
+        historical.seed_digest != historical_seed_digest
+        or semantic_resolver_policy_digest(historical) != resolver_policy_digest
+    ):
+        raise SemanticCalibrationCampaignError(
+            "v3 selector historical policy differs"
+        )
+    ordered_whitelist = tuple(sorted(whitelist))
+    task_ids = tuple(item[0] for item in ordered_whitelist)
+    if len(task_ids) != len(set(task_ids)):
+        raise SemanticCalibrationCampaignError(
+            "v3 clean cohort whitelist repeats a task"
+        )
+
+    predecessor_tokens: set[str] = set()
+    for exposed_task_id in sorted(exposure_ledger.exposed_task_ids):
+        try:
+            exposed = parse_official_task_id(exposed_task_id)
+        except (TypeError, ValueError):
+            continue
+        predecessor_tokens.update(
+            _disclosure_key_tokens(
+                exposed,
+                selection_algorithm=CAMPAIGN_SELECTION_ALGORITHM_V3,
+            )
+        )
+
+    eligible: list[ParsedOfficialTaskId] = []
+    ledger_ineligible: list[str] = []
+    predecessor_ineligible: list[str] = []
+    for task_id, family, concepts, split in ordered_whitelist:
+        if family not in families or split not in _ALLOWED_SPLITS:
+            raise SemanticCalibrationCampaignError(
+                "v3 whitelist entry is outside the frozen family/split scope"
+            )
+        parsed = parse_official_task_id(task_id)
+        if parsed.family != family or parsed.concepts != concepts:
+            raise SemanticCalibrationCampaignError(
+                "v3 whitelist differs from official task parser"
+            )
+        try:
+            exposure_ledger.assert_unseen(task_ids=(task_id,))
+            exposure_ledger.assert_semantically_unseen(
+                task_ids=(task_id,),
+                historical_seed=historical,
+                expected_historical_seed_digest=historical_seed_digest,
+                expected_resolver_policy_digest=resolver_policy_digest,
+            )
+        except ExposureViolation:
+            ledger_ineligible.append(task_id)
+            continue
+        if _disclosure_key_tokens(
+            parsed, selection_algorithm=CAMPAIGN_SELECTION_ALGORITHM_V3
+        ) & predecessor_tokens:
+            predecessor_ineligible.append(task_id)
+            continue
+        eligible.append(parsed)
+
+    grouped: dict[str, list[ParsedOfficialTaskId]] = {}
+    for parsed in eligible:
+        cluster_id = semantic_generator_cluster_id(
+            parsed.family, parsed.concepts
+        )
+        grouped.setdefault(cluster_id, []).append(parsed)
+    groups: list[_V3SelectionGroup] = []
+    for cluster_id, raw_members in sorted(grouped.items()):
+        members = tuple(sorted(raw_members, key=lambda item: item.task_id))
+        signatures = {_v3_collision_tokens(member) for member in members}
+        if len(signatures) != 1:
+            raise SemanticCalibrationCampaignError(
+                "one v3 generator group has representative-dependent conflicts"
+            )
+        groups.append(
+            _V3SelectionGroup(
+                family=members[0].family,
+                cluster_id=cluster_id,
+                collision_tokens=next(iter(signatures)),
+                members=members,
+            )
+        )
+    frozen_groups = tuple(groups)
+    adjacency, edges = _v3_conflict_graph(frozen_groups)
+    witness_indices = _v3_exact_maximum_group_indices(
+        frozen_groups, seed=seed
+    )
+    witness_groups = tuple(frozen_groups[index] for index in witness_indices)
+    witness_cluster_ids = tuple(
+        sorted(group.cluster_id for group in witness_groups)
+    )
+    availability = tuple(
+        (
+            family,
+            sum(group.family == family for group in witness_groups),
+        )
+        for family in families
+    )
+    universe_data = [
+        {
+            "family": group.family,
+            "cluster_id": group.cluster_id,
+            "collision_tokens": sorted(group.collision_tokens),
+            "eligible_task_ids": [member.task_id for member in group.members],
+        }
+        for group in frozen_groups
+    ]
+    conflict_data = {
+        "schema": "gkm.bongard-semantic-selection-conflict-graph.v1",
+        "nodes": [group.cluster_id for group in frozen_groups],
+        "edges": [list(edge) for edge in edges],
+        "adjacency_bitsets": [format(bits, "x") for bits in adjacency],
+    }
+    certificate = SemanticSelectionCapacityCertificate(
+        eligible_group_count=len(frozen_groups),
+        eligible_task_count=len(eligible),
+        eligible_universe_digest="sha256:" + canonical_digest(universe_data),
+        conflict_graph_digest="sha256:" + canonical_digest(conflict_data),
+        ledger_ineligible_task_ids_digest="sha256:"
+        + canonical_digest(sorted(ledger_ineligible)),
+        predecessor_token_ineligible_task_ids_digest="sha256:"
+        + canonical_digest(sorted(predecessor_ineligible)),
+        maximum_capacity=len(witness_groups),
+        maximum_witness_cluster_ids=witness_cluster_ids,
+        maximum_witness_digest="sha256:"
+        + canonical_digest(list(witness_cluster_ids)),
+        availability_by_family=availability,
+    )
+    if candidate_count > certificate.maximum_capacity:
+        raise SemanticCalibrationCapacityError(candidate_count, certificate)
+
+    representative_by_cluster = {
+        group.cluster_id: min(
+            group.members,
+            key=lambda item: (
+                _rank(seed, "v3-within-generator-cluster", item.task_id),
+                item.task_id,
+            ),
+        )
+        for group in witness_groups
+    }
+    queues = {
+        family: sorted(
+            (
+                representative_by_cluster[group.cluster_id]
+                for group in witness_groups
+                if group.family == family
+            ),
+            key=lambda item: (
+                _rank(
+                    seed,
+                    "v3-selected-order",
+                    {
+                        "family": item.family,
+                        "cluster_id": semantic_generator_cluster_id(
+                            item.family, item.concepts
+                        ),
+                        "task_id": item.task_id,
+                    },
+                ),
+                item.task_id,
+            ),
+        )
+        for family in families
+    }
+    offsets = {family: 0 for family in families}
+    selected: list[ParsedOfficialTaskId] = []
+    while len(selected) < candidate_count:
+        for family in families:
+            offset = offsets[family]
+            if offset < len(queues[family]):
+                selected.append(queues[family][offset])
+                offsets[family] += 1
+                if len(selected) == candidate_count:
+                    break
+    return tuple(selected), certificate
+
+
+def select_semantic_calibration_tasks_v3(
+    corpus: ShapeBongardCorpus,
+    *,
+    candidate_count: int,
+    seed: str,
+    exposure_ledger: ExposureLedger,
+    expected_exposure_ledger_digest: str,
+    semantic_cohort: str = "drill",
+    families: Sequence[str] = ("bd", "hd"),
+) -> SemanticCalibrationTaskSelectionV3:
+    """Create an exact-capacity, metadata-only v3 selection archive.
+
+    This API is intentionally detached from the historical proposal-archive
+    default.  A caller can preregister and cold-replay v3 selection without
+    making v1/v2 bytes decode under new semantics.
+    """
+
+    if not isinstance(corpus, ShapeBongardCorpus):
+        raise TypeError("corpus must be ShapeBongardCorpus")
+    if not isinstance(exposure_ledger, ExposureLedger):
+        raise TypeError("exposure_ledger must be an explicit ExposureLedger")
+    if exposure_ledger.digest != _address(
+        expected_exposure_ledger_digest, "expected exposure ledger digest"
+    ):
+        raise SemanticCalibrationCampaignError(
+            "exposure ledger differs from precommitted digest"
+        )
+    if (
+        isinstance(candidate_count, bool)
+        or not isinstance(candidate_count, int)
+        or candidate_count < 1
+    ):
+        raise SemanticCalibrationCampaignError(
+            "candidate_count must be a positive integer"
+        )
+    if not isinstance(seed, str) or not seed.strip():
+        raise SemanticCalibrationCampaignError("campaign seed must be non-empty")
+    if isinstance(families, (str, bytes)) or not isinstance(families, Sequence):
+        raise TypeError("families must be a sequence")
+    scope = tuple(families)
+    if not scope or len(scope) != len(set(scope)) or any(
+        family not in FAMILIES for family in scope
+    ):
+        raise SemanticCalibrationCampaignError(
+            "campaign families must be unique ShapeBongard family IDs"
+        )
+    if not corpus.split.groups or corpus.split.source_digest is None:
+        raise SemanticCalibrationCampaignError(
+            "campaign requires an authenticated split index"
+        )
+    (
+        whitelist,
+        historical_seed_digest,
+        resolver_policy_digest,
+        _,
+        clean_cohort_whitelist_digest,
+        _,
+        _,
+        _,
+        _,
+    ) = _clean_cohort_whitelist(corpus, scope, semantic_cohort)
+    selected, certificate = _select_from_whitelist_v3(
+        whitelist,
+        families=scope,
+        candidate_count=candidate_count,
+        seed=seed,
+        exposure_ledger=exposure_ledger,
+        historical_seed_digest=historical_seed_digest,
+        resolver_policy_digest=resolver_policy_digest,
+    )
+    selected_task_ids = tuple(item.task_id for item in selected)
+    return SemanticCalibrationTaskSelectionV3(
+        public_seed=seed,
+        requested_candidate_count=candidate_count,
+        families=scope,
+        semantic_cohort=semantic_cohort,
+        selected_task_ids=selected_task_ids,
+        selected_task_ids_digest="sha256:"
+        + canonical_digest(list(selected_task_ids)),
+        exposure_predecessor_digest=exposure_ledger.digest,
+        historical_seed_digest=historical_seed_digest,
+        resolver_policy_digest=resolver_policy_digest,
+        clean_cohort_whitelist_digest=clean_cohort_whitelist_digest,
+        capacity_certificate=certificate,
+    )
+
+
+def replay_semantic_calibration_tasks_v3(
+    value: SemanticCalibrationTaskSelectionV3 | Mapping[str, Any],
+    *,
+    corpus: ShapeBongardCorpus,
+    exposure_ledger: ExposureLedger,
+) -> SemanticCalibrationTaskSelectionV3:
+    """Cold-recompute every v3 universe, conflict, capacity, and order edge."""
+
+    archived = (
+        SemanticCalibrationTaskSelectionV3.from_data(value)
+        if isinstance(value, Mapping)
+        else SemanticCalibrationTaskSelectionV3.from_data(value.to_data())
+    )
+    replayed = select_semantic_calibration_tasks_v3(
+        corpus,
+        candidate_count=archived.requested_candidate_count,
+        seed=archived.public_seed,
+        exposure_ledger=exposure_ledger,
+        expected_exposure_ledger_digest=archived.exposure_predecessor_digest,
+        semantic_cohort=archived.semantic_cohort,
+        families=archived.families,
+    )
+    if replayed.to_data() != archived.to_data():
+        raise SemanticCalibrationCampaignError(
+            "v3 selection differs from cold corpus/ledger replay"
+        )
+    return replayed
 
 
 def _select_from_whitelist(
@@ -3995,12 +5043,17 @@ __all__ = [
     "CAMPAIGN_SCORE_BATCH_SCHEMA",
     "CAMPAIGN_SELECTION_ALGORITHM",
     "CAMPAIGN_SELECTION_ALGORITHM_V1",
+    "CAMPAIGN_SELECTION_ALGORITHM_V2",
+    "CAMPAIGN_SELECTION_ALGORITHM_V3",
+    "CAMPAIGN_SELECTION_CAPACITY_CERTIFICATE_SCHEMA",
+    "CAMPAIGN_TASK_SELECTION_V3_SCHEMA",
     "DIRECT_ONLY",
     "SEMANTIC_CALIBRATION_CAMPAIGN_SCHEMA",
     "SOFT_ACCEPTED",
     "TRANSPORT_FAILED",
     "TYPED_REJECTED",
     "SemanticCalibrationCampaignArtifact",
+    "SemanticCalibrationCapacityError",
     "SemanticCalibrationCampaignError",
     "SemanticCalibrationCampaignFitFailed",
     "SemanticCalibrationCampaignNoSoftClaims",
@@ -4013,10 +5066,14 @@ __all__ = [
     "SemanticCalibrationProposalArchive",
     "SemanticCalibrationProposalRecord",
     "SemanticCalibrationScoreBatch",
+    "SemanticCalibrationTaskSelectionV3",
+    "SemanticSelectionCapacityCertificate",
+    "replay_semantic_calibration_tasks_v3",
     "run_semantic_calibration_campaign",
     "resolve_semantic_campaign_panels",
     "verify_semantic_campaign_against_corpus",
     "select_semantic_calibration_tasks",
+    "select_semantic_calibration_tasks_v3",
     "semantic_generator_cluster_id",
     "semantic_campaign_label_reveal_protocol_digest",
 ]

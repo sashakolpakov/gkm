@@ -15,8 +15,9 @@ benchmark result. Its central claims are deliberately narrow:
   counts 1 through 8. Angle bands, complete point-contact signatures, and
   persistent object/part identity are not implemented direct predicates.
 - Soft prose such as “bird-like” is a frozen operational observation. It is
-  not a proof about the pixels and becomes calibrated only after a valid
-  development fit.
+  not a proof about the pixels. An uncalibrated observer nonmatch has a
+  distinct atomic record and projects to semantic indeterminacy, not certified
+  absence.
 - A1 failed before scoring. Its receipt is
   `sha256:9aa247d953204bb12c06a09af6c081c47ae884be8e9c642a9a2bb6d587ba40cb`
   and its terminal failure is
@@ -39,22 +40,60 @@ benchmark result. Its central claims are deliberately narrow:
   Process output showed 48 proposer and 34 scorer launches only; outputs were
   lost, labels were not revealed, and no semantic inference is valid. The same
   cohort may not be rerun.
-- Stage B is unauthorized by both A1 and A2. The completed semantic-capacity
-  audit leaves exactly 24 BD + 0 constituent-disjoint HD = 24 DRILL units, so
+- A3 completed the headless proposer/scorer path and exited 2 as a canonical
+  scientific failure with reason `calibration score bins are underpopulated:
+  1`. Its command receipt is
+  `sha256:2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681`
+  and its terminal failure is
+  `sha256:cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb`.
+  All 22 proposer calls succeeded (15 accepted soft, 6 direct-only, 1 parser
+  rejection), as did all 15 scorer calls. Scores were `0:8`, `0.5:1`, `1:6`.
+  The lower bin had 9 clusters/1 affirmative and the upper had 6/5, below the
+  fixed 8-cluster minimum, so no fit was produced.
+- A3's intended-bin orientation was 13/15 versus 2/15 for the complement; at
+  `score >= 0.5`, it was 12/15 versus 3/15. Negation did not win. The parser
+  rejection was the ordinary word `defines` accidentally matching forbidden
+  `def`; the complete-keyword parser fix was made after A3.
+- Stage B is unauthorized by A1, A2, and A3. The completed semantic-capacity
+  audit found exactly 24 BD + 0 constituent-disjoint HD = 24 DRILL units before
+  A3, so
   the old 48-task design is impossible. Against the complete live ledger, DEV
   has 16 BD + 0 HD units. The default 24-task Stage B fails before pixels, and
   a 16-task BD-only pilot cannot meet its 24-cluster minimum.
 - The earlier 28-unit upper bound failed to project complete-A2 exposure into
   the HD constituent-token exclusion set; every remaining DRILL HD pair
-  intersects that set. This is not corpus exhaustion: 10,069 of 10,200
-  train/validation task IDs remain exact-unused after A2. The 24-unit ceiling
+  intersects that set. This is not corpus exhaustion: after A3, 10,047 of
+  10,200 train/validation task IDs remain exact-unused (FF 2,998; BD 3,434; HD
+  3,615). The 24-unit ceiling
   comes from applying a
   strict constituent-independence rule to calibration. A future calibration
   frame must exploit the larger training population with explicit dependence
   accounting while retaining a stricter evaluation holdout.
-- Before its seed or model output exists, A3 fixes eight clusters per score bin.
-  Its 90% two-bin Hoeffding radius is 0.480161, the smallest bin size that can
-  possibly decide against the unchanged 0.5 boundary. It remains descriptive.
+- A post-A3 audit found that its launcher digest authenticated the JavaScript
+  wrapper plus reported CLI version, not the native client selected by that
+  wrapper. There is no evidence of actual drift. New runs prospectively repair
+  the gap by staging, hashing, executing, and rechecking the exact native
+  client digest
+  `sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02`.
+- Exact v3 replay against the A3 successor ledger now certifies strict DRILL
+  capacity zero (zero eligible tasks/groups, `0 BD + 0 HD`), while DEV remains
+  `16 BD + 0 HD`. The zero-capacity certificate is
+  `sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1`.
+- A3's theoretical hole was concrete: descriptions were audit-only, proposal
+  was one irreversible bundled guess, and no formula was evaluated. The atomic
+  successor now freezes neutral descriptions, proposes 1--12 single-phrase
+  atoms from labelled descriptions only, records a complete atom-by-panel
+  matrix, and selects a deterministic positive conjunction before query
+  release.
+- The exact atomic success path has 29 causal model receipts. It has no `Not`
+  or polarity flip. Its operational archive hard-codes calibration,
+  semantic-truth, benchmark, and official-test authority false; calibrated
+  semantic selection is disabled pending a cold-validatable typed calibration
+  artifact.
+- The first N=1 frame contains ten repeated-generator exact-unseen training
+  tasks. It tests transport/synthesis, not independent generalization. Richer
+  typed grounding and powered label-blind evaluation remain future work. Lean
+  remains an optional removable sidecar.
 - New receipts bind the complete executable Bongard Python source boundary;
   post-exposure source drift
   now persists a typed failed receipt with labels withheld. Exact-identity
@@ -64,8 +103,8 @@ benchmark result. Its central claims are deliberately narrow:
 
 The pinned extracted-corpus manifest is
 `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138`.
-There are no result placeholders: A2 is an invalidated incident, not a pending
-measurement.
+There are no result placeholders: A2 is an invalidated incident and A3 is a
+terminal scientific failure, not a pending measurement.
 
 Build the canonical paper from the repository root:
 

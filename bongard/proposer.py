@@ -29,13 +29,18 @@ from typing import Any, Callable, Iterator, Mapping, Sequence
 from bongard.transport import (
     DEFAULT_CODEX_MODEL,
     DEFAULT_REASONING_EFFORT,
+    NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
+    STRUCTURED_INPUT_DIGEST_SCHEMA,
     CloudPolicyCacheSnapshot,
     CodexProposerFailure,
     CodexReceipt,
     CodexStructuredResult,
+    _named_image_snapshot,
     run_codex_named_images_structured,
     run_codex_structured,
+    semantic_panel_set_digest,
     snapshot_cloud_policy_cache,
+    validate_codex_named_image_receipt,
     validate_codex_receipt,
 )
 from bongard.evidence import Disposition, Evidence, Provenance
@@ -79,6 +84,12 @@ def _canonical_json(value: Any) -> str:
 
 def _digest(value: Any) -> str:
     return "sha256:" + hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _transport_digest(value: Any) -> str:
+    """Return the raw canonical SHA-256 form used inside Codex receipts."""
+
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
 def _nonempty_text(value: object, name: str) -> str:
@@ -358,6 +369,17 @@ class RuleProposal:
     receipt: CodexReceipt
     model_payload: Mapping[str, Any]
 
+    def __post_init__(self) -> None:
+        # Parser unit tests use small receipt doubles.  Real archived receipts
+        # must already belong to the labelled 12-image proposer domain even if
+        # a caller constructs this record directly instead of using the parser.
+        if isinstance(self.receipt, CodexReceipt):
+            _validate_structured_receipt_payload(
+                self.receipt,
+                self.model_payload,
+                context="accepted proposal",
+            )
+
     @property
     def digest(self) -> str:
         return _digest(self.to_dict())
@@ -453,6 +475,11 @@ class RejectedProposalAttempt:
             validate_codex_receipt(self.receipt.to_dict())
         except (CodexProposerFailure, TypeError, ValueError) as exc:
             raise ProposalError(f"rejected proposal receipt is invalid: {exc}") from exc
+        if self.receipt.input_digest_schema != STRUCTURED_INPUT_DIGEST_SCHEMA:
+            raise ProposalError(
+                "rejected proposal receipt is not from the labelled 12-image "
+                "structured input domain"
+            )
         expected_names = tuple(f"{name}.png" for name in _PANEL_NAMES)
         if not all(
             isinstance(item, SupportPanelIdentity)
@@ -465,6 +492,7 @@ class RejectedProposalAttempt:
             raise ProposalError(
                 "rejected proposal support presentation must be canonical 6+6 order"
             )
+        _validate_rejected_proposal_receipt_binding(self)
         for name, value in (
             ("parse_error_type", self.parse_error_type),
             ("parse_error_reason", self.parse_error_reason),
@@ -506,7 +534,10 @@ class RejectedProposalError(ProposalError):
         super().__init__(attempt.parse_error_reason)
 
 
-_STRING = {"type": "string", "minLength": 1, "maxLength": 20_000}
+# The transport accepts the strict Responses subset only.  Lengths, identifier
+# syntax, and cross-field cardinalities are therefore enforced by the semantic
+# parser below instead of unsupported JSON Schema keywords.
+_STRING = {"type": "string"}
 _PANEL_DESCRIPTION_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
@@ -517,10 +548,7 @@ _OBSERVABLE_REQUEST_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "observable_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-        },
+        "observable_id": {"type": "string"},
         "affirmative_interpretation": _STRING,
         "arguments": {
             "type": "object",
@@ -535,10 +563,7 @@ _HYBRID_CUE_SCHEMA = {
     "type": "object",
     "additionalProperties": False,
     "properties": {
-        "cue_id": {
-            "type": "string",
-            "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-        },
+        "cue_id": {"type": "string"},
         "positive_description": _STRING,
     },
     "required": ["cue_id", "positive_description"],
@@ -549,15 +574,13 @@ _HYBRID_CLAIM_SCHEMA = {
     "properties": {
         "epistemic_status": {
             "type": "string",
-            "const": HYBRID_EPISTEMIC_STATUS,
+            "enum": [HYBRID_EPISTEMIC_STATUS],
         },
         "phrase": _STRING,
         "operational_definition": _STRING,
         "required_visual_cues": {
             "type": "array",
             "items": _HYBRID_CUE_SCHEMA,
-            "minItems": 1,
-            "maxItems": 12,
         },
     },
     "required": [
@@ -578,18 +601,15 @@ RULE_PROPOSAL_SCHEMA: Mapping[str, Any] = {
         "observable_requests": {
             "type": "array",
             "items": _OBSERVABLE_REQUEST_SCHEMA,
-            "maxItems": 4,
         },
         "formula_template": {
             "type": "object",
             "additionalProperties": False,
             "properties": {
-                "kind": {"type": "string", "const": "all"},
+                "kind": {"type": "string", "enum": ["all"]},
                 "atoms": {
                     "type": "array",
-                    "items": {"type": "string", "minLength": 1},
-                    "minItems": 1,
-                    "maxItems": 4,
+                    "items": {"type": "string"},
                 },
             },
             "required": ["kind", "atoms"],
@@ -614,12 +634,9 @@ RULE_PROPOSAL_SCHEMA: Mapping[str, Any] = {
 # model copied each cue ID into the formula.  Cues live inside one task-local
 # empirical claim; they are not independently executable atoms.
 _hybrid_only_schema = copy.deepcopy(RULE_PROPOSAL_SCHEMA)
-_hybrid_only_schema["properties"]["observable_requests"]["maxItems"] = 0
 _hybrid_only_schema["properties"]["formula_template"]["properties"]["atoms"] = {
     "type": "array",
-    "items": {"type": "string", "const": "hybrid_claim"},
-    "minItems": 1,
-    "maxItems": 1,
+    "items": {"type": "string", "enum": ["hybrid_claim"]},
 }
 _hybrid_only_schema["properties"]["hybrid_claim"] = _HYBRID_CLAIM_SCHEMA
 HYBRID_ONLY_RULE_PROPOSAL_SCHEMA: Mapping[str, Any] = _hybrid_only_schema
@@ -646,15 +663,12 @@ def pure_only_rule_proposal_schema(
             raise ProposalError(f"invalid catalog observable id {identifier!r}")
     schema = copy.deepcopy(RULE_PROPOSAL_SCHEMA)
     requests = schema["properties"]["observable_requests"]
-    requests["minItems"] = 1
-    requests["maxItems"] = 1
     requests["items"]["properties"]["observable_id"] = {
         "type": "string",
         "enum": identifiers,
     }
     atoms = schema["properties"]["formula_template"]["properties"]["atoms"]
     atoms["items"] = {"type": "string", "enum": identifiers}
-    atoms["maxItems"] = 1
     schema["properties"]["hybrid_claim"] = {"type": "null"}
     return schema
 
@@ -840,7 +854,7 @@ def parse_rule_proposal(
         # than silently canonicalized, so `not_hybrid_claim` cannot be
         # laundered into the positive IR.
 
-    return RuleProposal(
+    proposal = RuleProposal(
         positive_description=positive_description,
         panel_descriptions=panel_descriptions,
         view=view,
@@ -851,6 +865,11 @@ def parse_rule_proposal(
         receipt=receipt,
         model_payload=json.loads(_canonical_json(dict(payload))),
     )
+    _validate_archived_rule_receipt_profile(
+        proposal,
+        observable_catalog=observable_catalog,
+    )
+    return proposal
 
 
 def proposer_prompt(observable_catalog: Mapping[str, str]) -> str:
@@ -1018,6 +1037,174 @@ def _support_presentation(
     return tuple(identities)
 
 
+def _validate_structured_receipt_payload(
+    receipt: object,
+    payload: Mapping[str, Any],
+    *,
+    context: str,
+) -> CodexReceipt:
+    """Validate one retained payload in the labelled support-image domain."""
+
+    if not isinstance(receipt, CodexReceipt):
+        raise ProposalError(f"{context} receipt is not a CodexReceipt")
+    try:
+        validate_codex_receipt(receipt.to_dict())
+    except (CodexProposerFailure, TypeError, ValueError) as exc:
+        raise ProposalError(f"{context} receipt is invalid: {exc}") from exc
+    if receipt.input_digest_schema != STRUCTURED_INPUT_DIGEST_SCHEMA:
+        raise ProposalError(
+            f"{context} receipt is not from the labelled 12-image structured "
+            "input domain"
+        )
+    if receipt.structured_output_digest != _transport_digest(dict(payload)):
+        raise ProposalError(
+            f"{context} receipt does not bind the retained structured payload"
+        )
+    return receipt
+
+
+def _validate_rejected_proposal_receipt_binding(
+    attempt: RejectedProposalAttempt,
+) -> None:
+    """Bind an archived rejection to its payload and exact support identities.
+
+    Historical rejected-attempt schema v1 does not retain a nonempty catalog,
+    so its prompt and output-schema preimages are replayed by the enclosing run
+    verifier.  The fields available here still suffice to reject a text or
+    neutral-image receipt and to bind the exact labelled 6+6 byte presentation.
+    """
+
+    receipt = _validate_structured_receipt_payload(
+        attempt.receipt,
+        attempt.model_payload,
+        context="rejected proposal",
+    )
+    identities = [item.to_dict() for item in attempt.support_presentation]
+    if receipt.panel_view_digest != _transport_digest(identities):
+        raise ProposalError(
+            "rejected proposal receipt does not bind the retained support "
+            "presentation bytes"
+        )
+
+
+def _rule_receipt_profiles(
+    observable_catalog: Mapping[str, str],
+    *,
+    is_hybrid: bool,
+) -> tuple[tuple[str, Mapping[str, Any]], ...]:
+    profiles: list[tuple[str, Mapping[str, Any]]] = [
+        (
+            proposer_prompt(observable_catalog),
+            (
+                HYBRID_ONLY_RULE_PROPOSAL_SCHEMA
+                if not observable_catalog
+                else RULE_PROPOSAL_SCHEMA
+            ),
+        )
+    ]
+    if not is_hybrid and observable_catalog:
+        profiles.append(
+            (
+                pure_proposer_prompt(observable_catalog),
+                pure_only_rule_proposal_schema(observable_catalog),
+            )
+        )
+    return tuple(profiles)
+
+
+def _validate_archived_rule_receipt_profile(
+    proposal: RuleProposal,
+    *,
+    observable_catalog: Mapping[str, str],
+) -> None:
+    """Reject real Codex receipts from another causal transport domain.
+
+    Parser-only unit tests use deliberately tiny receipt doubles, so the exact
+    Codex check is activated for the transport's concrete receipt type.  Any
+    serializable scientific artifact is reconstructed as that concrete type by
+    the cold verifier and therefore cannot take the fixture-only path.
+    """
+
+    if not isinstance(proposal.receipt, CodexReceipt):
+        return
+    receipt = _validate_structured_receipt_payload(
+        proposal.receipt,
+        proposal.model_payload,
+        context="accepted proposal",
+    )
+    expected_profiles = {
+        (
+            hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            _transport_digest(dict(schema)),
+        )
+        for prompt, schema in _rule_receipt_profiles(
+            observable_catalog,
+            is_hybrid=proposal.is_hybrid,
+        )
+    }
+    if (receipt.prompt_digest, receipt.output_schema_digest) not in expected_profiles:
+        raise ProposalError(
+            "accepted proposal receipt does not bind a frozen proposer prompt/schema"
+        )
+
+
+def _validate_proposer_call_binding(
+    *,
+    receipt: object,
+    payload: Mapping[str, Any],
+    prompt: str,
+    schema: Mapping[str, Any],
+    paths: Sequence[str],
+    support_presentation: tuple[SupportPanelIdentity, ...],
+    model: str,
+    reasoning_effort: str,
+) -> None:
+    """Recompute the complete support proposer input envelope after transport."""
+
+    bound = _validate_structured_receipt_payload(
+        receipt,
+        payload,
+        context="proposer transport",
+    )
+    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    schema_digest = _transport_digest(dict(schema))
+    identities = [item.to_dict() for item in support_presentation]
+    panel_view_digest = _transport_digest(identities)
+    try:
+        panel_set_digest = semantic_panel_set_digest(paths)
+    except (CodexProposerFailure, OSError, TypeError, ValueError) as exc:
+        raise ProposalError(
+            f"cannot reproduce proposer support panel-set identity: {exc}"
+        ) from exc
+    expected = {
+        "task_digest": prompt_digest,
+        "prompt_digest": prompt_digest,
+        "output_schema_digest": schema_digest,
+        "panel_view_digest": panel_view_digest,
+        "panel_set_digest": panel_set_digest,
+        "requested_model": model,
+        "requested_reasoning_effort": reasoning_effort,
+    }
+    for field, value in expected.items():
+        if getattr(bound, field) != value:
+            raise ProposalError(
+                f"proposer transport receipt {field} differs from the executed call"
+            )
+    envelope = {
+        "schema": STRUCTURED_INPUT_DIGEST_SCHEMA,
+        "task": prompt,
+        "ordered_panel_identities": identities,
+        "panel_view_digest": panel_view_digest,
+        "panel_set_digest": panel_set_digest,
+        "prompt_digest": prompt_digest,
+        "output_schema_digest": schema_digest,
+    }
+    if bound.input_digest != _transport_digest(envelope):
+        raise ProposalError(
+            "proposer transport receipt input_digest differs from the executed call"
+        )
+
+
 StructuredTransport = Callable[..., CodexStructuredResult]
 
 TRANSPORT_IDENTITY_FIELDS = (
@@ -1055,15 +1242,17 @@ def propose_rule(
         if not isinstance(name, str) or _OBSERVABLE_ID.fullmatch(name) is None:
             raise ProposalError(f"invalid catalog observable id {name!r}")
         _nonempty_text(description, f"catalog description for {name}")
+    prompt = proposer_prompt(observable_catalog)
+    schema = (
+        HYBRID_ONLY_RULE_PROPOSAL_SCHEMA
+        if not observable_catalog
+        else RULE_PROPOSAL_SCHEMA
+    )
     with _canonical_support_paths(positive_support, negative_support) as paths:
         result = transport(
-            proposer_prompt(observable_catalog),
+            prompt,
             paths,
-            (
-                HYBRID_ONLY_RULE_PROPOSAL_SCHEMA
-                if not observable_catalog
-                else RULE_PROPOSAL_SCHEMA
-            ),
+            schema,
             model=model,
             reasoning_effort=reasoning_effort,
             minutes=minutes,
@@ -1072,6 +1261,16 @@ def propose_rule(
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
         )
         support_presentation = _support_presentation(paths)
+        _validate_proposer_call_binding(
+            receipt=result.receipt,
+            payload=result.payload,
+            prompt=prompt,
+            schema=schema,
+            paths=paths,
+            support_presentation=support_presentation,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
     try:
         return parse_rule_proposal(
             result.payload,
@@ -1105,11 +1304,12 @@ def propose_pure_rule(
     """Make one support-only Codex turn in the finite PURE catalog language."""
 
     schema = pure_only_rule_proposal_schema(observable_catalog)
+    prompt = pure_proposer_prompt(observable_catalog)
     for name, description in observable_catalog.items():
         _nonempty_text(description, f"catalog description for {name}")
     with _canonical_support_paths(positive_support, negative_support) as paths:
         result = transport(
-            pure_proposer_prompt(observable_catalog),
+            prompt,
             paths,
             schema,
             model=model,
@@ -1120,6 +1320,16 @@ def propose_pure_rule(
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
         )
         support_presentation = _support_presentation(paths)
+        _validate_proposer_call_binding(
+            receipt=result.receipt,
+            payload=result.payload,
+            prompt=prompt,
+            schema=schema,
+            paths=paths,
+            support_presentation=support_presentation,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
     try:
         proposal = parse_rule_proposal(
             result.payload,
@@ -1128,6 +1338,10 @@ def propose_pure_rule(
         )
         if proposal.is_hybrid:
             raise ProposalError("PURE-only turn returned a HYBRID claim")
+        if len(proposal.observable_requests) != 1:
+            raise ProposalError(
+                "PURE-only turn must select exactly one registered observable"
+            )
         return proposal
     except ProposalError as exc:
         attempt = RejectedProposalAttempt(
@@ -1146,7 +1360,7 @@ HYBRID_OBSERVATION_SCHEMA: Mapping[str, Any] = {
     "properties": {
         "epistemic_status": {
             "type": "string",
-            "const": HYBRID_EPISTEMIC_STATUS,
+            "enum": [HYBRID_EPISTEMIC_STATUS],
         },
         "disposition": {
             "type": "string",
@@ -1159,19 +1373,11 @@ HYBRID_OBSERVATION_SCHEMA: Mapping[str, Any] = {
         },
         "observed_cue_ids": {
             "type": "array",
-            "items": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-            },
-            "maxItems": 12,
+            "items": {"type": "string"},
         },
         "missing_cue_ids": {
             "type": "array",
-            "items": {
-                "type": "string",
-                "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-            },
-            "maxItems": 12,
+            "items": {"type": "string"},
         },
         "missing_cue_reasons": {
             "type": "array",
@@ -1179,23 +1385,17 @@ HYBRID_OBSERVATION_SCHEMA: Mapping[str, Any] = {
                 "type": "object",
                 "additionalProperties": False,
                 "properties": {
-                    "cue_id": {
-                        "type": "string",
-                        "pattern": "^[a-z][a-z0-9_.-]{0,127}$",
-                    },
+                    "cue_id": {"type": "string"},
                     "finding": _STRING,
                 },
                 "required": ["cue_id", "finding"],
             },
-            "maxItems": 12,
         },
         "visibility_certificate": {
-            "type": ["string", "null"],
-            "maxLength": 20_000,
+            "anyOf": [{"type": "string"}, {"type": "null"}],
         },
         "reason": {
-            "type": ["string", "null"],
-            "maxLength": 20_000,
+            "anyOf": [{"type": "string"}, {"type": "null"}],
             "description": (
                 "For nonmatch, an optional overall model summary archived "
                 "inside the empirical nonmatch certificate; it does not "
@@ -1203,7 +1403,9 @@ HYBRID_OBSERVATION_SCHEMA: Mapping[str, Any] = {
                 "present and non-empty for indeterminate/error."
             ),
         },
-        "error_type": {"type": ["string", "null"], "maxLength": 200},
+        "error_type": {
+            "anyOf": [{"type": "string"}, {"type": "null"}],
+        },
     },
     "required": [
         "epistemic_status",
@@ -1301,6 +1503,39 @@ image itself cannot be inspected, also with empty cue lists.  Set
 `{HYBRID_EPISTEMIC_STATUS}`.  Do not invent a probability or silently treat
 uncertainty as false.
 """
+
+
+@contextmanager
+def _frozen_hybrid_panel_path(panel: str | Path) -> Iterator[str]:
+    """Yield a private read-only ``query.png`` copied from one stable read."""
+
+    source = Path(panel).resolve()
+    if not source.is_file():
+        raise ProposalError(f"query panel is not a file: {source}")
+    try:
+        snapshot = _named_image_snapshot((str(source),), ("query.png",))
+    except (CodexProposerFailure, OSError, TypeError, ValueError) as exc:
+        raise ProposalError(f"query panel cannot be frozen: {exc}") from exc
+    payload = snapshot[0][1]
+    with tempfile.TemporaryDirectory(prefix="bongard-observer-input-") as directory:
+        root = Path(directory)
+        target = root / "query.png"
+        try:
+            if target.write_bytes(payload) != len(payload):
+                raise OSError("short write")
+            target.chmod(0o400)
+            root.chmod(0o500)
+        except OSError as exc:
+            raise ProposalError(f"query panel private copy failed: {exc}") from exc
+        try:
+            yield str(target)
+        finally:
+            # TemporaryDirectory needs directory write permission to unlink
+            # the read-only preimage on all supported Unix hosts.
+            try:
+                root.chmod(0o700)
+            except OSError:
+                pass
 
 
 def _parse_hybrid_observation(
@@ -1491,6 +1726,24 @@ def parse_hybrid_observation_or_error(
     explicit error disposition; it never guesses a negative label.
     """
 
+    # Parser-only fixtures use a deliberately tiny receipt double.  A real
+    # retained transport artifact must be internally valid, come from the
+    # neutral named-image domain, and bind this exact payload before semantic
+    # parser failures are eligible for conversion to Evidence.error.
+    if isinstance(receipt, CodexReceipt):
+        try:
+            validate_codex_receipt(receipt.to_dict())
+            payload_digest = _transport_digest(dict(payload))
+        except (CodexProposerFailure, TypeError, ValueError) as exc:
+            raise TransportIdentityError(
+                f"hybrid observer receipt is invalid: {exc}") from exc
+        if receipt.input_digest_schema != NAMED_IMAGE_INPUT_DIGEST_SCHEMA:
+            raise TransportIdentityError(
+                "hybrid observer receipt is outside the named-image domain")
+        if receipt.structured_output_digest != payload_digest:
+            raise TransportIdentityError(
+                "hybrid observer receipt does not bind its retained payload")
+
     try:
         return _parse_hybrid_observation(proposal, payload, receipt)
     except (ProposalError, TypeError, ValueError) as exc:
@@ -1540,22 +1793,41 @@ def observe_hybrid_panel(
 
     if proposal.hybrid_claim is None:
         raise ProposalError("registered-observable proposals need the PURE observer")
-    path = Path(panel).resolve()
-    if not path.is_file():
-        raise ProposalError(f"query panel is not a file: {path}")
-    result = transport(
-        hybrid_observer_prompt(proposal),
-        (str(path),),
-        ("query.png",),
-        HYBRID_OBSERVATION_SCHEMA,
-        model=model or proposal.receipt.requested_model,
-        reasoning_effort=reasoning_effort
-        or proposal.receipt.requested_reasoning_effort,
-        minutes=minutes,
-        verbose=verbose,
-        executable=executable,
-        cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
-    )
+    prompt = hybrid_observer_prompt(proposal)
+    image_names = ("query.png",)
+    with _frozen_hybrid_panel_path(panel) as frozen_path:
+        image_paths = (frozen_path,)
+        result = transport(
+            prompt,
+            image_paths,
+            image_names,
+            HYBRID_OBSERVATION_SCHEMA,
+            model=model or proposal.receipt.requested_model,
+            reasoning_effort=reasoning_effort
+            or proposal.receipt.requested_reasoning_effort,
+            minutes=minutes,
+            verbose=verbose,
+            executable=executable,
+            cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        )
+        try:
+            if not isinstance(result.receipt, CodexReceipt):
+                raise CodexProposerFailure(
+                    "hybrid observer transport receipt is not a CodexReceipt")
+            if not isinstance(result.payload, Mapping):
+                raise CodexProposerFailure(
+                    "hybrid observer transport payload is not a mapping")
+            validate_codex_named_image_receipt(
+                result.receipt,
+                prompt,
+                image_paths,
+                image_names,
+                HYBRID_OBSERVATION_SCHEMA,
+                payload=result.payload,
+            )
+        except (CodexProposerFailure, TypeError, ValueError) as exc:
+            raise TransportIdentityError(
+                f"hybrid observer receipt binding failed: {exc}") from exc
     return parse_hybrid_observation_or_error(
         proposal, result.payload, result.receipt
     )
@@ -1679,6 +1951,17 @@ class HeadlessCodexEpisode:
     def _check_transport_identity(self, receipt: CodexReceipt) -> None:
         if self._transport_identity is None:
             raise ProposalError("proposal transport identity is unavailable")
+        if not isinstance(receipt, CodexReceipt):
+            raise TransportIdentityError(
+                "observer transport identity lacks a concrete Codex receipt")
+        try:
+            validate_codex_receipt(receipt.to_dict())
+        except (CodexProposerFailure, TypeError, ValueError) as exc:
+            raise TransportIdentityError(
+                f"observer transport receipt is invalid: {exc}") from exc
+        if receipt.input_digest_schema != NAMED_IMAGE_INPUT_DIGEST_SCHEMA:
+            raise TransportIdentityError(
+                "observer transport receipt is outside the named-image domain")
         actual = codex_transport_identity(receipt)
         if actual != self._transport_identity:
             expected_map = dict(self._transport_identity)

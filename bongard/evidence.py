@@ -105,6 +105,21 @@ class Uncertainty:
     causes: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        # Canonical evidence archives use JSON floating-point numbers for
+        # intervals.  Python's ``bool`` is an ``int`` and permissive numeric
+        # coercion used to let ``False``/``True`` enter an in-memory archive
+        # which changed to ``0.0``/``1.0`` during cold decoding.  Require the
+        # one in-memory representation that round-trips byte-for-byte.
+        if type(self.lower) is not float or type(self.upper) is not float:
+            raise ValueError(
+                "uncertainty bounds must be literal canonical floats"
+            )
+        if self.confidence_level is not None and type(
+            self.confidence_level
+        ) is not float:
+            raise ValueError(
+                "uncertainty confidence_level must be a literal canonical float"
+            )
         if not math.isfinite(self.lower) or not math.isfinite(self.upper):
             raise ValueError("uncertainty bounds must be finite")
         if self.lower > self.upper:
@@ -250,6 +265,37 @@ class Evidence(Generic[T]):
             provenance=provenance,
             reason=reason,
             uncertainty=uncertainty,
+        )
+
+    @classmethod
+    def operational_nonmatch(
+        cls,
+        provenance: Provenance,
+        reason: str,
+        uncertainty: Uncertainty | None = None,
+    ) -> "Evidence[T]":
+        """Record an uncalibrated observer nonmatch as an abstention.
+
+        Operational nonmatch is deliberately represented by the existing
+        ``INDETERMINATE`` truth disposition.  It is useful exploratory data,
+        but it is not a counter-witness and therefore can never be consumed as
+        ``CERTIFIED_ABSENT`` by Boolean synthesis.
+        """
+
+        if not isinstance(reason, str) or not reason.strip():
+            raise ValueError("operational nonmatch requires a non-empty reason")
+        return cls.indeterminate(
+            provenance,
+            "operational nonmatch (uncalibrated): " + reason,
+            uncertainty,
+        )
+
+    @property
+    def is_operational_nonmatch(self) -> bool:
+        return (
+            self.disposition is Disposition.INDETERMINATE
+            and self.reason is not None
+            and self.reason.startswith("operational nonmatch (uncalibrated): ")
         )
 
     @classmethod

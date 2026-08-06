@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import hashlib
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,15 +11,23 @@ import numpy as np
 from PIL import Image
 import pytest
 
+from bongard.artifacts import canonical_digest
 from bongard.evidence import Disposition
 from bongard.ir import Atom, Relation
 from bongard.proposer import (
     HYBRID_EPISTEMIC_STATUS,
+    HYBRID_OBSERVATION_SCHEMA,
+    HYBRID_ONLY_RULE_PROPOSAL_SCHEMA,
+    RULE_PROPOSAL_SCHEMA,
     HeadlessCodexEpisode,
     HybridClaim,
     HybridCue,
     ProposalError,
+    RejectedProposalAttempt,
+    SupportPanelIdentity,
+    TransportIdentityError,
     _parse_hybrid_observation,
+    codex_transport_identity,
     hybrid_observer_prompt,
     observe_hybrid_panel,
     parse_hybrid_observation_or_error,
@@ -31,7 +40,23 @@ from bongard.proposer import (
 )
 from bongard.benchmark import SupportInput
 from bongard.synthesis import compile_hybrid_proposal
-from bongard.transport import CloudPolicyCacheSnapshot, semantic_panel_set_digest
+from bongard.tests.test_typed_visual_transport import _receipt as _structured_receipt
+from bongard.transport import (
+    CODEX_ISOLATION_POLICY,
+    CODEX_RECEIPT_SCHEMA,
+    NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
+    STRUCTURED_INPUT_DIGEST_SCHEMA,
+    TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+    CloudPolicyCacheSnapshot,
+    CodexReceipt,
+    named_image_set_digest,
+    named_image_view_digest,
+    semantic_panel_set_digest,
+    validate_codex_named_image_receipt,
+    validate_codex_receipt,
+    validate_codex_strict_output_schema,
+    validate_codex_text_receipt,
+)
 
 
 @dataclass(frozen=True)
@@ -145,6 +170,158 @@ def write_png(path: Path, marker: int, *, rgb: bool = False) -> bytes:
     image = np.repeat(panel[..., None], 3, axis=2) if rgb else panel
     Image.fromarray(image, mode="RGB" if rgb else "L").save(path, format="PNG")
     return path.read_bytes()
+
+
+def _text_receipt_from_base(
+    base: CodexReceipt,
+    *,
+    prompt: str,
+    schema: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> CodexReceipt:
+    body = base.to_dict()
+    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    schema_digest = canonical_digest(dict(schema))
+    zero_view_digest = canonical_digest([])
+    zero_set_digest = "sha256:" + canonical_digest(
+        {"schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA, "images": []}
+    )
+    envelope = {
+        "schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+        "task": prompt,
+        "image_count": 0,
+        "image_view_digest": zero_view_digest,
+        "image_set_digest": zero_set_digest,
+        "prompt_digest": prompt_digest,
+        "output_schema_digest": schema_digest,
+    }
+    body.update(
+        {
+            "task_digest": prompt_digest,
+            "prompt_digest": prompt_digest,
+            "input_digest_schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+        "input_digest": canonical_digest(envelope),
+            "output_schema_digest": schema_digest,
+            "panel_view_digest": zero_view_digest,
+            "panel_set_digest": zero_set_digest,
+            "structured_output_digest": canonical_digest(dict(payload)),
+        }
+    )
+    body["receipt_digest"] = canonical_digest(
+        {key: value for key, value in body.items() if key != "receipt_digest"}
+    )
+    validate_codex_receipt(body)
+    validate_codex_text_receipt(body, prompt, schema)
+    return CodexReceipt(
+        **{
+            **body,
+            "event_types": tuple(body["event_types"]),
+            "item_types": tuple(body["item_types"]),
+        }
+    )
+
+
+def _named_image_receipt(
+    *,
+    prompt: str,
+    paths: tuple[str, ...],
+    names: tuple[str, ...],
+    schema: Mapping[str, Any],
+    payload: Mapping[str, Any],
+    model: str = "gpt-test",
+    effort: str = "medium",
+    thread_ordinal: int = 1,
+) -> CodexReceipt:
+    identities = [
+        {
+            "name": name,
+            "byte_count": len(Path(path).read_bytes()),
+            "content_digest": hashlib.sha256(Path(path).read_bytes()).hexdigest(),
+        }
+        for path, name in zip(paths, names, strict=True)
+    ]
+    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+    schema_digest = canonical_digest(dict(schema))
+    view_digest = named_image_view_digest(paths, names)
+    set_digest = named_image_set_digest(paths, names)
+    envelope = {
+        "schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
+        "task": prompt,
+        "ordered_image_identities": identities,
+        "image_view_digest": view_digest,
+        "image_set_digest": set_digest,
+        "prompt_digest": prompt_digest,
+        "output_schema_digest": schema_digest,
+    }
+    body: dict[str, Any] = {
+        "schema": CODEX_RECEIPT_SCHEMA,
+        "source": "codex-cli",
+        "requested_model": model,
+        "reported_model": "",
+        "model_identity_evidence": "explicit-cli-model-flag;jsonl-omits-model",
+        "requested_reasoning_effort": effort,
+        "input_tokens": 10,
+        "cached_input_tokens": 0,
+        "output_tokens": 5,
+        "reasoning_output_tokens": 1,
+        "thread_id": f"00000000-0000-4000-8000-{thread_ordinal:012d}",
+        "codex_cli_version": "codex-cli test",
+        "codex_launcher_digest": "b" * 64,
+        "cloud_config_bundle_cache_binding": "absent",
+        "task_digest": prompt_digest,
+        "current_source_digest": "",
+        "current_log_digest": "",
+        "prompt_digest": prompt_digest,
+        "input_digest_schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
+        "input_digest": canonical_digest(envelope),
+        "output_schema_digest": schema_digest,
+        "panel_view_digest": view_digest,
+        "panel_set_digest": set_digest,
+        "structured_output_digest": canonical_digest(dict(payload)),
+        "proposed_source_digest": "",
+        "proposed_log_digest": "",
+        "event_stream_digest": hashlib.sha256(
+            f"observer-stream-{thread_ordinal}".encode("ascii")
+        ).hexdigest(),
+        "event_types": [
+            "thread.started",
+            "turn.started",
+            "item.completed",
+            "turn.completed",
+        ],
+        "item_types": ["agent_message"],
+        "isolation_policy": CODEX_ISOLATION_POLICY,
+        "outcome": "success",
+    }
+    body["receipt_digest"] = canonical_digest(body)
+    validate_codex_named_image_receipt(
+        body, prompt, paths, names, schema, payload=payload
+    )
+    return CodexReceipt(
+        **{
+            **body,
+            "event_types": tuple(body["event_types"]),
+            "item_types": tuple(body["item_types"]),
+        }
+    )
+
+
+def _redigest_receipt(
+    receipt: CodexReceipt,
+    **changes: Any,
+) -> CodexReceipt:
+    body = {**receipt.to_dict(), **changes}
+    body["receipt_digest"] = canonical_digest(
+        {key: value for key, value in body.items() if key != "receipt_digest"}
+    )
+    validate_codex_receipt(body)
+    return CodexReceipt(
+        **{
+            **body,
+            "event_types": tuple(body["event_types"]),
+            "item_types": tuple(body["item_types"]),
+        }
+    )
 
 
 def test_hybrid_proposal_is_grounded_in_all_twelve_descriptions() -> None:
@@ -516,8 +693,7 @@ def test_pure_only_schema_and_prompt_close_the_hybrid_escape_hatch() -> None:
     properties = schema["properties"]
 
     assert properties["hybrid_claim"] == {"type": "null"}
-    assert properties["observable_requests"]["minItems"] == 1
-    assert properties["observable_requests"]["maxItems"] == 1
+    assert set(properties["observable_requests"]) == {"type", "items"}
     assert properties["observable_requests"]["items"]["properties"][
         "observable_id"
     ]["enum"] == sorted(catalog)
@@ -532,6 +708,21 @@ def test_pure_only_schema_and_prompt_close_the_hybrid_escape_hatch() -> None:
     assert "Set `hybrid_claim` to null" in prompt
     with pytest.raises(ProposalError, match="non-empty catalog"):
         pure_only_rule_proposal_schema({})
+
+
+def test_every_live_proposer_and_observer_schema_is_transport_strict() -> None:
+    catalog = {
+        "prototype.global_geometry": "support-relative global geometry",
+        "prototype.topology": "support-relative component and hole topology",
+    }
+    schemas = (
+        RULE_PROPOSAL_SCHEMA,
+        HYBRID_ONLY_RULE_PROPOSAL_SCHEMA,
+        pure_only_rule_proposal_schema(catalog),
+        HYBRID_OBSERVATION_SCHEMA,
+    )
+    for schema in schemas:
+        validate_codex_strict_output_schema(schema)
 
 
 def test_pure_interpretation_cannot_smuggle_a_polarity_flip() -> None:
@@ -582,14 +773,24 @@ def test_proposer_transport_sees_only_exact_support_bytes(tmp_path: Path) -> Non
     schemas: list[Mapping[str, Any]] = []
 
     def fake_transport(prompt, paths, schema, **kwargs):
-        del prompt, kwargs
         schemas.append(schema)
         canonical = tuple(paths)
         calls.append(canonical)
         assert tuple(Path(path).name for path in canonical) == tuple(expected)
         assert {Path(path).read_bytes() for path in canonical} == set(expected.values())
         assert str(query) not in canonical
-        return SimpleNamespace(payload=hybrid_payload(), receipt=FakeReceipt())
+        payload = hybrid_payload()
+        return SimpleNamespace(
+            payload=payload,
+            receipt=_structured_receipt(
+                prompt,
+                canonical,
+                schema,
+                payload,
+                model=kwargs["model"],
+                effort=kwargs["reasoning_effort"],
+            ),
+        )
 
     proposal = propose_rule(
         positives,
@@ -600,15 +801,16 @@ def test_proposer_transport_sees_only_exact_support_bytes(tmp_path: Path) -> Non
     assert proposal.is_hybrid
     assert len(calls) == 1
     hybrid_schema = schemas[0]
-    assert hybrid_schema["properties"]["observable_requests"]["maxItems"] == 0
+    assert set(hybrid_schema["properties"]["observable_requests"]) == {
+        "type",
+        "items",
+    }
     assert "anyOf" not in hybrid_schema["properties"]["hybrid_claim"]
     assert hybrid_schema["properties"]["formula_template"]["properties"][
         "atoms"
     ] == {
         "type": "array",
-        "items": {"type": "string", "const": "hybrid_claim"},
-        "minItems": 1,
-        "maxItems": 1,
+        "items": {"type": "string", "enum": ["hybrid_claim"]},
     }
 
 
@@ -631,13 +833,23 @@ def test_pure_transport_is_one_support_only_closed_catalog_turn(
 
     def fake_transport(prompt, paths, schema, **kwargs):
         nonlocal calls
-        del kwargs
         calls += 1
         assert "Set `hybrid_claim` to null" in prompt
         assert tuple(Path(path).name for path in paths) == tuple(expected)
         assert {Path(path).read_bytes() for path in paths} == set(expected.values())
         assert schema["properties"]["hybrid_claim"] == {"type": "null"}
-        return SimpleNamespace(payload=pure_payload(), receipt=FakeReceipt())
+        payload = pure_payload()
+        return SimpleNamespace(
+            payload=payload,
+            receipt=_structured_receipt(
+                prompt,
+                tuple(paths),
+                schema,
+                payload,
+                model=kwargs["model"],
+                effort=kwargs["reasoning_effort"],
+            ),
+        )
 
     proposal = propose_pure_rule(
         positives,
@@ -649,6 +861,78 @@ def test_pure_transport_is_one_support_only_closed_catalog_turn(
     assert not proposal.is_hybrid
     assert proposal.formula_atoms == ("prototype.topology",)
     assert proposal.observable_requests[0].arguments == ()
+
+
+def test_text_receipt_cannot_be_laundered_into_a_labelled_proposer_attempt(
+    tmp_path: Path,
+) -> None:
+    paths: list[str] = []
+    presentation: list[SupportPanelIdentity] = []
+    for side, offset in (("pos", 0), ("neg", 6)):
+        for index in range(6):
+            path = tmp_path / f"{side}_{index}.png"
+            data = write_png(path, index + offset, rgb=True)
+            paths.append(str(path))
+            presentation.append(
+                SupportPanelIdentity(
+                    name=path.name,
+                    byte_count=len(data),
+                    content_digest=hashlib.sha256(data).hexdigest(),
+                )
+            )
+
+    payload = hybrid_payload()
+    text_schema = {
+        "type": "object",
+        "properties": {"answer": {"type": "string"}},
+        "required": ["answer"],
+        "additionalProperties": False,
+    }
+    structured_base = _structured_receipt(
+        proposer_prompt({}),
+        tuple(paths),
+        text_schema,
+        payload,
+        model="gpt-5.6-sol",
+        effort="medium",
+    )
+    text_receipt = _text_receipt_from_base(
+        structured_base,
+        prompt="Summarize this text without receiving any images.",
+        schema=text_schema,
+        payload=payload,
+    )
+
+    with pytest.raises(ProposalError, match="labelled 12-image structured"):
+        RejectedProposalAttempt(
+            model_payload=payload,
+            receipt=text_receipt,
+            support_presentation=tuple(presentation),
+            parse_error_type="ProposalError",
+            parse_error_reason="fixture semantic rejection",
+        )
+    with pytest.raises(ProposalError, match="labelled 12-image structured"):
+        parse_rule_proposal(payload, receipt=text_receipt, observable_catalog={})
+
+    # This is not a stale-digest toy: changing the domain label and then
+    # recomputing the outer receipt digest leaves a receipt that passes the
+    # generic transport validator.  The proposer-specific support binding must
+    # still reject the zero-image view and text prompt/schema.
+    laundered = _redigest_receipt(
+        text_receipt,
+        input_digest_schema=STRUCTURED_INPUT_DIGEST_SCHEMA,
+    )
+    validate_codex_receipt(laundered.to_dict())
+    with pytest.raises(ProposalError, match="support presentation bytes"):
+        RejectedProposalAttempt(
+            model_payload=payload,
+            receipt=laundered,
+            support_presentation=tuple(presentation),
+            parse_error_type="ProposalError",
+            parse_error_reason="fixture semantic rejection",
+        )
+    with pytest.raises(ProposalError, match="frozen proposer prompt/schema"):
+        parse_rule_proposal(payload, receipt=laundered, observable_catalog={})
 
 
 def test_official_binary_rgb_panels_have_a_semantic_digest(tmp_path: Path) -> None:
@@ -734,15 +1018,85 @@ def test_hybrid_observer_has_four_way_nonboolean_boundary(
     source_bytes = write_png(panel, 2, rgb=True)
 
     def fake_transport(prompt, paths, names, schema, **kwargs):
-        del prompt, schema, kwargs
+        del kwargs
         assert names == ("query.png",)
+        assert Path(paths[0]) != panel.resolve()
+        assert Path(paths[0]).stat().st_mode & 0o222 == 0
         assert Path(paths[0]).read_bytes() == source_bytes
-        return SimpleNamespace(payload=payload, receipt=FakeReceipt(thread_id="observer"))
+        return SimpleNamespace(
+            payload=payload,
+            receipt=_named_image_receipt(
+                prompt=prompt,
+                paths=tuple(paths),
+                names=tuple(names),
+                schema=schema,
+                payload=payload,
+            ),
+        )
 
     observed = observe_hybrid_panel(proposal, panel, transport=fake_transport)
     assert observed.evidence.disposition is expected
     with pytest.raises(TypeError, match="four dispositions"):
         bool(observed.evidence)
+
+
+@pytest.mark.parametrize(
+    "laundering",
+    ("stale_prompt", "stale_image", "stale_schema", "stale_payload", "text"),
+)
+def test_observer_rejects_genuine_rehashed_receipt_laundering(
+    tmp_path: Path, laundering: str
+) -> None:
+    proposal = parse_rule_proposal(
+        hybrid_payload(), receipt=FakeReceipt(), observable_catalog={}  # type: ignore[arg-type]
+    )
+    panel = tmp_path / "source.png"
+    write_png(panel, 2, rgb=True)
+    stale_panel = tmp_path / "stale.png"
+    write_png(stale_panel, 7, rgb=True)
+    payload = present_observation_payload()
+
+    def fake_transport(prompt, paths, names, schema, **kwargs):
+        del kwargs
+        receipt_prompt = prompt
+        receipt_paths = tuple(paths)
+        receipt_schema = schema
+        receipt_payload: Mapping[str, Any] = payload
+        if laundering == "stale_prompt":
+            receipt_prompt += "\nstale prompt"
+        elif laundering == "stale_image":
+            receipt_paths = (str(stale_panel),)
+        elif laundering == "stale_schema":
+            receipt_schema = {**schema, "description": "stale schema"}
+        elif laundering == "stale_payload":
+            receipt_payload = {**payload, "disposition": "indeterminate"}
+        named = _named_image_receipt(
+            prompt=receipt_prompt,
+            paths=receipt_paths,
+            names=tuple(names),
+            schema=receipt_schema,
+            payload=receipt_payload,
+        )
+        receipt = (
+            _text_receipt_from_base(
+                named,
+                prompt=prompt,
+                schema=schema,
+                payload=payload,
+            )
+            if laundering == "text"
+            else named
+        )
+        # Every attack is a concrete, internally consistent receipt.  The
+        # observer must reject its causal domain/preimage, not archive the
+        # mismatch as ordinary semantic Evidence.error.
+        validate_codex_receipt(receipt.to_dict())
+        return SimpleNamespace(payload=payload, receipt=receipt)
+
+    with pytest.raises(
+        TransportIdentityError, match="named-image|named-image input"
+    ):
+        observe_hybrid_panel(proposal, panel, transport=fake_transport)
 
 
 def test_present_uses_exact_declared_ids_and_canonical_claim_order() -> None:
@@ -972,6 +1326,48 @@ def test_runtime_archives_semantically_invalid_observation_as_error() -> None:
     assert "present requires" in (observation.evidence.reason or "")
 
 
+def test_runtime_wrapper_rejects_genuine_receipt_laundering_before_error(
+    tmp_path: Path,
+) -> None:
+    proposal = parse_rule_proposal(
+        hybrid_payload(), receipt=FakeReceipt(), observable_catalog={}  # type: ignore[arg-type]
+    )
+    panel = tmp_path / "query.png"
+    write_png(panel, 3, rgb=True)
+    prompt = hybrid_observer_prompt(proposal)
+    malformed = present_observation_payload()
+    malformed["observed_cue_ids"] = ["closed_polygon"]
+
+    other_payload = present_observation_payload()
+    wrong_payload_receipt = _named_image_receipt(
+        prompt=prompt,
+        paths=(str(panel),),
+        names=("query.png",),
+        schema=HYBRID_OBSERVATION_SCHEMA,
+        payload=other_payload,
+    )
+    with pytest.raises(TransportIdentityError, match="retained payload"):
+        parse_hybrid_observation_or_error(
+            proposal, malformed, wrong_payload_receipt
+        )
+
+    named = _named_image_receipt(
+        prompt=prompt,
+        paths=(str(panel),),
+        names=("query.png",),
+        schema=HYBRID_OBSERVATION_SCHEMA,
+        payload=malformed,
+    )
+    text_receipt = _text_receipt_from_base(
+        named,
+        prompt=prompt,
+        schema=HYBRID_OBSERVATION_SCHEMA,
+        payload=malformed,
+    )
+    with pytest.raises(TransportIdentityError, match="named-image domain"):
+        parse_hybrid_observation_or_error(proposal, malformed, text_receipt)
+
+
 def test_observer_prompt_declares_empirical_status_and_exact_cue_protocol() -> None:
     proposal = parse_rule_proposal(
         hybrid_payload(), receipt=FakeReceipt(), observable_catalog={}  # type: ignore[arg-type]
@@ -1020,30 +1416,47 @@ def test_episode_adapter_keeps_raw_proposal_and_two_observer_receipts(
 
     def proposer_transport(prompt, paths, schema, **kwargs):
         nonlocal proposer_calls
-        del prompt, paths, schema
         proposer_calls += 1
         received_snapshots.append(kwargs.pop("cloud_policy_cache_snapshot"))
-        del kwargs
-        return SimpleNamespace(payload=hybrid_payload(), receipt=FakeReceipt())
+        payload = hybrid_payload()
+        return SimpleNamespace(
+            payload=payload,
+            receipt=_structured_receipt(
+                prompt,
+                tuple(paths),
+                schema,
+                payload,
+                model=kwargs["model"],
+                effort=kwargs["reasoning_effort"],
+            ),
+        )
 
     def observer_transport(prompt, paths, names, schema, **kwargs):
         nonlocal observer_calls
-        del prompt, paths, names, schema
         observer_calls += 1
         received_snapshots.append(kwargs.pop("cloud_policy_cache_snapshot"))
-        del kwargs
+        payload = {
+            "epistemic_status": HYBRID_EPISTEMIC_STATUS,
+            "disposition": "present",
+            "observed_cue_ids": ["closed_polygon", "inward_v_notch"],
+            "missing_cue_ids": [],
+            "missing_cue_reasons": [],
+            "visibility_certificate": None,
+            "reason": None,
+            "error_type": None,
+        }
         return SimpleNamespace(
-            payload={
-                "epistemic_status": HYBRID_EPISTEMIC_STATUS,
-                "disposition": "present",
-                "observed_cue_ids": ["closed_polygon", "inward_v_notch"],
-                "missing_cue_ids": [],
-                "missing_cue_reasons": [],
-                "visibility_certificate": None,
-                "reason": None,
-                "error_type": None,
-            },
-            receipt=FakeReceipt(thread_id=f"observer-{observer_calls}"),
+            payload=payload,
+            receipt=_named_image_receipt(
+                prompt=prompt,
+                paths=tuple(paths),
+                names=tuple(names),
+                schema=schema,
+                payload=payload,
+                model=kwargs["model"],
+                effort=kwargs["reasoning_effort"],
+                thread_ordinal=observer_calls + 10,
+            ),
         )
 
     session = HeadlessCodexEpisode(
@@ -1068,6 +1481,35 @@ def test_episode_adapter_keeps_raw_proposal_and_two_observer_receipts(
             )
         )
         assert evidence[()].disposition is Disposition.PRESENT
+
+    def laundering_observer(prompt, paths, names, schema, **kwargs):
+        payload = present_observation_payload()
+        receipt = _named_image_receipt(
+            prompt=prompt + "\nstale observer prompt",
+            paths=tuple(paths),
+            names=tuple(names),
+            schema=schema,
+            payload=payload,
+            model=kwargs["model"],
+            effort=kwargs["reasoning_effort"],
+            thread_ordinal=99,
+        )
+        assert codex_transport_identity(receipt) == session._transport_identity
+        return SimpleNamespace(payload=payload, receipt=receipt)
+
+    session.observer_transport = laundering_observer
+    with pytest.raises(TransportIdentityError, match="does not bind"):
+        session.observe(
+            SimpleNamespace(
+                query_id="query-laundered",
+                panel_path=query_path,
+                freeze=SimpleNamespace(
+                    proposer_digest=proposed.proposer_digest,
+                    formula=proposed.formula,
+                ),
+                registry=proposed.registry,
+            )
+        )
     assert proposer_calls == 1
     assert observer_calls == 2
     assert snapshot_calls == 1

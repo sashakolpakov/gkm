@@ -510,6 +510,52 @@ def test_hidden_model_control_in_prose_is_rejected(
 
 
 @pytest.mark.parametrize(
+    "description",
+    (
+        (
+            "The pointed front end of the hollow angular figure defines a clear "
+            "facing axis."
+        ),
+        "The default orientation follows the longest visible axis.",
+        "One important contour feature is a pointed outward end.",
+        "The outline evaluates visually as a rounded body.",
+        "The executive chair silhouette has one tall back.",
+    ),
+)
+def test_code_keyword_prefixes_remain_valid_ordinary_prose(
+    catalog: RegisteredAtomCatalog, description: str
+) -> None:
+    payload = _bird_payload()
+    payload["soft_claim"]["cue_descriptions"][0] = description
+
+    proposal = parse_typed_visual_proposal(
+        payload,
+        catalog=catalog,
+        scorer_protocol_digest=SCORER_PROTOCOL_DIGEST,
+    )
+
+    assert proposal.soft_claim is not None
+    assert proposal.soft_claim.cues[0].positive_description == description
+
+
+@pytest.mark.parametrize("keyword", ("def", "lambda", "import", "eval", "exec"))
+def test_exact_code_keywords_in_prose_are_rejected(
+    catalog: RegisteredAtomCatalog, keyword: str
+) -> None:
+    payload = _bird_payload()
+    payload["soft_claim"]["cue_descriptions"][0] = (
+        f"One rounded body has a {keyword} marker."
+    )
+
+    with pytest.raises(TypedVisualProposalError, match="forbidden code definition"):
+        parse_typed_visual_proposal(
+            payload,
+            catalog=catalog,
+            scorer_protocol_digest=SCORER_PROTOCOL_DIGEST,
+        )
+
+
+@pytest.mark.parametrize(
     "mutation",
     ("unknown_comparison", "out_of_grid", "wrong_type", "extra_argument"),
 )

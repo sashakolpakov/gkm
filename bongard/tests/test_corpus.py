@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 import shutil
 
@@ -134,6 +135,49 @@ def test_manifest_rejects_fake_png(tmp_path: Path) -> None:
 
     with pytest.raises(CorpusValidationError, match="no PNG signature"):
         corpus.build_manifest()
+
+
+def test_manifest_rejects_symlink_substitution_after_discovery(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "ShapeBongard_V2"
+    _task(root, "ff", "ff_link_0000")
+    corpus = ShapeBongardCorpus.from_root(root)
+    panel = corpus.task("ff_link_0000").positive[0]
+    target = tmp_path / "substitute.png"
+    target.write_bytes(PNG + b"substitute")
+    panel.unlink()
+    panel.symlink_to(target)
+
+    with pytest.raises(CorpusValidationError, match="regular no-follow"):
+        corpus.build_manifest()
+
+
+def test_manifest_rejects_path_replacement_between_lstat_and_open(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    root = tmp_path / "ShapeBongard_V2"
+    _task(root, "ff", "ff_race_0000")
+    corpus = ShapeBongardCorpus.from_root(root)
+    panel = corpus.task("ff_race_0000").positive[0]
+    replacement = tmp_path / "replacement.png"
+    replacement.write_bytes(PNG + b"different-inode")
+    real_open = os.open
+    replaced = False
+
+    def raced_open(path, flags, *args):
+        nonlocal replaced
+        if Path(path) == panel and not replaced:
+            panel.unlink()
+            replacement.rename(panel)
+            replaced = True
+        return real_open(path, flags, *args)
+
+    monkeypatch.setattr("bongard.corpus.os.open", raced_open)
+    with pytest.raises(CorpusValidationError, match="changed while being opened"):
+        corpus.build_manifest()
+    assert replaced
 
 
 def test_split_unknown_overlap_and_unclassified_tasks_fail_closed(tmp_path: Path) -> None:

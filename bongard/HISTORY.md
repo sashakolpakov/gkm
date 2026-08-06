@@ -104,6 +104,12 @@ With that projection, remaining DRILL has maximum 24 BD + 0 HD = 24, while DEV
 against the complete A2 ledger has 16 BD and 0 HD. Stage-A and Stage-B schema
 v2 now enforce this stronger relation.
 
+That 24 was the exact pre-A3 capacity. Exact v3 replay against A3's successor
+ledger later certified zero strict DRILL capacity: no eligible task and no
+eligible generator group remain under the same policy. The certificate digest
+is `sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1`.
+DEV remains 16 BD + 0 HD under the successor ledger.
+
 The same audit found that this strict number had been misreported as corpus
 exhaustion. The full non-test split has 10,200 tasks, of which 10,069 exact task
 IDs remain absent from the A2 ledger (FF 2,998; BD 3,456; HD 3,615). The small
@@ -114,7 +120,100 @@ training population with explicit shared-generator dependence, score both
 held-out panels before label reveal, and reserve a separately constructed
 attribute-level HD evaluation split.
 
-The incident also led to source-bound v2 command receipts and durable
+## A3 terminal scientific failure
+
+A3 was then launched from the frozen source frame with a headless Codex
+proposer and scorer. It completed every attempted transport and exited 2 as a
+canonical scientific failure, not an operational crash. Its exact failure
+reason was `calibration score bins are underpopulated: 1`.
+
+- command receipt:
+  `sha256:2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681`;
+- terminal failure:
+  `sha256:cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb`;
+- proposer calls: 22 successful, comprising 15 accepted soft claims, 6
+  direct-only records, and 1 typed-parser rejection;
+- scorer calls: 15 successful out of 15 attempts;
+- ordinal scores: eight `0`, one `0.5`, and six `1`;
+- lower bin `[0, 0.75)`: 9 clusters, 1 affirmative;
+- upper bin `[0.75, 1]`: 6 clusters, 5 affirmatives;
+- fitted calibration and Stage B: none.
+
+The fixed minimum was eight clusters in each bin. With only 15 scoreable
+claims, meeting both minima was mathematically impossible. Intended-bin
+orientation was 13/15 and the exact complement was 2/15; the naive
+`score >= 0.5` orientation was 12/15 and its complement was 3/15. Negation did
+not win. A3 measured a recruitment/bin-power failure.
+
+The parser rejection was also traced precisely: the forbidden-code expression
+matched the prefix `def` in the ordinary word `defines`. The parser was fixed
+after A3 to require a complete forbidden-keyword match. The fix cannot revise
+the recorded outcome or make the exposed tasks reusable.
+
+The post-run executable audit found that A3's launcher digest
+`134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477`
+authenticated the JavaScript wrapper, not the native client it spawned. The
+receipt also recorded `codex-cli 0.146.0`; it did not commit the native bytes.
+The currently installed native digest is
+`sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02`,
+but that post-hoc value is not causal evidence about A3. This is an
+authentication limitation, not evidence that the client actually changed.
+
+A3 exposed 22 tasks and left 10,047 exact-unused train/validation IDs: FF
+2,998, BD 3,434, and HD 3,615. SEALED/test remained untouched.
+
+Forensic replay also showed exactly what A3 omitted: all 264 panel
+descriptions were audit-only, only 15 one-panel soft bundles were scored, and
+nine deterministic atom instances were never evaluated as formulas. The 36
+accepted cues produced 17 supported, 4 ambiguous, and 15 unsupported
+judgments, but their citations contained no part, style, facing-axis,
+curvature-orientation, or gestalt record. The cited low-level records therefore
+authenticated context; they did not entail the semantic claims.
+
+The run also made the representation hole explicit. Rich descriptions of the
+twelve panels were recorded but used only for audit. The proposer made one
+irreversible tiny-catalog-plus-bundled-soft-claim guess; synthesis merely
+lowered that guess, and the scorer collapsed one to four cues by minimum into
+`0`, `0.5`, or `1`. There was no description-to-atomic-facts-to-candidate
+search. That diagnosis led to a Python-authoritative design using one-cue soft
+atoms, an atom-by-panel score matrix, deterministic positive
+atom/conjunction selection without `Not` or polarity flipping, structured
+grounding, and label-blind recruitment powered for attrition and bin occupancy.
+Lean remains only an optional removable sidecar over frozen artifacts.
+
+## Atomic operational successor
+
+The description/matrix/selection successor is now executable. It freezes 12
+isolated neutral vision descriptions, proposes 1--12 single-phrase atoms from
+the labelled descriptions alone, records every atom/support-panel observation,
+and chooses a deterministic positive conjunction of at most four atoms. Query
+sources are unavailable until that formula is frozen. Two query descriptions
+and two selected-atom observations complete the exact 29-call success path;
+predictions cross a durable boundary before labels are materialized.
+
+This implementation also corrects the theoretical evidence error found during
+adversarial review. `operational_nonmatch` has its own persisted atomic record
+and can reject a panel only inside an explicitly operational archive. In the
+general truth lattice it is `indeterminate`, not `certified_absent`. The
+archive permanently denies calibration, semantic-truth, benchmark, and
+official-test authority. Calibrated semantic selection is hard-disabled until
+Python can cold-validate a real typed calibration artifact and interval rule.
+
+The production precommit authenticates all 12,000 tasks and the exact A3
+successor ledger before metadata-only selection. Its N=1 frame contains ten
+exact-unseen training tasks from already exposed Basic-shape generators,
+digest
+`sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8`.
+The selected exact-task exposure is durably persisted before any selected
+panel is hashed. This frame is intentionally useful only for an exploratory
+transport/synthesis smoke; it is not independent evaluation.
+
+Before the first live atomic run, the offline genuine-receipt harness completed
+all 29 calls, predicted both synthetic queries correctly, and cold-replayed
+without a model. That is a protocol test, not a Bongard result. No live atomic
+model call or new panel exposure had occurred at this milestone.
+
+The A2 incident also led to source-bound v2 command receipts and durable
 operational failures for any post-precommit source change. Identity-preserving
 canonical caches reduced the same synthetic Stage-A path from 161.15 s to
 11.50 s and Stage B from 218.88 s to 51.10 s.

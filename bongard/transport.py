@@ -1,11 +1,11 @@
-"""Hardened, non-interactive Codex transport for Bongard vision turns.
+"""Hardened, non-interactive Codex transport for Bongard model turns.
 
 The scientific runners deliberately do not give Codex a repository checkout or
-an editable experiment workspace.  Each turn receives only copied PNGs, the
-prompt over stdin, and a strict JSON output schema.  Codex runs ephemerally
-in a read-only sandbox with approvals, shell, search, apps, hooks, memories,
-goals, remote plugins, and sub-agents disabled.  The caller applies a validated
-proposal to its own workspace transactionally.
+an editable experiment workspace.  Each turn receives only its declared input
+(copied PNGs when applicable), the prompt over stdin, and a strict JSON output
+schema.  Codex runs ephemerally in a read-only sandbox with approvals, shell,
+search, apps, hooks, memories, goals, remote plugins, and sub-agents disabled.
+The caller applies a validated proposal to its own workspace transactionally.
 
 The ephemeral ``CODEX_HOME`` contains only invocation authentication when
 needed and the exact signed cloud-policy cache when one is available.  It does
@@ -23,6 +23,7 @@ import hashlib
 import io
 import json
 import os
+import platform
 import re
 import signal
 import shutil
@@ -30,6 +31,8 @@ import stat
 import subprocess
 import tempfile
 import uuid
+from collections.abc import Iterator, Sequence as SequenceABC
+from contextlib import contextmanager
 from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
@@ -40,6 +43,8 @@ CODEX_ISOLATION_POLICY = (
     "no-user-config-rules/v2")
 STRUCTURED_INPUT_DIGEST_SCHEMA = "bongard.codex-structured-input/v1"
 NAMED_IMAGE_INPUT_DIGEST_SCHEMA = "bongard.codex-named-image-input/v1"
+TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA = (
+    "bongard.codex-text-structured-input/v1")
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
 DEFAULT_REASONING_EFFORT = "medium"
 REASONING_EFFORTS = frozenset({
@@ -56,30 +61,70 @@ MAX_STRUCTURED_OUTPUT_CANONICAL_BYTES = MAX_STDOUT_BYTES
 MAX_AUTH_FILE_BYTES = 1_000_000
 MAX_CLOUD_CONFIG_BUNDLE_CACHE_BYTES = 1_000_000
 MAX_CODEX_LAUNCHER_BYTES = 20_000_000
+MAX_CODEX_NATIVE_BYTES = 512 * 1024 * 1024
 MAX_NAMED_IMAGES = 32
+# Responses structured outputs currently admit at most ten schema levels,
+# 5,000 object properties, and 1,000 enum members.  Keep an independent
+# aggregate string ceiling as well: it bounds hostile schemas before the much
+# looser transport byte ceiling becomes relevant.  The 120,000/15,000 limits
+# mirror the provider's overall and large-enum string budgets.
+MAX_STRICT_SCHEMA_DEPTH = 10
+MAX_STRICT_SCHEMA_PROPERTIES = 5_000
+MAX_STRICT_SCHEMA_ENUM_VALUES = 1_000
+MAX_STRICT_SCHEMA_STRING_CHARS = 120_000
+MAX_STRICT_SCHEMA_LARGE_ENUM_VALUES = 250
+MAX_STRICT_SCHEMA_LARGE_ENUM_STRING_CHARS = 15_000
 PROCESS_GROUP_GRACE_SECONDS = 2
 SEMANTIC_INK_THRESHOLD = 128
 _PANEL_SCHEMA = "bongard.panel-canonical/v1"
 _PACKED_BINARY_ENCODING = "numpy-packbits-little-base64/v1"
 _MAX_PANEL_ELEMENTS = 16_777_216
 
+_CODEX_PLATFORM_PACKAGES = {
+    ("linux", "x86_64"): (
+        "x86_64-unknown-linux-musl", "@openai/codex-linux-x64"),
+    ("linux", "aarch64"): (
+        "aarch64-unknown-linux-musl", "@openai/codex-linux-arm64"),
+    ("darwin", "x86_64"): (
+        "x86_64-apple-darwin", "@openai/codex-darwin-x64"),
+    ("darwin", "aarch64"): (
+        "aarch64-apple-darwin", "@openai/codex-darwin-arm64"),
+    ("win32", "x86_64"): (
+        "x86_64-pc-windows-msvc", "@openai/codex-win32-x64"),
+    ("win32", "aarch64"): (
+        "aarch64-pc-windows-msvc", "@openai/codex-win32-arm64"),
+}
+
 WORKSPACE_ROOT = os.path.realpath(
     os.path.join(os.path.dirname(__file__), ".."))
 
 _MODEL_RE = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}\Z")
 _IMAGE_NAME_RE = re.compile(r"[a-z][a-z0-9_-]{0,63}\.png\Z")
-_STRICT_SCHEMA_FORBIDDEN_KEYWORDS = frozenset({
-    "oneOf",
-    "uniqueItems",
-    "minItems",
-    "maxItems",
-    "minimum",
-    "maximum",
-    "minLength",
-    "maxLength",
-    "const",
-    "not",
+_STRICT_SCHEMA_KEYWORDS = frozenset({
+    "type",
+    "properties",
+    "required",
+    "additionalProperties",
+    "items",
+    "enum",
+    "anyOf",
+    "description",
 })
+_STRICT_SCHEMA_TYPES = frozenset({
+    "object", "array", "string", "integer", "number", "boolean", "null",
+})
+_STRICT_OBJECT_SCHEMA_KEYWORDS = frozenset({
+    "type", "properties", "required", "additionalProperties", "description",
+})
+_STRICT_ARRAY_SCHEMA_KEYWORDS = frozenset({
+    "type", "items", "enum", "description",
+})
+_STRICT_SCALAR_SCHEMA_KEYWORDS = frozenset({
+    "type", "enum", "description",
+})
+_STRICT_ANY_OF_SCHEMA_KEYWORDS = frozenset({"anyOf", "description"})
+_MAX_SCHEMA_SNAPSHOT_DEPTH = 64
+_MAX_SCHEMA_CONTAINER_ITEMS = MAX_STRICT_SCHEMA_PROPERTIES
 _PANEL_NAMES = tuple(
     [f"pos_{index}.png" for index in range(6)]
     + [f"neg_{index}.png" for index in range(6)])
@@ -198,6 +243,21 @@ class CodexReceipt:
 class CodexStructuredResult:
     payload: dict[str, Any]
     receipt: CodexReceipt
+
+
+@dataclass(frozen=True)
+class StagedCodexLauncher:
+    """One externally pinned, private executable snapshot.
+
+    ``executable`` is valid only while the surrounding
+    :func:`stage_codex_launcher` context is active.  Scientific transports
+    pass it together with ``launcher_digest`` so every turn independently
+    rechecks the same byte commitment.
+    """
+
+    executable: str
+    launcher_digest: str
+    version: str
 
 
 def _canonical_json_bytes(value: Any) -> bytes:
@@ -1111,54 +1171,517 @@ def _recheck_named_private_view(
             "Codex output schema bytes changed during execution")
 
 
-def _codex_launcher_identity(executable: str) -> tuple[str, tuple[Any, ...]]:
-    resolved = shutil.which(executable, path=os.environ.get("PATH"))
-    if not resolved:
-        raise CodexProposerFailure("Codex CLI executable is not on PATH")
-    resolved = os.path.realpath(resolved)
+def _recheck_text_private_view(
+        view_dir: str, schema_path: str,
+        expected_schema_digest: str) -> None:
+    """Verify that a text-only turn never acquired an undeclared file."""
     try:
-        before = os.lstat(resolved)
+        actual_names = set(os.listdir(view_dir))
     except OSError as exc:
-        raise CodexProposerFailure("cannot inspect Codex CLI executable") from exc
-    if not stat.S_ISREG(before.st_mode) or not 0 < before.st_size <= \
-            MAX_CODEX_LAUNCHER_BYTES:
-        raise CodexProposerFailure("Codex CLI launcher is not a bounded file")
-    descriptor = os.open(
-        resolved,
-        os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
-        | getattr(os, "O_CLOEXEC", 0),
-    )
+        raise CodexProposerFailure(
+            "Codex text-only private view disappeared after launch") from exc
+    if actual_names != {"output_schema.json"}:
+        raise CodexProposerFailure(
+            "Codex text-only private view contents changed during execution")
+    schema_bytes = _read_stable_view_file(
+        schema_path, maximum=MAX_SCHEMA_UTF8_BYTES,
+        description="output schema")
+    if _bytes_digest(schema_bytes) != expected_schema_digest:
+        raise CodexProposerFailure(
+            "Codex output schema bytes changed during execution")
+
+
+def _read_codex_executable_identity(
+        path: str, *, maximum: int, description: str,
+        capture_all: bool = False) -> tuple[tuple[Any, ...], bytes]:
+    """Hash one executable/manifest without following a raced replacement."""
+    try:
+        before = os.lstat(path)
+    except OSError as exc:
+        raise CodexProposerFailure(f"cannot inspect Codex {description}") \
+            from exc
+    if not stat.S_ISREG(before.st_mode) \
+            or not 0 < before.st_size <= maximum:
+        raise CodexProposerFailure(
+            f"Codex {description} is not a bounded regular file")
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+    except OSError as exc:
+        raise CodexProposerFailure(f"cannot open Codex {description}") from exc
     try:
         opened = os.fstat(descriptor)
         identity = (
             opened.st_dev, opened.st_ino, opened.st_size,
             opened.st_mtime_ns, opened.st_ctime_ns,
         )
-        if identity != (
+        if not stat.S_ISREG(opened.st_mode) or identity != (
                 before.st_dev, before.st_ino, before.st_size,
                 before.st_mtime_ns, before.st_ctime_ns):
-            raise CodexProposerFailure("Codex CLI launcher changed during read")
+            raise CodexProposerFailure(
+                f"Codex {description} changed while being opened")
+        hasher = hashlib.sha256()
+        captured = bytearray()
+        total = 0
+        while True:
+            block = os.read(
+                descriptor, min(1_048_576, maximum + 1 - total))
+            if not block:
+                break
+            hasher.update(block)
+            if capture_all:
+                captured.extend(block)
+            elif len(captured) < 4096:
+                captured.extend(block[:4096 - len(captured)])
+            total += len(block)
+            if total > maximum:
+                raise CodexProposerFailure(
+                    f"Codex {description} became oversized")
+        after = os.fstat(descriptor)
+        if total != opened.st_size or not stat.S_ISREG(after.st_mode) or (
+                after.st_dev, after.st_ino, after.st_size,
+                after.st_mtime_ns, after.st_ctime_ns) != identity:
+            raise CodexProposerFailure(
+                f"Codex {description} changed while being read")
+    finally:
+        os.close(descriptor)
+    try:
+        path_after = os.lstat(path)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            f"Codex {description} path changed while being read") from exc
+    if not stat.S_ISREG(path_after.st_mode) or (
+            path_after.st_dev, path_after.st_ino, path_after.st_size,
+            path_after.st_mtime_ns, path_after.st_ctime_ns) != identity:
+        raise CodexProposerFailure(
+            f"Codex {description} path changed while being read")
+    return (*identity, hasher.hexdigest()), bytes(captured)
+
+
+def _codex_platform_package(
+        system: str | None = None,
+        machine: str | None = None) -> tuple[str, str, str, str]:
+    """Return the official npm target, package, OS, and CPU identifiers."""
+    system_value = (platform.system() if system is None else system).lower()
+    system_value = {
+        "android": "linux",
+        "windows": "win32",
+    }.get(system_value, system_value)
+    machine_value = (platform.machine() if machine is None else machine).lower()
+    machine_value = {
+        "amd64": "x86_64",
+        "x64": "x86_64",
+        "arm64": "aarch64",
+    }.get(machine_value, machine_value)
+    specification = _CODEX_PLATFORM_PACKAGES.get(
+        (system_value, machine_value))
+    if specification is None:
+        raise CodexProposerFailure(
+            "Codex official launcher platform is unsupported: "
+            f"{system_value}/{machine_value}")
+    target, package_name = specification
+    npm_cpu = "x64" if machine_value == "x86_64" else "arm64"
+    return target, package_name, system_value, npm_cpu
+
+
+def _load_codex_package_manifest(path: str, description: str) \
+        -> dict[str, Any]:
+    resolved = os.path.realpath(path)
+    _identity, raw = _read_codex_executable_identity(
+        resolved,
+        maximum=MAX_SCHEMA_UTF8_BYTES,
+        description=description,
+        capture_all=True,
+    )
+    try:
+        manifest = json.loads(
+            raw.decode("utf-8", errors="strict"),
+            object_pairs_hook=_unique_object,
+            parse_constant=lambda token: (_ for _ in ()).throw(
+                ValueError(f"non-finite JSON token {token}")),
+        )
+    except (UnicodeError, ValueError, json.JSONDecodeError) as exc:
+        raise CodexProposerFailure(
+            f"Codex {description} is not strict UTF-8 JSON") from exc
+    if not isinstance(manifest, dict):
+        raise CodexProposerFailure(
+            f"Codex {description} is not a JSON object")
+    return manifest
+
+
+def _node_resolve_platform_manifest(
+        js_entrypoint: str, package_name: str) -> str | None:
+    """Mirror Node's ancestor ``node_modules`` lookup for one fixed package."""
+    scope, name = package_name.split("/", 1)
+    current = os.path.dirname(js_entrypoint)
+    while True:
+        candidate = os.path.join(
+            current, "node_modules", scope, name, "package.json")
+        if os.path.lexists(candidate):
+            if not os.path.exists(candidate):
+                raise CodexProposerFailure(
+                    "Codex platform package manifest is a broken link")
+            return os.path.realpath(candidate)
+        parent = os.path.dirname(current)
+        if parent == current:
+            return None
+        current = parent
+
+
+def _native_signature_matches(prefix: bytes, system: str) -> bool:
+    if system == "linux":
+        return prefix.startswith(b"\x7fELF")
+    if system == "win32":
+        return prefix.startswith(b"MZ")
+    if system == "darwin":
+        return prefix[:4] in {
+            b"\xfe\xed\xfa\xce", b"\xce\xfa\xed\xfe",
+            b"\xfe\xed\xfa\xcf", b"\xcf\xfa\xed\xfe",
+            b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca",
+            b"\xca\xfe\xba\xbf", b"\xbf\xba\xfe\xca",
+        }
+    return False
+
+
+def _official_codex_js_candidate(resolved: str) -> str | None:
+    """Locate the JS entrypoint without executing an npm interpreter shim."""
+    basename = os.path.basename(resolved).lower()
+    if basename == "codex.js":
+        return resolved
+    if basename in {"codex.cmd", "codex.bat", "codex.ps1"}:
+        candidate = os.path.join(
+            os.path.dirname(resolved), "node_modules", "@openai", "codex",
+            "bin", "codex.js")
+        if os.path.exists(candidate):
+            return os.path.realpath(candidate)
+    return None
+
+
+def _resolve_official_codex_native(
+        js_entrypoint: str) -> tuple[str, tuple[Any, ...]]:
+    """Resolve, validate, and hash the native child the official JS would run."""
+    js_entrypoint = os.path.realpath(js_entrypoint)
+    js_identity, js_prefix = _read_codex_executable_identity(
+        js_entrypoint,
+        maximum=MAX_CODEX_LAUNCHER_BYTES,
+        description="official JS entrypoint",
+    )
+    del js_identity
+    package_root = os.path.dirname(os.path.dirname(js_entrypoint))
+    expected_entrypoint = os.path.realpath(
+        os.path.join(package_root, "bin", "codex.js"))
+    if os.path.normcase(expected_entrypoint) != os.path.normcase(js_entrypoint) \
+            or not js_prefix.startswith(b"#!/usr/bin/env node"):
+        raise CodexProposerFailure(
+            "Codex script launcher is not the official @openai/codex "
+            "JS entrypoint")
+    root_manifest = _load_codex_package_manifest(
+        os.path.join(package_root, "package.json"),
+        "official package manifest",
+    )
+    bin_mapping = root_manifest.get("bin")
+    target, platform_package, npm_os, npm_cpu = _codex_platform_package()
+    optional_dependencies = root_manifest.get("optionalDependencies")
+    if root_manifest.get("name") != "@openai/codex" \
+            or not isinstance(root_manifest.get("version"), str) \
+            or bin_mapping != {"codex": "bin/codex.js"} \
+            or root_manifest.get("type") != "module" \
+            or not isinstance(optional_dependencies, Mapping) \
+            or not isinstance(optional_dependencies.get(platform_package), str):
+        raise CodexProposerFailure(
+            "Codex script launcher package metadata is not the official "
+            "@openai/codex layout")
+
+    platform_manifest_path = _node_resolve_platform_manifest(
+        js_entrypoint, platform_package)
+    if platform_manifest_path is None:
+        vendor_root = os.path.join(package_root, "vendor")
+    else:
+        platform_manifest = _load_codex_package_manifest(
+            platform_manifest_path, "platform package manifest")
+        root_version = root_manifest["version"]
+        platform_version = platform_manifest.get("version")
+        if platform_manifest.get("name") not in {
+                "@openai/codex", platform_package} \
+                or not isinstance(platform_version, str) \
+                or not (platform_version == root_version or
+                        platform_version.startswith(root_version + "-")) \
+                or platform_manifest.get("os") != [npm_os] \
+                or platform_manifest.get("cpu") != [npm_cpu]:
+            raise CodexProposerFailure(
+                "Codex platform package metadata does not match the host")
+        vendor_root = os.path.join(
+            os.path.dirname(platform_manifest_path), "vendor")
+
+    filename = "codex.exe" if npm_os == "win32" else "codex"
+    native = os.path.realpath(
+        os.path.join(vendor_root, target, "bin", filename))
+    native_identity, native_prefix = _read_codex_executable_identity(
+        native,
+        maximum=MAX_CODEX_NATIVE_BYTES,
+        description="native executable",
+    )
+    if not _native_signature_matches(native_prefix, npm_os):
+        raise CodexProposerFailure(
+            "Codex platform package target is not a native executable")
+    return native, native_identity
+
+
+def _is_unrecognized_script_launcher(path: str, prefix: bytes) -> bool:
+    suffix = os.path.splitext(path)[1].lower()
+    if suffix in {".js", ".mjs", ".cjs", ".cmd", ".bat", ".ps1", ".py"}:
+        return True
+    return prefix.startswith(b"#!")
+
+
+def _codex_launcher_identity(executable: str) -> tuple[str, tuple[Any, ...]]:
+    """Resolve the authenticated executable closure for a Codex invocation.
+
+    The npm ``@openai/codex`` command is a JavaScript shim which launches a
+    much larger platform package binary.  The shim is never executed here:
+    its fixed official package layout is resolved in Python, and only the
+    native executable is returned, hashed, launched, and later rechecked.
+    Direct native and opaque flat test executables retain their old behavior.
+    """
+    resolved = shutil.which(executable, path=os.environ.get("PATH"))
+    if not resolved:
+        raise CodexProposerFailure("Codex CLI executable is not on PATH")
+    resolved = os.path.realpath(resolved)
+    suffix = os.path.splitext(resolved)[1].lower()
+    maximum = MAX_CODEX_LAUNCHER_BYTES if suffix in {
+        ".js", ".mjs", ".cjs", ".cmd", ".bat", ".ps1", ".py",
+    } else MAX_CODEX_NATIVE_BYTES
+    identity, prefix = _read_codex_executable_identity(
+        resolved, maximum=maximum, description="CLI executable")
+    js_entrypoint = _official_codex_js_candidate(resolved)
+    if js_entrypoint is not None:
+        return _resolve_official_codex_native(js_entrypoint)
+    if _is_unrecognized_script_launcher(resolved, prefix):
+        raise CodexProposerFailure(
+            "Codex CLI uses an unrecognized script/interpreter launcher; "
+            "supply the native executable or the official @openai/codex "
+            "entrypoint")
+    return resolved, identity
+
+
+def _validate_expected_launcher_digest(value: str) -> str:
+    if not isinstance(value, str) or re.fullmatch(
+            r"[0-9a-f]{64}", value) is None:
+        raise CodexProposerFailure(
+            "expected Codex launcher digest must be 64 lowercase hex digits")
+    return value
+
+
+def _launcher_stat_identity(info: os.stat_result) -> tuple[int, ...]:
+    return (
+        info.st_dev,
+        info.st_ino,
+        info.st_size,
+        info.st_mtime_ns,
+        info.st_ctime_ns,
+    )
+
+
+def _copy_pinned_codex_launcher(
+        source: str, source_identity: tuple[Any, ...], target: str,
+        expected_launcher_digest: str) -> None:
+    """Copy and hash the exact already-resolved source file descriptor."""
+
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise CodexProposerFailure(
+            "platform cannot safely stage the Codex launcher")
+    source_flags = os.O_RDONLY | os.O_NOFOLLOW
+    source_flags |= getattr(os, "O_CLOEXEC", 0)
+    target_flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    target_flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        source_descriptor = os.open(source, source_flags)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "cannot open resolved Codex launcher for staging") from exc
+    target_descriptor: int | None = None
+    try:
+        opened_source = os.fstat(source_descriptor)
+        if not stat.S_ISREG(opened_source.st_mode) \
+                or _launcher_stat_identity(opened_source) != \
+                tuple(source_identity[:-1]) \
+                or not 0 < opened_source.st_size <= MAX_CODEX_NATIVE_BYTES:
+            raise CodexProposerFailure(
+                "resolved Codex launcher changed before staging")
+        try:
+            target_descriptor = os.open(target, target_flags, 0o600)
+        except OSError as exc:
+            raise CodexProposerFailure(
+                "cannot exclusively create staged Codex launcher") from exc
         hasher = hashlib.sha256()
         total = 0
         while True:
             block = os.read(
-                descriptor,
-                min(1_048_576, MAX_CODEX_LAUNCHER_BYTES + 1 - total),
+                source_descriptor,
+                min(1_048_576, MAX_CODEX_NATIVE_BYTES + 1 - total),
             )
             if not block:
                 break
             hasher.update(block)
             total += len(block)
-            if total > MAX_CODEX_LAUNCHER_BYTES:
-                raise CodexProposerFailure("Codex CLI launcher is oversized")
-        after = os.fstat(descriptor)
-        if total != opened.st_size or (
-                after.st_dev, after.st_ino, after.st_size,
-                after.st_mtime_ns, after.st_ctime_ns) != identity:
-            raise CodexProposerFailure("Codex CLI launcher changed during read")
+            if total > MAX_CODEX_NATIVE_BYTES:
+                raise CodexProposerFailure(
+                    "resolved Codex launcher became oversized during staging")
+            offset = 0
+            while offset < len(block):
+                written = os.write(target_descriptor, block[offset:])
+                if written <= 0:
+                    raise CodexProposerFailure(
+                        "could not completely stage Codex launcher")
+                offset += written
+        after_source = os.fstat(source_descriptor)
+        copied_digest = hasher.hexdigest()
+        if total != opened_source.st_size \
+                or _launcher_stat_identity(after_source) != \
+                _launcher_stat_identity(opened_source) \
+                or copied_digest != source_identity[-1] \
+                or copied_digest != expected_launcher_digest:
+            raise CodexProposerFailure(
+                "resolved Codex launcher changed while being staged")
+        os.fsync(target_descriptor)
+        os.fchmod(target_descriptor, 0o500)
+        os.fsync(target_descriptor)
+        staged_info = os.fstat(target_descriptor)
+        if not stat.S_ISREG(staged_info.st_mode) \
+                or staged_info.st_nlink != 1 \
+                or staged_info.st_size != total \
+                or stat.S_IMODE(staged_info.st_mode) != 0o500:
+            raise CodexProposerFailure(
+                "staged Codex launcher has unsafe metadata")
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "cannot safely copy resolved Codex launcher") from exc
     finally:
-        os.close(descriptor)
-    return resolved, (*identity, hasher.hexdigest())
+        if target_descriptor is not None:
+            os.close(target_descriptor)
+        os.close(source_descriptor)
+
+    try:
+        source_after = os.lstat(source)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "resolved Codex launcher path changed during staging") from exc
+    if not stat.S_ISREG(source_after.st_mode) \
+            or _launcher_stat_identity(source_after) != \
+            tuple(source_identity[:-1]):
+        raise CodexProposerFailure(
+            "resolved Codex launcher path changed during staging")
+
+
+def _fsync_directory(path: str) -> None:
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(path, flags)
+        try:
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "cannot durably stage Codex launcher directory") from exc
+
+
+def _recheck_staged_codex_launcher(
+        executable: str, expected_identity: tuple[Any, ...],
+        stage_directory: str) -> None:
+    try:
+        directory_info = os.lstat(stage_directory)
+        entries = os.listdir(stage_directory)
+        executable_info = os.lstat(executable)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "staged Codex launcher disappeared during use") from exc
+    if not stat.S_ISDIR(directory_info.st_mode) \
+            or stat.S_IMODE(directory_info.st_mode) != 0o500 \
+            or entries != [os.path.basename(executable)] \
+            or not stat.S_ISREG(executable_info.st_mode) \
+            or executable_info.st_nlink != 1 \
+            or stat.S_IMODE(executable_info.st_mode) != 0o500:
+        raise CodexProposerFailure(
+            "staged Codex launcher protection changed during use")
+    _resolved, observed_identity = _codex_launcher_identity(executable)
+    if _resolved != executable or observed_identity != expected_identity:
+        raise CodexProposerFailure(
+            "staged Codex launcher identity changed during use")
+
+
+@contextmanager
+def stage_codex_launcher(
+        executable: str = "codex", *,
+        expected_launcher_digest: str) -> Iterator[StagedCodexLauncher]:
+    """Yield an immutable private copy of externally committed Codex bytes.
+
+    The installed npm closure is resolved first, but its pathname is never
+    executed.  One no-follow source descriptor is checked against that
+    resolution, hashed while it is copied, and checked again after the copy.
+    Only the private, read/execute-only copy runs ``--version`` or model turns.
+    """
+
+    expected_launcher_digest = _validate_expected_launcher_digest(
+        expected_launcher_digest)
+    resolved, source_identity = _codex_launcher_identity(executable)
+    if source_identity[-1] != expected_launcher_digest:
+        raise CodexProposerFailure(
+            "Codex launcher bytes differ from the external commitment")
+    temp_parent = _safe_temp_parent()
+    with tempfile.TemporaryDirectory(
+            prefix="bongard-codex-launcher-", dir=temp_parent) as stage_dir:
+        _require_outside_bongard(stage_dir, "staged Codex launcher")
+        os.chmod(stage_dir, 0o700)
+        staged_name = "codex.exe" if resolved.lower().endswith(".exe") \
+            else "codex"
+        staged_path = os.path.join(stage_dir, staged_name)
+        _copy_pinned_codex_launcher(
+            resolved, source_identity, staged_path,
+            expected_launcher_digest,
+        )
+        _fsync_directory(stage_dir)
+        os.chmod(stage_dir, 0o500)
+        _fsync_directory(stage_dir)
+        staged_identity, _prefix = _read_codex_executable_identity(
+            staged_path,
+            maximum=MAX_CODEX_NATIVE_BYTES,
+            description="staged native executable",
+        )
+        if staged_identity[-1] != expected_launcher_digest:
+            raise CodexProposerFailure(
+                "staged Codex launcher differs from the external commitment")
+        version = _codex_cli_version(staged_path, temp_parent=temp_parent)
+        staged_after_version, _prefix = _read_codex_executable_identity(
+            staged_path,
+            maximum=MAX_CODEX_NATIVE_BYTES,
+            description="staged native executable",
+        )
+        if staged_after_version != staged_identity:
+            raise CodexProposerFailure(
+                "staged Codex launcher changed during version check")
+        snapshot = StagedCodexLauncher(
+            executable=staged_path,
+            launcher_digest=expected_launcher_digest,
+            version=version,
+        )
+        try:
+            yield snapshot
+        finally:
+            try:
+                _recheck_staged_codex_launcher(
+                    staged_path, staged_identity, stage_dir)
+            finally:
+                try:
+                    os.chmod(stage_dir, 0o700)
+                    if os.path.lexists(staged_path):
+                        os.chmod(staged_path, 0o600, follow_symlinks=False)
+                except OSError:
+                    pass
 
 
 def _codex_cli_version(
@@ -1194,8 +1717,15 @@ def _codex_cli_version(
         raise CodexProposerFailure("Codex CLI version is not UTF-8") from exc
     if proc.returncode != 0 or not version:
         raise CodexProposerFailure("cannot fingerprint Codex CLI")
-    # macOS sandbox warnings belong to stderr; prefer the clean stdout line.
-    return version.splitlines()[-1]
+    # macOS sandbox warnings belong to stderr; prefer the clean stdout.  A
+    # launcher identity is one exact line, not an arbitrary executable whose
+    # output happens to contain a Codex-looking suffix.
+    version_lines = version.splitlines()
+    if len(version_lines) != 1 \
+            or not version_lines[0].startswith("codex-cli "):
+        raise CodexProposerFailure(
+            "Codex CLI version output does not identify codex-cli")
+    return version_lines[0]
 
 
 def codex_cli_version(executable: str = "codex") -> str:
@@ -1222,28 +1752,17 @@ def codex_cli_authenticated_fingerprint(
 
     The ordinary fingerprint helper is appropriate for inventory.  A causal
     benchmark boundary already has an external byte commitment, so it must
-    compare the read-only launcher hash before allowing those bytes to run.
-    The second identity read closes changes made by the version invocation.
+    copy and compare a read-only launcher through one pinned descriptor before
+    allowing only the resulting private snapshot to run.
     """
 
-    if not isinstance(expected_launcher_digest, str) or re.fullmatch(
-            r"[0-9a-f]{64}", expected_launcher_digest) is None:
-        raise CodexProposerFailure(
-            "expected Codex launcher digest must be 64 lowercase hex digits")
-    resolved, identity = _codex_launcher_identity(executable)
-    if identity[-1] != expected_launcher_digest:
-        raise CodexProposerFailure(
-            "Codex launcher bytes differ from the external commitment")
-    temp_parent = _safe_temp_parent()
-    version = _codex_cli_version(resolved, temp_parent=temp_parent)
-    resolved_after, identity_after = _codex_launcher_identity(resolved)
-    if resolved_after != resolved or identity_after != identity:
-        raise CodexProposerFailure(
-            "Codex launcher changed during authenticated fingerprinting")
-    return {
-        "version": version,
-        "launcher_digest": identity[-1],
-    }
+    with stage_codex_launcher(
+            executable,
+            expected_launcher_digest=expected_launcher_digest) as staged:
+        return {
+            "version": staged.version,
+            "launcher_digest": staged.launcher_digest,
+        }
 
 
 def _codex_command(
@@ -1278,37 +1797,303 @@ def _codex_command(
     return command
 
 
+def _snapshot_schema_json(
+        value: Any, *, path: str = "$", active: set[int] | None = None,
+        raw_depth: int = 0) -> Any:
+    """Read an untrusted schema object once into bounded plain containers.
+
+    ``Mapping.items()`` and sequence iteration are consumed incrementally.
+    This cannot prevent a hostile implementation from allocating inside its
+    own iterator, but it avoids the transport itself materializing an
+    unbounded custom container before any limit is checked.
+    """
+
+    if raw_depth > _MAX_SCHEMA_SNAPSHOT_DEPTH:
+        raise CodexProposerFailure(
+            f"Codex output schema is too deeply nested at {path}")
+    if active is None:
+        active = set()
+    if isinstance(value, Mapping):
+        identity = id(value)
+        if identity in active:
+            raise CodexProposerFailure(
+                f"Codex output schema contains a cycle at {path}")
+        try:
+            declared_length = len(value)
+        except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+            raise CodexProposerFailure(
+                f"Codex output schema mapping at {path} has no stable size"
+            ) from exc
+        if declared_length > _MAX_SCHEMA_CONTAINER_ITEMS:
+            raise CodexProposerFailure(
+                f"Codex output schema mapping at {path} is oversized")
+        active.add(identity)
+        try:
+            try:
+                iterator = iter(value.items())
+            except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+                raise CodexProposerFailure(
+                    f"Codex output schema mapping at {path} cannot be frozen"
+                ) from exc
+            result: dict[str, Any] = {}
+            while True:
+                try:
+                    pair = next(iterator)
+                except StopIteration:
+                    break
+                except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+                    raise CodexProposerFailure(
+                        f"Codex output schema mapping at {path} cannot be frozen"
+                    ) from exc
+                if len(result) >= declared_length:
+                    raise CodexProposerFailure(
+                        f"Codex output schema mapping at {path} changed size while frozen")
+                if len(result) >= _MAX_SCHEMA_CONTAINER_ITEMS:
+                    raise CodexProposerFailure(
+                        f"Codex output schema mapping at {path} is oversized")
+                try:
+                    key, item = pair
+                except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+                    raise CodexProposerFailure(
+                        f"Codex output schema mapping at {path} has invalid items"
+                    ) from exc
+                if not isinstance(key, str):
+                    raise CodexProposerFailure(
+                        f"Codex output schema has a non-string key at {path}")
+                if key in result:
+                    raise CodexProposerFailure(
+                        f"Codex output schema has duplicate key {key!r} at {path}")
+                result[key] = _snapshot_schema_json(
+                    item, path=f"{path}.{key}", active=active,
+                    raw_depth=raw_depth + 1)
+            if len(result) != declared_length:
+                raise CodexProposerFailure(
+                    f"Codex output schema mapping at {path} changed size while frozen")
+            return result
+        finally:
+            active.remove(identity)
+    if isinstance(value, SequenceABC) and not isinstance(
+            value, (str, bytes, bytearray)):
+        identity = id(value)
+        if identity in active:
+            raise CodexProposerFailure(
+                f"Codex output schema contains a cycle at {path}")
+        try:
+            declared_length = len(value)
+        except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+            raise CodexProposerFailure(
+                f"Codex output schema sequence at {path} has no stable size"
+            ) from exc
+        if declared_length > _MAX_SCHEMA_CONTAINER_ITEMS:
+            raise CodexProposerFailure(
+                f"Codex output schema sequence at {path} is oversized")
+        active.add(identity)
+        try:
+            try:
+                iterator = iter(value)
+            except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+                raise CodexProposerFailure(
+                    f"Codex output schema sequence at {path} cannot be frozen"
+                ) from exc
+            result: list[Any] = []
+            while True:
+                try:
+                    item = next(iterator)
+                except StopIteration:
+                    break
+                except (TypeError, ValueError, RuntimeError, RecursionError) as exc:
+                    raise CodexProposerFailure(
+                        f"Codex output schema sequence at {path} cannot be frozen"
+                    ) from exc
+                if len(result) >= declared_length:
+                    raise CodexProposerFailure(
+                        f"Codex output schema sequence at {path} changed size while frozen")
+                if len(result) >= _MAX_SCHEMA_CONTAINER_ITEMS:
+                    raise CodexProposerFailure(
+                        f"Codex output schema sequence at {path} is oversized")
+                result.append(_snapshot_schema_json(
+                    item, path=f"{path}[{len(result)}]", active=active,
+                    raw_depth=raw_depth + 1))
+            if len(result) != declared_length:
+                raise CodexProposerFailure(
+                    f"Codex output schema sequence at {path} changed size while frozen")
+            return result
+        finally:
+            active.remove(identity)
+    if value is None or isinstance(value, (str, bool, int, float)):
+        return value
+    raise CodexProposerFailure(
+        f"Codex output schema contains a non-JSON value at {path}")
+
+
+def _enum_matches_type(value: Any, schema_type: str) -> bool:
+    if schema_type == "null":
+        return value is None
+    if schema_type == "boolean":
+        return isinstance(value, bool)
+    if schema_type == "integer":
+        return isinstance(value, int) and not isinstance(value, bool)
+    if schema_type == "number":
+        return isinstance(value, (int, float)) and not isinstance(value, bool)
+    if schema_type == "string":
+        return isinstance(value, str)
+    if schema_type == "array":
+        return isinstance(value, list)
+    if schema_type == "object":
+        return isinstance(value, dict)
+    return False
+
+
+@dataclass
+class _StrictSchemaBudget:
+    properties: int = 0
+    enum_values: int = 0
+    string_chars: int = 0
+
+    def add_strings(self, values: Sequence[str], *, path: str) -> None:
+        self.string_chars += sum(len(value) for value in values)
+        if self.string_chars > MAX_STRICT_SCHEMA_STRING_CHARS:
+            raise CodexProposerFailure(
+                f"strict output schema string budget is exceeded at {path}")
+
+
+def _validate_frozen_strict_schema_node(
+        node: Any, *, path: str, is_root: bool = False, depth: int = 1,
+        budget: _StrictSchemaBudget | None = None) -> None:
+    if depth > MAX_STRICT_SCHEMA_DEPTH:
+        raise CodexProposerFailure(
+            f"strict output schema exceeds depth {MAX_STRICT_SCHEMA_DEPTH} at {path}")
+    if budget is None:
+        budget = _StrictSchemaBudget()
+    if not isinstance(node, dict) or not node:
+        raise CodexProposerFailure(
+            f"strict output schema node at {path} must be a non-empty object")
+    unsupported = set(node).difference(_STRICT_SCHEMA_KEYWORDS)
+    if unsupported:
+        raise CodexProposerFailure(
+            "strict output schema uses unsupported keywords: "
+            + ", ".join(sorted(unsupported))
+        )
+    description = node.get("description")
+    if "description" in node and not isinstance(description, str):
+        raise CodexProposerFailure(
+            f"strict output schema description at {path} must be a string")
+    if isinstance(description, str):
+        # Provider accounting excludes prose descriptions today, but counting
+        # them makes this local admission boundary conservative and keeps all
+        # attacker-controlled schema strings under a static aggregate bound.
+        budget.add_strings((description,), path=path)
+    if is_root and node.get("type") != "object":
+        raise CodexProposerFailure(
+            "strict output schema root must be a strict object schema")
+    if "anyOf" in node:
+        if set(node).difference(_STRICT_ANY_OF_SCHEMA_KEYWORDS):
+            raise CodexProposerFailure(
+                f"strict anyOf schema at {path} mixes incompatible keywords")
+        alternatives = node["anyOf"]
+        if not isinstance(alternatives, list) or not alternatives:
+            raise CodexProposerFailure(
+                f"strict anyOf schema at {path} must have alternatives")
+        for index, alternative in enumerate(alternatives):
+            _validate_frozen_strict_schema_node(
+                alternative, path=f"{path}.anyOf[{index}]", depth=depth + 1,
+                budget=budget)
+        return
+    schema_type = node.get("type")
+    if not isinstance(schema_type, str) or schema_type not in _STRICT_SCHEMA_TYPES:
+        raise CodexProposerFailure(
+            f"strict output schema type at {path} is not allowlisted")
+    if schema_type == "object":
+        if set(node).difference(_STRICT_OBJECT_SCHEMA_KEYWORDS):
+            raise CodexProposerFailure(
+                f"strict object schema at {path} mixes incompatible keywords")
+        properties = node.get("properties")
+        required = node.get("required")
+        if not isinstance(properties, dict) \
+                or node.get("additionalProperties") is not False \
+                or not isinstance(required, list):
+            raise CodexProposerFailure(
+                "strict object schemas must require every declared field "
+                "and forbid additional properties"
+            )
+        if any(not isinstance(name, str) for name in required) \
+                or len(required) != len(set(required)):
+            raise CodexProposerFailure(
+                f"strict object schema required names at {path} "
+                "must be unique strings")
+        if set(required) != set(properties):
+            raise CodexProposerFailure(
+                "strict object schema required names must equal its properties")
+        budget.properties += len(properties)
+        if budget.properties > MAX_STRICT_SCHEMA_PROPERTIES:
+            raise CodexProposerFailure(
+                "strict output schema object property budget is exceeded")
+        budget.add_strings(tuple(properties), path=f"{path}.properties")
+        for name, child in properties.items():
+            _validate_frozen_strict_schema_node(
+                child, path=f"{path}.properties.{name}", depth=depth + 1,
+                budget=budget)
+    elif schema_type == "array":
+        if set(node).difference(_STRICT_ARRAY_SCHEMA_KEYWORDS) \
+                or "items" not in node:
+            raise CodexProposerFailure(
+                f"strict array schema at {path} has invalid keywords")
+        _validate_frozen_strict_schema_node(
+            node["items"], path=f"{path}.items", depth=depth + 1,
+            budget=budget)
+    elif set(node).difference(_STRICT_SCALAR_SCHEMA_KEYWORDS):
+        raise CodexProposerFailure(
+            f"strict scalar schema at {path} has invalid keywords")
+    if "enum" in node:
+        values = node["enum"]
+        if not isinstance(values, list) or not values \
+                or any(not _enum_matches_type(value, schema_type)
+                       for value in values):
+            raise CodexProposerFailure(
+                f"strict output schema enum at {path} is invalid")
+        budget.enum_values += len(values)
+        if budget.enum_values > MAX_STRICT_SCHEMA_ENUM_VALUES:
+            raise CodexProposerFailure(
+                "strict output schema enum value budget is exceeded")
+        string_values = tuple(value for value in values if isinstance(value, str))
+        budget.add_strings(string_values, path=f"{path}.enum")
+        if len(values) > MAX_STRICT_SCHEMA_LARGE_ENUM_VALUES \
+                and sum(len(value) for value in string_values) \
+                > MAX_STRICT_SCHEMA_LARGE_ENUM_STRING_CHARS:
+            raise CodexProposerFailure(
+                f"strict output schema large enum string budget is exceeded at {path}")
+        encoded_values = tuple(_canonical_json_bytes(value) for value in values)
+        if len(encoded_values) != len(set(encoded_values)):
+            raise CodexProposerFailure(
+                f"strict output schema enum at {path} has duplicates")
+
+
+def _freeze_codex_strict_output_schema(
+        schema: Mapping[str, Any]) -> tuple[dict[str, Any], bytes, str]:
+    """Freeze, validate, and digest exactly the schema bytes Codex will see."""
+
+    if not isinstance(schema, Mapping):
+        raise CodexProposerFailure("Codex output schema must be a mapping")
+    try:
+        plain = _snapshot_schema_json(schema)
+        schema_bytes = _canonical_json_bytes(plain)
+        if not schema_bytes or len(schema_bytes) > MAX_SCHEMA_UTF8_BYTES:
+            raise CodexProposerFailure("Codex output schema is empty or oversized")
+        frozen = _strict_json(
+            schema_bytes.decode("utf-8", errors="strict"), "output schema")
+        _validate_frozen_strict_schema_node(frozen, path="$", is_root=True)
+        return frozen, schema_bytes, _bytes_digest(schema_bytes)
+    except CodexProposerFailure:
+        raise
+    except RecursionError as exc:
+        raise CodexProposerFailure(
+            "Codex output schema recursion limit was exceeded") from exc
+
+
 def validate_codex_strict_output_schema(schema: Mapping[str, Any]) -> None:
     """Reject schema features outside the frozen Responses strict subset."""
 
-    if not isinstance(schema, Mapping):
-        raise CodexProposerFailure("strict output schema must be an object")
-    stack: list[object] = [schema]
-    while stack:
-        node = stack.pop()
-        if isinstance(node, Mapping):
-            forbidden = _STRICT_SCHEMA_FORBIDDEN_KEYWORDS.intersection(node)
-            if forbidden:
-                raise CodexProposerFailure(
-                    "strict output schema uses unsupported keywords: "
-                    + ", ".join(sorted(forbidden))
-                )
-            if node.get("type") == "object":
-                properties = node.get("properties")
-                required = node.get("required")
-                if (
-                    not isinstance(properties, Mapping)
-                    or node.get("additionalProperties") is not False
-                    or not isinstance(required, list)
-                    or set(required) != set(properties)
-                ):
-                    raise CodexProposerFailure(
-                        "strict object schemas must require every declared field "
-                        "and forbid additional properties"
-                    )
-            stack.extend(node.values())
-        elif isinstance(node, list):
-            stack.extend(node)
+    _freeze_codex_strict_output_schema(schema)
 
 
 def _wait_for_process(process: subprocess.Popen, timeout: float) -> bool:
@@ -1488,19 +2273,12 @@ def _causal_input_metadata(
     }
 
 
-def _causal_named_image_input_metadata(
-        executed_prompt: str, image_paths: Sequence[str],
-        image_names: Sequence[str], output_schema_digest: str,
-        expected_view_digest: str, expected_set_digest: str,
-        ) -> dict[str, str]:
-    snapshot = _named_image_snapshot(image_paths, image_names)
+def _causal_named_image_input_metadata_from_snapshot(
+        executed_prompt: str, snapshot: Sequence[tuple[str, bytes]],
+        output_schema_digest: str) -> dict[str, str]:
     identities = _panel_identities_from_snapshot(snapshot)
     observed_view_digest = _digest(identities)
     observed_set_digest = _named_image_set_digest_from_snapshot(snapshot)
-    if observed_view_digest != expected_view_digest \
-            or observed_set_digest != expected_set_digest:
-        raise CodexProposerFailure(
-            "Codex named-image view changed before input binding")
     prompt_digest = _raw_utf8_digest(executed_prompt)
     envelope = {
         "schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
@@ -1522,6 +2300,61 @@ def _causal_named_image_input_metadata(
         # these bind a neutral image view/set, not Bongard label semantics.
         "panel_view_digest": observed_view_digest,
         "panel_set_digest": observed_set_digest,
+    }
+
+
+def _causal_named_image_input_metadata(
+        executed_prompt: str, image_paths: Sequence[str],
+        image_names: Sequence[str], output_schema_digest: str,
+        expected_view_digest: str, expected_set_digest: str,
+        ) -> dict[str, str]:
+    snapshot = _named_image_snapshot(image_paths, image_names)
+    metadata = _causal_named_image_input_metadata_from_snapshot(
+        executed_prompt, snapshot, output_schema_digest)
+    if metadata["panel_view_digest"] != expected_view_digest \
+            or metadata["panel_set_digest"] != expected_set_digest:
+        raise CodexProposerFailure(
+            "Codex named-image view changed before input binding")
+    return metadata
+
+
+def _text_zero_image_digests() -> tuple[str, str]:
+    """Return canonical receipt sentinels for a zero-image turn."""
+    identities: list[dict[str, Any]] = []
+    return (
+        _digest(identities),
+        "sha256:" + _digest({
+            "schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+            "images": identities,
+        }),
+    )
+
+
+def _causal_text_input_metadata(
+        executed_prompt: str, output_schema_digest: str) -> dict[str, str]:
+    """Bind a text prompt and output schema while certifying zero images."""
+    prompt_digest = _raw_utf8_digest(executed_prompt)
+    image_view_digest, image_set_digest = _text_zero_image_digests()
+    envelope = {
+        "schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+        "task": executed_prompt,
+        "image_count": 0,
+        "image_view_digest": image_view_digest,
+        "image_set_digest": image_set_digest,
+        "prompt_digest": prompt_digest,
+        "output_schema_digest": output_schema_digest,
+    }
+    return {
+        "task_digest": prompt_digest,
+        "current_source_digest": "",
+        "current_log_digest": "",
+        "prompt_digest": prompt_digest,
+        "input_digest_schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
+        "input_digest": _digest(envelope),
+        # Receipt v3 keeps these stable field names.  Under the text schema
+        # they are the explicit canonical zero-image sentinels.
+        "panel_view_digest": image_view_digest,
+        "panel_set_digest": image_set_digest,
     }
 
 
@@ -1736,7 +2569,8 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
     input_digest_schema = receipt["input_digest_schema"]
     if not isinstance(input_digest_schema, str) \
             or input_digest_schema not in {
-            STRUCTURED_INPUT_DIGEST_SCHEMA, NAMED_IMAGE_INPUT_DIGEST_SCHEMA}:
+            STRUCTURED_INPUT_DIGEST_SCHEMA, NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
+            TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA}:
         raise CodexProposerFailure(
             "Codex receipt input digest schema is unknown")
     for key in (
@@ -1753,6 +2587,12 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
             or re.fullmatch(r"sha256:[0-9a-f]{64}", panel_set) is None:
         raise CodexProposerFailure(
             "Codex receipt panel_set_digest is not semantic SHA-256")
+    if input_digest_schema == TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA:
+        empty_view, empty_set = _text_zero_image_digests()
+        if receipt["panel_view_digest"] != empty_view \
+                or receipt["panel_set_digest"] != empty_set:
+            raise CodexProposerFailure(
+                "Codex text receipt does not certify the zero-image input")
     chain_keys = (
         "current_source_digest", "current_log_digest",
         "proposed_source_digest", "proposed_log_digest",
@@ -1814,6 +2654,75 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
         raise CodexProposerFailure("Codex receipt digest does not reproduce")
 
 
+def _validate_codex_named_image_receipt_snapshot(
+        receipt: Mapping[str, Any], prompt: str,
+        snapshot: Sequence[tuple[str, bytes]], schema_digest: str,
+        payload: Mapping[str, Any] | None) -> None:
+    """Replay a named-image receipt from one already-frozen byte snapshot."""
+
+    validate_codex_receipt(receipt)
+    if receipt["input_digest_schema"] != NAMED_IMAGE_INPUT_DIGEST_SCHEMA:
+        raise CodexProposerFailure(
+            "Codex receipt is not from the named-image input domain")
+    expected = _causal_named_image_input_metadata_from_snapshot(
+        prompt, snapshot, schema_digest)
+    expected_with_schema = {**expected, "output_schema_digest": schema_digest}
+    if any(receipt[key] != value
+           for key, value in expected_with_schema.items()):
+        raise CodexProposerFailure(
+            "Codex named-image receipt does not bind the supplied prompt, "
+            "schema, names, and exact image bytes")
+    if payload is not None:
+        if not isinstance(payload, Mapping):
+            raise CodexProposerFailure(
+                "Codex named-image payload must be a mapping")
+        if receipt["structured_output_digest"] != _structured_payload_digest(payload):
+            raise CodexProposerFailure(
+                "Codex named-image receipt does not bind the supplied payload")
+
+
+def validate_codex_named_image_receipt(
+        receipt: Mapping[str, Any] | CodexReceipt, prompt: str,
+        image_png_paths: Sequence[str], image_names: Sequence[str],
+        output_schema: Mapping[str, Any],
+        payload: Mapping[str, Any] | None = None,
+        ) -> None:
+    """Validate one exact named-image prompt/schema/input/output envelope.
+
+    The image paths are snapshotted exactly once.  Callers that need to span
+    execution and validation should therefore pass paths in a private frozen
+    copy, rather than mutable caller-owned paths.
+    """
+
+    prompt = _bounded_utf8(prompt, "prompt", MAX_TASK_UTF8_BYTES)
+    _, _, schema_digest = _freeze_codex_strict_output_schema(output_schema)
+    snapshot = _named_image_snapshot(image_png_paths, image_names)
+    receipt_body = receipt.to_dict() if isinstance(receipt, CodexReceipt) else receipt
+    _validate_codex_named_image_receipt_snapshot(
+        receipt_body, prompt, snapshot, schema_digest, payload)
+
+
+def validate_codex_text_receipt(
+        receipt: Mapping[str, Any],
+        prompt: str,
+        output_schema: Mapping[str, Any],
+        ) -> None:
+    """Validate a receipt against one exact zero-image prompt/schema domain."""
+
+    prompt = _bounded_utf8(prompt, "prompt", MAX_TASK_UTF8_BYTES)
+    _, _, schema_digest = _freeze_codex_strict_output_schema(output_schema)
+    validate_codex_receipt(receipt)
+    if receipt["input_digest_schema"] != TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA:
+        raise CodexProposerFailure(
+            "Codex receipt is not from the text-only input domain")
+    expected = _causal_text_input_metadata(prompt, schema_digest)
+    expected_with_schema = {**expected, "output_schema_digest": schema_digest}
+    if any(receipt[key] != value
+           for key, value in expected_with_schema.items()):
+        raise CodexProposerFailure(
+            "Codex text receipt does not bind the supplied prompt and schema")
+
+
 def run_codex_structured(
         task: str,
         panel_png_paths: Sequence[str],
@@ -1833,12 +2742,8 @@ def run_codex_structured(
     if isinstance(minutes, bool) or not isinstance(minutes, int) \
             or not 1 <= minutes <= 120:
         raise CodexProposerFailure("Codex timeout minutes must be in [1, 120]")
-    if not isinstance(output_schema, Mapping):
-        raise CodexProposerFailure("Codex output schema must be a mapping")
-    schema_bytes = _canonical_json_bytes(dict(output_schema))
-    if not schema_bytes or len(schema_bytes) > MAX_SCHEMA_UTF8_BYTES:
-        raise CodexProposerFailure("Codex output schema is empty or oversized")
-    schema_digest = _bytes_digest(schema_bytes)
+    _, schema_bytes, schema_digest = _freeze_codex_strict_output_schema(
+        output_schema)
     temp_parent = _safe_temp_parent()
     resolved_executable, launcher_identity = _codex_launcher_identity(executable)
     launcher_digest = launcher_identity[-1]
@@ -1971,15 +2876,10 @@ def run_codex_named_images_structured(
     if isinstance(minutes, bool) or not isinstance(minutes, int) \
             or not 1 <= minutes <= 120:
         raise CodexProposerFailure("Codex timeout minutes must be in [1, 120]")
-    if not isinstance(output_schema, Mapping):
-        raise CodexProposerFailure("Codex output schema must be a mapping")
-    validate_codex_strict_output_schema(output_schema)
+    _, schema_bytes, schema_digest = _freeze_codex_strict_output_schema(
+        output_schema)
     # Validate before creating any private state.
     _named_image_snapshot(image_png_paths, image_names)
-    schema_bytes = _canonical_json_bytes(dict(output_schema))
-    if not schema_bytes or len(schema_bytes) > MAX_SCHEMA_UTF8_BYTES:
-        raise CodexProposerFailure("Codex output schema is empty or oversized")
-    schema_digest = _bytes_digest(schema_bytes)
     temp_parent = _safe_temp_parent()
     resolved_executable, launcher_identity = _codex_launcher_identity(executable)
     launcher_digest = launcher_identity[-1]
@@ -2086,6 +2986,131 @@ def run_codex_named_images_structured(
         return CodexStructuredResult(payload=payload, receipt=receipt)
 
 
+def run_codex_text_structured(
+        prompt: str,
+        output_schema: Mapping[str, Any],
+        model: str = DEFAULT_CODEX_MODEL,
+        reasoning_effort: str = DEFAULT_REASONING_EFFORT,
+        minutes: int = 15,
+        verbose: bool = False,
+        executable: str = "codex",
+        cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        expected_launcher_digest: str | None = None,
+        ) -> CodexStructuredResult:
+    """Run one schema-constrained Codex turn with text and zero images.
+
+    The prompt is sent only over stdin.  The isolated private view contains
+    only the canonical output schema, and the causal receipt binds explicit
+    zero-image sentinels under a transport-specific input schema.
+    """
+    prompt = _bounded_utf8(prompt, "prompt", MAX_TASK_UTF8_BYTES)
+    model = _validate_model(model)
+    reasoning_effort = _validate_reasoning_effort(reasoning_effort)
+    if isinstance(minutes, bool) or not isinstance(minutes, int) \
+            or not 1 <= minutes <= 120:
+        raise CodexProposerFailure("Codex timeout minutes must be in [1, 120]")
+    _, schema_bytes, schema_digest = _freeze_codex_strict_output_schema(
+        output_schema)
+    temp_parent = _safe_temp_parent()
+    resolved_executable, launcher_identity = _codex_launcher_identity(executable)
+    launcher_digest = launcher_identity[-1]
+    if expected_launcher_digest is not None:
+        if not isinstance(expected_launcher_digest, str) or re.fullmatch(
+                r"[0-9a-f]{64}", expected_launcher_digest) is None:
+            raise CodexProposerFailure(
+                "expected Codex launcher digest must be 64 lowercase hex digits")
+        if launcher_digest != expected_launcher_digest:
+            raise CodexProposerFailure(
+                "Codex launcher bytes differ from the external commitment")
+    cli_version = _codex_cli_version(
+        resolved_executable, temp_parent=temp_parent)
+
+    with tempfile.TemporaryDirectory(
+            prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
+            tempfile.TemporaryDirectory(
+                prefix="bongard-codex-text-", dir=temp_parent) as view_dir:
+        _require_outside_bongard(auth_dir, "Codex auth home")
+        _require_outside_bongard(view_dir, "Codex text-only view")
+        _stage_codex_auth(auth_dir)
+        policy_cache = _stage_cloud_policy_cache(
+            auth_dir, cloud_policy_cache_snapshot
+        )
+        os.chmod(view_dir, 0o700)
+        schema_path = os.path.join(view_dir, "output_schema.json")
+        descriptor = os.open(
+            schema_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        try:
+            offset = 0
+            while offset < len(schema_bytes):
+                offset += os.write(descriptor, schema_bytes[offset:])
+            os.fsync(descriptor)
+        finally:
+            os.close(descriptor)
+        causal_input = _causal_text_input_metadata(prompt, schema_digest)
+        command = _codex_command(
+            executable=resolved_executable,
+            view_dir=view_dir,
+            image_paths=(),
+            schema_path=schema_path,
+            model=model,
+            reasoning_effort=reasoning_effort,
+        )
+        if verbose:
+            print(
+                f"invoking isolated {model} Codex text turn "
+                f"({reasoning_effort}, up to {minutes} min)",
+                flush=True,
+            )
+        _recheck_staged_cloud_policy_cache(policy_cache)
+        returncode, stdout, stderr = _run_codex_process(
+            command,
+            task_bytes=prompt.encode("utf-8"),
+            view_dir=view_dir,
+            environment=_minimal_environment(
+                codex_home=auth_dir, temp_parent=temp_parent),
+            minutes=minutes,
+        )
+        _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_text_private_view(view_dir, schema_path, schema_digest)
+        if returncode != 0:
+            try:
+                stderr_detail = stderr.decode(
+                    "utf-8", errors="strict").strip()[-800:]
+            except UnicodeError:
+                stderr_detail = "non-UTF-8 diagnostic output"
+            try:
+                stdout_detail = stdout.decode(
+                    "utf-8", errors="strict").strip()[-1600:]
+            except UnicodeError:
+                stdout_detail = "non-UTF-8 JSONL diagnostic output"
+            detail = " | ".join(
+                part for part in (stderr_detail, stdout_detail) if part)
+            raise CodexProposerFailure(
+                f"Codex exited {returncode}: {detail or 'no diagnostic'}")
+        resolved_after, launcher_identity_after = _codex_launcher_identity(
+            resolved_executable)
+        if resolved_after != resolved_executable \
+                or launcher_identity_after != launcher_identity:
+            raise CodexProposerFailure(
+                "Codex CLI launcher changed during text execution")
+        cli_version_after = _codex_cli_version(
+            resolved_after, temp_parent=temp_parent)
+        if cli_version_after != cli_version:
+            raise CodexProposerFailure(
+                "Codex CLI version changed during text execution")
+        payload, receipt = _parse_jsonl(
+            stdout,
+            requested_model=model,
+            reasoning_effort=reasoning_effort,
+            cli_version=cli_version,
+            cli_launcher_digest=launcher_digest,
+            cloud_config_bundle_cache_binding=policy_cache.binding,
+            output_schema_digest=schema_digest,
+            causal_input=causal_input,
+        )
+        return CodexStructuredResult(payload=payload, receipt=receipt)
+
+
 __all__ = [
     "CODEX_ISOLATION_POLICY",
     "CODEX_RECEIPT_SCHEMA",
@@ -2093,10 +3118,12 @@ __all__ = [
     "DEFAULT_REASONING_EFFORT",
     "NAMED_IMAGE_INPUT_DIGEST_SCHEMA",
     "STRUCTURED_INPUT_DIGEST_SCHEMA",
+    "TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA",
     "CodexProposerFailure",
     "CodexReceipt",
     "CodexStructuredResult",
     "CloudPolicyCacheSnapshot",
+    "StagedCodexLauncher",
     "codex_cli_authenticated_fingerprint",
     "codex_cli_fingerprint",
     "codex_cli_version",
@@ -2105,8 +3132,12 @@ __all__ = [
     "ordered_panel_view_digest",
     "run_codex_named_images_structured",
     "run_codex_structured",
+    "run_codex_text_structured",
     "semantic_panel_set_digest",
     "snapshot_cloud_policy_cache",
+    "stage_codex_launcher",
     "validate_codex_strict_output_schema",
+    "validate_codex_named_image_receipt",
     "validate_codex_receipt",
+    "validate_codex_text_receipt",
 ]

@@ -17,7 +17,9 @@ from collections import Counter, deque
 from dataclasses import dataclass
 import hashlib
 import json
+import os
 from pathlib import Path
+import stat
 from types import MappingProxyType
 from typing import Any, Iterable, Iterator, Mapping, Sequence
 
@@ -65,25 +67,99 @@ def _address(value: Any) -> str:
 
 
 def _file_address(path: Path, *, require_png: bool = False) -> tuple[str, int]:
-    """Hash a stable snapshot of *path*, rejecting concurrent modification."""
+    """Hash one no-follow file descriptor and re-bind it to *path*.
 
-    before = path.stat()
+    A path-level ``stat/read/stat`` sequence can be redirected between the
+    first check and ``open``.  The corpus manifest is an authentication
+    boundary, so bind the read to one regular-file inode and require the
+    pathname to name that same inode before and after hashing.
+    """
+
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    flags |= getattr(os, "O_NOFOLLOW", 0)
+    try:
+        before_path = os.lstat(path)
+        if not stat.S_ISREG(before_path.st_mode):
+            raise CorpusValidationError(
+                f"panel is not a regular no-follow file: {path}"
+            )
+        descriptor = os.open(path, flags)
+    except CorpusValidationError:
+        raise
+    except OSError as exc:
+        raise CorpusValidationError(f"cannot open panel safely: {path}") from exc
+
+    identity = (
+        before_path.st_dev,
+        before_path.st_ino,
+        before_path.st_size,
+        before_path.st_mtime_ns,
+        before_path.st_ctime_ns,
+    )
     digest = hashlib.sha256()
     prefix = b""
-    with path.open("rb") as handle:
+    total = 0
+    try:
+        opened = os.fstat(descriptor)
+        opened_identity = (
+            opened.st_dev,
+            opened.st_ino,
+            opened.st_size,
+            opened.st_mtime_ns,
+            opened.st_ctime_ns,
+        )
+        if not stat.S_ISREG(opened.st_mode) or opened_identity != identity:
+            raise CorpusValidationError(
+                f"panel path changed while being opened: {path}"
+            )
         while True:
-            chunk = handle.read(1024 * 1024)
+            chunk = os.read(descriptor, 1024 * 1024)
             if not chunk:
                 break
             if len(prefix) < len(PNG_SIGNATURE):
                 prefix += chunk[: len(PNG_SIGNATURE) - len(prefix)]
             digest.update(chunk)
-    after = path.stat()
-    if (before.st_size, before.st_mtime_ns) != (after.st_size, after.st_mtime_ns):
-        raise CorpusValidationError(f"file changed while hashing: {path}")
+            total += len(chunk)
+        after_open = os.fstat(descriptor)
+        after_identity = (
+            after_open.st_dev,
+            after_open.st_ino,
+            after_open.st_size,
+            after_open.st_mtime_ns,
+            after_open.st_ctime_ns,
+        )
+        if (
+            not stat.S_ISREG(after_open.st_mode)
+            or after_identity != identity
+            or total != opened.st_size
+        ):
+            raise CorpusValidationError(f"file changed while hashing: {path}")
+    except OSError as exc:
+        raise CorpusValidationError(f"cannot hash panel safely: {path}") from exc
+    finally:
+        os.close(descriptor)
+
+    try:
+        after_path = os.lstat(path)
+    except OSError as exc:
+        raise CorpusValidationError(
+            f"panel path changed after hashing: {path}"
+        ) from exc
+    if (
+        not stat.S_ISREG(after_path.st_mode)
+        or (
+            after_path.st_dev,
+            after_path.st_ino,
+            after_path.st_size,
+            after_path.st_mtime_ns,
+            after_path.st_ctime_ns,
+        )
+        != identity
+    ):
+        raise CorpusValidationError(f"panel path changed while hashing: {path}")
     if require_png and prefix != PNG_SIGNATURE:
         raise CorpusValidationError(f"file has .png suffix but no PNG signature: {path}")
-    return "sha256:" + digest.hexdigest(), after.st_size
+    return "sha256:" + digest.hexdigest(), total
 
 
 def _normalise_group_name(name: str) -> str:
@@ -400,15 +476,32 @@ class CorpusManifest:
 def _png_paths(label_dir: Path) -> tuple[Path, ...]:
     if not label_dir.is_dir():
         raise CorpusValidationError(f"missing label directory: {label_dir}")
-    paths = tuple(
+    candidates = tuple(
         sorted(
-            (path.resolve() for path in label_dir.iterdir() if path.is_file() and path.suffix.lower() == ".png"),
+            (path for path in label_dir.iterdir() if path.suffix.lower() == ".png"),
             key=lambda path: path.name,
         )
     )
-    if len(paths) != 7:
-        raise CorpusValidationError(f"expected 7 PNGs in {label_dir}, found {len(paths)}")
-    return paths
+    expected_names = tuple(f"{index}.png" for index in range(7))
+    if tuple(path.name for path in candidates) != expected_names:
+        raise CorpusValidationError(
+            f"expected 7 PNGs canonically named 0.png..6.png in {label_dir}, "
+            f"found {[path.name for path in candidates]}"
+        )
+    paths: list[Path] = []
+    for path in candidates:
+        try:
+            metadata = path.lstat()
+        except OSError as exc:
+            raise CorpusValidationError(
+                f"cannot inspect source PNG without following links: {path}"
+            ) from exc
+        if not stat.S_ISREG(metadata.st_mode):
+            raise CorpusValidationError(
+                f"source PNG is not a regular no-follow file: {path}"
+            )
+        paths.append(path.resolve(strict=True))
+    return tuple(paths)
 
 
 def _image_component(root: Path, family: str) -> tuple[str, Path] | None:

@@ -396,15 +396,27 @@ class TruthEvidenceRecord:
                 "causes",
             }:
                 raise ValueError("uncertainty JSON has missing or unknown fields")
+            for field in ("lower", "upper"):
+                if type(uncertainty_data[field]) is not float:
+                    raise ValueError(
+                        f"uncertainty {field} must be a literal canonical float"
+                    )
+            if (
+                uncertainty_data["confidence_level"] is not None
+                and type(uncertainty_data["confidence_level"]) is not float
+            ):
+                raise ValueError(
+                    "uncertainty confidence_level must be a literal canonical float"
+                )
+            if not isinstance(uncertainty_data["causes"], list) or any(
+                not isinstance(item, str) for item in uncertainty_data["causes"]
+            ):
+                raise ValueError("uncertainty causes must be a list of strings")
             uncertainty = Uncertainty(
-                float(uncertainty_data["lower"]),
-                float(uncertainty_data["upper"]),
-                (
-                    float(uncertainty_data["confidence_level"])
-                    if uncertainty_data["confidence_level"] is not None
-                    else None
-                ),
-                tuple(str(item) for item in uncertainty_data["causes"]),
+                uncertainty_data["lower"],
+                uncertainty_data["upper"],
+                uncertainty_data["confidence_level"],
+                tuple(uncertainty_data["causes"]),
             )
         value = data["value"]
         if value not in (None, True):

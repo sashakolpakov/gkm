@@ -1,0 +1,1300 @@
+"""No-reroll production command boundary for the atomic Bongard smoke.
+
+The boundary authenticates the complete official release and the exact A3
+ledger, freezes every authoritative Python source, persists a secret-free
+command commitment, and only then creates the three private seeds.  It owns
+the exposure, prediction, and terminal durability boundaries.  Nothing in
+this module prints task identities.
+"""
+
+from __future__ import annotations
+
+import argparse
+from dataclasses import dataclass, field
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import secrets
+import stat
+from typing import Any, Callable, ContextManager, Mapping
+
+from bongard.artifacts import canonical_digest, canonical_json
+from bongard.atomic_smoke_precommit import (
+    OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
+    OFFICIAL_CORPUS_MANIFEST_DIGEST,
+    OFFICIAL_RELEASE_DESCRIPTOR_DIGEST,
+    OFFICIAL_SPLIT_SOURCE_DIGEST,
+    AtomicSmokePrecommit,
+    prepare_atomic_smoke_precommit,
+)
+from bongard.atomic_smoke_runner import (
+    AtomicSmokeRun,
+    atomic_smoke_run_protocol_digest,
+    run_atomic_smoke,
+)
+from bongard.corpus import ShapeBongardCorpus
+from bongard.exposure import ExposureLedger
+from bongard.release import (
+    DEFAULT_RELEASE_PATH,
+    OfficialReleaseDescriptor,
+    load_official_release,
+)
+from bongard.semantic_calibration_command import (
+    StageASourceDependencyIdentity,
+    StageATrustedCorpus,
+    freeze_stage_a_source_dependencies,
+    load_stage_a_cache_snapshot,
+    persist_stage_a_cache_snapshot,
+)
+from bongard.transport import (
+    DEFAULT_CODEX_MODEL,
+    DEFAULT_REASONING_EFFORT,
+    CloudPolicyCacheSnapshot,
+    CodexStructuredResult,
+    StagedCodexLauncher,
+    run_codex_named_images_structured,
+    run_codex_text_structured,
+    snapshot_cloud_policy_cache,
+    stage_codex_launcher,
+)
+
+
+ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA = "gkm.bongard-atomic-smoke-command-config.v1"
+ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA = "gkm.bongard-atomic-smoke-command-terminal.v1"
+ATOMIC_SMOKE_COMMAND_RECEIPT_SCHEMA = "gkm.bongard-atomic-smoke-command-receipt.v1"
+ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST = (
+    "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02"
+)
+
+_HEX = re.compile(r"[0-9a-f]{64}\Z")
+_ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+NamedImageTransport = Callable[..., CodexStructuredResult]
+TextTransport = Callable[..., CodexStructuredResult]
+SecretFactory = Callable[[int], str]
+LauncherStager = Callable[..., ContextManager[StagedCodexLauncher]]
+
+
+class AtomicSmokeCommandError(RuntimeError):
+    """The production command violated authentication or causal durability."""
+
+
+class AtomicSmokeSourceMutationError(AtomicSmokeCommandError):
+    """Authoritative sources changed or became unreadable after the freeze."""
+
+    def __init__(
+        self,
+        phase: str,
+        expected: StageASourceDependencyIdentity,
+        observed: StageASourceDependencyIdentity | None,
+        observation_error_digest: str | None = None,
+    ) -> None:
+        self.phase = _text(phase, "source mutation phase")
+        self.expected = expected
+        self.observed = observed
+        self.observation_error_digest = observation_error_digest
+        if observed is None:
+            _hex(observation_error_digest, "source observation error digest")
+            state = "became unreadable"
+        else:
+            if observed == expected or observation_error_digest is not None:
+                raise AtomicSmokeCommandError("source mutation evidence is inconsistent")
+            state = f"changed to {observed.digest}"
+        super().__init__(f"authoritative sources {state} during {self.phase}")
+
+
+def _hex(value: object, label: str) -> str:
+    if not isinstance(value, str) or _HEX.fullmatch(value) is None:
+        raise AtomicSmokeCommandError(f"{label} must be 64 lowercase hex")
+    return value
+
+
+def _address(value: object, label: str) -> str:
+    if not isinstance(value, str) or _ADDRESS.fullmatch(value) is None:
+        raise AtomicSmokeCommandError(f"{label} must be a sha256: address")
+    return value
+
+
+def _text(value: object, label: str, *, maximum: int = 512) -> str:
+    if (
+        not isinstance(value, str)
+        or not value.strip()
+        or value != value.strip()
+        or "\x00" in value
+        or len(value.encode("utf-8")) > maximum
+    ):
+        raise AtomicSmokeCommandError(f"{label} must be bounded exact text")
+    return value
+
+
+def _exact_int(value: object, label: str, *, minimum: int, maximum: int) -> int:
+    if type(value) is not int or not minimum <= value <= maximum:
+        raise AtomicSmokeCommandError(
+            f"{label} must be an exact integer in [{minimum}, {maximum}]"
+        )
+    return value
+
+
+def _canonical_clone(value: object, label: str) -> Any:
+    try:
+        return json.loads(canonical_json(value))
+    except (TypeError, ValueError, UnicodeError, json.JSONDecodeError) as exc:
+        raise AtomicSmokeCommandError(f"{label} is not canonical JSON") from exc
+
+
+def _stable_read(
+    path: Path,
+    *,
+    maximum: int = 128 * 1024 * 1024,
+    fsync_file: bool = False,
+) -> bytes:
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0)
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise AtomicSmokeCommandError("platform lacks no-follow file access")
+    flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(path, flags)
+    except OSError as exc:
+        raise AtomicSmokeCommandError(f"cannot open exact file {path}") from exc
+    try:
+        before = os.fstat(descriptor)
+        if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
+            raise AtomicSmokeCommandError("exact artifact is not singly-linked regular data")
+        if before.st_size > maximum:
+            raise AtomicSmokeCommandError("exact artifact exceeds its byte bound")
+        blocks: list[bytes] = []
+        total = 0
+        while True:
+            block = os.read(descriptor, min(1024 * 1024, maximum + 1 - total))
+            if not block:
+                break
+            blocks.append(block)
+            total += len(block)
+            if total > maximum:
+                raise AtomicSmokeCommandError("exact artifact became oversized")
+        if fsync_file:
+            os.fsync(descriptor)
+        after = os.fstat(descriptor)
+    finally:
+        os.close(descriptor)
+    if (
+        before.st_dev,
+        before.st_ino,
+        before.st_size,
+        before.st_mtime_ns,
+        before.st_ctime_ns,
+    ) != (
+        after.st_dev,
+        after.st_ino,
+        after.st_size,
+        after.st_mtime_ns,
+        after.st_ctime_ns,
+    ) or total != after.st_size:
+        raise AtomicSmokeCommandError("exact artifact changed while being read")
+    return b"".join(blocks)
+
+
+def _open_store(directory: str | Path) -> tuple[Path, int]:
+    requested = Path(directory).expanduser()
+    try:
+        resolved = requested.resolve(strict=True)
+    except OSError as exc:
+        raise AtomicSmokeCommandError("artifact store must already exist") from exc
+    if requested.absolute() != resolved or not resolved.is_dir():
+        raise AtomicSmokeCommandError("artifact store must be one canonical directory")
+    flags = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | getattr(os, "O_CLOEXEC", 0)
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    try:
+        descriptor = os.open(resolved, flags)
+    except OSError as exc:
+        raise AtomicSmokeCommandError("cannot open artifact store") from exc
+    info = os.fstat(descriptor)
+    if not stat.S_ISDIR(info.st_mode):
+        os.close(descriptor)
+        raise AtomicSmokeCommandError("artifact store descriptor is not a directory")
+    return resolved, descriptor
+
+
+@dataclass(frozen=True, slots=True)
+class _StoreBinding:
+    label: str
+    path: Path
+    identity: tuple[int, int, int, int]
+
+    @classmethod
+    def freeze(cls, label: str, directory: str | Path) -> "_StoreBinding":
+        path, descriptor = _open_store(directory)
+        try:
+            info = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        return cls(
+            _text(label, "store label", maximum=64),
+            path,
+            (
+                info.st_dev,
+                info.st_ino,
+                info.st_mode,
+                getattr(info, "st_uid", -1),
+            ),
+        )
+
+    def check(self, phase: str) -> None:
+        path, descriptor = _open_store(self.path)
+        try:
+            info = os.fstat(descriptor)
+        finally:
+            os.close(descriptor)
+        observed = (
+            info.st_dev,
+            info.st_ino,
+            info.st_mode,
+            getattr(info, "st_uid", -1),
+        )
+        if path != self.path or observed != self.identity:
+            raise AtomicSmokeCommandError(
+                f"{self.label} store changed during {_text(phase, 'store phase')}"
+            )
+
+
+def _write_content_addressed(
+    directory: str | Path,
+    *,
+    digest: str,
+    suffix: str,
+    payload: bytes,
+) -> Path:
+    address = _address(digest, "artifact content address")
+    store, store_fd = _open_store(directory)
+    filename = address.removeprefix("sha256:") + suffix
+    destination = store / filename
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_CLOEXEC", 0)
+    if not hasattr(os, "O_NOFOLLOW"):
+        os.close(store_fd)
+        raise AtomicSmokeCommandError("platform lacks safe exclusive persistence")
+    flags |= os.O_NOFOLLOW
+    try:
+        try:
+            descriptor = os.open(filename, flags, 0o600, dir_fd=store_fd)
+        except FileExistsError:
+            if destination.is_symlink() or _stable_read(
+                destination, fsync_file=True
+            ) != payload:
+                raise AtomicSmokeCommandError(
+                    "content-addressed path contains different or linked bytes"
+                )
+        else:
+            try:
+                offset = 0
+                while offset < len(payload):
+                    written = os.write(descriptor, payload[offset:])
+                    if written <= 0:
+                        raise AtomicSmokeCommandError("short artifact write")
+                    offset += written
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+        os.fsync(store_fd)
+    finally:
+        os.close(store_fd)
+    if _stable_read(destination) != payload:
+        raise AtomicSmokeCommandError("reloaded artifact differs after fsync")
+    return destination
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeAuthenticatedInputs:
+    """Exact official release, full manifest, and A3 predecessor."""
+
+    trusted: StageATrustedCorpus = field(repr=False)
+    release: OfficialReleaseDescriptor
+    predecessor: ExposureLedger
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.trusted, StageATrustedCorpus):
+            raise TypeError("trusted must be StageATrustedCorpus")
+        if not isinstance(self.release, OfficialReleaseDescriptor):
+            raise TypeError("release must be OfficialReleaseDescriptor")
+        if not isinstance(self.predecessor, ExposureLedger):
+            raise TypeError("predecessor must be ExposureLedger")
+        if self.trusted.authentication_mode != "official-release-archive-and-corpus/v1":
+            raise AtomicSmokeCommandError("production smoke requires official-release authentication")
+        if self.release.digest != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST:
+            raise AtomicSmokeCommandError("release descriptor differs from official pin")
+        if (
+            self.release.corpus_manifest_sha256 != OFFICIAL_CORPUS_MANIFEST_DIGEST
+            or self.trusted.full_manifest.digest != OFFICIAL_CORPUS_MANIFEST_DIGEST
+        ):
+            raise AtomicSmokeCommandError("full corpus manifest differs from official pin")
+        if (
+            self.release.split_sha256 != OFFICIAL_SPLIT_SOURCE_DIGEST
+            or self.trusted.corpus.split.source_digest != OFFICIAL_SPLIT_SOURCE_DIGEST
+        ):
+            raise AtomicSmokeCommandError("split source differs from official pin")
+        if self.predecessor.digest != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST:
+            raise AtomicSmokeCommandError("A3 predecessor differs from official pin")
+        if self.predecessor.corpus_digest != OFFICIAL_CORPUS_MANIFEST_DIGEST:
+            raise AtomicSmokeCommandError("A3 predecessor belongs to another corpus")
+        if not self.predecessor.exposed_task_ids <= set(self.trusted.corpus.task_ids):
+            raise AtomicSmokeCommandError("A3 predecessor contains IDs outside the corpus")
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": "gkm.bongard-atomic-smoke-authenticated-inputs.v1",
+            "authentication": self.trusted.to_data(),
+            "release_descriptor_digest": self.release.digest,
+            "corpus_manifest_digest": self.trusted.full_manifest.digest,
+            "split_source_digest": self.trusted.corpus.split.source_digest,
+            "exposure_predecessor_digest": self.predecessor.digest,
+        }
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + canonical_digest(self.to_data())
+
+
+def authenticate_atomic_smoke_inputs(
+    *,
+    corpus_path: str | Path,
+    archive_path: str | Path,
+    exposure_ledger_path: str | Path,
+    release_descriptor_path: str | Path = DEFAULT_RELEASE_PATH,
+) -> AtomicSmokeAuthenticatedInputs:
+    """Discover and hash-authenticate the complete official release and ledger."""
+
+    release = load_official_release(release_descriptor_path)
+    if release.digest != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST:
+        raise AtomicSmokeCommandError("checked release descriptor differs from the command pin")
+    corpus = ShapeBongardCorpus.discover(
+        corpus_path, require_complete=True, require_split=True
+    )
+    trusted = StageATrustedCorpus.from_official_release(
+        corpus=corpus,
+        release=release,
+        archive_path=archive_path,
+    )
+    ledger_path = Path(exposure_ledger_path).expanduser().absolute()
+    try:
+        ledger_raw = json.loads(_stable_read(ledger_path))
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise AtomicSmokeCommandError("A3 exposure ledger is not exact JSON") from exc
+    if not isinstance(ledger_raw, Mapping):
+        raise AtomicSmokeCommandError("A3 exposure ledger root is not an object")
+    predecessor = ExposureLedger.from_dict(ledger_raw)
+    return AtomicSmokeAuthenticatedInputs(trusted, release, predecessor)
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeCommandConfig:
+    """Secret-free command commitment persisted before task selection."""
+
+    input_authentication_digest: str
+    source_dependencies: StageASourceDependencyIdentity
+    cache_binding: str
+    cache_file_sha256: str
+    cache_byte_count: int
+    expected_launcher_digest: str
+    run_protocol_digest: str
+    model: str
+    reasoning_effort: str
+    minutes: int
+    verifier_id: str
+    verbose: bool = False
+
+    def __post_init__(self) -> None:
+        _address(self.input_authentication_digest, "input authentication digest")
+        if not isinstance(self.source_dependencies, StageASourceDependencyIdentity):
+            raise TypeError("source_dependencies has the wrong type")
+        if self.cache_binding != "absent":
+            _address(self.cache_binding, "cloud policy cache binding")
+        _address(self.cache_file_sha256, "cache snapshot file digest")
+        _exact_int(self.cache_byte_count, "cache byte count", minimum=0, maximum=4_194_304)
+        _hex(self.expected_launcher_digest, "launcher digest")
+        if self.expected_launcher_digest != ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST:
+            raise AtomicSmokeCommandError("launcher digest differs from production native pin")
+        if self.run_protocol_digest != atomic_smoke_run_protocol_digest():
+            raise AtomicSmokeCommandError("run protocol digest differs")
+        _text(self.model, "model", maximum=128)
+        _text(self.reasoning_effort, "reasoning effort", maximum=32)
+        _exact_int(self.minutes, "minutes", minimum=1, maximum=120)
+        _text(self.verifier_id, "verifier ID", maximum=256)
+        if not isinstance(self.verbose, bool):
+            raise AtomicSmokeCommandError("verbose must be Boolean")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA,
+            "scope": "one-exploratory-repeated-generator-train-smoke/v1",
+            "official_release_descriptor_digest": (
+                OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
+            ),
+            "official_corpus_manifest_digest": OFFICIAL_CORPUS_MANIFEST_DIGEST,
+            "official_split_source_digest": OFFICIAL_SPLIT_SOURCE_DIGEST,
+            "official_a3_successor_ledger_digest": (
+                OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            ),
+            "input_authentication_digest": self.input_authentication_digest,
+            "source_dependencies": self.source_dependencies.to_data(),
+            "source_dependency_digest": self.source_dependencies.digest,
+            "cloud_policy_cache_binding": self.cache_binding,
+            "cloud_policy_cache_snapshot_file_sha256": self.cache_file_sha256,
+            "cloud_policy_cache_snapshot_byte_count": self.cache_byte_count,
+            "expected_launcher_digest": self.expected_launcher_digest,
+            "run_protocol_digest": self.run_protocol_digest,
+            "model": self.model,
+            "reasoning_effort": self.reasoning_effort,
+            "minutes": self.minutes,
+            "verifier_id": self.verifier_id,
+            "verbose": self.verbose,
+            "secrets_generated_after_persistence": True,
+            "secret_values_embedded": False,
+            "dependence_design_authorized": False,
+            "calibration_authorized": False,
+            "benchmark_claim_authorized": False,
+            "official_test_authorized": False,
+        }
+
+    @property
+    def digest(self) -> str:
+        return "sha256:" + canonical_digest(self.content_data())
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "config_digest": self.digest}
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandConfig":
+        expected = {
+            "schema", "scope", "official_release_descriptor_digest",
+            "official_corpus_manifest_digest", "official_split_source_digest",
+            "official_a3_successor_ledger_digest", "input_authentication_digest",
+            "source_dependencies", "source_dependency_digest",
+            "cloud_policy_cache_binding",
+            "cloud_policy_cache_snapshot_file_sha256",
+            "cloud_policy_cache_snapshot_byte_count", "expected_launcher_digest",
+            "run_protocol_digest", "model", "reasoning_effort", "minutes",
+            "verifier_id", "verbose", "secrets_generated_after_persistence",
+            "secret_values_embedded", "dependence_design_authorized",
+            "calibration_authorized", "benchmark_claim_authorized",
+            "official_test_authorized", "config_digest",
+        }
+        if not isinstance(value, Mapping) or set(value) != expected:
+            raise AtomicSmokeCommandError("command config fields differ")
+        if (
+            value["schema"] != ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA
+            or value["scope"] != "one-exploratory-repeated-generator-train-smoke/v1"
+            or value["official_release_descriptor_digest"]
+            != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
+            or value["official_corpus_manifest_digest"]
+            != OFFICIAL_CORPUS_MANIFEST_DIGEST
+            or value["official_split_source_digest"] != OFFICIAL_SPLIT_SOURCE_DIGEST
+            or value["official_a3_successor_ledger_digest"]
+            != OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST
+            or value["secrets_generated_after_persistence"] is not True
+            or value["secret_values_embedded"] is not False
+            or any(
+                value[name] is not False
+                for name in (
+                    "dependence_design_authorized", "calibration_authorized",
+                    "benchmark_claim_authorized", "official_test_authorized",
+                )
+            )
+            or not isinstance(value["source_dependencies"], Mapping)
+        ):
+            raise AtomicSmokeCommandError("command config authority differs")
+        sources = StageASourceDependencyIdentity.from_data(
+            value["source_dependencies"]
+        )
+        if value["source_dependency_digest"] != sources.digest:
+            raise AtomicSmokeCommandError("command source digest parent differs")
+        result = cls(
+            input_authentication_digest=value["input_authentication_digest"],
+            source_dependencies=sources,
+            cache_binding=value["cloud_policy_cache_binding"],
+            cache_file_sha256=value[
+                "cloud_policy_cache_snapshot_file_sha256"
+            ],
+            cache_byte_count=value[
+                "cloud_policy_cache_snapshot_byte_count"
+            ],
+            expected_launcher_digest=value["expected_launcher_digest"],
+            run_protocol_digest=value["run_protocol_digest"],
+            model=value["model"],
+            reasoning_effort=value["reasoning_effort"],
+            minutes=value["minutes"],
+            verifier_id=value["verifier_id"],
+            verbose=value["verbose"],
+        )
+        if value["config_digest"] != result.digest or result.to_data() != _canonical_clone(
+            value, "command config"
+        ):
+            raise AtomicSmokeCommandError("command config digest differs")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeDurabilityReceipt:
+    kind: str
+    path: Path = field(repr=False, compare=False)
+    content_address: str
+    file_sha256: str
+    byte_count: int
+
+    def __post_init__(self) -> None:
+        _text(self.kind, "durability receipt kind", maximum=64)
+        _address(self.content_address, "durability content address")
+        _address(self.file_sha256, "durability file digest")
+        _exact_int(self.byte_count, "durability byte count", minimum=1, maximum=512_000_000)
+        if not self.path.is_absolute():
+            raise AtomicSmokeCommandError("durability receipt path must be absolute")
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_COMMAND_RECEIPT_SCHEMA,
+            "kind": self.kind,
+            "filename": self.path.name,
+            "content_address": self.content_address,
+            "file_sha256": self.file_sha256,
+            "byte_count": self.byte_count,
+            "persistence_protocol": "no-follow-exclusive-or-identical-fsync-file-dir-reload/v1",
+        }
+
+
+def _persist_config(
+    config: AtomicSmokeCommandConfig, directory: str | Path
+) -> AtomicSmokeDurabilityReceipt:
+    payload = canonical_json(config.to_data())
+    path = _write_content_addressed(
+        directory,
+        digest=config.digest,
+        suffix=".atomic-smoke-command.json",
+        payload=payload,
+    )
+    decoded = json.loads(_stable_read(path))
+    if not isinstance(decoded, Mapping) or AtomicSmokeCommandConfig.from_data(
+        decoded
+    ).to_data() != config.to_data():
+        raise AtomicSmokeCommandError("reloaded command config differs")
+    return AtomicSmokeDurabilityReceipt(
+        "command-config",
+        path.resolve(),
+        config.digest,
+        "sha256:" + hashlib.sha256(payload).hexdigest(),
+        len(payload),
+    )
+
+
+class _SourceGuard:
+    def __init__(
+        self, root: Path, expected: StageASourceDependencyIdentity
+    ) -> None:
+        self.root = root
+        self.expected = expected
+
+    def check(self, phase: str) -> None:
+        try:
+            observed = freeze_stage_a_source_dependencies(self.root)
+        except Exception as exc:
+            reason = (str(exc) or repr(exc)).encode(
+                "utf-8", errors="replace"
+            )[:4096]
+            raise AtomicSmokeSourceMutationError(
+                phase,
+                self.expected,
+                None,
+                hashlib.sha256(reason).hexdigest(),
+            ) from exc
+        if observed != self.expected:
+            raise AtomicSmokeSourceMutationError(
+                phase, self.expected, observed
+            )
+
+    def wrap(self, phase: str, transport: Callable[..., Any]) -> Callable[..., Any]:
+        if not callable(transport):
+            raise TypeError("transport must be callable")
+
+        def guarded(*args: Any, **kwargs: Any) -> Any:
+            self.check("before-" + phase)
+            try:
+                return transport(*args, **kwargs)
+            finally:
+                self.check("after-" + phase)
+
+        return guarded
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeCommandTerminal:
+    """Persistable terminal command record, including operational failures."""
+
+    status: str
+    phase: str
+    config_digest: str
+    source_dependency_digest: str
+    source_dependency_state: str
+    observed_source_dependency_digest: str | None
+    source_observation_error_digest: str | None
+    precommit_digest: str | None
+    precommit_data: Mapping[str, Any] | None
+    run_data: Mapping[str, Any] | None
+    run_digest: str | None
+    launcher_digest: str
+    launcher_version: str | None
+    failure_type: str | None
+    failure_reason_digest: str | None
+    terminal_digest: str
+
+    def __post_init__(self) -> None:
+        if self.status not in {"complete", "failed"}:
+            raise AtomicSmokeCommandError("terminal status differs")
+        _text(self.phase, "terminal phase", maximum=128)
+        _address(self.config_digest, "terminal config digest")
+        _hex(self.source_dependency_digest, "terminal source digest")
+        if self.source_dependency_state == "unchanged":
+            if (
+                self.observed_source_dependency_digest
+                != self.source_dependency_digest
+                or self.source_observation_error_digest is not None
+            ):
+                raise AtomicSmokeCommandError("unchanged terminal source state differs")
+        elif self.source_dependency_state == "mutated":
+            _hex(self.observed_source_dependency_digest, "observed source digest")
+            if (
+                self.observed_source_dependency_digest
+                == self.source_dependency_digest
+                or self.source_observation_error_digest is not None
+            ):
+                raise AtomicSmokeCommandError("mutated terminal source state differs")
+        elif self.source_dependency_state == "unreadable":
+            if self.observed_source_dependency_digest is not None:
+                raise AtomicSmokeCommandError("unreadable source state has an identity")
+            _hex(self.source_observation_error_digest, "source observation error")
+        else:
+            raise AtomicSmokeCommandError("unknown terminal source state")
+        _hex(self.launcher_digest, "terminal launcher digest")
+        if self.launcher_digest != ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST:
+            raise AtomicSmokeCommandError("terminal launcher differs from production pin")
+        if self.launcher_version is not None:
+            _text(self.launcher_version, "launcher version", maximum=128)
+        if self.precommit_digest is not None:
+            _address(self.precommit_digest, "terminal precommit digest")
+        if self.precommit_data is not None:
+            public_precommit = AtomicSmokePrecommit.from_data(self.precommit_data)
+            if self.precommit_digest != public_precommit.digest:
+                raise AtomicSmokeCommandError(
+                    "terminal precommit data differs from its digest"
+                )
+        if self.run_data is None:
+            if self.run_digest is not None:
+                raise AtomicSmokeCommandError("terminal run digest lacks run data")
+        else:
+            run = AtomicSmokeRun.from_data(self.run_data)
+            if (
+                self.run_digest != run.digest
+                or self.precommit_digest != run.precommit_digest
+                or (
+                    self.precommit_data is not None
+                    and canonical_json(self.precommit_data)
+                    != canonical_json(run.precommit_public_data)
+                )
+                or self.launcher_digest != run.expected_launcher_digest
+                or self.source_dependency_digest != run.source_dependency_digest
+                or (
+                    self.status == "complete" and run.status != "complete"
+                )
+            ):
+                raise AtomicSmokeCommandError("terminal wrapper differs from run")
+        if self.status == "complete":
+            if self.run_data is None or self.failure_type is not None or self.failure_reason_digest is not None:
+                raise AtomicSmokeCommandError("complete terminal has failure state")
+        elif self.run_data is None or self.failure_type is not None:
+            _text(self.failure_type, "failure type", maximum=256)
+            _hex(self.failure_reason_digest, "failure reason digest")
+        elif self.failure_reason_digest is not None:
+            raise AtomicSmokeCommandError("failed run has an untyped outer failure")
+        elif AtomicSmokeRun.from_data(self.run_data).status != "failed":
+            raise AtomicSmokeCommandError(
+                "failed wrapper around a complete run lacks an outer failure"
+            )
+        if self.terminal_digest != "sha256:" + canonical_digest(self.content_data()):
+            raise AtomicSmokeCommandError("terminal digest differs")
+
+    def content_data(self) -> dict[str, object]:
+        return {
+            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "status": self.status,
+            "phase": self.phase,
+            "config_digest": self.config_digest,
+            "source_dependency_digest": self.source_dependency_digest,
+            "source_dependency_state": self.source_dependency_state,
+            "observed_source_dependency_digest": (
+                self.observed_source_dependency_digest
+            ),
+            "source_observation_error_digest": self.source_observation_error_digest,
+            "precommit_digest": self.precommit_digest,
+            "precommit": (
+                None if self.precommit_data is None else dict(self.precommit_data)
+            ),
+            "run": None if self.run_data is None else dict(self.run_data),
+            "run_digest": self.run_digest,
+            "launcher_digest": self.launcher_digest,
+            "launcher_version": self.launcher_version,
+            "failure": (
+                None
+                if self.failure_type is None
+                else {
+                    "error_type": self.failure_type,
+                    "reason_digest": self.failure_reason_digest,
+                }
+            ),
+            "dependence_design_authorized": False,
+            "calibration_authorized": False,
+            "benchmark_claim_authorized": False,
+            "official_test_authorized": False,
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {**self.content_data(), "terminal_digest": self.terminal_digest}
+
+    @classmethod
+    def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandTerminal":
+        expected = {
+            "schema", "status", "phase", "config_digest",
+            "source_dependency_digest", "source_dependency_state",
+            "observed_source_dependency_digest", "source_observation_error_digest",
+            "precommit_digest", "precommit",
+            "run", "run_digest",
+            "launcher_digest", "launcher_version", "failure",
+            "dependence_design_authorized", "calibration_authorized",
+            "benchmark_claim_authorized", "official_test_authorized",
+            "terminal_digest",
+        }
+        if not isinstance(value, Mapping) or set(value) != expected:
+            raise AtomicSmokeCommandError("terminal fields differ")
+        if value["schema"] != ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA or any(
+            value[name] is not False
+            for name in (
+                "dependence_design_authorized", "calibration_authorized",
+                "benchmark_claim_authorized", "official_test_authorized",
+            )
+        ):
+            raise AtomicSmokeCommandError("terminal authority differs")
+        run = value["run"]
+        precommit = value["precommit"]
+        failure = value["failure"]
+        if precommit is not None and not isinstance(precommit, Mapping):
+            raise AtomicSmokeCommandError("terminal precommit must be object or null")
+        if run is not None and not isinstance(run, Mapping):
+            raise AtomicSmokeCommandError("terminal run must be object or null")
+        if failure is not None and (
+            not isinstance(failure, Mapping)
+            or set(failure) != {"error_type", "reason_digest"}
+        ):
+            raise AtomicSmokeCommandError("terminal failure fields differ")
+        result = cls(
+            status=value["status"],
+            phase=value["phase"],
+            config_digest=value["config_digest"],
+            source_dependency_digest=value["source_dependency_digest"],
+            source_dependency_state=value["source_dependency_state"],
+            observed_source_dependency_digest=value[
+                "observed_source_dependency_digest"
+            ],
+            source_observation_error_digest=value[
+                "source_observation_error_digest"
+            ],
+            precommit_digest=value["precommit_digest"],
+            precommit_data=(
+                None
+                if precommit is None
+                else _canonical_clone(precommit, "terminal precommit")
+            ),
+            run_data=None if run is None else _canonical_clone(run, "terminal run"),
+            run_digest=value["run_digest"],
+            launcher_digest=value["launcher_digest"],
+            launcher_version=value["launcher_version"],
+            failure_type=None if failure is None else failure["error_type"],
+            failure_reason_digest=None if failure is None else failure["reason_digest"],
+            terminal_digest=value["terminal_digest"],
+        )
+        if result.to_data() != _canonical_clone(value, "terminal"):
+            raise AtomicSmokeCommandError("terminal is not canonical")
+        return result
+
+    @classmethod
+    def from_run(
+        cls,
+        run: AtomicSmokeRun,
+        *,
+        config_digest: str,
+        launcher_version: str,
+    ) -> "AtomicSmokeCommandTerminal":
+        values = {
+            "status": "complete" if run.status == "complete" else "failed",
+            "phase": run.terminal_phase,
+            "config_digest": config_digest,
+            "source_dependency_digest": run.source_dependency_digest,
+            "source_dependency_state": "unchanged",
+            "observed_source_dependency_digest": run.source_dependency_digest,
+            "source_observation_error_digest": None,
+            "precommit_digest": run.precommit_digest,
+            "precommit_data": _canonical_clone(
+                run.precommit_public_data, "run precommit"
+            ),
+            "run_data": run.to_data(),
+            "run_digest": run.digest,
+            "launcher_digest": run.expected_launcher_digest,
+            "launcher_version": launcher_version,
+            "failure_type": None,
+            "failure_reason_digest": None,
+        }
+        content = {
+            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "status": values["status"],
+            "phase": values["phase"],
+            "config_digest": values["config_digest"],
+            "source_dependency_digest": values["source_dependency_digest"],
+            "source_dependency_state": values["source_dependency_state"],
+            "observed_source_dependency_digest": values[
+                "observed_source_dependency_digest"
+            ],
+            "source_observation_error_digest": values[
+                "source_observation_error_digest"
+            ],
+            "precommit_digest": values["precommit_digest"],
+            "precommit": values["precommit_data"],
+            "run": values["run_data"],
+            "run_digest": values["run_digest"],
+            "launcher_digest": values["launcher_digest"],
+            "launcher_version": values["launcher_version"],
+            "failure": None,
+            "dependence_design_authorized": False,
+            "calibration_authorized": False,
+            "benchmark_claim_authorized": False,
+            "official_test_authorized": False,
+        }
+        digest = "sha256:" + canonical_digest(content)
+        return cls(**values, terminal_digest=digest)
+
+    @classmethod
+    def failure(
+        cls,
+        error: Exception,
+        *,
+        phase: str,
+        config: AtomicSmokeCommandConfig,
+        precommit: AtomicSmokePrecommit | None,
+        launcher_version: str | None,
+        run: AtomicSmokeRun | None = None,
+    ) -> "AtomicSmokeCommandTerminal":
+        reason = (str(error) or repr(error)).encode("utf-8", errors="replace")[:4096]
+        mutation = error if isinstance(error, AtomicSmokeSourceMutationError) else None
+        effective_precommit_digest = (
+            run.precommit_digest
+            if run is not None
+            else None if precommit is None else precommit.digest
+        )
+        effective_precommit_data = (
+            _canonical_clone(run.precommit_public_data, "failed run precommit")
+            if run is not None
+            else precommit.to_data()
+            if isinstance(precommit, AtomicSmokePrecommit)
+            else None
+        )
+        values = {
+            "status": "failed",
+            "phase": phase,
+            "config_digest": config.digest,
+            "source_dependency_digest": config.source_dependencies.digest,
+            "source_dependency_state": (
+                "unchanged"
+                if mutation is None
+                else "mutated" if mutation.observed is not None else "unreadable"
+            ),
+            "observed_source_dependency_digest": (
+                config.source_dependencies.digest
+                if mutation is None
+                else None if mutation.observed is None else mutation.observed.digest
+            ),
+            "source_observation_error_digest": (
+                None if mutation is None else mutation.observation_error_digest
+            ),
+            "precommit_digest": effective_precommit_digest,
+            "precommit_data": effective_precommit_data,
+            "run_data": None if run is None else run.to_data(),
+            "run_digest": None if run is None else run.digest,
+            "launcher_digest": config.expected_launcher_digest,
+            "launcher_version": launcher_version,
+            "failure_type": type(error).__name__,
+            "failure_reason_digest": hashlib.sha256(reason).hexdigest(),
+        }
+        content = {
+            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "status": values["status"], "phase": values["phase"],
+            "config_digest": values["config_digest"],
+            "source_dependency_digest": values["source_dependency_digest"],
+            "source_dependency_state": values["source_dependency_state"],
+            "observed_source_dependency_digest": values[
+                "observed_source_dependency_digest"
+            ],
+            "source_observation_error_digest": values[
+                "source_observation_error_digest"
+            ],
+            "precommit_digest": values["precommit_digest"],
+            "precommit": values["precommit_data"],
+            "run": values["run_data"],
+            "run_digest": values["run_digest"],
+            "launcher_digest": values["launcher_digest"],
+            "launcher_version": values["launcher_version"],
+            "failure": {"error_type": values["failure_type"], "reason_digest": values["failure_reason_digest"]},
+            "dependence_design_authorized": False, "calibration_authorized": False,
+            "benchmark_claim_authorized": False, "official_test_authorized": False,
+        }
+        return cls(
+            **values,
+            terminal_digest="sha256:" + canonical_digest(content),
+        )
+
+
+def _persist_terminal(
+    terminal: AtomicSmokeCommandTerminal,
+    directory: str | Path,
+    *,
+    source_guard: _SourceGuard | None = None,
+) -> AtomicSmokeDurabilityReceipt:
+    if source_guard is not None:
+        source_guard.check("before-terminal-serialization")
+    payload = canonical_json(terminal.to_data())
+    if source_guard is not None:
+        source_guard.check("after-terminal-serialization")
+    path = _write_content_addressed(
+        directory,
+        digest=terminal.terminal_digest,
+        suffix=".atomic-smoke-terminal.json",
+        payload=payload,
+    )
+    raw = json.loads(_stable_read(path, maximum=512_000_000))
+    if not isinstance(raw, Mapping):
+        raise AtomicSmokeCommandError("terminal root is not an object")
+    if AtomicSmokeCommandTerminal.from_data(raw).to_data() != terminal.to_data():
+        raise AtomicSmokeCommandError("reloaded terminal differs")
+    if source_guard is not None:
+        source_guard.check("after-terminal-persistence-reload")
+    return AtomicSmokeDurabilityReceipt(
+        "terminal-outcome",
+        path.resolve(),
+        terminal.terminal_digest,
+        "sha256:" + hashlib.sha256(payload).hexdigest(),
+        len(payload),
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class AtomicSmokeCommandResult:
+    config: AtomicSmokeCommandConfig
+    config_receipt: AtomicSmokeDurabilityReceipt
+    precommit: AtomicSmokePrecommit | None = field(repr=False)
+    terminal: AtomicSmokeCommandTerminal
+    terminal_receipt: AtomicSmokeDurabilityReceipt
+
+
+def _fresh_secrets(factory: SecretFactory) -> tuple[str, str, str]:
+    if not callable(factory):
+        raise TypeError("secret_factory must be callable")
+    values = tuple(_hex(factory(32), "fresh private secret") for _ in range(3))
+    if len(set(values)) != 3:
+        raise AtomicSmokeCommandError("selection, episode, and label secrets must differ")
+    return values  # type: ignore[return-value]
+
+
+def _assert_non_test_precommit(precommit: AtomicSmokePrecommit) -> None:
+    if precommit.episode_plan.split == "test":
+        raise AtomicSmokeCommandError("official test is forbidden")
+
+
+def run_atomic_smoke_command(
+    *,
+    corpus_path: str | Path,
+    archive_path: str | Path,
+    exposure_ledger_path: str | Path,
+    config_store_dir: str | Path,
+    exposure_store_dir: str | Path,
+    prediction_store_dir: str | Path,
+    terminal_store_dir: str | Path,
+    cache_store_dir: str | Path,
+    release_descriptor_path: str | Path = DEFAULT_RELEASE_PATH,
+    expected_launcher_digest: str = ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST,
+    model: str = DEFAULT_CODEX_MODEL,
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT,
+    minutes: int = 15,
+    verifier_id: str = "canonical-bongard-verifier",
+    executable: str = "codex",
+    verbose: bool = False,
+    secret_factory: SecretFactory = secrets.token_hex,
+    cache_snapshotter: Callable[[], CloudPolicyCacheSnapshot] = snapshot_cloud_policy_cache,
+    launcher_stager: LauncherStager = stage_codex_launcher,
+    named_image_transport: NamedImageTransport = run_codex_named_images_structured,
+    text_transport: TextTransport = run_codex_text_structured,
+) -> AtomicSmokeCommandResult:
+    """Run one authenticated exploratory smoke without exposing a task pre-ledger."""
+
+    inputs = authenticate_atomic_smoke_inputs(
+        corpus_path=corpus_path,
+        archive_path=archive_path,
+        exposure_ledger_path=exposure_ledger_path,
+        release_descriptor_path=release_descriptor_path,
+    )
+    stores = {
+        "config": _StoreBinding.freeze("config", config_store_dir),
+        "exposure": _StoreBinding.freeze("exposure", exposure_store_dir),
+        "prediction": _StoreBinding.freeze("prediction", prediction_store_dir),
+        "terminal": _StoreBinding.freeze("terminal", terminal_store_dir),
+        "cache": _StoreBinding.freeze("cache", cache_store_dir),
+    }
+    root = Path(__file__).resolve().parent
+    frozen_sources = freeze_stage_a_source_dependencies(root)
+    snapshot = cache_snapshotter()
+    if not isinstance(snapshot, CloudPolicyCacheSnapshot):
+        raise TypeError("cache_snapshotter must return CloudPolicyCacheSnapshot")
+    stores["cache"].check("before-cache-persistence")
+    cache_path, cache_file_sha256, cache_size = persist_stage_a_cache_snapshot(
+        snapshot, cache_store_dir
+    )
+    reloaded_snapshot = load_stage_a_cache_snapshot(
+        cache_path,
+        expected_binding=snapshot.binding,
+        expected_file_sha256=cache_file_sha256,
+    )
+    if reloaded_snapshot != snapshot:
+        raise AtomicSmokeCommandError("reloaded cache snapshot differs")
+    stores["cache"].check("after-cache-persistence-reload")
+    config = AtomicSmokeCommandConfig(
+        input_authentication_digest=inputs.digest,
+        source_dependencies=frozen_sources,
+        cache_binding=snapshot.binding,
+        cache_file_sha256=cache_file_sha256,
+        cache_byte_count=cache_size,
+        expected_launcher_digest=expected_launcher_digest,
+        run_protocol_digest=atomic_smoke_run_protocol_digest(),
+        model=model,
+        reasoning_effort=reasoning_effort,
+        minutes=minutes,
+        verifier_id=verifier_id,
+        verbose=verbose,
+    )
+    guard = _SourceGuard(root, frozen_sources)
+    # This verified return is the causal boundary before any random secret.
+    guard.check("before-command-config-persistence")
+    stores["config"].check("before-command-config-persistence")
+    config_receipt = _persist_config(config, config_store_dir)
+    stores["config"].check("after-command-config-persistence")
+    guard.check("after-command-config-persistence")
+    selection_seed, episode_seed, label_nonce = _fresh_secrets(secret_factory)
+    precommit: AtomicSmokePrecommit | None = None
+    launcher_version: str | None = None
+    run: AtomicSmokeRun | None = None
+    phase = "precommit"
+    try:
+        guard.check("before-precommit")
+        stores["exposure"].check("before-exposure-precommit")
+        precommit = prepare_atomic_smoke_precommit(
+            inputs.trusted.corpus,
+            seed=selection_seed,
+            episode_seed=episode_seed,
+            full_corpus_manifest=inputs.trusted.full_manifest,
+            source_corpus_manifest_digest=OFFICIAL_CORPUS_MANIFEST_DIGEST,
+            source_dependency_digest=frozen_sources.digest,
+            exposure_ledger=inputs.predecessor,
+            expected_exposure_ledger_digest=OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
+            label_seal_nonce=label_nonce,
+            exposure_store_dir=exposure_store_dir,
+            verifier_id=verifier_id,
+        )
+        stores["exposure"].check("after-exposure-precommit")
+        guard.check("after-precommit")
+        _assert_non_test_precommit(precommit)
+        phase = "launcher-staging"
+        guard.check("before-launcher-staging")
+        with launcher_stager(
+            executable,
+            expected_launcher_digest=config.expected_launcher_digest,
+        ) as staged:
+            if not isinstance(staged, StagedCodexLauncher):
+                raise TypeError("launcher stager returned the wrong type")
+            if staged.launcher_digest != config.expected_launcher_digest:
+                raise AtomicSmokeCommandError("staged launcher differs from config")
+            launcher_version = staged.version
+            guard.check("after-launcher-staging")
+            phase = "atomic-run"
+            stores["prediction"].check("before-atomic-run")
+            run = run_atomic_smoke(
+                precommit,
+                source_dependency_digest=frozen_sources.digest,
+                expected_protocol_digest=config.run_protocol_digest,
+                expected_launcher_digest=config.expected_launcher_digest,
+                prediction_store_dir=prediction_store_dir,
+                model=config.model,
+                reasoning_effort=config.reasoning_effort,
+                minutes=config.minutes,
+                executable=staged.executable,
+                cloud_policy_cache_snapshot=reloaded_snapshot,
+                named_image_transport=guard.wrap(
+                    "named-image-model-call", named_image_transport
+                ),
+                text_transport=guard.wrap("text-model-call", text_transport),
+                verbose=config.verbose,
+            )
+            stores["prediction"].check("after-atomic-run")
+            guard.check("after-atomic-run")
+        guard.check("after-launcher-context")
+        phase = "terminal-construction"
+        guard.check("before-terminal-construction")
+        if not isinstance(run, AtomicSmokeRun):
+            raise TypeError("atomic runner returned the wrong terminal type")
+        terminal = AtomicSmokeCommandTerminal.from_run(
+            run,
+            config_digest=config.digest,
+            launcher_version=launcher_version,
+        )
+        guard.check("after-terminal-construction")
+    except Exception as exc:
+        terminal = AtomicSmokeCommandTerminal.failure(
+            exc,
+            phase=phase,
+            config=config,
+            precommit=precommit,
+            launcher_version=launcher_version,
+            run=run if isinstance(run, AtomicSmokeRun) else None,
+        )
+    try:
+        stores["terminal"].check("before-terminal-persistence")
+        terminal_receipt = _persist_terminal(
+            terminal, terminal_store_dir, source_guard=guard
+        )
+        stores["terminal"].check("after-terminal-persistence")
+    except AtomicSmokeSourceMutationError as exc:
+        # A post-construction mutation may leave the earlier content-addressed
+        # terminal on disk.  It is not returned as authoritative; a second,
+        # explicit mutated-source terminal is persisted and returned instead.
+        terminal = AtomicSmokeCommandTerminal.failure(
+            exc,
+            phase="terminal-persistence",
+            config=config,
+            precommit=precommit,
+            launcher_version=launcher_version,
+            run=run if isinstance(run, AtomicSmokeRun) else None,
+        )
+        stores["terminal"].check("before-mutated-terminal-persistence")
+        terminal_receipt = _persist_terminal(terminal, terminal_store_dir)
+        stores["terminal"].check("after-mutated-terminal-persistence")
+    return AtomicSmokeCommandResult(
+        config=config,
+        config_receipt=config_receipt,
+        precommit=precommit,
+        terminal=terminal,
+        terminal_receipt=terminal_receipt,
+    )
+
+
+def main(argv: list[str] | None = None) -> int:
+    """Run the production boundary and emit one ID-redacted JSON status line."""
+
+    parser = argparse.ArgumentParser(
+        prog="python -m bongard.atomic_smoke_command",
+        description="Run one authenticated exploratory atomic Bongard smoke.",
+    )
+    parser.add_argument("--corpus", required=True)
+    parser.add_argument("--archive", required=True)
+    parser.add_argument("--exposure-ledger", required=True)
+    parser.add_argument("--config-store", required=True)
+    parser.add_argument("--exposure-store", required=True)
+    parser.add_argument("--prediction-store", required=True)
+    parser.add_argument("--terminal-store", required=True)
+    parser.add_argument("--cache-store", required=True)
+    parser.add_argument(
+        "--release-descriptor", default=str(DEFAULT_RELEASE_PATH)
+    )
+    parser.add_argument(
+        "--launcher-digest", default=ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST
+    )
+    parser.add_argument("--model", default=DEFAULT_CODEX_MODEL)
+    parser.add_argument("--reasoning-effort", default=DEFAULT_REASONING_EFFORT)
+    parser.add_argument("--minutes", type=int, default=15)
+    parser.add_argument("--verifier-id", default="canonical-bongard-verifier")
+    parser.add_argument("--executable", default="codex")
+    args = parser.parse_args(argv)
+    try:
+        result = run_atomic_smoke_command(
+            corpus_path=args.corpus,
+            archive_path=args.archive,
+            exposure_ledger_path=args.exposure_ledger,
+            config_store_dir=args.config_store,
+            exposure_store_dir=args.exposure_store,
+            prediction_store_dir=args.prediction_store,
+            terminal_store_dir=args.terminal_store,
+            cache_store_dir=args.cache_store,
+            release_descriptor_path=args.release_descriptor,
+            expected_launcher_digest=args.launcher_digest,
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            minutes=args.minutes,
+            verifier_id=args.verifier_id,
+            executable=args.executable,
+            verbose=False,
+        )
+    except Exception as exc:
+        reason = (str(exc) or repr(exc)).encode(
+            "utf-8", errors="replace"
+        )[:4096]
+        payload = {
+            "schema": "gkm.bongard-atomic-smoke-cli-result.v1",
+            "status": "operational-error-before-terminal",
+            "error_type": type(exc).__name__,
+            "reason_digest": hashlib.sha256(reason).hexdigest(),
+            "selected_task_id_included": False,
+            "dependence_design_authorized": False,
+            "calibration_authorized": False,
+            "benchmark_claim_authorized": False,
+            "official_test_authorized": False,
+        }
+        print(canonical_json(payload).decode("utf-8"), flush=True)
+        return 2
+    payload = {
+        "schema": "gkm.bongard-atomic-smoke-cli-result.v1",
+        "status": result.terminal.status,
+        "config_digest": result.config.digest,
+        "terminal_digest": result.terminal.terminal_digest,
+        "precommit_digest": result.terminal.precommit_digest,
+        "run_digest": result.terminal.run_digest,
+        "config_persistence": result.config_receipt.to_data(),
+        "terminal_persistence": result.terminal_receipt.to_data(),
+        "selected_task_id_included": False,
+        "dependence_design_authorized": False,
+        "calibration_authorized": False,
+        "benchmark_claim_authorized": False,
+        "official_test_authorized": False,
+    }
+    print(canonical_json(payload).decode("utf-8"), flush=True)
+    return 0 if result.terminal.status == "complete" else 2
+
+
+__all__ = [
+    "ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA",
+    "ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA",
+    "ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST",
+    "AtomicSmokeAuthenticatedInputs",
+    "AtomicSmokeCommandConfig",
+    "AtomicSmokeCommandError",
+    "AtomicSmokeCommandResult",
+    "AtomicSmokeCommandTerminal",
+    "AtomicSmokeDurabilityReceipt",
+    "authenticate_atomic_smoke_inputs",
+    "main",
+    "run_atomic_smoke_command",
+]
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

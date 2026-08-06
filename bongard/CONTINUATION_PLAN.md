@@ -1,9 +1,12 @@
 # Bongard continuation plan
 
 The objective is a usable headless visual proposer on the complete official
-ShapeBongard corpus. The immediate work is to measure the new Python
-visual-semantic path honestly. It is not to produce a SEALED number at any
-cost.
+ShapeBongard corpus. A3 has now measured the current Python visual-semantic
+path honestly and failed its calibration fit. The description-to-predicate
+search layer is now implemented as an exact operational atomic smoke. The
+immediate work is to run and inspect that smoke, then design richer typed
+perception and a defensible evaluation frame. It is not to produce a SEALED
+number at any cost.
 
 ## 1. Preserve A1 as a terminal failure
 
@@ -61,23 +64,20 @@ It does not mean “bird-like” is proven, the proposer is good, samples are
 independent, or SEALED evaluation is authorized.
 
 Neither A1 nor A2 fits. The metadata-only capacity audit is now complete. Under
-the corrected HD constituent-disjoint policy, the remaining DRILL reservoir
-has exact maximum 24 = 24 `bd` + 0 `hd`; 48 is impossible. The earlier 28-unit
+the corrected HD constituent-disjoint policy, the DRILL reservoir immediately
+before A3 had exact maximum 24 = 24 `bd` + 0 `hd`; 48 was impossible. The earlier 28-unit
 upper bound applied within-new-batch HD disjointness but failed to seed the
 constituent-token exclusion set from the complete A2 ledger. Every remaining
-DRILL HD pair shares at least one constituent with that projected set. Any A3
-must use the already frozen selector and one fresh no-reroll seed, and accept the
-resulting seed-ranked greedy capacity without changing score-bin edges,
-confidence, decision boundary, families, or polarity after inspection. Run it
-only from an immutable committed worktree.
+DRILL HD pair shares at least one constituent with that projected set. A3 used
+the frozen selector, one no-reroll seed, and the resulting seed-ranked greedy
+capacity without changing score-bin edges, confidence, decision boundary,
+families, or polarity after inspection. Its terminal record is in Section 3.
 
-Launch that worktree through the production CLI with a fresh empty private
-`PYTHONPYCACHEPREFIX` and `python -B`. The receipt binds `.py` source bytes, so
-this is required to exclude stale or forged bytecode-cache execution. Do not
-use the injectable Python API as the live authority; its alternate source-root,
-transport, and verifier hooks exist for tests. Record the interpreter version,
-interpreter bytes, complete command, and initially empty cache directory in
-the external A3 precommit.
+Exact v3 replay against A3's successor exposure ledger now certifies strict
+DRILL capacity **zero** (`0 bd + 0 hd`, zero eligible tasks and groups), digest
+`sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1`.
+DEV remains exactly `16 bd + 0 hd`, digest
+`sha256:434c0756e89891c4a10e31fdf0c97e2e9373930a2ed48e1ecfa011c36f15c4c8`.
 
 The source receipt hashes every potentially authoritative Bongard Python
 module but explicitly excludes the exact non-authoritative
@@ -86,26 +86,48 @@ installing, editing, or deleting an optional checker cannot change the receipt
 identity, while any authoritative Python-source change still invalidates the
 run.
 
-Before that seed exists, A3 changes `minimum_clusters_per_bin` from 12 to 8.
-For two Bonferroni-adjusted bins at 90% confidence, eight gives Hoeffding radius
-0.480161 and is the smallest count that can possibly place an interval wholly
-above or below the fixed 0.5 boundary. Seven or fewer can never decide. This is
-a prospective capacity repair, not a response to A3 scores; it makes A3 less
-precise than A1/A2 and does not authorize Stage B.
+The source boundary is not the whole process boundary. A post-A3 audit found
+that `codex_launcher_digest` committed only the installed JavaScript wrapper;
+the wrapper dynamically selected a separate native client. A3 therefore binds
+the wrapper plus `codex-cli 0.146.0`, not exact native bytes. Before another
+live run, the executable closure had to be fixed. That is now implemented: the
+production boundary opens the native binary without following links, copies
+and hashes the same descriptor into a private staged executable, verifies
+`codex-cli 0.146.0`, and rechecks the staged identity after use. The pinned
+native digest is
+`sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02`.
+
+A3 changed `minimum_clusters_per_bin` from 12 to 8 before its seed, pixels, or
+model output. For two Bonferroni-adjusted bins at 90% confidence, eight gives
+Hoeffding radius 0.480161 and is the smallest count that can possibly place an
+interval wholly above or below the fixed 0.5 boundary. The run nonetheless
+produced only six upper-bin clusters. The preregistration was honored; the fit
+failed.
 
 The larger-corpus audit also separates two quantities that had been conflated:
 
-| population | exact-unused after A2 |
+| population | exact-unused after A3 |
 |---|---:|
-| train + validation | 10,069 / 10,200 |
+| train + validation | 10,047 / 10,200 |
 | `ff` | 2,998 |
-| `bd` | 3,456 |
+| `bd` | 3,434 |
 | `hd` | 3,615 |
 
-The 24-unit ceiling is caused by demanding constituent-disjointness across the
-complete predecessor ledger and the new batch, not by lack of images. A fresh
-seed changes the selected BD representatives and their order, not the maximum.
-A3 is therefore BD-only and cannot support HD or mixed-family generalization.
+Exactly ten of those tasks are exact-unseen training tasks from already
+exposed Basic-shape generator clusters. Their frozen universe digest is
+`sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8`.
+They are useful for a no-reroll N=1 transport/synthesis smoke because selecting
+one consumes no new generator claim. They are not independent evaluation
+units. The production atomic precommit authenticates the full 12,000-task
+manifest and A3 ledger, selects from that exact universe metadata-only, and
+persists the exposure before hashing the selected pixels.
+
+The pre-A3 24-unit ceiling and post-A3 zero are caused by demanding
+constituent-disjointness across the complete predecessor ledger and the new
+batch, not by lack of images. A3's
+seed changed the selected BD representatives and their order, not the maximum.
+The run was therefore BD-only and cannot support HD or mixed-family
+generalization.
 A next-generation calibration frame should admit exact-unused training tasks
 while excluding reserved DEV/SEALED
 semantic keys, treat shared generators as dependence rather than silently as
@@ -114,10 +136,47 @@ either label. Evaluation must remain strictly held out. The current HD
 pair-level partition cannot support constituent-disjoint evaluation and must
 eventually be rebuilt at the attribute level.
 
-## 3. Stage B remains unauthorized
+## 3. Preserve A3 as a terminal scientific failure
 
-Neither the failed A1 receipt nor the invalidated A2 incident can authorize
-Stage B. There is no current successful Stage-A receipt from which to build it.
+A3 completed the headless-Codex transport path. It exited 2 with the exact
+reason `calibration score bins are underpopulated: 1`. The command receipt is
+`sha256:2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681`;
+the terminal failure is
+`sha256:cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb`.
+
+| A3 measurement | count |
+|---|---:|
+| proposer calls / transport successes | 22 / 22 |
+| accepted soft claims | 15 |
+| direct-only attrition | 6 |
+| typed-parser rejections | 1 |
+| scorer calls / transport successes | 15 / 15 |
+| scores `0 / 0.5 / 1` | `8 / 1 / 6` |
+| lower bin `[0, 0.75)` | 9 clusters; 1 affirmative |
+| upper bin `[0.75, 1]` | 6 clusters; 5 affirmative |
+
+The fixed minimum was eight clusters per bin. The upper bin was short by two,
+so no calibration was fitted and Stage B did not run. With only 15 scoreable
+claims, two eight-cluster bins were impossible regardless of their scores.
+This is a recruitment/bin-power failure.
+
+Do not tell a negation story about A3. Intended-bin orientation was 13/15 and
+its exact complement was 2/15. At the naive `score >= 0.5` threshold,
+orientation was 12/15 and the complement was 3/15. Negation did not win.
+
+The one parser rejection was also accidental: the forbidden-code regex matched
+the prefix `def` in the ordinary cue word `defines`. The parser now requires a
+complete forbidden-keyword match. This post-A3 correction does not rewrite the
+terminal result or make the exposed cohort reusable.
+
+A3 exposed 22 tasks. It leaves 10,047 exact-unused train/validation IDs (FF
+2,998; BD 3,434; HD 3,615). SEALED/test remained untouched.
+
+## 4. Stage B remains unauthorized
+
+Neither the failed A1 receipt, the invalidated A2 incident, nor the failed A3
+fit can authorize Stage B. There is no current successful Stage-A receipt from
+which to build it.
 If a separately authorized future receipt ever exists, Stage B must bind its
 exact cache/launcher/exposure parents and use one fresh 256-bit seed generated
 after those inputs and the Stage-B policy are frozen. No rerolls.
@@ -163,7 +222,7 @@ and `dependence_design_authorized = false` regardless of numerical passage.
 Publish a Stage-B result only after strict cold replay; absence of a run is not
 a pending numerical result.
 
-## 4. Do not open SEALED
+## 5. Do not open SEALED
 
 The visual-semantic official-test path is hard-disabled in both `cli.py` and
 `benchmark.py`. A valid Stage A plus a descriptive DEV run is not sufficient
@@ -184,7 +243,7 @@ An authorizing design would need, at minimum:
 
 Until that exists, SEALED remains inaccessible.
 
-## 5. Fill the known perception gap
+## 6. Fill the known perception and synthesis gap
 
 The direct catalog is small. It counts components, owned holes, endpoints,
 branchpoints, cycles, certified X crossings, curvature reversals/runs, and
@@ -204,12 +263,37 @@ Start with fixtures that include constructive positives, certified nonmatches,
 ambiguous rasters, and extraction failures. A feature name is not an
 implementation.
 
-For open categories, improve the operational soft scorer instead of pretending
-to formalize prose into truth. Keep the one-panel blind boundary, fixed ordinal
-vocabulary, witness citations, family-level calibration, and four
-dispositions. Measure proposal attrition and scorer calibration separately.
+For open categories, use an explicit operational observer instead of
+pretending to formalize prose into truth. The atomic implementation now:
 
-## 6. Diagnose reverse predicates directly
+1. freezes twelve candidate-independent, neutrally named vision descriptions;
+2. lets a text-only proposer derive 1--12 single-phrase affirmative atoms from
+   those descriptions and support labels;
+3. records the complete atom-by-panel observation matrix;
+4. deterministically selects a positive conjunction of at most four atoms by
+   support coverage, description length, and lexicographic tie-break;
+5. excludes `Not`, polarity flips, and complement rescue; and
+6. freezes the formula before query sources exist in the runner.
+
+An uncalibrated `operational_nonmatch` can reject a panel only inside an
+explicit operational archive whose calibration, semantic-truth, and benchmark
+flags are all false. Its general truth projection is `indeterminate`; it cannot
+be laundered into `certified_absent`. Calibrated-semantic atomic selection is
+hard-disabled until Python can independently cold-validate a typed calibration
+artifact and its interval rule.
+
+The remaining representation gap is richer structured vision. One prose
+sentence is still lossy. Add typed object, part, angle, topology, and relation
+observations, with uncertainty and exact receipt bindings, so synthesis can
+compare facts as well as opaque phrases. Separately recruit calibration tasks
+label-blind through a frozen order until bins are powered, or freeze a batch
+sized for measured attrition and occupancy.
+
+Lean is not needed for any of this. The predicate, selection rule, evidence,
+calibration, replay, and artifact identity remain Python-defined. A checker may
+inspect a frozen result only as an optional removable sidecar.
+
+## 7. Diagnose reverse predicates directly
 
 For every support rejection, archive and inspect:
 
@@ -224,7 +308,7 @@ Do not promote or execute the complement. A complement win identifies wrong
 orientation, spurious correlation, or a broken observation boundary. It is not
 a solver success.
 
-## 7. Keep Python authoritative
+## 8. Keep Python authoritative
 
 All new predicate execution, calibration, selection, replay, benchmark
 decisions, and scientific artifact IDs must have complete Python semantics.
@@ -235,8 +319,12 @@ the benchmark path.
 
 ## Completion criterion
 
-The current record is complete only as failure accounting: A1 failed and A2 was
-invalidated without a terminal artifact. Before any new calibration is
-declared, remaining clean capacity and source-dependency freezing must be
-resolved. Stage B remains unauthorized. This phase is not complete merely
-because the code builds or because a favorable complement can be found.
+The current record is complete as failure accounting: A1 failed, A2 was
+invalidated without a terminal artifact, and A3 ended in a canonical
+underpopulated-bin failure after successful proposer/scorer transport. Before
+any new calibration is declared, a powered, label-blind recruitment rule must
+be frozen. The atomic matrix path is implemented but not itself a calibration.
+Its first N=1 run is an exploratory repeated-generator train smoke and must be
+reported that way regardless of score. Stage B remains unauthorized. This
+phase is not complete merely because the code builds, one smoke scores 2/2, or
+a favorable complement can be found.

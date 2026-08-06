@@ -208,7 +208,7 @@ def _install_fake_cli(
 
 def _fake_launcher(tmp_path: Path) -> str:
     launcher = tmp_path / "fake-codex"
-    launcher.write_bytes(b"#!/bin/sh\nexit 99\n")
+    launcher.write_bytes(b"offline opaque flat executable fixture")
     launcher.chmod(0o700)
     return str(launcher.resolve())
 

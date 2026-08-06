@@ -319,7 +319,7 @@ _CONTROL_TEXT_PATTERNS: tuple[tuple[str, re.Pattern[str]], ...] = (
     ("cue priority", re.compile(r"\b(?:priority|prioriti[sz]e[ds]?|importance)\b")),
     ("code fence", re.compile(r"```")),
     ("code instruction", re.compile(r"\bcode\b")),
-    ("code definition", re.compile(r"\b(?:def|lambda|import|eval|exec)\s*")),
+    ("code definition", re.compile(r"\b(?:def|lambda|import|eval|exec)\b")),
     (
         "code return",
         re.compile(r"\breturn[\s-]+(?:true|false|present|absent|[01])\b"),
