@@ -24,6 +24,14 @@ from bongard.legs import (
     LegSemantics,
 )
 from bongard.proposer import HybridObservation, RuleProposal, observe_hybrid_panel
+from bongard.support_prototypes import (
+    SUPPORT_PROTOTYPE_FEATURES,
+    FrozenFeatureSpace,
+    FrozenSupportPrototypes,
+    PositivePrototypeFormula,
+    register_support_prototype_leg,
+    validate_prototype_formula,
+)
 
 
 class SynthesisError(ValueError):
@@ -131,10 +139,69 @@ def compile_hybrid_proposal(
     return CompiledProposal(proposal, registry, formula, attachment)
 
 
+def compile_prototype_proposal(
+    proposal: RuleProposal,
+    feature_space: FrozenFeatureSpace,
+    prototypes: FrozenSupportPrototypes,
+    predicate: PositivePrototypeFormula,
+    *,
+    issued_by: str = "canonical-bongard-verifier",
+) -> CompiledProposal:
+    """Canonically attach a verifier-owned support-prototype surrogate.
+
+    The visual proposal selects from a previously frozen feature catalog, but
+    it does not own extraction, fitting, orientation, or the decision margin.
+    The IR claim therefore states only the exact operational surrogate; it
+    does not pretend that centroid similarity proves the proposal's prose.
+    An outer pre-query artifact must additionally verify that these compiler
+    inputs are the allowed projection selected by ``proposal``.
+    """
+
+    if proposal.is_hybrid:
+        raise SynthesisError("prototype compilation requires a PURE proposal")
+    if not issued_by.strip():
+        raise SynthesisError("verifier issuer must be non-empty")
+    validate_prototype_formula(predicate, prototypes, feature_space)
+    expected_claim = (
+        "fixed positive-support prototype match for visual proposal "
+        + proposal.digest
+    )
+    if predicate.claim != expected_claim:
+        raise SynthesisError(
+            "prototype formula must use the canonical operational claim"
+        )
+
+    registry = LegRegistry()
+    reference = register_support_prototype_leg(
+        registry,
+        predicate,
+        prototypes,
+        feature_space,
+    )
+    registry.freeze()
+    formula = Atom(
+        call=StaticLegCall(reference, ("features",)),
+        relation=Relation.PRESENT,
+        claim=expected_claim,
+    )
+    attachment = TypedAttachmentContract.issue(
+        issued_by=issued_by,
+        registry=registry,
+        boundary_types={"features": SUPPORT_PROTOTYPE_FEATURES},
+    )
+    validate_formula(
+        formula,
+        registry,
+        {"features": SUPPORT_PROTOTYPE_FEATURES},
+    )
+    return CompiledProposal(proposal, registry, formula, attachment)
+
+
 __all__ = [
     "CompiledProposal",
     "HybridObserver",
     "SynthesisError",
     "compile_hybrid_proposal",
+    "compile_prototype_proposal",
     "truth_from_hybrid_observation",
 ]

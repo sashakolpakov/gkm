@@ -89,8 +89,17 @@ The canonical package surface is:
   exact version-and-digest-pinned leg registration;
 - `legs/bilateral_symmetry.py` — a candidate-independent deterministic
   reflected-ink measurement with a fixed preprocessing-sensitivity interval;
+- `legs/neutral_features.py` — candidate-independent extraction of eighteen
+  interval-valued raster measurements in four closed feature groups, with
+  exact byte, preprocessing, projection, and receipt commitments;
 - `support_prototypes.py` — support-only interval feature centroids and a
-  fixed positive contrastive margin, ready for later runner integration;
+  fixed positive contrastive margin with no polarity search;
+- `prototype_artifacts.py` — complete 6+6 support preimages, fitted
+  prototypes, query records, and model-free replay for the PURE path;
+- `prototype_calibration.py` — development-only, full-denominator margin
+  calibration that rejects official test tasks before extraction;
+- `prototype_episode.py` — the Python-first episode adapter: one support-only
+  Codex catalog selection followed by deterministic support/query evaluation;
 - `ir.py` — the closed positive predicate language and interval-safe
   evaluator;
 - `predicate_backend.py` — the backend interface and pure-Python reference
@@ -114,14 +123,16 @@ The canonical package surface is:
   externally anchored cold verification.
 
 `benchmark.py` is the episode-level integration point: it gives the proposer
-six positive and six negative support panels and fixes one proposal. Twelve
-fresh, isolated, neutral single-image calls then replay that fixed claim on the
-support panels. Only an exactly aligned gate is bound into the final proposal
+six positive and six negative support panels and fixes one proposal. Only an
+exactly aligned twelve-panel support gate is bound into the final proposal
 freeze; the runner then releases two neutral query panels and commits both
-predictions before the labels are revealed. A successful canonical episode
-therefore makes one proposal call, twelve support-replay calls, and two query
-calls. Query objects expose only neutral callback identifiers and a temporary
-`query.png` path, never source filenames, corpus paths, task IDs, or labels.
+predictions before labels are revealed. The legacy HYBRID branch makes one
+proposal call plus twelve support and two query model calls. The PURE prototype
+branch computes all support measurements before one Codex catalog-selection
+call, then performs twelve fresh support extractions and two query extractions
+in deterministic Python. Query objects expose only neutral callback identifiers
+and a temporary `query.png` path, never source filenames, corpus paths, task
+IDs, or labels.
 
 ## Complete official corpus and exact release identity
 
@@ -165,8 +176,8 @@ either large input into Git:
 
 ```bash
 .venv/bin/python -m bongard inventory \
-  --corpus downloads/ShapeBongard_V2 \
-  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
   --require-complete \
   --official-release \
   --archive downloads/ShapeBongard_V2.zip \
@@ -187,8 +198,8 @@ The loader itself remains useful for structurally valid non-official corpora:
 from bongard import ShapeBongardCorpus
 
 corpus = ShapeBongardCorpus.discover(
-    "downloads/ShapeBongard_V2",
-    split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+    "downloads/ShapeBongard_V2_full/ShapeBongard_V2",
+    split_file="downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json",
     require_complete=True,
 )
 manifest = corpus.build_manifest()
@@ -241,8 +252,8 @@ import json
 from bongard import ShapeBongardCorpus, audit_corpus_images
 
 corpus = ShapeBongardCorpus.discover(
-    "downloads/ShapeBongard_V2",
-    split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+    "downloads/ShapeBongard_V2_full/ShapeBongard_V2",
+    split_file="downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json",
     require_complete=True,
 )
 manifest = corpus.build_manifest()
@@ -285,8 +296,8 @@ Inspect the frozen historical-exposure classification before choosing tasks:
 
 ```bash
 .venv/bin/python -m bongard cohorts \
-  --corpus downloads/ShapeBongard_V2 \
-  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
   --require-complete \
   --split train \
   --cohort clean \
@@ -387,10 +398,10 @@ disclosure makes every panel of that task non-unseen.
 
 Every registered leg returns exactly one `Evidence[T]` disposition:
 
-| disposition | meaning | may classify as negative? |
+| disposition | meaning | may classify the operational atom as negative? |
 |---|---|---|
 | `present` | the claimed value or witness was produced | no; it is evaluated by the atom |
-| `certified_absent` | a declared procedure established non-existence | yes |
+| `certified_absent` | a declared procedure established non-existence relative to its exact contract | yes |
 | `indeterminate` | the observation could not be resolved | no |
 | `error` | implementation or contract failure | no |
 
@@ -408,6 +419,9 @@ archived frozen-model procedure returned nonmatch for this claim.” It does not
 certify that the depicted semantic property is absent from the pixels. A claim
 of pixel-level absence requires a dedicated registered certifier or a
 calibrated interval that lies wholly below its frozen threshold.
+The prototype path uses the same qualification: its certified absence means
+only operational contrastive nonmatch for the frozen support prototype. It is
+not a certificate that Codex's prose concept is absent from the pixels.
 
 There is no universal image normalization. A leg declares which typed view it
 uses: literal ink when stroke and rendering style are relevant, carrier shape
@@ -427,15 +441,39 @@ bilaterally symmetric than positive panels. The missing representation is
 therefore not simply “more symmetry.” It needs part/lobe ownership, the central
 junction, and correspondence between the owned parts.
 
-`support_prototypes.py` supplies the next task-relative layer without hiding a
-polarity search. A neutral extractor first freezes panel-only interval feature
-vectors without task ID, side, prose claim, or query role. The support fitter
-then commits separate positive and negative centroids. Its only score is
-`distance(query, negative) - distance(query, positive)`, so larger always means
-more like the positive support; a fixed positive margin decides the predicate.
-There is no side-swap or polarity-flip operation. This core is replayable but
-is not yet wired into the official episode runner, does not extract pixels by
-itself, and has not been externally calibrated.
+The PURE support-prototype branch now makes that task-relative layer
+executable. `legs/neutral_features.py` measures exact PNG bytes at three fixed
+thresholds and emits eighteen interval features in topology, global geometry,
+moments/symmetry, and boundary/angle groups. It receives no task ID, side,
+prose claim, formula, or query role. `HeadlessPrototypeEpisode` computes all
+twelve full support packets before Codex selects exactly one precommitted
+group. The fitter then commits separate positive and negative centroids. Its
+only score is `distance(query, negative) - distance(query, positive)`, so larger
+always means more like positive support; a development-frozen positive margin
+decides the predicate. There is no side swap, polarity flip, candidate code,
+candidate threshold, or model query observer.
+
+The first preregistered twelve-task development calibration falsifies this
+baseline. All four groups select the smallest grid value, `1e-9`, and every
+group has **0/12 strict support passes**. Query results are topology 9/24 images
+and 2/12 puzzles, global geometry 5/24 and 0/12, moments/symmetry 10/24 and
+2/12, and boundary/angle 3/24 and 0/12. One task contains a border-clipped
+support panel; it remains in every denominator as an unfittable-support error.
+The calibration record digest is
+`sha256:cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6`.
+This is a development result, not a benchmark score.
+
+The failure has four concrete causes. Coordinate-wise interval boxes discard
+correlation between the three preprocessing scenarios; one centroid per side
+assumes a convex unimodal class; the current PURE schema permits only one
+feature group; and global raster statistics omit parts, ownership,
+correspondence, signed curvature, and open semantic concepts. Codex prose is
+hash-bound but not load-bearing: the compiled atom claims only a match to the
+frozen support prototype. The component adapter is integrated with
+`run_episode`. The public CLI now persists the separate PURE outer record and
+its verifier re-extracts every released panel from exact PNG bytes, refits the
+prototypes, recompiles the Python IR, and replays the gate and predictions
+without Codex or Lean.
 
 ## Why negation used to win
 
@@ -552,8 +590,8 @@ verification time:
 ```bash
 .venv/bin/python -m bongard verify \
   --run results/bongard/episode.json \
-  --corpus downloads/ShapeBongard_V2 \
-  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
   --archive downloads/ShapeBongard_V2.zip \
   --expected-sha256 "$EXPECTED_RUN_SHA256"
 ```

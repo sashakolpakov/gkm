@@ -632,6 +632,40 @@ _hybrid_only_schema["properties"]["hybrid_claim"] = _HYBRID_CLAIM_SCHEMA
 HYBRID_ONLY_RULE_PROPOSAL_SCHEMA: Mapping[str, Any] = _hybrid_only_schema
 
 
+def pure_only_rule_proposal_schema(
+    observable_catalog: Mapping[str, str],
+) -> Mapping[str, Any]:
+    """Return the closed structured-output schema for a PURE-only turn.
+
+    The catalog is frozen by the verifier before support release.  The model
+    may select exactly one catalog identifier in this first prototype rung,
+    but it cannot invent an
+    observable, request parameters, or fall back to a task-local HYBRID
+    observer.  The parser below still checks the cross-field set equality that
+    JSON Schema cannot express.
+    """
+
+    if not isinstance(observable_catalog, Mapping) or not observable_catalog:
+        raise ProposalError("PURE-only proposal requires a non-empty catalog")
+    identifiers = sorted(observable_catalog)
+    for identifier in identifiers:
+        if not isinstance(identifier, str) or _OBSERVABLE_ID.fullmatch(identifier) is None:
+            raise ProposalError(f"invalid catalog observable id {identifier!r}")
+    schema = copy.deepcopy(RULE_PROPOSAL_SCHEMA)
+    requests = schema["properties"]["observable_requests"]
+    requests["minItems"] = 1
+    requests["maxItems"] = 1
+    requests["items"]["properties"]["observable_id"] = {
+        "type": "string",
+        "enum": identifiers,
+    }
+    atoms = schema["properties"]["formula_template"]["properties"]["atoms"]
+    atoms["items"] = {"type": "string", "enum": identifiers}
+    atoms["maxItems"] = 1
+    schema["properties"]["hybrid_claim"] = {"type": "null"}
+    return schema
+
+
 def parse_rule_proposal(
     payload: Mapping[str, Any],
     *,
@@ -697,13 +731,18 @@ def parse_rule_proposal(
             if value is not None and not isinstance(value, (str, int, float, bool)):
                 raise ProposalError(f"argument {name!r} is not a JSON literal")
             canonical_arguments.append((name, value))
+        interpretation = _nonempty_text(
+            request["affirmative_interpretation"],
+            f"observable_requests[{index}].affirmative_interpretation",
+        )
+        _require_affirmative_hybrid_text(
+            interpretation,
+            f"observable_requests[{index}].affirmative_interpretation",
+        )
         requests.append(
             ObservableRequest(
                 observable_id,
-                _nonempty_text(
-                    request["affirmative_interpretation"],
-                    f"observable_requests[{index}].affirmative_interpretation",
-                ),
+                interpretation,
                 tuple(canonical_arguments),
             )
         )
@@ -888,6 +927,53 @@ Registered observable catalog:
 """
 
 
+def pure_proposer_prompt(observable_catalog: Mapping[str, str]) -> str:
+    """Prompt for selecting verifier-frozen positive prototype feature groups.
+
+    This is deliberately separate from :func:`proposer_prompt`: changing this
+    text cannot change the prompt digest of archived HYBRID runs.
+    """
+
+    if not observable_catalog:
+        raise ProposalError("PURE proposer prompt requires a non-empty catalog")
+    catalog = [
+        {"observable_id": name, "affirmative_meaning": description}
+        for name, description in sorted(observable_catalog.items())
+    ]
+    return f"""You are the support-only visual proposer for one Bongard problem.
+
+You see exactly six labelled positive panels (pos_0.png..pos_5.png) and six
+labelled negative panels (neg_0.png..neg_5.png). Describe every panel
+concretely, then state the smallest affirmative rule shared by all positives.
+Never use file identity, task names, source paths, hidden metadata, memorized
+dataset labels, or any future query.
+
+This protocol has a finite verifier-frozen catalog of neutral feature groups.
+Choose exactly one catalog ID whose stated positive meaning is load-bearing
+for your rule. The pixels-to-feature operations, support fitting,
+orientation, weights, and precommitted decision margins are verifier-owned. You
+may not supply code, parameters, thresholds, probabilities, a polarity flag,
+Not, or an inverse interpretation. `arguments` must be an empty object.
+
+Treat the twelve panels as a conjunction test. Every selected positive cue
+must cover every positive panel, and every negative panel must fail at least
+one selected cue. Preserve distinct near-miss conjuncts rather than replacing
+them with a vague resemblance word. If the frozen catalog cannot express the
+rule, the turn must fail; HYBRID and arbitrary prose predicates are unavailable
+on this path.
+
+Set `hybrid_claim` to null. Set `formula_template.kind` to `all`, and set its
+`atoms` to exactly the selected observable IDs, once each. Give every request
+an affirmative single-panel interpretation. Do not describe a rule as no,
+not, non-, without, lacking, absent, missing, fewer, less, at most, or as the
+opposite of the other support side. Intrinsic constructive words such as
+asymmetric are allowed only when grounded in visible positive organization.
+
+Registered observable catalog:
+{json.dumps(catalog, sort_keys=True, indent=2)}
+"""
+
+
 @contextmanager
 def _canonical_support_paths(
     positive_support: Sequence[str | Path],
@@ -999,6 +1085,57 @@ def propose_rule(
             receipt=result.receipt,
             observable_catalog=observable_catalog,
         )
+    except ProposalError as exc:
+        attempt = RejectedProposalAttempt(
+            model_payload=result.payload,
+            receipt=result.receipt,
+            support_presentation=support_presentation,
+            parse_error_type=type(exc).__name__,
+            parse_error_reason=str(exc) or "proposal validation failed",
+        )
+        raise RejectedProposalError(attempt) from exc
+
+
+def propose_pure_rule(
+    positive_support: Sequence[str | Path],
+    negative_support: Sequence[str | Path],
+    *,
+    observable_catalog: Mapping[str, str],
+    model: str = DEFAULT_CODEX_MODEL,
+    reasoning_effort: str = DEFAULT_REASONING_EFFORT,
+    minutes: int = 15,
+    verbose: bool = False,
+    executable: str = "codex",
+    cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+    transport: StructuredTransport = run_codex_structured,
+) -> RuleProposal:
+    """Make one support-only Codex turn in the finite PURE catalog language."""
+
+    schema = pure_only_rule_proposal_schema(observable_catalog)
+    for name, description in observable_catalog.items():
+        _nonempty_text(description, f"catalog description for {name}")
+    with _canonical_support_paths(positive_support, negative_support) as paths:
+        result = transport(
+            pure_proposer_prompt(observable_catalog),
+            paths,
+            schema,
+            model=model,
+            reasoning_effort=reasoning_effort,
+            minutes=minutes,
+            verbose=verbose,
+            executable=executable,
+            cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        )
+        support_presentation = _support_presentation(paths)
+    try:
+        proposal = parse_rule_proposal(
+            result.payload,
+            receipt=result.receipt,
+            observable_catalog=observable_catalog,
+        )
+        if proposal.is_hybrid:
+            raise ProposalError("PURE-only turn returned a HYBRID claim")
+        return proposal
     except ProposalError as exc:
         attempt = RejectedProposalAttempt(
             model_payload=result.payload,
@@ -1697,6 +1834,9 @@ __all__ = [
     "observe_hybrid_panel",
     "parse_rule_proposal",
     "parse_hybrid_observation_or_error",
+    "propose_pure_rule",
     "propose_rule",
+    "pure_only_rule_proposal_schema",
+    "pure_proposer_prompt",
     "proposer_prompt",
 ]

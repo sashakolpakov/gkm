@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from pathlib import Path
 
 from bongard import load_historical_exposure, load_official_release
 from bongard.artifacts import canonical_json
+from bongard.prototype_calibration import PrototypeCalibrationRecord
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -97,3 +99,76 @@ def test_checked_in_complete_corpus_image_audit_is_strict_and_bound() -> None:
     assert record["digest"] == (
         "sha256:d3485ada3605d708db82fbcfe6ecfc73506ce51ed85fcd1ce6ccd798e3bff9f8"
     )
+
+
+def test_checked_in_support_prototype_calibration_is_canonical_and_bound() -> None:
+    data = _canonical_record("support_prototype_calibration_v1.json")
+    record = PrototypeCalibrationRecord.from_data(data)
+
+    assert record.digest() == (
+        "cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6"
+    )
+    assert record.to_freeze_policy().digest() == (
+        "8bb04e21b2ac59c2391105c1a0a729e87842e956f3116323f2228d291d8f119e"
+    )
+    assert data["seed"] == "prototype-calibration-v1"
+    assert data["candidate_margin_grid"] == [1e-9, 1e-6, 1e-4, 1e-3, 1e-2]
+    assert data["task_ids"] == [
+        "bd_asymmetric_clamp_0000",
+        "bd_inverse_trap_arc180_0000",
+        "bd_open_square_right_triangle_0000",
+        "bd_open_symm_trans_arc_lamp_0000",
+        "bd_symm_unbala_goldfish_0000",
+        "bd_two_symm_bala_quadrangles-open_band_four_arcs1_0000",
+        "hd_has_five_straight_lines-has_seven_straight_lines_0018",
+        "hd_has_four_straight_lines-closed_shape_0013",
+        "hd_has_line_crossing-exist_regular_0018",
+        "hd_has_seven_straight_lines-has_line_crossing_0019",
+        "hd_has_six_straight_lines-symmetric_transposed_0005",
+        "hd_unbalanced_two-exist_triangle_0012",
+    ]
+    assert len(data["tasks"]) == 12
+    assert all(task["declared_split"] != "test" for task in data["tasks"])
+
+
+def test_checked_in_support_prototype_drill_plan_is_canonical_and_bound() -> None:
+    plan = _canonical_record("support_prototype_drill_plan_v1.json")
+    content = dict(plan)
+    declared_digest = content.pop("digest")
+    computed_digest = "sha256:" + hashlib.sha256(
+        canonical_json(content) + b"\n"
+    ).hexdigest()
+    calibration = PrototypeCalibrationRecord.from_data(
+        _canonical_record("support_prototype_calibration_v1.json")
+    )
+    release = load_official_release()
+
+    assert declared_digest == computed_digest == (
+        "sha256:f04dbccc9b3518f0df69c1fa4566d98653de6354c48e50f4ccc80365b8c9c67b"
+    )
+    assert plan["schema"] == "gkm.bongard-support-prototype-drill-plan.v1"
+    assert plan["calibration_record_digest"] == "sha256:" + calibration.digest()
+    assert plan["predicate_policy_digest"] == (
+        "sha256:" + calibration.to_freeze_policy().digest()
+    )
+    assert plan["official_release_descriptor_digest"] == release.digest
+    assert plan["corpus_manifest_digest"] == release.corpus_manifest_sha256
+    assert plan["split_source_digest"] == release.split_sha256
+    assert plan["exposure_ledger_head_digest"] == (
+        "sha256:da01c133c87c551e01b581578b55d40283be0c62cbb23dddc18c5dc873b1ec9a"
+    )
+    assert plan["exposure_ledger_head_event_count"] == 16
+    assert len(plan["task_ids"]) == len(set(plan["task_ids"])) == 12
+    assert plan["first_task_id"] == plan["task_ids"][0]
+    assert plan["selection_boundary"] == {
+        "allowed_primary_splits": ["train", "val"],
+        "expected_semantic_cohort": "drill",
+        "official_test_pixels_authorized": False,
+        "require_live_exact_and_semantic_unseen": True,
+    }
+    assert plan["scoring"] == {
+        "abstention_is_wrong": True,
+        "error_is_wrong": True,
+        "polarity_flip_allowed": False,
+        "support_gate_must_be_exactly_aligned": True,
+    }

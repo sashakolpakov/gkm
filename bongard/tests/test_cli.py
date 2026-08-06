@@ -215,6 +215,47 @@ def test_run_parser_requires_exposure_directory():
         )
 
 
+def test_run_parser_exposes_python_prototype_profile() -> None:
+    parser = cli.build_parser()
+    args = parser.parse_args(
+        [
+            "run",
+            "--corpus",
+            "corpus",
+            "--task-id",
+            TASK_ID,
+            "--seed",
+            "seed",
+            "--out",
+            "run.json",
+            "--exposure-dir",
+            "exposure",
+            "--predicate-mode",
+            "support-prototype",
+            "--prototype-calibration",
+            "calibration.json",
+        ]
+    )
+    assert args.predicate_mode == "support-prototype"
+    assert args.prototype_calibration == "calibration.json"
+
+
+def test_checked_in_prototype_calibration_loader_is_exact(tmp_path: Path) -> None:
+    source = Path("bongard/data/support_prototype_calibration_v1.json")
+    record = cli._load_prototype_calibration(source)
+    assert record.digest() == (
+        "cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6"
+    )
+    assert record.to_freeze_policy().digest() == (
+        "8bb04e21b2ac59c2391105c1a0a729e87842e956f3116323f2228d291d8f119e"
+    )
+
+    noncanonical = tmp_path / "calibration.json"
+    noncanonical.write_bytes(source.read_bytes().rstrip(b"\n"))
+    with pytest.raises(cli.CliError, match="canonical JSON plus one newline"):
+        cli._load_prototype_calibration(noncanonical)
+
+
 def test_run_parser_rejects_arbitrary_codex_executable():
     parser = cli.build_parser()
     with pytest.raises(SystemExit):
@@ -701,6 +742,76 @@ def test_cli_summary_includes_all_precommit_digests(
     assert summary["official_release_digest"] is None
     assert summary["codex_launcher_sha256"] is None
     assert summary["codex_cli_version"] is None
+
+
+def test_cli_wires_support_prototype_profile_after_plan(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    exposure = {
+        "ledger_before_digest": "sha256:" + "a" * 64,
+        "ledger_after_digest": "sha256:" + "b" * 64,
+        "event_digest": "sha256:" + "c" * 64,
+        "successor_filename": "b" * 64 + ".exposure.json",
+    }
+    record = {"exposure": exposure, "official_release": None}
+    result = _FakeResult()
+    ledger_dir = tmp_path / "ledger"
+    ledger_dir.mkdir()
+    (ledger_dir / exposure["successor_filename"]).write_text("{}", encoding="utf-8")
+
+    policy = SimpleNamespace(digest=lambda: "d" * 64)
+    calibration = SimpleNamespace(
+        to_freeze_policy=lambda: policy,
+        to_data=lambda: {"record_digest": "e" * 64},
+    )
+    captured: dict[str, object] = {}
+
+    def fake_run_record(**kwargs):
+        captured.update(kwargs)
+        return record, result
+
+    monkeypatch.setattr(cli, "_load_corpus", lambda args: _FakeCorpus())
+    monkeypatch.setattr(
+        cli, "_load_prototype_calibration", lambda path: calibration
+    )
+    monkeypatch.setattr(cli, "_run_record", fake_run_record)
+    args = SimpleNamespace(
+        exposure_dir=str(ledger_dir),
+        ledger_in=None,
+        require_unseen=False,
+        sealed_test=False,
+        official_release=False,
+        archive=None,
+        release_descriptor="unused.json",
+        model=MODEL,
+        reasoning_effort="medium",
+        predicate_mode="support-prototype",
+        prototype_calibration="calibration.json",
+        proposer_minutes=1,
+        observer_minutes=1,
+        verbose=False,
+        task_id=TASK_ID,
+        seed="seed",
+        out=str(tmp_path / "run.json"),
+    )
+
+    assert cli._run(args) == 2
+    assert captured["session"] is None
+    assert callable(captured["session_factory"])
+    assert captured["support_gate_policy"].mode.value == (
+        "support_prototype_replay"
+    )
+    assert captured["predicate_mode"] == "support_prototype"
+    assert captured["predicate_policy_digest"] == "d" * 64
+    assert captured["artifact_field"] == "prototype"
+    assert captured["record_additions"] == {
+        "calibration": {"record_digest": "e" * 64}
+    }
+    assert callable(captured["record_verifier"])
+    summary = json.loads(capsys.readouterr().out)
+    assert summary["status"] == result.status.value
 
 
 def test_sealed_cli_requires_exact_official_archive_identity():

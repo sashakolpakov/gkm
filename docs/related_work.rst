@@ -30,10 +30,18 @@ That question has two irreducible layers. Vision produces empirical witnesses
 such as shape, topology, angle, contact, or a calibrated soft description.
 The closed predicate layer composes those witnesses and can be checked
 mechanically. Its reference evaluator and cold replay are pure Python, and its
-serialized typed contract does not depend on a proof assistant. A possible
-future Lean backend is only an optional cross-check. Either implementation is
+serialized typed contract does not depend on a proof assistant. The Lean
+backend is an optional, removable cross-check. Either implementation is
 conditional on the perceptual inputs; neither proves their correspondence to
 pixels.
+
+The current PURE support-prototype baseline failed development calibration.
+Coordinate-wise interval boxes erased correlations between preprocessing
+scenarios; one centroid per side could not represent multimodal classes; the
+one-group proposal restriction excluded cross-group concepts; and the neutral
+raster observables lacked semantic and relational vision. Thus the current
+failure is evidence of an inadequate representation, not evidence that
+negating the synthesized predicate is a valid solution.
 
 The controlled abstraction-emergence experiment supplied primitive atoms and
 tested only the reuse incentive. The action-program adapter bypassed pixels.
@@ -41,6 +49,4 @@ Those and the other pre-rewrite pilots do not satisfy the complete-corpus
 exposure and freeze/query/reveal protocol and must not be used as evidence for
 official visual benchmark performance. Their original code, reports, and
 longer bibliography notes are preserved at the annotated Git tag
-``pre-bongard-complete-rewrite-20260805``. Stale working-tree copies remain
-physically present pending explicit deletion, but they are excluded from the
-canonical package and reproduction path.
+``pre-bongard-complete-rewrite-20260805``.

@@ -674,6 +674,33 @@ class ContrastiveMargin:
     def digest(self) -> str:
         return _canonical_digest(self.to_data())
 
+    @classmethod
+    def from_data(cls, data: Mapping[str, Any]) -> "ContrastiveMargin":
+        _require_fields(
+            data,
+            frozenset(
+                {
+                    "schema",
+                    "orientation",
+                    "query_vector_digest",
+                    "prototype_digest",
+                    "lower",
+                    "upper",
+                }
+            ),
+            "contrastive margin",
+        )
+        if data["schema"] != MARGIN_SCHEMA:
+            raise ValueError("unsupported contrastive-margin schema")
+        if data["orientation"] != ORIENTATION:
+            raise ValueError("contrastive margin attempts a polarity change")
+        return cls(
+            query_vector_digest=data["query_vector_digest"],
+            prototype_digest=data["prototype_digest"],
+            lower=data["lower"],
+            upper=data["upper"],
+        )
+
 
 def _centroid(vectors: Sequence[FrozenPanelFeatures]) -> tuple[FeatureInterval, ...]:
     count = len(vectors)
@@ -813,17 +840,25 @@ def _distance(
     return lower, upper
 
 
-def contrastive_margin(
+def _contrastive_margin(
     query: FrozenPanelFeatures,
     artifact: FrozenSupportPrototypes,
     feature_space: FrozenFeatureSpace,
+    *,
+    frozen_support_member: bool,
 ) -> ContrastiveMargin:
-    """Compute the fixed positive-support margin and its interval enclosure."""
-
     query.validate(feature_space)
     if artifact.feature_space_digest != feature_space.digest():
         raise SupportPrototypeIntegrityError("prototype names another feature space")
-    if query.panel_digest in artifact.support_panel_digests:
+    member = SupportMember(query.panel_digest, query.digest())
+    archived_members = frozenset(
+        artifact.positive_members + artifact.negative_members
+    )
+    if frozen_support_member and member not in archived_members:
+        raise SupportPrototypeIntegrityError(
+            "support replay packet is not an exact frozen support member"
+        )
+    if not frozen_support_member and query.panel_digest in artifact.support_panel_digests:
         raise SupportPrototypeIntegrityError("query panel overlaps frozen support")
     expected_names = tuple(item.name for item in feature_space.dimensions)
     if tuple(item.name for item in artifact.positive_centroid) != expected_names:
@@ -839,6 +874,21 @@ def contrastive_margin(
         prototype_digest=artifact.digest(),
         lower=negative_lower - positive_upper,
         upper=negative_upper - positive_lower,
+    )
+
+
+def contrastive_margin(
+    query: FrozenPanelFeatures,
+    artifact: FrozenSupportPrototypes,
+    feature_space: FrozenFeatureSpace,
+) -> ContrastiveMargin:
+    """Compute a held-out panel's fixed positive-support margin enclosure."""
+
+    return _contrastive_margin(
+        query,
+        artifact,
+        feature_space,
+        frozen_support_member=False,
     )
 
 
@@ -860,20 +910,14 @@ def _base_provenance(
     )
 
 
-def evaluate_support_prototype(
+def _evaluate_support_prototype(
     formula: PositivePrototypeFormula,
     artifact: FrozenSupportPrototypes,
     feature_space: FrozenFeatureSpace,
     query: FrozenPanelFeatures | Evidence[FrozenPanelFeatures],
+    *,
+    frozen_support_member: bool,
 ) -> Evidence[bool]:
-    """Evaluate one frozen query packet with all four evidence dispositions.
-
-    Certified absence means only that the exact operational predicate is
-    safely below its negative margin.  It is not a proof of prose-level
-    semantic absence.  Upstream feature absence is therefore indeterminate,
-    never silently converted to a negative prediction.
-    """
-
     try:
         validate_prototype_formula(formula, artifact, feature_space)
     except (TypeError, ValueError) as exc:
@@ -917,7 +961,12 @@ def evaluate_support_prototype(
             f"expected FrozenPanelFeatures, got {type(query).__name__}",
         )
     try:
-        margin = contrastive_margin(query, artifact, feature_space)
+        margin = _contrastive_margin(
+            query,
+            artifact,
+            feature_space,
+            frozen_support_member=frozen_support_member,
+        )
     except (TypeError, ValueError) as exc:
         return Evidence.error(
             _base_provenance(formula, artifact, query.digest()),
@@ -953,6 +1002,54 @@ def evaluate_support_prototype(
         provenance,
         "contrastive margin intersects the frozen abstention region",
         uncertainty,
+    )
+
+
+def evaluate_support_prototype(
+    formula: PositivePrototypeFormula,
+    artifact: FrozenSupportPrototypes,
+    feature_space: FrozenFeatureSpace,
+    query: FrozenPanelFeatures | Evidence[FrozenPanelFeatures],
+) -> Evidence[bool]:
+    """Evaluate one held-out packet with all four evidence dispositions.
+
+    Certified absence means only that the exact operational predicate is
+    safely below its negative margin.  It is not a proof of prose-level
+    semantic absence.  Upstream feature absence is therefore indeterminate,
+    never silently converted to a negative prediction.  A panel used for
+    fitting is rejected here so it cannot masquerade as held-out evidence.
+    """
+
+    return _evaluate_support_prototype(
+        formula,
+        artifact,
+        feature_space,
+        query,
+        frozen_support_member=False,
+    )
+
+
+def evaluate_frozen_support_member(
+    formula: PositivePrototypeFormula,
+    artifact: FrozenSupportPrototypes,
+    feature_space: FrozenFeatureSpace,
+    packet: FrozenPanelFeatures | Evidence[FrozenPanelFeatures],
+) -> Evidence[bool]:
+    """Replay the operational predicate on one exact fitted support vector.
+
+    This is deliberately separate from :func:`evaluate_support_prototype`.
+    It is a training-fit check for the strict support gate, not held-out
+    calibration or query evidence.  A fresh extraction must reconstruct an
+    exact ``(panel_digest, vector_digest)`` member of the frozen artifact;
+    merely reusing the panel digest with changed features is an error.
+    """
+
+    return _evaluate_support_prototype(
+        formula,
+        artifact,
+        feature_space,
+        packet,
+        frozen_support_member=True,
     )
 
 
@@ -1020,6 +1117,7 @@ __all__ = [
     "SupportPrototypeIntegrityError",
     "SupportPrototypePlan",
     "contrastive_margin",
+    "evaluate_frozen_support_member",
     "evaluate_support_prototype",
     "fit_support_prototypes",
     "panel_side_assignment_digest",

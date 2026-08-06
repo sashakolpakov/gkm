@@ -13,11 +13,13 @@ from bongard.benchmark import (
     EpisodeStatus,
     ObservationInput,
     ProposedRule,
+    SUPPORT_PROTOTYPE_PREDICATE_MODE,
     SealedMutationError,
     SealedTestGuard,
     SupportInput,
     SupportGatePolicy,
     SupportGateMeasurement,
+    SupportGateMode,
     SupportGateResult,
     prepare_episode,
     run_episode,
@@ -32,6 +34,85 @@ from bongard.legs import BOOLEAN_WITNESS, PANEL, LegContract, LegRegistry
 PNG = b"\x89PNG\r\n\x1a\n"
 VERIFIER = "canonical-bongard-verifier"
 TEST_GATE = SupportGatePolicy.verifier_test_bypass("unit fixture")
+
+
+def test_support_gate_policy_keeps_legacy_bytes_and_separates_prototype_replay() -> None:
+    empirical = SupportGatePolicy.empirical()
+    assert canonical_digest(empirical.to_data()) == (
+        "93e976b9f18f517fc3a1d109514bb76be13866680834e8e0c72e6cdb696b15ef"
+    )
+    assert empirical.to_data() == {
+        "version": "headless-hybrid-support-replay/v2",
+        "mode": "empirical_replay",
+        "reason": None,
+        "call_count": 12,
+        "positive_count": 6,
+        "negative_count": 6,
+        "image_name": "query.png",
+        "positive_outcome": "present",
+        "negative_outcome": "nonmatch",
+        "nonmatch_certificate_semantics": (
+            "archived_model_nonmatch_for_frozen_operational_claim"
+        ),
+        "nonmatch_reason_semantics": (
+            "optional_overall_model_summary_bound_inside_certificate"
+        ),
+        "nonmatch_cue_keyed_findings_required": True,
+        "nonmatch_visibility_statement_required": True,
+        "fresh_isolated_transport_per_panel": True,
+        "polarity_flip_allowed": False,
+    }
+    assert canonical_digest(TEST_GATE.to_data()) == (
+        "353f69769bd75a3f5ed6182fb62619c744af001437758af507aeb35c372d9bd2"
+    )
+
+    prototype = SupportGatePolicy.prototype()
+    assert prototype.mode is SupportGateMode.SUPPORT_PROTOTYPE_REPLAY
+    assert prototype.to_data() == {
+        "version": "support-prototype-replay/v1",
+        "mode": "support_prototype_replay",
+        "reason": None,
+        "call_count": 12,
+        "positive_count": 6,
+        "negative_count": 6,
+        "extractor_input_contract": (
+            "panel_bytes_only_no_task_candidate_side_or_role_context_v1"
+        ),
+        "positive_outcome": "present",
+        "negative_outcome": "certified_absent",
+        "certified_absence_semantics": (
+            "operational_contrastive_nonmatch_for_frozen_support_prototype"
+        ),
+        "dispositions": [
+            "present",
+            "certified_absent",
+            "indeterminate",
+            "error",
+        ],
+        "fresh_candidate_independent_extraction_per_panel": True,
+        "fresh_frozen_predicate_evaluation_per_panel": True,
+        "polarity_flip_allowed": False,
+    }
+    encoded = json.dumps(prototype.to_data(), sort_keys=True)
+    assert "codex" not in encoded.lower()
+    assert "cue" not in encoded.lower()
+    assert "polarity_flip_allowed\": false" in encoded
+
+
+def test_support_gate_policy_rejects_cross_version_or_bypass_semantics() -> None:
+    with pytest.raises(ValueError, match="support-prototype replay policy"):
+        SupportGatePolicy(SupportGateMode.SUPPORT_PROTOTYPE_REPLAY)
+    with pytest.raises(ValueError, match="has no bypass reason"):
+        SupportGatePolicy(
+            SupportGateMode.SUPPORT_PROTOTYPE_REPLAY,
+            reason="candidate requested bypass",
+            version="support-prototype-replay/v1",
+        )
+    with pytest.raises(ValueError, match="empirical support replay policy"):
+        SupportGatePolicy(
+            SupportGateMode.EMPIRICAL_REPLAY,
+            version="support-prototype-replay/v1",
+        )
 
 
 def _make_task(root: Path, task_id: str) -> None:
@@ -353,6 +434,126 @@ def test_episode_selection_is_deterministic_exactly_six_plus_six(tmp_path: Path)
     assert len(alternatives) > 1
 
 
+def test_episode_plan_optionally_commits_pre_support_predicate_policy(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    manifest = corpus.build_manifest()
+    nonce = "b" * 64
+    policy_digest = hashlib.sha256(b"fixed support-prototype policy").hexdigest()
+    legacy = prepare_episode(
+        corpus,
+        task_id,
+        seed="policy-commitment",
+        corpus_manifest=manifest,
+        label_seal_nonce=nonce,
+    )
+    committed = prepare_episode(
+        corpus,
+        task_id,
+        seed="policy-commitment",
+        corpus_manifest=manifest,
+        label_seal_nonce=nonce,
+        predicate_mode=SUPPORT_PROTOTYPE_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+
+    assert "predicate_mode" not in legacy.to_data()
+    assert "predicate_policy_digest" not in legacy.to_data()
+    assert committed.to_data() == {
+        **legacy.to_data(),
+        "predicate_mode": SUPPORT_PROTOTYPE_PREDICATE_MODE,
+        "predicate_policy_digest": policy_digest,
+    }
+    assert committed.digest == canonical_digest(committed.to_data())
+    assert committed.digest != legacy.digest
+    assert committed.support == legacy.support
+    assert committed.queries == legacy.queries
+
+    changed = prepare_episode(
+        corpus,
+        task_id,
+        seed="policy-commitment",
+        corpus_manifest=manifest,
+        label_seal_nonce=nonce,
+        predicate_mode=SUPPORT_PROTOTYPE_PREDICATE_MODE,
+        predicate_policy_digest=hashlib.sha256(b"changed policy").hexdigest(),
+    )
+    assert changed.digest != committed.digest
+
+
+@pytest.mark.parametrize(
+    ("predicate_mode", "predicate_policy_digest", "message"),
+    [
+        (SUPPORT_PROTOTYPE_PREDICATE_MODE, None, "committed together"),
+        (None, "a" * 64, "committed together"),
+        ("hybrid", "a" * 64, "unsupported predicate mode"),
+        (
+            SUPPORT_PROTOTYPE_PREDICATE_MODE,
+            "sha256:" + "a" * 64,
+            "unprefixed lowercase SHA-256",
+        ),
+        (
+            SUPPORT_PROTOTYPE_PREDICATE_MODE,
+            "A" * 64,
+            "unprefixed lowercase SHA-256",
+        ),
+    ],
+)
+def test_episode_plan_rejects_incomplete_or_noncanonical_predicate_policy(
+    tmp_path: Path,
+    predicate_mode: str | None,
+    predicate_policy_digest: str | None,
+    message: str,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    with pytest.raises(ValueError, match=message):
+        prepare_episode(
+            corpus,
+            task_id,
+            seed="invalid-policy",
+            label_seal_nonce="c" * 64,
+            predicate_mode=predicate_mode,
+            predicate_policy_digest=predicate_policy_digest,
+        )
+
+
+def test_runner_rejects_policy_mismatch_before_support_callback(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    policy_digest = hashlib.sha256(b"committed prototype policy").hexdigest()
+    plan = prepare_episode(
+        corpus,
+        task_id,
+        seed="policy-bound-runner",
+        predicate_mode=SUPPORT_PROTOTYPE_PREDICATE_MODE,
+        predicate_policy_digest=policy_digest,
+    )
+
+    class MismatchedProposer:
+        predicate_mode = SUPPORT_PROTOTYPE_PREDICATE_MODE
+        predicate_policy_digest = hashlib.sha256(b"other policy").hexdigest()
+
+        def __init__(self) -> None:
+            self.called = False
+
+        def propose(self, support):
+            del support
+            self.called = True
+            raise AssertionError("support must not be released")
+
+    proposer = MismatchedProposer()
+    with pytest.raises(BenchmarkProtocolError, match="committed episode plan"):
+        run_episode(
+            plan,
+            proposer,
+            PixelObserverFactory(task_id),
+            support_gate_policy=SupportGatePolicy.prototype(),
+        )
+    assert not proposer.called
+
+
 def test_runner_freezes_before_two_isolated_queries_and_scores_both(
     tmp_path: Path,
 ) -> None:
@@ -429,6 +630,66 @@ def test_empirical_support_gate_uses_exactly_twelve_fresh_neutral_calls(
     assert result.support_gate.transport_attempt_count == 12
     assert result.proposal_freeze is not None
     assert result.proposal_freeze.support_gate_digest == result.support_gate.digest
+
+
+def test_prototype_support_gate_uses_the_same_strict_classifier(
+    tmp_path: Path,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    plan = prepare_episode(corpus, task_id, seed="prototype-support-gate")
+    proposer = GateReplayProposer(task_id)
+    query_observers = PixelObserverFactory(task_id)
+
+    result = run_episode(
+        plan,
+        proposer,
+        query_observers,
+        support_gate_policy=SupportGatePolicy.prototype(),
+    )
+
+    assert result.status is EpisodeStatus.COMPLETE
+    assert result.support_gate is not None
+    assert result.support_gate.policy == SupportGatePolicy.prototype()
+    assert result.support_gate.result is SupportGateResult.ALIGNED
+    assert result.support_gate.forward_matches == 12
+    assert result.support_gate.reverse_matches == 0
+    assert result.support_gate.present_count == 6
+    assert result.support_gate.nonmatch_count == 6
+    assert result.support_gate.indeterminate_count == 0
+    assert result.support_gate.error_count == 0
+    assert result.support_gate.transport_attempt_count == 12
+    assert proposer.support_calls == 12
+    assert len(query_observers.instances) == 2
+
+
+@pytest.mark.parametrize("behaviour", ["indeterminate", "error"])
+def test_prototype_support_gate_preserves_unresolved_dispositions(
+    tmp_path: Path,
+    behaviour: str,
+) -> None:
+    corpus, task_id = _corpus(tmp_path)
+    plan = prepare_episode(
+        corpus, task_id, seed=f"prototype-support-gate-{behaviour}"
+    )
+    proposer = GateReplayProposer(task_id, behaviour)
+    query_observers = PixelObserverFactory(task_id)
+
+    result = run_episode(
+        plan,
+        proposer,
+        query_observers,
+        support_gate_policy=SupportGatePolicy.prototype(),
+    )
+
+    assert result.status is EpisodeStatus.SUPPORT_REJECTED
+    assert result.support_gate is not None
+    assert result.support_gate.result is SupportGateResult.OBSERVER_FAILURE
+    assert result.support_gate.indeterminate_count == (
+        1 if behaviour == "indeterminate" else 0
+    )
+    assert result.support_gate.error_count == (1 if behaviour == "error" else 0)
+    assert query_observers.instances == []
+    assert "query_released" not in result.phases
 
 
 @pytest.mark.parametrize(

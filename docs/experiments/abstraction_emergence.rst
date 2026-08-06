@@ -50,16 +50,22 @@ Archived implementation
 -----------------------
 
 The original control, tests, and reports are preserved at the annotated Git
-tag ``pre-bongard-complete-rewrite-20260805``. Stale working-tree copies remain
-physically present pending explicit deletion, but they are excluded from the
-canonical Bongard package and current reproduction commands. Checkout that tag
-in a separate worktree to inspect or reproduce the historical mechanism; do not
-mix its supplied-atom score with current visual benchmark results.
+tag ``pre-bongard-complete-rewrite-20260805``. Check out that tag in a separate
+worktree to inspect or reproduce the historical mechanism; do not mix its
+supplied-atom score with current visual benchmark results.
 
 Relationship to the canonical track
 -----------------------------------
 
-The visual track replaces supplied atoms with provenance-bearing empirical
-witnesses and typed registered legs. Reuse is credited only after the new leg
-passes calibration, nuisance, near-miss, anti-memorization, and full archive
-replay gates. See :doc:`bongard` for the current claim boundary.
+In the current visual track, pure Python defines the canonical predicate,
+evaluation, and replay semantics. Lean is an optional, removable cross-check;
+it is not required to run or interpret an episode.
+
+The first PURE support-prototype baseline did not pass development
+calibration. Coordinate-wise interval boxes lost correlation between
+preprocessing scenarios, one centroid per side mismatched multimodal classes,
+the one-group restriction ruled out cross-group concepts, and the neutral
+raster features lacked semantic and relational vision. The next visual rung
+must repair those representation limits before reuse can be credited through
+calibration, nuisance, near-miss, anti-memorization, and archive replay gates.
+See :doc:`bongard` for the current claim boundary.

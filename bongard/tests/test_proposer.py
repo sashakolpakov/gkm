@@ -23,8 +23,11 @@ from bongard.proposer import (
     observe_hybrid_panel,
     parse_hybrid_observation_or_error,
     parse_rule_proposal,
+    propose_pure_rule,
     proposer_prompt,
     propose_rule,
+    pure_only_rule_proposal_schema,
+    pure_proposer_prompt,
 )
 from bongard.benchmark import SupportInput
 from bongard.synthesis import compile_hybrid_proposal
@@ -87,6 +90,22 @@ def hybrid_payload() -> dict[str, Any]:
         },
         "confidence": "medium",
     }
+
+
+def pure_payload(observable_id: str = "prototype.topology") -> dict[str, Any]:
+    payload = hybrid_payload()
+    payload["hybrid_claim"] = None
+    payload["observable_requests"] = [
+        {
+            "observable_id": observable_id,
+            "affirmative_interpretation": (
+                "the selected component-and-hole topology is present"
+            ),
+            "arguments": {},
+        }
+    ]
+    payload["formula_template"] = {"kind": "all", "atoms": [observable_id]}
+    return payload
 
 
 def present_observation_payload() -> dict[str, Any]:
@@ -464,6 +483,48 @@ def test_pure_proposal_cannot_flip_or_attach_decorative_observables() -> None:
         )
 
 
+def test_pure_only_schema_and_prompt_close_the_hybrid_escape_hatch() -> None:
+    catalog = {
+        "prototype.global_geometry": "support-relative global geometry",
+        "prototype.topology": "support-relative component and hole topology",
+    }
+    schema = pure_only_rule_proposal_schema(catalog)
+    properties = schema["properties"]
+
+    assert properties["hybrid_claim"] == {"type": "null"}
+    assert properties["observable_requests"]["minItems"] == 1
+    assert properties["observable_requests"]["maxItems"] == 1
+    assert properties["observable_requests"]["items"]["properties"][
+        "observable_id"
+    ]["enum"] == sorted(catalog)
+    assert properties["formula_template"]["properties"]["atoms"]["items"][
+        "enum"
+    ] == sorted(catalog)
+
+    prompt = pure_proposer_prompt(catalog)
+    assert "finite verifier-frozen catalog" in prompt
+    assert "Choose exactly one catalog ID" in prompt
+    assert "HYBRID and arbitrary prose predicates are unavailable" in prompt
+    assert "Set `hybrid_claim` to null" in prompt
+    with pytest.raises(ProposalError, match="non-empty catalog"):
+        pure_only_rule_proposal_schema({})
+
+
+def test_pure_interpretation_cannot_smuggle_a_polarity_flip() -> None:
+    payload = pure_payload()
+    payload["observable_requests"][0]["affirmative_interpretation"] = (
+        "not like the negative support panels"
+    )
+    with pytest.raises(ProposalError, match="semantic negation"):
+        parse_rule_proposal(
+            payload,
+            receipt=FakeReceipt(),  # type: ignore[arg-type]
+            observable_catalog={
+                "prototype.topology": "support-relative topology"
+            },
+        )
+
+
 @pytest.mark.parametrize(
     "raw_atom",
     ("not_hybrid_claim", "negated_rule", "anything", "NOT(hybrid_claim)"),
@@ -525,6 +586,45 @@ def test_proposer_transport_sees_only_exact_support_bytes(tmp_path: Path) -> Non
         "minItems": 1,
         "maxItems": 1,
     }
+
+
+def test_pure_transport_is_one_support_only_closed_catalog_turn(
+    tmp_path: Path,
+) -> None:
+    positives: list[Path] = []
+    negatives: list[Path] = []
+    expected: dict[str, bytes] = {}
+    for side, collection in (("pos", positives), ("neg", negatives)):
+        for index in range(6):
+            path = tmp_path / f"pure-source-{side}-{index}.png"
+            expected[f"{side}_{index}.png"] = write_png(
+                path, index + (0 if side == "pos" else 6), rgb=True
+            )
+            collection.append(path)
+
+    calls = 0
+    catalog = {"prototype.topology": "support-relative topology"}
+
+    def fake_transport(prompt, paths, schema, **kwargs):
+        nonlocal calls
+        del kwargs
+        calls += 1
+        assert "Set `hybrid_claim` to null" in prompt
+        assert tuple(Path(path).name for path in paths) == tuple(expected)
+        assert {Path(path).read_bytes() for path in paths} == set(expected.values())
+        assert schema["properties"]["hybrid_claim"] == {"type": "null"}
+        return SimpleNamespace(payload=pure_payload(), receipt=FakeReceipt())
+
+    proposal = propose_pure_rule(
+        positives,
+        negatives,
+        observable_catalog=catalog,
+        transport=fake_transport,
+    )
+    assert calls == 1
+    assert not proposal.is_hybrid
+    assert proposal.formula_atoms == ("prototype.topology",)
+    assert proposal.observable_requests[0].arguments == ()
 
 
 def test_official_binary_rgb_panels_have_a_semantic_digest(tmp_path: Path) -> None:

@@ -46,10 +46,16 @@ Implemented and covered by focused tests:
   affirmative `AT_LEAST` relation; its post-hoc v9 audit shows that symmetry
   alone is not the missing concept because multiple negatives outscore
   positives;
-- a support-prototype core that freezes neutral interval feature vectors,
-  separate positive/negative support centroids, and one fixed positive margin
-  with no polarity flip; it is not yet integrated with the official runner or
-  externally calibrated;
+- a PURE support-prototype adapter that deterministically extracts eighteen
+  interval features in four closed raster groups, freezes exact 6+6 support
+  preimages, fits separate positive/negative centroids, compiles one positive
+  Python IR atom, reruns all twelve support extractions, and exposes queries
+  only after the ordinary proposal freeze; Codex makes one support-only catalog
+  selection and supplies no code, threshold, weight, polarity, or query
+  observer;
+- a canonical development calibration protocol which keeps unusable tasks in
+  every denominator, rejects official test tasks before extraction, and
+  derives the precommitted per-group margins without Codex or Lean;
 - a closed positive IR containing only atoms, conjunctions, and justified
   disjunctions, with static digest-pinned calls and interval-safe comparison;
 - an explicit backend boundary whose reference evaluator and cold replay are
@@ -82,8 +88,14 @@ Implemented and covered by focused tests:
   recompilation, and cold replay. A non-empty exposure-ledger predecessor still
   needs its ledger or an external anchor for authenticity.
 
-This foundation defines honest accounting. It does not itself provide a good
-vision system or an official benchmark number.
+The first fixed twelve-task development calibration is a strong negative
+result. Every feature group selected margin `1e-9` and had 0/12 strict support
+passes. The best group, moments/symmetry, scored 10/24 development images and
+2/12 puzzles. One border-clipped support panel made one task unfittable; that
+task remained in every denominator as error. The canonical record digest is
+`sha256:cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6`.
+This foundation therefore defines honest accounting and a falsified baseline,
+not a good vision system or an official benchmark number.
 
 ## Scientific boundary
 
@@ -173,13 +185,21 @@ dataset-name detectors. Candidate examples include contour/part structure,
 angle bands, contact signatures, topology, symmetry, and calibrated soft
 semantic prototypes. A prose phrase alone is not a promoted predicate.
 
-The current symmetry failure makes the next attachment concrete: extract
-part/lobe ownership, junction structure, and correspondence between parts,
-rather than adding another global symmetry score. Feed those neutral panel-only
-intervals into the frozen support-prototype core, wire its committed plan,
-centroids, fixed positive margin, and four dispositions into the official
-episode artifact chain, and calibrate it on external development groups before
-promotion.
+The current failure makes the next attachments concrete:
+
+1. retain the three preprocessing scenarios jointly instead of collapsing
+   their correlated feature vectors into an independent coordinate box;
+2. replace one centroid per side with a development-frozen set-valued or
+   multimodal comparison that can represent several negative near-miss modes;
+3. permit a very small verifier-precommitted conjunction of feature groups;
+4. add candidate-independent structured panel descriptions for parts,
+   ownership, correspondence, signed curvature, and open semantic concepts.
+
+The fourth item is an empirical vision rung, not a prose-to-truth shortcut.
+Descriptions must be produced panel-by-panel without task, side, formula, or
+candidate context, frozen with receipts, calibrated on development groups, and
+consumed by Python predicates. Codex proposal prose may specify a hypothesis,
+but it is not evidence and Lean cannot make it so.
 
 Gate: every accepted leg improves a declared drill failure, passes all
 admission gates, and preserves all accepted attachments.

@@ -125,8 +125,8 @@ Run the exact check against both the downloaded archive and extracted tree:
 .. code-block:: bash
 
    .venv/bin/python -m bongard inventory \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --require-complete \
        --official-release \
        --archive downloads/ShapeBongard_V2.zip \
@@ -193,8 +193,8 @@ The exploratory pass deliberately supplies no guessed image properties:
    from bongard import ShapeBongardCorpus, audit_corpus_images
 
    corpus = ShapeBongardCorpus.discover(
-       "downloads/ShapeBongard_V2",
-       split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+       "downloads/ShapeBongard_V2_full/ShapeBongard_V2",
+       split_file="downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json",
        require_complete=True,
    )
    manifest = corpus.build_manifest()
@@ -240,8 +240,8 @@ Inspect the frozen historical-exposure classification before sampling:
 .. code-block:: bash
 
    .venv/bin/python -m bongard cohorts \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --require-complete \
        --split train \
        --cohort clean \
@@ -368,15 +368,35 @@ Global symmetry therefore does not express the target. The next missing leg
 must represent part/lobe ownership, the central junction, and correspondence
 between owned parts.
 
-``bongard.support_prototypes`` supplies a separate support-relative scoring
-core. Candidate-independent extraction first freezes neutral panel-only
-interval vectors without task ID, side, prose claim, or query role. The fitter
-then commits positive and negative support centroids and evaluates only the
-fixed margin ``distance(query, negative) - distance(query, positive)``. A
-larger margin always has positive orientation; neither fitting nor evaluation
-can flip polarity. This core is replayable and bridged to the closed IR, but it
-is not yet wired into the official episode runner, does not itself extract
-pixels, and is not externally calibrated.
+The PURE support-prototype branch now supplies an executable support-relative
+baseline. ``bongard.legs.neutral_features`` consumes exact PNG bytes and emits
+eighteen interval-valued measurements in four closed groups: topology, global
+geometry, moments/symmetry, and boundary/angle. It receives no task ID, side,
+prose claim, formula, or query role. All twelve full support packets are
+computed before one Codex call selects exactly one precommitted group. The
+fitter commits positive and negative support centroids and evaluates only
+``distance(query, negative) - distance(query, positive)``. Neither fitting nor
+evaluation can flip polarity, and support/query evaluation is deterministic
+Python rather than another model call.
+
+The first fixed twelve-task development calibration falsifies this baseline.
+Every group has 0/12 strict support passes. The best group scores only 10/24
+development images and 2/12 puzzles; one border-clipped support panel remains
+in all denominators as an unfittable-support error. Its canonical record digest
+is ``sha256:cf02d58ab57fe1b44201c67d06f00faf06e77374b762c81ff5f61ef20aef93b6``.
+This is development evidence, not a benchmark score.
+
+Four representation defects explain the result. Coordinate-wise min/max
+intervals destroy correlation among the three preprocessing scenarios; one
+centroid assumes a convex unimodal side; the current proposer can select only
+one group; and global raster statistics omit parts, ownership,
+correspondence, signed curvature, and open semantics. Codex prose is
+hash-bound but not load-bearing evidence: the compiled predicate claims only
+an operational match to the frozen support prototype. The adapter runs through
+the generic episode runner. The public CLI now persists a separate PURE outer
+record, and its verifier re-extracts exact PNG bytes, refits prototypes,
+recompiles the Python IR, and replays support and query evidence without Codex
+or Lean.
 
 Why negation used to win
 ------------------------
@@ -477,8 +497,8 @@ file itself:
 
    .venv/bin/python -m bongard verify \
        --run results/bongard/episode.json \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --archive downloads/ShapeBongard_V2.zip \
        --expected-sha256 "$EXPECTED_RUN_SHA256"
 

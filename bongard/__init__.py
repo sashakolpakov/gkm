@@ -88,12 +88,31 @@ from .support_prototypes import (
     SupportPrototypeIntegrityError,
     SupportPrototypePlan,
     contrastive_margin,
+    evaluate_frozen_support_member,
     evaluate_support_prototype,
     fit_support_prototypes,
     panel_side_assignment_digest,
     register_support_prototype_leg,
     validate_prototype_formula,
     verify_support_prototypes,
+)
+from .prototype_artifacts import (
+    FeatureExtractionPreimage,
+    PrototypeFreezePolicy,
+    PrototypePreQueryFreeze,
+    PrototypeQueryArtifact,
+    PrototypeSupportReplayArtifact,
+    PrototypeTruthEvidence,
+)
+from .prototype_calibration import (
+    PrototypeCalibrationError,
+    PrototypeCalibrationIntegrityError,
+    PrototypeCalibrationRecord,
+    calibrate_prototype_margins,
+)
+from .prototype_episode import (
+    HeadlessPrototypeEpisode,
+    PrototypeEpisodeError,
 )
 
 __all__ = [
@@ -126,6 +145,8 @@ __all__ = [
     "FrozenFeatureSpace",
     "FrozenPanelFeatures",
     "FrozenSupportPrototypes",
+    "FeatureExtractionPreimage",
+    "HeadlessPrototypeEpisode",
     "ImageAnomaly",
     "ImageAuditError",
     "ImageAuditReport",
@@ -139,6 +160,15 @@ __all__ = [
     "ParsedOfficialTaskId",
     "PreregisteredCalibrationPlan",
     "PositivePrototypeFormula",
+    "PrototypeCalibrationError",
+    "PrototypeCalibrationIntegrityError",
+    "PrototypeCalibrationRecord",
+    "PrototypeEpisodeError",
+    "PrototypeFreezePolicy",
+    "PrototypePreQueryFreeze",
+    "PrototypeQueryArtifact",
+    "PrototypeSupportReplayArtifact",
+    "PrototypeTruthEvidence",
     "SUPPORT_PROTOTYPE_FEATURES",
     "RegisteredSoftPredicate",
     "ReleaseIdentityError",
@@ -157,6 +187,7 @@ __all__ = [
     "TaskPartition",
     "audit_corpus_images",
     "build_cohort_report",
+    "calibrate_prototype_margins",
     "classify_task",
     "contrastive_margin",
     "deterministic_partition",
@@ -172,6 +203,7 @@ __all__ = [
     "register_soft_predicate",
     "select_tasks",
     "task_id_from_panel_id",
+    "evaluate_frozen_support_member",
     "evaluate_support_prototype",
     "validate_prototype_formula",
     "verify_support_prototypes",

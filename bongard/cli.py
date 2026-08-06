@@ -8,7 +8,7 @@ import json
 from pathlib import Path
 import re
 import sys
-from typing import Any, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from bongard.artifacts import (
     BlobRef,
@@ -20,6 +20,7 @@ from bongard.artifacts import (
     verify_support_commitment_data,
 )
 from bongard.benchmark import (
+    SUPPORT_PROTOTYPE_PREDICATE_MODE,
     SealedTestGuard,
     SupportGatePolicy,
     prepare_episode,
@@ -36,6 +37,11 @@ from bongard.exposure import (
 )
 from bongard.historical_exposure import load_historical_exposure
 from bongard.proposer import HeadlessCodexEpisode
+from bongard.prototype_calibration import (
+    PrototypeCalibrationIntegrityError,
+    PrototypeCalibrationRecord,
+)
+from bongard.prototype_episode import HeadlessPrototypeEpisode
 from bongard.release import (
     DEFAULT_RELEASE_PATH,
     OfficialReleaseDescriptor,
@@ -209,6 +215,29 @@ def _strict_json_bytes(
                 f"run file SHA-256 is {actual_sha256}, expected {expected_sha256}"
             )
     return value
+
+
+def _load_prototype_calibration(path: str | Path) -> PrototypeCalibrationRecord:
+    source = Path(path)
+    try:
+        payload = source.read_bytes()
+        decoded = json.loads(payload)
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise CliError(f"cannot read prototype calibration {source}: {exc}") from exc
+    if not isinstance(decoded, Mapping):
+        raise CliError("prototype calibration root must be a JSON object")
+    try:
+        record = PrototypeCalibrationRecord.from_data(decoded)
+    except (PrototypeCalibrationIntegrityError, TypeError, ValueError) as exc:
+        raise CliError(f"prototype calibration is invalid: {exc}") from exc
+    if record.canonical_json() + b"\n" != payload:
+        raise CliError(
+            "prototype calibration must be exact canonical JSON plus one newline"
+        )
+    # This rechecks the current extractor catalog and every selected space.
+    # A stale calibration fails before corpus support pixels are released.
+    record.to_freeze_policy()
+    return record
 
 
 def _inventory(args: argparse.Namespace) -> int:
@@ -904,7 +933,7 @@ def _run_record(
     corpus: ShapeBongardCorpus,
     task_id: str,
     seed: str,
-    session: HeadlessCodexEpisode,
+    session: Any | None,
     sealed_test: bool,
     exposure_dir: str | Path,
     ledger_in: str | Path | None,
@@ -914,7 +943,38 @@ def _run_record(
     official_release: bool = False,
     archive_path: str | Path | None = None,
     release_descriptor: str | Path = DEFAULT_RELEASE_PATH,
+    session_factory: Callable[[Any], Any] | None = None,
+    support_gate_policy: SupportGatePolicy | None = None,
+    predicate_mode: str | None = None,
+    predicate_policy_digest: str | None = None,
+    record_schema: str = RUN_SCHEMA,
+    artifact_field: str = "vision",
+    record_additions: Mapping[str, Any] | None = None,
+    record_verifier: Callable[..., Any] | None = None,
 ) -> tuple[dict[str, Any], Any]:
+    if (session is None) == (session_factory is None):
+        raise CliError("run requires exactly one session or post-plan session factory")
+    if not isinstance(record_schema, str) or not record_schema.strip():
+        raise CliError("run record schema must be a non-empty string")
+    if artifact_field not in {"vision", "prototype"}:
+        raise CliError("run artifact field must be vision or prototype")
+    additions = dict(record_additions or {})
+    reserved = {
+        "schema",
+        "corpus_manifest_digest",
+        "split_source_digest",
+        "official_release",
+        "plan",
+        "support_commitment",
+        "episode",
+        "vision",
+        "prototype",
+        "run_archive",
+        "exposure",
+        "record_digest",
+    }
+    if set(additions) & reserved:
+        raise CliError("run record additions collide with canonical outer fields")
     _validate_run_exposure_args(
         exposure_dir=exposure_dir,
         ledger_in=ledger_in,
@@ -944,7 +1004,13 @@ def _run_record(
         task_id,
         seed=seed,
         corpus_manifest=manifest,
+        predicate_mode=predicate_mode,
+        predicate_policy_digest=predicate_policy_digest,
     )
+    if session_factory is not None:
+        session = session_factory(plan)
+    if session is None or not callable(getattr(session, "artifact_data", None)):
+        raise CliError("run session does not expose canonical artifact data")
     if plan.split == "test" and not sealed_test:
         raise CliError("test episodes require --sealed-test and a complete corpus")
     if plan.split != "test" and sealed_test:
@@ -970,17 +1036,20 @@ def _run_record(
         plan,
         session,
         session,
-        support_gate_policy=SupportGatePolicy.empirical(),
+        support_gate_policy=(support_gate_policy or SupportGatePolicy.empirical()),
         sealed_guard=guard,
     )
     if guard is not None:
         guard.verify_all()
 
-    vision = session.artifact_data()
-    vision["support_gate"] = (
+    session_artifact = session.artifact_data()
+    if not isinstance(session_artifact, Mapping):
+        raise CliError("run session artifact must be a JSON object")
+    session_artifact = dict(session_artifact)
+    session_artifact["support_gate"] = (
         result.support_gate.to_data() if result.support_gate is not None else None
     )
-    vision["proposal_freeze"] = (
+    session_artifact["proposal_freeze"] = (
         result.proposal_freeze.to_data()
         if result.proposal_freeze is not None
         else None
@@ -988,25 +1057,43 @@ def _run_record(
     archive = result.bundle.to_archive_data() if result.bundle else None
     if archive is not None:
         verified = verify_archive_data(archive)
-        proposal = vision.get("proposal")
+        proposal = session_artifact.get("proposal")
         if not isinstance(proposal, Mapping):
             raise CliError("completed run is missing its visual proposal artifact")
         proposal_digest = canonical_digest(proposal)
         if proposal_digest != verified.bundle.freeze.proposer_digest:
             raise CliError("visual proposal bytes differ from frozen proposer digest")
     content: dict[str, Any] = {
-        "schema": RUN_SCHEMA,
+        "schema": record_schema,
         "corpus_manifest_digest": manifest.digest,
         "split_source_digest": corpus.split.source_digest,
         "official_release": release.to_dict() if release is not None else None,
         "plan": plan.to_data(),
         "support_commitment": plan.support.to_data(),
         "episode": result.to_data(),
-        "vision": vision,
+        artifact_field: session_artifact,
         "run_archive": archive,
         "exposure": exposure,
+        **additions,
     }
     record = {**content, "record_digest": canonical_digest(content)}
+    if record_verifier is not None:
+        blob_sources = (
+            (*plan._support_sources, *plan._query_sources)
+            if result.bundle is not None
+            else plan._support_sources
+        )
+        blob_bytes = {
+            source.panel.blob_id: source.read_verified()
+            for source in blob_sources
+        }
+        try:
+            record_verifier(record, blob_bytes_by_id=blob_bytes)
+        except (TypeError, ValueError, RuntimeError, OSError) as exc:
+            raise CliError(
+                f"run failed immediate profile-specific cold verification: {exc}"
+            ) from exc
+        return record, result
     if archive is not None:
         blob_bytes = {
             source.panel.blob_id: source.path.read_bytes()
@@ -1018,7 +1105,7 @@ def _run_record(
             raise CliError(
                 f"completed run failed immediate strict cold verification: {exc}"
             ) from exc
-    elif vision.get("rejected_proposal_attempt") is not None:
+    elif session_artifact.get("rejected_proposal_attempt") is not None:
         positive_sources = tuple(
             source for source in plan._support_sources if source.positive
         )
@@ -1086,15 +1173,62 @@ def _run(args: argparse.Namespace) -> int:
         official_release=args.official_release,
     )
     corpus = _load_corpus(args)
-    session = HeadlessCodexEpisode(
-        observable_catalog={},
-        model=args.model,
-        reasoning_effort=args.reasoning_effort,
-        proposer_minutes=args.proposer_minutes,
-        observer_minutes=args.observer_minutes,
-        verbose=args.verbose,
-        executable=CODEX_EXECUTABLE,
-    )
+    predicate_mode = getattr(args, "predicate_mode", "hybrid")
+    calibration_path = getattr(args, "prototype_calibration", None)
+    run_options: dict[str, Any]
+    if predicate_mode == "support-prototype":
+        if calibration_path is None:
+            raise CliError(
+                "--predicate-mode support-prototype requires "
+                "--prototype-calibration"
+            )
+        calibration = _load_prototype_calibration(calibration_path)
+        policy = calibration.to_freeze_policy()
+        from bongard.prototype_run_verification import (
+            PROTOTYPE_OUTER_RUN_SCHEMA,
+            verify_prototype_run_data,
+        )
+
+        def prototype_session(plan: Any) -> HeadlessPrototypeEpisode:
+            return HeadlessPrototypeEpisode(
+                support_commitment=plan.support,
+                policy=policy,
+                model=args.model,
+                reasoning_effort=args.reasoning_effort,
+                proposer_minutes=args.proposer_minutes,
+                verbose=args.verbose,
+                executable=CODEX_EXECUTABLE,
+            )
+
+        session = None
+        run_options = {
+            "session_factory": prototype_session,
+            "support_gate_policy": SupportGatePolicy.prototype(),
+            "predicate_mode": SUPPORT_PROTOTYPE_PREDICATE_MODE,
+            "predicate_policy_digest": policy.digest(),
+            "record_schema": PROTOTYPE_OUTER_RUN_SCHEMA,
+            "artifact_field": "prototype",
+            "record_additions": {"calibration": calibration.to_data()},
+            "record_verifier": verify_prototype_run_data,
+        }
+    elif predicate_mode == "hybrid":
+        if calibration_path is not None:
+            raise CliError(
+                "--prototype-calibration is valid only with "
+                "--predicate-mode support-prototype"
+            )
+        session = HeadlessCodexEpisode(
+            observable_catalog={},
+            model=args.model,
+            reasoning_effort=args.reasoning_effort,
+            proposer_minutes=args.proposer_minutes,
+            observer_minutes=args.observer_minutes,
+            verbose=args.verbose,
+            executable=CODEX_EXECUTABLE,
+        )
+        run_options = {}
+    else:  # pragma: no cover - argparse closes this for public calls.
+        raise CliError(f"unsupported predicate mode {predicate_mode!r}")
     record, result = _run_record(
         corpus=corpus,
         task_id=args.task_id,
@@ -1109,6 +1243,7 @@ def _run(args: argparse.Namespace) -> int:
         official_release=args.official_release,
         archive_path=args.archive,
         release_descriptor=args.release_descriptor,
+        **run_options,
     )
     successor_path = Path(args.exposure_dir) / record["exposure"]["successor_filename"]
     encoded = canonical_json(record)
@@ -1500,6 +1635,12 @@ def _bind_record_to_official_corpus(
 
 
 def _verify(args: argparse.Namespace) -> int:
+    from bongard.prototype_run_verification import (
+        PROTOTYPE_OUTER_RUN_SCHEMA,
+        PrototypeRunVerificationError,
+        verify_prototype_run_data,
+    )
+
     run_path = Path(args.run)
     expected_sha256 = args.expected_sha256
     record = _strict_json_bytes(
@@ -1519,15 +1660,28 @@ def _verify(args: argparse.Namespace) -> int:
         "record_digest",
     }
     schema = record.get("schema")
-    expected = (
-        legacy_expected | {"support_commitment"}
-        if schema == RUN_SCHEMA
-        else legacy_expected
-    )
-    if set(record) != expected or schema not in {
-        RUN_SCHEMA,
-        LEGACY_OUTER_RUN_SCHEMA,
-    }:
+    if schema == PROTOTYPE_OUTER_RUN_SCHEMA:
+        expected = {
+            "schema",
+            "corpus_manifest_digest",
+            "split_source_digest",
+            "official_release",
+            "calibration",
+            "plan",
+            "support_commitment",
+            "episode",
+            "prototype",
+            "run_archive",
+            "exposure",
+            "record_digest",
+        }
+    elif schema == RUN_SCHEMA:
+        expected = legacy_expected | {"support_commitment"}
+    elif schema == LEGACY_OUTER_RUN_SCHEMA:
+        expected = legacy_expected
+    else:
+        expected = set()
+    if set(record) != expected:
         raise CliError("run record fields or schema differ")
     content = {key: value for key, value in record.items() if key != "record_digest"}
     if canonical_digest(content) != record["record_digest"]:
@@ -1578,6 +1732,47 @@ def _verify(args: argparse.Namespace) -> int:
     )
     manifest = trusted_release.verify_corpus(corpus)
     task_manifest = _bind_record_to_official_corpus(record, corpus, manifest)
+
+    if schema == PROTOTYPE_OUTER_RUN_SCHEMA:
+        try:
+            support = verify_support_commitment_data(record["support_commitment"])
+        except (TypeError, ValueError) as exc:
+            raise CliError(f"prototype support commitment is invalid: {exc}") from exc
+        if archive is None:
+            blob_bytes = _map_official_support_blob_bytes(task_manifest, support)
+        else:
+            try:
+                prototype_archive = verify_archive_data(archive)
+            except (TypeError, ValueError) as exc:
+                raise CliError(f"prototype run archive is invalid: {exc}") from exc
+            blob_bytes = _map_official_task_blob_bytes(
+                task_manifest, prototype_archive
+            )
+        try:
+            verified_prototype = verify_prototype_run_data(
+                record,
+                blob_bytes_by_id=blob_bytes,
+            )
+        except PrototypeRunVerificationError as exc:
+            raise CliError(
+                f"cross-layer prototype verification failed: {exc}"
+            ) from exc
+        output = {
+            "verified": True,
+            "verification_scope": (
+                "exact-official-python-prototype-pixel-reextraction-and-cold-replay"
+            ),
+            "record_sha256": expected_sha256,
+            "external_anchor_verified": True,
+            **verified_prototype.to_data(),
+            "exposure_ledger_before_digest": exposure["ledger_before_digest"],
+            "exposure_ledger_after_digest": exposure["ledger_after_digest"],
+            "exposure_event_digest": exposure["event_digest"],
+            "exposure_external_anchor": None,
+            "official_release_digest": trusted_release.digest,
+        }
+        sys.stdout.write(json.dumps(output, sort_keys=True) + "\n")
+        return 0
 
     if archive is None:
         vision = record.get("vision")
@@ -1795,6 +1990,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     run.add_argument("--model", default=DEFAULT_CODEX_MODEL)
     run.add_argument("--reasoning-effort", default=DEFAULT_REASONING_EFFORT)
+    run.add_argument(
+        "--predicate-mode",
+        choices=("hybrid", "support-prototype"),
+        default="hybrid",
+        help=(
+            "HYBRID uses model support/query judgments; support-prototype uses "
+            "one Codex catalog selection and deterministic Python evaluation"
+        ),
+    )
+    run.add_argument(
+        "--prototype-calibration",
+        help=(
+            "canonical development calibration record; required only for "
+            "--predicate-mode support-prototype"
+        ),
+    )
     run.add_argument("--proposer-minutes", type=int, default=15)
     run.add_argument("--observer-minutes", type=int, default=10)
     run.add_argument(

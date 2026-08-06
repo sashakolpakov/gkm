@@ -35,8 +35,8 @@ repository. Validate it and record the resulting content address:
 .. code-block:: bash
 
    python3 -m bongard inventory \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --require-complete \
        --official-release \
        --archive downloads/ShapeBongard_V2.zip \
@@ -72,8 +72,8 @@ Import all known historical disclosures before drawing a new partition:
    )
 
    corpus = ShapeBongardCorpus.discover(
-       "downloads/ShapeBongard_V2",
-       split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+       "downloads/ShapeBongard_V2_full/ShapeBongard_V2",
+       split_file="downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json",
        require_complete=True,
    )
    manifest = corpus.build_manifest()
@@ -199,14 +199,22 @@ more symmetric than positives. The next geometry extractor must expose
 part/lobe ownership, junctions, and part correspondence rather than merely tune
 this score.
 
-``bongard.support_prototypes`` accepts neutral panel-only interval feature
-vectors, freezes positive and negative support centroids, and computes the
-single orientation
-``distance(query, negative) - distance(query, positive)``. The fixed positive
-margin has no polarity-flip operation, and its serialized preimages can be
-re-fitted and replayed. This core is not yet connected to the official runner,
-does not authenticate or perform pixel extraction, and is not externally
-calibrated; do not cite its focused tests as a benchmark result.
+``bongard.legs.neutral_features`` performs deterministic panel-only extraction
+of eighteen interval features. ``bongard.prototype_episode`` freezes all 6+6
+support extractions before one Codex catalog-selection call, fits the selected
+positive/negative prototypes, re-extracts all support panels, and uses the
+generic runner's freeze/query/reveal sequence. Query evaluation is pure Python.
+The fixed orientation is
+``distance(query, negative) - distance(query, positive)`` and has no
+polarity-flip operation.
+
+The canonical development calibration keeps all twelve tasks in the
+denominator and obtains 0/12 strict support passes for every group; its best
+query result is 10/24 images and 2/12 puzzles. Do not cite this as a benchmark
+score. Component cold replay verifies archived receipts, feature packets,
+fitting, formula, and evidence. A whole-run verifier must additionally rerun
+pixel extraction from each embedded PNG byte preimage; that public PURE
+serializer/verifier is still being integrated.
 
 Cold replay
 -----------
@@ -252,7 +260,7 @@ Inventory and content-address the complete corpus:
 .. code-block:: bash
 
    python3 -m bongard inventory \
-       --corpus downloads/ShapeBongard_V2 \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
        --require-complete \
        --out results/bongard/corpus-inventory.json
 
@@ -272,8 +280,8 @@ without calling the model:
 
    python3 -c 'from bongard.transport import codex_cli_fingerprint; print(codex_cli_fingerprint())'
    python3 -m bongard run \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --task-id HISTORICALLY_CLEAN_TRAIN_TASK_ID \
        --seed UNIQUE_PRECOMMITTED_SEED \
        --out results/bongard/drill.json \
@@ -281,14 +289,16 @@ without calling the model:
        --ledger-in results/bongard/exposure/PRIOR_DIGEST.exposure.json \
        --require-unseen \
        --cohort drill \
+       --predicate-mode support-prototype \
+       --prototype-calibration bongard/data/support_prototype_calibration_v1.json \
        --official-release \
        --archive downloads/ShapeBongard_V2.zip \
        --expected-codex-launcher-sha256 EXTERNALLY_RECORDED_CODEX_SHA256
    shasum -a 256 results/bongard/drill.json
    python3 -m bongard verify \
        --run results/bongard/drill.json \
-       --corpus downloads/ShapeBongard_V2 \
-       --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+       --corpus downloads/ShapeBongard_V2_full/ShapeBongard_V2 \
+       --split-file downloads/ShapeBongard_V2_full/ShapeBongard_V2/ShapeBongard_V2_split.json \
        --archive downloads/ShapeBongard_V2.zip \
        --expected-sha256 EXTERNALLY_RECORDED_RUN_SHA256
 

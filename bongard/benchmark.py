@@ -63,6 +63,7 @@ from bongard.predicate_backend import (
 
 PROTOCOL_VERSION = "official-two-query-benchmark/v3"
 DEFAULT_VERIFIER = "canonical-bongard-verifier"
+SUPPORT_PROTOTYPE_PREDICATE_MODE = "support_prototype"
 _SHA256 = re.compile(r"(?:sha256:)?([0-9a-f]{64})\Z")
 _NEUTRAL_QUERY_ID = "query"
 _NEUTRAL_QUERY_BLOB_ID = "query-panel"
@@ -87,6 +88,7 @@ class SupportGateMode(str, Enum):
     """Verifier-owned choice made before the proposer receives support."""
 
     EMPIRICAL_REPLAY = "empirical_replay"
+    SUPPORT_PROTOTYPE_REPLAY = "support_prototype_replay"
     TEST_BYPASS = "verifier_test_bypass"
 
 
@@ -99,6 +101,7 @@ class SupportGateResult(str, Enum):
 
 
 SUPPORT_GATE_POLICY_VERSION = "headless-hybrid-support-replay/v2"
+SUPPORT_PROTOTYPE_GATE_POLICY_VERSION = "support-prototype-replay/v1"
 _PENDING_SUPPORT_GATE_DIGEST = canonical_digest(
     {"schema": SUPPORT_GATE_POLICY_VERSION, "state": "pending"}
 )
@@ -113,23 +116,65 @@ class SupportGatePolicy:
     version: str = SUPPORT_GATE_POLICY_VERSION
 
     def __post_init__(self) -> None:
-        if self.version != SUPPORT_GATE_POLICY_VERSION:
-            raise ValueError("unsupported support replay gate policy")
         if self.mode is SupportGateMode.EMPIRICAL_REPLAY:
+            if self.version != SUPPORT_GATE_POLICY_VERSION:
+                raise ValueError("unsupported empirical support replay policy")
             if self.reason is not None:
                 raise ValueError("empirical support replay has no bypass reason")
-        elif not isinstance(self.reason, str) or not self.reason.strip():
-            raise ValueError("test support-gate bypass requires an explicit reason")
+        elif self.mode is SupportGateMode.SUPPORT_PROTOTYPE_REPLAY:
+            if self.version != SUPPORT_PROTOTYPE_GATE_POLICY_VERSION:
+                raise ValueError("unsupported support-prototype replay policy")
+            if self.reason is not None:
+                raise ValueError("support-prototype replay has no bypass reason")
+        elif self.mode is SupportGateMode.TEST_BYPASS:
+            if self.version != SUPPORT_GATE_POLICY_VERSION:
+                raise ValueError("unsupported test support-gate bypass policy")
+            if not isinstance(self.reason, str) or not self.reason.strip():
+                raise ValueError(
+                    "test support-gate bypass requires an explicit reason"
+                )
+        else:  # pragma: no cover - the enum is closed, but callers are runtime Python.
+            raise ValueError("unsupported support replay gate mode")
 
     @classmethod
     def empirical(cls) -> "SupportGatePolicy":
         return cls(SupportGateMode.EMPIRICAL_REPLAY)
 
     @classmethod
+    def prototype(cls) -> "SupportGatePolicy":
+        """Require deterministic support-prototype extraction and evaluation."""
+
+        return cls(
+            SupportGateMode.SUPPORT_PROTOTYPE_REPLAY,
+            version=SUPPORT_PROTOTYPE_GATE_POLICY_VERSION,
+        )
+
+    @classmethod
     def verifier_test_bypass(cls, reason: str) -> "SupportGatePolicy":
         return cls(SupportGateMode.TEST_BYPASS, reason)
 
     def to_data(self) -> dict[str, object]:
+        if self.mode is SupportGateMode.SUPPORT_PROTOTYPE_REPLAY:
+            return {
+                "version": self.version,
+                "mode": self.mode.value,
+                "reason": self.reason,
+                "call_count": 12,
+                "positive_count": 6,
+                "negative_count": 6,
+                "extractor_input_contract": (
+                    "panel_bytes_only_no_task_candidate_side_or_role_context_v1"
+                ),
+                "positive_outcome": Disposition.PRESENT.value,
+                "negative_outcome": Disposition.CERTIFIED_ABSENT.value,
+                "certified_absence_semantics": (
+                    "operational_contrastive_nonmatch_for_frozen_support_prototype"
+                ),
+                "dispositions": [item.value for item in Disposition],
+                "fresh_candidate_independent_extraction_per_panel": True,
+                "fresh_frozen_predicate_evaluation_per_panel": True,
+                "polarity_flip_allowed": False,
+            }
         return {
             "version": self.version,
             "mode": self.mode.value,
@@ -234,13 +279,16 @@ class SupportGateArtifact:
         )
         if any(isinstance(value, bool) or value < 0 for value in counts):
             raise ValueError("support gate counts must be non-negative integers")
-        if self.policy.mode is SupportGateMode.EMPIRICAL_REPLAY:
+        if self.policy.mode in {
+            SupportGateMode.EMPIRICAL_REPLAY,
+            SupportGateMode.SUPPORT_PROTOTYPE_REPLAY,
+        }:
             if len(self.entries) != 12:
-                raise ValueError("empirical support gate requires twelve entries")
+                raise ValueError("replay support gate requires twelve entries")
             if self.present_count + self.nonmatch_count + self.indeterminate_count + self.error_count != 12:
                 raise ValueError("support gate dispositions do not cover twelve panels")
             if self.result is SupportGateResult.TEST_BYPASSED:
-                raise ValueError("empirical support gate cannot be marked bypassed")
+                raise ValueError("replay support gate cannot be marked bypassed")
             if (
                 self.result is SupportGateResult.ALIGNED
                 and self.transport_attempt_count != 12
@@ -650,6 +698,8 @@ class EpisodePlan:
         repr=False, compare=False
     )
     _label_nonce: str = field(repr=False, compare=False)
+    predicate_mode: str | None = None
+    predicate_policy_digest: str | None = None
 
     def __post_init__(self) -> None:
         if not self.task_id or not self.family or not self.verifier_id:
@@ -698,6 +748,23 @@ class EpisodePlan:
         )
         if self.latent_query_digest != expected_latent:
             raise ValueError("latent query commitment digest differs")
+        if (self.predicate_mode is None) != (
+            self.predicate_policy_digest is None
+        ):
+            raise ValueError(
+                "predicate mode and policy digest must be committed together"
+            )
+        if self.predicate_mode is not None:
+            if self.predicate_mode != SUPPORT_PROTOTYPE_PREDICATE_MODE:
+                raise ValueError(
+                    f"unsupported predicate mode {self.predicate_mode!r}"
+                )
+            if not isinstance(self.predicate_policy_digest, str) or re.fullmatch(
+                r"[0-9a-f]{64}", self.predicate_policy_digest
+            ) is None:
+                raise ValueError(
+                    "predicate policy digest must be an unprefixed lowercase SHA-256"
+                )
 
     @property
     def digest(self) -> str:
@@ -706,7 +773,7 @@ class EpisodePlan:
     def to_data(self) -> dict[str, object]:
         """Return the complete, path-free public plan commitment."""
 
-        return {
+        data: dict[str, object] = {
             "version": PROTOCOL_VERSION,
             "task_id": self.task_id,
             "family": self.family,
@@ -721,6 +788,11 @@ class EpisodePlan:
             "latent_query_digest": self.latent_query_digest,
             "label_commitment_digest": self.label_commitment_digest,
         }
+        if self.predicate_mode is not None:
+            assert self.predicate_policy_digest is not None
+            data["predicate_mode"] = self.predicate_mode
+            data["predicate_policy_digest"] = self.predicate_policy_digest
+        return data
 
     def verify_sources(self) -> None:
         for source in (*self._support_sources, *self._query_sources):
@@ -752,6 +824,8 @@ def prepare_episode(
     corpus_manifest: CorpusManifest | None = None,
     verifier_id: str = DEFAULT_VERIFIER,
     label_seal_nonce: str | None = None,
+    predicate_mode: str | None = None,
+    predicate_policy_digest: str | None = None,
 ) -> EpisodePlan:
     """Commit a deterministic 6+6 support / one-per-side query split.
 
@@ -878,6 +952,8 @@ def prepare_episode(
         _support_sources=support_sources,
         _query_sources=query_sources,  # type: ignore[arg-type]
         _label_nonce=label_seal_nonce,
+        predicate_mode=predicate_mode,
+        predicate_policy_digest=predicate_policy_digest,
     )
 
 
@@ -1073,6 +1149,20 @@ def _verify_integrity(
         if guard is not None:
             raise BenchmarkProtocolError("a sealed test guard cannot be used outside test")
         plan.verify_sources()
+
+
+def _verify_predicate_policy_binding(plan: EpisodePlan, proposer: Proposer) -> None:
+    """Match a verifier-owned proposer adapter to the pre-support plan policy."""
+
+    expected = (plan.predicate_mode, plan.predicate_policy_digest)
+    actual = (
+        getattr(proposer, "predicate_mode", None),
+        getattr(proposer, "predicate_policy_digest", None),
+    )
+    if expected != actual:
+        raise BenchmarkProtocolError(
+            "proposer predicate policy differs from the committed episode plan"
+        )
 
 
 def _write_neutral(path: Path, source: _PanelSource) -> None:
@@ -1520,6 +1610,7 @@ def run_episode(
 
     phases: list[str] = ["plan_committed"]
     _verify_integrity(plan, sealed_guard)
+    _verify_predicate_policy_binding(plan, proposer)
     try:
         with tempfile.TemporaryDirectory(prefix="bongard-support-") as directory:
             support_input = _support_input(plan, Path(directory))
@@ -1847,6 +1938,7 @@ __all__ = [
     "Observer",
     "ObserverFactory",
     "PROTOCOL_VERSION",
+    "SUPPORT_PROTOTYPE_PREDICATE_MODE",
     "ProposedRule",
     "Proposer",
     "SealedMutationError",
@@ -1858,6 +1950,7 @@ __all__ = [
     "SupportGateMode",
     "SupportGatePolicy",
     "SupportGateResult",
+    "SUPPORT_PROTOTYPE_GATE_POLICY_VERSION",
     "SupportReplayFactory",
     "SupportReplayObserver",
     "prepare_episode",

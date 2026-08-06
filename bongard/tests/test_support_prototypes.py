@@ -24,6 +24,7 @@ from bongard.support_prototypes import (
     SupportPrototypeIntegrityError,
     SupportPrototypePlan,
     contrastive_margin,
+    evaluate_frozen_support_member,
     evaluate_support_prototype,
     fit_support_prototypes,
     panel_side_assignment_digest,
@@ -350,6 +351,26 @@ def test_interval_distance_encloses_every_endpoint_possibility() -> None:
     assert ContrastiveMargin(
         query.digest(), artifact.digest(), score.lower, score.upper
     ).digest() == score.digest()
+    assert ContrastiveMargin.from_data(
+        json.loads(json.dumps(score.to_data()))
+    ) == score
+
+
+def test_contrastive_margin_decoder_rejects_polarity_and_digest_drift() -> None:
+    space, _, _, _, artifact = support()
+    score = contrastive_margin(
+        vector("query-margin-round-trip", 0.7, 0.8, space=space),
+        artifact,
+        space,
+    )
+    changed = score.to_data()
+    changed["orientation"] = "positive_distance_minus_negative_distance"
+    with pytest.raises(ValueError, match="polarity"):
+        ContrastiveMargin.from_data(changed)
+    changed = score.to_data()
+    changed["unknown"] = True
+    with pytest.raises(ValueError, match="fields differ"):
+        ContrastiveMargin.from_data(changed)
 
 
 @pytest.mark.parametrize(
@@ -428,6 +449,36 @@ def test_query_cannot_reuse_a_support_panel() -> None:
     )
     assert result.disposition is Disposition.ERROR
     assert "overlaps frozen support" in result.reason
+
+
+def test_support_gate_replays_only_exact_frozen_members() -> None:
+    space, _, positive, negative, artifact = support()
+    predicate = formula(space, artifact)
+
+    assert evaluate_frozen_support_member(
+        predicate, artifact, space, positive[0]
+    ).disposition is Disposition.PRESENT
+    assert evaluate_frozen_support_member(
+        predicate, artifact, space, negative[0]
+    ).disposition is Disposition.CERTIFIED_ABSENT
+
+    changed_receipt = replace(
+        positive[0], extractor_receipt_digest=digest("changed replay receipt")
+    )
+    rejected = evaluate_frozen_support_member(
+        predicate, artifact, space, changed_receipt
+    )
+    assert rejected.disposition is Disposition.ERROR
+    assert "exact frozen support member" in rejected.reason
+
+    held_out = evaluate_frozen_support_member(
+        predicate,
+        artifact,
+        space,
+        vector("held-out-cannot-enter-gate", 0.84, 0.86, space=space),
+    )
+    assert held_out.disposition is Disposition.ERROR
+    assert "exact frozen support member" in held_out.reason
 
 
 def test_static_formula_validation_rejects_cross_artifact_splicing() -> None:
