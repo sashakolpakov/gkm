@@ -1,0 +1,56 @@
+{
+  "artifacts": {
+    "cache_snapshot_content_address": "sha256:1094dfd6794d4dfd141b9d0d1c89cf648d5c7d57ea0a545868bc38df928f28a4",
+    "command_config_content_address": "sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451",
+    "exposure_successor_content_address": "sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a",
+    "prediction_persisted": false,
+    "terminal_persisted": false
+  },
+  "claim_policy": {
+    "benchmark_claim_authorized": false,
+    "calibration_claim_authorized": false,
+    "is_bongard_result": false,
+    "official_test_claim_authorized": false,
+    "score_claim_authorized": false,
+    "semantic_claim_authorized": false
+  },
+  "consuming_attempt": {
+    "cli_error_type": "AtomicSmokeCommandError",
+    "exact_error": "failed run precommit is not canonical JSON",
+    "labels_materialized": false,
+    "labels_revealed": false,
+    "reason_digest": "2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d",
+    "result_class": "operational_failure",
+    "selected_task_consumed": true,
+    "selected_task_may_be_rerolled": false
+  },
+  "forensics": {
+    "first_caught_exception_known": false,
+    "normal_terminal_construction_contains_same_mappingproxy_defect": true,
+    "normal_terminal_construction_observed_to_hit_defect": null,
+    "outer_fallback_terminal_construction_hit_mappingproxy_defect": true,
+    "root_cause": "After the runner returned a typed AtomicSmokeRun, the command could not persist a terminal because fallback terminal construction attempted a canonical-JSON clone of the run's frozen MappingProxy precommit. Normal terminal construction contains the same deterministic defect, but the surviving outer error does not establish which exception first entered the fallback path.",
+    "run_phase_known": false,
+    "run_status_known": false,
+    "runner_entered": true,
+    "runner_returned_typed_atomic_smoke_run": true,
+    "successful_model_call_count": {
+      "known": false,
+      "lower_bound_inclusive": 0,
+      "upper_bound_inclusive": 29
+    },
+    "typed_run_output_recoverable": false
+  },
+  "pre_exposure_setup_attempt": {
+    "cache_store_mode_observed": "0755",
+    "consumed_selection": false,
+    "exposure_persisted": false,
+    "required_store_mode": "0700",
+    "result_class": "operational_failure_before_exposure"
+  },
+  "schema": "gkm.bongard-atomic-smoke-n1-operational-failure.v1",
+  "source_snapshot": {
+    "commit": "62ea577f5d86d109577f4f5e49b8b4866eb76c92",
+    "tag": "bongard-atomic-pre-smoke-20260806"
+  }
+}

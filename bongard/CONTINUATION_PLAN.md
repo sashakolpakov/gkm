@@ -3,10 +3,47 @@
 The objective is a usable headless visual proposer on the complete official
 ShapeBongard corpus. A3 has now measured the current Python visual-semantic
 path honestly and failed its calibration fit. The description-to-predicate
-search layer is now implemented as an exact operational atomic smoke. The
-immediate work is to run and inspect that smoke, then design richer typed
-perception and a defensible evaluation frame. It is not to produce a SEALED
-number at any cost.
+search layer is now implemented as an exact operational atomic smoke. Its first
+live N=1 attempt failed in the command wrapper after exact-task exposure; it
+produced no Bongard result, and that task is consumed without reroll. The
+immediate work is to repair and test terminal construction, preserve the
+incident, then design richer typed perception and a defensible evaluation
+frame. It is not to produce a SEALED number at any cost.
+
+## 0. Preserve the first atomic N=1 operational failure
+
+The live command used pre-smoke commit
+`62ea577f5d86d109577f4f5e49b8b4866eb76c92` and annotated tag
+`bongard-atomic-pre-smoke-20260806`. Cache, config, and the exact selected-task
+exposure were durably persisted; no prediction or terminal artifact was
+persisted. The selected task is consumed and must not be rerolled.
+
+The CLI emitted `AtomicSmokeCommandError` with exact message `failed run
+precommit is not canonical JSON` and reason digest
+`2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`.
+The runner was entered and returned a typed `AtomicSmokeRun`. Fallback terminal
+construction then tried to JSON-clone the run's frozen `MappingProxy`
+precommit. Normal terminal construction contains the same deterministic defect,
+but the surviving error does not establish which earlier exception entered the
+fallback path. The run's status, phase, output, and successful-call count are
+irrecoverable. Record successful calls as unknown in the inclusive range
+`0..29`, never as zero or 29.
+
+Without a prediction artifact, labels could not be materialized or revealed.
+The attempt has no score and authorizes no calibration, semantic, benchmark,
+or official-test claim. The persisted content addresses are cache
+`sha256:1094dfd6794d4dfd141b9d0d1c89cf648d5c7d57ea0a545868bc38df928f28a4`,
+config
+`sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451`,
+and exposure successor
+`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+The sanitized record is
+[`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
+
+Before that consuming attempt, a setup launch correctly failed because the
+cache store was mode `0755`, not the required `0700`. It persisted no exposure
+and consumed nothing. Every future atomic store must be a canonical,
+non-symlink directory at mode `0700`.
 
 ## 1. Preserve A1 as a terminal failure
 
@@ -320,11 +357,13 @@ the benchmark path.
 ## Completion criterion
 
 The current record is complete as failure accounting: A1 failed, A2 was
-invalidated without a terminal artifact, and A3 ended in a canonical
-underpopulated-bin failure after successful proposer/scorer transport. Before
-any new calibration is declared, a powered, label-blind recruitment rule must
-be frozen. The atomic matrix path is implemented but not itself a calibration.
-Its first N=1 run is an exploratory repeated-generator train smoke and must be
-reported that way regardless of score. Stage B remains unauthorized. This
-phase is not complete merely because the code builds, one smoke scores 2/2, or
-a favorable complement can be found.
+invalidated without a terminal artifact, A3 ended in a canonical
+underpopulated-bin failure after successful proposer/scorer transport, and the
+first atomic N=1 ended as an operational wrapper failure with no recoverable
+score. Before any new calibration is declared, a powered, label-blind
+recruitment rule must be frozen. The atomic matrix path is implemented but not
+itself a calibration. The consumed N=1 task may not be rerolled, and any future
+separately authorized smoke must still be reported as exploratory regardless
+of score. Stage B remains unauthorized. This phase is not complete merely
+because the code builds, one smoke scores 2/2, or a favorable complement can
+be found.

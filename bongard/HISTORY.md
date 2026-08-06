@@ -211,7 +211,33 @@ transport/synthesis smoke; it is not independent evaluation.
 Before the first live atomic run, the offline genuine-receipt harness completed
 all 29 calls, predicted both synthetic queries correctly, and cold-replayed
 without a model. That is a protocol test, not a Bongard result. No live atomic
-model call or new panel exposure had occurred at this milestone.
+model call or new panel exposure had occurred at that milestone.
+
+The first live N=1 attempt was then launched from commit
+`62ea577f5d86d109577f4f5e49b8b4866eb76c92`, tagged
+`bongard-atomic-pre-smoke-20260806`. A setup invocation first rejected a cache
+store at mode `0755`; atomic stores require `0700`. That invocation persisted
+no exposure and consumed nothing. After permissions were corrected, the
+command persisted cache, config, and exact-task exposure, consuming the
+selected task, but persisted neither prediction nor terminal. It will not be
+rerolled.
+
+Forensics matched reason digest
+`2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`
+exactly to `failed run precommit is not canonical JSON`. The runner had been
+entered and returned a typed `AtomicSmokeRun`. Fallback terminal construction
+attempted a JSON clone of its frozen `MappingProxy` precommit and failed.
+Normal terminal construction contains the same deterministic defect, but the
+outer error does not establish which exception first entered the fallback
+path. The underlying status, phase, output, and successful model-call count
+were not recoverable. The honest successful-call count is unknown in `0..29`.
+Without a prediction artifact, labels could not be materialized or revealed.
+This is an operational failure, not a Bongard score, and supports no
+calibration, semantic, benchmark, or official-test claim. The sanitized
+incident record is
+[`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
+Its file SHA-256 is
+`2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`.
 
 The A2 incident also led to source-bound v2 command receipts and durable
 operational failures for any post-precommit source change. Identity-preserving

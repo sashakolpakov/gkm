@@ -94,6 +94,24 @@ benchmark result. Its central claims are deliberately narrow:
   tasks. It tests transport/synthesis, not independent generalization. Richer
   typed grounding and powered label-blind evaluation remain future work. Lean
   remains an optional removable sidecar.
+- The first live N=1 attempt, from commit
+  `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
+  `bongard-atomic-pre-smoke-20260806`, is an operational wrapper failure, not a
+  Bongard result. Cache, config, and exact-task exposure persisted; prediction
+  and terminal did not. The task is consumed without reroll. After the runner
+  returned a typed `AtomicSmokeRun`, fallback terminal construction rejected
+  its frozen `MappingProxy` precommit. Normal terminal construction contains
+  the same defect, although the surviving error does not identify the first
+  caught exception. The exact error was `failed run precommit is not canonical
+  JSON`, reason digest
+  `2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`.
+  Status, phase, output, and successful-call count are irrecoverable; calls are
+  unknown in `0..29`. No prediction means no label materialization or reveal,
+  and no score, calibration, semantic, benchmark, or official-test claim. The
+  sanitized record is
+  [`../data/atomic_smoke_n1_operational_failure_v1.json`](../data/atomic_smoke_n1_operational_failure_v1.json).
+- Atomic stores require mode `0700`. A pre-exposure setup invocation rejected
+  a `0755` cache store and consumed nothing.
 - New receipts bind the complete executable Bongard Python source boundary;
   post-exposure source drift
   now persists a typed failed receipt with labels withheld. Exact-identity

@@ -1,13 +1,35 @@
 Bongard Visual Concept Induction
 ================================
 
-Status: A1 failed; A2 invalidated; A3 failed; atomic smoke ready
------------------------------------------------------------------
+Status: A1 failed; A2 invalidated; A3 failed; atomic N=1 failed operationally
+-----------------------------------------------------------------------------
 
 The active target is the complete official ``ShapeBongard_V2`` corpus: 12,000
 tasks and 168,000 PNG panels.  The normalized primary split contains 9,300
 training, 900 validation, and 1,800 test tasks.  Exact release identity is
 pinned by ``bongard/data/shape_bongard_v2_release_v1.json``.
+
+The first live atomic N=1 attempt is an operational failure, not a Bongard
+result.  It ran from commit
+``62ea577f5d86d109577f4f5e49b8b4866eb76c92`` and tag
+``bongard-atomic-pre-smoke-20260806``.  The command persisted cache, config, and
+exact-task exposure, so the selected task is consumed and will not be
+rerolled.  It persisted no prediction and no terminal.  The runner was entered
+and returned a typed ``AtomicSmokeRun``.  Fallback terminal construction then
+tried to JSON-clone its frozen ``MappingProxy`` precommit.  Normal terminal
+construction contains the same deterministic defect, although the surviving
+error does not identify the exception that first selected fallback.  The exact
+error was ``failed run precommit is not canonical JSON``; its reason digest is
+``2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d``.
+
+The underlying run status, phase, output, and successful model-call count are
+irrecoverable.  The count is unknown in the inclusive range 0--29.  Since no
+prediction was persisted, labels could not be materialized or revealed.  No
+score, calibration, semantic, benchmark, or official-test claim follows.  A
+sanitized record is
+``bongard/data/atomic_smoke_n1_operational_failure_v1.json``.  Atomic stores
+must have mode ``0700``.  An earlier setup launch rejected a ``0755`` cache
+store before exposure and consumed nothing.
 
 The first visual-semantic calibration experiment, A1, is terminal:
 
@@ -306,7 +328,10 @@ A1's valid terminal result is failure, not a pending value.  A2 is an
 invalidated source-mutation incident, not a pending score.  A3 is a canonical
 underpopulated-bin failure after successful proposer/scorer transport, not
 evidence for negation.  Stage B is unauthorized by all three experiments.  No
-official complete-corpus visual-semantic score currently exists.
+official complete-corpus visual-semantic score currently exists.  The first
+live atomic N=1 adds only an operational wrapper failure: exposure persisted,
+no prediction or terminal persisted, the task is consumed without reroll, and
+the successful-call count is irrecoverably unknown in 0--29.
 
 See :doc:`reproduction` for the exact Stage-A command and current artifact
 addresses.

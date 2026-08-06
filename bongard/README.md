@@ -12,14 +12,45 @@ complete headless Stage-A proposer/scorer transport chain, but terminated as a
 canonical scientific failure because its upper calibration bin was
 underpopulated. It did not reach an end-to-end Bongard benchmark.
 
-## Current status: A1 failed; A2 invalidated; A3 failed; atomic smoke ready
+## Current status: A1 failed; A2 invalidated; A3 failed; atomic N=1 failed operationally
 
-The successor is implemented and offline-verified but has no live result yet.
-Its synthetic causal harness completed all 29 model-receipt slots, made both
-query predictions, and cold-replayed. That verifies the protocol only. The
-first live frame is N=1 over ten exact-unseen training tasks whose Basic-shape
-generator is already exposed; it cannot support an independent benchmark
-claim.
+The successor is implemented and offline-verified, but its first live N=1
+attempt produced no Bongard result. Its synthetic causal harness completed all
+29 model-receipt slots, made both query predictions, and cold-replayed; that
+verifies the protocol only. The live command was launched from commit
+`62ea577f5d86d109577f4f5e49b8b4866eb76c92`, tagged
+`bongard-atomic-pre-smoke-20260806`. It durably persisted the cache snapshot,
+secret-free config, and exact-task exposure, then failed to persist a terminal.
+No prediction or terminal artifact exists. The selected task is consumed and
+will not be rerolled.
+
+The exact outer CLI error was `failed run precommit is not canonical JSON`,
+with reason digest
+`2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`.
+The runner was entered and returned a typed `AtomicSmokeRun`. Fallback terminal
+construction then tried to JSON-clone its frozen `MappingProxy` precommit and
+failed. Normal terminal construction contains the same deterministic defect,
+but the surviving outer error does not establish which exception first entered
+the fallback path. The underlying run status, phase, output, and successful
+model-call count are not recoverable. The only valid call-count statement is
+**unknown, bounded 0..29**. Because no prediction was persisted, labels could
+not be materialized or revealed. There is no score, calibration, semantic,
+benchmark, or official-test claim. This is an operational failure, not a poor
+or successful Bongard result.
+
+The persisted content addresses are cache
+`sha256:1094dfd6794d4dfd141b9d0d1c89cf648d5c7d57ea0a545868bc38df928f28a4`,
+config
+`sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451`,
+and exposure successor
+`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
+The sanitized machine record is
+[`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
+Its file SHA-256 is
+`2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`.
+An earlier pre-exposure setup launch found a cache store at mode `0755`; the
+required mode is `0700`. That launch persisted no exposure and consumed
+nothing.
 
 ### A1 terminal record
 
@@ -493,7 +524,8 @@ python -B -m bongard.atomic_smoke_command \
   --cache-store /absolute/path/to/cache-store
 ```
 
-All stores must already exist as canonical, non-symlink directories. The CLI
+All stores must already exist as canonical, non-symlink directories with mode
+`0700`. The CLI
 prints one ID-redacted JSON status line. This run remains an exploratory
 repeated-generator train smoke even if both query predictions are correct.
 

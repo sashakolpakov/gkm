@@ -390,6 +390,36 @@ freeze, the genuine-receipt synthetic harness completed all 29 calls, scored
 both queries correctly, and cold-replayed; no live atomic result is claimed by
 that offline check.
 
+The first live N=1 attempt was launched from the following source commit and
+annotated tag:
+\begin{center}
+\small
+\nolinkurl{62ea577f5d86d109577f4f5e49b8b4866eb76c92}\\
+\nolinkurl{bongard-atomic-pre-smoke-20260806}.
+\end{center}
+It persisted the cache snapshot, secret-free configuration, and exact
+selected-task exposure, but no prediction and no terminal.  The selected task
+is consumed and will not be rerolled.  The
+runner was entered and returned a typed \texttt{AtomicSmokeRun}.  Fallback
+terminal construction then tried to JSON-clone the run's frozen
+\texttt{MappingProxy} precommit and failed.  Normal terminal construction
+contains the same deterministic defect, but the surviving outer error does not
+establish which exception first selected the fallback path.  The exact error
+was \texttt{failed run precommit is not canonical JSON}.  Its reason digest is
+\begin{center}
+\small
+\nolinkurl{2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d}.
+\end{center}
+The run status, phase, output, and successful model-call count are
+irrecoverable; the count is known only to lie from 0 through 29.  Because no
+prediction was persisted, labels could not be materialized or revealed.  This
+is an operational failure, not a Bongard result, and supports no score,
+calibration, semantic, benchmark, or official-test claim.  Atomic stores
+require mode \texttt{0700}; an earlier setup invocation rejected a
+\texttt{0755} cache store before exposure and consumed nothing.  The sanitized
+machine record is
+\texttt{bongard/data/atomic\_smoke\_n1\_operational\_failure\_v1.json}.
+
 \subsection{Stage B: conditional descriptive DEV run}
 
 Neither the failed A1 receipt, the invalidated A2 incident, nor the failed A3
@@ -503,8 +533,9 @@ implemented; the remaining missing legs are richer typed grounding, angles,
 point contact, ownership, stable object identity, and a powered evaluation
 design.  Until those legs improve, the correct scientific record is one
 terminal A1 failure, one invalidated A2 incident with no terminal artifact,
-one terminal underpopulated-bin A3 failure, and at most an explicitly
-exploratory atomic smoke---not a successful Bongard benchmark.
+one terminal underpopulated-bin A3 failure, and one consumed atomic N=1
+operational wrapper failure with no recoverable score---not a successful
+Bongard benchmark.
 
 \section*{Reproducibility note}
 

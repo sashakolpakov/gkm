@@ -65,6 +65,24 @@ The short version:
 - Exactly ten repeated-generator, exact-unseen training tasks are eligible for
   the first no-reroll N=1 smoke. This tests transport and synthesis, not
   independent generalization or benchmark accuracy.
+- The first live N=1 attempt, from commit
+  `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
+  `bongard-atomic-pre-smoke-20260806`, is an operational failure. Cache, config,
+  and exact-task exposure were persisted, so the selected task is consumed and
+  will not be rerolled; no prediction or terminal was persisted. The runner
+  returned a typed `AtomicSmokeRun`, after which fallback terminal construction
+  rejected its frozen `MappingProxy` precommit. Normal construction contains
+  the same defect, although the outer error cannot identify the exception that
+  first selected the fallback path. The exact error was `failed run precommit
+  is not canonical JSON`, reason digest
+  `2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`.
+  Run status, phase, output, and successful call count are irrecoverable; the
+  call count is only known to lie in `0..29`. Labels were not materialized or
+  revealed, and there is no score, calibration, semantic, benchmark, or
+  official-test claim. The sanitized record is
+  [`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
+- Atomic command stores require mode `0700`. A prior setup launch stopped on a
+  `0755` cache store before exposure and consumed nothing.
 - New command receipts bind the complete executable Bongard Python source
   boundary. Source drift
   after exposure produces a durable typed failure with labels withheld.

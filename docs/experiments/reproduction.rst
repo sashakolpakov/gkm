@@ -326,7 +326,7 @@ exposure before hashing a selected panel, stages the pinned native Codex bytes,
 and guards the authoritative source before and after every call.
 
 Run it only from a committed immutable checkout.  Every store argument must
-name an already existing absolute, non-symlink directory:
+name an already existing absolute, non-symlink directory with mode ``0700``:
 
 .. code-block:: bash
 
@@ -346,3 +346,36 @@ ten exact-unseen training tasks whose Basic-shape generator is already exposed.
 Consequently this is an exploratory transport/synthesis smoke, not an
 independent calibration, DEV estimate, or official benchmark.  All four
 authorization flags remain false regardless of its two-query score.
+
+First live N=1 incident
+-------------------------------
+
+The first live invocation from commit
+``62ea577f5d86d109577f4f5e49b8b4866eb76c92`` and tag
+``bongard-atomic-pre-smoke-20260806`` persisted cache content address
+``sha256:1094dfd6794d4dfd141b9d0d1c89cf648d5c7d57ea0a545868bc38df928f28a4``,
+config address
+``sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451``,
+and exposure-successor address
+``sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a``.
+It persisted no prediction and no terminal.  The exact selected task is
+therefore consumed and must not be rerolled.
+
+The CLI reported ``AtomicSmokeCommandError`` with exact message ``failed run
+precommit is not canonical JSON`` and reason digest
+``2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d``.
+The runner was entered and returned a typed ``AtomicSmokeRun``.  Fallback
+terminal construction then tried to JSON-clone its frozen ``MappingProxy``
+precommit.  Normal terminal construction contains the same deterministic
+defect, but the surviving outer error does not establish which exception first
+entered fallback.  Status, phase, output, and successful model-call count are
+irrecoverable; the only valid count is unknown in the inclusive range 0--29.
+With no persisted prediction, labels could not be materialized or revealed.
+This operational failure supplies no score and authorizes no calibration,
+semantic, benchmark, or official-test claim.
+
+The sanitized machine record is
+``bongard/data/atomic_smoke_n1_operational_failure_v1.json``.  A preceding
+setup invocation had rejected a cache store at mode ``0755`` instead of the
+required ``0700``.  That setup invocation persisted no exposure and consumed
+nothing.

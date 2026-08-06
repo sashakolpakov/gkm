@@ -8,8 +8,14 @@ from types import SimpleNamespace
 
 import pytest
 
+from bongard import benchmark
 import bongard.atomic_smoke_command as C
+import bongard.atomic_smoke_precommit as P
+from bongard.cohorts import parse_official_task_id
+from bongard.corpus import BongardTask, ShapeBongardCorpus, SplitIndex
+from bongard.exposure import ExposureLedger
 from bongard.semantic_calibration_command import StageASourceDependencyIdentity
+from bongard.semantic_calibration_campaign import semantic_generator_cluster_id
 from bongard.transport import CloudPolicyCacheSnapshot, StagedCodexLauncher
 
 
@@ -36,6 +42,89 @@ def _config() -> C.AtomicSmokeCommandConfig:
         reasoning_effort="medium",
         minutes=15,
         verifier_id="fixture-verifier",
+    )
+
+
+def _genuine_precommit(root: Path, *, source_digest: str) -> P.AtomicSmokePrecommit:
+    task_id = "bd_mismatch_triangle_rec1_0000"
+    task_root = root / "bd" / "images" / task_id
+    sides: dict[str, tuple[Path, ...]] = {}
+    for label in ("1", "0"):
+        directory = task_root / label
+        directory.mkdir(parents=True)
+        paths: list[Path] = []
+        for index in range(7):
+            path = directory / f"{index}.png"
+            path.write_bytes(
+                b"\x89PNG\r\n\x1a\n"
+                + f"{task_id}:{label}:{index}".encode("ascii")
+            )
+            paths.append(path)
+        sides[label] = tuple(paths)
+    task = BongardTask(
+        task_id=task_id,
+        family="bd",
+        root=task_root,
+        positive=sides["1"],
+        negative=sides["0"],
+    )
+    corpus = ShapeBongardCorpus(
+        root,
+        (task,),
+        layout="archive",
+        split=SplitIndex(
+            groups=(("test", ()), ("train", (task_id,)), ("val", ())),
+            source_digest=P.OFFICIAL_SPLIT_SOURCE_DIGEST,
+        ),
+    )
+    manifest = corpus.build_manifest()
+    label_nonce = "a" * 64
+    plan = benchmark.prepare_episode(
+        corpus,
+        task_id,
+        seed="synthetic episode seed",
+        corpus_manifest=manifest,
+        verifier_id="offline-fixture",
+        label_seal_nonce=label_nonce,
+    )
+    parsed = parse_official_task_id(task_id)
+    selection = P.AtomicSmokeSelection.create(
+        source_corpus_manifest_digest=P.OFFICIAL_CORPUS_MANIFEST_DIGEST,
+        split_source_digest=P.OFFICIAL_SPLIT_SOURCE_DIGEST,
+        exposure_predecessor_digest=P.OFFICIAL_A3_SUCCESSOR_LEDGER_DIGEST,
+        historical_seed_digest=P.OFFICIAL_HISTORICAL_SEED_DIGEST,
+        resolver_policy_digest=P.OFFICIAL_RESOLVER_POLICY_DIGEST,
+        blocked_morphology_policy_digest=(
+            P.OFFICIAL_BLOCKED_MORPHOLOGY_POLICY_DIGEST
+        ),
+        seed="synthetic post-freeze selection seed",
+        selected_task_id=task_id,
+        selected_generator_cluster_id=semantic_generator_cluster_id(
+            parsed.family, parsed.concepts
+        ),
+    )
+    successor = ExposureLedger.create(P.OFFICIAL_CORPUS_MANIFEST_DIGEST).record(
+        phase=P.ATOMIC_SMOKE_EXPOSURE_PHASE,
+        actor="offline-fixture",
+        purpose=P.ATOMIC_SMOKE_EXPOSURE_PURPOSE,
+        task_ids=(task_id,),
+        source="atomic-smoke-selection:" + selection.digest,
+        observed_at="2026-08-06T12:00:00Z",
+        known_task_ids=(task_id,),
+    )
+    exposure_payload = successor.to_json().encode("utf-8")
+    receipt = P.ExposurePersistenceReceipt.create(
+        ledger=successor,
+        filename=(successor.digest.removeprefix("sha256:") + ".exposure.json"),
+        payload=exposure_payload,
+    )
+    return P.AtomicSmokePrecommit.create(
+        selection=selection,
+        exposure_successor=successor,
+        exposure_persistence_receipt=receipt,
+        source_dependency_digest=source_digest,
+        development_manifest=manifest,
+        episode_plan=plan,
     )
 
 
@@ -116,13 +205,19 @@ def test_source_guard_checks_before_and_after_and_preserves_transport_result(
         guard.wrap("fixture", mutating_transport)()
 
 
+@pytest.mark.parametrize(
+    "persistence_mode", ("ordinary", "primary-fails", "store-unavailable")
+)
 def test_command_persists_config_before_secrets_and_uses_guarded_test_seams(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    persistence_mode: str,
 ) -> None:
     stores = {}
     for name in ("config", "exposure", "prediction", "terminal", "cache"):
         stores[name] = tmp_path / name
-        stores[name].mkdir()
+        stores[name].mkdir(mode=0o700)
+        stores[name].chmod(0o700)
     events: list[str] = []
     sources = _sources()
     fake_inputs = SimpleNamespace(
@@ -201,7 +296,30 @@ def test_command_persists_config_before_secrets_and_uses_guarded_test_seams(
         raise RuntimeError("stop before any live call")
 
     monkeypatch.setattr(C, "run_atomic_smoke", fake_runner)
-    result = C.run_atomic_smoke_command(
+    persist_terminal = C._persist_terminal
+    persistence_attempts = 0
+
+    def fail_primary_terminal_persistence(
+        terminal: C.AtomicSmokeCommandTerminal,
+        directory: str | Path,
+        *,
+        source_guard: object | None = None,
+    ) -> C.AtomicSmokeDurabilityReceipt:
+        nonlocal persistence_attempts
+        persistence_attempts += 1
+        if persistence_attempts == 1:
+            raise OSError("bounded primary terminal persistence failure")
+        if persistence_mode == "store-unavailable":
+            raise OSError("bounded fallback terminal store unavailable")
+        return persist_terminal(
+            terminal,
+            directory,
+            source_guard=source_guard,  # type: ignore[arg-type]
+        )
+
+    if persistence_mode != "ordinary":
+        monkeypatch.setattr(C, "_persist_terminal", fail_primary_terminal_persistence)
+    command_kwargs = dict(
         corpus_path=tmp_path,
         archive_path=tmp_path / "archive.zip",
         exposure_ledger_path=tmp_path / "ledger.json",
@@ -216,11 +334,31 @@ def test_command_persists_config_before_secrets_and_uses_guarded_test_seams(
         named_image_transport=named_transport,
         text_transport=text_transport,
     )
+    if persistence_mode == "store-unavailable":
+        with pytest.raises(
+            OSError, match="bounded fallback terminal store unavailable"
+        ):
+            C.run_atomic_smoke_command(**command_kwargs)
+        assert persistence_attempts == 2
+        return
+    result = C.run_atomic_smoke_command(**command_kwargs)
     assert events[:3] == ["secret", "secret", "secret"]
     assert events[3:] == ["precommit", "stage", "named", "text"]
     assert result.terminal.status == "failed"
-    assert result.terminal.failure_type == "RuntimeError"
+    if persistence_mode == "primary-fails":
+        assert result.terminal.failure_type == "OSError"
+        assert result.terminal.failure_reason_digest == hashlib.sha256(
+            b"bounded primary terminal persistence failure"
+        ).hexdigest()
+        assert persistence_attempts == 2
+    else:
+        assert result.terminal.failure_type == "RuntimeError"
+        assert result.terminal.failure_reason_digest == hashlib.sha256(
+            b"stop before any live call"
+        ).hexdigest()
+        assert persistence_attempts == 0
     assert result.terminal.run_data is None
+    assert result.run_receipt is None
     assert result.config_receipt.path.is_file()
     assert result.terminal_receipt.path.is_file()
     terminal_bytes = result.terminal_receipt.path.read_text(encoding="utf-8")
@@ -277,11 +415,166 @@ def test_source_mutation_is_explicit_in_terminal() -> None:
     assert C.AtomicSmokeCommandTerminal.from_data(terminal.to_data()) == terminal
 
 
+def test_genuine_failed_run_mapping_proxy_wraps_and_round_trips(
+    tmp_path: Path,
+) -> None:
+    sources = _sources()
+    precommit = _genuine_precommit(tmp_path, source_digest=sources.digest)
+    prediction_store = tmp_path / "prediction-store"
+    prediction_store.mkdir()
+
+    def offline_failure(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("bounded offline observer failure")
+
+    run = C.run_atomic_smoke(
+        precommit,
+        source_dependency_digest=sources.digest,
+        expected_protocol_digest=C.atomic_smoke_run_protocol_digest(),
+        expected_launcher_digest=C.ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST,
+        prediction_store_dir=prediction_store,
+        model="gpt-test",
+        reasoning_effort="medium",
+        named_image_transport=offline_failure,
+        text_transport=offline_failure,
+    )
+    assert run.status == "failed"
+    with pytest.raises(TypeError):
+        json.dumps(run.precommit_public_data)
+    assert hashlib.sha256(b"run precommit is not canonical JSON").hexdigest() == (
+        "59fe3bfbe008279f711357dca206fd16afde61586ae9d160dec46d732da879e9"
+    )
+    assert hashlib.sha256(
+        b"failed run precommit is not canonical JSON"
+    ).hexdigest() == (
+        "2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d"
+    )
+
+    terminal = C.AtomicSmokeCommandTerminal.from_run(
+        run,
+        config_digest=_config().digest,
+        launcher_version="codex-cli offline-test",
+    )
+    assert terminal.status == "failed"
+    assert terminal.precommit_data == run.to_data()["precommit_public_data"]
+    assert terminal.run_data == run.to_data()
+    assert C.AtomicSmokeCommandTerminal.from_data(terminal.to_data()) == terminal
+
+    outer = C.AtomicSmokeCommandTerminal.failure(
+        RuntimeError("bounded outer persistence failure"),
+        phase="terminal-persistence",
+        config=_config(),
+        precommit=precommit,
+        launcher_version="codex-cli offline-test",
+        run=run,
+    )
+    assert outer.failure_type == "RuntimeError"
+    assert outer.run_data == run.to_data()
+    assert C.AtomicSmokeCommandTerminal.from_data(outer.to_data()) == outer
+
+
+def test_command_persists_genuine_failed_run_before_context_exit_and_wrapper(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sources = _sources()
+    precommit = _genuine_precommit(
+        tmp_path / "runner-fixture", source_digest=sources.digest
+    )
+    runner_prediction_store = tmp_path / "runner-prediction"
+    runner_prediction_store.mkdir()
+
+    def offline_failure(*_args: object, **_kwargs: object) -> object:
+        raise RuntimeError("bounded offline observer failure")
+
+    run = C.run_atomic_smoke(
+        precommit,
+        source_dependency_digest=sources.digest,
+        expected_protocol_digest=C.atomic_smoke_run_protocol_digest(),
+        expected_launcher_digest=C.ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST,
+        prediction_store_dir=runner_prediction_store,
+        model=C.DEFAULT_CODEX_MODEL,
+        reasoning_effort=C.DEFAULT_REASONING_EFFORT,
+        named_image_transport=offline_failure,
+        text_transport=offline_failure,
+    )
+    assert run.status == "failed"
+
+    stores: dict[str, Path] = {}
+    for name in ("config", "exposure", "prediction", "terminal", "cache"):
+        stores[name] = tmp_path / ("command-" + name)
+        stores[name].mkdir(mode=0o700)
+        stores[name].chmod(0o700)
+    fake_inputs = SimpleNamespace(
+        digest="sha256:" + HEX_B,
+        trusted=SimpleNamespace(corpus=object(), full_manifest=object()),
+        predecessor=object(),
+    )
+    monkeypatch.setattr(C, "authenticate_atomic_smoke_inputs", lambda **_kw: fake_inputs)
+    monkeypatch.setattr(C, "freeze_stage_a_source_dependencies", lambda _root: sources)
+    monkeypatch.setattr(
+        C,
+        "persist_stage_a_cache_snapshot",
+        lambda _snapshot, directory: (
+            Path(directory) / "empty.cache",
+            "sha256:" + hashlib.sha256(b"").hexdigest(),
+            0,
+        ),
+    )
+    monkeypatch.setattr(
+        C,
+        "load_stage_a_cache_snapshot",
+        lambda _path, **_kw: CloudPolicyCacheSnapshot(None),
+    )
+    monkeypatch.setattr(C, "prepare_atomic_smoke_precommit", lambda *_a, **_kw: precommit)
+    monkeypatch.setattr(C, "run_atomic_smoke", lambda *_a, **_kw: run)
+    context_exited: list[bool] = []
+
+    @contextmanager
+    def stage(_executable: str, *, expected_launcher_digest: str):
+        try:
+            yield StagedCodexLauncher(
+                executable="/private/fake/staged-codex",
+                launcher_digest=expected_launcher_digest,
+                version="codex-cli offline-test",
+            )
+        finally:
+            persisted = tuple(
+                stores["terminal"].glob("*.atomic-smoke-run.json")
+            )
+            assert len(persisted) == 1
+            assert json.loads(persisted[0].read_bytes()) == run.to_data()
+            context_exited.append(True)
+
+    generated = iter((HEX_A, HEX_B, HEX_C))
+    result = C.run_atomic_smoke_command(
+        corpus_path=tmp_path,
+        archive_path=tmp_path / "archive.zip",
+        exposure_ledger_path=tmp_path / "ledger.json",
+        config_store_dir=stores["config"],
+        exposure_store_dir=stores["exposure"],
+        prediction_store_dir=stores["prediction"],
+        terminal_store_dir=stores["terminal"],
+        cache_store_dir=stores["cache"],
+        secret_factory=lambda _bytes: next(generated),
+        cache_snapshotter=lambda: CloudPolicyCacheSnapshot(None),
+        launcher_stager=stage,
+        named_image_transport=lambda *_a, **_kw: None,  # never called by fake runner
+        text_transport=lambda *_a, **_kw: None,  # never called by fake runner
+    )
+    assert context_exited == [True]
+    assert result.run_receipt is not None
+    assert result.run_receipt.kind == "atomic-smoke-run"
+    assert result.run_receipt.content_address == "sha256:" + run.digest
+    assert result.run_receipt.path.is_file()
+    assert result.terminal.run_data == run.to_data()
+    assert result.terminal.failure_type is None
+
+
 def test_command_stores_reject_symlink_and_changed_identical_address(
     tmp_path: Path,
 ) -> None:
     real = tmp_path / "real"
-    real.mkdir()
+    real.mkdir(mode=0o700)
+    real.chmod(0o700)
     linked = tmp_path / "linked"
     linked.symlink_to(real, target_is_directory=True)
     with pytest.raises(C.AtomicSmokeCommandError, match="canonical directory"):
@@ -295,9 +588,26 @@ def test_command_stores_reject_symlink_and_changed_identical_address(
     bound = C._StoreBinding.freeze("fixture", real)
     moved = tmp_path / "moved"
     real.rename(moved)
-    real.mkdir()
+    real.mkdir(mode=0o700)
+    real.chmod(0o700)
     with pytest.raises(C.AtomicSmokeCommandError, match="store changed"):
         bound.check("after replacement")
+
+
+def test_command_store_binding_requires_current_owner_and_exact_0700(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    store = tmp_path / "store"
+    store.mkdir(mode=0o755)
+    store.chmod(0o755)
+    with pytest.raises(C.AtomicSmokeCommandError, match="owner-only 0700"):
+        C._StoreBinding.freeze("fixture", store)
+
+    store.chmod(0o700)
+    actual_uid = C.os.getuid()
+    monkeypatch.setattr(C.os, "getuid", lambda: actual_uid + 1)
+    with pytest.raises(C.AtomicSmokeCommandError, match="owner-only 0700"):
+        C._StoreBinding.freeze("fixture", store)
 
 
 def test_terminal_persistence_is_source_guarded_through_reload(tmp_path: Path) -> None:
@@ -337,6 +647,7 @@ def test_cli_output_is_machine_readable_and_never_contains_selected_id(
     result = SimpleNamespace(
         config=SimpleNamespace(digest="sha256:" + HEX_A),
         config_receipt=receipt,
+        run_receipt=receipt,
         terminal=SimpleNamespace(
             status="complete",
             terminal_digest="sha256:" + HEX_B,
@@ -362,6 +673,7 @@ def test_cli_output_is_machine_readable_and_never_contains_selected_id(
     output = capsys.readouterr().out
     decoded = json.loads(output)
     assert decoded["selected_task_id_included"] is False
+    assert decoded["run_persistence"]["filename"] == "fixture.json"
     assert output.count("selected_task_id") == 1
     assert "bd_" not in output
 

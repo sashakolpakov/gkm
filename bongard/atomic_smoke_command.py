@@ -144,6 +144,24 @@ def _canonical_clone(value: object, label: str) -> Any:
         raise AtomicSmokeCommandError(f"{label} is not canonical JSON") from exc
 
 
+def _canonical_run_views(
+    run: AtomicSmokeRun,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Detach the runner's immutable views through its canonical wire form."""
+
+    if not isinstance(run, AtomicSmokeRun):
+        raise TypeError("run must be AtomicSmokeRun")
+    run_data = _canonical_clone(run.to_data(), "atomic smoke run")
+    if not isinstance(run_data, dict):
+        raise AtomicSmokeCommandError("atomic smoke run root is not an object")
+    precommit_data = run_data.get("precommit_public_data")
+    if not isinstance(precommit_data, dict):
+        raise AtomicSmokeCommandError("atomic smoke run precommit is not an object")
+    if AtomicSmokeRun.from_data(run_data).digest != run.digest:
+        raise AtomicSmokeCommandError("atomic smoke run wire form differs")
+    return run_data, precommit_data
+
+
 def _stable_read(
     path: Path,
     *,
@@ -231,6 +249,13 @@ class _StoreBinding:
             info = os.fstat(descriptor)
         finally:
             os.close(descriptor)
+        if (
+            getattr(info, "st_uid", -1) != os.getuid()
+            or stat.S_IMODE(info.st_mode) != 0o700
+        ):
+            raise AtomicSmokeCommandError(
+                f"{_text(label, 'store label', maximum=64)} store must be owner-only 0700"
+            )
         return cls(
             _text(label, "store label", maximum=64),
             path,
@@ -697,7 +722,9 @@ class AtomicSmokeCommandTerminal:
                 or (
                     self.precommit_data is not None
                     and canonical_json(self.precommit_data)
-                    != canonical_json(run.precommit_public_data)
+                    != canonical_json(
+                        run.to_data()["precommit_public_data"]
+                    )
                 )
                 or self.launcher_digest != run.expected_launcher_digest
                 or self.source_dependency_digest != run.source_dependency_digest
@@ -831,6 +858,7 @@ class AtomicSmokeCommandTerminal:
         config_digest: str,
         launcher_version: str,
     ) -> "AtomicSmokeCommandTerminal":
+        run_data, precommit_data = _canonical_run_views(run)
         values = {
             "status": "complete" if run.status == "complete" else "failed",
             "phase": run.terminal_phase,
@@ -840,10 +868,8 @@ class AtomicSmokeCommandTerminal:
             "observed_source_dependency_digest": run.source_dependency_digest,
             "source_observation_error_digest": None,
             "precommit_digest": run.precommit_digest,
-            "precommit_data": _canonical_clone(
-                run.precommit_public_data, "run precommit"
-            ),
-            "run_data": run.to_data(),
+            "precommit_data": precommit_data,
+            "run_data": run_data,
             "run_digest": run.digest,
             "launcher_digest": run.expected_launcher_digest,
             "launcher_version": launcher_version,
@@ -891,13 +917,17 @@ class AtomicSmokeCommandTerminal:
     ) -> "AtomicSmokeCommandTerminal":
         reason = (str(error) or repr(error)).encode("utf-8", errors="replace")[:4096]
         mutation = error if isinstance(error, AtomicSmokeSourceMutationError) else None
+        run_data: dict[str, Any] | None = None
+        run_precommit_data: dict[str, Any] | None = None
+        if run is not None:
+            run_data, run_precommit_data = _canonical_run_views(run)
         effective_precommit_digest = (
             run.precommit_digest
             if run is not None
             else None if precommit is None else precommit.digest
         )
         effective_precommit_data = (
-            _canonical_clone(run.precommit_public_data, "failed run precommit")
+            run_precommit_data
             if run is not None
             else precommit.to_data()
             if isinstance(precommit, AtomicSmokePrecommit)
@@ -923,7 +953,7 @@ class AtomicSmokeCommandTerminal:
             ),
             "precommit_digest": effective_precommit_digest,
             "precommit_data": effective_precommit_data,
-            "run_data": None if run is None else run.to_data(),
+            "run_data": run_data,
             "run_digest": None if run is None else run.digest,
             "launcher_digest": config.expected_launcher_digest,
             "launcher_version": launcher_version,
@@ -991,13 +1021,65 @@ def _persist_terminal(
     )
 
 
+def _persist_raw_run(
+    run: AtomicSmokeRun,
+    directory: str | Path,
+) -> AtomicSmokeDurabilityReceipt:
+    """Durably preserve the runner result before any wrapper work can fail."""
+
+    run_data, _precommit_data = _canonical_run_views(run)
+    payload = canonical_json(run_data)
+    content_address = "sha256:" + _hex(run.digest, "raw run digest")
+    path = _write_content_addressed(
+        directory,
+        digest=content_address,
+        suffix=".atomic-smoke-run.json",
+        payload=payload,
+    )
+    decoded = json.loads(_stable_read(path, maximum=512_000_000))
+    if not isinstance(decoded, Mapping):
+        raise AtomicSmokeCommandError("raw run root is not an object")
+    reloaded = AtomicSmokeRun.from_data(decoded)
+    if reloaded.digest != run.digest or reloaded.to_data() != run_data:
+        raise AtomicSmokeCommandError("reloaded raw run differs")
+    return AtomicSmokeDurabilityReceipt(
+        "atomic-smoke-run",
+        path.resolve(),
+        content_address,
+        "sha256:" + hashlib.sha256(payload).hexdigest(),
+        len(payload),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class AtomicSmokeCommandResult:
     config: AtomicSmokeCommandConfig
     config_receipt: AtomicSmokeDurabilityReceipt
     precommit: AtomicSmokePrecommit | None = field(repr=False)
+    run_receipt: AtomicSmokeDurabilityReceipt | None
     terminal: AtomicSmokeCommandTerminal
     terminal_receipt: AtomicSmokeDurabilityReceipt
+
+    def __post_init__(self) -> None:
+        if (
+            self.config_receipt.kind != "command-config"
+            or self.config_receipt.content_address != self.config.digest
+            or self.terminal.config_digest != self.config.digest
+            or self.terminal_receipt.kind != "terminal-outcome"
+            or self.terminal_receipt.content_address
+            != self.terminal.terminal_digest
+        ):
+            raise AtomicSmokeCommandError("command result durability chain differs")
+        if self.run_receipt is None:
+            if self.terminal.run_digest is not None:
+                raise AtomicSmokeCommandError("terminal run lacks its raw durability receipt")
+        elif (
+            self.terminal.run_digest is None
+            or self.run_receipt.kind != "atomic-smoke-run"
+            or self.run_receipt.content_address
+            != "sha256:" + self.terminal.run_digest
+        ):
+            raise AtomicSmokeCommandError("raw run durability chain differs")
 
 
 def _fresh_secrets(factory: SecretFactory) -> tuple[str, str, str]:
@@ -1095,6 +1177,7 @@ def run_atomic_smoke_command(
     precommit: AtomicSmokePrecommit | None = None
     launcher_version: str | None = None
     run: AtomicSmokeRun | None = None
+    run_receipt: AtomicSmokeDurabilityReceipt | None = None
     phase = "precommit"
     try:
         guard.check("before-precommit")
@@ -1146,13 +1229,18 @@ def run_atomic_smoke_command(
                 text_transport=guard.wrap("text-model-call", text_transport),
                 verbose=config.verbose,
             )
+            if not isinstance(run, AtomicSmokeRun):
+                raise TypeError("atomic runner returned the wrong terminal type")
+            phase = "raw-run-persistence"
+            stores["terminal"].check("before-raw-run-persistence")
+            run_receipt = _persist_raw_run(run, terminal_store_dir)
+            stores["terminal"].check("after-raw-run-persistence")
+            phase = "atomic-run"
             stores["prediction"].check("after-atomic-run")
             guard.check("after-atomic-run")
         guard.check("after-launcher-context")
         phase = "terminal-construction"
         guard.check("before-terminal-construction")
-        if not isinstance(run, AtomicSmokeRun):
-            raise TypeError("atomic runner returned the wrong terminal type")
         terminal = AtomicSmokeCommandTerminal.from_run(
             run,
             config_digest=config.digest,
@@ -1189,10 +1277,46 @@ def run_atomic_smoke_command(
         stores["terminal"].check("before-mutated-terminal-persistence")
         terminal_receipt = _persist_terminal(terminal, terminal_store_dir)
         stores["terminal"].check("after-mutated-terminal-persistence")
+    except Exception as exc:
+        # If the primary outcome itself cannot be persisted, make one bounded
+        # attempt to persist that operational failure at its own content
+        # address.  Any unavailable/replaced store still escapes: without a
+        # verified receipt there is no durable terminal outcome to return.
+        terminal = AtomicSmokeCommandTerminal.failure(
+            exc,
+            phase="terminal-persistence",
+            config=config,
+            precommit=precommit,
+            launcher_version=launcher_version,
+            run=run if isinstance(run, AtomicSmokeRun) else None,
+        )
+        try:
+            stores["terminal"].check("before-fallback-terminal-persistence")
+            terminal_receipt = _persist_terminal(
+                terminal, terminal_store_dir, source_guard=guard
+            )
+            stores["terminal"].check("after-fallback-terminal-persistence")
+        except AtomicSmokeSourceMutationError as source_exc:
+            terminal = AtomicSmokeCommandTerminal.failure(
+                source_exc,
+                phase="terminal-persistence",
+                config=config,
+                precommit=precommit,
+                launcher_version=launcher_version,
+                run=run if isinstance(run, AtomicSmokeRun) else None,
+            )
+            stores["terminal"].check(
+                "before-fallback-mutated-terminal-persistence"
+            )
+            terminal_receipt = _persist_terminal(terminal, terminal_store_dir)
+            stores["terminal"].check(
+                "after-fallback-mutated-terminal-persistence"
+            )
     return AtomicSmokeCommandResult(
         config=config,
         config_receipt=config_receipt,
         precommit=precommit,
+        run_receipt=run_receipt,
         terminal=terminal,
         terminal_receipt=terminal_receipt,
     )
@@ -1268,6 +1392,9 @@ def main(argv: list[str] | None = None) -> int:
         "terminal_digest": result.terminal.terminal_digest,
         "precommit_digest": result.terminal.precommit_digest,
         "run_digest": result.terminal.run_digest,
+        "run_persistence": (
+            None if result.run_receipt is None else result.run_receipt.to_data()
+        ),
         "config_persistence": result.config_receipt.to_data(),
         "terminal_persistence": result.terminal_receipt.to_data(),
         "selected_task_id_included": False,
