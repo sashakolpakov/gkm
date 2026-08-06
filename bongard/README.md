@@ -12,10 +12,10 @@ complete headless Stage-A proposer/scorer transport chain, but terminated as a
 canonical scientific failure because its upper calibration bin was
 underpopulated. It did not reach an end-to-end Bongard benchmark.
 
-## Current status: A1 failed; A2 invalidated; A3 failed; atomic attempts 1--2 failed; attempt 3 PRE-LIVE
+## Current status: A1 failed; A2 invalidated; A3 failed; atomic attempts 1--3 failed
 
-The atomic successor is implemented and offline-verified, but neither of its
-first two live N=1 attempts produced a Bongard result. Its synthetic causal
+The atomic successor is implemented and offline-verified, but none of its
+three live N=1 attempts produced a Bongard result. Its synthetic causal
 harness completed all 29 model-receipt slots, made both query predictions, and
 cold-replayed; that verifies the protocol only. Atomic attempt one was launched
 from commit
@@ -84,29 +84,54 @@ evidence. The sanitized record is
 file SHA-256
 `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
 
-### Atomic attempt three: PRE-LIVE / PENDING
+### Atomic attempt three: terminal support-synthesis failure
 
-Attempt three is a distinct consuming successor, not a reroll. Its active
-predecessor is attempt two's exposure successor,
-`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
-The precommit authenticates the complete A3-to-attempt-one-to-attempt-two
-append lineage and the exact attempt-two record. Eight eligible repeated-generator
-training tasks remain, digest
+Attempt three ran exactly once from commit
+`89b7124da62a5dd62a55abe7025bbaec8f90794b`, tagged
+`bongard-atomic-attempt3-pre-smoke-20260806`. It was a distinct consuming
+successor, not a reroll. The fixed non-Bongard transport preflight and exclusive
+one-shot claim both passed before selection or exposure. The claim protects the
+canonical predecessor path; copied ledger bytes remain an external-control
+problem. The call journal separately forbids resume or retry.
+
+The run authenticated attempt two's exposure successor,
+`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
+and selected once from its exact eight-task universe, digest
 `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-They are suitable only for an exploratory transport/synthesis smoke, not an
-independent accuracy estimate.
+It consumed that task and durably appended exposure successor
+`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`.
+Seven tasks remain in that historical repeated-generator frame, digest
+`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
+This frame tests transport and synthesis, not independent generalization.
 
-The command freezes authoritative Python before complete-release
-authentication and rechecks it afterward, authenticates a staged native Codex
-launcher, and performs a fixed non-Bongard structured-text transport preflight.
-That preflight sees no Bongard data and is outside the 29-call smoke schedule.
-All attempt-owned stores must be pristine. Before generating any secret or
-appending exposure, it exclusively persists a seed-independent one-shot claim
-beside the canonical predecessor ledger. That protects one canonical deployment
-path; copying the offline ledger to another path remains outside the local
-claim's protection. The call journal additionally forbids resume or retry of a
-started attempt. **No live attempt-three outcome is claimed in this pre-live
-snapshot.**
+The journal closed with 25 intents and 25 validated results: twelve neutral
+support descriptions, one text-only proposal, and twelve one-panel support
+scorings. The sole proposed question was `Is a small triangle attached to a
+tilted quadrilateral?`. All six positive supports were `present`. Among the six
+negative supports, three were `operational_nonmatch`, two were `present`, and
+one was `indeterminate`.
+
+Python then failed honestly with `NoExactSeparatorError` at phase
+`support-scoring`: `no atom is total and present on every positive support
+panel; diagnostic_digest=b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14`.
+The one indeterminate negative made the only atom non-total. Even if that
+observation had resolved to nonmatch, the two negative `present` observations
+would still prevent separation. No formula or selection archive was frozen;
+no query source was read or scored; no prediction was persisted; query labels
+were neither materialized nor revealed; and there is no score. Cold replay of
+the exact closed 25-call prefix passed.
+
+A post-hoc support-only orientation diagnostic counts the affirmative rule
+correct on 9/12 panels and its complement on 2/12, with indeterminate counted
+incorrect. This is not an accuracy, score, calibration, semantic, benchmark,
+or negation claim; it only establishes that negation did not win this support
+diagnostic. All scientific-authorization flags remain false. Complete-release
+authentication hashed official-test bytes, but no official-test task or panel
+was selected, exposed to a proposer or scorer, evaluated, or scored. The
+sanitized record is
+[`data/atomic_smoke_attempt3_no_exact_separator_v1.json`](data/atomic_smoke_attempt3_no_exact_separator_v1.json),
+file SHA-256
+`533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
 
 ### A1 terminal record
 
@@ -391,6 +416,14 @@ opaque, affirmative observer predicate:
    shortest positive conjunction that presents every positive support panel
    and operationally rejects every negative one.
 
+Attempt three exposed the semantic gap behind that clean syntax. Its one
+surface-valid “atom” bundled two object shapes, relative size, quadrilateral
+orientation, and directed attachment. The frozen candidate-independent prose
+contained useful relational structure, but the proposal did not factor it into
+micro-predicates and the candidate-aware scorer lost object-role and size
+direction on two negative supports. A grammar with no word `and` therefore did
+not make the predicate atomic.
+
 `operational_nonmatch` means only that the frozen observer returned nonmatch.
 It may act as false inside an archive explicitly scoped to that observer. When
 projected into the general semantic evidence lattice it is
@@ -469,23 +502,27 @@ visual scorer.
 
 The atomic smoke now implements the Python-native description/matrix/selection
 path: one-phrase atoms, complete atom-by-panel observations, deterministic
-small positive conjunctions, no `Not`, and no polarity flip. The remaining
-perception problem is to replace lossy free prose with richer typed object,
-part, angle, and relation observations without leaking task context. A future
-semantic claim also needs a powered, independently frozen calibration design;
-the exploratory operational path does not pretend to supply one.
+small positive conjunctions, no `Not`, and no polarity flip. Attempt three
+shows that factorization and role binding are still missing. The next
+candidate-independent representation needs stable object identities,
+per-object shape and closure, area and orientation intervals, and owner-labelled
+contact relations, kinds, rays, and exterior gaps. Python can then synthesize
+relational micro-predicates instead of asking an opaque scorer to re-interpret a
+whole sentence. The complete two-loop point-contact signature is not currently
+implemented. A future semantic claim also needs a powered, independently
+frozen calibration design; the exploratory operational path does not pretend
+to supply one.
 
-## Python is canonical; Lean is removable
+## Python runtime is canonical; strict un-Lean migration is pending
 
-Python is the sole authoritative semantics. Python defines the predicates,
+Python is the sole runtime semantic authority. Python defines the predicates,
 closed IR, evidence dispositions and projections, calibration, synthesis and
-selection, evaluation, persistence, cold replay, admission and benchmark
-decisions, and every scientific result or artifact ID. Canonical JSON is the
-interchange format.
+selection, evaluation, persistence, cold replay, admission, and benchmark
+decisions. Canonical JSON is the interchange format.
 
-Lean is neither imported nor required by the authoritative path. A Lean or
-other checker may consume only an already-frozen Python artifact and emit a
-detached, non-authoritative sidecar:
+Lean is neither imported nor required by the authoritative path. The intended
+future checker boundary is a process-isolated, detached, non-authoritative
+sidecar that consumes only persisted immutable Python artifacts:
 
 - no Lean term may enter a predicate or artifact identity;
 - no benchmark result may depend on Lean being installed;
@@ -495,12 +532,16 @@ detached, non-authoritative sidecar:
 - a Lean proof may establish consequences of recorded evidence, never the
   correctness of the original visual observation.
 
-This is the explicit “un-Lean” portability invariant.
-The Stage-A source identity enforces it mechanically: it hashes every
-potentially authoritative Bongard Python module while excluding only the exact
-non-authoritative `bongard/semantic_checker.py` sidecar boundary. Editing or
-deleting that sidecar cannot change a command-receipt ID; changing an
-authoritative module does.
+This is the explicit target “un-Lean” portability invariant. Attempt three's runtime
+was Python-only and invoked no Lean or optional checker. Strict migration is
+not yet complete, however: its wider provenance chain binds an earlier
+whole-tree Git commit containing the checker source, its configuration identity
+retains the legacy literal `python-canonical/lean-optional/v1`, and the optional
+checker API remains an in-process audit utility. A future use must process-
+isolate that utility and remove these residual identity bindings. The narrower
+runtime source-dependency receipt already excludes the exact non-authoritative
+`bongard/semantic_checker.py` sidecar boundary; changing an authoritative Python
+module still invalidates the receipt.
 
 ## Corpus boundary
 
@@ -580,8 +621,9 @@ Do not run a live calibration merely to test the command. Live runs consume
 the exposure ledger before model access. Use the synthetic tests for command
 and replay validation.
 
-The atomic command is likewise consuming: it durably records the selected
-exact task before reading its selected pixels. Its production entry point is:
+The historical attempt-three command was consuming: it durably recorded the
+selected exact task before reading its selected pixels. It was invoked once in
+the following form and must not be rerun against the consumed predecessor:
 
 ```bash
 python -B -m bongard.atomic_smoke_command \
@@ -598,25 +640,27 @@ python -B -m bongard.atomic_smoke_command \
   --preflight-store /absolute/path/to/preflight-store
 ```
 
-All stores must already exist as canonical, non-symlink directories with mode
-`0700` and must be pristine. The active predecessor must have digest
+All stores began as canonical, non-symlink directories with mode `0700` and
+were pristine. The historical predecessor had digest
 `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
-and the exact remaining universe must be the eight-ID set with digest
+and its exact eight-task input universe had digest
 `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-The exact attempt-two machine record is an authenticated input. The fixed
-transport preflight and canonical-path attempt claim persist before any
+The exact attempt-two machine record was an authenticated input. The fixed
+transport preflight and canonical-path attempt claim persisted before any
 selection, episode, or label secret and before exact-task exposure. The CLI
-prints one ID-redacted JSON status line. This run remains an exploratory
-repeated-generator train smoke even if both query predictions are correct.
+printed one ID-redacted failure status. The resulting successor is
+`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`;
+the seven unconsumed tasks have digest
+`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
 
-For an operational live command, invoke the production CLI from a detached
-immutable commit with a newly created empty `PYTHONPYCACHEPREFIX` and
-`python -B`. The source receipt hashes `.py` bytes; this launch discipline
-prevents an older or crafted `.pyc` from becoming the executed program. The
-dependency-injection parameters on the Python functions are test seams, not an
-adversarial command authority, because they can substitute transports,
-verifiers, or a watched source root. Stage B independently rechecks the
-successful source identity.
+Any future separately authorized operational command must use a new frozen
+protocol and successor, run from a detached immutable commit with a newly
+created empty `PYTHONPYCACHEPREFIX` and `python -B`. The source receipt hashes
+`.py` bytes; this launch discipline prevents an older or crafted `.pyc` from
+becoming the executed program. Dependency-injection parameters on the Python
+functions are test seams, not adversarial command authority, because they can
+substitute transports, verifiers, or a watched source root. Stage B
+independently rechecks a successful source identity.
 
 See [CONTINUATION_PLAN.md](CONTINUATION_PLAN.md) for the next decisions and
 [HISTORY.md](HISTORY.md) for falsified baselines and removed narratives.

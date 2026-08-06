@@ -22,15 +22,15 @@ point-contact signature, or persistent part-ownership predicate.  Soft
 observations can still be wrong.  A closed predicate layer composes the
 recorded observations and can be replayed mechanically.
 
-Python is the sole authoritative semantics.  It defines predicates, the closed
-IR, evidence dispositions and projections, calibration, synthesis, selection,
-evaluation, persistence, cold replay, decisions, and every scientific result
-or artifact ID.  Lean is neither imported nor required.  Any checker may only
-consume an already-frozen Python artifact and emit a detached,
-non-authoritative sidecar; its presence, failure, disagreement, change, or
-deletion cannot alter Python authority.  Neither Python nor Lean proves that a
-phrase such as ``bird-like object`` corresponds to pixels; formal verification
-starts after the empirical observation boundary.
+Python is the sole runtime semantic authority.  It defines predicates, the
+closed IR, evidence dispositions and projections, calibration, synthesis,
+selection, evaluation, persistence, cold replay, and decisions.  Lean is
+neither imported nor required.  Strict un-Leaning still requires a future
+checker-excluded lineage schema and an out-of-process sidecar over persisted
+bytes; current atomic provenance retains documented checker-linked residues.
+Neither Python nor Lean proves that a phrase such as ``bird-like object``
+corresponds to pixels; formal verification starts after the empirical
+observation boundary.
 
 What the current evidence does not show
 ---------------------------------------
@@ -67,12 +67,19 @@ and the cohort may not be rerun.  The incident file digest is
 fixed calibration fit because its upper bin held six clusters against a minimum
 of eight; negation did not win.  Stage B is unauthorized by A1, A2, and A3.
 
-The atomic path then recorded two consuming failures.  Attempt one was an
+The atomic path then recorded three consuming failures.  Attempt one was an
 operational wrapper failure with an irrecoverable 0--29 call count.  Attempt two
 cold-replayed exactly twelve support descriptions and one valid proposal before
 the prompt/parser question-mark contradiction stopped parsing; it made no
-support-scoring or query call and produced no score.  Atomic attempt three is
-an explicitly pre-live eight-ID successor, not a reported outcome.
+support-scoring or query call and produced no score.  Attempt three closed a
+25-call support prefix and failed honestly with no exact separator before any
+query access.  Its one surface-valid atom bundled object shapes, relative size,
+tilt, and directed attachment; the scorer then lost role and size direction on
+two negative supports and was indeterminate on a third.  This is direct evidence
+of a factorization and role-binding weakness in the operational representation,
+not benchmark-performance evidence.  A non-authoritative support-side check was
+9/12 for the proposed orientation versus 2/12 for its complement, so negation
+did not win.
 
 Official-test visual-semantic model execution is hard-disabled.  Full-release
 authentication nevertheless hashes official-test bytes; no test task or panel

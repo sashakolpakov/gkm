@@ -10,12 +10,12 @@ Current Bongard status
 ----------------------
 
 The active Bongard track targets the complete official ``ShapeBongard_V2``
-release.  Python is the sole authoritative semantics: it defines predicates,
+release.  Python is the sole runtime semantic authority: it defines predicates,
 the closed IR, evidence dispositions and projections, calibration, synthesis,
-selection, evaluation, persistence, cold replay, decisions, and every
-scientific result or artifact ID.  Lean is neither imported nor required.  Any
-checker emits only a detached, non-authoritative sidecar; its presence, failure,
-disagreement, change, or deletion cannot alter Python authority.
+selection, evaluation, persistence, cold replay, and decisions.  Lean is
+neither imported nor required.  Strict un-Leaning remains explicit migration
+work because one atomic lineage retains checker-linked whole-tree provenance, a
+legacy Lean-named identity literal, and an in-process optional checker boundary.
 
 The scientific and operational record is explicit:
 
@@ -50,13 +50,19 @@ The scientific and operational record is explicit:
   implementation-contract failure, not vision or benchmark evidence.  Its
   exposure successor is
   ``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
-* **Atomic attempt three is PRE-LIVE / PENDING.**  It binds that predecessor and
-  an eight-ID universe, digest
-  ``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
-  Python is frozen around release authentication; a staged launcher performs a
-  fixed non-Bongard preflight; all stores must be pristine; and an exclusive
-  seed-independent canonical-path claim persists before secrets or exposure.
-  No attempt-three outcome is claimed.
+* Atomic attempt three ran once from commit ``89b7124d...94b``.  Its preflight
+  and one-shot claim passed, and its journal closed 25 validated calls: twelve
+  neutral descriptions, one proposal, and twelve support scorings.  The sole
+  phrase was ``Is a small triangle attached to a tilted quadrilateral?``.  All
+  six positive supports were ``present``; the negatives were three
+  ``operational_nonmatch``, two ``present``, and one ``indeterminate``.  Python
+  therefore stopped with ``NoExactSeparatorError`` before formula freeze,
+  query access, prediction, query-label materialization, or score.  Cold
+  closed-prefix replay passed.  This is a representation diagnostic, not a
+  benchmark result.  Its successor is
+  ``sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6``;
+  seven tasks remain under the historical resolver, digest
+  ``sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357``.
 * Stage B is unauthorized by A1, A2, and A3.  Strict DRILL capacity after A3 is
   zero; DEV remains 16 BD + 0 HD under the same ledger-disjoint policy.
 * Visual-semantic model execution on the official test split is hard-disabled.

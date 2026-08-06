@@ -1,8 +1,8 @@
 Bongard Visual Concept Induction
 ================================
 
-Status: A1 failed; A2 invalidated; A3 failed; atomic attempts 1--2 failed; attempt 3 PRE-LIVE
-------------------------------------------------------------------------------------------------
+Status: no current benchmark score; atomic attempt 3 failed before query
+------------------------------------------------------------------------
 
 The active target is the complete official ``ShapeBongard_V2`` corpus: 12,000
 tasks and 168,000 PNG panels.  The normalized primary split contains 9,300
@@ -58,17 +58,36 @@ negation, or Bongard performance.  The selected task is consumed.  The
 sanitized record has file SHA-256
 ``242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3``.
 
-**Atomic attempt three is PRE-LIVE / PENDING.**  It binds the exact attempt-two
-record and active predecessor
-``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
-The active universe
-contains exactly eight IDs, digest
-``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
-Python is frozen around complete-release authentication.  A staged native
-launcher performs a fixed non-Bongard structured-text transport preflight; all
-stores must be pristine; and an exclusive seed-independent claim is persisted
-beside the canonical predecessor path before secrets or exposure.  The journal
-separately prevents resume or retry.  No live attempt-three result is claimed.
+Atomic attempt three ran exactly once from commit
+``89b7124da62a5dd62a55abe7025bbaec8f90794b`` and tag
+``bongard-atomic-attempt3-pre-smoke-20260806``.  Its fixed non-Bongard
+preflight and exclusive one-shot claim passed.  The journal then closed exactly
+25 intents and results: twelve neutral support descriptions, one atom proposal,
+and twelve support scorings.  The sole phrase was ``Is a small triangle
+attached to a tilted quadrilateral?``.
+
+All six positive supports were ``present``.  Among the six negatives, three
+were ``operational_nonmatch``, two were ``present``, and one was
+``indeterminate``.  The only atom was therefore non-total and covered only
+three negatives even before eligibility filtering.  Python stopped with
+``NoExactSeparatorError`` in ``support-scoring``; diagnostic digest
+``b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14``
+and matrix digest
+``143a73d050326a906acb36b2ba1f1b637d8cada0eeaea438912b2ec12cbeeb45``.
+No formula, selection archive, query call or read, prediction, query-label
+materialization or reveal, or score occurred.  Cold closed-prefix replay
+passed.  A support-only diagnostic was 9/12 for the proposed orientation and
+2/12 for its complement; this is neither a score nor accuracy, and negation did
+not win.
+
+The selected task is consumed without reroll.  Exposure successor
+``sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6``
+leaves seven tasks under the same historical resolver, digest
+``sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357``.
+The sanitized record is
+``bongard/data/atomic_smoke_attempt3_no_exact_separator_v1.json``, file
+SHA-256
+``533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc``.
 
 The first visual-semantic calibration experiment, A1, is terminal:
 
@@ -238,11 +257,13 @@ most one bundled soft claim.  Synthesis merely lowered that guess, and the
 scorer collapsed one to four cues by their minimum into ``0``, ``0.5``, or
 ``1``.
 
-The atomic successor now uses the frozen descriptions as the only atom-proposal
-input, records a complete atom-by-panel matrix, and deterministically selects a
-positive conjunction before query release.  Its remaining representation gap
-is not candidate search but the lossiness of one-sentence descriptions and the
-absence of richer typed object, part, angle, topology, and relation facts.
+Atomic attempt three tested that repair and exposed the next hole.  Its single
+surface-valid atom bundled at least two object shapes, relative size, tilt, and
+directed attachment.  The frozen descriptions preserved those distinctions,
+but the proposer did not factor them into micro-atoms and the candidate-aware
+scorer reversed object/size roles on two negative supports.  Thus candidate
+search *and* representation remain defective: forbidding the word ``and`` does
+not make a sentence semantically atomic.
 
 The earlier PURE support diagnostic recorded 10 reversed outcomes among 132
 executable support-panel outcomes.  It did not execute an A1 complement or
@@ -264,24 +285,32 @@ explicit dependence or repeated-execution model.
 The actual pipeline
 -------------------
 
-The system is not ``panel -> prose -> Lean -> truth``.  The new atomic smoke
-separates empirical observation from deterministic synthesis:
+The system is not ``panel -> prose -> Lean -> truth``.  Attempt three shows why:
+prose can carry useful structure while an opaque whole-sentence scorer loses
+the bindings needed to evaluate it.  The target pipeline is:
 
 .. code-block:: text
 
-   12 support PNGs
-       -> 12 isolated neutral vision descriptions
-       -> one text-only proposer over labeled descriptions
-       -> 1..12 pairwise-distinct exact affirmative observer questions
-       -> 12 isolated one-panel calls covering the full atom matrix
-       -> deterministic positive conjunction of at most four atoms
-       -> frozen formula
+   each support PNG, independently and without a candidate
+       -> typed scene graph plus a prose audit rendering
+          objects: stable local IDs, shape/closure, area and orientation intervals
+          relations: directed contact, contact kind, owner-labelled rays and gaps
+          soft gestalt: protocol, provenance, disposition and calibration scope
+       -> proposer grounds factorized relational micro-predicates
+       -> Python evaluates the closed IR over the typed evidence
+       -> positive-only support synthesis -> frozen formula
 
    only after the freeze:
-       2 query PNGs -> 2 descriptions -> 2 selected-atom observations
+       2 query PNGs -> the same candidate-independent observer
+       -> selected micro-predicate observations
        -> durable joint prediction -> label reveal -> score
-       -> model-free replay of all 29 causal receipts
+       -> model-free replay of the causal receipts
        -> durable call-journal terminal before runner return
+
+The current atomic runner implements the neutral-description, proposal,
+matrix, positive-synthesis, freeze, and replay boundaries, but not that complete
+typed scene graph.  Attempt three terminated at support synthesis, so none of
+the post-freeze query steps ran.
 
 The atom proposer receives only the frozen descriptions and support labels,
 not pixels.  Each description is bound to the panel bytes, neutral-description
@@ -325,30 +354,38 @@ Witness IDs, intervals, units, producer versions, and content digests make an
 observation replayable.  They are provenance, not proof that a high-level
 description matches the pixels.
 
-That description/matrix/selection path is now implemented in authoritative
-Python.  It retains no ``Not`` and no polarity flip.  The remaining perception
-work is to replace lossy free prose with richer typed object, part, angle, and
-relation observations.  Any semantic claim additionally needs a powered,
-independently frozen calibration design; the operational smoke does not supply
-one.
+That description/matrix/selection path is implemented in Python and retains no
+``Not`` or polarity flip.  The two-loop point-contact leg is not: the direct
+catalog still lacks a complete witness for two loops, one contact,
+owner-labelled rays, and both exterior gaps.  Per-loop side/corner counts and
+interval area ratios are also missing.  Open-vocabulary claims such as
+``bird-like`` remain explicitly operational model observations with provenance
+and uncertainty; Python can rigorously validate their schema, calibration
+scope, dispositions, and Boolean use, but cannot prove that the pixels are
+bird-like.  Any semantic claim additionally needs a powered, independently
+frozen calibration design.
 
 Why Python is authoritative
 ---------------------------
 
 The serialized Boolean IR is closed and unit-aware, and comparisons are safe
-for interval evidence.  Python is the sole authoritative semantics.  It defines
-predicates, the IR, evidence dispositions and projections, calibration,
-synthesis, selection, evaluation, persistence, cold replay, admission and
-benchmark decisions, and every scientific result or artifact ID.
+for interval evidence.  Python is the sole runtime semantic authority.  It
+defines predicates, the IR, evidence dispositions and projections,
+calibration, synthesis, selection, evaluation, persistence, cold replay,
+admission, and benchmark decisions.  Lean, Lake, and elan are neither imported
+nor required, and no checker ran in the live atomic attempts.
 
-Lean is neither imported nor required by the authoritative path.  A Lean or
-other checker may consume only an already-frozen Python artifact and emit a
-detached, non-authoritative sidecar; it may not propose a different predicate,
-change an evaluation, admit a run, or alter an artifact ID.  Installing,
-changing, failing, disagreeing, or deleting the sidecar must leave every
-predicate, evidence value, formula, result, decision, replay, and ID unchanged.
-Even a successful proof is conditional on empirical observations; it does not
-verify the pixels-to-description step.
+The desired ``un-Lean`` boundary is stricter than that current fact.  Three
+residues remain.  The attempt-three lineage hashes an old whole-tree commit that
+contains the optional checker source; its config hashes the legacy literal
+``python-canonical/lean-optional/v1``; and the unused checker API accepts live
+Python objects in-process, detecting mutation only after it occurs.  A future
+schema must hash only checker-excluded scientific source identity, keep Git
+commit/tag as display provenance, rename the execution identity, and run any
+checker in a separate process over persisted immutable bytes.  Until then the
+correct claim is Python-only execution, not universal checker-byte-independent
+artifact identity.  Even a correctly isolated proof would remain conditional
+on empirical observations and could not verify the pixels-to-observation step.
 
 Information and exposure boundaries
 -----------------------------------
@@ -363,10 +400,12 @@ That integrity boundary hashes all release bytes, including official-test
 bytes.  The model-use boundary is separate: no official-test task or panel is
 selected for an episode, exposed to a proposer or scorer, evaluated, or scored.
 
-The proposer receives labeled support panels.  Panel evaluators receive
+The proposer receives frozen support descriptions with their support labels,
+never support pixels.  Panel evaluators receive
 neutral, candidate-independent single-panel views, not source paths, task IDs,
-split metadata, or labels.  The formula is frozen before query pixels are
-created.  Query predictions are committed before labels are revealed.  Cold
+split metadata, or labels.  The formula must be frozen before query pixels are
+opened by a model.  Query predictions must be committed before query labels are
+materialized or revealed.  Attempt three stopped before all of those steps.  Cold
 replay checks the bytes, identities, formula, dispositions, digest chain, and
 score without calling a model.
 
@@ -385,9 +424,13 @@ evidence for negation.  Stage B is unauthorized by all three experiments.  No
 official complete-corpus visual-semantic score currently exists.  Atomic
 attempt one adds an operational wrapper failure with irrecoverable 0--29 call
 count.  Atomic attempt two adds a cold-replayable 13-call implementation
-contract failure before support scoring.  Both selected tasks are consumed.
-The distinct eight-ID atomic attempt-three successor is **PRE-LIVE / PENDING**
-and has no outcome in this snapshot.
+contract failure before support scoring.  Atomic attempt three adds a
+cold-replayable 25-call support-synthesis failure: one bundled atom, zero
+eligible atoms, no query access, and no score.  All three selected tasks are
+consumed.  Attempt three's exposure successor is
+``sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6``;
+seven exact task identities remain in that historical drill frame.  This does
+not create an official complete-corpus visual-semantic score.
 
 See :doc:`reproduction` for the exact Stage-A command and current artifact
 addresses.

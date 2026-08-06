@@ -7,12 +7,16 @@ documentation cleanup are recorded in [HISTORY.md](HISTORY.md).
 
 The short version:
 
-- Python is the sole authoritative semantics. It defines predicates, the closed
-  IR, evidence dispositions and projections, calibration, synthesis, selection,
-  evaluation, persistence, cold replay, decisions, and every result or artifact
-  ID. Lean is neither imported nor required. Any checker is a detached,
-  non-authoritative sidecar; installing, changing, failing, disagreeing, or
-  deleting it changes none of those values.
+- Python is the sole runtime semantic authority. It defines predicates, the
+  closed IR, evidence dispositions and projections, calibration, synthesis,
+  selection, evaluation, persistence, cold replay, and decisions. Lean is
+  neither imported nor required. The intended checker boundary is a detached,
+  process-isolated, non-authoritative sidecar over persisted bytes. Attempt
+  three ran Python-only and invoked no checker, but strict un-Lean migration
+  remains incomplete: its
+  provenance binds an earlier whole-tree commit containing checker source, its
+  configuration retains the legacy `python-canonical/lean-optional/v1` literal,
+  and the optional checker API remains in-process rather than process-isolated.
 - Direct predicates come from a finite ten-entry exact-count catalog.
 - Soft prose such as “bird-like” is a frozen operational measurement protocol,
   not a proof about pixels. An uncalibrated observer nonmatch is a distinct
@@ -72,9 +76,13 @@ The short version:
   training tasks. Attempt one consumed one. Attempt two historically selected
   from the remaining nine-ID universe, digest
   `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`,
-  and consumed one more. Attempt three's active universe therefore contains
-  exactly eight IDs, digest
+  and consumed one more. Attempt three then selected once from the exact
+  eight-ID universe, digest
   `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
+  Its successor is
+  `sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`;
+  seven tasks remain, digest
+  `sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
   These tasks test transport and synthesis, not independent generalization.
 - The first live N=1 attempt, from commit
   `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
@@ -112,17 +120,32 @@ The short version:
   [`data/atomic_smoke_attempt2_proposal_contract_failure_v1.json`](data/atomic_smoke_attempt2_proposal_contract_failure_v1.json),
   file SHA-256
   `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
-- **Atomic attempt three is PRE-LIVE / PENDING.** It binds the exact attempt-two
-  record and active predecessor
-  `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
-  Authoritative Python
-  is frozen before full-release authentication and checked afterward. A fixed
-  non-Bongard structured-text preflight runs before a seed-independent,
-  exclusive claim is persisted beside the canonical predecessor path. All
-  stores must be pristine. The journal separately forbids resume/retry. No
-  attempt-three result is claimed here.
-- Visual-semantic official-test model execution is disabled. Full-release byte
-  authentication still includes the official-test partition.
+- Atomic attempt three ran exactly once from commit
+  `89b7124da62a5dd62a55abe7025bbaec8f90794b`, tag
+  `bongard-atomic-attempt3-pre-smoke-20260806`. Its preflight and one-shot claim
+  passed, and its journal closed 25 validated calls: 12 descriptions, one
+  proposal, and 12 support scorings. The sole question was `Is a small triangle
+  attached to a tilted quadrilateral?`. All six positives were `present`; the
+  negatives were three `operational_nonmatch`, two `present`, and one
+  `indeterminate`.
+- It terminated at `support-scoring` with `NoExactSeparatorError`. The only atom
+  was non-total because of the indeterminate observation, and the two negative
+  `present` observations mean resolving it would still not separate support.
+  No formula, query call, prediction, query-label materialization or reveal, or
+  score occurred. The exact 25-call closed prefix cold-replayed. The post-hoc
+  9/12 versus complement 2/12 support diagnostic is not an accuracy or score;
+  negation did not win. The sanitized record is
+  [`data/atomic_smoke_attempt3_no_exact_separator_v1.json`](data/atomic_smoke_attempt3_no_exact_separator_v1.json),
+  file SHA-256
+  `533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
+- The failure identifies a representation hole, not a Lean hole. The phrase was
+  syntactically one atom but semantically bundled shape, relative size,
+  orientation, and directed attachment. The scorer lost object roles and size
+  direction. The next leg is candidate-independent typed scene graphs and
+  factorized relational micro-predicates evaluated by Python.
+- Visual-semantic official-test model execution is disabled. Complete-release
+  authentication hashed official-test bytes, but no official-test task or panel
+  was selected, exposed to a proposer or scorer, evaluated, or scored.
 
 A1 command receipt:
 `sha256:9aa247d953204bb12c06a09af6c081c47ae884be8e9c642a9a2bb6d587ba40cb`.

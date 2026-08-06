@@ -13,13 +13,13 @@ Create a local environment and run the canonical Python tests:
    .venv/bin/python -m pytest -q bongard/tests
 
 The tests use small temporary fixtures; the 1.76 GB official archive is not
-needed.  Python is the sole authoritative semantics.  It defines predicates,
+needed.  Python is the sole runtime semantic authority.  It defines predicates,
 the closed IR, evidence dispositions and projections, calibration, synthesis,
-selection, evaluation, persistence, cold replay, decisions, and every
-scientific result or artifact ID.  Lean is neither installed nor required.  Any
-checker may consume only an already-frozen Python artifact and emit a detached,
-non-authoritative sidecar; its presence, failure, disagreement, change, or
-deletion cannot alter Python authority.
+selection, evaluation, persistence, cold replay, and decisions.  Lean is
+neither installed nor required.  Strict un-Leaning is not complete: future
+lineage must stop hashing checker-linked whole-tree provenance, remove the
+legacy Lean-named identity literal, and process-isolate any optional checker
+over persisted immutable bytes.
 
 Verify the official corpus
 --------------------------
@@ -309,13 +309,21 @@ normalization or repair.  The same Python parser applies the closed negation,
 disjunction, laundering, bundling, support-relative, and control-text policy.
 This validates syntax and provenance, not perceptual truth.
 
+Atomic attempt three cold-replayed 25 validated calls: twelve support
+descriptions, one proposal, and twelve support scorings.  It terminated with
+``NoExactSeparatorError`` before formula freeze, selection archive, query
+access, prediction, query-label materialization or reveal, or score.  Replay
+reproduced the exact journal and evidence digests; because no label seal was
+opened, the syntactically required replay nonce was irrelevant to the closed
+prefix.
+
 It establishes that the recorded computation is internally consistent and
 tamper-evident.  It does not prove that a model's phrase such as ``bird-like``
 is perceptually correct, that public images were absent from model pretraining,
 or that any future exploratory DRILL/DEV accuracy generalizes to SEALED tasks.
 
-What A3 says about the implementation
---------------------------------------
+What calibration A3 and atomic attempt three say
+-------------------------------------------------
 
 A3 validates transport, not the synthesis architecture.  The proposer records
 rich descriptions of all twelve panels, but those descriptions are audit-only.
@@ -329,76 +337,68 @@ That reproducible unit is now implemented in
 ``atomic_semantic_synthesis.py`` and ``atomic_smoke_runner.py``: one-phrase
 atoms, complete atom-by-panel observations, deterministic positive
 conjunctions, no ``Not``, and no polarity flip.  The proposer is causally
-restricted to the frozen support descriptions.  The remaining perception gap
-is richer typed object/part/angle/relation grounding; a one-sentence vision
-description is still lossy.  Lean is neither imported nor required by the
-authoritative path.  A checker may inspect only an already-frozen Python
-artifact and emit a detached, non-authoritative sidecar; its presence, failure,
-disagreement, change, or deletion cannot alter a predicate, evidence value,
-formula, result, decision, replay, or ID.
+restricted to the frozen support descriptions.  Atomic attempt three showed
+that the surface atom policy is insufficient: one valid sentence bundled
+shape, relative size, tilt, and directed attachment, while the scorer lost
+object roles on negative supports.  The next reproducible unit must be a typed
+scene graph with stable object identities and factorized object/relation
+micro-predicates, not another opaque whole-sentence score.
 
-Exploratory atomic successor attempt three: PRE-LIVE / PENDING
---------------------------------------------------------------
+Lean is neither imported nor required by runtime execution.  Strict un-Leaning
+is still a migration item rather than a completed invariant: one atomic lineage
+hashes old whole-tree provenance containing the optional checker, the config
+has a legacy Lean-named identity literal, and the unused checker API is
+in-process.  Future lineage must use checker-excluded source identity and any
+checker must run out-of-process over persisted immutable bytes.
 
-The production command freezes authoritative Python before authenticating the
-complete 12,000-task release and rechecks it after that potentially long
-operation.  It authenticates the exact split, manifest, attempt-two machine
-record, and active predecessor
-``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
-That predecessor is exactly the second append in the A3 -> ``b053`` -> ``bfd``
-lineage.  Complete-release authentication hashes official-test bytes, but the
-selection policy admits only the exact training universe below.
+Atomic attempt-three support-synthesis failure
+----------------------------------------------
 
-The command stages and authenticates the pinned native Codex bytes, executes a
-fixed non-Bongard structured-text transport preflight, and durably persists the
-preflight receipt and secret-free configuration.  The preflight sees no
-Bongard data and is outside the 29-call smoke schedule.  Every attempt-owned store
-must begin pristine.  It then exclusively persists a seed-independent claim
-beside the canonical predecessor path before generating any selection, episode,
-or label-seal secret and before exact-task exposure.  This is local canonical-
-path protection, not a distributed lock against copying ledger bytes elsewhere.
+Attempt three ran exactly once from commit
+``89b7124da62a5dd62a55abe7025bbaec8f90794b`` and annotated tag
+``bongard-atomic-attempt3-pre-smoke-20260806``.  It authenticated the complete
+release and exact A3 -> ``b053`` -> ``bfd`` exposure lineage, staged the pinned
+native launcher, passed a two-call zero-image/non-Bongard transport preflight,
+and persisted a seed-independent exclusive claim before secrets or exposure.
+That claim protects only the canonical predecessor path; copied ledger bytes
+still require external copy control.
 
-Run it only from a committed immutable checkout.  Every store argument must
-name an already existing absolute, non-symlink directory with mode ``0700``:
+The journal closed 25 intents and results: twelve candidate-independent support
+descriptions, one proposal, and twelve support scorings.  The sole phrase was
+``Is a small triangle attached to a tilted quadrilateral?``.  All six positive
+supports were ``present``.  The negatives were three
+``operational_nonmatch``, two ``present``, and one ``indeterminate``.  The atom
+was therefore non-total and, even ignoring totality, covered only three of six
+negatives.  Python raised ``NoExactSeparatorError`` in ``support-scoring`` with
+diagnostic
+``b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14``
+and matrix digest
+``143a73d050326a906acb36b2ba1f1b637d8cada0eeaea438912b2ec12cbeeb45``.
 
-.. code-block:: bash
+No formula, selection archive, query call or read, prediction, query-label
+materialization or reveal, or score occurred.  The model-free closed-prefix
+replay passed.  A post-hoc support orientation check gives 9/12 for the phrase
+and 2/12 for its complement, counting the indeterminate as wrong.  This is a
+diagnostic, not accuracy or a score; negation did not win.  All scientific,
+calibration, dependence, benchmark, and official-test authorization flags are
+false.
 
-   PYTHONPYCACHEPREFIX=/absolute/empty/pycache \
-   python -B -m bongard.atomic_smoke_command \
-     --corpus /absolute/path/to/ShapeBongard_V2 \
-     --archive /absolute/path/to/ShapeBongard_V2.zip \
-     --predecessor-ledger /absolute/path/to/bfd-successor.exposure.json \
-     --prior-attempt-record /absolute/path/to/atomic_smoke_attempt2_proposal_contract_failure_v1.json \
-     --config-store /absolute/path/to/config-store \
-     --exposure-store /absolute/path/to/exposure-store \
-     --journal-store /absolute/path/to/fresh-empty-journal-store \
-     --prediction-store /absolute/path/to/prediction-store \
-     --terminal-store /absolute/path/to/terminal-store \
-     --cache-store /absolute/path/to/cache-store \
-     --preflight-store /absolute/path/to/preflight-store
+The run content address is
+``sha256:1564f34a7ef6a29eecc68556af21fda96e0c7f110ba9e32b7d2337968aba390e``;
+the terminal is
+``sha256:b2f29aeeae42891208af4e7f5042f11c855503eeca578e574f2531c8bdc40358``;
+and the exposure successor is
+``sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6``.
+Seven tasks remain under the frozen historical resolver, digest
+``sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357``.
+The sanitized record is
+``bongard/data/atomic_smoke_attempt3_no_exact_separator_v1.json``, file SHA-256
+``533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc``.
 
-Every store must be pristine and mode ``0700``.  The journal's durable header
-binds the public precommit, exact command config, source, protocol, launcher,
-model, and reasoning effort.  Each slot persists an exact intent before
-transport and its validated result before the next intent.  The journal
-terminal is durable before runner return.  A pre-existing header, open intent,
-or partial prefix is not resumable or retryable.  The successful schedule has
-29 calls; a failed run persists and replays its exact shorter closed prefix.
-
-The command prints one selected-ID-redacted JSON line.  The original first
-attempt selected from ten exact-unseen repeated-generator training tasks,
-historical digest
-``sha256:3246017440379de1e49f695503536f75062626d2de36bdab9112e96281e269a8``.
-Attempt one consumed one task.  Attempt two historically selected from the
-remaining nine-ID universe, digest
-``sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed``,
-and consumed a second.  Attempt three selects from the exact remaining eight-ID
-universe, digest
-``sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9``.
-Consequently this is an exploratory transport/synthesis smoke, not an
-independent calibration, DEV estimate, or official benchmark.  All four
-authorization flags remain false regardless of its two-query score.
-No live attempt-three outcome is claimed in this pre-live block.
+The consumed task must not be rerolled and this attempt-three command must not
+be run again.  Complete-release authentication hashed official-test bytes, but
+no test task or panel was selected, exposed to a proposer or scorer, evaluated,
+or scored.
 
 First live N=1 incident
 -------------------------------

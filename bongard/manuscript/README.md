@@ -7,12 +7,16 @@ Python-Authoritative Protocol*.
 The paper describes the implemented visual-semantic boundary, not a successful
 benchmark result. Its central claims are deliberately narrow:
 
-- Python is the sole authoritative semantics. It defines predicates, the closed
-  IR, evidence dispositions and projections, calibration, synthesis, selection,
-  evaluation, persistence, cold replay, decisions, and every scientific result
-  or artifact ID. Lean is neither imported nor required. Any checker emits only
-  a detached, non-authoritative sidecar; its presence, failure, disagreement,
-  change, or deletion cannot alter Python authority.
+- Python is the sole runtime semantic authority. It defines predicates, the
+  closed IR, evidence dispositions and projections, calibration, synthesis,
+  selection, evaluation, persistence, cold replay, and decisions. Lean is
+  neither imported nor required. The intended checker boundary is detached and
+  process-isolated over persisted immutable bytes. Attempt three's runtime was
+  Python-only and invoked no checker. Strict un-Lean migration remains
+  incomplete because its provenance binds an earlier whole-tree commit
+  containing checker source, its config retains the legacy
+  `python-canonical/lean-optional/v1` literal, and the optional checker API is
+  still in-process rather than process-isolated.
 - The direct catalog contains exactly ten positive count families, with target
   counts 1 through 8. Angle bands, complete point-contact signatures, and
   persistent object/part identity are not implemented direct predicates.
@@ -97,9 +101,13 @@ benchmark result. Its central claims are deliberately narrow:
   training tasks. Attempt one consumed one. Attempt two historically selected
   from the remaining nine IDs, digest
   `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`,
-  and consumed another. Attempt three's active frame therefore contains eight
-  IDs, digest
+  and consumed another. Attempt three then selected from the exact eight-task
+  frame, digest
   `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
+  Its exposure successor is
+  `sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`;
+  seven tasks remain, digest
+  `sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
   This is transport/synthesis work, not independent generalization.
 - The first live N=1 attempt, from commit
   `62ea577f5d86d109577f4f5e49b8b4866eb76c92` and tag
@@ -134,30 +142,46 @@ benchmark result. Its central claims are deliberately narrow:
   implementation-contract failure supplies no vision, predicate, negation, or
   benchmark evidence. The sanitized record file SHA-256 is
   `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
-- **Atomic attempt three is PRE-LIVE / PENDING.** It binds the exact attempt-two
-  record, active predecessor
-  `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
-  and the eight-ID universe above. Python is frozen around complete-release
-  authentication. A staged
-  launcher performs a fixed non-Bongard transport preflight; all stores must be
-  pristine; and an exclusive seed-independent claim is persisted beside the
-  canonical predecessor path before secrets or exposure. No attempt-three
-  result is claimed here.
+- Atomic attempt three ran exactly once from commit
+  `89b7124da62a5dd62a55abe7025bbaec8f90794b`, tag
+  `bongard-atomic-attempt3-pre-smoke-20260806`. Its non-Bongard preflight and
+  one-shot claim passed. The journal closed 25 validated calls: 12 neutral
+  descriptions, one proposal, and 12 support scorings. The sole question was
+  `Is a small triangle attached to a tilted quadrilateral?`. All six positives
+  were `present`; negatives were three `operational_nonmatch`, two `present`,
+  and one `indeterminate`.
+- It terminated with `NoExactSeparatorError` at `support-scoring`. The only atom
+  was non-total, and even resolving the indeterminate to nonmatch would leave
+  two negative `present` observations. No formula, query call, prediction,
+  query-label materialization or reveal, or score occurred. Cold replay of the
+  closed 25-call prefix passed. The 9/12 versus complement 2/12 support-only
+  diagnostic is not an accuracy or score; negation did not win. The sanitized
+  record is
+  [`../data/atomic_smoke_attempt3_no_exact_separator_v1.json`](../data/atomic_smoke_attempt3_no_exact_separator_v1.json),
+  file SHA-256
+  `533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
+- Attempt three showed that surface atomicity did not provide semantic
+  factorization. Its one phrase bundled object shapes, relative size,
+  orientation, and directed attachment; the scorer lost role and size
+  direction. The next leg is candidate-independent typed scene graphs and
+  factorized relational micro-predicates evaluated by Python. The complete
+  two-loop point-contact signature remains unimplemented.
 - New receipts bind the complete executable Bongard Python source boundary;
   post-exposure source drift
   now persists a typed failed receipt with labels withheld. Exact-identity
   caches cut the synthetic Stage-A path from 161.15 s to 11.50 s and Stage B
   from 218.88 s to 51.10 s.
-- Visual-semantic official-test model execution is hard-disabled. Full-release
-  authentication still hashes official-test bytes; no test panel is selected,
-  exposed to a proposer/scorer, evaluated, or scored.
+- Visual-semantic official-test model execution is hard-disabled.
+  Complete-release authentication hashed official-test bytes, but no
+  official-test task or panel was selected, exposed to a proposer or scorer,
+  evaluated, or scored.
 
 The pinned extracted-corpus manifest is
 `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138`.
 There are no result placeholders: A2 is an invalidated incident, A3 is a
-terminal scientific failure, and atomic attempts one and two are terminal
-operational/contract failures. Only atomic attempt three is explicitly
-**PRE-LIVE / PENDING** in this manuscript state.
+terminal scientific failure, and atomic attempts one through three are terminal
+operational, contract, or support-synthesis failures. None is a benchmark
+result.
 
 Build the canonical paper from the repository root:
 

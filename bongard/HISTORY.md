@@ -183,10 +183,13 @@ search. That diagnosis led to a Python-authoritative design using one-cue soft
 atoms, an atom-by-panel score matrix, deterministic positive
 atom/conjunction selection without `Not` or polarity flipping, structured
 grounding, and label-blind recruitment powered for attrition and bin occupancy.
-Python remains the sole authoritative semantics. Lean may only emit a detached,
-non-authoritative sidecar over an already-frozen Python artifact; its presence,
-failure, disagreement, change, or deletion changes no result, decision, replay,
-or ID.
+Python remains the sole runtime semantic authority. The target Lean boundary is
+a detached, process-isolated, non-authoritative sidecar over persisted immutable
+Python artifacts. That runtime fact does not yet complete the un-Lean migration: the
+later attempt-three provenance still binds an earlier whole-tree commit
+containing checker source, its config retains the legacy
+`python-canonical/lean-optional/v1` literal, and the optional checker API remains
+an in-process audit utility pending process isolation.
 
 ## Atomic operational successor
 
@@ -275,25 +278,60 @@ record is
 file SHA-256
 `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
 
-## Atomic attempt three: PRE-LIVE / PENDING
+## Atomic attempt three: terminal no-exact-separator failure
 
-Attempt three is the distinct successor of
-`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
-Exactly eight
-eligible tasks remain, digest
+Attempt three ran exactly once from commit
+`89b7124da62a5dd62a55abe7025bbaec8f90794b`, annotated tag
+`bongard-atomic-attempt3-pre-smoke-20260806`. It was the distinct successor of
+`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`
+and selected from the exact eight-task universe with digest
 `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-The repaired proposal contract admits 1--12 pairwise-distinct exact affirmative
-observer questions, each at most 192 UTF-8 bytes, with no outer whitespace,
-matching `[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?`, exactly one final ASCII `?`,
-and no normalization or repair.
+The fixed non-Bongard preflight and seed-independent exclusive claim both
+passed. The claim protects only the canonical predecessor path; the journal
+separately forbids resume or retry.
 
-Before any secret or exposure, the production boundary freezes Python around
-complete-release authentication, stages the native launcher, runs and persists
-a fixed non-Bongard transport preflight, verifies pristine stores, and
-exclusively persists a seed-independent claim beside the canonical predecessor
-path. The claim is local-path protection rather than a distributed lock. The
-call journal separately prevents resume or retry. No live attempt-three result
-is recorded in this pre-live history block.
+The journal closed 25 intents and 25 validated results: twelve isolated support
+descriptions, one text-only proposal, and twelve support-scoring calls. The
+sole question was `Is a small triangle attached to a tilted quadrilateral?`.
+Every positive support was `present`. The negative outcomes were three
+`operational_nonmatch`, two `present`, and one `indeterminate`.
+
+The run terminated honestly at `support-scoring` with
+`NoExactSeparatorError`: `no atom is total and present on every positive
+support panel;
+diagnostic_digest=b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14`.
+The indeterminate observation made the only atom non-total. Resolving it to
+nonmatch would not repair the two negative `present` observations. No formula
+or selection archive was frozen; no query source was read or scored; no
+prediction was persisted; query labels were neither materialized nor revealed;
+and there was no score. The exact closed 25-call prefix cold-replayed.
+
+The post-hoc affirmative-support orientation was 9/12 versus 2/12 for its
+complement, counting indeterminate incorrect. This is explicitly not an
+accuracy, score, calibration, semantic, benchmark, or negation claim. Negation
+did not win the diagnostic. Complete-release authentication hashed
+official-test bytes, but no official-test task or panel was selected, exposed
+to a proposer or scorer, evaluated, or scored.
+
+This failure exposed the next theoretical hole. The phrase satisfied the
+surface grammar but bundled two shapes, relative size, orientation, and
+directed attachment. The frozen descriptions retained relational information;
+the proposer did not factor it, and the scorer lost object-role and
+size-direction distinctions. The next representation must provide
+candidate-independent typed scene graphs with stable object IDs and factorized
+shape, closure, area, orientation, and owner-labelled contact relations for
+Python to evaluate. The complete two-loop point-contact signature remains
+unimplemented.
+
+The selected task is consumed and may not be rerolled. Its exposure successor
+is
+`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`.
+Seven tasks remain in that historical frame, digest
+`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
+The sanitized machine record is
+[`data/atomic_smoke_attempt3_no_exact_separator_v1.json`](data/atomic_smoke_attempt3_no_exact_separator_v1.json),
+file SHA-256
+`533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
 
 The A2 incident also led to source-bound v2 command receipts and durable
 operational failures for any post-precommit source change. Identity-preserving

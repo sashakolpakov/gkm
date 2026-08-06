@@ -6,11 +6,12 @@ honestly and failed its calibration fit. The description-to-predicate search
 layer is now an exact operational atomic smoke. Atomic attempt one failed in
 the command wrapper after exposure. Atomic attempt two then completed exactly
 12 support-description calls and one proposal call before a contradictory
-question-mark contract stopped parsing. Both selected tasks are consumed
-without reroll and neither attempt produced a Bongard result. The immediate
-work is to gate and run the distinct eight-ID atomic attempt-three successor
-once, report it honestly, then design richer typed perception and a defensible
-evaluation frame. It is not to produce an official-test number at any cost.
+question-mark contract stopped parsing. Atomic attempt three completed 25
+validated calls and then failed deterministic support synthesis. All three
+selected tasks are consumed without reroll and none produced a Bongard result.
+The immediate work is richer typed perception with factorized object roles and
+relations, followed by a defensible evaluation frame. It is not to rerun the
+consumed predecessor or produce an official-test number at any cost.
 
 ## 0. Preserve the first atomic N=1 operational failure
 
@@ -78,25 +79,41 @@ is consumed. The sanitized record is
 file SHA-256
 `242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
 
-### 0.2 Run atomic attempt three only as the exact successor
+### 0.2 Preserve atomic attempt three as a terminal support-synthesis failure
 
-**Attempt three is PRE-LIVE / PENDING.** It must authenticate the A3 -> `b053`
--> `bfd` lineage, the exact attempt-two record, and active predecessor
+Attempt three ran exactly once from commit
+`89b7124da62a5dd62a55abe7025bbaec8f90794b`, tagged
+`bongard-atomic-attempt3-pre-smoke-20260806`. It authenticated the A3 -> `b053`
+-> `bfd` lineage, the exact attempt-two record, and predecessor
 `sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
-The active universe is exactly eight IDs, digest
-`sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
+The fixed non-Bongard preflight and exclusive one-shot claim passed. The claim
+is local-path protection, not a distributed lock against copied ledger bytes.
+Do not rerun this consumed predecessor.
 
-The command freezes authoritative Python before complete-release
-authentication and rechecks it afterward. It authenticates the staged native
-launcher and durably persists a fixed non-Bongard structured-text transport
-preflight. All attempt-owned stores must begin pristine. Before generating any
-selection, episode, or label secret and before appending exposure, it
-exclusively persists a seed-independent claim beside the canonical predecessor
-path. The claim is local-path protection, not a distributed lock against a copy
-of the ledger at another path. The journal then persists each intent before
-transport, each validated result before the next intent, and its terminal
-before runner return. No attempt-three live outcome is claimed in this
-pre-live block.
+The journal closed with 25 intents and 25 validated results: twelve neutral
+support descriptions, one text-only proposal, and twelve support scorings. The
+sole proposal was `Is a small triangle attached to a tilted quadrilateral?`.
+All six positive supports were `present`; the six negatives comprised three
+`operational_nonmatch`, two `present`, and one `indeterminate`.
+
+Python terminated with `NoExactSeparatorError` at `support-scoring`: `no atom
+is total and present on every positive support panel;
+diagnostic_digest=b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14`.
+The indeterminate made the only atom non-total; resolving it to nonmatch would
+still leave two negative `present` observations. There was no formula,
+selection archive, query read or call, prediction, query-label materialization
+or reveal, or score. Cold replay of the exact closed prefix passed. The
+support-only 9/12 versus complement 2/12 diagnostic, with indeterminate counted
+incorrect, is not an accuracy or score; negation did not win.
+
+The selected task is consumed. The exposure successor is
+`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`.
+Seven tasks remain in the historical repeated-generator frame, digest
+`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
+The sanitized record is
+[`data/atomic_smoke_attempt3_no_exact_separator_v1.json`](data/atomic_smoke_attempt3_no_exact_separator_v1.json),
+file SHA-256
+`533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
 
 ## 1. Preserve A1 as a terminal failure
 
@@ -210,16 +227,20 @@ historical frozen-universe digest is
 Attempt one exposed and consumed one selected task. Attempt two historically
 selected from the remaining nine IDs, digest
 `sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`,
-and consumed a second task. Attempt three therefore has exactly eight active
-IDs, digest
+and consumed a second task. Attempt three selected once from the resulting
+eight-task universe, digest
 `sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-They are useful for a no-reroll transport/synthesis smoke because selecting one
-consumes no new generator claim. They are not independent evaluation units.
-The production precommit authenticates the full 12,000-task manifest, the exact
-A3-to-`b053`-to-`bfd` lineage, and both prior atomic failure records, selects
-from the eight-ID universe metadata-only, and persists exposure before hashing
-selected pixels. Complete-release authentication hashes official-test bytes,
-but no official-test task is eligible for this selection.
+Its successor is
+`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`;
+seven tasks remain, digest
+`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
+These are not independent evaluation units. The production precommit
+authenticated the full 12,000-task manifest, the exact
+A3-to-`b053`-to-`bfd` lineage, and both prior atomic failure records, selected
+from the eight-task universe metadata-only, and persisted exposure before
+hashing selected pixels. Complete-release authentication hashed official-test
+bytes, but no official-test task or panel was selected, exposed to a proposer
+or scorer, evaluated, or scored.
 
 The pre-A3 24-unit ceiling and post-A3 zero are caused by demanding
 constituent-disjointness across the complete predecessor ledger and the new
@@ -390,18 +411,32 @@ be laundered into `certified_absent`. Calibrated-semantic atomic selection is
 hard-disabled until Python can independently cold-validate a typed calibration
 artifact and its interval rule.
 
-The remaining representation gap is richer structured vision. One prose
-sentence is still lossy. Add typed object, part, angle, topology, and relation
-observations, with uncertainty and exact receipt bindings, so synthesis can
-compare facts as well as opaque phrases. Separately recruit calibration tasks
+Attempt three makes the remaining representation gap concrete. Its single
+surface-valid atom bundled two object shapes, relative size, orientation, and
+directed attachment. The frozen candidate-independent descriptions retained
+useful relational structure, but proposal did not factor it and scoring lost
+object roles and size direction on negative supports. Syntactic atomicity is
+not semantic atomicity.
+
+Add candidate-independent typed scene graphs with stable object IDs,
+per-object shape and closure, area and orientation intervals, and owner-labelled
+contact relations, kinds, rays, and exterior gaps. Synthesis should compare
+factorized relational micro-predicates instead of repeatedly asking an opaque
+observer to interpret a whole sentence. The complete two-loop point-contact
+signature is still not implemented. Separately recruit calibration tasks
 label-blind through a frozen order until bins are powered, or freeze a batch
 sized for measured attrition and occupancy.
 
-Lean is not needed for any of this. Python defines the predicates, closed IR,
-evidence dispositions and projections, calibration, synthesis, selection,
-evaluation, persistence, cold replay, decisions, and every result or artifact
-ID. A checker may inspect an already-frozen Python result only as a detached,
-non-authoritative sidecar.
+Lean is not needed for any of this. Python defines the runtime predicates,
+closed IR, evidence dispositions and projections, calibration, synthesis,
+selection, evaluation, persistence, cold replay, and decisions. A future
+checker must inspect persisted immutable Python results only in a detached,
+process-isolated, non-authoritative sidecar. Attempt three's runtime was
+Python-only and invoked no checker. Strict un-Lean migration is nevertheless incomplete because the
+wider provenance binds an earlier whole-tree commit containing checker source,
+the config retains the legacy `python-canonical/lean-optional/v1` identity
+literal, and the optional checker API remains in-process. Process isolation and
+removal of those residual identity bindings remain required.
 
 ## 7. Diagnose reverse predicates directly
 
@@ -423,11 +458,14 @@ a solver success.
 All new predicate construction and execution, IR and evidence semantics,
 calibration, synthesis, selection, evaluation, persistence, replay, benchmark
 decisions, and scientific artifact IDs must have complete Python semantics.
-Lean or another checker may only consume an already-frozen Python artifact and
-emit a detached, non-authoritative sidecar. Installing, changing, failing,
-disagreeing, or deleting that sidecar must change no predicate, evidence value,
-formula, result, decision, replay, or ID. There is no Lean dependency on the
-benchmark path.
+Lean or another checker may only consume persisted immutable Python artifacts
+in a detached, process-isolated, non-authoritative sidecar. Installing,
+changing, failing, disagreeing, or deleting that sidecar must eventually change
+no predicate, evidence value, formula, result, decision, replay, or authoritative
+runtime ID. There is no Lean dependency on the benchmark path. The Python-only
+runtime fact already holds; the whole-tree provenance,
+legacy identity literal, and in-process optional-checker residuals above are why
+strict migration is not yet complete.
 
 ## Completion criterion
 
@@ -436,11 +474,13 @@ invalidated without a terminal artifact, A3 ended in a canonical
 underpopulated-bin failure after successful proposer/scorer transport, atomic
 attempt one ended as an operational wrapper failure with no recoverable score,
 and atomic attempt two ended as a cold-replayable 13-call implementation
-contract failure before support scoring. Both atomic tasks are consumed. The
-distinct eight-ID atomic attempt-three successor is **PRE-LIVE / PENDING** and
-has no outcome in this snapshot. Before any new calibration is declared, a
-powered, label-blind recruitment rule must be frozen. The atomic matrix path is
-implemented but is not itself a calibration. Any future smoke must still be
-reported as exploratory regardless of score. Stage B remains unauthorized.
-This phase is not complete merely because the code builds, one smoke scores
-2/2, or a favorable complement can be found.
+contract failure before support scoring. Atomic attempt three ended as a
+cold-replayable 25-call `NoExactSeparatorError` before formula freeze or query
+access. All three atomic tasks are consumed. Before any new calibration is
+declared, a powered, label-blind recruitment rule must be frozen. The atomic
+matrix path is implemented but is not itself a calibration. The next technical
+work is factorized typed vision and role-stable relational evaluation, not a
+rerun of the seven remaining repeated-generator tasks. Any future smoke must
+still be reported as exploratory regardless of outcome. Stage B remains
+unauthorized. This phase is not complete merely because the code builds, one
+smoke predicts both queries, or a favorable complement can be found.

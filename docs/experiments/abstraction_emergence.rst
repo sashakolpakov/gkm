@@ -38,14 +38,21 @@ be combined numerically with the current Stage-A or Stage-B protocol.
 Relationship to the active track
 --------------------------------
 
-The active track uses Python as the sole authoritative semantics for predicates,
-the closed IR, evidence, calibration, synthesis, selection, evaluation,
-persistence, replay, decisions, and every scientific result or artifact ID.
-Lean is neither imported nor required.  Any checker consumes only an
-already-frozen Python artifact and emits a detached, non-authoritative sidecar;
-its presence, failure, disagreement, change, or deletion cannot alter Python
-authority.  The
-immediate problem is not macro syntax: it is obtaining useful typed direct and
-soft observations from pixels, calibrating them honestly, and preventing
-support-set artifacts or negation from masquerading as concepts.  See
-:doc:`bongard` for the current design and status.
+The active track uses Python as the sole runtime semantics for predicates, the
+closed IR, evidence, synthesis, selection, evaluation, persistence, replay, and
+decisions.  Lean is neither imported nor required.  The strict ``un-Lean``
+migration is nevertheless incomplete: old whole-tree provenance enters one
+atomic lineage identity, a legacy config literal names Lean, and the unused
+optional checker API is still in-process rather than isolated.  Those residues
+do not affect the current Python execution, but must be removed before claiming
+that every lineage ID is checker-byte-independent.
+
+Atomic attempt three made the missing abstraction concrete.  Candidate-
+independent prose retained useful object relations, but one surface-valid
+``atom`` bundled shape, relative size, tilt, and directed attachment.  The
+candidate-aware scorer then lost object roles on negative supports, so Python
+found no exact separator and stopped before query access.  The immediate problem
+is therefore not macro syntax: it is obtaining stable typed objects and
+factorized relational micro-predicates from pixels, calibrating them honestly,
+and preventing support-set artifacts or negation from masquerading as concepts.
+See :doc:`bongard` for the current design and status.
