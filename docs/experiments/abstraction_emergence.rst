@@ -1,77 +1,65 @@
-Abstraction Emergence Experiment
-=================================
+Historical Abstraction-Emergence Control
+=========================================
 
-Source files:
+Status
+------
 
-* ``bongard/run_abstraction_emergence.py``
-* ``bongard/abstraction_emergence_report.md``
-* ``bongard/test_abstraction_emergence.py``
+This experiment is a retained internal control. It is not a visual Bongard
+benchmark, does not use the complete ``ShapeBongard_V2`` corpus, and does not
+discover primitive observations from pixels.
 
-Reproduce
----------
+Question tested
+---------------
 
-.. code-block:: bash
+The scaffold asks a narrow question: when the same predefined conjunction is
+used repeatedly, does conditional description-length accounting favor a
+shared predicate macro over duplicated inline rule bodies?
 
-   python3 bongard/run_abstraction_emergence.py
-   python3 bongard/run_abstraction_emergence.py --scenario multi --show-rules
-   python3 bongard/run_abstraction_emergence.py --scenario or_factor --show-rules
-   python3 -m unittest tests.test_abstraction_emergence
+.. code-block:: text
 
-Conditions
-----------
+   F = task loss + lambda * (library complexity + task-rule complexity)
+
+The candidate primitive atoms are supplied by the experiment. The discovery
+claim, where supported, concerns encapsulation and reuse of those atoms rather
+than perception or semantic grounding.
+
+Controls
+--------
 
 .. list-table::
    :header-rows: 1
 
    * - Condition
-     - Meaning
+     - Purpose
    * - ``inline``
-     - Solve each task directly using primitive atoms.
+     - Solve with primitive atoms and duplicated bodies
    * - ``shared``
-     - Define a macro once and call it cheaply from rules.
+     - Define a macro once and pay cheap calls on reuse
    * - ``no_share``
-     - Allow macro syntax, but charge the macro definition per use.
+     - Permit macro syntax but repay its definition per use
    * - ``oracle``
-     - Supply the privileged task predicate directly; upper bound only.
+     - Supply the target predicate directly as a privileged upper bound
 
-Core Accounting
----------------
+The historical observation was that repeated shared structure could favor a
+macro, while single-use, unrelated-OR, and no-share controls did not. This is
+useful evidence that the accounting mechanism can express a reuse incentive.
+It is not evidence that a visual system can find ``bird-like``, contact,
+closure, or any other primitive from a panel.
 
-.. code-block:: text
+Archived implementation
+-----------------------
 
-   F = total task loss + lambda * (library complexity + task rule complexity)
+The original control, tests, and reports are preserved at the annotated Git
+tag ``pre-bongard-complete-rewrite-20260805``. Stale working-tree copies remain
+physically present pending explicit deletion, but they are excluded from the
+canonical Bongard package and current reproduction commands. Checkout that tag
+in a separate worktree to inspect or reproduce the historical mechanism; do not
+mix its supplied-atom score with current visual benchmark results.
 
-The macro ``solid_loop`` has definition complexity:
+Relationship to the canonical track
+-----------------------------------
 
-.. code-block:: text
-
-   1 macro overhead + 3 primitive atoms = 4.00
-
-In the OR factoring task, the shared rule body costs:
-
-.. code-block:: text
-
-   1 rule overhead + 2 macro calls * 0.35 + 2 ordinary atoms = 3.70
-
-Total shared complexity:
-
-.. code-block:: text
-
-   4.00 + 3.70 = 7.70
-
-Whereas the inline DNF rule duplicates the primitive structure:
-
-.. code-block:: text
-
-   1 rule overhead + 4 atoms + 4 atoms = 9.00
-
-Main Observations
------------------
-
-* Single-task pressure does not create a macro.
-* ``has_curve OR thin`` does not create a macro.
-* ``(solid_loop AND has_curve) OR (solid_loop AND thin)`` does create a macro.
-* ``no_share`` kills the effect.
-* Transfer uses the learned macro at lower marginal complexity.
-
-This is the current strongest internal control for abstraction emergence in the repository.
+The visual track replaces supplied atoms with provenance-bearing empirical
+witnesses and typed registered legs. Reuse is credited only after the new leg
+passes calibration, nuisance, near-miss, anti-memorization, and full archive
+replay gates. See :doc:`bongard` for the current claim boundary.

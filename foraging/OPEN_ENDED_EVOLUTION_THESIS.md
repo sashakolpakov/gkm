@@ -431,7 +431,17 @@ Prediction:
 
 This experiment is a bridge between toy automata and external Bongard benchmarks. It turns the overcapacity thesis into a rate statement over a family of deterministic rule-discovery problems.
 
-The next external step is Bongard-LOGO, first in symbolic mode. A first adapter now converts generated Basic and Abstract LOGO action programs into relational scene encodings and runs a free-energy sparse feature selector. The first result is a representation-bottleneck diagnostic: Basic Shape is mostly recoverable from action skeletons with enough hard negatives, while Abstract Shape is weak from action skeletons alone and becomes exact only when privileged metadata attributes are exposed. A first predicate-macro layer now derives reusable geometric predicates from action programs and lets Bongard rules use them while paying macro complexity. This improves Abstract action-only performance but does not yet close the gap to metadata, which is the desired next research pressure. Raw images should be used only after the symbolic path works, so perception failures can be separated from rule-induction failures. Bongard-OpenWorld and Bongard-HOI are later-stage benchmarks because they add real-image and open-vocabulary burdens before the free-energy rule-discovery story is isolated. A separate related-work note, `bongard/abstraction_related_work.md`, collects the predicate-invention, library-learning, automata-learning, MDL, and Bongard references needed to keep the novelty claim narrow.
+The external Bongard-LOGO track has now moved from those symbolic controls to
+the official visual corpus. Its strict boundary is panel pixels to
+provenance-bearing empirical witnesses, then to a closed typed predicate,
+optional formal verification conditional on those witnesses, and sealed
+model-free replay. Typed visual legs, four evidence dispositions, signed
+affirmative relations, exposure accounting, and archive-preserving admission
+keep perception failures separate from rule-induction failures without
+pretending that prose is pixel-level proof. The current protocol and claim
+boundary live in [`bongard/README.md`](../bongard/README.md). The earlier
+action-program adapter, macro-reuse control, and related-work note are preserved
+at the annotated Git tag `pre-bongard-complete-rewrite-20260805`.
 
 ## 12. Abstraction Emergence And Predicate Encapsulation
 

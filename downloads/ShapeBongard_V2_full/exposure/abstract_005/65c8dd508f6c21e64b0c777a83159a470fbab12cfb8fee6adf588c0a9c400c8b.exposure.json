@@ -1,0 +1,195 @@
+{
+  "corpus_digest": "sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138",
+  "events": [
+    {
+      "actor": "repository-audit",
+      "digest": "sha256:4b48f74d6260742d232a740702f9fc79da0f9d31f11d960f24c9157e807bc5f9",
+      "observed_at": "2026-08-05T21:39:31.243839Z",
+      "panel_ids": [],
+      "phase": "historical_import",
+      "previous_digest": null,
+      "purpose": "exact official task IDs recorded before canonical complete-corpus drills",
+      "sequence": 0,
+      "source": "historical_exposure_v1",
+      "task_ids": [
+        "bd_isosceles_trapezoid-no_obtuse_angle_six_lines2_0000",
+        "ff_nact6_0292",
+        "hd_convex_0004"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:37148e5b5035a14f2887408ce2570a28f10964005bb39658f3323fe442cf8760",
+      "observed_at": "2026-08-05T21:39:31.245201Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:4b48f74d6260742d232a740702f9fc79da0f9d31f11d960f24c9157e807bc5f9",
+      "purpose": "pre-ledger official mini-corpus support releases on 2026-08-05",
+      "sequence": 1,
+      "source": "migration-audit",
+      "task_ids": [
+        "bd_trapez_parallelogram_0000",
+        "ff_nact2_5_0000",
+        "hd_balanced_two-exist_quadrangle_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:846fc5617bb65c47fd2fabaf2a5b9470d29aae16b7942b6db17115897a018884",
+      "observed_at": "2026-08-05T21:41:23.729270Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:37148e5b5035a14f2887408ce2570a28f10964005bb39658f3323fe442cf8760",
+      "purpose": "support_release_precommit task=bd_acute_triangle_arc180_0000 model=gpt-5.6-sol plan_digest=e68fd4479c859d8dec9ca714658becc9c776c1aae032559b0f9fd3299335cea5",
+      "sequence": 2,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "bd_acute_triangle_arc180_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:ffb118a34eabbbef49bb1110ffa9bc70f7f87dbe9e25768595607ae75372e9bd",
+      "observed_at": "2026-08-05T22:01:27.190445Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:846fc5617bb65c47fd2fabaf2a5b9470d29aae16b7942b6db17115897a018884",
+      "purpose": "support_release_precommit task=hd_balanced_two-exist_sector_0000 model=gpt-5.6-sol plan_digest=aaa5a9398a8d9a82c32d100a6d4d1585bf5d581682a2b790c3e35676be537d29",
+      "sequence": 3,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "hd_balanced_two-exist_sector_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:3caba1e754f1dcc68e8b8e745ae37e8f27014c6983f3387ddc03f128fb00100c",
+      "observed_at": "2026-08-05T22:06:34.534350Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:ffb118a34eabbbef49bb1110ffa9bc70f7f87dbe9e25768595607ae75372e9bd",
+      "purpose": "support_release_precommit task=hd_has_four_straight_lines-exist_sector_0000 model=gpt-5.6-sol plan_digest=4d14799069f8e657a1c4bddd9a152b0282f9b3ed35513f3a44354d7f0c2d4d69",
+      "sequence": 4,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "hd_has_four_straight_lines-exist_sector_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:fdfc79a059fce8e127b326294c8c0932c77fd032f56137e1c15d5d5dfaa50072",
+      "observed_at": "2026-08-05T22:14:36.183386Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:3caba1e754f1dcc68e8b8e745ae37e8f27014c6983f3387ddc03f128fb00100c",
+      "purpose": "support_release_precommit task=hd_closed_shape-has_line_crossing_0000 model=gpt-5.6-sol plan_digest=002ce54e10d5eb59f78b324f660a067c174954d0260bf4d4f1d2ff5f7ec55ed0",
+      "sequence": 5,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "hd_closed_shape-has_line_crossing_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:fb8f7d3d214133399eb8c2178945a6300f73fe7c32e9d64a1964672421625fbd",
+      "observed_at": "2026-08-05T23:10:06.762621Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:fdfc79a059fce8e127b326294c8c0932c77fd032f56137e1c15d5d5dfaa50072",
+      "purpose": "support_release_precommit task=hd_exist_quadrangle-exist_sector_0000 model=gpt-5.6-sol plan_digest=8fc0ae9843adbe7a93fc06a2a0a22967d209953b2dfc879bfba8ac1822df0565",
+      "sequence": 6,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "hd_exist_quadrangle-exist_sector_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:cb273ad764f54a51fc7a6e5d52b7811089a2bd7096fcfcf5138b08d954017d7d",
+      "observed_at": "2026-08-05T23:23:14.185534Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:fb8f7d3d214133399eb8c2178945a6300f73fe7c32e9d64a1964672421625fbd",
+      "purpose": "support_release_precommit task=bd_advanced_lamp3_0000 model=gpt-5.6-sol plan_digest=a97e2a781eda3ed4be687e33ca4be382bef215c619dfcf192c17d921b05257f5",
+      "sequence": 7,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "bd_advanced_lamp3_0000"
+      ]
+    },
+    {
+      "actor": "codex-root",
+      "digest": "sha256:93669dcb35673c3052e0a777755149aff01df7e6f2a4d836abefe88dd59c801c",
+      "observed_at": "2026-08-05T23:33:10.529447Z",
+      "panel_ids": [],
+      "phase": "manual_visual_inspection",
+      "previous_digest": "sha256:cb273ad764f54a51fc7a6e5d52b7811089a2bd7096fcfcf5138b08d954017d7d",
+      "purpose": "retrospective task-level accounting for candidate montages opened during interactive analysis before further official runs",
+      "sequence": 8,
+      "source": "interactive-analysis-retrospective",
+      "task_ids": [
+        "hd_exist_regular-exist_triangle_0000",
+        "hd_has_four_straight_lines-exist_triangle_0000",
+        "hd_has_line_crossing-exist_triangle_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:b8fe3ea944d118058ac52e6f849ab5c1c1f6e08737f155e8b23f87569610877a",
+      "observed_at": "2026-08-05T23:36:08.413328Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:93669dcb35673c3052e0a777755149aff01df7e6f2a4d836abefe88dd59c801c",
+      "purpose": "support_release_precommit task=bd_advanced_lamp4-exist_quadrangle_five_lines12_0000 model=gpt-5.6-sol plan_digest=18a1920e3b690343c97f0ec8bac542fdbf670e52bce3a4dacae6424386273f75",
+      "sequence": 9,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "bd_advanced_lamp4-exist_quadrangle_five_lines12_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:dbd578e1d3951837f25378721cf61e664eb96240e8f7c3fc108d1ff1db280a21",
+      "observed_at": "2026-08-06T00:17:49.048406Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:b8fe3ea944d118058ac52e6f849ab5c1c1f6e08737f155e8b23f87569610877a",
+      "purpose": "support_release_precommit task=bd_arc_cup_0000 model=gpt-5.6-sol plan_digest=2cffade3c57b5b4af3c50ab4ac960b31de1c3c323cff74c30def90a0173b4748",
+      "sequence": 10,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "bd_arc_cup_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:25317bb78b0cf60b7585f59c93c7331c0f6743c3553ae044008b14b69d76fd35",
+      "observed_at": "2026-08-06T00:21:07.073302Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:dbd578e1d3951837f25378721cf61e664eb96240e8f7c3fc108d1ff1db280a21",
+      "purpose": "support_release_precommit task=bd_asymm_bridge_0000 model=gpt-5.6-sol plan_digest=0e012f6ed49feaacbcf602aafc433dc05d55fb4b91923d20a41e6efe2f3a1bc0",
+      "sequence": 11,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "bd_asymm_bridge_0000"
+      ]
+    },
+    {
+      "actor": "gpt-5.6-sol",
+      "digest": "sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8",
+      "observed_at": "2026-08-06T00:33:19.173363Z",
+      "panel_ids": [],
+      "phase": "support_release_precommit",
+      "previous_digest": "sha256:25317bb78b0cf60b7585f59c93c7331c0f6743c3553ae044008b14b69d76fd35",
+      "purpose": "support_release_precommit task=hd_balanced_two-symmetric_transposed_0000 model=gpt-5.6-sol plan_digest=8636abd735a4b782036cb2fcbeb43a47aecb7dbcab6e05fb8b7bd4096fd0f4fc",
+      "sequence": 12,
+      "source": "bongard.cli.run",
+      "task_ids": [
+        "hd_balanced_two-symmetric_transposed_0000"
+      ]
+    }
+  ],
+  "ledger_digest": "sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b",
+  "schema": "gkm.bongard-exposure-ledger.v1"
+}

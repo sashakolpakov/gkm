@@ -97,10 +97,10 @@ The working slogan is:
 
 Concretely: the hidden solution of a task is a "functor" — a complete,
 structure-respecting mapping from situations to actions. Direct search in
-solver space is search in a rigid, badly connected landscape; the
-developmental-overcapacity results in this repository
-(`bongard/bongard_sparse_classifier_report.md`) show that cold search
-often cannot enter the minimal basin at all. The colimit-cone proposal is to
+solver space is search in a rigid, badly connected landscape; the pre-rewrite
+developmental-overcapacity pilots, preserved at the annotated Git tag
+`pre-bongard-complete-rewrite-20260805`, suggested that cold search often
+cannot enter the minimal basin at all. The colimit-cone proposal is to
 search instead in the space of *diagrams plus gluings*:
 
 ```text
@@ -118,8 +118,8 @@ The free-energy question is whether this object can be *priced* so that
 selection builds cones only when they pay. The accounting tested here is:
 
 > Cone complexity = sum over legs with shared-leg discounting — the natural
-> extension of the existing no-share accounting in
-> `bongard/run_abstraction_emergence.py`.
+> extension of the shared-versus-no-share accounting tested by the historical
+> macro-reuse control at `pre-bongard-complete-rewrite-20260805`.
 
 ## 2. Mathematical Background
 
@@ -223,10 +223,11 @@ drive the experimental design:
    hidden functor exactly when the truth uses no distinctions invisible to
    the morphism structure of `B`. A failure of generalization is a poverty
    of the index category — a missing predicate, a missing binding — not a
-   failure of the colimit formula. (This repository already met this
-   empirically: Bongard-LOGO Abstract concepts were unreachable from action
-   skeletons because `convex`, `symmetric`, `thin` were not in the morphism
-   vocabulary; see `bongard/bongard_logo_report.md`.)
+   failure of the colimit formula. (A pre-rewrite Bongard action-program pilot
+   met this empirically: Abstract concepts were unreachable from action
+   skeletons because `convex`, `symmetric`, and `thin` were not in the
+   morphism vocabulary. That pilot is archived at
+   `pre-bongard-complete-rewrite-20260805`.)
 2. **Foreign-alphabet generalization is naturality.** A solver whose rule
    key cannot see token identity is a functor on a category where tokens are
    objects only distinguishable through relations (equality, position). Its

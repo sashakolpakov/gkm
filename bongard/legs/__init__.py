@@ -1,0 +1,43 @@
+"""Canonical typed leg contracts for Bongard experiments."""
+
+from .contracts import (
+    AffirmativeRelation,
+    BOOLEAN_WITNESS,
+    FROZEN_VISUAL_SCORE,
+    OBJECT,
+    PANEL,
+    SOFT_SEMANTIC,
+    WITNESS,
+    ContractViolation,
+    InvarianceContract,
+    LegContract,
+    LegReference,
+    LegRegistry,
+    LegSemantics,
+    Transform,
+    TypedValue,
+    Unit,
+    ValueType,
+    implementation_sha256,
+)
+
+__all__ = (
+    "AffirmativeRelation",
+    "BOOLEAN_WITNESS",
+    "FROZEN_VISUAL_SCORE",
+    "OBJECT",
+    "PANEL",
+    "SOFT_SEMANTIC",
+    "WITNESS",
+    "ContractViolation",
+    "InvarianceContract",
+    "LegContract",
+    "LegReference",
+    "LegRegistry",
+    "LegSemantics",
+    "Transform",
+    "TypedValue",
+    "Unit",
+    "ValueType",
+    "implementation_sha256",
+)

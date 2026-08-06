@@ -1,13 +1,11 @@
-Gödel--Kolmogorov Machine: Verifier-Gated Program-Growth Experiments
-=====================================================================
+Gödel--Kolmogorov Machine: Verifier-Gated Program Growth
+========================================================
 
-This documentation summarizes the Gödel--Kolmogorov Machine manuscripts,
-experiment notes, and executable artifacts in the repository. The
-Gödel--Kolmogorov Machine couples verifier-gated program revision to
-description-length selection. Claims differ by subject: some domains perform
-explicit lambda sweeps over finite model classes, while the ARC study reports a
-retained program-growth history and replay-validated endpoints. Later pages use
-``GKM`` only as an abbreviation for the fully named architecture.
+This documentation describes experiments in verifier-gated program revision,
+description-length selection, and cumulative library growth. Claims are scoped
+per subject: a replay-validated internal mechanism is not automatically an
+external benchmark result, and a formal symbolic derivation is not a proof of
+perceptual correctness.
 
 Subject directories
 -------------------
@@ -20,11 +18,18 @@ Each subject has a canonical repository README:
 * `Foraging <https://github.com/sashakolpakov/gkm/blob/master/foraging/README.md>`_
 * `Transduction <https://github.com/sashakolpakov/gkm/blob/master/transduction/README.md>`_
 
-The central thesis is that open-ended artificial evolution requires more than a fixed benchmark. Free energy can act as the local selection rule, but the ecology must keep generating new validation pressures at the frontier of current competence.
+The Bongard track now targets the complete official image corpus. Its
+canonical pipeline is panel pixels to provenance-bearing empirical witnesses,
+then a closed positive predicate, then conditional verification. It records
+four evidence dispositions, freezes a proposal before query release, commits
+two predictions before label reveal, and cold-replays the result without a
+model. Historical symbolic and small pilot scores are explicitly non-official.
 
 .. important::
 
-   The current abstraction experiments do **not** discover primitive perceptual atoms such as ``low_closure_error`` from raw input. Those atoms are predefined in the scaffold. The current result is narrower: a repeated conjunction over predefined primitive atoms is encapsulated as a reusable predicate macro when the free-energy accounting makes reuse cheaper than duplication.
+   Formal checking can certify the closed computation over recorded witnesses.
+   It cannot certify that a vision model correctly interpreted the source
+   pixels. Perceptual validity remains an empirical held-out question.
 
 .. toctree::
    :maxdepth: 2
@@ -38,8 +43,8 @@ The central thesis is that open-ended artificial evolution requires more than a 
    :maxdepth: 2
    :caption: Experiments
 
-   experiments/abstraction_emergence
    experiments/bongard
+   experiments/abstraction_emergence
    experiments/reproduction
 
 .. toctree::

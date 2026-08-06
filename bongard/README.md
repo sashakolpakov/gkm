@@ -1,354 +1,736 @@
-# Bongard Concept-Induction Experiments
+# Bongard: visual concept induction with verifier-gated growth
 
-This subject studies reusable abstraction in Bongard-style concept induction. The
-full subject guide is [`BONGARD.md`](BONGARD.md); this page also documents the newer
-typed semantic-cone track. The evidence-backed continuation order is recorded in
-[`CONTINUATION_PLAN.md`](CONTINUATION_PLAN.md).
+This directory contains the canonical Bongard experiment. The research target
+is not merely to classify familiar panels. It is to grow a reusable library of
+typed perceptual observations while preventing support-set tricks, polarity
+flips, and parser failures from masquerading as concepts.
 
-The controlled symbolic experiments and the rendered Bongard-LOGO adapter have
-different evidential scope. The former measure whether a shared predicate macro is
-selected over duplicated rule bodies when primitive atoms are supplied. They do not
-show discovery of those atoms from pixels. The semantic-cone track below adds typed
-factorization and explicit witness checks; unrestricted predicate search remains a
-separate control path.
+The current code establishes the corpus, information boundary, evidence type,
+closed predicate language, immutable run artifacts, and promotion gates. A
+full official-corpus score is not reported yet. Pre-rewrite symbolic and
+rendered pilots are preserved at the annotated Git tag
+`pre-bongard-complete-rewrite-20260805`; none is an official ShapeBongard
+benchmark result.
 
-The unrestricted `predicates.py` crack loop remains the control path. Its
-versioned positive capability language, `bongard-predicate-purity/v2`, admits
-only the exact imports, builtin names, module calls/values, instance
-methods/attributes, keyword forms, locally owned scratch mutation, and bounded
-resource forms serialized by `predicate_capability_manifest()`; listing a
-module root does not authorize any other API below it. Execution receives the
-restricted builtin set plus the import hook needed for AST-approved imports,
-not Python's ambient builtin namespace. The authoritative verifier also
-rejects import-time execution, I/O/dynamic namespace access, exceptions,
-non-finite or schedule-dependent outputs, then prices the exact source snapshot
-under `bongard-predicate-pricing/v3` before composing and admitting it. The
-semantic-pure path is
-stricter: a proposer supplies typed semantic cones, and the harness
-type-checks, validates semantic witness coverage, and verifies them separately.
-The live runner now uses an explicit partial-risk conditional-MDL selector and
-refuses promotion until a data-self-contained RunSpec replays exactly in a
-fresh Python process under its recorded matching code/runtime environment.
-Replay re-verifies every candidate seen across proposal rounds,
-recomputes its harness-derived evaluation, reruns the fingerprinted selector,
-and checks that the reproduced winner is the promoted cone. Unimplemented
-contrast, counterfactual, and archive-regression risks remain serialized as
-`null`; this is not a claim that those risks are zero.
-
-Each unrestricted production turn uses non-interactive `codex exec`, explicitly
-requesting `gpt-5.6-sol` and medium reasoning. Its prompt and private,
-mode-0700 working directory supply twelve copied PNGs and the current
-library/log, but no harness-workspace path. The run
-is ephemeral and schema-constrained, ignores user config and rules, uses a
-read-only sandbox, and disables shell/unified exec, search, apps, plugins,
-browser/computer use, hooks, skills, and sub-agents. Only a complete structured
-source/log response is applied afterward. JSONL receipts bind positive usage,
-unique thread/event identity, the exact task and current/proposed source/log,
-raw PNG view and semantic panel set, structured output, schema, CLI version,
-and resolved launcher-file identity; any tool/file/web/MCP event is rejected.
-This is locally constructed causal provenance, not provider-signed attestation,
-and the launcher digest does not cover every transitive package/native/runtime
-byte. The documented JSONL stream may omit its model field, so receipts
-distinguish an explicit `--model` request from JSONL-reported model evidence
-instead of fabricating `actual=requested`.
-With the currently pinned Codex CLI 0.146.0, strict config rejects the newer
-`tools.view_image=false` key. The runner therefore withholds repository paths,
-uses an outside-repository image-only view, and rejects any emitted
-`view_image` event, but cannot claim that this built-in local-image surface was
-removed before execution. A CLI change requires a new preregistration.
-Separately, the semantic Messages
-proposer resolves a model alias to a concrete provider ID and rejects every
-response that omits or changes that ID.
-
-## Architecture
+## The pipeline, without euphemisms
 
 ```text
-panels
-  -> proposer
-  -> typed cone proposals
-  -> leg registry
-  -> mechanical compiler
-  -> semantic admissibility gate
-  -> exact support / fixed predicates or threshold-refit diagnostics
-  -> declared naturality / gluings
-  -> separate dataset-wide transform stress diagnostics
-  -> partial-risk conditional free-energy selection
-  -> data-self-contained candidate-set RunSpec + selection replay
-  -> promoted artifact + replay receipt
+panel pixels
+  -> frozen visual scorer or categorical judgment + exact receipt
+  -> calibrated predictive interval or archived empirical outcome
+  -> typed, provenance-bearing witnesses with uncertainty
+  -> closed positive predicate (canonical HYBRID: one Atom; general IR: And / justified Or)
+  -> conditional mechanical verification
+  -> nuisance, calibration, near-miss, anti-memorization checks
+  -> full accepted-archive replay
+  -> atomic promotion of a new reusable leg
 ```
 
-The proposer is "cofibered" in the operational sense: for each problem object
-`p`, it proposes candidates in the fiber of semantic cones over `p`. In
-semantic-pure mode it does not write final image-processing code. New reusable
-legs are requested as typed missing arrows and are admitted only after
-separate implementation, contract checks, replay, and pricing.
+The important word is **conditional**. The verifier can prove that a frozen
+predicate follows from the recorded witnesses and intervals. It cannot prove
+that a vision model correctly saw a bird, an oblique angle, or a contact in the
+original pixels. That perceptual claim remains empirical and must earn its
+status through calibration, nuisance tests, near misses, fresh tasks, and
+replay.
 
-The compiler rejects undeclared or unrecognized prose claims, degenerate gluings,
-proposal-controlled complexity, invalid call parameters, and unexecuted
-contrast declarations. Expected absence of a typed witness on a negative panel
-propagates to a negative decision rather than being counted as a predicate
-crash, but only when its machine-readable failure mode is advertised by the
-executing leg. Successful values are checked against their runtime codomains,
-so non-finite measurements, wrong witness classes, and non-binary
-`BinaryPanel` values fail closed. Node and leg dependency identities are kept
-separate, so a decorative witness cannot become load-bearing through a name
-collision. Placeholder legs that merely relabeled contact, symmetry,
-containment, tangent/curvature data, or line decomposition are not
-proposer-visible.
+Prose has one legitimate role here: it names and specifies a candidate visual
+claim. It is not itself the predicate and it is not evidence. The development
+soft-predicate bridge consumes a distinct `FROZEN_VISUAL_SCORE` packet. Given
+an externally admitted score, a caller-supplied expected plan digest, exact
+development identities, and an externally justified cross-cluster sampling
+assumption, it computes cluster-level predictive-support bounds. It checks
+content identities and clustering constraints; it does not authenticate the
+pixels-to-score operation, scorer or annotation receipts, publication time, or
+independence between clusters. The current headless HYBRID path instead
+archives uncalibrated categorical model judgments for a task-local frozen
+claim. Its 12-panel support replay gate checks orientation and same-support
+consistency; that gate is not calibration and does not establish
+generalization.
 
-Quantitative language is compiled too. Comparators, negation, counted heads,
-and shared bounds are bound to their own clause and metric; unsupported
-quantifiers and nested negations fail closed; bounded numeric syntax fails
-closed; and every
-calibrated term must execute through the final measurement (or an exact typed
-pair construction). Counts, binary aliases, numeric bounds, exact equality,
-conjunctions, and witness presence/absence use fixed predicates throughout
-support, LOO, naturality, and stress. Only explicit relative comparisons use a
-learned scalar threshold. This prevents metric swaps such as proving line
-length with residual or aspect ratio with occupancy.
+The operational semantics today are pure Python: registered perceptual legs
+are Python callables, `ir.py` typechecks and evaluates the closed formula, and
+`artifacts.py` replays committed atom evidence from plain JSON without calling
+a model or leg. The serialized IR, registry snapshot, and four-disposition
+evidence are the backend-neutral contract. `predicate_backend.py` exposes that
+boundary explicitly and selects the Python reference backend by default.
 
-Phase C now includes a registry-derived primitive contract laboratory. It
-executes every current proposer-visible leg on a constructive fixture, probes
-every advertised failure mode, and derives complete matrices for declared
-scalar invariances and coordinate-bearing witness equivariances. Scalar proxy
-vocabulary is deliberately bounded: continuous relative proxies are
-metric-specific, while count contracts additionally name the entities they
-count. `bbox_occupancy` may support an occupancy/density comparison, but it
-cannot launder the categorical claim `filled`; neither continuous nor count
-proxies can establish unrelated claims such as `thin`, `connected`, `closed`,
-or `acyclic`.
+Lean is neither required nor currently used. If a Lean checker is added, it
+must be an optional independent cross-check of the same serialized contract;
+benchmark execution, admission, and cold replay must continue to work without
+Lean. It still could not turn a fallible visual description into pixel-level
+truth. Do not embed Lean terms in leg or formula identities, and do not make a
+Lean proof a prerequisite for replaying an otherwise valid run.
 
-The laboratory also executes 648 raster-composition configurations over
-angles 0–85 degrees in 5-degree steps and stroke widths 1/3/5/7. Straight,
-arc, and S-curve paths retain coherent inflection/part counts; acute triangles
-and quadrilaterals remain reachable through polygon classification; circles
-retain their fit; and T-junction, four-way-cross, and three-ray paths retain
-their part/contact/intersection/radial topology. This phase remains open for
-the same breadth on specialized composition paths and for corpus-level stress.
+## Start here
 
-Circle intersection illustrates that boundary. Given a valid
-`CirclePairWitness`, `circle_pair_intersection` constructs one or two points
-that lie on both circles and refuses absent/malformed geometry. The tested
-upstream pixel path now handles the harder merged case: Hough candidates from
-one connected component are Taubin-refined, checked for full angular support
-and radial tails, then pair-checked for distinctness, joint ink coverage, and
-balanced support. End-to-end tests recover two intersecting raster circles and
-construct their real intersection points. This primitive result alone is not
-an exact corpus solve.
-
-`SOLVED_SEMANTIC_PURE` is deliberately scoped to the displayed 12-panel
-instance: the proposer sees all labeled panels. For a relative claim the LOO
-metrics refit only its scalar threshold after representation selection; for an
-absolute claim they execute the same fixed predicate without refitting. They
-are diagnostics, not an untouched estimate of semantic generalization. A
-transform-stress failure receives the qualified
-`SOLVED_SEMANTIC_PURE_STRESS_FLAGGED` status.
-
-## Phase D: Protocol Ready, Exploratory n=1 Pilot Complete
-
-The engineering gate is implemented, and an unrestricted-only paid protocol
-pilot completed on 5 August 2026. This was a deliberately tiny three-arm
-execution: one Basic problem, one primary arm, one shuffled-side replicate,
-and the held-fixed no-share derivation. It is not the default 27-arm study and
-is not confirmatory: its local preregistration digest was not externally
-committed before the first proposer call, it contains no semantic-pure arm,
-and n=1 supports no solve-rate or reuse conclusion.
-
-The write-once campaign is
-[`crack_lab/phase_d_runs/codex_eod_20260805_v3/campaign.json`](crack_lab/phase_d_runs/codex_eod_20260805_v3/campaign.json),
-with campaign digest
-`sha256:8be70918d2b57811a66787cdff845dbcb445eaf8e073f61443cea698845dfcf2`.
-All three artifact certifications and terminal cold replays regenerated
-exactly. The primary was an ordinary miss (0/1; held-out 0.500, train 0.583),
-the shuffled arm ended in one canonical verifier failure (0/1, zero
-admission), and no-share inherited the primary miss (0/1). Six unique
-headless Codex turns requested `gpt-5.6-sol` at medium effort and receipted
-64,641 input plus 28,489 output tokens; one earlier shuffled call timed out as
-infrastructure before producing a consuming receipt. No candidate source was
-admitted. See the [pilot record](crack_lab/phase_d_runs/codex_eod_20260805_v3/README.md)
-for the exact boundary. The historical two-problem Sonnet smoke predates this
-protocol and still does not count as current Phase D evidence.
-
-`prepare_phase_d.py` samples one maximum corpus and freezes both a manifest and
-the exact panel bytes. With `--source both`, basic and abstract sampling use
-independent source RNG streams before the fixed four-basic/one-abstract
-interleave, so adding one source cannot perturb the other. Scale is then an
-ordered prefix of that one frozen maximum: the intended sequence is 1, then 5,
-then 25 problems, always with the same maximum-corpus digest. A smaller scale
-must never be produced by resampling with a smaller `--limit`.
-
-Each shuffled-side replicate is a full adaptive control, not a post-hoc score
-permutation. For every problem it deterministically assigns three panels from
-each original side to each controlled side, records the assignment, and then
-runs the same proposer, verifier, selector, replay, and promotion path. The
-default preregistration has 27 separately labeled arms: at each of three
-scales, both tracks have one primary and three shuffled-side arms, while only
-`UNRESTRICTED` has a no-share arm. `validate_complete_report_collection`
-requires every arm, checks that the 1/5/25 records are nested prefixes, and
-cross-checks unrestricted no-share records against their primary parents.
-
-Unrestricted rules use exact AST-backed pricing. A selected `p_*` atom pays
-for the transitive closure of its predicate, helpers, constants, and imports,
-identified by exact source content; shared nodes inside one rule are counted
-once. Non-comment LOC, literal/call payload, and executable AST structure
-price definitions, so deeply nested or semicolon-packed one-line logic is not
-nearly free. Every rule use also pays its call/binding structure cost, so
-moving a conjunction behind one predicate name does not make its
-implementation free. The selector
-exhaustively compares constants and conjunctions of up to two atoms from the
-bounded 24-atom candidate set, minimizing empirical risk first and conditional
-cost second (`risk-then-cost/v2`). Only definition identities from previously
-accepted rules enter the immutable paid ledger; unused library code receives
-no discount.
-
-Panel-identity lookup is instructed against and its literal/call payload is
-charged and remains visible in the persisted source and pricing receipts.
-Rotated leave-one-out cannot,
-however, categorically distinguish such memorization: the proposer has already
-seen all 12 displayed panels, so an identity-keyed table can classify a held-out
-panel. Claims of representation-level generalization therefore require
-separate unseen-instance evidence.
-
-The unrestricted no-share arm is deliberately held-fixed accounting. It
-copies the primary arm's accepted sources, rules, risks, and solve outcomes,
-then charges the full transitive definition closure on every accepted-rule
-use. It is useful for measuring the accounting benefit of reuse, but it is not
-an independent proposer run and supports no causal solve-rate claim. There is
-no semantic-pure no-share arm: that comparison is undefined until the semantic
-registry has an explicit learned/base split.
-
-Both runners bind checkpoints and promoted artifacts to the frozen corpus,
-embedded panel bundle, condition/control identity, and ordered record prefix.
-Semantic promotion cold-replays every candidate and the selected winner in a
-fresh process. Unrestricted resume and promotion replay every terminal record
-in source order from its exact attempted predicate snapshot and embedded
-panels, rerun priced selection, and compare rules, folds, risks, errors, and
-receipts under a fingerprint of the arena, pricer, policy constants, Python,
-and numerical dependencies. A `VERIFIER_FAILURE_UNRESTRICTED` record is a
-distinct canonical zero-admission sentinel; its exact failure must reproduce
-on fresh replay and is counted separately from ordinary unsolved records. The
-final `predicates.py` must equal the last
-accepted source. Resume extends the same prefix; it must not silently change
-corpus, condition, sharing policy, runtime fingerprint, or artifact identity.
-
-## Current Entry Points
-
-- `crack_lab/prepare_phase_d.py` - offline maximum-corpus, control, and
-  preregistration preparation; it constructs no proposer and makes no API call.
-- `crack_lab/phase_d_protocol.py` - frozen corpus/control schemas, 27-arm
-  preregistration, per-arm reports, and complete-collection validation.
-- `crack_lab/collect_phase_d.py` - offline exact-arm artifact certifier and
-  atomic, write-once canonical campaign publication.
-- `crack_lab/bongard_legs.py` - unrestricted adaptive runner and held-fixed
-  no-share derivation.
-- `crack_lab/codex_proposer.py` - hardened ephemeral Codex structured transport
-  and model-usage receipt parser.
-- `crack_lab/bongard_arena.py` - bounded exhaustive rule verifier/selector.
-- `crack_lab/predicate_pricing.py` - exact transitive AST definition pricing.
-- `crack_lab/run_semantic_cone.py` - semantic-cone experiment runner.
-- `crack_lab/cofibered_proposer.py` - LLM-backed cone proposal interface.
-- `crack_lab/semantic_ir.py` - JSON-serializable typed IR.
-- `crack_lab/semantic_compiler.py` - factorization-enforcing compiler.
-- `crack_lab/semantic_verifier.py` - support and leave-one-out verifier.
-- `crack_lab/semantic_legs.py` - initial typed visual leg registry.
-- `crack_lab/test_semantic_leg_contracts.py` - registry-wide primitive contract
-  and invariance/equivariance laboratory.
-- `crack_lab/semantic_selection.py` - explicit risks and conditional complexity.
-- `crack_lab/semantic_replay.py` - canonical panels/cones and provenance RunSpec.
-- `crack_lab/replay_semantic_runspec.py` - fresh-process replay entry point.
-
-## Phase D Prefix Workflow
-
-Preparation is offline and write-once:
-
-```bash
-PYTHONHASHSEED=0 .venv/bin/python bongard/crack_lab/prepare_phase_d.py \
-  --source both --limit-per-source 25 --scales 1,5,25 \
-  --out-dir bongard/crack_lab/phase_d_runs/preregistered
-```
-
-This produces `corpus_manifest.json`, `corpus_panels.json`, three frozen
-shuffled-control manifests, and `phase_d_preregistration.json`. Before any
-paid proposer is started, pass both `--preregistration` and the exact
-`--arm-id` to the chosen runner. Every arm also contains its generated
-`execution_tag`; pass that exact value as `--tag`. Primary and shuffled arms
-at n=1/5/25 share one family tag so their checkpoint can grow, while every
-no-share scale has its own immutable tag. For semantic families, the working
-directory is `crack_lab/semantic_runs/<execution_tag>`; preregistered runs
-reject an arbitrary scratch directory. For semantic runs, keep `--limit 25`
-fixed and advance `--corpus-size` through `1`, `5`, and `25`; for unrestricted
-runs, keep `--limit=25` fixed and advance `--max-problems=1`, `5`, and `25`.
-For every primary or shuffled proposer family, n1 is the only legal fresh
-start. An n5 invocation requires a complete, replay-valid n1 checkpoint in the
-same execution-tag artifact, and n25 analogously requires n5. Same-scale resume
-is allowed; a fresh higher-scale start, shrink, skipped scale, or incomplete
-predecessor fails before proposer construction and before any write. Each scale
-still publishes its distinct arm report. No-share scales are independent
-derived prefix artifacts, not resumable proposer families. Use
-`--condition shuffled-sides` plus the preregistered replicate for shuffled
-arms. After an unrestricted primary prefix exists, derive its accounting-only
-control with
-`bongard_legs.py --no-share-from=<primary-execution-tag>` and the matching
-no-share arm ID. Use the exact scale-specific no-share `execution_tag` and the
-matching `--max-problems=` value; these are prefix replays, not a resumable
-proposer family. Run preparation, every runner invocation, and collection
-under the same explicit `PYTHONHASHSEED=0`, interpreter, dependencies, and
-Codex CLI version/launcher fingerprint. Report files are emitted per arm. Finalize only from
-explicit execution-artifact `track_reports` directories (which are scanned
-for direct JSON children, never recursively):
-
-```bash
-PYTHONHASHSEED=0 .venv/bin/python bongard/crack_lab/collect_phase_d.py \
-  --preregistration bongard/crack_lab/phase_d_runs/preregistered/phase_d_preregistration.json \
-  --report-dir <track-reports-dir> [--report-dir <another-track-reports-dir>] \
-  --out bongard/crack_lab/phase_d_runs/phase_d_campaign.json
-```
-
-The collector requires every preregistered arm exactly once and requires each
-report to occupy the artifact named by its `execution_tag`. It cold-replays
-the originating unrestricted checkpoint or semantic RunSpecs, reconciles the
-checkpoint, results, source/cones, receipts, and report prefix, runs the full
-cross-arm validator, and embeds an ordered certification for every arm. It
-then atomically publishes a deterministic `bongard.phase-d-campaign/v6`
-document. The output path is write-once: an identical rerun is idempotent,
-while a different, corrupt, misplaced, or symlinked result fails closed.
-
-Preparation freezes more than the arm table: it binds the exact proposer
-ladder/limits, selector policy, semantic rounds/tokens/error bounds/lambda,
-harness source hashes, the complete `bongard-predicate-purity/v2` capability
-manifest and `bongard-predicate-pricing/v3` policy, Python runtime and hash
-probes, scientific dependency versions, and the exact Codex CLI version and
-resolved launcher digest used by the unrestricted track. Unrestricted
-production attempts additionally bind the requested model/effort, any model
-identity actually reported in JSONL, and the positive usage receipt described above;
-semantic Anthropic responses are accepted only when their provider-reported
-concrete model equals the request.
-Any change to those inputs invalidates that preregistration; prepare a new,
-separately identified campaign before spending proposer budget.
-The local write-once file is a reproducibility manifest, not an external
-timestamp. For a confirmatory claim, publish or commit its digest before the
-first proposer call so a post-outcome manifest cannot be presented as prior.
-
-Unit tests may use static fixture proposals. Experiments should use the
-cofibered LLM proposer and should report `NO_PROPOSALS` or `MISSING_LEG` rather
-than silently falling back to unrestricted predicate search. Unrestricted
-results remain valid, but they must be labeled as `UNRESTRICTED`.
-
-## Minimal Smoke
+Create an environment and run the canonical unit suite:
 
 ```bash
 python3 -m venv .venv
 .venv/bin/python -m pip install -r bongard/requirements.txt
-python3 -m py_compile bongard/crack_lab/*.py
-.venv/bin/python -m pytest bongard
+.venv/bin/python -m pytest -q bongard/tests
 ```
 
-The unrestricted runner reuses normal Codex CLI authentication (`codex login
-status` must succeed). The semantic Anthropic Messages runner separately
-requires `ANTHROPIC_API_KEY.env.local` or `ANTHROPIC_API_KEY`:
+The canonical package surface is:
+
+- `corpus.py` — validated, content-addressed access to the complete
+  `ShapeBongard_V2` archive or its equivalent generator layout;
+- `release.py` — exact verification of the archive, split, task inventory, and
+  extracted corpus against the checked-in official-release descriptor;
+- `image_audit.py` — bounded-memory PNG verification, full-frame decoding,
+  observed-property distributions, and explicit strict property checks;
+- `cohorts.py` — metadata-only planning over historically clean official task
+  cohorts;
+- `exposure.py` — append-only exposure history and deterministic
+  drill/development/sealed partitions;
+- `evidence.py` — the only four runtime dispositions and provenance-bearing
+  soft observations;
+- `legs/contracts.py` — typed units, domains, codomains, transformations, and
+  exact version-and-digest-pinned leg registration;
+- `ir.py` — the closed positive predicate language and interval-safe
+  evaluator;
+- `predicate_backend.py` — the backend interface and pure-Python reference
+  evaluation/replay implementation; a proof assistant can only be an optional
+  conformance checker;
+- `transport.py` — isolated headless-Codex image transport with byte-bound
+  request and response receipts;
+- `proposer.py` — the support-only visual proposer and four-disposition query
+  observer;
+- `synthesis.py` — compilation of a frozen positive visual claim into a
+  content-addressed registered leg;
+- `artifacts.py` — support commitment, proposal freeze, two-query prediction
+  commitment, label reveal, tamper checks, and model-free cold replay;
+- `benchmark.py` — verifier-controlled support/freeze/query/reveal episodes
+  and scoring;
+- `admission.py` — typed attachment, archive preservation, novelty accounting,
+  and all-or-nothing promotion;
+- `cli.py` — official inventory, cohort planning, one-episode execution, and
+  externally anchored cold verification.
+
+`benchmark.py` is the episode-level integration point: it gives the proposer
+six positive and six negative support panels and fixes one proposal. Twelve
+fresh, isolated, neutral single-image calls then replay that fixed claim on the
+support panels. Only an exactly aligned gate is bound into the final proposal
+freeze; the runner then releases two neutral query panels and commits both
+predictions before the labels are revealed. A successful canonical episode
+therefore makes one proposal call, twelve support-replay calls, and two query
+calls. Query objects expose only neutral callback identifiers and a temporary
+`query.png` path, never source filenames, corpus paths, task IDs, or labels.
+
+## Complete official corpus and exact release identity
+
+The target archive has 12,000 tasks and fourteen PNGs per task: seven positive
+and seven negative. A complete extracted corpus therefore contains exactly
+168,000 panel PNGs.
+
+| family | tasks | role |
+|---|---:|---|
+| `ff` | 3,600 | free-form |
+| `bd` | 4,000 | basic shape concepts |
+| `hd` | 4,400 | abstract/compositional concepts |
+
+The official primary split is 9,300 train, 900 validation, and 1,800 test.
+The test split is also normalized into `FF` (600), `BA` (480), `CM` (400),
+and `NV` (320). “Novel” in an upstream split name does not override our own
+exposure history: if this repository, a person, or a proposer has already seen
+a task, it is not unseen for our experiment.
+
+The small public generator/gallery checkout previously used by this repository
+is not the complete archive. Do not report a full benchmark from it.
+
+The checked-in descriptor
+[`data/shape_bongard_v2_release_v1.json`](data/shape_bongard_v2_release_v1.json)
+pins these exact identities:
+
+| object | bytes | SHA-256 content address |
+|---|---:|---|
+| `ShapeBongard_V2.zip` | 1,762,748,636 | `sha256:8c5542ac7b9ce8a6a14d157a0656dbde9da5b7843424eade4bd653759d9a27d0` |
+| `ShapeBongard_V2_split.json` | 442,720 | `sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230` |
+| sorted 12,000-task ID inventory | — | `sha256:4503ae6b40dc7b34520eb5b8a4cca6ff8153635df0f42db5f6715cc349602dd0` |
+| extracted corpus manifest | — | `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138` |
+
+The descriptor itself has canonical digest
+`sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b`
+and pins upstream commit `9df7c78ee9c6a2ff041b48d9ed407359aac259c3`.
+
+Structural completeness is not release identity. Verify the archive, exact
+split bytes, task IDs, and content-addressed extracted tree without copying
+either large input into Git:
 
 ```bash
-python3 -u bongard/crack_lab/run_semantic_cone.py \
-  --dataset-dir downloads/Bongard-LOGO \
-  --source both --limit 5 --proposer anthropic --model sonnet
+.venv/bin/python -m bongard inventory \
+  --corpus downloads/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --require-complete \
+  --official-release \
+  --archive downloads/ShapeBongard_V2.zip \
+  --out results/bongard/official-inventory.json
 ```
+
+This command fails unless the archive filename, byte count, and SHA-256 match;
+the split filename, byte count, and SHA-256 match; the family/split/regime
+counts match; the sorted task-ID digest matches; and hashing every extracted
+panel reproduces the pinned corpus-manifest digest. Its canonical JSON result
+reports `task_count`, family and split counts, `manifest_digest`,
+`split_source_digest`, and an `official_release` object containing the
+descriptor, archive, task-inventory, and corpus-manifest commitments.
+
+The loader itself remains useful for structurally valid non-official corpora:
+
+```python
+from bongard import ShapeBongardCorpus
+
+corpus = ShapeBongardCorpus.discover(
+    "downloads/ShapeBongard_V2",
+    split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+    require_complete=True,
+)
+manifest = corpus.build_manifest()
+print(manifest.digest)
+print(len(corpus.tasks_in_split("test")))
+```
+
+The loader accepts the released `images/` layout and the equivalent `png/`
+generator layout. It verifies task structure, seven panels on each side, PNG
+signatures, official counts, split disjointness, and content digests. Only the
+descriptor-backed command above establishes that those digests are the pinned
+official release. Paths are never part of a scientific identity; bytes are.
+
+## Full PNG audit: observe first, require second
+
+Release verification binds all 168,000 compressed panel byte strings. The
+separate image audit checks the decoding boundary: each source must be a
+non-symlink regular file containing one exact PNG container with no trailing
+data; Pillow must verify it and load every frame; and mode, width, height,
+metadata/info keys, and frame count are recorded. Source bytes are read and
+hashed once into a bounded-memory spool, so verification and decoding use a
+frozen snapshot. A final filesystem pass detects ordinary replacement or
+mutation during the audit.
+
+The complete exploratory pass and an independent strict pass both completed on
+the pinned release. The strict report is checked in as
+[`data/shape_bongard_v2_image_audit_v1.json`](data/shape_bongard_v2_image_audit_v1.json).
+The result is exact:
+
+| property | complete-corpus result |
+|---|---:|
+| tasks / panels | 12,000 / 168,000 |
+| total compressed panel bytes | 1,948,958,314 |
+| container / mode / size | PNG / RGB / 512×512 |
+| frames / Pillow info keys | 1 / none, for every panel |
+| anomalies | 0 |
+
+Its canonical report digest is
+`sha256:d3485ada3605d708db82fbcfe6ecfc73506ce51ed85fcd1ce6ccd798e3bff9f8`.
+The decoded-property summary digest is
+`sha256:6feea60173c92a1357ffafbeecd78171c3455b3950a31229517ea07c6f03e811`;
+the separately accumulated source-content summary digest is
+`sha256:31f03303673e31a1a05f84ddd50621963ce4c73c1ab11073118c4905893389c5`.
+
+The exploratory pass deliberately supplied no property guesses:
+
+```python
+import json
+
+from bongard import ShapeBongardCorpus, audit_corpus_images
+
+corpus = ShapeBongardCorpus.discover(
+    "downloads/ShapeBongard_V2",
+    split_file="downloads/ShapeBongard_V2/ShapeBongard_V2_split.json",
+    require_complete=True,
+)
+manifest = corpus.build_manifest()
+observed = audit_corpus_images(corpus, corpus_manifest=manifest)
+print(json.dumps(observed.to_dict(), sort_keys=True, indent=2))
+```
+
+The data-only report contains task/panel/byte counts; family, format, mode,
+size, info-key-set, and frame-count distributions; content and property
+summary digests; the corpus-manifest commitment; a bounded anomaly sample;
+and its own canonical digest. It contains no paths, pixels, or image objects.
+
+The independent strict pass then supplied the observed values explicitly:
+
+```python
+from bongard import ImageExpectations, audit_corpus_images
+
+confirmed = ImageExpectations(
+    mode="RGB",
+    width=512,
+    height=512,
+    info_keys=(),
+    frame_count=1,
+)
+strict = audit_corpus_images(
+    corpus,
+    corpus_manifest=manifest,
+    expected_properties=confirmed,
+    require_expected_properties=True,
+)
+```
+
+These are experiment inputs, not hidden library defaults. A non-strict pass
+records mismatches as anomalies; strict mode raises `ImageExpectationError`
+and exposes the completed report as `exception.report`.
+
+## Exposure before sampling
+
+Inspect the frozen historical-exposure classification before choosing tasks:
+
+```bash
+.venv/bin/python -m bongard cohorts \
+  --corpus downloads/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --require-complete \
+  --split train \
+  --cohort clean \
+  --limit 50 \
+  --out results/bongard/train-clean-cohorts.json
+```
+
+The cohort result gives its qualification, source-seed and split-index
+digests, scope, counts, membership digests, and a bounded task-ID sample. It
+is metadata-only: “historically clean” means not recorded by this repository's
+frozen semantic exposure audit. It does not prove that official panel bytes
+were unseen by people or absent from a foundation model's pretraining data.
+
+On the complete release, that audit classifies 3,868 tasks as semantically
+historically clean: 1,328 Basic tasks from unused shape families and 2,540
+Abstract tasks from unused admissible attribute pairs. The 3,600 Freeform tasks
+remain `indeterminate`, not “clean.” Partitions are made at the generator
+concept level, not by task ID: all 20 instances of one Abstract ordered pair
+stay together. The combined clean pool contains 2,769 drill, 542 development,
+and 557 sealed tasks. The checked-in summary
+[`data/shape_bongard_v2_cohort_summary_v1.json`](data/shape_bongard_v2_cohort_summary_v1.json)
+has digest
+`sha256:55de04a582ffa3a4fbf26466ab88f265ddd7839ae10004210cca4d9ffa4f8e9d`.
+
+The frozen 2,769-task drill cohort is not a live availability count. Against
+the checked-in thirteen-event campaign ledger head
+`sha256:65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b`,
+the resolver-v2 live overlay leaves 1,777 drill tasks and excludes 992 through
+semantic-key collisions; thirteen excluded tasks are also exact-task
+collisions. The ledger records 19 task IDs and 29 semantic keys, producing 190
+effective exposed keys after policy blocking. The overlay
+digest is
+`sha256:5012df37f3cf273e0ce3d3696e574df7ec4ce458639cda79d340603a6d3e3320`
+and its live-membership digest is
+`sha256:9db3805bded543e492103fa7f8198ca88c79bc8c71055459ac4a738356216589`.
+The ledger file is
+`downloads/ShapeBongard_V2_full/exposure/abstract_005/65c8dd508f6c21e64b0c777a83159a470fbab12cfb8fee6adf588c0a9c400c8b.exposure.json`.
+
+The earlier resolver-v1 count of 2,609 was an overclaim: it treated numbered
+Basic generator names as distinct families and therefore failed to exclude
+obvious morphology siblings. Resolver v2 emits both the exact Basic generator
+key and a conservative morphology key that removes a terminal number or
+`_newN`; `advanced_lamp3`/`advanced_lamp4` and `bird2`/`bird7` consequently
+collide. A cluster is blocked if a sibling was historically exposed or if
+siblings cross the drill/development/sealed boundary. Its policy digest is
+`sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a`.
+For HD, “unseen” qualifies only the ordered attribute *combination*: the
+component attributes may each be familiar, and the 20 generated instances of
+one pair are siblings rather than independent unseen concepts.
+
+Before the v7–v9 support releases, the initial resolver-v2 training
+intersection contained 1,290 tasks across 161 retained semantic groups. At the
+current head, the official train-and-drill scope contains 2,096 historically
+clean tasks, of which 1,268 remain live and 828 are excluded across 158
+resolver-v2 collision groups; that overlay has
+digest
+`sha256:338a2b3745169f2c9511043e43893b58f0cb6d8f320a50245fd5d17030f33185`
+and live-membership digest
+`sha256:c06e028ea669242ff423d3035d6c23ac653fc51b90f130e3413db0b5f60f1a2b`.
+The 158 groups are resolver collision domains, not statistically independent
+samples. The other 509 live drill tasks must not be consumed as training data.
+The retrospective montage disclosure and the v6, v7, v8, and v9 support
+releases all remove their related semantic groups. This overlay does not alter the frozen
+cohort or certify unseen panel bytes. The run-time `external_anchor` fields are
+null; the later Git commit is an after-the-fact publication anchor, not a
+preregistered ledger anchor or proof that this was the latest authentic head.
+
+Freshness is global state, not a command-line option. Import known historical
+disclosures first, then partition only the remaining eligible task IDs:
+
+```python
+from bongard import (
+    ExposureLedger,
+    import_historical_exposures,
+    load_historical_exposure,
+)
+
+historical = load_historical_exposure()
+ledger = ExposureLedger.create(manifest.digest)
+ledger = import_historical_exposures(
+    ledger,
+    historical.exact_official_task_ids,
+    source="bongard/data/historical_exposure_v1.json",
+    known_task_ids=corpus.task_ids,
+)
+ledger.write_content_addressed("results/bongard/exposure")
+```
+
+For an official CLI run, the exact-task ledger and semantic cohort check are
+both required; one does not substitute for the other. With
+`--require-unseen --cohort`, the runner checks exact and semantic collisions
+and writes one task-level event before support release. It refuses the sealed
+cohort outside `--sealed-test`. These checks do not intercept direct API reads,
+manual inspection, or reuse of a stale ledger head. A prior task-level
+disclosure makes every panel of that task non-unseen.
+
+## Evidence is not Boolean
+
+Every registered leg returns exactly one `Evidence[T]` disposition:
+
+| disposition | meaning | may classify as negative? |
+|---|---|---|
+| `present` | the claimed value or witness was produced | no; it is evaluated by the atom |
+| `certified_absent` | a declared procedure established non-existence | yes |
+| `indeterminate` | the observation could not be resolved | no |
+| `error` | implementation or contract failure | no |
+
+A VLM may write “bird-like object” or “mostly oblique angles.” That becomes a
+`SoftSemanticObservation`: the phrase, support interval, model/method, input
+digests, and witness IDs are recorded. The object deliberately cannot be
+coerced to `bool`. A calibrated atom may later assert, for example, that the
+entire support interval is at least a fixed threshold. If the interval
+straddles the threshold, the result is `indeterminate`, not whichever label is
+convenient.
+
+The generic HYBRID observer's wire outcome is `nonmatch`, not
+`certified_absent`. Internally it can certify only the operational event “the
+archived frozen-model procedure returned nonmatch for this claim.” It does not
+certify that the depicted semantic property is absent from the pixels. A claim
+of pixel-level absence requires a dedicated registered certifier or a
+calibrated interval that lies wholly below its frozen threshold.
+
+There is no universal image normalization. A leg declares which typed view it
+uses: literal ink when stroke and rendering style are relevant, carrier shape
+when those nuisances may be quotiented out, or a relational view for objects,
+contacts, containment, repetition, symmetry, and ownership. Erasing stroke
+width or raster detail globally would silently destroy concepts that depend on
+them.
+
+## Why negation used to win
+
+The old search had a structural escape hatch. It could fit a weak or inverted
+feature on the labeled support panels, try the opposite polarity, and keep the
+better orientation. Worse, failed fits and unrecognized structures sometimes
+fell through to a false-like value. Negating that value converted lack of
+perceptual competence into apparent negative evidence. With a tiny support
+set, selection then rewarded the complement even though no positive concept
+had been discovered.
+
+This was not a mysterious model preference for negation. It was leakage from
+the hypothesis language and the failure semantics.
+
+The canonical primary track removes the escape hatch:
+
+- there is no `Not` node and no polarity field;
+- every scalar leg carries an `AffirmativeRelation` contract declaring which
+  of `at_least`, `at_most`, or `between` means *more of its positive claim*;
+- the IR rejects an inequality direction not declared by that leg, so a
+  synthesizer cannot rescue a feature by trying its complement;
+- a formula can contain only registered, digest-pinned static calls;
+- the general proposal schema can represent positive atoms and conjunctions,
+  but the canonical headless HYBRID CLI currently compiles exactly one
+  `hybrid_claim` atom;
+- explicitly justified disjunction exists in the verifier IR for retained
+  library formulas, but the canonical proposer cannot synthesize it;
+- an extractor failure is `error`, and uncertainty is `indeterminate`;
+- only a constructive certificate produces `certified_absent`;
+- units and closed intervals are checked mechanically;
+- the proposal is frozen before query bytes are released;
+- both query predictions are committed before either query label is revealed;
+- near-miss, calibration, nuisance, anti-memorization, and archive replay gates
+  are mandatory for promotion.
+
+This does not guarantee a good predicate. It prevents a bad predicate from
+being rescued by changing what “positive” means after seeing the labels.
+
+`AffirmativeRelation` is part of the leg's signed, digest-bound interface, not
+a threshold-search hint. A low-valued measurement can legitimately declare
+`at_most`—for example, low closure error. In the reusable admitted-registry
+track, that semantic direction and the registry must be frozen before support.
+`LegRegistry` makes the direction immutable after freezing but does not enforce
+that timing itself. The canonical HYBRID path is deliberately different: it
+creates one task-local empirical leg after support, then freezes it before
+support replay and query release. Non-scalar witness legs admit only `present`.
+
+## Growing legs and gluing them
+
+A **leg** is a reusable, typed observation procedure. Its contract states its
+domain, codomain, unit, implementation digest, cost, and behavior under named
+transformations. A formula references an exact registered version; arbitrary
+Python and dynamic lookup are outside the primary language.
+
+Growth follows a PowerPlay-like discipline:
+
+1. Find a drill failure that the accepted registry cannot express or resolve.
+2. Propose the smallest typed leg or composition that attaches at the existing
+   boundary.
+3. Test the attachment on constructive examples, nuisance transformations,
+   calibration data, and deliberately close counterexamples.
+4. Bind the stripped submitted candidate source to the registered leg's
+   normalized source digest (or its selected bytecode fallback), require a
+   direct formula call, and bind the comparison source to a verifier precommit;
+   decoy novelty text fails. This is not a hash of dependencies, globals,
+   closure contents, the package environment, or machine code.
+5. Replay the candidate on its precommitted suite, then charge source novelty
+   from normalized AST structure. Replacing code with a same-size rewrite is
+   not free.
+6. Replay every previously accepted attachment, not merely the new example.
+7. Atomically promote only if every gate passes; otherwise the accepted
+   archive remains byte-for-byte unchanged.
+
+“Cofibrant gluing” is the architectural analogy: a new capability must declare
+the typed interface along which it joins the retained library, and promotion
+constructs the least compatible extension that preserves the archive. It is
+not a license to accept decorative diagrams or proposer-supplied complexity.
+
+Repeated compositions should eventually be factored into shared legs so
+marginal novelty falls as the library improves. A benchmark score without the
+growth trace, gate receipts, and archive replays does not establish that kind
+of cumulative abstraction.
+
+## Freeze, query, reveal, replay
+
+The immutable artifact chain is:
+
+```text
+content-addressed support
+  -> fixed positive claim + task-local formula/registry
+  -> 12 isolated support observations + replay-gate artifact
+  -> final formula/attachment/registry freeze binding the gate digest
+  -> exactly two distinct unlabeled query blobs
+  -> committed atom evidence + both predictions
+  -> query-label reveal
+  -> cold replay receipt
+```
+
+Each artifact contains or is bound by its parent's canonical SHA-256 digest.
+Support and query bytes must be disjoint. Artifact-only logical replay
+reconstructs the closed formula and cached atom dispositions from plain JSON;
+it receives no registry implementation, vision model, or proposer callback.
+Full CLI verification additionally reparses the proposal and canonically
+recompiles the verifier-owned HYBRID formula, registry snapshot, source and
+operational identities, and attachment contract without invoking the model.
+Changing support, gate evidence, formula, query bytes, atom evidence,
+predictions, or labels breaks verification.
+
+The chain proves internal content integrity only when its root is anchored
+outside the run file. Cold verification therefore requires the externally
+recorded raw-file SHA-256; do not recompute that value from the same file at
+verification time:
+
+```bash
+.venv/bin/python -m bongard verify \
+  --run results/bongard/episode.json \
+  --corpus downloads/ShapeBongard_V2 \
+  --split-file downloads/ShapeBongard_V2/ShapeBongard_V2_split.json \
+  --archive downloads/ShapeBongard_V2.zip \
+  --expected-sha256 "$EXPECTED_RUN_SHA256"
+```
+
+`EXPECTED_RUN_SHA256` must be exactly 64 lowercase hexadecimal characters
+copied from an independent write-once record, signed manifest, or committed
+publication. Canonical verification additionally checks the trusted release
+descriptor, exact split assignment and task manifest, a bijective mapping to
+all fourteen official panel byte preimages, the canonical HYBRID compilation,
+the support gate, every vision receipt's internal hashes and request/response
+bindings, and cold logical replay. Those Codex receipts are not provider
+signatures and may record that the JSONL omitted the reported model. The cold
+verifier also cannot authenticate the unavailable history behind a non-empty
+exposure-ledger predecessor. Proposal-failure records have no replayable
+archive and fail.
+
+## What counts as a result
+
+Report three different things separately:
+
+1. **Perceptual quality:** calibration, abstention/error rates, nuisance
+   stability, and near-miss discrimination for each leg.
+2. **Episode quality:** determinate and overall query accuracy on a declared,
+   exposure-audited split.
+3. **Growth quality:** new AST charge, reused legs, archive regressions, and
+   accepted versus rejected attachments over time.
+
+The protocol treats the sealed benchmark as one-shot. The CLI enforces unseen
+status relative to the supplied ledger head, but cannot prove that the head is
+latest or authenticate an unavailable non-empty predecessor; external
+ledger-head anchoring and operator discipline remain necessary. Indeterminate
+and error predictions score as wrong in headline accuracy, while their
+dispositions remain visible for diagnosis. Threshold tuning, prose editing,
+leg invention, and model selection belong to drill/development only.
+
+Each current episode withholds exactly one positive and one negative panel.
+If the caller-supplied seed makes query order uniform and independent of the
+predictor, a no-vision strategy that merely assigns opposite labels to the two
+opaque slots has 50% expected puzzle accuracy and 50% image accuracy. Puzzle
+accuracy then does **not** have a 25% independent-label chance baseline. The
+code deterministically derives order from the supplied seed; it does not
+enforce randomness, secrecy, or external preregistration, and cold verification
+has only the seed digest rather than its preimage. Reports must state this
+conditional paired baseline and include per-image and per-side accuracy over
+many independently selected semantic groups; a two-panel episode is only an
+integration check.
+
+A pre-current-protocol v1 drill on the training task
+`bd_trapez_parallelogram_0000` classified its two held-out query panels
+correctly (2/2). It used the old corpus identity and predates exact official
+release binding, the current receipt/schema checks, canonical HYBRID
+recompilation, and the 12-panel support gate. The checked-in complete-release
+v2 completed drill scored 1/2.
+
+The first checked-in current-protocol v3 drill attempt,
+[`hd_exist_quadrangle-exist_sector_0000_v4.json`](runs/official_complete_drill_20260805/hd_exist_quadrangle-exist_sector_0000_v4.json),
+has file SHA-256
+`bf60a36bc7a48e61c61c8de2153753fa2996db54eacf53fe4c861bf06a9b4f41`.
+It ended `support_rejected` before query release, with no query observations
+or run archive and zero determinate query outcomes. All twelve support observer
+calls otherwise succeeded, but the verifier converted every raw judgment to
+`TransportIdentityError` because the supposedly stable
+`cloud_config_bundle_cache_binding` changed across calls. Before that
+conversion, the raw judgments fit 10/12 support labels: all six positives were
+`present`, while four negatives were `nonmatch` and two were `present`.
+This exposes a transport-identity protocol bug; it is not a held-out score.
+
+The checked-in v5 drill attempt,
+[`bd_advanced_lamp3_0000_v5.json`](runs/official_complete_drill_20260805/bd_advanced_lamp3_0000_v5.json),
+has file SHA-256
+`e3fbe8f76290bb93f33def26c36b50f9ae451e43456a52e4796976a71662255a`.
+Its proposal and support calls share the single cache binding
+`sha256:6860e08631caee1357061bd727e93f7d200931b3bb2d925f873aea3d669d22f2`,
+so it clears the v4 transport-identity defect. It nevertheless ended
+`support_rejected` before query release, with no query observations or run
+archive and zero determinate query outcomes. The immutable artifact's formal
+v3/v1 gate records six forward matches, one reverse match, and five parser
+errors.
+
+The raw model outputs were six positive `present` judgments, five negative
+`nonmatch` judgments, and one negative `present` judgment. The five
+`nonmatch` outputs exposed a prompt/schema/parser contradiction: their
+top-level `reason` was allowed or inferred, while the archived parser required
+it to be null. Current observation schema v4 and support policy v2 make that
+field optional and bind it into the nonmatch certificate. Re-evaluating the
+archived raw outputs under that repaired contract is only a post-hoc
+diagnostic: it gives 11 forward matches and one reverse match, hence
+`unsupported`. It does not rewrite or salvage the v5 artifact, whose archived
+result remains `observer_failure`.
+
+Even under the intended parse, the proposed “bent double-ended arrow” rule is
+overbroad. An explicitly oracle-only post-hoc inspection of privileged Basic
+action programs shows that the positive class uses one precise nine-action
+template, while the false-positive negative is a distinct near-miss geometric
+program. Those programs were not available to the proposer or gate and cannot
+be used as benchmark evidence. The diagnosis instead sharpens the architecture:
+prose proposes a candidate, while a frozen visual contour/template or prototype
+scorer must operationalize it from pixels.
+
+The subsequent v6 attempt selected the first lexicographic task in the
+then-current live-eligible drill list,
+[`bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json`](runs/official_complete_drill_20260805/bd_advanced_lamp4-exist_quadrangle_five_lines12_0000_v6.json),
+before any of its pixels had been inspected. That selection is
+inspection-unbiased but deterministic, not random. The file SHA-256 is
+`6a120eabd4efeeee60b5555cbb581d6cced3d33206bb0ed556e61a29fb213057`.
+Its support-release event
+`sha256:b8fe3ea944d118058ac52e6f849ab5c1c1f6e08737f155e8b23f87569610877a`
+advanced the ledger to an intermediate ten-event head.
+
+V6 ended `proposal_error` through exactly
+`plan_committed -> support_released -> proposal_failed`. It has no accepted
+proposal, support gate, query observation, or run archive. The archived failure
+reports a blanket lexical rejection in category
+`negative morphological complement`. This is a benchmark-attempt failure,
+not a query score, and must remain visible in attempt coverage.
+
+The old run schema did not preserve the rejected raw proposer payload or its
+receipt, so the lexical decision cannot be independently audited or replayed.
+That is a separate auditability gap. A future protocol must distinguish
+constructive morphological descriptions from logical negation and persist
+rejected-attempt payloads and receipts. Such a corrected run would be a new
+attempt; v6 itself cannot be salvaged.
+
+The v7 artifact,
+[`bd_arc_cup_0000_v7.json`](runs/official_complete_drill_20260805/bd_arc_cup_0000_v7.json),
+has file SHA-256
+`9801dbec0928f59667993a993b99f2cfcd6d5c02264bb10ef467ac98c427a462`.
+Its support-release event
+`sha256:dbd578e1d3951837f25378721cf61e664eb96240e8f7c3fc108d1ff1db280a21`
+produced ledger successor
+`sha256:fc82fcebf4686c36f85f9efa0944ef4fc57b5da41dfccb19126c33b372c146dc`.
+V7 ended `proposal_error` because DNS resolution failed before Codex returned a
+response. It has no rejected proposal attempt, accepted proposal, support gate,
+query observation, or run archive. This is a recorded transport failure, not a
+negative prediction or score.
+
+The v8 artifact,
+[`bd_asymm_bridge_0000_v8.json`](runs/official_complete_drill_20260805/bd_asymm_bridge_0000_v8.json),
+has file SHA-256
+`ef50e35732c9a02d933ca1d7628589071270b06bc3d87fd0bb2543cdff16ccdb`
+and status `complete`. The proposer named the claim “An enclosed region has a
+glyph-decorated boundary.” Its frozen operational rule was: “The panel contains
+an enclosed cell, and part of that cell’s boundary is rendered as a sequence of
+repeated small geometric glyphs such as circles, squares, triangles, or zigzag
+teeth.” All twelve isolated support replays aligned (6/6 `present` positives and
+6/6 model `nonmatch` negatives), and both query predictions matched their
+revealed labels. The artifact records the complete phase chain from
+`plan_committed` through `cold_replay_verified`; cold verification checks all
+fourteen panel-byte preimages. Its run-archive digest is
+`4f679fe175383a3ceb85333bf85f644dbe2a1ab69033747ae4b7d133893dc2ef`
+and its artifact-chain digest is
+`c2cefb76126cc18d5f5b4e39c4b506fc259cb6fdb02ebf1a7dfa666f92631f4d`.
+The support-release event
+`sha256:25317bb78b0cf60b7585f59c93c7331c0f6743c3553ae044008b14b69d76fd35`
+produced intermediate twelve-event successor
+`sha256:7cf70dcb4e15aa8f0d8f82f4e5ff1e32f3018fb1f467061a5c947b0a5cf742d3`.
+
+V8 is one successful integration episode, not an accuracy estimate. Its two
+queries are one positive/one negative pair with the conditional 50% no-vision
+baseline described above. More importantly, canonical HYBRID is still an
+uncalibrated categorical self-observer: the same model family proposes prose
+and judges whether each panel matches it. The archive proves ordering,
+identity, and replay of those judgments; it does not prove their pixel-level
+truth. The missing pixels-to-score leg—frozen, externally calibrated visual
+measurements that make “bird-like,” “oblique,” contour-template, and similar
+claims operational—is still the central theoretical hole.
+
+The schema-v4 v9 artifact,
+[`hd_balanced_two-symmetric_transposed_0000_v9.json`](runs/official_complete_drill_20260805/hd_balanced_two-symmetric_transposed_0000_v9.json),
+is an official-training HD ordered-combination attempt with file SHA-256
+`6171b6bca42ffa6423d0e7e1ef753da325ef3d000e6f39d2ca28b5afccf8e655`.
+It proposed “A matched opposing pair of lobes joined at one center,” with
+operational cues `paired_lobes`, `matched_geometry`, `central_junction`, and
+`opposing_extents`. All twelve support calls shared a stable transport binding,
+but the gate rejected the proposal: nine forward matches, three reverse
+matches, seven `present`, five `nonmatch`, and no errors or indeterminate
+outcomes. One positive missed `matched_geometry`, while two negatives were
+false positives. Its phases stop at `proposal_frozen -> support_gate_rejected`,
+with no query release or run archive. Event
+`sha256:63983c4c918b23d8a009bca43a3390a1cf876bf96894521760761552dd8c11f8`
+produced the current thirteen-event ledger head above.
+
+V9 also exposes an audit limitation. A support-rejected schema-v4 result has no
+`run_archive`, while its outer public plan stores only the support-commitment
+digest, not the nonce-bearing commitment preimage. Current public `verify`
+therefore cannot fully cold-bind and replay v9. A future outer schema must
+persist that preimage on every post-proposal exit path. This is deliberately
+not described as v8-style fourteen-preimage verification.
+
+Scientifically, v9 shows that vague visual correspondence needs a quantitative
+symmetry and shape-matching leg; categorical self-judgment produced both a
+positive miss and negative false positives. No result here estimates accuracy
+on the 1,800-task official test split.
+
+## Historical material
+
+The pre-rewrite macro-reuse control, action-program adapters, exploratory
+visual pilots, and their original reports are preserved in Git at the
+annotated tag `pre-bongard-complete-rewrite-20260805`. Stale working-tree copies
+remain physically present pending explicit deletion, but they are excluded
+from the canonical package and reproduction path. Their supplied atoms,
+synthetic rerenders, partial subsets, and post-hoc diagnostics do not satisfy
+the current official-corpus protocol.
+
+See [`CONTINUATION_PLAN.md`](CONTINUATION_PLAN.md) for the current execution
+roadmap. [`BONGARD.md`](BONGARD.md) is retained only as a compatibility pointer
+to this page.

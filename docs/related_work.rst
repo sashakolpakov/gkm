@@ -1,16 +1,46 @@
-Related Work Pointers
-=====================
+Related Work and Claim Boundary
+===============================
 
-The manuscript must not claim novelty for predicate invention itself. The relevant background includes:
+The project does not claim that predicate invention, visual analogy, program
+induction, or description-length selection is new. Relevant traditions
+include:
 
-* Inductive logic programming and predicate invention.
-* Meta-interpretive learning.
-* Program induction and library learning, including DreamCoder-style compression.
-* Automata learning and grammatical inference.
-* Hierarchical reinforcement learning and options.
-* Minimum description length and free-energy structure-function views.
-* Bongard, Bongard-LOGO, Bongard-HOI, and Bongard-OpenWorld.
+* Bongard problems and modern visual concept-learning datasets, including
+  Bongard-LOGO, Bongard-HOI, and Bongard-OpenWorld;
+* inductive logic programming, predicate invention, and meta-interpretive
+  learning;
+* program induction and library learning, including compression-based systems
+  such as DreamCoder;
+* minimum description length, Bayesian model selection, and free-energy
+  structure/function tradeoffs;
+* curriculum generation and PowerPlay-style searches for the next unsolved
+  task;
+* hierarchical reinforcement learning, skills, options, and reusable program
+  fragments;
+* calibrated machine perception, selective prediction, conformal/interval
+  reasoning, and out-of-distribution evaluation;
+* proof assistants and proof-producing program synthesis.
 
-The curated reference note is maintained in ``bongard/abstraction_related_work.md``.
+The narrow question here is whether a visual concept learner can accumulate a
+typed, reusable observation library under explicit novelty cost and
+archive-preserving admission, while maintaining a strict information boundary
+between labeled support and unseen queries.
 
-The narrow contribution being tested here is not “predicate invention is new.” It is whether sparse deterministic automata and predicate libraries show reusable abstraction under explicit free-energy and complexity accounting.
+That question has two irreducible layers. Vision produces empirical witnesses
+such as shape, topology, angle, contact, or a calibrated soft description.
+The closed predicate layer composes those witnesses and can be checked
+mechanically. Its reference evaluator and cold replay are pure Python, and its
+serialized typed contract does not depend on a proof assistant. A possible
+future Lean backend is only an optional cross-check. Either implementation is
+conditional on the perceptual inputs; neither proves their correspondence to
+pixels.
+
+The controlled abstraction-emergence experiment supplied primitive atoms and
+tested only the reuse incentive. The action-program adapter bypassed pixels.
+Those and the other pre-rewrite pilots do not satisfy the complete-corpus
+exposure and freeze/query/reveal protocol and must not be used as evidence for
+official visual benchmark performance. Their original code, reports, and
+longer bibliography notes are preserved at the annotated Git tag
+``pre-bongard-complete-rewrite-20260805``. Stale working-tree copies remain
+physically present pending explicit deletion, but they are excluded from the
+canonical package and reproduction path.

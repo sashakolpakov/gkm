@@ -146,10 +146,10 @@ same lens to a different substrate:
   deterministic **register transducers** from opaque-token pattern transitions;
   tiered primitives ask which capabilities a task family needs, with validation-frontier
   Pareto selection.
-- **[bongard/](bongard/README.md)** — Bongard-style **concept induction** over
-  opaque-object sequences, and the question of when free-energy accounting drives the
-  **emergence of reusable abstraction** (encapsulated predicate macros) over duplicated
-  rule bodies.
+- **[bongard/](bongard/README.md)** — visual concept induction over the complete
+  official Bongard-LOGO corpus, with provenance-bearing empirical witnesses,
+  signed typed predicates, sealed support/query boundaries, and verifier-gated
+  growth of reusable visual legs.
 - **[cone/](cone/README.md)** — the substrate-agnostic core of the **colimit-cone
   program**: learn a compiled, verifiable *cone* over goal atoms rather than a
   monolithic policy; cone-leg discovery, goal induction from scalar reward, and the
@@ -170,7 +170,7 @@ self-contained LaTeX manuscript (`make -C <domain>/manuscript`):
 |---|---|---|
 | [`foraging/README.md`](foraging/README.md) | [`foraging.tex`](foraging/manuscript/foraging.tex) | [open-ended-evolution thesis](foraging/OPEN_ENDED_EVOLUTION_THESIS.md) |
 | [`transduction/README.md`](transduction/README.md) | [`transduction.tex`](transduction/manuscript/transduction.tex) | [benchmark report](transduction/register_transducer_benchmark.md) |
-| [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | reports linked in the hub |
+| [`bongard/README.md`](bongard/README.md) | [`free_energy_abstraction.tex`](bongard/manuscript/free_energy_abstraction.tex) | protocol and reproduction guide |
 | [`cone/README.md`](cone/README.md) | — (program doc: [`COLIMIT_CONE_APPROACH.md`](COLIMIT_CONE_APPROACH.md)) | 3 reports linked in the hub |
 | [`arc/README.md`](arc/README.md) | [`arc_agi3.tex`](arc/manuscript/arc_agi3.tex) | [manuscript/reproduction bundle](arc/manuscript/README.md), [outreach one-pager](arc/manuscript/gkm_one_page_summary.md), promoted artifacts |
 
@@ -181,7 +181,7 @@ domain directory on the path):
 
 ```bash
 python -m pytest foraging/test_evo_game.py transduction/test_pattern_fsa.py \
-    bongard/test_bongard_sparse_classifier.py bongard/test_abstraction_emergence.py \
+    bongard/tests \
     cone/ arc/test_arc_agi3_adapter.py arc/test_arc_goal_induction.py \
     arc/test_arc_scene_atoms.py arc/test_cone_leg_discovery.py -q
 ```

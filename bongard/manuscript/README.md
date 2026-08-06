@@ -1,19 +1,28 @@
-# Research manuscript
+# Bongard manuscript
 
-This directory contains a research-style LaTeX manuscript for the current
-free-energy abstraction-emergence line.
+`free_energy_abstraction.tex` is the single current research manuscript. Its
+title is *Growing Verified Visual Predicates for Bongard-LOGO: A
+Complete-Corpus Protocol*.
 
-Build locally:
+The paper specifies the complete official corpus boundary, visual and soft
+measurement contracts, positive-only typed predicate IR, growing-leg admission,
+sealed headless-proposer evaluation, and the limits of what replay and formal
+verification establish. It intentionally reports no complete-corpus benchmark
+accuracy yet. Exploratory legacy runs are not presented as protocol results.
+
+From the repository root:
 
 ```bash
-make -C manuscript
+make -C bongard/manuscript
 ```
 
-Main source:
+This builds `free_energy_abstraction.pdf`. `semantic_cones.tex` is retained only
+as a compatibility wrapper around the canonical source. To verify that old
+entry point:
 
-- `free_energy_abstraction.tex`
-- `references.bib`
+```bash
+make -C bongard/manuscript compatibility
+```
 
-The manuscript is intentionally conservative. It claims predicate encapsulation
-over predefined primitive observations, not discovery of those primitive
-observations from pixels, LOGO traces, or raw geometry.
+`references.bib` remains the shared bibliography. Generated LaTeX files are
+build products, not independent manuscript sources.
