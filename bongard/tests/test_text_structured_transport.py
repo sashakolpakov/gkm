@@ -34,6 +34,15 @@ SCHEMA = {
 }
 
 
+@pytest.fixture(autouse=True)
+def no_tools_attestation(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        T,
+        "_resolve_no_tools_attestation",
+        lambda **_kwargs: "a" * 64,
+    )
+
+
 def _canonical(value: Any) -> bytes:
     return json.dumps(
         value,
@@ -109,7 +118,8 @@ def test_text_structured_turn_binds_zero_images_schema_auth_and_cli(
         command = list(command)
         assert command == [launcher, "--version"]
         observed["version_calls"] += 1
-        kwargs["stdout"].write(b"codex-cli 0.offline\n")
+        kwargs["stdout"].write(
+            (T.PINNED_CODEX_CLI_VERSION + "\n").encode("utf-8"))
         kwargs["stdout"].flush()
         return subprocess.CompletedProcess(command, 0)
 
@@ -179,7 +189,7 @@ def test_text_structured_turn_binds_zero_images_schema_auth_and_cli(
     assert observed["stdin"] == prompt.encode("utf-8")
     assert observed["timeout"] == 120
     assert observed["view_mode"] == 0o700
-    assert observed["view_files"] == ["output_schema.json"]
+    assert observed["view_files"] == ["model_catalog.json", "output_schema.json"]
     assert observed["schema_bytes"] == _canonical(SCHEMA)
     assert observed["auth_files"] == [
         "auth.json", T._CLOUD_CONFIG_BUNDLE_CACHE
@@ -222,6 +232,10 @@ def test_text_structured_turn_binds_zero_images_schema_auth_and_cli(
         "image_set_digest": zero_set_digest,
         "prompt_digest": prompt_digest,
         "output_schema_digest": schema_digest,
+        "transport": {
+            key: result.receipt.to_dict()[key]
+            for key in T._TRANSPORT_CAUSAL_KEYS
+        },
     }
     receipt = result.receipt.to_dict()
     assert receipt["source"] == "codex-cli"

@@ -58,6 +58,7 @@ from bongard.prototype_scene_support_version_space import (
     rank_prototype_scene_survivors,
 )
 from bongard.tests.test_prototype_pair_cohort import _fixture, _kwargs
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.tests.test_prototype_scene_observer import (
     EFFORT,
     LAUNCHER_DIGEST,
@@ -68,6 +69,15 @@ from bongard.tests.test_prototype_scene_observer import (
 )
 from bongard.tests.test_prototype_scene_headless_pipeline import _rank_response
 from bongard.transport import CodexStructuredResult
+
+
+MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(
+    LAUNCHER_DIGEST
+)
+NO_TOOLS_KWARGS = {
+    "model_catalog_snapshot": MODEL_CATALOG,
+    "no_tools_attestation": NO_TOOLS_ATTESTATION,
+}
 
 
 def _address(value: object) -> str:
@@ -124,6 +134,7 @@ def runtime_authority():
         model=MODEL,
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=description_transport,
     )
     thresholds = tuple(
@@ -280,6 +291,7 @@ def _observer_artifact(
         model=MODEL,
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=transport,
     )
     return scene, artifact
@@ -352,6 +364,7 @@ def _observe_scheduled_panel(
         model=MODEL,
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=transport,
     )
     return scene, artifact

@@ -42,16 +42,33 @@ from dataclasses import asdict, dataclass
 from typing import Any, Mapping, Sequence
 
 
-CODEX_RECEIPT_SCHEMA = "bongard.codex-cli-proposer-receipt/v3"
+CODEX_RECEIPT_SCHEMA = "bongard.codex-cli-proposer-receipt/v4"
 CODEX_ISOLATION_POLICY = (
     "ephemeral-image-only-view-read-only-no-tools-signed-policy-cache-"
-    "no-user-config-rules/v2")
-STRUCTURED_INPUT_DIGEST_SCHEMA = "bongard.codex-structured-input/v1"
-NAMED_IMAGE_INPUT_DIGEST_SCHEMA = "bongard.codex-named-image-input/v1"
+    "pinned-direct-model-catalog-no-user-config-rules/v3")
+STRUCTURED_INPUT_DIGEST_SCHEMA = "bongard.codex-structured-input/v2"
+NAMED_IMAGE_INPUT_DIGEST_SCHEMA = "bongard.codex-named-image-input/v2"
 TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA = (
-    "bongard.codex-text-structured-input/v1")
+    "bongard.codex-text-structured-input/v2")
 DEFAULT_CODEX_MODEL = "gpt-5.6-sol"
 DEFAULT_REASONING_EFFORT = "medium"
+PINNED_CODEX_CLI_VERSION = "codex-cli 0.147.0"
+CODEX_EFFECTIVE_TOOL_MODE = "direct"
+CODEX_APPLY_PATCH_TOOL_TYPE = "absent"
+CODEX_TOOL_SURFACE_DIGEST = (
+    "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945")
+PINNED_MODEL_CATALOG_RAW_DIGEST = (
+    "a93f2b355b33582b7867bb16f9026e504d34212f6d4e8d685124e75bd3ac602d")
+PINNED_MODEL_CATALOG_CANONICAL_DIGEST = (
+    "9f95e9edfb15843f743b7ba883e7b59c8658e1685de6c132b0afcb51c042d8e3")
+PINNED_BUNDLED_CATALOG_RAW_DIGEST = (
+    "e4cd013dd3bb8864e76fad74fc2200690361d64c874038d645048f39c188fd72")
+PINNED_BUNDLED_MODEL_RECORD_CANONICAL_DIGEST = (
+    "5449be0fe8e0195082b4d75680f6cb342d1744a2cc6abaf0ca19e06f7e8dc304")
+_PINNED_MODEL_CATALOG_FILE = (
+    "codex-0.147.0-gpt-5.6-sol-direct-model-catalog.json")
+_PINNED_MODEL_CATALOG_PATH = os.path.join(
+    os.path.dirname(__file__), _PINNED_MODEL_CATALOG_FILE)
 REASONING_EFFORTS = frozenset({
     "minimal", "low", "medium", "high", "xhigh", "max", "ultra",
 })
@@ -65,6 +82,7 @@ MAX_JSONL_EVENTS = 20_000
 MAX_STRUCTURED_OUTPUT_CANONICAL_BYTES = MAX_STDOUT_BYTES
 MAX_AUTH_FILE_BYTES = 1_000_000
 MAX_CLOUD_CONFIG_BUNDLE_CACHE_BYTES = 1_000_000
+MAX_MODEL_CATALOG_BYTES = 256_000
 MAX_CODEX_LAUNCHER_BYTES = 20_000_000
 MAX_CODEX_NATIVE_BYTES = 512 * 1024 * 1024
 MAX_NAMED_IMAGES = 32
@@ -156,16 +174,23 @@ _DISABLED_FEATURES = (
     "image_generation",
     "in_app_browser",
     "code_mode",
-    # Keep the inert host bootstrap available while ``code_mode`` itself stays
-    # explicitly disabled.  Codex 0.147 emits a pre-turn error
-    # event for every schema-constrained call when the host is explicitly
-    # disabled, even though no code-mode tool is enabled or invoked.
+    # A code-mode-only catalog entry can override the ordinary feature
+    # default.  Keep its executor absent so such a model fails closed before
+    # producing an admissible scientific value.
+    "code_mode_host",
+    "enable_request_compression",
     "auth_elicitation",
     "tool_call_mcp_elicitation",
     "tool_suggest",
     "workspace_dependencies",
     "network_proxy",
     "standalone_web_search",
+)
+_STRICT_CONFIG_OVERRIDES = (
+    'web_search="disabled"',
+    "agents.enabled=false",
+    "tools.update_plan.enabled=false",
+    "tools.experimental_request_user_input.enabled=false",
 )
 _ALLOWED_ITEM_TYPES = frozenset({"reasoning", "agent_message"})
 _RECEIPT_KEYS = frozenset({
@@ -183,6 +208,13 @@ _RECEIPT_KEYS = frozenset({
     "codex_cli_version",
     "codex_launcher_digest",
     "cloud_config_bundle_cache_binding",
+    "model_catalog_digest",
+    "transport_policy_digest",
+    "command_digest",
+    "effective_tool_mode",
+    "apply_patch_tool_type",
+    "tool_surface_digest",
+    "tool_surface_attestation_digest",
     "task_digest",
     "current_source_digest",
     "current_log_digest",
@@ -224,6 +256,13 @@ class CodexReceipt:
     codex_cli_version: str
     codex_launcher_digest: str
     cloud_config_bundle_cache_binding: str
+    model_catalog_digest: str
+    transport_policy_digest: str
+    command_digest: str
+    effective_tool_mode: str
+    apply_patch_tool_type: str
+    tool_surface_digest: str
+    tool_surface_attestation_digest: str
     task_digest: str
     current_source_digest: str
     current_log_digest: str
@@ -293,6 +332,36 @@ def _bytes_digest(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
 
+_CODEX_TRANSPORT_POLICY: dict[str, Any] = {
+    "schema": "bongard.codex-no-tools-transport-policy/v1",
+    "pinned_cli_version": PINNED_CODEX_CLI_VERSION,
+    "model": DEFAULT_CODEX_MODEL,
+    "model_catalog": {
+        "source": "codex-cli-0.147.0-debug-models-bundled",
+        "raw_digest": PINNED_MODEL_CATALOG_RAW_DIGEST,
+        "canonical_digest": PINNED_MODEL_CATALOG_CANONICAL_DIGEST,
+        "bundled_catalog_raw_digest": PINNED_BUNDLED_CATALOG_RAW_DIGEST,
+        "bundled_model_record_canonical_digest": (
+            PINNED_BUNDLED_MODEL_RECORD_CANONICAL_DIGEST),
+        "diff_policy": (
+            "exact-gpt-5.6-sol-record-except-tool_mode-direct-and-"
+            "apply_patch_tool_type-null"),
+    },
+    "effective_tool_mode": CODEX_EFFECTIVE_TOOL_MODE,
+    "apply_patch_tool_type": CODEX_APPLY_PATCH_TOOL_TYPE,
+    "strict_config_overrides": list(_STRICT_CONFIG_OVERRIDES),
+    "disabled_features": list(_DISABLED_FEATURES),
+    "expected_tool_surface_digest": CODEX_TOOL_SURFACE_DIGEST,
+}
+CODEX_TRANSPORT_POLICY_DIGEST = _digest(_CODEX_TRANSPORT_POLICY)
+
+
+def codex_transport_policy() -> dict[str, Any]:
+    """Return an isolated copy of the exact pinned no-tools policy."""
+
+    return json.loads(_canonical_json_bytes(_CODEX_TRANSPORT_POLICY))
+
+
 def _unique_object(pairs: Sequence[tuple[str, Any]]) -> dict[str, Any]:
     value: dict[str, Any] = {}
     for key, item in pairs:
@@ -334,6 +403,14 @@ def _bounded_utf8(value: Any, name: str, maximum: int) -> str:
 def _validate_model(model: str) -> str:
     if not isinstance(model, str) or _MODEL_RE.fullmatch(model) is None:
         raise CodexProposerFailure("Codex model identifier is invalid")
+    return model
+
+
+def _validate_pinned_model(model: str) -> str:
+    model = _validate_model(model)
+    if model != DEFAULT_CODEX_MODEL:
+        raise CodexProposerFailure(
+            f"Codex transport is pinned to {DEFAULT_CODEX_MODEL}")
     return model
 
 
@@ -419,6 +496,37 @@ class _StagedCloudPolicyCache:
     path: str
     binding: str
     identity: tuple[int, int, int, int, int, int, int] | None
+
+
+@dataclass(frozen=True)
+class _StagedModelCatalog:
+    path: str
+    raw_digest: str
+    canonical_digest: str
+    identity: tuple[int, int, int, int, int, int, int]
+
+
+@dataclass(frozen=True)
+class CodexModelCatalogSnapshot:
+    """Immutable precommit preimage of the pinned Codex 0.147 catalog."""
+
+    data: bytes
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.data, bytes):
+            raise CodexProposerFailure(
+                "Codex model catalog snapshot must contain exact bytes")
+        _validate_pinned_model_catalog(self.data)
+
+    @property
+    def raw_digest(self) -> str:
+        return _bytes_digest(self.data)
+
+    @property
+    def canonical_digest(self) -> str:
+        decoded = _strict_json(
+            self.data.decode("utf-8", errors="strict"), "model catalog")
+        return _digest(decoded)
 
 
 @dataclass(frozen=True)
@@ -560,6 +668,133 @@ def _validate_cloud_policy_cache(data: bytes) -> None:
         raise CodexProposerFailure(
             "Codex cloud policy cache signed envelope is malformed"
         )
+
+
+def _validate_pinned_model_catalog(data: bytes) -> None:
+    if not isinstance(data, bytes) or not 0 < len(data) <= MAX_MODEL_CATALOG_BYTES:
+        raise CodexProposerFailure(
+            "Codex model catalog is not bounded exact bytes")
+    if _bytes_digest(data) != PINNED_MODEL_CATALOG_RAW_DIGEST:
+        raise CodexProposerFailure(
+            "Codex model catalog differs from the pinned 0.147 bytes")
+    try:
+        text = data.decode("utf-8", errors="strict")
+    except UnicodeError as exc:
+        raise CodexProposerFailure(
+            "Codex model catalog is not UTF-8 JSON") from exc
+    decoded = _strict_json(text, "model catalog")
+    if _digest(decoded) != PINNED_MODEL_CATALOG_CANONICAL_DIGEST:
+        raise CodexProposerFailure(
+            "Codex model catalog canonical digest differs")
+    if not isinstance(decoded, dict) or set(decoded) != {"models"} \
+            or not isinstance(decoded["models"], list) \
+            or len(decoded["models"]) != 1:
+        raise CodexProposerFailure(
+            "Codex model catalog must contain exactly one model")
+    record = decoded["models"][0]
+    if not isinstance(record, dict) \
+            or record.get("slug") != DEFAULT_CODEX_MODEL \
+            or record.get("tool_mode") != CODEX_EFFECTIVE_TOOL_MODE \
+            or record.get("apply_patch_tool_type") is not None \
+            or record.get("use_responses_lite") is not True:
+        raise CodexProposerFailure(
+            "Codex model catalog no-tools selectors differ")
+    source_record = dict(record)
+    source_record["tool_mode"] = "code_mode_only"
+    source_record["apply_patch_tool_type"] = "freeform"
+    if _digest(source_record) != PINNED_BUNDLED_MODEL_RECORD_CANONICAL_DIGEST:
+        raise CodexProposerFailure(
+            "Codex model catalog changes fields beyond the two-field policy")
+
+
+def snapshot_pinned_model_catalog() -> CodexModelCatalogSnapshot:
+    """Freeze the repository asset once for a campaign/precommit episode."""
+
+    data = _read_stable_view_file(
+        _PINNED_MODEL_CATALOG_PATH,
+        maximum=MAX_MODEL_CATALOG_BYTES,
+        description="pinned model catalog asset",
+    )
+    return CodexModelCatalogSnapshot(data)
+
+
+def _stage_model_catalog(
+        view_dir: str, snapshot: CodexModelCatalogSnapshot) \
+        -> _StagedModelCatalog:
+    if not isinstance(snapshot, CodexModelCatalogSnapshot):
+        raise CodexProposerFailure("Codex model catalog snapshot type is invalid")
+    data = snapshot.data
+    _validate_pinned_model_catalog(data)
+    target = os.path.join(view_dir, "model_catalog.json")
+    if not hasattr(os, "O_NOFOLLOW"):
+        raise CodexProposerFailure(
+            "platform cannot safely stage the Codex model catalog")
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW
+    flags |= getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(target, flags, 0o400)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "cannot create staged Codex model catalog") from exc
+    try:
+        offset = 0
+        while offset < len(data):
+            written = os.write(descriptor, data[offset:])
+            if written <= 0:
+                raise CodexProposerFailure(
+                    "could not completely stage Codex model catalog")
+            offset += written
+        os.fsync(descriptor)
+        os.fchmod(descriptor, 0o400)
+        opened = os.fstat(descriptor)
+        if not stat.S_ISREG(opened.st_mode) or opened.st_nlink != 1 \
+                or opened.st_size != len(data) \
+                or stat.S_IMODE(opened.st_mode) != 0o400:
+            raise CodexProposerFailure(
+                "staged Codex model catalog has unsafe metadata")
+    finally:
+        os.close(descriptor)
+    try:
+        staged = os.lstat(target)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "staged Codex model catalog disappeared") from exc
+    identity = _file_identity(staged)
+    if identity != _file_identity(opened):
+        raise CodexProposerFailure(
+            "staged Codex model catalog changed after copy")
+    return _StagedModelCatalog(
+        path=target,
+        raw_digest=snapshot.raw_digest,
+        canonical_digest=snapshot.canonical_digest,
+        identity=identity,
+    )
+
+
+def _recheck_staged_model_catalog(stage: _StagedModelCatalog) -> None:
+    try:
+        before = os.lstat(stage.path)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "staged Codex model catalog disappeared before launch") from exc
+    if _file_identity(before) != stage.identity:
+        raise CodexProposerFailure(
+            "staged Codex model catalog metadata changed")
+    data = _read_stable_view_file(
+        stage.path,
+        maximum=MAX_MODEL_CATALOG_BYTES,
+        description="staged model catalog",
+    )
+    try:
+        after = os.lstat(stage.path)
+    except OSError as exc:
+        raise CodexProposerFailure(
+            "staged Codex model catalog disappeared during recheck") from exc
+    if _file_identity(after) != stage.identity \
+            or _bytes_digest(data) != stage.raw_digest:
+        raise CodexProposerFailure(
+            "staged Codex model catalog bytes changed")
+    _validate_pinned_model_catalog(data)
 
 
 def snapshot_cloud_policy_cache() -> CloudPolicyCacheSnapshot:
@@ -1133,8 +1368,10 @@ def _copy_named_image_view(
 def _recheck_private_view(
         view_dir: str, image_paths: Sequence[str],
         expected_panel_digest: str, schema_path: str,
-        expected_schema_digest: str) -> None:
-    expected_names = set(_PANEL_NAMES) | {"output_schema.json"}
+        expected_schema_digest: str,
+        model_catalog: _StagedModelCatalog) -> None:
+    expected_names = set(_PANEL_NAMES) | {
+        "output_schema.json", "model_catalog.json"}
     try:
         actual_names = set(os.listdir(view_dir))
     except OSError as exc:
@@ -1152,13 +1389,16 @@ def _recheck_private_view(
     if _bytes_digest(schema_bytes) != expected_schema_digest:
         raise CodexProposerFailure(
             "Codex output schema bytes changed during execution")
+    _recheck_staged_model_catalog(model_catalog)
 
 
 def _recheck_named_private_view(
         view_dir: str, image_paths: Sequence[str], image_names: Sequence[str],
         expected_view_digest: str, expected_set_digest: str,
-        schema_path: str, expected_schema_digest: str) -> None:
-    expected_names = set(image_names) | {"output_schema.json"}
+        schema_path: str, expected_schema_digest: str,
+        model_catalog: _StagedModelCatalog) -> None:
+    expected_names = set(image_names) | {
+        "output_schema.json", "model_catalog.json"}
     try:
         actual_names = set(os.listdir(view_dir))
     except OSError as exc:
@@ -1180,18 +1420,20 @@ def _recheck_named_private_view(
     if _bytes_digest(schema_bytes) != expected_schema_digest:
         raise CodexProposerFailure(
             "Codex output schema bytes changed during execution")
+    _recheck_staged_model_catalog(model_catalog)
 
 
 def _recheck_text_private_view(
         view_dir: str, schema_path: str,
-        expected_schema_digest: str) -> None:
+        expected_schema_digest: str,
+        model_catalog: _StagedModelCatalog) -> None:
     """Verify that a text-only turn never acquired an undeclared file."""
     try:
         actual_names = set(os.listdir(view_dir))
     except OSError as exc:
         raise CodexProposerFailure(
             "Codex text-only private view disappeared after launch") from exc
-    if actual_names != {"output_schema.json"}:
+    if actual_names != {"output_schema.json", "model_catalog.json"}:
         raise CodexProposerFailure(
             "Codex text-only private view contents changed during execution")
     schema_bytes = _read_stable_view_file(
@@ -1200,6 +1442,7 @@ def _recheck_text_private_view(
     if _bytes_digest(schema_bytes) != expected_schema_digest:
         raise CodexProposerFailure(
             "Codex output schema bytes changed during execution")
+    _recheck_staged_model_catalog(model_catalog)
 
 
 def _read_codex_executable_identity(
@@ -1745,6 +1988,12 @@ def codex_cli_version(executable: str = "codex") -> str:
     return _codex_cli_version(resolved, temp_parent=_safe_temp_parent())
 
 
+def _require_pinned_cli_version(version: str) -> None:
+    if version != PINNED_CODEX_CLI_VERSION:
+        raise CodexProposerFailure(
+            f"Codex CLI must be exactly {PINNED_CODEX_CLI_VERSION}")
+
+
 def codex_cli_fingerprint(executable: str = "codex") -> dict[str, str]:
     """Fingerprint the resolved launcher bytes and its reported version."""
     resolved, identity = _codex_launcher_identity(executable)
@@ -1778,7 +2027,9 @@ def codex_cli_authenticated_fingerprint(
 
 def _codex_command(
         *, executable: str, view_dir: str, image_paths: Sequence[str],
-        schema_path: str, model: str, reasoning_effort: str) -> list[str]:
+        schema_path: str, model_catalog_path: str, model: str,
+        reasoning_effort: str,
+        extra_config_overrides: Sequence[str] = ()) -> tuple[str, ...]:
     command = [
         executable,
         "--ask-for-approval", "never",
@@ -1790,10 +2041,15 @@ def _codex_command(
         "--skip-git-repo-check",
         "--sandbox", "read-only",
         "--model", model,
+        "--config", "model_catalog_json=" + json.dumps(model_catalog_path),
         "--config", f'model_reasoning_effort="{reasoning_effort}"',
-        "--config", 'web_search="disabled"',
-        "--config", "agents.enabled=false",
     ]
+    for override in _STRICT_CONFIG_OVERRIDES:
+        command.extend(("--config", override))
+    for override in extra_config_overrides:
+        if not isinstance(override, str) or not override:
+            raise CodexProposerFailure("Codex extra config override is invalid")
+        command.extend(("--config", override))
     for feature in _DISABLED_FEATURES:
         command.extend(("--disable", feature))
     for path in image_paths:
@@ -1805,7 +2061,17 @@ def _codex_command(
         "--cd", view_dir,
         "-",
     ))
-    return command
+    return tuple(command)
+
+
+def _codex_command_digest(command: Sequence[str]) -> str:
+    if isinstance(command, (str, bytes)) \
+            or any(not isinstance(item, str) or not item for item in command):
+        raise CodexProposerFailure("Codex command is malformed")
+    return _digest({
+        "schema": "bongard.codex-exact-command/v1",
+        "argv": list(command),
+    })
 
 
 def _snapshot_schema_json(
@@ -2250,11 +2516,60 @@ def _structured_payload_digest(payload: Mapping[str, Any]) -> str:
     return _bytes_digest(encoded)
 
 
+_TRANSPORT_CAUSAL_KEYS = (
+    "model_catalog_digest",
+    "transport_policy_digest",
+    "command_digest",
+    "effective_tool_mode",
+    "apply_patch_tool_type",
+    "tool_surface_digest",
+    "tool_surface_attestation_digest",
+)
+
+
+def _transport_causal_binding(
+        *, model_catalog_digest: str, command_digest: str,
+        tool_surface_attestation_digest: str) -> dict[str, str]:
+    binding = {
+        "model_catalog_digest": model_catalog_digest,
+        "transport_policy_digest": CODEX_TRANSPORT_POLICY_DIGEST,
+        "command_digest": command_digest,
+        "effective_tool_mode": CODEX_EFFECTIVE_TOOL_MODE,
+        "apply_patch_tool_type": CODEX_APPLY_PATCH_TOOL_TYPE,
+        "tool_surface_digest": CODEX_TOOL_SURFACE_DIGEST,
+        "tool_surface_attestation_digest": tool_surface_attestation_digest,
+    }
+    _validate_transport_causal_binding(binding)
+    return binding
+
+
+def _validate_transport_causal_binding(binding: Mapping[str, Any]) -> None:
+    if not isinstance(binding, Mapping) \
+            or set(binding) != set(_TRANSPORT_CAUSAL_KEYS):
+        raise CodexProposerFailure("Codex transport causal binding is malformed")
+    if binding["model_catalog_digest"] != PINNED_MODEL_CATALOG_RAW_DIGEST \
+            or binding["transport_policy_digest"] != \
+            CODEX_TRANSPORT_POLICY_DIGEST \
+            or binding["effective_tool_mode"] != CODEX_EFFECTIVE_TOOL_MODE \
+            or binding["apply_patch_tool_type"] != \
+            CODEX_APPLY_PATCH_TOOL_TYPE \
+            or binding["tool_surface_digest"] != CODEX_TOOL_SURFACE_DIGEST:
+        raise CodexProposerFailure("Codex transport causal policy differs")
+    for key in ("command_digest", "tool_surface_attestation_digest"):
+        value = binding[key]
+        if not isinstance(value, str) \
+                or re.fullmatch(r"[0-9a-f]{64}", value) is None:
+            raise CodexProposerFailure(
+                f"Codex transport {key} is not SHA-256")
+
+
 def _causal_input_metadata(
         executed_prompt: str,
         image_paths: Sequence[str],
         output_schema_digest: str,
-        expected_panel_view_digest: str) -> dict[str, str]:
+        expected_panel_view_digest: str,
+        transport_binding: Mapping[str, str]) -> dict[str, str]:
+    _validate_transport_causal_binding(transport_binding)
     snapshot = _ordered_panel_snapshot(image_paths)
     identities = _panel_identities_from_snapshot(snapshot)
     observed_panel_view_digest = _digest(identities)
@@ -2271,6 +2586,7 @@ def _causal_input_metadata(
         "panel_set_digest": panel_set,
         "prompt_digest": prompt_digest,
         "output_schema_digest": output_schema_digest,
+        "transport": dict(transport_binding),
     }
     return {
         "task_digest": prompt_digest,
@@ -2281,12 +2597,15 @@ def _causal_input_metadata(
         "input_digest": _digest(envelope),
         "panel_view_digest": observed_panel_view_digest,
         "panel_set_digest": panel_set,
+        **dict(transport_binding),
     }
 
 
 def _causal_named_image_input_metadata_from_snapshot(
         executed_prompt: str, snapshot: Sequence[tuple[str, bytes]],
-        output_schema_digest: str) -> dict[str, str]:
+        output_schema_digest: str,
+        transport_binding: Mapping[str, str]) -> dict[str, str]:
+    _validate_transport_causal_binding(transport_binding)
     identities = _panel_identities_from_snapshot(snapshot)
     observed_view_digest = _digest(identities)
     observed_set_digest = _named_image_set_digest_from_snapshot(snapshot)
@@ -2299,6 +2618,7 @@ def _causal_named_image_input_metadata_from_snapshot(
         "image_set_digest": observed_set_digest,
         "prompt_digest": prompt_digest,
         "output_schema_digest": output_schema_digest,
+        "transport": dict(transport_binding),
     }
     return {
         "task_digest": prompt_digest,
@@ -2311,6 +2631,7 @@ def _causal_named_image_input_metadata_from_snapshot(
         # these bind a neutral image view/set, not Bongard label semantics.
         "panel_view_digest": observed_view_digest,
         "panel_set_digest": observed_set_digest,
+        **dict(transport_binding),
     }
 
 
@@ -2318,10 +2639,11 @@ def _causal_named_image_input_metadata(
         executed_prompt: str, image_paths: Sequence[str],
         image_names: Sequence[str], output_schema_digest: str,
         expected_view_digest: str, expected_set_digest: str,
+        transport_binding: Mapping[str, str],
         ) -> dict[str, str]:
     snapshot = _named_image_snapshot(image_paths, image_names)
     metadata = _causal_named_image_input_metadata_from_snapshot(
-        executed_prompt, snapshot, output_schema_digest)
+        executed_prompt, snapshot, output_schema_digest, transport_binding)
     if metadata["panel_view_digest"] != expected_view_digest \
             or metadata["panel_set_digest"] != expected_set_digest:
         raise CodexProposerFailure(
@@ -2342,8 +2664,10 @@ def _text_zero_image_digests() -> tuple[str, str]:
 
 
 def _causal_text_input_metadata(
-        executed_prompt: str, output_schema_digest: str) -> dict[str, str]:
+        executed_prompt: str, output_schema_digest: str,
+        transport_binding: Mapping[str, str]) -> dict[str, str]:
     """Bind a text prompt and output schema while certifying zero images."""
+    _validate_transport_causal_binding(transport_binding)
     prompt_digest = _raw_utf8_digest(executed_prompt)
     image_view_digest, image_set_digest = _text_zero_image_digests()
     envelope = {
@@ -2354,6 +2678,7 @@ def _causal_text_input_metadata(
         "image_set_digest": image_set_digest,
         "prompt_digest": prompt_digest,
         "output_schema_digest": output_schema_digest,
+        "transport": dict(transport_binding),
     }
     return {
         "task_digest": prompt_digest,
@@ -2362,10 +2687,11 @@ def _causal_text_input_metadata(
         "prompt_digest": prompt_digest,
         "input_digest_schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
         "input_digest": _digest(envelope),
-        # Receipt v3 keeps these stable field names.  Under the text schema
+        # Receipt v4 keeps these stable field names.  Under the text schema
         # they are the explicit canonical zero-image sentinels.
         "panel_view_digest": image_view_digest,
         "panel_set_digest": image_set_digest,
+        **dict(transport_binding),
     }
 
 
@@ -2502,6 +2828,10 @@ def _parse_jsonl(
         "cloud_config_bundle_cache_binding": (
             cloud_config_bundle_cache_binding
         ),
+        **{
+            key: causal_input.get(key)
+            for key in _TRANSPORT_CAUSAL_KEYS
+        },
         "task_digest": causal_input.get("task_digest"),
         "current_source_digest": causal_input.get("current_source_digest"),
         "current_log_digest": causal_input.get("current_log_digest"),
@@ -2538,7 +2868,7 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
             or receipt["isolation_policy"] != CODEX_ISOLATION_POLICY \
             or receipt["outcome"] != "success":
         raise CodexProposerFailure("Codex receipt policy identity differs")
-    _validate_model(receipt["requested_model"])
+    _validate_pinned_model(receipt["requested_model"])
     _validate_reasoning_effort(receipt["requested_reasoning_effort"])
     reported = receipt["reported_model"]
     evidence = receipt["model_identity_evidence"]
@@ -2569,6 +2899,7 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
     if not isinstance(receipt["codex_cli_version"], str) \
             or not receipt["codex_cli_version"]:
         raise CodexProposerFailure("Codex receipt CLI version is missing")
+    _require_pinned_cli_version(receipt["codex_cli_version"])
     policy_cache_binding = receipt["cloud_config_bundle_cache_binding"]
     if policy_cache_binding != "absent" and (
         not isinstance(policy_cache_binding, str)
@@ -2577,6 +2908,9 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
         raise CodexProposerFailure(
             "Codex receipt cloud policy cache binding is invalid"
         )
+    _validate_transport_causal_binding({
+        key: receipt[key] for key in _TRANSPORT_CAUSAL_KEYS
+    })
     input_digest_schema = receipt["input_digest_schema"]
     if not isinstance(input_digest_schema, str) \
             or input_digest_schema not in {
@@ -2588,7 +2922,9 @@ def validate_codex_receipt(receipt: Mapping[str, Any]) -> None:
             "codex_launcher_digest", "task_digest", "prompt_digest",
             "input_digest", "output_schema_digest", "panel_view_digest",
             "structured_output_digest", "event_stream_digest",
-            "receipt_digest"):
+            "receipt_digest", "model_catalog_digest",
+            "transport_policy_digest", "command_digest",
+            "tool_surface_digest", "tool_surface_attestation_digest"):
         value = receipt[key]
         if not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) \
                 is None:
@@ -2676,7 +3012,8 @@ def _validate_codex_named_image_receipt_snapshot(
         raise CodexProposerFailure(
             "Codex receipt is not from the named-image input domain")
     expected = _causal_named_image_input_metadata_from_snapshot(
-        prompt, snapshot, schema_digest)
+        prompt, snapshot, schema_digest,
+        {key: receipt[key] for key in _TRANSPORT_CAUSAL_KEYS})
     expected_with_schema = {**expected, "output_schema_digest": schema_digest}
     if any(receipt[key] != value
            for key, value in expected_with_schema.items()):
@@ -2726,12 +3063,53 @@ def validate_codex_text_receipt(
     if receipt["input_digest_schema"] != TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA:
         raise CodexProposerFailure(
             "Codex receipt is not from the text-only input domain")
-    expected = _causal_text_input_metadata(prompt, schema_digest)
+    expected = _causal_text_input_metadata(
+        prompt, schema_digest,
+        {key: receipt[key] for key in _TRANSPORT_CAUSAL_KEYS})
     expected_with_schema = {**expected, "output_schema_digest": schema_digest}
     if any(receipt[key] != value
            for key, value in expected_with_schema.items()):
         raise CodexProposerFailure(
             "Codex text receipt does not bind the supplied prompt and schema")
+
+
+def _resolve_no_tools_attestation(
+        *, executable: str, launcher_digest: str,
+        model_catalog_snapshot: CodexModelCatalogSnapshot,
+        cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot,
+        attestation: Any | None,
+        expected_digest: str | None) -> str:
+    if expected_digest is not None and (
+        not isinstance(expected_digest, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_digest) is None
+    ):
+        raise CodexProposerFailure(
+            "expected no-tools attestation digest must be lowercase SHA-256")
+    from bongard.codex_no_tools_preflight import attest_codex_no_tools
+    from bongard.codex_no_tools_preflight import (
+        validate_codex_no_tools_attestation,
+    )
+
+    if attestation is None:
+        frozen = attest_codex_no_tools(
+            executable=executable,
+            expected_launcher_digest=launcher_digest,
+            model_catalog_snapshot=model_catalog_snapshot,
+            cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        )
+    else:
+        frozen = validate_codex_no_tools_attestation(
+            attestation,
+            expected_launcher_digest=launcher_digest,
+            expected_model_catalog_digest=model_catalog_snapshot.raw_digest,
+            expected_cloud_policy_cache_binding=(
+                cloud_policy_cache_snapshot.binding),
+        )
+    digest = frozen.attestation_digest
+    if expected_digest is not None and digest != expected_digest:
+        raise CodexProposerFailure(
+            "Codex no-tools attestation differs from the external commitment")
+    return digest
 
 
 def run_codex_structured(
@@ -2744,11 +3122,14 @@ def run_codex_structured(
         verbose: bool = False,
         executable: str = "codex",
         cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        model_catalog_snapshot: CodexModelCatalogSnapshot | None = None,
+        tool_surface_attestation: Any | None = None,
         expected_launcher_digest: str | None = None,
+        expected_tool_surface_attestation_digest: str | None = None,
         ) -> CodexStructuredResult:
     """Run one schema-constrained, tool-free Codex turn."""
     task = _bounded_utf8(task, "task", MAX_TASK_UTF8_BYTES)
-    model = _validate_model(model)
+    model = _validate_pinned_model(model)
     reasoning_effort = _validate_reasoning_effort(reasoning_effort)
     if isinstance(minutes, bool) or not isinstance(minutes, int) \
             or not 1 <= minutes <= 120:
@@ -2768,6 +3149,25 @@ def run_codex_structured(
                 "Codex launcher bytes differ from the external commitment")
     cli_version = _codex_cli_version(
         resolved_executable, temp_parent=temp_parent)
+    _require_pinned_cli_version(cli_version)
+    catalog_snapshot = (
+        snapshot_pinned_model_catalog()
+        if model_catalog_snapshot is None else model_catalog_snapshot)
+    if not isinstance(catalog_snapshot, CodexModelCatalogSnapshot):
+        raise CodexProposerFailure("Codex model catalog snapshot type is invalid")
+    policy_snapshot = (
+        snapshot_cloud_policy_cache()
+        if cloud_policy_cache_snapshot is None else cloud_policy_cache_snapshot)
+    if not isinstance(policy_snapshot, CloudPolicyCacheSnapshot):
+        raise CodexProposerFailure("Codex cloud policy snapshot type is invalid")
+    attestation_digest = _resolve_no_tools_attestation(
+        executable=resolved_executable,
+        launcher_digest=launcher_digest,
+        model_catalog_snapshot=catalog_snapshot,
+        cloud_policy_cache_snapshot=policy_snapshot,
+        attestation=tool_surface_attestation,
+        expected_digest=expected_tool_surface_attestation_digest,
+    )
 
     with tempfile.TemporaryDirectory(
             prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
@@ -2777,9 +3177,10 @@ def run_codex_structured(
         _require_outside_bongard(view_dir, "Codex proposer view")
         _stage_codex_auth(auth_dir)
         policy_cache = _stage_cloud_policy_cache(
-            auth_dir, cloud_policy_cache_snapshot
+            auth_dir, policy_snapshot
         )
         os.chmod(view_dir, 0o700)
+        model_catalog = _stage_model_catalog(view_dir, catalog_snapshot)
         image_paths, panel_view_digest = _copy_panel_view(
             panel_png_paths, view_dir)
         schema_path = os.path.join(view_dir, "output_schema.json")
@@ -2792,16 +3193,24 @@ def run_codex_structured(
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        causal_input = _causal_input_metadata(
-            task, image_paths, schema_digest, panel_view_digest)
         command = _codex_command(
             executable=resolved_executable,
             view_dir=view_dir,
             image_paths=image_paths,
             schema_path=schema_path,
+            model_catalog_path=model_catalog.path,
             model=model,
             reasoning_effort=reasoning_effort,
         )
+        command_digest = _codex_command_digest(command)
+        transport_binding = _transport_causal_binding(
+            model_catalog_digest=model_catalog.raw_digest,
+            command_digest=command_digest,
+            tool_surface_attestation_digest=attestation_digest,
+        )
+        causal_input = _causal_input_metadata(
+            task, image_paths, schema_digest, panel_view_digest,
+            transport_binding)
         if verbose:
             print(
                 f"invoking isolated {model} Codex proposer "
@@ -2809,6 +3218,7 @@ def run_codex_structured(
                 flush=True,
             )
         _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_staged_model_catalog(model_catalog)
         returncode, stdout, stderr = _run_codex_process(
             command,
             task_bytes=task.encode("utf-8"),
@@ -2818,9 +3228,13 @@ def run_codex_structured(
             minutes=minutes,
         )
         _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_staged_model_catalog(model_catalog)
+        if _codex_command_digest(command) != command_digest:
+            raise CodexProposerFailure(
+                "Codex exact command changed during execution")
         _recheck_private_view(
             view_dir, image_paths, panel_view_digest,
-            schema_path, schema_digest)
+            schema_path, schema_digest, model_catalog)
         if returncode != 0:
             try:
                 stderr_detail = stderr.decode(
@@ -2871,7 +3285,10 @@ def run_codex_named_images_structured(
         verbose: bool = False,
         executable: str = "codex",
         cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        model_catalog_snapshot: CodexModelCatalogSnapshot | None = None,
+        tool_surface_attestation: Any | None = None,
         expected_launcher_digest: str | None = None,
+        expected_tool_surface_attestation_digest: str | None = None,
         ) -> CodexStructuredResult:
     """Run a schema-only turn over neutral, caller-declared image names.
 
@@ -2882,7 +3299,7 @@ def run_codex_named_images_structured(
     experiment state.
     """
     task = _bounded_utf8(task, "task", MAX_TASK_UTF8_BYTES)
-    model = _validate_model(model)
+    model = _validate_pinned_model(model)
     reasoning_effort = _validate_reasoning_effort(reasoning_effort)
     if isinstance(minutes, bool) or not isinstance(minutes, int) \
             or not 1 <= minutes <= 120:
@@ -2904,6 +3321,25 @@ def run_codex_named_images_structured(
                 "Codex launcher bytes differ from the external commitment")
     cli_version = _codex_cli_version(
         resolved_executable, temp_parent=temp_parent)
+    _require_pinned_cli_version(cli_version)
+    catalog_snapshot = (
+        snapshot_pinned_model_catalog()
+        if model_catalog_snapshot is None else model_catalog_snapshot)
+    if not isinstance(catalog_snapshot, CodexModelCatalogSnapshot):
+        raise CodexProposerFailure("Codex model catalog snapshot type is invalid")
+    policy_snapshot = (
+        snapshot_cloud_policy_cache()
+        if cloud_policy_cache_snapshot is None else cloud_policy_cache_snapshot)
+    if not isinstance(policy_snapshot, CloudPolicyCacheSnapshot):
+        raise CodexProposerFailure("Codex cloud policy snapshot type is invalid")
+    attestation_digest = _resolve_no_tools_attestation(
+        executable=resolved_executable,
+        launcher_digest=launcher_digest,
+        model_catalog_snapshot=catalog_snapshot,
+        cloud_policy_cache_snapshot=policy_snapshot,
+        attestation=tool_surface_attestation,
+        expected_digest=expected_tool_surface_attestation_digest,
+    )
 
     with tempfile.TemporaryDirectory(
             prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
@@ -2913,9 +3349,10 @@ def run_codex_named_images_structured(
         _require_outside_bongard(view_dir, "Codex named-image view")
         _stage_codex_auth(auth_dir)
         policy_cache = _stage_cloud_policy_cache(
-            auth_dir, cloud_policy_cache_snapshot
+            auth_dir, policy_snapshot
         )
         os.chmod(view_dir, 0o700)
+        model_catalog = _stage_model_catalog(view_dir, catalog_snapshot)
         staged_paths, view_digest, set_digest = _copy_named_image_view(
             image_png_paths, image_names, view_dir)
         schema_path = os.path.join(view_dir, "output_schema.json")
@@ -2928,17 +3365,24 @@ def run_codex_named_images_structured(
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        causal_input = _causal_named_image_input_metadata(
-            task, staged_paths, image_names, schema_digest,
-            view_digest, set_digest)
         command = _codex_command(
             executable=resolved_executable,
             view_dir=view_dir,
             image_paths=staged_paths,
             schema_path=schema_path,
+            model_catalog_path=model_catalog.path,
             model=model,
             reasoning_effort=reasoning_effort,
         )
+        command_digest = _codex_command_digest(command)
+        transport_binding = _transport_causal_binding(
+            model_catalog_digest=model_catalog.raw_digest,
+            command_digest=command_digest,
+            tool_surface_attestation_digest=attestation_digest,
+        )
+        causal_input = _causal_named_image_input_metadata(
+            task, staged_paths, image_names, schema_digest,
+            view_digest, set_digest, transport_binding)
         if verbose:
             print(
                 f"invoking isolated {model} Codex blind image scorer "
@@ -2946,6 +3390,7 @@ def run_codex_named_images_structured(
                 flush=True,
             )
         _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_staged_model_catalog(model_catalog)
         returncode, stdout, stderr = _run_codex_process(
             command,
             task_bytes=task.encode("utf-8"),
@@ -2955,9 +3400,13 @@ def run_codex_named_images_structured(
             minutes=minutes,
         )
         _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_staged_model_catalog(model_catalog)
+        if _codex_command_digest(command) != command_digest:
+            raise CodexProposerFailure(
+                "Codex exact command changed during execution")
         _recheck_named_private_view(
             view_dir, staged_paths, image_names, view_digest, set_digest,
-            schema_path, schema_digest)
+            schema_path, schema_digest, model_catalog)
         if returncode != 0:
             try:
                 stderr_detail = stderr.decode(
@@ -3006,7 +3455,10 @@ def run_codex_text_structured(
         verbose: bool = False,
         executable: str = "codex",
         cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+        model_catalog_snapshot: CodexModelCatalogSnapshot | None = None,
+        tool_surface_attestation: Any | None = None,
         expected_launcher_digest: str | None = None,
+        expected_tool_surface_attestation_digest: str | None = None,
         ) -> CodexStructuredResult:
     """Run one schema-constrained Codex turn with text and zero images.
 
@@ -3015,7 +3467,7 @@ def run_codex_text_structured(
     zero-image sentinels under a transport-specific input schema.
     """
     prompt = _bounded_utf8(prompt, "prompt", MAX_TASK_UTF8_BYTES)
-    model = _validate_model(model)
+    model = _validate_pinned_model(model)
     reasoning_effort = _validate_reasoning_effort(reasoning_effort)
     if isinstance(minutes, bool) or not isinstance(minutes, int) \
             or not 1 <= minutes <= 120:
@@ -3035,6 +3487,25 @@ def run_codex_text_structured(
                 "Codex launcher bytes differ from the external commitment")
     cli_version = _codex_cli_version(
         resolved_executable, temp_parent=temp_parent)
+    _require_pinned_cli_version(cli_version)
+    catalog_snapshot = (
+        snapshot_pinned_model_catalog()
+        if model_catalog_snapshot is None else model_catalog_snapshot)
+    if not isinstance(catalog_snapshot, CodexModelCatalogSnapshot):
+        raise CodexProposerFailure("Codex model catalog snapshot type is invalid")
+    policy_snapshot = (
+        snapshot_cloud_policy_cache()
+        if cloud_policy_cache_snapshot is None else cloud_policy_cache_snapshot)
+    if not isinstance(policy_snapshot, CloudPolicyCacheSnapshot):
+        raise CodexProposerFailure("Codex cloud policy snapshot type is invalid")
+    attestation_digest = _resolve_no_tools_attestation(
+        executable=resolved_executable,
+        launcher_digest=launcher_digest,
+        model_catalog_snapshot=catalog_snapshot,
+        cloud_policy_cache_snapshot=policy_snapshot,
+        attestation=tool_surface_attestation,
+        expected_digest=expected_tool_surface_attestation_digest,
+    )
 
     with tempfile.TemporaryDirectory(
             prefix="bongard-codex-auth-", dir=temp_parent) as auth_dir, \
@@ -3044,9 +3515,10 @@ def run_codex_text_structured(
         _require_outside_bongard(view_dir, "Codex text-only view")
         _stage_codex_auth(auth_dir)
         policy_cache = _stage_cloud_policy_cache(
-            auth_dir, cloud_policy_cache_snapshot
+            auth_dir, policy_snapshot
         )
         os.chmod(view_dir, 0o700)
+        model_catalog = _stage_model_catalog(view_dir, catalog_snapshot)
         schema_path = os.path.join(view_dir, "output_schema.json")
         descriptor = os.open(
             schema_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -3057,15 +3529,23 @@ def run_codex_text_structured(
             os.fsync(descriptor)
         finally:
             os.close(descriptor)
-        causal_input = _causal_text_input_metadata(prompt, schema_digest)
         command = _codex_command(
             executable=resolved_executable,
             view_dir=view_dir,
             image_paths=(),
             schema_path=schema_path,
+            model_catalog_path=model_catalog.path,
             model=model,
             reasoning_effort=reasoning_effort,
         )
+        command_digest = _codex_command_digest(command)
+        transport_binding = _transport_causal_binding(
+            model_catalog_digest=model_catalog.raw_digest,
+            command_digest=command_digest,
+            tool_surface_attestation_digest=attestation_digest,
+        )
+        causal_input = _causal_text_input_metadata(
+            prompt, schema_digest, transport_binding)
         if verbose:
             print(
                 f"invoking isolated {model} Codex text turn "
@@ -3073,6 +3553,7 @@ def run_codex_text_structured(
                 flush=True,
             )
         _recheck_staged_cloud_policy_cache(policy_cache)
+        _recheck_staged_model_catalog(model_catalog)
         returncode, stdout, stderr = _run_codex_process(
             command,
             task_bytes=prompt.encode("utf-8"),
@@ -3082,7 +3563,12 @@ def run_codex_text_structured(
             minutes=minutes,
         )
         _recheck_staged_cloud_policy_cache(policy_cache)
-        _recheck_text_private_view(view_dir, schema_path, schema_digest)
+        _recheck_staged_model_catalog(model_catalog)
+        if _codex_command_digest(command) != command_digest:
+            raise CodexProposerFailure(
+                "Codex exact command changed during execution")
+        _recheck_text_private_view(
+            view_dir, schema_path, schema_digest, model_catalog)
         if returncode != 0:
             try:
                 stderr_detail = stderr.decode(
@@ -3125,12 +3611,22 @@ def run_codex_text_structured(
 __all__ = [
     "CODEX_ISOLATION_POLICY",
     "CODEX_RECEIPT_SCHEMA",
+    "CODEX_APPLY_PATCH_TOOL_TYPE",
+    "CODEX_EFFECTIVE_TOOL_MODE",
+    "CODEX_TOOL_SURFACE_DIGEST",
+    "CODEX_TRANSPORT_POLICY_DIGEST",
     "DEFAULT_CODEX_MODEL",
     "DEFAULT_REASONING_EFFORT",
+    "PINNED_BUNDLED_CATALOG_RAW_DIGEST",
+    "PINNED_BUNDLED_MODEL_RECORD_CANONICAL_DIGEST",
+    "PINNED_CODEX_CLI_VERSION",
+    "PINNED_MODEL_CATALOG_CANONICAL_DIGEST",
+    "PINNED_MODEL_CATALOG_RAW_DIGEST",
     "NAMED_IMAGE_INPUT_DIGEST_SCHEMA",
     "STRUCTURED_INPUT_DIGEST_SCHEMA",
     "TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA",
     "CodexProposerFailure",
+    "CodexModelCatalogSnapshot",
     "CodexReceipt",
     "CodexStructuredResult",
     "CloudPolicyCacheSnapshot",
@@ -3146,6 +3642,8 @@ __all__ = [
     "run_codex_text_structured",
     "semantic_panel_set_digest",
     "snapshot_cloud_policy_cache",
+    "snapshot_pinned_model_catalog",
+    "codex_transport_policy",
     "stage_codex_launcher",
     "validate_codex_strict_output_schema",
     "validate_codex_named_image_receipt",

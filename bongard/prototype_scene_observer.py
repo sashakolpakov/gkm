@@ -36,6 +36,10 @@ from PIL import Image
 
 import bongard.transport as _transport_module
 from bongard.canonical import canonical_digest, canonical_json
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    validate_codex_no_tools_attestation,
+)
 from bongard.prototype_pair_cohort import (
     OPAQUE_TAG_IDS,
     PYTHON_AUTHORITY_ID,
@@ -46,6 +50,7 @@ from bongard.transport import (
     CODEX_RECEIPT_SCHEMA,
     NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
     CloudPolicyCacheSnapshot,
+    CodexModelCatalogSnapshot,
     CodexProposerFailure,
     CodexReceipt,
     CodexStructuredResult,
@@ -60,10 +65,10 @@ PROTOTYPE_REFERENCE_CATALOG_SCHEMA = (
     "gkm.bongard-prototype-reference-catalog.v1"
 )
 PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA = (
-    "gkm.bongard-prototype-rubric-description-artifact.v1"
+    "gkm.bongard-prototype-rubric-description-artifact.v2"
 )
 PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA = (
-    "gkm.bongard-prototype-scene-observer-artifact.v1"
+    "gkm.bongard-prototype-scene-observer-artifact.v2"
 )
 PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID = (
     "bongard.prototype-scene-observer/two-phase-neutral-prototypes-v1"
@@ -1079,12 +1084,16 @@ def prototype_scene_observer_environment_digest(
     reasoning_effort: str,
     expected_launcher_digest: str | None,
     cloud_policy_cache_binding: str,
+    model_catalog_digest: str,
+    no_tools_attestation_digest: str,
 ) -> str:
     prototype_scene_observer_model_digest(model, reasoning_effort)
     if expected_launcher_digest is not None:
         _require_digest(expected_launcher_digest, "expected launcher digest")
     if cloud_policy_cache_binding != "absent":
         _require_address(cloud_policy_cache_binding, "policy cache binding")
+    _require_digest(model_catalog_digest, "model catalog digest")
+    _require_digest(no_tools_attestation_digest, "no-tools attestation digest")
     return canonical_digest(
         {
             "schema": "gkm.bongard-prototype-observer-precommitted-environment.v1",
@@ -1092,6 +1101,8 @@ def prototype_scene_observer_environment_digest(
             "reasoning_effort": reasoning_effort,
             "expected_launcher_digest": expected_launcher_digest,
             "cloud_policy_cache_binding": cloud_policy_cache_binding,
+            "model_catalog_digest": model_catalog_digest,
+            "no_tools_attestation_digest": no_tools_attestation_digest,
             "observer_source_digest": prototype_scene_observer_source_digest(),
             "transport_source_digest": prototype_scene_transport_source_digest(),
             "receipt_schema": CODEX_RECEIPT_SCHEMA,
@@ -1100,6 +1111,35 @@ def prototype_scene_observer_environment_digest(
             "transport_entrypoint": "run_codex_named_images_structured",
         }
     )
+
+
+def _validate_no_tools_runtime(
+    *,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
+    expected_launcher_digest: str | None,
+    cloud_policy_cache_binding: str,
+) -> tuple[str, str]:
+    if not isinstance(model_catalog_snapshot, CodexModelCatalogSnapshot):
+        raise PrototypeSceneObserverError(
+            "exact Codex model catalog snapshot is required"
+        )
+    if expected_launcher_digest is None:
+        raise PrototypeSceneObserverError(
+            "Codex launcher commitment is required for visual observation"
+        )
+    try:
+        validated = validate_codex_no_tools_attestation(
+            no_tools_attestation,
+            expected_launcher_digest=expected_launcher_digest,
+            expected_model_catalog_digest=model_catalog_snapshot.raw_digest,
+            expected_cloud_policy_cache_binding=cloud_policy_cache_binding,
+        )
+    except (CodexProposerFailure, TypeError, ValueError) as exc:
+        raise PrototypeSceneObserverError(
+            "Codex no-tools runtime differs from its frozen attestation"
+        ) from exc
+    return model_catalog_snapshot.raw_digest, validated.attestation_digest
 
 
 def _failure_digest(
@@ -1260,6 +1300,8 @@ def _description_artifact_preimage(
         "model_digest": artifact.model_digest,
         "expected_launcher_digest": artifact.expected_launcher_digest,
         "cloud_policy_cache_binding": artifact.cloud_policy_cache_binding,
+        "model_catalog_digest": artifact.model_catalog_digest,
+        "no_tools_attestation_digest": artifact.no_tools_attestation_digest,
         "environment_digest": artifact.environment_digest,
         "model_payload": artifact.model_payload,
         "receipt": None if artifact.receipt is None else artifact.receipt.to_dict(),
@@ -1287,6 +1329,8 @@ class PrototypeRubricDescriptionArtifact:
     model_digest: str
     expected_launcher_digest: str | None
     cloud_policy_cache_binding: str
+    model_catalog_digest: str
+    no_tools_attestation_digest: str
     environment_digest: str
     model_payload: Mapping[str, Any] | None
     receipt: CodexReceipt | None
@@ -1333,11 +1377,18 @@ class PrototypeRubricDescriptionArtifact:
             _require_address(
                 self.cloud_policy_cache_binding, "description policy cache binding"
             )
+        _require_digest(self.model_catalog_digest, "description model catalog digest")
+        _require_digest(
+            self.no_tools_attestation_digest,
+            "description no-tools attestation digest",
+        )
         if self.environment_digest != prototype_scene_observer_environment_digest(
             model=self.model,
             reasoning_effort=self.reasoning_effort,
             expected_launcher_digest=self.expected_launcher_digest,
             cloud_policy_cache_binding=self.cloud_policy_cache_binding,
+            model_catalog_digest=self.model_catalog_digest,
+            no_tools_attestation_digest=self.no_tools_attestation_digest,
         ):
             raise PrototypeSceneObserverError(
                 "description precommitted environment digest differs"
@@ -1455,6 +1506,10 @@ class PrototypeRubricDescriptionArtifact:
                 )
                 or self.receipt.cloud_config_bundle_cache_binding
                 != self.cloud_policy_cache_binding
+                or self.receipt.model_catalog_digest
+                != self.model_catalog_digest
+                or self.receipt.tool_surface_attestation_digest
+                != self.no_tools_attestation_digest
             ):
                 raise PrototypeSceneObserverError(
                     "description receipt bindings differ"
@@ -1495,6 +1550,8 @@ class PrototypeRubricDescriptionArtifact:
                 "model_digest",
                 "expected_launcher_digest",
                 "cloud_policy_cache_binding",
+                "model_catalog_digest",
+                "no_tools_attestation_digest",
                 "environment_digest",
                 "model_payload",
                 "receipt",
@@ -1535,6 +1592,8 @@ class PrototypeRubricDescriptionArtifact:
             model_digest=raw["model_digest"],
             expected_launcher_digest=raw["expected_launcher_digest"],
             cloud_policy_cache_binding=raw["cloud_policy_cache_binding"],
+            model_catalog_digest=raw["model_catalog_digest"],
+            no_tools_attestation_digest=raw["no_tools_attestation_digest"],
             environment_digest=raw["environment_digest"],
             model_payload=(
                 None
@@ -1594,6 +1653,8 @@ def _scene_artifact_preimage(
         "model_digest": artifact.model_digest,
         "expected_launcher_digest": artifact.expected_launcher_digest,
         "cloud_policy_cache_binding": artifact.cloud_policy_cache_binding,
+        "model_catalog_digest": artifact.model_catalog_digest,
+        "no_tools_attestation_digest": artifact.no_tools_attestation_digest,
         "environment_digest": artifact.environment_digest,
         "model_payload": artifact.model_payload,
         "receipt": None if artifact.receipt is None else artifact.receipt.to_dict(),
@@ -1627,6 +1688,8 @@ class PrototypeSceneObserverArtifact:
     model_digest: str
     expected_launcher_digest: str | None
     cloud_policy_cache_binding: str
+    model_catalog_digest: str
+    no_tools_attestation_digest: str
     environment_digest: str
     model_payload: Mapping[str, Any] | None
     receipt: CodexReceipt | None
@@ -1684,11 +1747,18 @@ class PrototypeSceneObserverArtifact:
             _require_address(
                 self.cloud_policy_cache_binding, "scene policy cache binding"
             )
+        _require_digest(self.model_catalog_digest, "scene model catalog digest")
+        _require_digest(
+            self.no_tools_attestation_digest,
+            "scene no-tools attestation digest",
+        )
         if self.environment_digest != prototype_scene_observer_environment_digest(
             model=self.model,
             reasoning_effort=self.reasoning_effort,
             expected_launcher_digest=self.expected_launcher_digest,
             cloud_policy_cache_binding=self.cloud_policy_cache_binding,
+            model_catalog_digest=self.model_catalog_digest,
+            no_tools_attestation_digest=self.no_tools_attestation_digest,
         ):
             raise PrototypeSceneObserverError(
                 "scene precommitted environment digest differs"
@@ -1816,6 +1886,10 @@ class PrototypeSceneObserverArtifact:
                 )
                 or self.receipt.cloud_config_bundle_cache_binding
                 != self.cloud_policy_cache_binding
+                or self.receipt.model_catalog_digest
+                != self.model_catalog_digest
+                or self.receipt.tool_surface_attestation_digest
+                != self.no_tools_attestation_digest
             ):
                 raise PrototypeSceneObserverError("scene receipt bindings differ")
         computed = canonical_digest(_scene_artifact_preimage(self))
@@ -1859,6 +1933,8 @@ class PrototypeSceneObserverArtifact:
                 "model_digest",
                 "expected_launcher_digest",
                 "cloud_policy_cache_binding",
+                "model_catalog_digest",
+                "no_tools_attestation_digest",
                 "environment_digest",
                 "model_payload",
                 "receipt",
@@ -1905,6 +1981,8 @@ class PrototypeSceneObserverArtifact:
             model_digest=raw["model_digest"],
             expected_launcher_digest=raw["expected_launcher_digest"],
             cloud_policy_cache_binding=raw["cloud_policy_cache_binding"],
+            model_catalog_digest=raw["model_catalog_digest"],
+            no_tools_attestation_digest=raw["no_tools_attestation_digest"],
             environment_digest=raw["environment_digest"],
             model_payload=(
                 None
@@ -2102,6 +2180,8 @@ def _stage_and_call(
     executable: str,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
     expected_launcher_digest: str | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     transport: NamedImageTransport,
 ) -> tuple[dict[str, Any], CodexReceipt]:
     with tempfile.TemporaryDirectory(prefix="bongard-prototype-observer-") as raw:
@@ -2123,7 +2203,12 @@ def _stage_and_call(
             verbose=verbose,
             executable=executable,
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+            model_catalog_snapshot=model_catalog_snapshot,
             expected_launcher_digest=expected_launcher_digest,
+            tool_surface_attestation=no_tools_attestation,
+            expected_tool_surface_attestation_digest=(
+                no_tools_attestation.attestation_digest
+            ),
         )
         if not isinstance(result, CodexStructuredResult):
             raise PrototypeSceneObserverError(
@@ -2151,6 +2236,14 @@ def _stage_and_call(
             != cloud_policy_cache_snapshot.binding
         ):
             raise PrototypeSceneObserverError("receipt policy cache differs")
+        if (
+            receipt.model_catalog_digest != model_catalog_snapshot.raw_digest
+            or receipt.tool_surface_attestation_digest
+            != no_tools_attestation.attestation_digest
+        ):
+            raise PrototypeSceneObserverError(
+                "receipt no-tools preflight binding differs"
+            )
         for path, (_, expected) in zip(paths, presentation, strict=True):
             if Path(path).read_bytes() != expected:
                 raise PrototypeSceneObserverError(
@@ -2168,6 +2261,8 @@ def _build_description_artifact(
     reasoning_effort: str,
     expected_launcher_digest: str | None,
     cloud_policy_cache_binding: str,
+    model_catalog_digest: str,
+    no_tools_attestation_digest: str,
     payload: Mapping[str, Any] | None,
     receipt: CodexReceipt | None,
     failure_code: str | None,
@@ -2189,6 +2284,8 @@ def _build_description_artifact(
         reasoning_effort=reasoning_effort,
         expected_launcher_digest=expected_launcher_digest,
         cloud_policy_cache_binding=cloud_policy_cache_binding,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_attestation_digest,
     )
     values: dict[str, object] = {
         "status": status,
@@ -2207,6 +2304,8 @@ def _build_description_artifact(
         ),
         "expected_launcher_digest": expected_launcher_digest,
         "cloud_policy_cache_binding": cloud_policy_cache_binding,
+        "model_catalog_digest": model_catalog_digest,
+        "no_tools_attestation_digest": no_tools_attestation_digest,
         "environment_digest": environment_digest,
         "model_payload": canonical_payload,
         "receipt": receipt,
@@ -2233,6 +2332,8 @@ def seal_prototype_rubric_description_internal_error(
     reasoning_effort: str,
     expected_launcher_digest: str | None,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     exception: Exception,
 ) -> PrototypeRubricDescriptionArtifact:
     """Seal an unexpected local callback failure as exhaustive typed ERROR."""
@@ -2254,8 +2355,12 @@ def seal_prototype_rubric_description_internal_error(
         )
     prototype_scene_observer_model_digest(model, reasoning_effort)
     policy_binding = _policy_cache_binding(cloud_policy_cache_snapshot)
-    if expected_launcher_digest is not None:
-        _require_digest(expected_launcher_digest, "expected launcher digest")
+    model_catalog_digest, no_tools_attestation_digest = _validate_no_tools_runtime(
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy_binding,
+    )
     return _build_description_artifact(
         status=PrototypeSceneObserverStatus.INTERNAL_ERROR,
         catalog=catalog,
@@ -2264,6 +2369,8 @@ def seal_prototype_rubric_description_internal_error(
         reasoning_effort=reasoning_effort,
         expected_launcher_digest=expected_launcher_digest,
         cloud_policy_cache_binding=policy_binding,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_attestation_digest,
         payload=None,
         receipt=None,
         failure_code="observer_internal_error",
@@ -2286,6 +2393,8 @@ def describe_prototype_references(
     executable: str = "codex",
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
     expected_launcher_digest: str | None = None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     transport: NamedImageTransport = run_codex_named_images_structured,
 ) -> PrototypeRubricDescriptionArtifact:
     """Run the six-reference prose phase through an injected named-image call."""
@@ -2302,8 +2411,12 @@ def describe_prototype_references(
         raise TypeError("transport must be callable")
     prototype_scene_observer_model_digest(model, reasoning_effort)
     policy_binding = _policy_cache_binding(cloud_policy_cache_snapshot)
-    if expected_launcher_digest is not None:
-        _require_digest(expected_launcher_digest, "expected launcher digest")
+    model_catalog_digest, no_tools_attestation_digest = _validate_no_tools_runtime(
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy_binding,
+    )
     presentation = _reference_presentation(
         catalog, prototype_png_by_panel_id
     )
@@ -2337,6 +2450,8 @@ def describe_prototype_references(
             executable=executable,
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
             expected_launcher_digest=expected_launcher_digest,
+            model_catalog_snapshot=model_catalog_snapshot,
+            no_tools_attestation=no_tools_attestation,
             transport=transport,
         )
     except Exception as exc:
@@ -2351,6 +2466,8 @@ def describe_prototype_references(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=None,
             receipt=None,
             failure_code="transport_failed",
@@ -2369,6 +2486,8 @@ def describe_prototype_references(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=payload,
             receipt=receipt,
             failure_code=None,
@@ -2384,6 +2503,8 @@ def describe_prototype_references(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=payload,
             receipt=receipt,
             failure_code="payload_rejected",
@@ -2488,6 +2609,8 @@ def _build_scene_artifact(
     reasoning_effort: str,
     expected_launcher_digest: str | None,
     cloud_policy_cache_binding: str,
+    model_catalog_digest: str,
+    no_tools_attestation_digest: str,
     payload: Mapping[str, Any] | None,
     receipt: CodexReceipt | None,
     failure_code: str | None,
@@ -2510,6 +2633,8 @@ def _build_scene_artifact(
         reasoning_effort=reasoning_effort,
         expected_launcher_digest=expected_launcher_digest,
         cloud_policy_cache_binding=cloud_policy_cache_binding,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_attestation_digest,
     )
     values: dict[str, object] = {
         "status": status,
@@ -2533,6 +2658,8 @@ def _build_scene_artifact(
         ),
         "expected_launcher_digest": expected_launcher_digest,
         "cloud_policy_cache_binding": cloud_policy_cache_binding,
+        "model_catalog_digest": model_catalog_digest,
+        "no_tools_attestation_digest": no_tools_attestation_digest,
         "environment_digest": environment_digest,
         "model_payload": canonical_payload,
         "receipt": receipt,
@@ -2567,6 +2694,8 @@ def seal_prototype_scene_internal_error(
     reasoning_effort: str,
     expected_launcher_digest: str | None,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     exception: Exception,
 ) -> PrototypeSceneObserverArtifact:
     """Seal an unexpected local scene failure without fabricating absence."""
@@ -2613,8 +2742,12 @@ def seal_prototype_scene_internal_error(
     )
     prototype_scene_observer_model_digest(model, reasoning_effort)
     policy_binding = _policy_cache_binding(cloud_policy_cache_snapshot)
-    if expected_launcher_digest is not None:
-        _require_digest(expected_launcher_digest, "expected launcher digest")
+    model_catalog_digest, no_tools_attestation_digest = _validate_no_tools_runtime(
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy_binding,
+    )
     identities = _image_identities((("scene.png", scene), *refs))
     return _build_scene_artifact(
         status=PrototypeSceneObserverStatus.INTERNAL_ERROR,
@@ -2629,6 +2762,8 @@ def seal_prototype_scene_internal_error(
         reasoning_effort=reasoning_effort,
         expected_launcher_digest=expected_launcher_digest,
         cloud_policy_cache_binding=policy_binding,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_attestation_digest,
         payload=None,
         receipt=None,
         failure_code="observer_internal_error",
@@ -2659,6 +2794,8 @@ def observe_prototype_scene(
     executable: str = "codex",
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
     expected_launcher_digest: str | None = None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     transport: NamedImageTransport = run_codex_named_images_structured,
 ) -> PrototypeSceneObserverArtifact:
     """Score one exact whole scene against two frozen prototype rubrics."""
@@ -2705,8 +2842,12 @@ def observe_prototype_scene(
     )
     prototype_scene_observer_model_digest(model, reasoning_effort)
     policy_binding = _policy_cache_binding(cloud_policy_cache_snapshot)
-    if expected_launcher_digest is not None:
-        _require_digest(expected_launcher_digest, "expected launcher digest")
+    model_catalog_digest, no_tools_attestation_digest = _validate_no_tools_runtime(
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy_binding,
+    )
     presentation = (("scene.png", scene), *refs)
     identities = _image_identities(presentation)
     prompt = prototype_scene_observer_prompt(rubric_artifact.rubrics)
@@ -2739,6 +2880,8 @@ def observe_prototype_scene(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=None,
             receipt=None,
             failure_code="rubric_prerequisite_failed",
@@ -2763,6 +2906,8 @@ def observe_prototype_scene(
             executable=executable,
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
             expected_launcher_digest=expected_launcher_digest,
+            model_catalog_snapshot=model_catalog_snapshot,
+            no_tools_attestation=no_tools_attestation,
             transport=transport,
         )
     except Exception as exc:
@@ -2782,6 +2927,8 @@ def observe_prototype_scene(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=None,
             receipt=None,
             failure_code="transport_failed",
@@ -2806,6 +2953,8 @@ def observe_prototype_scene(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=payload,
             receipt=receipt,
             failure_code=None,
@@ -2827,6 +2976,8 @@ def observe_prototype_scene(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=expected_launcher_digest,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
             payload=payload,
             receipt=receipt,
             failure_code="payload_rejected",

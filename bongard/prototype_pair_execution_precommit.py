@@ -24,6 +24,10 @@ import re
 from typing import Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    validate_codex_no_tools_attestation,
+)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.prototype_pair_cohort import (
     OPAQUE_TAG_IDS,
@@ -33,12 +37,13 @@ from bongard.prototype_scene_calibration import (
     PrototypeSceneTagThreshold,
     threshold_commitment,
 )
+from bongard.transport import CodexModelCatalogSnapshot, CodexProposerFailure
 
 
-PRECOMMIT_SCHEMA = "gkm.bongard-prototype-pair-execution-precommit.v3"
-IDENTITIES_SCHEMA = "gkm.bongard-prototype-pair-execution-identities.v3"
+PRECOMMIT_SCHEMA = "gkm.bongard-prototype-pair-execution-precommit.v4"
+IDENTITIES_SCHEMA = "gkm.bongard-prototype-pair-execution-identities.v4"
 ROLE_SCHEMA = "gkm.bongard-prototype-pair-execution-panel-role.v1"
-ALGORITHM_ID = "bongard.prototype-pair/execution-precommit-campaign-v3"
+ALGORITHM_ID = "bongard.prototype-pair/execution-precommit-campaign-v4"
 SPLIT_RULE_ID = "per-side-sha256-rank-lowest-query-remaining-support-v1"
 
 REQUIRED_RUNTIME_SOURCE_ROLES = frozenset(
@@ -54,6 +59,7 @@ REQUIRED_RUNTIME_SOURCE_ROLES = frozenset(
         "campaign-cli",
         "campaign-store",
         "transport",
+        "transport-preflight",
         "official-panel-archive",
         "precommit",
         "canonical",
@@ -236,7 +242,7 @@ def execution_precommit_algorithm_digest() -> str:
 
     return _address(
         {
-            "schema": "gkm.bongard-prototype-pair-execution-algorithm.v3",
+            "schema": "gkm.bongard-prototype-pair-execution-algorithm.v4",
             "source_sha256": PRECOMMIT_SOURCE_SHA256,
             "algorithm_id": ALGORITHM_ID,
             "precommit_schema": PRECOMMIT_SCHEMA,
@@ -274,6 +280,11 @@ def execution_precommit_algorithm_digest() -> str:
                 "query-role-identities-sealed-in-precommit-and-query-pixels-"
                 "released-only-after-durable-python-candidate-freeze"
             ),
+            "transport_preflight_invariant": (
+                "one-exact-catalog-snapshot-and-one-two-modality-no-tools-"
+                "attestation-frozen-before-store-archive-or-panel-access-and-"
+                "reused-by-every-model-transport"
+            ),
             "claim_scope": (
                 "exact-unused-train-semantically-reused-targeted-engineering"
             ),
@@ -305,11 +316,16 @@ class PrototypePairExecutionIdentities:
     ranker_model_id: str
     ranker_reasoning_effort: str
     ranker_model_identity_digest: str
+    ranker_protocol_id: str
+    ranker_protocol_digest: str
+    ranker_environment_digest: str
     runner_protocol_id: str
     runner_algorithm_digest: str
     codex_cli_version: str
     codex_launcher_sha256: str
     cloud_policy_cache_binding: str
+    codex_model_catalog_snapshot: CodexModelCatalogSnapshot
+    codex_no_tools_attestation: CodexNoToolsAttestation
     python_runtime_id: str
     python_runtime_identity_digest: str
     runtime_source_digests: tuple[tuple[str, str], ...]
@@ -321,6 +337,8 @@ class PrototypePairExecutionIdentities:
             "threshold_commitment",
             "calibration_algorithm_digest",
             "runner_algorithm_digest",
+            "ranker_protocol_digest",
+            "ranker_environment_digest",
         ):
             _require_address(getattr(self, name), name)
         if self.cloud_policy_cache_binding != "absent":
@@ -336,6 +354,7 @@ class PrototypePairExecutionIdentities:
                 "threshold commitment differs from exact threshold records"
             )
         _identifier(self.observer_protocol_id, "observer protocol ID")
+        _identifier(self.ranker_protocol_id, "ranker protocol ID")
         _identifier(self.runner_protocol_id, "runner protocol ID")
         _text(self.observer_model_id, "observer model ID")
         _identifier(self.observer_reasoning_effort, "observer reasoning effort")
@@ -353,6 +372,31 @@ class PrototypePairExecutionIdentities:
             "python_runtime_identity_digest",
         ):
             _require_raw_sha(getattr(self, name), name)
+        if not isinstance(
+            self.codex_model_catalog_snapshot, CodexModelCatalogSnapshot
+        ):
+            raise PrototypePairExecutionPrecommitError(
+                "Codex model catalog snapshot type differs"
+            )
+        if not isinstance(self.codex_no_tools_attestation, CodexNoToolsAttestation):
+            raise PrototypePairExecutionPrecommitError(
+                "Codex no-tools attestation type differs"
+            )
+        try:
+            validate_codex_no_tools_attestation(
+                self.codex_no_tools_attestation,
+                expected_launcher_digest=self.codex_launcher_sha256,
+                expected_model_catalog_digest=(
+                    self.codex_model_catalog_snapshot.raw_digest
+                ),
+                expected_cloud_policy_cache_binding=(
+                    self.cloud_policy_cache_binding
+                ),
+            )
+        except (CodexProposerFailure, TypeError, ValueError) as exc:
+            raise PrototypePairExecutionPrecommitError(
+                "Codex no-tools attestation differs from frozen runtime"
+            ) from exc
         if (
             not isinstance(self.runtime_source_digests, tuple)
             or any(
@@ -416,6 +460,9 @@ class PrototypePairExecutionIdentities:
                 "model_id": self.ranker_model_id,
                 "reasoning_effort": self.ranker_reasoning_effort,
                 "model_identity_digest": self.ranker_model_identity_digest,
+                "protocol_id": self.ranker_protocol_id,
+                "protocol_digest": self.ranker_protocol_digest,
+                "environment_digest": self.ranker_environment_digest,
             },
             "runner": {
                 "protocol_id": self.runner_protocol_id,
@@ -425,6 +472,16 @@ class PrototypePairExecutionIdentities:
                 "cli_version": self.codex_cli_version,
                 "launcher_sha256": self.codex_launcher_sha256,
                 "cloud_policy_cache_binding": self.cloud_policy_cache_binding,
+                "model_catalog": {
+                    "exact_utf8": self.codex_model_catalog_snapshot.data.decode(
+                        "utf-8", errors="strict"
+                    ),
+                    "raw_digest": self.codex_model_catalog_snapshot.raw_digest,
+                    "canonical_digest": (
+                        self.codex_model_catalog_snapshot.canonical_digest
+                    ),
+                },
+                "no_tools_attestation": self.codex_no_tools_attestation.to_dict(),
             },
             "runtime": {
                 "python_runtime_id": self.python_runtime_id,
@@ -480,7 +537,14 @@ class PrototypePairExecutionIdentities:
         )
         ranker = _object(
             raw["ranker"],
-            {"model_id", "reasoning_effort", "model_identity_digest"},
+            {
+                "model_id",
+                "reasoning_effort",
+                "model_identity_digest",
+                "protocol_id",
+                "protocol_digest",
+                "environment_digest",
+            },
             "ranker identity",
         )
         runner = _object(
@@ -488,9 +552,54 @@ class PrototypePairExecutionIdentities:
         )
         codex = _object(
             raw["codex"],
-            {"cli_version", "launcher_sha256", "cloud_policy_cache_binding"},
+            {
+                "cli_version",
+                "launcher_sha256",
+                "cloud_policy_cache_binding",
+                "model_catalog",
+                "no_tools_attestation",
+            },
             "Codex identity",
         )
+        model_catalog = _object(
+            codex["model_catalog"],
+            {"exact_utf8", "raw_digest", "canonical_digest"},
+            "Codex model catalog identity",
+        )
+        exact_utf8 = model_catalog["exact_utf8"]
+        if not isinstance(exact_utf8, str):
+            raise PrototypePairExecutionPrecommitError(
+                "Codex model catalog exact UTF-8 is invalid"
+            )
+        try:
+            catalog_snapshot = CodexModelCatalogSnapshot(
+                exact_utf8.encode("utf-8", errors="strict")
+            )
+        except (CodexProposerFailure, UnicodeError, TypeError, ValueError) as exc:
+            raise PrototypePairExecutionPrecommitError(
+                "Codex model catalog snapshot is invalid"
+            ) from exc
+        if (
+            catalog_snapshot.raw_digest != model_catalog["raw_digest"]
+            or catalog_snapshot.canonical_digest
+            != model_catalog["canonical_digest"]
+        ):
+            raise PrototypePairExecutionPrecommitError(
+                "Codex model catalog identity differs"
+            )
+        no_tools_raw = codex["no_tools_attestation"]
+        if not isinstance(no_tools_raw, Mapping):
+            raise PrototypePairExecutionPrecommitError(
+                "Codex no-tools attestation must be an object"
+            )
+        try:
+            no_tools_attestation = CodexNoToolsAttestation.from_mapping(
+                no_tools_raw
+            )
+        except (CodexProposerFailure, TypeError, ValueError) as exc:
+            raise PrototypePairExecutionPrecommitError(
+                "Codex no-tools attestation is invalid"
+            ) from exc
         runtime = _object(
             raw["runtime"],
             {
@@ -530,11 +639,16 @@ class PrototypePairExecutionIdentities:
             ranker_model_id=ranker["model_id"],
             ranker_reasoning_effort=ranker["reasoning_effort"],
             ranker_model_identity_digest=ranker["model_identity_digest"],
+            ranker_protocol_id=ranker["protocol_id"],
+            ranker_protocol_digest=ranker["protocol_digest"],
+            ranker_environment_digest=ranker["environment_digest"],
             runner_protocol_id=runner["protocol_id"],
             runner_algorithm_digest=runner["algorithm_digest"],
             codex_cli_version=codex["cli_version"],
             codex_launcher_sha256=codex["launcher_sha256"],
             cloud_policy_cache_binding=codex["cloud_policy_cache_binding"],
+            codex_model_catalog_snapshot=catalog_snapshot,
+            codex_no_tools_attestation=no_tools_attestation,
             python_runtime_id=runtime["python_runtime_id"],
             python_runtime_identity_digest=runtime[
                 "python_runtime_identity_digest"

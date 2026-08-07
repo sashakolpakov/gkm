@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass, replace
-from dataclasses import replace
 import hashlib
 from io import BytesIO
 from pathlib import Path
@@ -49,8 +48,11 @@ from bongard.prototype_scene_calibration import (
     threshold_commitment,
 )
 from bongard.prototype_scene_codex_ranker import (
+    PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
     PrototypeSceneCodexRanker,
+    prototype_scene_codex_ranker_environment_digest,
     prototype_scene_codex_ranker_model_identity_digest,
+    prototype_scene_codex_ranker_protocol_digest,
     prototype_scene_codex_ranker_transport_source_digest,
 )
 from bongard.prototype_scene_headless_runner import (
@@ -80,6 +82,7 @@ from bongard.tests.test_prototype_scene_observer import (
     _description_payload,
     _receipt as _observer_receipt,
 )
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.transport import CloudPolicyCacheSnapshot, CodexStructuredResult
 
 
@@ -88,6 +91,9 @@ _PYTHON_RUNTIME_ID = "cpython-campaign-integration-test"
 _PYTHON_RUNTIME_DIGEST = hashlib.sha256(
     _PYTHON_RUNTIME_ID.encode("utf-8")
 ).hexdigest()
+MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(
+    LAUNCHER_DIGEST
+)
 
 
 def _panel_png(panel_id: str) -> bytes:
@@ -134,6 +140,8 @@ class _Fixture:
             "clock": _Clock(),
             "configuration": self.configuration,
             "cloud_policy_cache_snapshot": None,
+            "model_catalog_snapshot": MODEL_CATALOG,
+            "no_tools_attestation": NO_TOOLS_ATTESTATION,
             "observed_codex_cli_version": _CLI_VERSION,
             "observed_codex_launcher_sha256": LAUNCHER_DIGEST,
             "observed_python_runtime_id": _PYTHON_RUNTIME_ID,
@@ -232,6 +240,10 @@ def campaign_fixture(tmp_path_factory: pytest.TempPathFactory) -> _Fixture:
             reasoning_effort=EFFORT,
             expected_launcher_digest=LAUNCHER_DIGEST,
             cloud_policy_cache_binding="absent",
+            model_catalog_digest=MODEL_CATALOG.raw_digest,
+            no_tools_attestation_digest=(
+                NO_TOOLS_ATTESTATION.attestation_digest
+            ),
         ),
         observer_model_id=MODEL,
         observer_reasoning_effort=EFFORT,
@@ -244,11 +256,26 @@ def campaign_fixture(tmp_path_factory: pytest.TempPathFactory) -> _Fixture:
             prototype_scene_codex_ranker_model_identity_digest(MODEL, EFFORT)
             .removeprefix("sha256:")
         ),
+        ranker_protocol_id=PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
+        ranker_protocol_digest=prototype_scene_codex_ranker_protocol_digest(),
+        ranker_environment_digest=prototype_scene_codex_ranker_environment_digest(
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            expected_cloud_policy_cache_binding="absent",
+            expected_transport_source_digest=(
+                prototype_scene_codex_ranker_transport_source_digest()
+            ),
+            model_catalog_snapshot=MODEL_CATALOG,
+            no_tools_attestation=NO_TOOLS_ATTESTATION,
+        ),
         runner_protocol_id=RUNNER_ID,
         runner_algorithm_digest=prototype_scene_runner_source_digest(),
         codex_cli_version=_CLI_VERSION,
         codex_launcher_sha256=LAUNCHER_DIGEST,
         cloud_policy_cache_binding="absent",
+        codex_model_catalog_snapshot=MODEL_CATALOG,
+        codex_no_tools_attestation=NO_TOOLS_ATTESTATION,
         python_runtime_id=_PYTHON_RUNTIME_ID,
         python_runtime_identity_digest=_PYTHON_RUNTIME_DIGEST,
         runtime_source_digests=prototype_pair_campaign_runtime_source_digests(),
@@ -286,6 +313,8 @@ def _description_transport(counter: list[int], *, fail: bool = False):
         **_kwargs: object,
     ) -> CodexStructuredResult:
         counter[0] += 1
+        assert _kwargs["model_catalog_snapshot"] is MODEL_CATALOG
+        assert _kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
         if fail:
             raise RuntimeError("deliberate description transport failure")
         payload = _description_payload()
@@ -321,6 +350,8 @@ def _scene_transport(
     ) -> CodexStructuredResult:
         with lock:
             counter[0] += 1
+        assert _kwargs["model_catalog_snapshot"] is MODEL_CATALOG
+        assert _kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
         digest = hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
         panel_id = fixture.panel_id_by_digest[digest]
         if panel_id in calibration_states:
@@ -385,6 +416,8 @@ def _ranker(
         **_kwargs: object,
     ) -> CodexStructuredResult:
         counter[0] += 1
+        assert _kwargs["model_catalog_snapshot"] is MODEL_CATALOG
+        assert _kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
         if fail:
             raise RuntimeError("deliberate rank transport failure")
         survivors = schema["properties"]["ordered_candidate_ids"]["items"]["enum"]
@@ -400,6 +433,8 @@ def _ranker(
         expected_transport_source_digest=(
             prototype_scene_codex_ranker_transport_source_digest()
         ),
+        model_catalog_snapshot=MODEL_CATALOG,
+        no_tools_attestation=NO_TOOLS_ATTESTATION,
         minutes=1,
         verbose=False,
         executable="codex-test",

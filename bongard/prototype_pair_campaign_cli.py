@@ -30,6 +30,10 @@ import threading
 from typing import Any, Callable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    attest_codex_no_tools,
+)
 from bongard.exposure import ExposureLedger, semantic_resolver_policy_digest
 from bongard.historical_exposure import (
     HistoricalExposureSeed,
@@ -62,8 +66,11 @@ from bongard.prototype_scene_calibration import (
     threshold_commitment,
 )
 from bongard.prototype_scene_codex_ranker import (
+    PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
     PrototypeSceneCodexRanker,
+    prototype_scene_codex_ranker_environment_digest,
     prototype_scene_codex_ranker_model_identity_digest,
+    prototype_scene_codex_ranker_protocol_digest,
     prototype_scene_codex_ranker_transport_source_digest,
 )
 from bongard.prototype_scene_headless_runner import (
@@ -80,9 +87,11 @@ from bongard.prototype_scene_observer import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.release import OfficialReleaseDescriptor
 from bongard.transport import (
+    CodexModelCatalogSnapshot,
     CloudPolicyCacheSnapshot,
     codex_cli_authenticated_fingerprint,
     run_codex_named_images_structured,
+    snapshot_pinned_model_catalog,
     snapshot_cloud_policy_cache,
 )
 
@@ -675,6 +684,8 @@ class PreparedPrototypePairCampaignLaunch:
     identities: PrototypePairExecutionIdentities
     precommit: PrototypePairExecutionPrecommit
     policy_snapshot: CloudPolicyCacheSnapshot
+    model_catalog_snapshot: CodexModelCatalogSnapshot
+    no_tools_attestation: CodexNoToolsAttestation
     codex_cli_version: str
     codex_launcher_sha256: str
     python_runtime: PythonRuntimeIdentity
@@ -738,6 +749,13 @@ def prepare_prototype_pair_campaign_launch(
         raise PrototypePairCampaignCliError(
             "authenticated Codex fingerprint differs from commitment"
         )
+    model_catalog_snapshot = snapshot_pinned_model_catalog()
+    no_tools_attestation = attest_codex_no_tools(
+        executable=codex_executable,
+        expected_launcher_digest=launcher_pin,
+        model_catalog_snapshot=model_catalog_snapshot,
+        cloud_policy_cache_snapshot=policy_snapshot,
+    )
     python_runtime = snapshot_python_runtime_identity()
     configuration = PrototypePairCampaignConfiguration(
         actor=actor,
@@ -761,6 +779,17 @@ def prepare_prototype_pair_campaign_launch(
     ranker_model_digest = prototype_scene_codex_ranker_model_identity_digest(
         model, reasoning_effort
     ).removeprefix("sha256:")
+    ranker_environment_digest = prototype_scene_codex_ranker_environment_digest(
+        model=model,
+        reasoning_effort=reasoning_effort,
+        expected_launcher_digest=launcher_pin,
+        expected_cloud_policy_cache_binding=policy_binding,
+        expected_transport_source_digest=(
+            prototype_scene_codex_ranker_transport_source_digest()
+        ),
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+    )
     identities = PrototypePairExecutionIdentities.create(
         exposure_predecessor_digest=metadata.exposure_predecessor.digest,
         execution_configuration_digest=configuration.record_digest,
@@ -777,6 +806,8 @@ def prepare_prototype_pair_campaign_launch(
             reasoning_effort=reasoning_effort,
             expected_launcher_digest=launcher_pin,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_snapshot.raw_digest,
+            no_tools_attestation_digest=no_tools_attestation.attestation_digest,
         ),
         observer_model_id=model,
         observer_reasoning_effort=reasoning_effort,
@@ -786,11 +817,16 @@ def prepare_prototype_pair_campaign_launch(
         ranker_model_id=model,
         ranker_reasoning_effort=reasoning_effort,
         ranker_model_identity_digest=ranker_model_digest,
+        ranker_protocol_id=PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
+        ranker_protocol_digest=prototype_scene_codex_ranker_protocol_digest(),
+        ranker_environment_digest=ranker_environment_digest,
         runner_protocol_id=RUNNER_ID,
         runner_algorithm_digest=prototype_scene_runner_source_digest(),
         codex_cli_version=fingerprint["version"],
         codex_launcher_sha256=launcher_pin,
         cloud_policy_cache_binding=policy_binding,
+        codex_model_catalog_snapshot=model_catalog_snapshot,
+        codex_no_tools_attestation=no_tools_attestation,
         python_runtime_id=python_runtime.runtime_id,
         python_runtime_identity_digest=python_runtime.identity_digest,
         runtime_source_digests=runtime_sources,
@@ -812,6 +848,14 @@ def prepare_prototype_pair_campaign_launch(
         expected_exposure_predecessor_digest=metadata.exposure_predecessor.digest,
     )
 
+    # The cold verification above deliberately reconstructs every embedded
+    # authority from canonical bytes.  From this point onward the reconstructed
+    # precommit is the authority, so all live adapters must retain its exact
+    # frozen objects rather than the equivalent pre-serialization instances.
+    identities = precommit.identities
+    model_catalog_snapshot = identities.codex_model_catalog_snapshot
+    no_tools_attestation = identities.codex_no_tools_attestation
+
     # These constructors inspect only persistence layout and ZIP metadata.
     # The campaign coordinator persists phase zero before it invokes
     # OfficialPanelArchive.read_panel or ReleasedOfficialPanel.release.
@@ -829,6 +873,8 @@ def prepare_prototype_pair_campaign_launch(
         expected_transport_source_digest=(
             prototype_scene_codex_ranker_transport_source_digest()
         ),
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
         reasoning_effort=reasoning_effort,
         minutes=configuration.ranker_minutes,
         verbose=configuration.ranker_verbose,
@@ -839,6 +885,8 @@ def prepare_prototype_pair_campaign_launch(
         identities=identities,
         precommit=precommit,
         policy_snapshot=policy_snapshot,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
         codex_cli_version=fingerprint["version"],
         codex_launcher_sha256=launcher_pin,
         python_runtime=python_runtime,
@@ -879,6 +927,8 @@ def dispatch_prepared_prototype_pair_campaign(
         clock=prepared.clock,
         configuration=prepared.configuration,
         cloud_policy_cache_snapshot=prepared.policy_snapshot,
+        model_catalog_snapshot=prepared.model_catalog_snapshot,
+        no_tools_attestation=prepared.no_tools_attestation,
         description_transport=run_codex_named_images_structured,
         scene_transport=run_codex_named_images_structured,
         ranker=prepared.ranker,

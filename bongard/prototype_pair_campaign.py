@@ -34,6 +34,10 @@ import re
 from typing import Any, Callable, Mapping, Protocol, Sequence, runtime_checkable
 
 from bongard.canonical import canonical_digest, canonical_json
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    validate_codex_no_tools_attestation,
+)
 from bongard.official_panel_archive import OfficialPanelArchive, ReleasedOfficialPanel
 from bongard.prototype_pair_cohort import PrototypePairCohortPlan
 from bongard.prototype_pair_execution_precommit import (
@@ -71,8 +75,10 @@ from bongard.prototype_scene_headless_runner import (
 )
 from bongard.prototype_scene_codex_ranker import (
     PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
+    prototype_scene_codex_ranker_environment_digest,
     prototype_scene_codex_ranker_protocol_digest,
     prototype_scene_codex_ranker_transport_source_digest,
+    verify_prototype_scene_codex_rank_response,
 )
 from bongard.prototype_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
@@ -115,11 +121,11 @@ from bongard.prototype_scene_support_version_space import (
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.release import OfficialReleaseDescriptor
-from bongard.transport import CloudPolicyCacheSnapshot
+from bongard.transport import CloudPolicyCacheSnapshot, CodexModelCatalogSnapshot
 
 
-CAMPAIGN_SCHEMA = "gkm.bongard-prototype-pair-campaign.v2"
-CAMPAIGN_ALGORITHM_ID = "bongard.prototype-pair/durable-campaign-v2"
+CAMPAIGN_SCHEMA = "gkm.bongard-prototype-pair-campaign.v3"
+CAMPAIGN_ALGORITHM_ID = "bongard.prototype-pair/durable-campaign-v3"
 CAMPAIGN_SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -138,6 +144,7 @@ _RUNTIME_SOURCE_MODULES = {
     "campaign-cli": "bongard.prototype_pair_campaign_cli",
     "campaign-store": "bongard.prototype_pair_campaign_store",
     "transport": "bongard.transport",
+    "transport-preflight": "bongard.codex_no_tools_preflight",
     "official-panel-archive": "bongard.official_panel_archive",
     "precommit": "bongard.prototype_pair_execution_precommit",
     "canonical": "bongard.canonical",
@@ -264,7 +271,7 @@ def prototype_pair_campaign_runtime_source_digests() -> dict[str, str]:
 def prototype_pair_campaign_algorithm_digest() -> str:
     return _address(
         {
-            "schema": "gkm.bongard-prototype-pair-campaign-algorithm.v2",
+            "schema": "gkm.bongard-prototype-pair-campaign-algorithm.v3",
             "algorithm_id": CAMPAIGN_ALGORITHM_ID,
             "source_sha256": CAMPAIGN_SOURCE_SHA256,
             "phase_order": list(PHASE_ORDER),
@@ -285,6 +292,10 @@ def prototype_pair_campaign_algorithm_digest() -> str:
             },
             "query_release_requires_durable_candidate_freeze": True,
             "cold_replay_model_calls": 0,
+            "transport_preflight": (
+                "one-frozen-two-modality-no-tools-attestation-reused-by-all-"
+                "observer-and-ranker-calls-and-revalidated-on-cold-replay"
+            ),
             "terminal_journal_sealed_before_campaign_artifact": True,
             "model_calls_made_semantics": (
                 "cumulative-unique-terminal-admissions;"
@@ -1530,6 +1541,8 @@ def _verify_campaign_authorities(
     *,
     configuration: PrototypePairCampaignConfiguration,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     ranker: object,
     observed_codex_cli_version: str,
     observed_codex_launcher_sha256: str,
@@ -1558,6 +1571,26 @@ def _verify_campaign_authorities(
         if cloud_policy_cache_snapshot is None
         else cloud_policy_cache_snapshot.binding
     )
+    if (
+        not isinstance(model_catalog_snapshot, CodexModelCatalogSnapshot)
+        or model_catalog_snapshot is not identities.codex_model_catalog_snapshot
+        or not isinstance(no_tools_attestation, CodexNoToolsAttestation)
+        or no_tools_attestation is not identities.codex_no_tools_attestation
+    ):
+        raise PrototypePairCampaignError(
+            "Codex preflight objects differ from execution precommit"
+        )
+    try:
+        validate_codex_no_tools_attestation(
+            no_tools_attestation,
+            expected_launcher_digest=identities.codex_launcher_sha256,
+            expected_model_catalog_digest=model_catalog_snapshot.raw_digest,
+            expected_cloud_policy_cache_binding=policy_binding,
+        )
+    except Exception as exc:
+        raise PrototypePairCampaignError(
+            "Codex no-tools preflight authority differs"
+        ) from exc
     expected_observer = {
         "protocol_id": PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
         "description_protocol_digest": (
@@ -1573,6 +1606,8 @@ def _verify_campaign_authorities(
             reasoning_effort=identities.observer_reasoning_effort,
             expected_launcher_digest=identities.codex_launcher_sha256,
             cloud_policy_cache_binding=policy_binding,
+            model_catalog_digest=model_catalog_snapshot.raw_digest,
+            no_tools_attestation_digest=no_tools_attestation.attestation_digest,
         ),
     }
     actual_observer = {
@@ -1621,8 +1656,18 @@ def _verify_campaign_authorities(
         != policy_binding
         or getattr(ranker, "expected_transport_source_digest", None)
         != expected_ranker_transport
+        or getattr(ranker, "model_catalog_snapshot", None)
+        is not model_catalog_snapshot
+        or getattr(ranker, "no_tools_attestation", None)
+        is not no_tools_attestation
         or getattr(ranker, "protocol_digest", None)
+        != identities.ranker_protocol_digest
+        or identities.ranker_protocol_id
+        != PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID
+        or identities.ranker_protocol_digest
         != prototype_scene_codex_ranker_protocol_digest()
+        or getattr(ranker, "environment_digest", None)
+        != identities.ranker_environment_digest
     ):
         raise PrototypePairCampaignError(
             "ranker protocol, model, transport, or environment inputs differ"
@@ -1712,6 +1757,8 @@ def _observe_scene(
     precommit: PrototypePairExecutionPrecommit,
     configuration: PrototypePairCampaignConfiguration,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     scene_transport: Callable[..., object],
 ) -> PrototypeSceneObserverArtifact:
     identities = precommit.identities
@@ -1729,6 +1776,8 @@ def _observe_scene(
         "reasoning_effort": identities.observer_reasoning_effort,
         "expected_launcher_digest": identities.codex_launcher_sha256,
         "cloud_policy_cache_snapshot": cloud_policy_cache_snapshot,
+        "model_catalog_snapshot": model_catalog_snapshot,
+        "no_tools_attestation": no_tools_attestation,
     }
     try:
         return observe_prototype_scene(
@@ -1757,7 +1806,9 @@ def _persist_observer_result(
     subject_id: str,
     artifact: PrototypeRubricDescriptionArtifact | PrototypeSceneObserverArtifact,
     kind: str,
+    precommit: PrototypePairExecutionPrecommit,
 ) -> None:
+    _assert_observer_preflight_binding(artifact, precommit)
     _binding, receipt = _persist_record(
         state,
         store,
@@ -1778,6 +1829,26 @@ def _persist_observer_result(
     )
 
 
+def _assert_observer_preflight_binding(
+    artifact: PrototypeRubricDescriptionArtifact | PrototypeSceneObserverArtifact,
+    precommit: PrototypePairExecutionPrecommit,
+) -> None:
+    identities = precommit.identities
+    if (
+        artifact.expected_launcher_digest != identities.codex_launcher_sha256
+        or artifact.cloud_policy_cache_binding
+        != identities.cloud_policy_cache_binding
+        or artifact.model_catalog_digest
+        != identities.codex_model_catalog_snapshot.raw_digest
+        or artifact.no_tools_attestation_digest
+        != identities.codex_no_tools_attestation.attestation_digest
+        or artifact.environment_digest != identities.observer_environment_digest
+    ):
+        raise PrototypePairCampaignError(
+            "observer result preflight binding differs from precommit"
+        )
+
+
 def run_prototype_pair_campaign(
     *,
     cohort_plan: PrototypePairCohortPlan,
@@ -1789,6 +1860,8 @@ def run_prototype_pair_campaign(
     clock: CampaignClock,
     configuration: PrototypePairCampaignConfiguration,
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
     description_transport: Callable[..., object],
     scene_transport: Callable[..., object],
     ranker: Callable[[tuple[str, ...], str], object],
@@ -1813,6 +1886,10 @@ def run_prototype_pair_campaign(
         raise TypeError("official_archive must be OfficialPanelArchive")
     if not isinstance(configuration, PrototypePairCampaignConfiguration):
         raise TypeError("configuration must be PrototypePairCampaignConfiguration")
+    if not isinstance(model_catalog_snapshot, CodexModelCatalogSnapshot):
+        raise TypeError("model_catalog_snapshot must be CodexModelCatalogSnapshot")
+    if not isinstance(no_tools_attestation, CodexNoToolsAttestation):
+        raise TypeError("no_tools_attestation must be CodexNoToolsAttestation")
     if not callable(description_transport) or not callable(scene_transport):
         raise TypeError("observer transports must be callable")
     if not callable(ranker):
@@ -1832,6 +1909,8 @@ def run_prototype_pair_campaign(
         precommit,
         configuration=configuration,
         cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
         ranker=ranker,
         observed_codex_cli_version=observed_codex_cli_version,
         observed_codex_launcher_sha256=observed_codex_launcher_sha256,
@@ -2020,6 +2099,8 @@ def run_prototype_pair_campaign(
                 verbose=configuration.observer_verbose,
                 executable=configuration.observer_executable,
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+                model_catalog_snapshot=model_catalog_snapshot,
+                no_tools_attestation=no_tools_attestation,
                 expected_launcher_digest=precommit.identities.codex_launcher_sha256,
                 transport=description_transport,
             )
@@ -2032,6 +2113,8 @@ def run_prototype_pair_campaign(
                 reasoning_effort=precommit.identities.observer_reasoning_effort,
                 expected_launcher_digest=precommit.identities.codex_launcher_sha256,
                 cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+                model_catalog_snapshot=model_catalog_snapshot,
+                no_tools_attestation=no_tools_attestation,
                 exception=exc,
             )
         _persist_observer_result(
@@ -2043,6 +2126,7 @@ def run_prototype_pair_campaign(
             subject_id=description_subject,
             artifact=description,
             kind="description_artifact",
+            precommit=precommit,
         )
     else:
         description = PrototypeRubricDescriptionArtifact.from_data(
@@ -2054,6 +2138,7 @@ def run_prototype_pair_campaign(
             )
         )
         _verify_reused_observer_ticket(description_ticket, description)
+        _assert_observer_preflight_binding(description, precommit)
     verify_prototype_rubric_description_artifact(
         description,
         catalog,
@@ -2158,6 +2243,8 @@ def run_prototype_pair_campaign(
             precommit=precommit,
             configuration=configuration,
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+            model_catalog_snapshot=model_catalog_snapshot,
+            no_tools_attestation=no_tools_attestation,
             scene_transport=scene_transport,
         )
 
@@ -2184,6 +2271,7 @@ def run_prototype_pair_campaign(
                 subject_id=subject_id,
                 artifact=artifact,
                 kind="observer_artifact",
+                precommit=precommit,
             )
         else:
             artifact = PrototypeSceneObserverArtifact.from_data(
@@ -2195,6 +2283,7 @@ def run_prototype_pair_campaign(
                 )
             )
             _verify_reused_observer_ticket(ticket, artifact)
+            _assert_observer_preflight_binding(artifact, precommit)
         state.calibration_artifacts.append(artifact)
 
     calibration_archive = _runtime_archive(
@@ -2328,6 +2417,8 @@ def run_prototype_pair_campaign(
             precommit=precommit,
             configuration=configuration,
             cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+            model_catalog_snapshot=model_catalog_snapshot,
+            no_tools_attestation=no_tools_attestation,
             scene_transport=scene_transport,
         )
 
@@ -2353,6 +2444,7 @@ def run_prototype_pair_campaign(
                 subject_id=role.source_panel_id,
                 artifact=artifact,
                 kind="observer_artifact",
+                precommit=precommit,
             )
         else:
             artifact = PrototypeSceneObserverArtifact.from_data(
@@ -2361,6 +2453,7 @@ def run_prototype_pair_campaign(
                 )
             )
             _verify_reused_observer_ticket(ticket, artifact)
+            _assert_observer_preflight_binding(artifact, precommit)
         state.support_artifacts.append(artifact)
 
     support_archive = _runtime_archive(
@@ -2440,7 +2533,7 @@ def run_prototype_pair_campaign(
                     != "sha256:"
                     + precommit.identities.ranker_model_identity_digest
                     or response.environment_digest
-                    != getattr(ranker, "environment_digest", None)
+                    != precommit.identities.ranker_environment_digest
                 ):
                     raise PrototypePairCampaignError(
                         "rank response authority differs from precommit"
@@ -2634,6 +2727,8 @@ def run_prototype_pair_campaign(
                     precommit=precommit,
                     configuration=configuration,
                     cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+                    model_catalog_snapshot=model_catalog_snapshot,
+                    no_tools_attestation=no_tools_attestation,
                     scene_transport=scene_transport,
                 )
                 _persist_observer_result(
@@ -2645,6 +2740,7 @@ def run_prototype_pair_campaign(
                     subject_id=role.source_panel_id,
                     artifact=artifact,
                     kind="observer_artifact",
+                    precommit=precommit,
                 )
             else:
                 artifact = PrototypeSceneObserverArtifact.from_data(
@@ -2653,6 +2749,7 @@ def run_prototype_pair_campaign(
                     )
                 )
                 _verify_reused_observer_ticket(ticket, artifact)
+                _assert_observer_preflight_binding(artifact, precommit)
             state.query_artifacts.append(artifact)
         query_archive = _runtime_archive(
             phase="query",
@@ -2864,6 +2961,36 @@ def cold_replay_prototype_pair_campaign(
             cloud_policy_cache_binding=(
                 precommit.identities.cloud_policy_cache_binding
             ),
+            model_catalog_digest=(
+                precommit.identities.codex_model_catalog_snapshot.raw_digest
+            ),
+            no_tools_attestation_digest=(
+                precommit.identities.codex_no_tools_attestation.attestation_digest
+            ),
+        )
+        or precommit.identities.ranker_protocol_id
+        != PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID
+        or precommit.identities.ranker_protocol_digest
+        != prototype_scene_codex_ranker_protocol_digest()
+        or precommit.identities.ranker_environment_digest
+        != prototype_scene_codex_ranker_environment_digest(
+            model=precommit.identities.ranker_model_id,
+            reasoning_effort=precommit.identities.ranker_reasoning_effort,
+            expected_launcher_digest=(
+                precommit.identities.codex_launcher_sha256
+            ),
+            expected_cloud_policy_cache_binding=(
+                precommit.identities.cloud_policy_cache_binding
+            ),
+            expected_transport_source_digest=(
+                prototype_scene_codex_ranker_transport_source_digest()
+            ),
+            model_catalog_snapshot=(
+                precommit.identities.codex_model_catalog_snapshot
+            ),
+            no_tools_attestation=(
+                precommit.identities.codex_no_tools_attestation
+            ),
         )
     ):
         raise PrototypePairCampaignError("cold protocol authority differs")
@@ -2960,6 +3087,22 @@ def cold_replay_prototype_pair_campaign(
             actual_digest = result.record_digest
         else:
             raise PrototypePairCampaignError("call terminal phase/status differs")
+        if isinstance(
+            result,
+            (PrototypeRubricDescriptionArtifact, PrototypeSceneObserverArtifact),
+        ) and (
+            result.model_catalog_digest
+            != precommit.identities.codex_model_catalog_snapshot.raw_digest
+            or result.no_tools_attestation_digest
+            != precommit.identities.codex_no_tools_attestation.attestation_digest
+            or result.cloud_policy_cache_binding
+            != precommit.identities.cloud_policy_cache_binding
+            or result.expected_launcher_digest
+            != precommit.identities.codex_launcher_sha256
+        ):
+            raise PrototypePairCampaignError(
+                "observer terminal preflight binding differs from precommit"
+            )
         if expected_status != status or actual_digest != result_digest:
             raise PrototypePairCampaignError("call terminal semantics differ")
         result_key = (phase, terminal.get("subject_id"))
@@ -3192,6 +3335,37 @@ def cold_replay_prototype_pair_campaign(
             or rank_terminal_record.get("context_digest") != rank_input_digest
         ):
             raise PrototypePairCampaignError("rank claim context differs")
+        rank_result = terminal_results.get(
+            ("headless_codex_candidate_ranked", precommit.drill_task_id)
+        )
+        if isinstance(rank_result, PrototypeSceneRankResponse):
+            verify_prototype_scene_codex_rank_response(
+                rank_result,
+                survivor_candidate_ids=version.survivor_candidate_ids,
+                rank_input_digest=rank_input_digest,
+                expected_response_digest=rank_result.record_digest,
+                model=precommit.identities.ranker_model_id,
+                reasoning_effort=precommit.identities.ranker_reasoning_effort,
+                expected_launcher_digest=(
+                    precommit.identities.codex_launcher_sha256
+                ),
+                expected_cloud_policy_cache_binding=(
+                    precommit.identities.cloud_policy_cache_binding
+                ),
+                expected_transport_source_digest=(
+                    prototype_scene_codex_ranker_transport_source_digest()
+                ),
+                model_catalog_snapshot=(
+                    precommit.identities.codex_model_catalog_snapshot
+                ),
+                no_tools_attestation=(
+                    precommit.identities.codex_no_tools_attestation
+                ),
+            )
+        elif restored.status is not PrototypePairCampaignStatus.RANKER_ERROR:
+            raise PrototypePairCampaignError(
+                "successful rank terminal is absent or untyped"
+            )
     if restored.status is PrototypePairCampaignStatus.RANKER_ERROR:
         return restored
     headless = restored.headless_archive

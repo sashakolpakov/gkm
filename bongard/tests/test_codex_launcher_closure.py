@@ -61,12 +61,12 @@ def _official_wrapper_tree(tmp_path: Path) -> tuple[Path, Path]:
 def _fake_version_run(
         expected_executable: Path,
         calls: list[list[str]],
-        *, after: Any = None):
+        *, after: Any = None, output: bytes = b"codex-cli 1.2.3\n"):
     def fake_run(command, **kwargs):
         command = list(command)
         calls.append(command)
         assert command == [str(expected_executable), "--version"]
-        kwargs["stdout"].write(b"codex-cli 1.2.3\n")
+        kwargs["stdout"].write(output)
         kwargs["stdout"].flush()
         if after is not None:
             after()
@@ -150,6 +150,7 @@ def test_official_js_entrypoint_hashes_and_executes_native(
         view_dir=str(tmp_path),
         image_paths=(),
         schema_path=str(tmp_path / "schema.json"),
+        model_catalog_path=str(tmp_path / "model_catalog.json"),
         model=T.DEFAULT_CODEX_MODEL,
         reasoning_effort=T.DEFAULT_REASONING_EFFORT,
     )
@@ -170,7 +171,19 @@ def test_structured_receipt_binds_native_digest(
     version_calls: list[list[str]] = []
     process_commands: list[list[str]] = []
     monkeypatch.setattr(
-        T.subprocess, "run", _fake_version_run(native, version_calls))
+        T.subprocess,
+        "run",
+        _fake_version_run(
+            native,
+            version_calls,
+            output=(T.PINNED_CODEX_CLI_VERSION + "\n").encode("utf-8"),
+        ),
+    )
+    monkeypatch.setattr(
+        T,
+        "_resolve_no_tools_attestation",
+        lambda **_kwargs: "a" * 64,
+    )
 
     def fake_process(command, **kwargs):
         del kwargs
@@ -311,7 +324,18 @@ def test_staged_path_is_used_for_every_structured_process(
     version_calls: list[list[str]] = []
     process_commands: list[list[str]] = []
     monkeypatch.setattr(
-        T.subprocess, "run", _fake_staged_version_run(version_calls))
+        T.subprocess,
+        "run",
+        _fake_staged_version_run(
+            version_calls,
+            output=(T.PINNED_CODEX_CLI_VERSION + "\n").encode("utf-8"),
+        ),
+    )
+    monkeypatch.setattr(
+        T,
+        "_resolve_no_tools_attestation",
+        lambda **_kwargs: "a" * 64,
+    )
 
     def fake_process(command, **kwargs):
         del kwargs
@@ -422,7 +446,19 @@ def test_structured_turn_runs_native_and_rejects_post_launch_mutation(
     version_calls: list[list[str]] = []
     process_commands: list[list[str]] = []
     monkeypatch.setattr(
-        T.subprocess, "run", _fake_version_run(native, version_calls))
+        T.subprocess,
+        "run",
+        _fake_version_run(
+            native,
+            version_calls,
+            output=(T.PINNED_CODEX_CLI_VERSION + "\n").encode("utf-8"),
+        ),
+    )
+    monkeypatch.setattr(
+        T,
+        "_resolve_no_tools_attestation",
+        lambda **_kwargs: "a" * 64,
+    )
 
     def fake_process(command, **kwargs):
         del kwargs

@@ -11,6 +11,7 @@ from typing import Any, Mapping, Sequence
 from PIL import Image, ImageDraw
 import pytest
 
+import bongard.transport as transport_module
 from bongard.canonical import canonical_digest
 from bongard.prototype_pair_cohort import plan_prototype_pair_cohort
 from bongard.prototype_scene_observer import (
@@ -47,18 +48,29 @@ from bongard.prototype_scene_calibration import (
     threshold_commitment,
 )
 from bongard.tests.test_prototype_pair_cohort import _fixture, _kwargs
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.transport import (
+    CODEX_APPLY_PATCH_TOOL_TYPE,
+    CODEX_EFFECTIVE_TOOL_MODE,
     CODEX_ISOLATION_POLICY,
     CODEX_RECEIPT_SCHEMA,
+    CODEX_TOOL_SURFACE_DIGEST,
+    CODEX_TRANSPORT_POLICY_DIGEST,
+    PINNED_CODEX_CLI_VERSION,
     NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
     CodexReceipt,
     CodexStructuredResult,
 )
 
 
-MODEL = "gpt-test"
+MODEL = "gpt-5.6-sol"
 EFFORT = "medium"
 LAUNCHER_DIGEST = "b" * 64
+MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(LAUNCHER_DIGEST)
+NO_TOOLS_KWARGS = {
+    "model_catalog_snapshot": MODEL_CATALOG,
+    "no_tools_attestation": NO_TOOLS_ATTESTATION,
+}
 CONTEXT_DIGEST = "sha256:" + "d" * 64
 
 
@@ -118,21 +130,32 @@ def _receipt(
         }
         for path, name in zip(paths, names, strict=True)
     ]
-    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     schema_digest = canonical_digest(dict(schema))
     view_digest = canonical_digest(identities)
     set_digest = "sha256:" + canonical_digest(
         {"schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA, "images": identities}
     )
-    envelope = {
-        "schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
-        "task": prompt,
-        "ordered_image_identities": identities,
-        "image_view_digest": view_digest,
-        "image_set_digest": set_digest,
-        "prompt_digest": prompt_digest,
-        "output_schema_digest": schema_digest,
+    named_capture = NO_TOOLS_ATTESTATION.to_dict()["captures"][1]
+    binding = {
+        "model_catalog_digest": MODEL_CATALOG.raw_digest,
+        "transport_policy_digest": CODEX_TRANSPORT_POLICY_DIGEST,
+        "command_digest": named_capture["normalized_command_digest"],
+        "effective_tool_mode": CODEX_EFFECTIVE_TOOL_MODE,
+        "apply_patch_tool_type": CODEX_APPLY_PATCH_TOOL_TYPE,
+        "tool_surface_digest": CODEX_TOOL_SURFACE_DIGEST,
+        "tool_surface_attestation_digest": (
+            NO_TOOLS_ATTESTATION.attestation_digest
+        ),
     }
+    causal = transport_module._causal_named_image_input_metadata(
+        prompt,
+        paths,
+        names,
+        schema_digest,
+        view_digest,
+        set_digest,
+        binding,
+    )
     body: dict[str, Any] = {
         "schema": CODEX_RECEIPT_SCHEMA,
         "source": "codex-cli",
@@ -145,18 +168,11 @@ def _receipt(
         "output_tokens": 10,
         "reasoning_output_tokens": 2,
         "thread_id": "00000000-0000-4000-8000-000000000021",
-        "codex_cli_version": "codex-cli test",
+        "codex_cli_version": PINNED_CODEX_CLI_VERSION,
         "codex_launcher_digest": LAUNCHER_DIGEST,
         "cloud_config_bundle_cache_binding": "absent",
-        "task_digest": prompt_digest,
-        "current_source_digest": "",
-        "current_log_digest": "",
-        "prompt_digest": prompt_digest,
-        "input_digest_schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
-        "input_digest": canonical_digest(envelope),
+        **causal,
         "output_schema_digest": schema_digest,
-        "panel_view_digest": view_digest,
-        "panel_set_digest": set_digest,
         "structured_output_digest": canonical_digest(dict(payload)),
         "proposed_source_digest": "",
         "proposed_log_digest": "",
@@ -273,6 +289,7 @@ def _describe_success(plan, references, catalog):
         model=MODEL,
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=transport,
     )
     assert calls == 1
@@ -386,6 +403,7 @@ def test_two_phase_success_roundtrips_and_cold_replays(
         model=MODEL,
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=transport,
     )
     assert calls == 1
@@ -438,6 +456,7 @@ def test_internal_error_sealers_are_deterministic_exhaustive_and_replayable(
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
         cloud_policy_cache_snapshot=None,
+        **NO_TOOLS_KWARGS,
         exception=failure,
     )
     second_description = seal_prototype_rubric_description_internal_error(
@@ -448,6 +467,7 @@ def test_internal_error_sealers_are_deterministic_exhaustive_and_replayable(
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
         cloud_policy_cache_snapshot=None,
+        **NO_TOOLS_KWARGS,
         exception=RuntimeError("another message"),
     )
     assert first_description == second_description
@@ -478,6 +498,7 @@ def test_internal_error_sealers_are_deterministic_exhaustive_and_replayable(
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
         cloud_policy_cache_snapshot=None,
+        **NO_TOOLS_KWARGS,
         exception=failure,
     )
     assert scene_artifact.status is PrototypeSceneObserverStatus.INTERNAL_ERROR
@@ -519,6 +540,7 @@ def test_injection_payload_is_parser_error_and_prerequisite_makes_no_call(
         expected_catalog_digest=catalog.catalog_digest,
         model=MODEL,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=injected,
     )
     assert failed.status is PrototypeSceneObserverStatus.PARSER_ERROR
@@ -551,6 +573,7 @@ def test_injection_payload_is_parser_error_and_prerequisite_makes_no_call(
         expected_rubric_artifact_digest=failed.artifact_digest,
         model=MODEL,
         expected_launcher_digest=LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
         transport=must_not_run,
     )
     assert calls == 0
@@ -578,6 +601,7 @@ def test_scene_parser_and_transport_failures_are_exhaustive_and_same_environment
         "expected_rubric_artifact_digest": rubric_artifact.artifact_digest,
         "model": MODEL,
         "expected_launcher_digest": LAUNCHER_DIGEST,
+        **NO_TOOLS_KWARGS,
     }
 
     def incomplete(prompt, paths, names, schema, **kwargs):
@@ -610,6 +634,8 @@ def test_scene_parser_and_transport_failures_are_exhaustive_and_same_environment
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
         cloud_policy_cache_binding="absent",
+        model_catalog_digest=MODEL_CATALOG.raw_digest,
+        no_tools_attestation_digest=NO_TOOLS_ATTESTATION.attestation_digest,
     )
     assert parser_error.environment_digest == expected_environment
     assert transport_error.environment_digest == expected_environment
@@ -694,6 +720,8 @@ def test_transport_error_adapter_keeps_cluster_in_calibration_denominator(
         reasoning_effort=EFFORT,
         expected_launcher_digest=LAUNCHER_DIGEST,
         cloud_policy_cache_binding="absent",
+        model_catalog_digest=MODEL_CATALOG.raw_digest,
+        no_tools_attestation_digest=NO_TOOLS_ATTESTATION.attestation_digest,
     )
     calibration_plan = create_prototype_scene_calibration_plan(
         cohort_plan=cohort,
@@ -761,6 +789,7 @@ def test_transport_error_adapter_keeps_cluster_in_calibration_denominator(
                 model=MODEL,
                 reasoning_effort=EFFORT,
                 expected_launcher_digest=LAUNCHER_DIGEST,
+                **NO_TOOLS_KWARGS,
                 transport=transport,
             )
         )

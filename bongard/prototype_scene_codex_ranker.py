@@ -24,6 +24,10 @@ from typing import Any, Callable, Mapping, Sequence
 
 import bongard.transport as _transport_module
 from bongard.canonical import canonical_digest, canonical_json
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    validate_codex_no_tools_attestation,
+)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.prototype_scene_headless_runner import (
     PrototypeSceneHeadlessError,
@@ -35,6 +39,7 @@ from bongard.transport import (
     REASONING_EFFORTS,
     TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
     CloudPolicyCacheSnapshot,
+    CodexModelCatalogSnapshot,
     CodexProposerFailure,
     CodexReceipt,
     CodexStructuredResult,
@@ -232,6 +237,8 @@ def prototype_scene_codex_ranker_environment_digest(
     expected_launcher_digest: str,
     expected_cloud_policy_cache_binding: str,
     expected_transport_source_digest: str,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
 ) -> str:
     model_digest = prototype_scene_codex_ranker_model_identity_digest(
         model, reasoning_effort
@@ -249,12 +256,29 @@ def prototype_scene_codex_ranker_environment_digest(
     policy = expected_cloud_policy_cache_binding
     if policy != "absent":
         _require_address(policy, "expected policy-cache binding")
+    if not isinstance(model_catalog_snapshot, CodexModelCatalogSnapshot):
+        raise PrototypeSceneCodexRankerError(
+            "exact Codex model catalog snapshot is required"
+        )
+    try:
+        attestation = validate_codex_no_tools_attestation(
+            no_tools_attestation,
+            expected_launcher_digest=launcher,
+            expected_model_catalog_digest=model_catalog_snapshot.raw_digest,
+            expected_cloud_policy_cache_binding=policy,
+        )
+    except (CodexProposerFailure, TypeError, ValueError) as exc:
+        raise PrototypeSceneCodexRankerError(
+            "Codex no-tools runtime differs from its frozen attestation"
+        ) from exc
     return "sha256:" + canonical_digest(
         {
             "schema": "gkm.bongard-prototype-scene-codex-ranker-environment.v1",
             "model_identity_digest": model_digest,
             "expected_launcher_digest": launcher,
             "expected_cloud_policy_cache_binding": policy,
+            "model_catalog_digest": model_catalog_snapshot.raw_digest,
+            "no_tools_attestation_digest": attestation.attestation_digest,
             "ranker_source_sha256": prototype_scene_codex_ranker_source_digest(),
             "transport_source_sha256": transport_source,
             "receipt_schema": CODEX_RECEIPT_SCHEMA,
@@ -315,6 +339,99 @@ def _receipt_body(value: object) -> dict[str, Any]:
     return value.to_dict()
 
 
+def verify_prototype_scene_codex_rank_response(
+    response: PrototypeSceneRankResponse,
+    *,
+    survivor_candidate_ids: Sequence[str],
+    rank_input_digest: str,
+    expected_response_digest: str,
+    model: str,
+    reasoning_effort: str,
+    expected_launcher_digest: str,
+    expected_cloud_policy_cache_binding: str,
+    expected_transport_source_digest: str,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
+) -> PrototypeSceneRankResponse:
+    """Cold-verify one rank response against the frozen no-tools runtime."""
+
+    if not isinstance(response, PrototypeSceneRankResponse):
+        raise TypeError("response must be PrototypeSceneRankResponse")
+    survivors = _freeze_survivors(survivor_candidate_ids)
+    rank_digest = _require_address(rank_input_digest, "rank input digest")
+    if response.record_digest != _require_address(
+        expected_response_digest, "expected rank response digest"
+    ):
+        raise PrototypeSceneCodexRankerError(
+            "rank response differs from external commitment"
+        )
+    response.assert_matches(
+        expected_input_digest=rank_digest,
+        survivor_candidate_ids=survivors,
+    )
+    expected_model_identity = prototype_scene_codex_ranker_model_identity_digest(
+        model, reasoning_effort
+    )
+    expected_environment = prototype_scene_codex_ranker_environment_digest(
+        model=model,
+        reasoning_effort=reasoning_effort,
+        expected_launcher_digest=expected_launcher_digest,
+        expected_cloud_policy_cache_binding=expected_cloud_policy_cache_binding,
+        expected_transport_source_digest=expected_transport_source_digest,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+    )
+    if (
+        response.ranker_protocol_id
+        != PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID
+        or response.ranker_protocol_digest
+        != prototype_scene_codex_ranker_protocol_digest()
+        or response.model_id != model
+        or response.model_identity_digest != expected_model_identity
+        or response.environment_digest != expected_environment
+    ):
+        raise PrototypeSceneCodexRankerError(
+            "rank response protocol, model, or environment differs"
+        )
+    receipt_envelope = response.receipt
+    if not isinstance(receipt_envelope, Mapping):
+        raise PrototypeSceneCodexRankerError("rank receipt envelope is invalid")
+    transport_receipt = receipt_envelope.get("transport_receipt")
+    if not isinstance(transport_receipt, Mapping):
+        raise PrototypeSceneCodexRankerError("rank transport receipt is invalid")
+    prompt = prototype_scene_codex_ranker_prompt(survivors, rank_digest)
+    schema = prototype_scene_codex_ranker_output_schema(survivors)
+    payload = {"ordered_candidate_ids": list(response.ordered_candidate_ids)}
+    try:
+        validate_codex_text_receipt(transport_receipt, prompt, schema)
+    except (CodexProposerFailure, TypeError, ValueError) as exc:
+        raise PrototypeSceneCodexRankerError(
+            "text rank receipt does not bind the frozen input"
+        ) from exc
+    if (
+        transport_receipt["requested_model"] != model
+        or transport_receipt["requested_reasoning_effort"] != reasoning_effort
+        or transport_receipt["codex_launcher_digest"]
+        != expected_launcher_digest
+        or transport_receipt["cloud_config_bundle_cache_binding"]
+        != expected_cloud_policy_cache_binding
+        or transport_receipt["model_catalog_digest"]
+        != model_catalog_snapshot.raw_digest
+        or transport_receipt["tool_surface_attestation_digest"]
+        != no_tools_attestation.attestation_digest
+        or transport_receipt["structured_output_digest"]
+        != canonical_digest(payload)
+    ):
+        raise PrototypeSceneCodexRankerError(
+            "text rank receipt model, environment, or payload differs"
+        )
+    if PrototypeSceneRankResponse.from_data(response.to_data()) != response:
+        raise PrototypeSceneCodexRankerError(
+            "rank response cold round trip differs"
+        )
+    return response
+
+
 @dataclass(frozen=True, slots=True)
 class PrototypeSceneCodexRanker:
     """Configured two-argument callback for ``PrototypeSceneHeadlessRunner``."""
@@ -324,6 +441,8 @@ class PrototypeSceneCodexRanker:
     cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot
     expected_cloud_policy_cache_binding: str
     expected_transport_source_digest: str
+    model_catalog_snapshot: CodexModelCatalogSnapshot
+    no_tools_attestation: CodexNoToolsAttestation
     reasoning_effort: str = "medium"
     minutes: int = 15
     verbose: bool = False
@@ -359,6 +478,8 @@ class PrototypeSceneCodexRanker:
                 self.expected_cloud_policy_cache_binding
             ),
             expected_transport_source_digest=self.expected_transport_source_digest,
+            model_catalog_snapshot=self.model_catalog_snapshot,
+            no_tools_attestation=self.no_tools_attestation,
         )
         if (
             isinstance(self.minutes, bool)
@@ -397,6 +518,8 @@ class PrototypeSceneCodexRanker:
                 self.expected_cloud_policy_cache_binding
             ),
             expected_transport_source_digest=self.expected_transport_source_digest,
+            model_catalog_snapshot=self.model_catalog_snapshot,
+            no_tools_attestation=self.no_tools_attestation,
         )
 
     def _validate_receipt(
@@ -421,6 +544,10 @@ class PrototypeSceneCodexRanker:
             != self.expected_cloud_policy_cache_binding
             or receipt["structured_output_digest"]
             != canonical_digest(dict(payload))
+            or receipt["model_catalog_digest"]
+            != self.model_catalog_snapshot.raw_digest
+            or receipt["tool_surface_attestation_digest"]
+            != self.no_tools_attestation.attestation_digest
         ):
             raise PrototypeSceneCodexRankerError(
                 "text rank receipt model, environment, or payload differs"
@@ -445,7 +572,12 @@ class PrototypeSceneCodexRanker:
                 verbose=self.verbose,
                 executable=self.executable,
                 cloud_policy_cache_snapshot=self.cloud_policy_cache_snapshot,
+                model_catalog_snapshot=self.model_catalog_snapshot,
                 expected_launcher_digest=self.expected_launcher_digest,
+                tool_surface_attestation=self.no_tools_attestation,
+                expected_tool_surface_attestation_digest=(
+                    self.no_tools_attestation.attestation_digest
+                ),
             )
         except Exception as exc:
             raise PrototypeSceneCodexRankerError(
@@ -485,46 +617,21 @@ class PrototypeSceneCodexRanker:
     ) -> PrototypeSceneRankResponse:
         """Cold-verify one response without a transport or model call."""
 
-        if not isinstance(response, PrototypeSceneRankResponse):
-            raise TypeError("response must be PrototypeSceneRankResponse")
-        survivors = _freeze_survivors(survivor_candidate_ids)
-        rank_digest = _require_address(rank_input_digest, "rank input digest")
-        if response.record_digest != _require_address(
-            expected_response_digest, "expected rank response digest"
-        ):
-            raise PrototypeSceneCodexRankerError(
-                "rank response differs from external commitment"
-            )
-        response.assert_matches(
-            expected_input_digest=rank_digest,
-            survivor_candidate_ids=survivors,
+        return verify_prototype_scene_codex_rank_response(
+            response,
+            survivor_candidate_ids=survivor_candidate_ids,
+            rank_input_digest=rank_input_digest,
+            expected_response_digest=expected_response_digest,
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+            expected_launcher_digest=self.expected_launcher_digest,
+            expected_cloud_policy_cache_binding=(
+                self.expected_cloud_policy_cache_binding
+            ),
+            expected_transport_source_digest=self.expected_transport_source_digest,
+            model_catalog_snapshot=self.model_catalog_snapshot,
+            no_tools_attestation=self.no_tools_attestation,
         )
-        if (
-            response.ranker_protocol_id
-            != PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID
-            or response.ranker_protocol_digest != self.protocol_digest
-            or response.model_id != self.model
-            or response.model_identity_digest != self.model_identity_digest
-            or response.environment_digest != self.environment_digest
-        ):
-            raise PrototypeSceneCodexRankerError(
-                "rank response protocol, model, or environment differs"
-            )
-        receipt_envelope = response.receipt
-        if not isinstance(receipt_envelope, Mapping):
-            raise PrototypeSceneCodexRankerError("rank receipt envelope is invalid")
-        transport_receipt = receipt_envelope.get("transport_receipt")
-        if not isinstance(transport_receipt, Mapping):
-            raise PrototypeSceneCodexRankerError("rank transport receipt is invalid")
-        prompt = prototype_scene_codex_ranker_prompt(survivors, rank_digest)
-        schema = prototype_scene_codex_ranker_output_schema(survivors)
-        payload = {"ordered_candidate_ids": list(response.ordered_candidate_ids)}
-        self._validate_receipt(transport_receipt, prompt, schema, payload)
-        if PrototypeSceneRankResponse.from_data(response.to_data()) != response:
-            raise PrototypeSceneCodexRankerError(
-                "rank response cold round trip differs"
-            )
-        return response
 
 
 __all__ = [
@@ -543,4 +650,5 @@ __all__ = [
     "prototype_scene_codex_ranker_protocol_digest",
     "prototype_scene_codex_ranker_source_digest",
     "prototype_scene_codex_ranker_transport_source_digest",
+    "verify_prototype_scene_codex_rank_response",
 ]

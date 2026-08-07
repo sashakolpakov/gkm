@@ -37,6 +37,7 @@ from bongard.prototype_pair_cohort import (
 from bongard.prototype_pair_execution_precommit import (
     PrototypePairExecutionPrecommit,
 )
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.release import OfficialReleaseDescriptor
 from bongard.transport import CloudPolicyCacheSnapshot
 
@@ -287,6 +288,9 @@ def test_prepare_freezes_python_defaults_and_dispatches_once_without_access(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     paths = _fixture(tmp_path)
+    model_catalog, no_tools_attestation = canonical_no_tools_runtime(
+        _LAUNCHER_SHA256
+    )
     monkeypatch.setattr(
         "bongard.prototype_pair_campaign_cli.snapshot_cloud_policy_cache",
         lambda: CloudPolicyCacheSnapshot(None),
@@ -297,6 +301,14 @@ def test_prepare_freezes_python_defaults_and_dispatches_once_without_access(
             "version": "codex-cli 1.2.3-test",
             "launcher_digest": expected_launcher_digest,
         },
+    )
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.snapshot_pinned_model_catalog",
+        lambda: model_catalog,
+    )
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.attest_codex_no_tools",
+        lambda **_kwargs: no_tools_attestation,
     )
     monkeypatch.setattr(
         "bongard.prototype_pair_campaign_cli.snapshot_python_runtime_identity",
@@ -333,6 +345,19 @@ def test_prepare_freezes_python_defaults_and_dispatches_once_without_access(
     assert prepared.ranker.minutes == prepared.configuration.ranker_minutes
     assert prepared.ranker.verbose is prepared.configuration.ranker_verbose
     assert prepared.ranker.executable == prepared.configuration.ranker_executable
+    assert prepared.model_catalog_snapshot == model_catalog
+    assert prepared.no_tools_attestation == no_tools_attestation
+    assert (
+        prepared.model_catalog_snapshot
+        is prepared.precommit.identities.codex_model_catalog_snapshot
+    )
+    assert (
+        prepared.no_tools_attestation
+        is prepared.precommit.identities.codex_no_tools_attestation
+    )
+    assert prepared.identities is prepared.precommit.identities
+    assert prepared.identities.codex_model_catalog_snapshot == model_catalog
+    assert prepared.identities.codex_no_tools_attestation == no_tools_attestation
     assert {
         (item.absent_upper_ppm, item.present_lower_ppm)
         for item in prepared.identities.thresholds
@@ -367,3 +392,50 @@ def test_prepare_freezes_python_defaults_and_dispatches_once_without_access(
     assert calls[0]["expected_precommit_digest"] == prepared.precommit.record_digest
     assert calls[0]["observed_codex_cli_version"] == "codex-cli 1.2.3-test"
     assert calls[0]["ranker"] is prepared.ranker
+
+
+def test_no_tools_attestation_failure_precedes_store_archive_and_pixels(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    paths = _fixture(tmp_path)
+    model_catalog, _attestation = canonical_no_tools_runtime(_LAUNCHER_SHA256)
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.snapshot_cloud_policy_cache",
+        lambda: CloudPolicyCacheSnapshot(None),
+    )
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.codex_cli_authenticated_fingerprint",
+        lambda _executable, *, expected_launcher_digest: {
+            "version": "codex-cli 0.147.0",
+            "launcher_digest": expected_launcher_digest,
+        },
+    )
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.snapshot_pinned_model_catalog",
+        lambda: model_catalog,
+    )
+
+    def preflight_failure(**_kwargs: object) -> object:
+        raise RuntimeError("synthetic no-tools preflight failed")
+
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.attest_codex_no_tools",
+        preflight_failure,
+    )
+    monkeypatch.setattr(PrototypePairCampaignStore, "open", _forbidden("store"))
+    monkeypatch.setattr(OfficialPanelArchive, "load", _forbidden("archive load"))
+    monkeypatch.setattr(OfficialPanelArchive, "read_panel", _forbidden("panel read"))
+    monkeypatch.setattr(ReleasedOfficialPanel, "release", _forbidden("panel release"))
+    monkeypatch.setattr(
+        "bongard.prototype_pair_campaign_cli.snapshot_python_runtime_identity",
+        _forbidden("Python runtime snapshot after failed preflight"),
+    )
+
+    with pytest.raises(RuntimeError, match="no-tools preflight failed"):
+        prepare_prototype_pair_campaign_launch(
+            **paths.metadata_kwargs(),
+            official_archive_path=paths.archive,
+            store_root=paths.store,
+            expected_codex_launcher_sha256=_LAUNCHER_SHA256,
+        )
+    assert not paths.store.exists()

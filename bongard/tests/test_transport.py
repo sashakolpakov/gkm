@@ -41,6 +41,11 @@ def source_codex_home(
     source = tmp_path / "source-codex-home"
     source.mkdir()
     monkeypatch.setenv("CODEX_HOME", str(source))
+    monkeypatch.setattr(
+        T,
+        "_resolve_no_tools_attestation",
+        lambda **_kwargs: "a" * 64,
+    )
     return source
 
 
@@ -156,7 +161,8 @@ def _install_fake_cli(
         command = list(command)
         calls.append((command, kwargs))
         if len(command) == 2 and command[1] == "--version":
-            kwargs["stdout"].write(b"codex-cli 0.test\n")
+            kwargs["stdout"].write(
+                (T.PINNED_CODEX_CLI_VERSION + "\n").encode("utf-8"))
             kwargs["stdout"].flush()
             return subprocess.CompletedProcess(command, 0)
         raise AssertionError(f"unexpected subprocess.run call: {command!r}")
@@ -407,7 +413,8 @@ def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
     assert observed["images"] == expected
     assert observed["schema"] == T._canonical_json_bytes(SIMPLE_SCHEMA)
     assert observed["mode"] == 0o700
-    assert observed["files"] == sorted([*T._PANEL_NAMES, "output_schema.json"])
+    assert observed["files"] == sorted([
+        *T._PANEL_NAMES, "model_catalog.json", "output_schema.json"])
     assert os.path.commonpath((str(observed["view"]), T.WORKSPACE_ROOT)) != (
         T.WORKSPACE_ROOT
     )
@@ -431,7 +438,7 @@ def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
     ]
     assert disabled == list(T._DISABLED_FEATURES)
     assert "code_mode" in disabled
-    assert "code_mode_host" not in disabled
+    assert "code_mode_host" in disabled
     assert "shell_snapshot" in disabled
     assert "view_image" in disabled
     for secret in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "UNRELATED_SECRET"):

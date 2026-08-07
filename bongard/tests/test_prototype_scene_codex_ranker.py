@@ -8,6 +8,7 @@ from typing import Any, Mapping
 
 import pytest
 
+import bongard.transport as transport_module
 from bongard.canonical import canonical_digest
 from bongard.prototype_scene_codex_ranker import (
     MAX_SURVIVOR_COUNT,
@@ -16,17 +17,25 @@ from bongard.prototype_scene_codex_ranker import (
     PrototypeSceneCodexRankerError,
     prototype_scene_codex_ranker_authority_data,
     prototype_scene_codex_ranker_output_schema,
+    prototype_scene_codex_ranker_prompt,
     prototype_scene_codex_ranker_protocol_digest,
     prototype_scene_codex_ranker_source_digest,
     prototype_scene_codex_ranker_transport_source_digest,
+    verify_prototype_scene_codex_rank_response,
 )
 from bongard.prototype_scene_headless_runner import (
     PrototypeSceneHeadlessError,
     PrototypeSceneRankResponse,
 )
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.transport import (
+    CODEX_APPLY_PATCH_TOOL_TYPE,
+    CODEX_EFFECTIVE_TOOL_MODE,
     CODEX_ISOLATION_POLICY,
     CODEX_RECEIPT_SCHEMA,
+    CODEX_TOOL_SURFACE_DIGEST,
+    CODEX_TRANSPORT_POLICY_DIGEST,
+    PINNED_CODEX_CLI_VERSION,
     TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
     CloudPolicyCacheSnapshot,
     CodexReceipt,
@@ -34,9 +43,10 @@ from bongard.transport import (
 )
 
 
-MODEL = "gpt-test"
+MODEL = "gpt-5.6-sol"
 EFFORT = "medium"
 LAUNCHER_DIGEST = "b" * 64
+MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(LAUNCHER_DIGEST)
 RANK_INPUT_DIGEST = "sha256:" + "a" * 64
 SURVIVORS = (
     "prototype-scene:atom:opaque_visual_tag_0",
@@ -52,21 +62,22 @@ def _receipt(
     *,
     launcher_digest: str = LAUNCHER_DIGEST,
 ) -> CodexReceipt:
-    prompt_digest = hashlib.sha256(prompt.encode("utf-8")).hexdigest()
     schema_digest = canonical_digest(dict(schema))
-    zero_view_digest = canonical_digest([])
-    zero_set_digest = "sha256:" + canonical_digest(
-        {"schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA, "images": []}
-    )
-    envelope = {
-        "schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
-        "task": prompt,
-        "image_count": 0,
-        "image_view_digest": zero_view_digest,
-        "image_set_digest": zero_set_digest,
-        "prompt_digest": prompt_digest,
-        "output_schema_digest": schema_digest,
+    text_capture = NO_TOOLS_ATTESTATION.to_dict()["captures"][0]
+    binding = {
+        "model_catalog_digest": MODEL_CATALOG.raw_digest,
+        "transport_policy_digest": CODEX_TRANSPORT_POLICY_DIGEST,
+        "command_digest": text_capture["normalized_command_digest"],
+        "effective_tool_mode": CODEX_EFFECTIVE_TOOL_MODE,
+        "apply_patch_tool_type": CODEX_APPLY_PATCH_TOOL_TYPE,
+        "tool_surface_digest": CODEX_TOOL_SURFACE_DIGEST,
+        "tool_surface_attestation_digest": (
+            NO_TOOLS_ATTESTATION.attestation_digest
+        ),
     }
+    causal = transport_module._causal_text_input_metadata(
+        prompt, schema_digest, binding
+    )
     body: dict[str, Any] = {
         "schema": CODEX_RECEIPT_SCHEMA,
         "source": "codex-cli",
@@ -79,18 +90,11 @@ def _receipt(
         "output_tokens": 10,
         "reasoning_output_tokens": 2,
         "thread_id": "00000000-0000-4000-8000-000000000031",
-        "codex_cli_version": "codex-cli test",
+        "codex_cli_version": PINNED_CODEX_CLI_VERSION,
         "codex_launcher_digest": launcher_digest,
         "cloud_config_bundle_cache_binding": "absent",
-        "task_digest": prompt_digest,
-        "current_source_digest": "",
-        "current_log_digest": "",
-        "prompt_digest": prompt_digest,
-        "input_digest_schema": TEXT_STRUCTURED_INPUT_DIGEST_SCHEMA,
-        "input_digest": canonical_digest(envelope),
+        **causal,
         "output_schema_digest": schema_digest,
-        "panel_view_digest": zero_view_digest,
-        "panel_set_digest": zero_set_digest,
         "structured_output_digest": canonical_digest(dict(payload)),
         "proposed_source_digest": "",
         "proposed_log_digest": "",
@@ -125,6 +129,8 @@ def _ranker(transport) -> PrototypeSceneCodexRanker:
         expected_transport_source_digest=(
             prototype_scene_codex_ranker_transport_source_digest()
         ),
+        model_catalog_snapshot=MODEL_CATALOG,
+        no_tools_attestation=NO_TOOLS_ATTESTATION,
         transport=transport,
     )
 
@@ -139,6 +145,11 @@ def test_exact_text_only_permutation_is_receipted_and_cold_verified() -> None:
         assert kwargs["reasoning_effort"] == EFFORT
         assert kwargs["expected_launcher_digest"] == LAUNCHER_DIGEST
         assert kwargs["cloud_policy_cache_snapshot"].binding == "absent"
+        assert kwargs["model_catalog_snapshot"] is MODEL_CATALOG
+        assert kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
+        assert kwargs["expected_tool_surface_attestation_digest"] == (
+            NO_TOOLS_ATTESTATION.attestation_digest
+        )
         assert RANK_INPUT_DIGEST in prompt
         assert all(item in prompt for item in SURVIVORS)
         lowered = prompt.lower()
@@ -244,6 +255,72 @@ def test_foreign_prompt_launcher_or_payload_receipt_is_rejected() -> None:
         _ranker(foreign_payload_digest)(SURVIVORS, RANK_INPUT_DIGEST)
 
 
+def test_foreign_attestation_receipt_is_rejected_live_and_cold() -> None:
+    payload = {"ordered_candidate_ids": list(SURVIVORS)}
+    prompt = prototype_scene_codex_ranker_prompt(SURVIVORS, RANK_INPUT_DIGEST)
+    schema = prototype_scene_codex_ranker_output_schema(SURVIVORS)
+    receipt = _receipt(prompt, schema, payload).to_dict()
+    foreign_attestation_digest = "e" * 64
+    binding = {
+        "model_catalog_digest": receipt["model_catalog_digest"],
+        "transport_policy_digest": receipt["transport_policy_digest"],
+        "command_digest": receipt["command_digest"],
+        "effective_tool_mode": receipt["effective_tool_mode"],
+        "apply_patch_tool_type": receipt["apply_patch_tool_type"],
+        "tool_surface_digest": receipt["tool_surface_digest"],
+        "tool_surface_attestation_digest": foreign_attestation_digest,
+    }
+    receipt.update(
+        transport_module._causal_text_input_metadata(
+            prompt, canonical_digest(schema), binding
+        )
+    )
+    receipt["receipt_digest"] = canonical_digest(
+        {key: value for key, value in receipt.items() if key != "receipt_digest"}
+    )
+    forged_receipt = CodexReceipt(
+        **{
+            **receipt,
+            "event_types": tuple(receipt["event_types"]),
+            "item_types": tuple(receipt["item_types"]),
+        }
+    )
+
+    def transport(_prompt, _schema, **_kwargs):
+        return CodexStructuredResult(payload, forged_receipt)
+
+    with pytest.raises(PrototypeSceneCodexRankerError, match="environment"):
+        _ranker(transport)(SURVIVORS, RANK_INPUT_DIGEST)
+
+    ranker = _ranker(lambda *_args, **_kwargs: None)
+    response = PrototypeSceneRankResponse.seal(
+        ordered_candidate_ids=SURVIVORS,
+        ranker_protocol_id=PROTOTYPE_SCENE_CODEX_RANKER_PROTOCOL_ID,
+        ranker_protocol_digest=ranker.protocol_digest,
+        model_id=MODEL,
+        model_identity_digest=ranker.model_identity_digest,
+        environment_digest=ranker.environment_digest,
+        input_digest=RANK_INPUT_DIGEST,
+        receipt=receipt,
+    )
+    with pytest.raises(PrototypeSceneCodexRankerError, match="environment"):
+        verify_prototype_scene_codex_rank_response(
+            response,
+            survivor_candidate_ids=SURVIVORS,
+            rank_input_digest=RANK_INPUT_DIGEST,
+            expected_response_digest=response.record_digest,
+            model=MODEL,
+            reasoning_effort=EFFORT,
+            expected_launcher_digest=LAUNCHER_DIGEST,
+            expected_cloud_policy_cache_binding="absent",
+            expected_transport_source_digest=(
+                prototype_scene_codex_ranker_transport_source_digest()
+            ),
+            model_catalog_snapshot=MODEL_CATALOG,
+            no_tools_attestation=NO_TOOLS_ATTESTATION,
+        )
+
+
 def test_external_source_policy_and_launcher_pins_fail_before_transport() -> None:
     calls = 0
 
@@ -259,6 +336,8 @@ def test_external_source_policy_and_launcher_pins_fail_before_transport() -> Non
         "expected_transport_source_digest": (
             prototype_scene_codex_ranker_transport_source_digest()
         ),
+        "model_catalog_snapshot": MODEL_CATALOG,
+        "no_tools_attestation": NO_TOOLS_ATTESTATION,
         "transport": forbidden,
     }
     with pytest.raises(PrototypeSceneCodexRankerError, match="launcher"):

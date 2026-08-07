@@ -27,6 +27,7 @@ from bongard.prototype_scene_calibration import (
     calibration_algorithm_digest,
     threshold_commitment,
 )
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 
 
 _PLAN_PATH = (
@@ -66,6 +67,9 @@ def _identities(
     }
     source_digests["observer"] = _raw("observer-final-a1df9d")
     source_digests["transport"] = _raw("transport-final-0848ee")
+    catalog, attestation = canonical_no_tools_runtime(
+        _LAUNCHER, cloud_policy_cache_binding=_POLICY_CACHE
+    )
     return PrototypePairExecutionIdentities.create(
         exposure_predecessor_digest=plan.exposure_predecessor_digest,
         execution_configuration_digest=(
@@ -86,11 +90,16 @@ def _identities(
         ranker_model_id="gpt-5.6-sol",
         ranker_reasoning_effort="medium",
         ranker_model_identity_digest=_raw("ranker:gpt-5.6-sol:medium"),
+        ranker_protocol_id="headless.codex.prototype-scene.text-ranker.v1",
+        ranker_protocol_digest=_address("ranker protocol"),
+        ranker_environment_digest=_address("ranker environment"),
         runner_protocol_id="bongard.prototype-pair-headless-runner/v1",
         runner_algorithm_digest=_address("runner algorithm"),
         codex_cli_version="codex-test-pinned",
         codex_launcher_sha256=_LAUNCHER,
         cloud_policy_cache_binding=_POLICY_CACHE,
+        codex_model_catalog_snapshot=catalog,
+        codex_no_tools_attestation=attestation,
         python_runtime_id="cpython-test-pinned",
         python_runtime_identity_digest=_raw("python runtime"),
         runtime_source_digests=source_digests,
@@ -221,6 +230,15 @@ def test_exact_threshold_model_cli_policy_runtime_and_source_identities_are_boun
     assert precommit.identities.execution_configuration_digest == _address(
         "execution configuration"
     )
+    assert precommit.identities.codex_model_catalog_snapshot.raw_digest == (
+        precommit.identities.codex_no_tools_attestation.model_catalog_digest
+    )
+    assert precommit.identities.codex_no_tools_attestation.to_dict()[
+        "modality_coverage"
+    ] == ["text", "named_image"]
+    assert precommit.identities.ranker_environment_digest == _address(
+        "ranker environment"
+    )
     assert REQUIRED_RUNTIME_SOURCE_ROLES <= set(
         dict(precommit.identities.runtime_source_digests)
     )
@@ -263,6 +281,16 @@ def test_serialized_tamper_and_external_pin_drift_fail_closed() -> None:
         PrototypePairExecutionPrecommit.from_data(tampered)
     tampered = json.loads(json.dumps(precommit.to_data()))
     tampered["roles"]["query"][0]["source_panel_id"] = "bd/forged/1/0.png"
+    with pytest.raises(PrototypePairExecutionPrecommitError):
+        PrototypePairExecutionPrecommit.from_data(tampered)
+    tampered = json.loads(json.dumps(precommit.to_data()))
+    tampered["identities"]["codex"]["model_catalog"]["exact_utf8"] += " "
+    with pytest.raises(PrototypePairExecutionPrecommitError):
+        PrototypePairExecutionPrecommit.from_data(tampered)
+    tampered = json.loads(json.dumps(precommit.to_data()))
+    tampered["identities"]["codex"]["no_tools_attestation"]["captures"][0][
+        "request_path"
+    ] = "/v1/forged"
     with pytest.raises(PrototypePairExecutionPrecommitError):
         PrototypePairExecutionPrecommit.from_data(tampered)
     with pytest.raises(PrototypePairExecutionPrecommitError, match="exposure"):
@@ -337,5 +365,6 @@ def test_constructor_is_metadata_only_and_python_authoritative(
         for alias in node.names
     }
     assert not any("lean" in name.lower() for name in imported)
-    assert not any("transport" in name.lower() for name in imported)
+    assert "run_codex_named_images_structured" not in imported
+    assert "attest_codex_no_tools" not in imported
     assert "ExposureLedger" not in imported
