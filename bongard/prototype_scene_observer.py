@@ -8,10 +8,12 @@ conditions the visual measurement, but is never parsed as code or used as
 executable predicate authority; the resulting finite score cells are the
 Python-authoritative observation record.
 
-Every model-visible byte is receipt-attested.  Any transport or parser failure
-produces an exhaustive pair of ERROR values and can never mean absence.  Cold
-verification reconstructs prompts, schemas, names, and exact byte snapshots
-without invoking a model or resolving corpus paths.
+Every model-visible byte is receipt-attested.  Invalid nondecisional scene
+prose is recorded separately and cannot erase valid score cells.  A transport
+failure or invalid score grammar still produces an exhaustive pair of ERROR
+values and can never mean absence.  Cold verification reconstructs prompts,
+schemas, names, and exact byte snapshots without invoking a model or resolving
+corpus paths.
 """
 
 from __future__ import annotations
@@ -68,7 +70,10 @@ PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA = (
     "gkm.bongard-prototype-rubric-description-artifact.v2"
 )
 PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA = (
-    "gkm.bongard-prototype-scene-observer-artifact.v2"
+    "gkm.bongard-prototype-scene-observer-artifact.v3"
+)
+PROTOTYPE_SCENE_DESCRIPTION_OBSERVATION_SCHEMA = (
+    "gkm.bongard-prototype-scene-description-observation.v1"
 )
 PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID = (
     "bongard.prototype-scene-observer/two-phase-neutral-prototypes-v1"
@@ -87,7 +92,7 @@ _MAX_PNG_PIXELS = 16_777_216
 _MAX_PROSE_BYTES = 768
 _PROSE_SHAPE = re.compile(r"[A-Za-z0-9][A-Za-z0-9 ,.\'-]{0,767}\Z")
 _FORBIDDEN_WORD = re.compile(
-    r"\b(?:task|side|label|candidate|formula|query|path|system|developer|"
+    r"\b(?:task|label|candidate|formula|query|path|system|developer|"
     r"assistant|user|tool|prompt|instruction|ignore|override|bypass|role|"
     r"function|code|python|lean|theorem|predicate|schema|answer|output|"
     r"positive|negative|class)s?\b",
@@ -96,6 +101,12 @@ _FORBIDDEN_WORD = re.compile(
 _FORBIDDEN_TEXT_SYNTAX = re.compile(
     r"(?:https?://|file://|[\\/{}\[\]();:=<>`$]|<\||\|>|\.\.)",
     re.IGNORECASE,
+)
+_MODEL_VISIBLE_PROSE_POLICY = (
+    "Use one nonempty trimmed sentence of at most 768 UTF-8 bytes. Use only "
+    "ASCII letters, digits, spaces, commas, periods, apostrophes, and hyphens. "
+    "Do not write links, filesystem syntax, delimiters, commands, source "
+    "identifiers, hidden group meanings, or executable text."
 )
 _SOURCE_SHA256 = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
 
@@ -125,6 +136,12 @@ class PrototypeSceneScoreState(str, Enum):
     SCORED = "scored"
     INDETERMINATE = "indeterminate"
     ERROR = "error"
+
+
+class PrototypeSceneDescriptionState(str, Enum):
+    DEFINED = "defined"
+    REJECTED = "rejected"
+    UNAVAILABLE = "unavailable"
 
 
 def _require_digest(value: object, label: str) -> str:
@@ -722,6 +739,129 @@ class PrototypeRubric:
 
 
 @dataclass(frozen=True, order=True, slots=True)
+class PrototypeSceneDescriptionObservation:
+    """Nondecisional validation result for the model's scene prose.
+
+    The raw response remains receipt-bound in ``model_payload``.  Only prose
+    that crosses the neutral-text boundary is promoted here; rejection never
+    erases or changes independently valid score cells.
+    """
+
+    state: PrototypeSceneDescriptionState
+    prose: str | None
+    reason_code: str | None
+    error_type: str | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.state, PrototypeSceneDescriptionState):
+            raise TypeError(
+                "scene description state must be PrototypeSceneDescriptionState"
+            )
+        if self.state is PrototypeSceneDescriptionState.DEFINED:
+            _validate_prose(self.prose, "scene description prose")
+            if self.reason_code is not None or self.error_type is not None:
+                raise PrototypeSceneObserverError(
+                    "defined scene description carries failure fields"
+                )
+        elif self.state is PrototypeSceneDescriptionState.REJECTED:
+            if (
+                self.prose is not None
+                or self.reason_code != "neutral_prose_rejected"
+                or self.error_type != "PrototypeSceneDescriptionPayloadError"
+            ):
+                raise PrototypeSceneObserverError(
+                    "rejected scene description is not canonical"
+                )
+        else:
+            if self.prose is not None:
+                raise PrototypeSceneObserverError(
+                    "unavailable scene description carries prose"
+                )
+            _require_code(self.reason_code, "scene description reason code")
+            _require_code(self.error_type, "scene description error type")
+
+    @classmethod
+    def defined(cls, prose: str) -> "PrototypeSceneDescriptionObservation":
+        return cls(
+            PrototypeSceneDescriptionState.DEFINED,
+            prose,
+            None,
+            None,
+        )
+
+    @classmethod
+    def rejected(cls) -> "PrototypeSceneDescriptionObservation":
+        return cls(
+            PrototypeSceneDescriptionState.REJECTED,
+            None,
+            "neutral_prose_rejected",
+            "PrototypeSceneDescriptionPayloadError",
+        )
+
+    @classmethod
+    def unavailable(
+        cls, reason_code: str, error_type: str
+    ) -> "PrototypeSceneDescriptionObservation":
+        return cls(
+            PrototypeSceneDescriptionState.UNAVAILABLE,
+            None,
+            reason_code,
+            error_type,
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": PROTOTYPE_SCENE_DESCRIPTION_OBSERVATION_SCHEMA,
+            "state": self.state.value,
+            "prose": self.prose,
+            "reason_code": self.reason_code,
+            "error_type": self.error_type,
+            "nondecisional": True,
+        }
+
+    @classmethod
+    def from_data(
+        cls, value: Mapping[str, Any]
+    ) -> "PrototypeSceneDescriptionObservation":
+        raw = _exact_fields(
+            value,
+            {
+                "schema",
+                "state",
+                "prose",
+                "reason_code",
+                "error_type",
+                "nondecisional",
+            },
+            "prototype scene description observation",
+        )
+        if (
+            raw["schema"] != PROTOTYPE_SCENE_DESCRIPTION_OBSERVATION_SCHEMA
+            or raw["nondecisional"] is not True
+        ):
+            raise PrototypeSceneObserverError(
+                "unsupported or decisional scene description observation"
+            )
+        try:
+            state = PrototypeSceneDescriptionState(raw["state"])
+        except (TypeError, ValueError) as exc:
+            raise PrototypeSceneObserverError(
+                "unknown scene description state"
+            ) from exc
+        result = cls(
+            state,
+            raw["prose"],
+            raw["reason_code"],
+            raw["error_type"],
+        )
+        if result.to_data() != dict(raw):
+            raise PrototypeSceneObserverError(
+                "scene description observation is not canonical"
+            )
+        return result
+
+
+@dataclass(frozen=True, order=True, slots=True)
 class PrototypeSceneScore:
     tag_id: str
     group_id: str
@@ -865,15 +1005,18 @@ def prototype_rubric_description_prompt() -> str:
         "later be used only as a fixed visual rubric for detecting whether a "
         "new scene contains at least one similar object. Do not give commands, "
         "locations, source names, hidden roles, or executable text. Return both "
-        "groups in the declared order. In each rubric use only ordinary words, "
-        "spaces, commas, periods, apostrophes, and hyphens."
+        "groups in the declared order. For each rubric: "
+        f"{_MODEL_VISIBLE_PROSE_POLICY}"
     )
 
 
 def prototype_rubric_description_output_schema() -> dict[str, object]:
     rubric_properties: dict[str, object] = {
         "group_id": {"type": "string", "enum": list(PROTOTYPE_GROUP_IDS)},
-        "rubric": {"type": "string"},
+        "rubric": {
+            "type": "string",
+            "description": _MODEL_VISIBLE_PROSE_POLICY,
+        },
     }
     return {
         "type": "object",
@@ -906,7 +1049,14 @@ def prototype_scene_observer_output_schema() -> dict[str, object]:
     return {
         "type": "object",
         "properties": {
-            "description": {"type": "string"},
+            "description": {
+                "type": "string",
+                "description": (
+                    _MODEL_VISIBLE_PROSE_POLICY
+                    + " This audit prose is nondecisional; its rejection does not "
+                    "change independently valid score cells."
+                ),
+            },
             "cells": {
                 "type": "array",
                 "items": {
@@ -953,9 +1103,9 @@ def prototype_scene_observer_prompt(rubrics: Sequence[PrototypeRubric]) -> str:
         "For an indeterminate cell, both interval values must be null and "
         "reason_code must be a short identifier. Also return one concise "
         "neutral prose sentence describing the visible scene. In that sentence "
-        "use only ordinary words, spaces, commas, periods, apostrophes, and "
-        "hyphens. Do not give commands, locations, source names, hidden roles, "
-        "or executable text.\n\nFrozen group descriptions:\n"
+        f"follow this exact policy: {_MODEL_VISIBLE_PROSE_POLICY} The scene "
+        "sentence is audit evidence only and cannot change the two score cells."
+        "\n\nFrozen group descriptions:\n"
         f"{rendered}"
     )
 
@@ -1012,14 +1162,14 @@ def prototype_scene_scoring_protocol_digest() -> str:
     validate_codex_strict_output_schema(schema)
     return canonical_digest(
         {
-            "schema": "gkm.bongard-prototype-scoring-protocol.v1",
+            "schema": "gkm.bongard-prototype-scoring-protocol.v2",
             "protocol_id": PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
             "phase": "whole-scene-scoring",
             "source_digest": prototype_scene_observer_source_digest(),
             "transport_source_digest": prototype_scene_transport_source_digest(),
             "receipt_schema": CODEX_RECEIPT_SCHEMA,
             "isolation_policy": CODEX_ISOLATION_POLICY,
-            "prompt_family": "frozen-two-rubric-neutral-scene-v1",
+            "prompt_family": "frozen-two-rubric-neutral-scene-v2",
             "output_schema_digest": canonical_digest(schema),
             "ordered_names": [
                 "scene.png",
@@ -1031,7 +1181,10 @@ def prototype_scene_scoring_protocol_digest() -> str:
             ],
             "score_order": list(PROTOTYPE_GROUP_IDS),
             "receipt_domain": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
-            "failure_semantics": "both-score-cells-error-never-absence",
+            "failure_semantics": (
+                "invalid-audit-prose-is-nondecisional-and-preserves-valid-scores;"
+                "invalid-score-grammar-makes-both-score-cells-error-never-absence"
+            ),
             "prose_role": "frozen-empirical-measurement-rubric",
             "prose_conditions_observation": True,
             "prose_is_never_executable": True,
@@ -1224,9 +1377,11 @@ def _parse_rubric_payload(
 
 def _parse_scene_payload(
     payload: Mapping[str, Any],
-) -> tuple[str, tuple[PrototypeSceneScore, ...]]:
+) -> tuple[
+    PrototypeSceneDescriptionObservation,
+    tuple[PrototypeSceneScore, ...],
+]:
     raw = _exact_fields(payload, {"description", "cells"}, "scene payload")
-    description = _validate_prose(raw["description"], "scene description")
     values = _json_list(raw["cells"], "scene cells")
     if len(values) != 2:
         raise PrototypeScenePayloadError("scene payload does not exhaust both groups")
@@ -1278,7 +1433,31 @@ def _parse_scene_payload(
                 ) from exc
         else:
             raise PrototypeScenePayloadError("unknown scene cell state")
-    return description, tuple(scores)
+    return _parse_scene_description(raw["description"]), tuple(scores)
+
+
+def _parse_scene_description(
+    value: object,
+) -> PrototypeSceneDescriptionObservation:
+    """Validate nondecisional scene prose without changing score semantics."""
+
+    try:
+        prose = _validate_prose(value, "scene description")
+    except (PrototypeSceneObserverError, TypeError, ValueError):
+        return PrototypeSceneDescriptionObservation.rejected()
+    return PrototypeSceneDescriptionObservation.defined(prose)
+
+
+def _description_observation_from_scene_payload(
+    payload: Mapping[str, Any],
+) -> PrototypeSceneDescriptionObservation:
+    """Reconstruct prose state even when the decisional cell grammar fails."""
+
+    try:
+        raw = _exact_fields(payload, {"description", "cells"}, "scene payload")
+    except (PrototypeSceneObserverError, TypeError, ValueError):
+        return PrototypeSceneDescriptionObservation.rejected()
+    return _parse_scene_description(raw["description"])
 
 
 def _description_artifact_preimage(
@@ -1661,7 +1840,7 @@ def _scene_artifact_preimage(
         "failure_code": artifact.failure_code,
         "failure_type": artifact.failure_type,
         "failure_digest": artifact.failure_digest,
-        "description": artifact.description,
+        "description_observation": artifact.description_observation.to_data(),
         "scores": [item.to_data() for item in artifact.scores],
         "runtime_authority": _authority_data(),
     }
@@ -1696,7 +1875,7 @@ class PrototypeSceneObserverArtifact:
     failure_code: str | None
     failure_type: str | None
     failure_digest: str | None
-    description: str
+    description_observation: PrototypeSceneDescriptionObservation
     scores: tuple[PrototypeSceneScore, ...]
     artifact_digest: str
     _sealed_digest: str = field(init=False, repr=False, compare=False)
@@ -1773,7 +1952,12 @@ class PrototypeSceneObserverArtifact:
         )
         if tuple(item.name for item in self.presentation) != expected_names:
             raise PrototypeSceneObserverError("scene presentation order differs")
-        _validate_prose(self.description, "scene audit description")
+        if not isinstance(
+            self.description_observation, PrototypeSceneDescriptionObservation
+        ):
+            raise TypeError(
+                "scene description_observation must be typed"
+            )
         if tuple((item.tag_id, item.group_id) for item in self.scores) != tuple(
             zip(OPAQUE_TAG_IDS, PROTOTYPE_GROUP_IDS, strict=True)
         ):
@@ -1803,8 +1987,11 @@ class PrototypeSceneObserverArtifact:
                 raise PrototypeSceneObserverError(
                     "successful scene observation lacks payload or receipt"
                 )
-            description, scores = _parse_scene_payload(payload)
-            if description != self.description or scores != self.scores:
+            description_observation, scores = _parse_scene_payload(payload)
+            if (
+                description_observation != self.description_observation
+                or scores != self.scores
+            ):
                 raise PrototypeSceneObserverError(
                     "successful scene payload differs from sealed values"
                 )
@@ -1820,6 +2007,12 @@ class PrototypeSceneObserverArtifact:
             else:
                 raise PrototypeSceneObserverError(
                     "scene parser-error payload is admissible"
+                )
+            if self.description_observation != (
+                _description_observation_from_scene_payload(payload)
+            ):
+                raise PrototypeSceneObserverError(
+                    "scene parser-error description state differs from payload"
                 )
             if self.scores != _score_error_pair(
                 "observer_payload_rejected", "PrototypeScenePayloadError"
@@ -1838,6 +2031,15 @@ class PrototypeSceneObserverArtifact:
                 raise PrototypeSceneObserverError(
                     "scene transport failure is not exhaustive ERROR"
                 )
+            if self.description_observation != (
+                PrototypeSceneDescriptionObservation.unavailable(
+                    "observer_transport_failed",
+                    "PrototypeSceneTransportFailure",
+                )
+            ):
+                raise PrototypeSceneObserverError(
+                    "scene transport description state differs"
+                )
         elif self.status is PrototypeSceneObserverStatus.INTERNAL_ERROR:
             if self.receipt is not None or payload is not None:
                 raise PrototypeSceneObserverError(
@@ -1853,6 +2055,14 @@ class PrototypeSceneObserverArtifact:
                 raise PrototypeSceneObserverError(
                     "scene internal failure is not exhaustive ERROR"
                 )
+            if self.description_observation != (
+                PrototypeSceneDescriptionObservation.unavailable(
+                    "observer_internal_error", "PrototypeSceneInternalError"
+                )
+            ):
+                raise PrototypeSceneObserverError(
+                    "scene internal description state differs"
+                )
         else:
             if self.receipt is not None or payload is not None:
                 raise PrototypeSceneObserverError(
@@ -1864,6 +2074,15 @@ class PrototypeSceneObserverArtifact:
             ):
                 raise PrototypeSceneObserverError(
                     "scene prerequisite failure is not exhaustive ERROR"
+                )
+            if self.description_observation != (
+                PrototypeSceneDescriptionObservation.unavailable(
+                    "rubric_prerequisite_failed",
+                    "PrototypeRubricPrerequisiteFailure",
+                )
+            ):
+                raise PrototypeSceneObserverError(
+                    "scene prerequisite description state differs"
                 )
         if self.receipt is not None:
             try:
@@ -1941,7 +2160,7 @@ class PrototypeSceneObserverArtifact:
                 "failure_code",
                 "failure_type",
                 "failure_digest",
-                "description",
+                "description_observation",
                 "scores",
                 "runtime_authority",
                 "artifact_digest",
@@ -1956,7 +2175,14 @@ class PrototypeSceneObserverArtifact:
         _validate_authority(authority)
         raw_presentation = _json_list(raw["presentation"], "scene presentation")
         raw_scores = _json_list(raw["scores"], "scene scores")
-        if any(not isinstance(item, Mapping) for item in (*raw_presentation, *raw_scores)):
+        raw_description_observation = raw["description_observation"]
+        if (
+            any(
+                not isinstance(item, Mapping)
+                for item in (*raw_presentation, *raw_scores)
+            )
+            or not isinstance(raw_description_observation, Mapping)
+        ):
             raise PrototypeSceneObserverError("scene child record is invalid")
         raw_receipt = raw["receipt"]
         result = cls(
@@ -1993,7 +2219,11 @@ class PrototypeSceneObserverArtifact:
             failure_code=raw["failure_code"],
             failure_type=raw["failure_type"],
             failure_digest=raw["failure_digest"],
-            description=raw["description"],
+            description_observation=(
+                PrototypeSceneDescriptionObservation.from_data(
+                    raw_description_observation
+                )
+            ),
             scores=tuple(PrototypeSceneScore.from_data(item) for item in raw_scores),
             artifact_digest=raw["artifact_digest"],
         )
@@ -2615,7 +2845,7 @@ def _build_scene_artifact(
     receipt: CodexReceipt | None,
     failure_code: str | None,
     failure_type: str | None,
-    description: str,
+    description_observation: PrototypeSceneDescriptionObservation,
     scores: tuple[PrototypeSceneScore, ...],
 ) -> PrototypeSceneObserverArtifact:
     prompt = prototype_scene_observer_prompt(rubric_artifact.rubrics)
@@ -2666,7 +2896,7 @@ def _build_scene_artifact(
         "failure_code": failure_code,
         "failure_type": failure_type,
         "failure_digest": failure_digest,
-        "description": description,
+        "description_observation": description_observation,
         "scores": scores,
     }
     provisional = object.__new__(PrototypeSceneObserverArtifact)
@@ -2768,7 +2998,11 @@ def seal_prototype_scene_internal_error(
         receipt=None,
         failure_code="observer_internal_error",
         failure_type=_exception_type(exception),
-        description="The scene measurement ended with an internal failure.",
+        description_observation=(
+            PrototypeSceneDescriptionObservation.unavailable(
+                "observer_internal_error", "PrototypeSceneInternalError"
+            )
+        ),
         scores=_score_error_pair(
             "observer_internal_error", "PrototypeSceneInternalError"
         ),
@@ -2886,8 +3120,11 @@ def observe_prototype_scene(
             receipt=None,
             failure_code="rubric_prerequisite_failed",
             failure_type="PrototypeRubricPrerequisiteFailure",
-            description=(
-                "Scene observation unavailable because reference descriptions failed."
+            description_observation=(
+                PrototypeSceneDescriptionObservation.unavailable(
+                    "rubric_prerequisite_failed",
+                    "PrototypeRubricPrerequisiteFailure",
+                )
             ),
             scores=_score_error_pair(
                 "rubric_prerequisite_failed",
@@ -2933,13 +3170,18 @@ def observe_prototype_scene(
             receipt=None,
             failure_code="transport_failed",
             failure_type=failure_type,
-            description="Scene observation transport failed before values.",
+            description_observation=(
+                PrototypeSceneDescriptionObservation.unavailable(
+                    "observer_transport_failed",
+                    "PrototypeSceneTransportFailure",
+                )
+            ),
             scores=_score_error_pair(
                 "observer_transport_failed", "PrototypeSceneTransportFailure"
             ),
         )
     try:
-        description, scores = _parse_scene_payload(payload)
+        description_observation, scores = _parse_scene_payload(payload)
         return _build_scene_artifact(
             status=PrototypeSceneObserverStatus.SUCCESS,
             catalog=catalog,
@@ -2959,7 +3201,7 @@ def observe_prototype_scene(
             receipt=receipt,
             failure_code=None,
             failure_type=None,
-            description=description,
+            description_observation=description_observation,
             scores=scores,
         )
     except (PrototypeSceneObserverError, TypeError, ValueError):
@@ -2982,7 +3224,9 @@ def observe_prototype_scene(
             receipt=receipt,
             failure_code="payload_rejected",
             failure_type="PrototypeScenePayloadError",
-            description="Scene observation response failed finite value validation.",
+            description_observation=(
+                _description_observation_from_scene_payload(payload)
+            ),
             scores=_score_error_pair(
                 "observer_payload_rejected", "PrototypeScenePayloadError"
             ),
@@ -3103,6 +3347,7 @@ __all__ = [
     "PROTOTYPE_GROUP_IDS",
     "PROTOTYPE_REFERENCE_CATALOG_SCHEMA",
     "PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA",
+    "PROTOTYPE_SCENE_DESCRIPTION_OBSERVATION_SCHEMA",
     "PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA",
     "PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID",
     "NamedImageTransport",
@@ -3112,6 +3357,8 @@ __all__ = [
     "PrototypeRubric",
     "PrototypeRubricDescriptionArtifact",
     "PrototypeRubricState",
+    "PrototypeSceneDescriptionObservation",
+    "PrototypeSceneDescriptionState",
     "PrototypeSceneObserverArtifact",
     "PrototypeSceneObserverError",
     "PrototypeSceneObserverStatus",
