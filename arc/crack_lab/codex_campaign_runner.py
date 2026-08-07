@@ -80,9 +80,44 @@ RECOVERY_PHASE_EVENTS = {
     "codex_taint_cleanup_completed": "cleanup",
     "codex_post_reboot_operator_recovery_completed": "operator",
     "codex_infrastructure_generation_quarantined": "zero_ledger",
+    "codex_sandbox_isolated_generation_abandoned": "sandbox_abandon",
 }
 ZERO_LEDGER_EVENT = "codex_infrastructure_generation_quarantined"
 ZERO_LEDGER_EVENT_SCHEMA = "scheduler_zero_ledger_generation_quarantine_v1"
+SANDBOX_ABANDON_EVENT = "codex_sandbox_isolated_generation_abandoned"
+SANDBOX_ABANDON_EVENT_SCHEMA = (
+    "scheduler_sandbox_isolated_generation_abandoned_v1"
+)
+SANDBOX_RELEASE_AUTHORITY_KIND = "sandbox_isolated_operator_terminal_v1"
+SANDBOX_ABSENCE_SAMPLES = 3
+SANDBOX_ABSENCE_INTERVAL_SECONDS = 0.5
+SANDBOX_CONTRACTS = {
+    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64":
+        hashlib.sha256(
+            b"historical-gkm-codex-exec-ephemeral-strict-config-"
+            b"sandbox-workspace-write-cd-exact-workspace/v1"
+        ).hexdigest(),
+}
+SANDBOX_ABANDON_EVENT_KEYS = frozenset({
+    "event", "schema", "recorded_at", "isolation_authority",
+    "operator_provenance_assumption", "sandbox_contract_sha256",
+    "dispatch_id", "recovery_nonce", "game", "target_level", "reached",
+    "parent_action_count", "retry_complexity_n", "scratch_root",
+    "scratch_root_identity", "scratch_root_disposition",
+    "required_retry_scratch_relation", "workspace", "workspace_identity",
+    "protected_identity", "transcript", "child_returncode",
+    "failure_class", "failure_detail_class", "terminal_errors",
+    "taint_verdict", "retry_increment", "codex_exec_appended",
+    "process_tree_quiesced", "detached_processes_proven_absent",
+    "wip_restore_logical_state_sha256", "canonical_digest",
+    *Status.FRONTIER_BINDING_FIELDS,
+})
+SANDBOX_ISOLATION_RESULT_KEYS = frozenset({
+    "game", "target_level", "reached", "result", "reason",
+    "dispatch_id", "retry_complexity_n", "seed_mode", "wip_mode",
+    "lineage_input_mode", "scratch_root", "scratch_root_disposition",
+    "process_tree_quiesced", "detached_processes_proven_absent",
+})
 ZERO_LEDGER_EVENT_BASE_KEYS = frozenset({
     "event", "schema", "recorded_at", "infrastructure_authority",
     "dispatch_id", "game", "target_level", "reached",
@@ -340,7 +375,9 @@ def _reject_symlinked_ancestry(path: Path, label: str) -> None:
             )
 
 
-def _runner_receipt(plan: dict[str, Any]) -> dict[str, Any] | None:
+def _runner_receipt(
+    plan: dict[str, Any], *, allow_abandoned_scratch: bool = False
+) -> dict[str, Any] | None:
     receipt = plan.get("runner_receipt")
     if receipt is None:
         return None
@@ -411,15 +448,76 @@ def _runner_receipt(plan: dict[str, Any]) -> dict[str, Any] | None:
         raise CampaignPlanError(
             "historical runner is not an approved exact protocol receipt"
         )
+    if not allow_abandoned_scratch:
+        _reject_abandoned_scratch_root(scratch_root, ledger)
     return dict(receipt)
 
 
+def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
+    """Never dispatch into a namespace abandoned by operator isolation."""
+
+    try:
+        records = Guard.read_ledger(ledger)
+    except (OSError, ValueError, Guard.CodexUsageGuardError) as exc:
+        raise CampaignPlanError(
+            "cannot authenticate abandoned scratch namespaces"
+        ) from exc
+    try:
+        current = scratch_root.stat(follow_symlinks=False)
+        current_identity: tuple[int, int] | None = (
+            current.st_dev, current.st_ino
+        )
+    except FileNotFoundError:
+        current_identity = None
+    except OSError as exc:
+        raise CampaignPlanError("runner scratch root is unavailable") from exc
+    try:
+        _reject_symlinked_ancestry(scratch_root, "runner scratch root")
+        resolved_scratch = scratch_root.resolve(strict=True)
+    except OSError as exc:
+        raise CampaignPlanError("runner scratch root is unavailable") from exc
+    for record in records:
+        if (
+            record.get("event") != SANDBOX_ABANDON_EVENT
+            or record.get("schema") != SANDBOX_ABANDON_EVENT_SCHEMA
+        ):
+            continue
+        abandoned = _normalized_absolute_path(
+            record.get("scratch_root"), "abandoned scratch_root"
+        )
+        identity = _marker_identity(
+            record.get("scratch_root_identity"), "abandoned scratch root"
+        )
+        try:
+            _reject_symlinked_ancestry(abandoned, "abandoned scratch root")
+            resolved_abandoned = abandoned.resolve(strict=True)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "abandoned scratch root is unavailable"
+            ) from exc
+        if (
+            scratch_root == abandoned
+            or scratch_root.is_relative_to(abandoned)
+            or abandoned.is_relative_to(scratch_root)
+            or resolved_scratch == resolved_abandoned
+            or resolved_scratch.is_relative_to(resolved_abandoned)
+            or resolved_abandoned.is_relative_to(resolved_scratch)
+            or current_identity == identity
+        ):
+            raise CampaignPlanError(
+                "runner scratch root belongs to an abandoned sandbox namespace"
+            )
+
+
 def _project_runner_receipt(
-    plan: dict[str, Any], item: dict[str, Any]
+    plan: dict[str, Any], item: dict[str, Any], *,
+    allow_abandoned_scratch: bool = False,
 ) -> dict[str, Any]:
     """Project one plan-level historical runner onto any policy-built item."""
 
-    receipt = _runner_receipt(plan)
+    receipt = _runner_receipt(
+        plan, allow_abandoned_scratch=allow_abandoned_scratch
+    )
     if receipt is None:
         if item.get("historical_runner") is not None:
             raise CampaignPlanError(
@@ -540,7 +638,10 @@ def _historical_runner_git_state(worktree: Path) -> tuple[str, bool]:
     )
 
 
-def _validate_runner_prefix(item: dict[str, Any], argv: list[str]) -> None:
+def _validate_runner_prefix(
+    item: dict[str, Any], argv: list[str], *,
+    allow_abandoned_scratch: bool = False,
+) -> None:
     """Admit the current runner or one receipt-bound historical worktree."""
 
     if argv[:3] == ["python3", "-u", "arc/crack_lab/gkm_legs.py"]:
@@ -558,7 +659,10 @@ def _validate_runner_prefix(item: dict[str, Any], argv: list[str]) -> None:
         raise CampaignPlanError(
             f"refusing non-GKM command prefix: {argv[:3]!r}"
         )
-    authority = _runner_receipt({"runner_receipt": authority})
+    authority = _runner_receipt(
+        {"runner_receipt": authority},
+        allow_abandoned_scratch=allow_abandoned_scratch,
+    )
     if authority is None:  # pragma: no cover - guarded by the branch above.
         raise CampaignPlanError("historical runner authority is missing")
     worktree_raw = authority["worktree"]
@@ -616,7 +720,9 @@ def _validate_runner_prefix(item: dict[str, Any], argv: list[str]) -> None:
         )
 
 
-def _revalidate_historical_control(item: dict[str, Any]) -> None:
+def _revalidate_historical_control(
+    item: dict[str, Any], *, allow_abandoned_scratch: bool = False
+) -> None:
     """Recheck every pinned worktree byte surface at a terminal boundary."""
 
     authority = item.get("historical_runner")
@@ -626,7 +732,11 @@ def _revalidate_historical_control(item: dict[str, Any]) -> None:
     # required the complete receipt.  Small direct unit fixtures intentionally
     # exercise lower-level recovery with a reduced authority object.
     if isinstance(authority, dict) and set(authority) == RUNNER_RECEIPT_KEYS:
-        _validate_runner_prefix(item, item["argv"])
+        _validate_runner_prefix(
+            item,
+            item["argv"],
+            allow_abandoned_scratch=allow_abandoned_scratch,
+        )
 
 
 def _read_ledger_locked(path: Path) -> list[dict[str, Any]]:
@@ -3217,10 +3327,15 @@ def validate_inventory_item(
 
 
 def validate_item(
-    item: dict[str, Any], plan: dict[str, Any] | None = None
+    item: dict[str, Any], plan: dict[str, Any] | None = None, *,
+    allow_abandoned_scratch: bool = False,
 ) -> list[str]:
     if plan is not None:
-        projected = _project_runner_receipt(plan, item)
+        projected = _project_runner_receipt(
+            plan,
+            item,
+            allow_abandoned_scratch=allow_abandoned_scratch,
+        )
         if (
             projected.get("historical_runner")
             != item.get("historical_runner")
@@ -3232,7 +3347,9 @@ def validate_item(
     argv = item.get("argv")
     if not isinstance(argv, list) or not argv or not all(isinstance(x, str) for x in argv):
         raise CampaignPlanError("plan item argv must be a nonempty string list")
-    _validate_runner_prefix(item, argv)
+    _validate_runner_prefix(
+        item, argv, allow_abandoned_scratch=allow_abandoned_scratch
+    )
     _artifact_root(item)
     if "--proposer=codex" not in argv or "--model=gpt-5.6-sol" not in argv:
         raise CampaignPlanError("plan item must pin the isolated Codex proposer and model")
@@ -3880,6 +3997,7 @@ def _validate_dispatch_release_intent_record(
         or authority.get("kind") not in {
             "ordinary_safe_terminal_v1",
             "post_reboot_operator_terminal_v1",
+            SANDBOX_RELEASE_AUTHORITY_KIND,
         }
         or not isinstance(authority.get("ledger"), str)
         or not isinstance(authority.get("terminal_event"), str)
@@ -4946,6 +5064,7 @@ def _build_dispatch_release_authority(
     if kind not in {
         "ordinary_safe_terminal_v1",
         "post_reboot_operator_terminal_v1",
+        SANDBOX_RELEASE_AUTHORITY_KIND,
     }:
         raise CampaignPlanError("dispatch release authority kind is invalid")
     prefix = _capture_ledger_prefix(ledger)
@@ -5000,13 +5119,31 @@ def _build_dispatch_release_authority(
             expected_events = {ZERO_LEDGER_EVENT}
         else:
             expected_events = {"codex_level_outcome"}
-    else:
+    elif kind == SANDBOX_RELEASE_AUTHORITY_KIND:
+        expected_events = {SANDBOX_ABANDON_EVENT}
+        if any((
+            terminal_result.get("result") != "sandbox_isolated_noncounting",
+            terminal_result.get("dispatch_id") != marker.dispatch_id,
+            terminal_result.get("process_tree_quiesced") is not False,
+            terminal_result.get("detached_processes_proven_absent") is not False,
+        )):
+            raise CampaignPlanError(
+                "sandbox-isolated terminal result is malformed"
+            )
+    elif kind == "post_reboot_operator_terminal_v1":
         expected_events = {
             "codex_post_reboot_operator_recovery_completed"
         }
+    else:  # pragma: no cover - kind allowlist above is exhaustive.
+        raise CampaignPlanError("dispatch release authority kind is invalid")
     if terminal_event not in expected_events:
         raise CampaignPlanError(
             "dispatch release ledger lacks its terminal phase"
+        )
+    if kind == SANDBOX_RELEASE_AUTHORITY_KIND:
+        _validate_sandbox_abandon_event(item, terminal)
+        _validate_sandbox_isolation_result(
+            item, terminal, terminal_result
         )
     if (
         kind == "ordinary_safe_terminal_v1"
@@ -5378,6 +5515,38 @@ def _read_dispatch_release_marker_phase(
         _validate_dispatch_release_armed_row(
             armed, record=record, authority=authority
         )
+    elif authority.get("kind") == SANDBOX_RELEASE_AUTHORITY_KIND:
+        try:
+            parsed = RebootRecovery.parse_sandboxed_generation_marker(
+                payload, require_recovery_arm=True
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if parsed.recovery_arm is None:
+            raise CampaignPlanError(
+                "sandbox-isolated release lacks its operator arm"
+            )
+        _validate_dispatch_release_armed_row(
+            dict(parsed.armed), record=record, authority=authority
+        )
+        if (
+            parsed.armed.get("wip_rollback_capsule_name")
+            != record.get("capsule_name")
+            or parsed.armed.get("wip_rollback_capsule_identity")
+            != record.get("capsule_identity")
+            or (
+                record.get("capsule_present_at_intent") is True
+                and any((
+                    parsed.armed.get("wip_rollback_capsule_bytes")
+                    != record.get("capsule_bytes"),
+                    parsed.armed.get("wip_rollback_capsule_sha256")
+                    != record.get("capsule_sha256"),
+                ))
+            )
+        ):
+            raise CampaignPlanError(
+                "sandbox-isolated release capsule binding changed"
+            )
     elif authority.get("kind") == "post_reboot_operator_terminal_v1":
         try:
             parsed = RebootRecovery.parse_dispatch_marker(
@@ -5450,6 +5619,7 @@ def _release_coordinate_item(authority: dict[str, Any]) -> dict[str, Any]:
     return {
         "game": authority["game"],
         "target_level": authority["target_level"],
+        "retry_complexity_n": authority["retry_complexity_n"],
         "reached": authority["reached"],
         "parent_action_count": authority["parent_action_count"],
         **{
@@ -5719,6 +5889,24 @@ def _validate_dispatch_release_terminal_prefix(
             raise CampaignPlanError(
                 "ordinary release result is not terminal"
             )
+    elif kind == SANDBOX_RELEASE_AUTHORITY_KIND:
+        if (
+            len(suffix) != 1
+            or suffix[0].get("event") != SANDBOX_ABANDON_EVENT
+            or result.get("result") != "sandbox_isolated_noncounting"
+            or result.get("dispatch_id") != dispatch_id
+            or result.get("process_tree_quiesced") is not False
+            or result.get("detached_processes_proven_absent") is not False
+        ):
+            raise CampaignPlanError(
+                "sandbox-isolated release lacks its exact nonquiescent event"
+            )
+        _validate_sandbox_abandon_event(
+            _release_coordinate_item(authority), suffix[0]
+        )
+        _validate_sandbox_isolation_result(
+            _release_coordinate_item(authority), suffix[0], result
+        )
     elif kind == "post_reboot_operator_terminal_v1":
         if [row.get("event") for row in suffix] != [
             "codex_exec",
@@ -7570,6 +7758,7 @@ def _release_dispatch_quarantine(
 def _read_existing_dispatch_quarantine(
     item: dict[str, Any], *, require_recovery_arm: bool | None = None,
     allow_missing_capsule: bool = False,
+    marker_parser: Any = RebootRecovery.parse_dispatch_marker,
 ) -> tuple[DispatchQuarantine, RebootRecovery.ParsedMarker]:
     """Open and parse one preexisting marker without following aliases."""
 
@@ -7645,7 +7834,7 @@ def _read_existing_dispatch_quarantine(
                 "dispatch quarantine marker changed during read"
             )
         try:
-            parsed = RebootRecovery.parse_dispatch_marker(
+            parsed = marker_parser(
                 bytes(payload), require_recovery_arm=require_recovery_arm
             )
         except RebootRecovery.RecoveryEvidenceError as exc:
@@ -7885,7 +8074,11 @@ def _durably_reseal_staged_file_at(
 
 
 def _atomic_recovery_arm_replace(
-    marker: DispatchQuarantine, arm_record: dict[str, Any]
+    marker: DispatchQuarantine,
+    arm_record: dict[str, Any],
+    *,
+    marker_parser: Any = RebootRecovery.parse_dispatch_marker,
+    sidecar_suffix: str = "post_reboot_arm",
 ) -> dict[str, Any]:
     """Install the third row atomically; a partial sidecar is never authority."""
 
@@ -7896,7 +8089,9 @@ def _atomic_recovery_arm_replace(
         raise CampaignPlanError(
             "recovery arm does not bind the pre-arm marker inode"
         )
-    sidecar = f".{marker.name}.post_reboot_arm"
+    if SAFE_COMPONENT_RE.fullmatch(sidecar_suffix) is None:
+        raise CampaignPlanError("recovery arm sidecar suffix is unsafe")
+    sidecar = f".{marker.name}.{sidecar_suffix}"
     sidecar_payload: bytes | None = None
     installed_arm: dict[str, Any] | None = None
     sidecar_identity: tuple[int, int] | None = None
@@ -7915,7 +8110,7 @@ def _atomic_recovery_arm_replace(
     else:
         os.close(sidecar_fd)
         try:
-            parsed = RebootRecovery.parse_dispatch_marker(
+            parsed = marker_parser(
                 sidecar_payload, require_recovery_arm=True
             )
         except RebootRecovery.RecoveryEvidenceError:
@@ -7938,7 +8133,13 @@ def _atomic_recovery_arm_replace(
                 or any(
                     parsed.recovery_arm.get(field) != value
                     for field, value in arm_record.items()
-                    if field not in {"recorded_at", "recovery_nonce"}
+                    if field not in {
+                        "recorded_at",
+                        "recovery_nonce",
+                        "absence_window_ns",
+                        "absence_first_at",
+                        "absence_last_at",
+                    }
                 )
             ):
                 raise CampaignPlanError(
@@ -8015,7 +8216,7 @@ def _atomic_recovery_arm_replace(
             or observed_identity != sidecar_identity
         ):
             raise CampaignPlanError("post-reboot arm sidecar bytes changed")
-        reparsed = RebootRecovery.parse_dispatch_marker(
+        reparsed = marker_parser(
             observed, require_recovery_arm=True
         )
         if reparsed.recovery_arm != installed_arm:
@@ -8134,7 +8335,8 @@ def _validate_post_reboot_dispatch_binding(
 
 
 def _reconstruct_historical_recovery_item(
-    item: dict[str, Any], authority: dict[str, Any]
+    item: dict[str, Any], authority: dict[str, Any], *,
+    allow_abandoned_scratch: bool = False,
 ) -> dict[str, Any]:
     """Rebuild the exact item committed by a marker/operator receipt.
 
@@ -8159,6 +8361,7 @@ def _reconstruct_historical_recovery_item(
                 else {}
             ),
             item,
+            allow_abandoned_scratch=allow_abandoned_scratch,
         )
     expected_sha = authority.get("projected_item_sha256")
     observed_sha = hashlib.sha256(json.dumps(
@@ -8266,6 +8469,288 @@ def _validate_zero_ledger_event(
             "zero-ledger infrastructure event binding changed"
         )
     _recovery_recorded_at(record, "zero-ledger infrastructure event")
+
+
+def _build_sandbox_abandon_event(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> dict[str, Any]:
+    arm = parsed.recovery_arm
+    if arm is None:
+        raise CampaignPlanError(
+            "sandbox-isolated generation lacks its operator arm"
+        )
+    failed = parsed.unquiesced
+    return {
+        "event": SANDBOX_ABANDON_EVENT,
+        "schema": SANDBOX_ABANDON_EVENT_SCHEMA,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "isolation_authority": (
+            "explicit_operator_assumed_artifact_isolation_v1"
+        ),
+        "operator_provenance_assumption": arm[
+            "operator_provenance_assumption"
+        ],
+        "sandbox_contract_sha256": arm["sandbox_contract_sha256"],
+        "dispatch_id": parsed.dispatch_id,
+        "recovery_nonce": arm["recovery_nonce"],
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "scratch_root": arm["scratch_root"],
+        "scratch_root_identity": arm["scratch_root_identity"],
+        "scratch_root_disposition": "abandoned_in_place",
+        "required_retry_scratch_relation": (
+            "outside_abandoned_path_and_inode"
+        ),
+        "workspace": failed["workspace"],
+        "workspace_identity": failed["workspace_identity"],
+        "protected_identity": failed["protected_identity"],
+        "transcript": failed["transcript"],
+        "child_returncode": None,
+        "failure_class": "infrastructure",
+        "failure_detail_class": "sandbox_isolated_nonquiescent",
+        "terminal_errors": [failed["reason"]],
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+        "wip_restore_logical_state_sha256": parsed.armed[
+            "wip_restore_logical_state_sha256"
+        ],
+        "canonical_digest": parsed.armed["canonical_digest"],
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+
+
+def _validate_sandbox_abandon_event(
+    item: dict[str, Any],
+    parsed_or_record: RebootRecovery.ParsedMarker | dict[str, Any],
+    record: dict[str, Any] | None = None,
+) -> None:
+    """Validate the exact nonquiescent, noncounting isolation receipt."""
+
+    if record is None:
+        # Release-WAL replay has the event and authority coordinate but no
+        # mutable marker parser object.  Validate its exact public semantics.
+        observed = parsed_or_record
+        if not isinstance(observed, dict):
+            raise CampaignPlanError("sandbox isolation event is malformed")
+        expected_coordinate = {
+            field: item.get(field)
+            for field in (
+                "game",
+                "target_level",
+                "reached",
+                "parent_action_count",
+                "retry_complexity_n",
+                *Status.FRONTIER_BINDING_FIELDS,
+            )
+        }
+        fixed = {
+            "event": SANDBOX_ABANDON_EVENT,
+            "schema": SANDBOX_ABANDON_EVENT_SCHEMA,
+            "isolation_authority": (
+                "explicit_operator_assumed_artifact_isolation_v1"
+            ),
+            "operator_provenance_assumption": (
+                "historical_codex_workspace_write_effective_as_invoked"
+            ),
+            "scratch_root_disposition": "abandoned_in_place",
+            "required_retry_scratch_relation": (
+                "outside_abandoned_path_and_inode"
+            ),
+            "child_returncode": None,
+            "failure_class": "infrastructure",
+            "failure_detail_class": "sandbox_isolated_nonquiescent",
+            "taint_verdict": "quarantined",
+            "retry_increment": 0,
+            "codex_exec_appended": False,
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+        }
+        historical = item.get("historical_runner")
+        expected_scratch: str | None = None
+        expected_contract: str | None = None
+        if isinstance(historical, dict):
+            scratch_value = historical.get("scratch_root")
+            source_sha256 = historical.get("source_sha256")
+            if isinstance(scratch_value, str):
+                expected_scratch = os.fspath(
+                    _normalized_absolute_path(
+                        scratch_value, "sandbox event scratch_root"
+                    )
+                )
+            if isinstance(source_sha256, str):
+                expected_contract = SANDBOX_CONTRACTS.get(source_sha256)
+        terminal_errors = observed.get("terminal_errors")
+        if set(observed) != SANDBOX_ABANDON_EVENT_KEYS or any((
+            any(
+                observed.get(field) != value
+                for field, value in expected_coordinate.items()
+            ),
+            any(
+                observed.get(field) != value
+                for field, value in fixed.items()
+            ),
+            not isinstance(observed.get("dispatch_id"), str),
+            isinstance(observed.get("dispatch_id"), str)
+            and RebootRecovery.DISPATCH_ID_RE.fullmatch(
+                observed["dispatch_id"]
+            ) is None,
+            not isinstance(observed.get("recovery_nonce"), str),
+            isinstance(observed.get("recovery_nonce"), str)
+            and RebootRecovery.DISPATCH_ID_RE.fullmatch(
+                observed["recovery_nonce"]
+            ) is None,
+            observed.get("sandbox_contract_sha256")
+            not in set(SANDBOX_CONTRACTS.values()),
+            expected_contract is not None
+            and observed.get("sandbox_contract_sha256")
+            != expected_contract,
+            expected_scratch is not None
+            and observed.get("scratch_root") != expected_scratch,
+            not isinstance(terminal_errors, list),
+            isinstance(terminal_errors, list)
+            and (
+                len(terminal_errors) != 1
+                or not isinstance(terminal_errors[0], str)
+                or not terminal_errors[0]
+            ),
+            not isinstance(observed.get("wip_restore_logical_state_sha256"), str),
+            isinstance(observed.get("wip_restore_logical_state_sha256"), str)
+            and SHA256_RE.fullmatch(
+                observed["wip_restore_logical_state_sha256"]
+            ) is None,
+            not isinstance(observed.get("canonical_digest"), str),
+            isinstance(observed.get("canonical_digest"), str)
+            and SHA256_RE.fullmatch(observed["canonical_digest"]) is None,
+        )):
+            raise CampaignPlanError(
+                "sandbox-isolated infrastructure event binding changed"
+            )
+        _normalized_absolute_path(
+            observed.get("scratch_root"), "sandbox event scratch_root"
+        )
+        _marker_identity(
+            observed.get("scratch_root_identity"), "sandbox scratch root"
+        )
+        _safe_component(observed.get("workspace"), "sandbox workspace")
+        _marker_identity(
+            observed.get("workspace_identity"), "sandbox workspace"
+        )
+        _marker_identity(
+            observed.get("protected_identity"), "sandbox protected evidence"
+        )
+        _safe_component(observed.get("transcript"), "sandbox transcript")
+        try:
+            Status.validate_frontier_binding({
+                field: observed[field]
+                for field in (
+                    *Status.FRONTIER_BINDING_FIELDS,
+                    "game",
+                    "reached",
+                    "target_level",
+                    "parent_action_count",
+                )
+            })
+        except (KeyError, TypeError, ValueError) as exc:
+            raise CampaignPlanError(
+                "sandbox isolation event frontier is invalid"
+            ) from exc
+        _recovery_recorded_at(observed, "sandbox isolation event")
+        return
+    parsed = parsed_or_record
+    if not isinstance(parsed, RebootRecovery.ParsedMarker):
+        raise CampaignPlanError("sandbox isolation marker is malformed")
+    if set(record) != SANDBOX_ABANDON_EVENT_KEYS:
+        raise CampaignPlanError(
+            "sandbox-isolated infrastructure event has an invalid schema"
+        )
+    expected = _build_sandbox_abandon_event(item, parsed)
+    expected.pop("recorded_at")
+    observed = dict(record)
+    observed.pop("recorded_at", None)
+    if observed != expected:
+        raise CampaignPlanError(
+            "sandbox-isolated infrastructure event binding changed"
+        )
+    _recovery_recorded_at(record, "sandbox isolation event")
+
+
+def _sandbox_isolation_result(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> dict[str, Any]:
+    arm = parsed.recovery_arm
+    if arm is None:
+        raise CampaignPlanError("sandbox isolation result lacks its arm")
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "sandbox_isolated_noncounting",
+        "reason": parsed.unquiesced["reason"],
+        "dispatch_id": parsed.dispatch_id,
+        "retry_complexity_n": item["retry_complexity_n"],
+        "seed_mode": item["seed_mode"],
+        "wip_mode": item["wip_mode"],
+        "lineage_input_mode": item["lineage_input_mode"],
+        "scratch_root": arm["scratch_root"],
+        "scratch_root_disposition": "abandoned_in_place",
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+    }
+
+
+def _validate_sandbox_isolation_result(
+    item: dict[str, Any],
+    event: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Cross-bind the noncounting result to its exact abandonment row."""
+
+    terminal_errors = event.get("terminal_errors")
+    reason = (
+        terminal_errors[0]
+        if isinstance(terminal_errors, list) and len(terminal_errors) == 1
+        else None
+    )
+    expected = {
+        "game": event.get("game"),
+        "target_level": event.get("target_level"),
+        "reached": event.get("reached"),
+        "result": "sandbox_isolated_noncounting",
+        "reason": reason,
+        "dispatch_id": event.get("dispatch_id"),
+        "retry_complexity_n": event.get("retry_complexity_n"),
+        "scratch_root": event.get("scratch_root"),
+        "scratch_root_disposition": event.get("scratch_root_disposition"),
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+    }
+    seed_mode = result.get("seed_mode")
+    wip_mode = result.get("wip_mode")
+    if (
+        set(result) != SANDBOX_ISOLATION_RESULT_KEYS
+        or reason is None
+        or any(result.get(field) != value for field, value in expected.items())
+        or seed_mode not in {"zero_seed", "verified_parent"}
+        or wip_mode not in {"exclude", "restore_clean_same_frontier"}
+        or result.get("lineage_input_mode") != f"{seed_mode}+{wip_mode}"
+        or any(
+            item.get(field) is not None
+            and result.get(field) != item.get(field)
+            for field in ("seed_mode", "wip_mode", "lineage_input_mode")
+        )
+    ):
+        raise CampaignPlanError(
+            "sandbox isolation terminal result binding changed"
+        )
 
 
 def _validate_recovery_correction(
@@ -8942,7 +9427,8 @@ def _reconcile_recovery_phase_intent_locked(
             "codex_post_reboot_operator_recovery_completed",
         ]
         zero_ledger_phase = (
-            intent.get("event") == ZERO_LEDGER_EVENT and not phase_rows
+            intent.get("event") in {ZERO_LEDGER_EVENT, SANDBOX_ABANDON_EVENT}
+            and not phase_rows
         )
         ordinary_phase = (
             1 <= len(phase_rows) < len(expected_events)
@@ -11205,6 +11691,811 @@ def _capture_recovery_workspace_lock(
         return schema, lock_path, identity
     finally:
         lock.close()
+
+
+def _open_held_recovery_workspace_lock(
+    item: dict[str, Any], workspace: Path
+) -> tuple[Any, str, Path, tuple[int, int]]:
+    """Acquire the exact inactive lock without mutating abandoned metadata."""
+
+    schema = _lock_schema(item)
+    lock_path = (
+        workspace / ".orchestrate.lock"
+        if schema == "in_workspace_v1"
+        else Path(Legs._workspace_lock_path(os.fspath(workspace)))
+    )
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            lock_path,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        lock = os.fdopen(descriptor, "rb")
+        descriptor = None
+    except OSError as exc:
+        if descriptor is not None:
+            os.close(descriptor)
+        raise CampaignPlanError(
+            "sandboxed-generation workspace lock is unavailable"
+        ) from exc
+    try:
+        try:
+            fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError as exc:
+            raise CampaignPlanError(
+                "sandboxed-generation workspace lock remains active"
+            ) from exc
+        descriptor = os.fstat(lock.fileno())
+        path_metadata = lock_path.stat(follow_symlinks=False)
+        identity = (descriptor.st_dev, descriptor.st_ino)
+        if (
+            lock_path.is_symlink()
+            or not stat.S_ISREG(descriptor.st_mode)
+            or not stat.S_ISREG(path_metadata.st_mode)
+            or descriptor.st_nlink != 1
+            or path_metadata.st_nlink != 1
+            or identity != (path_metadata.st_dev, path_metadata.st_ino)
+            or descriptor.st_uid != os.geteuid()
+            or path_metadata.st_uid != os.geteuid()
+            or stat.S_IMODE(descriptor.st_mode) != 0o600
+            or stat.S_IMODE(path_metadata.st_mode) != 0o600
+        ):
+            raise CampaignPlanError(
+                "sandboxed-generation workspace lock is aliased"
+            )
+        return lock, schema, lock_path, identity
+    except BaseException:
+        lock.close()
+        raise
+
+
+def _generation_tree_observation_sha256(path: Path, *, label: str) -> str:
+    """Hash one generation for audit only; this is never mutation authority."""
+
+    root_identity = _host_directory_identity(path, label)
+    entries: list[dict[str, Any]] = [{
+        "path": ".", "kind": "directory", "identity": list(root_identity),
+    }]
+    total_bytes = 0
+    try:
+        for current, directories, files in os.walk(path, followlinks=False):
+            base = Path(current)
+            for name in sorted(directories):
+                selected = base / name
+                metadata = selected.stat(follow_symlinks=False)
+                if selected.is_symlink() or not stat.S_ISDIR(metadata.st_mode):
+                    raise CampaignPlanError(f"{label} contains an unsafe directory")
+                entries.append({
+                    "path": selected.relative_to(path).as_posix(),
+                    "kind": "directory",
+                    "identity": [metadata.st_dev, metadata.st_ino],
+                })
+            for name in sorted(files):
+                selected = base / name
+                metadata = selected.stat(follow_symlinks=False)
+                if (
+                    selected.is_symlink()
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or metadata.st_nlink != 1
+                ):
+                    raise CampaignPlanError(f"{label} contains an unsafe file")
+                payload = Legs._read_single_link_regular(os.fspath(selected))
+                total_bytes += len(payload)
+                entries.append({
+                    "path": selected.relative_to(path).as_posix(),
+                    "kind": "file",
+                    "bytes": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                })
+                if total_bytes > MAX_WIP_SNAPSHOT_BYTES:
+                    raise CampaignPlanError(f"{label} exceeds its byte bound")
+            if len(entries) > MAX_WIP_SNAPSHOT_ENTRIES:
+                raise CampaignPlanError(f"{label} exceeds its entry bound")
+    except (OSError, Legs.WorkspaceTainted) as exc:
+        raise CampaignPlanError(f"{label} observation is unstable") from exc
+    if _host_directory_identity(path, label) != root_identity:
+        raise CampaignPlanError(f"{label} root identity changed during observation")
+    return hashlib.sha256(json.dumps(
+        entries, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")).hexdigest()
+
+
+def _observe_named_root_group_absence(
+    *, scheduler_pid: int, child_pid: int
+) -> dict[str, Any]:
+    """Observe named roots/owned PGID only; never signal or claim descendants."""
+
+    if sys.platform != "darwin":
+        raise CampaignPlanError(
+            "sandboxed-generation release is restricted to the Darwin incident"
+        )
+    first_at = datetime.now(timezone.utc)
+    started_ns = time.monotonic_ns()
+    for index in range(SANDBOX_ABSENCE_SAMPLES):
+        for pid, label in ((scheduler_pid, "scheduler"), (child_pid, "child")):
+            identity = Contiguous._process_identity(pid)
+            if identity is not None and not identity[3].startswith("Z"):
+                raise CampaignPlanError(
+                    f"sandboxed-generation {label} PID remains live"
+                )
+        if Contiguous._process_group_has_live_members(child_pid):
+            raise CampaignPlanError(
+                "sandboxed-generation owned process group remains live"
+            )
+        if index + 1 < SANDBOX_ABSENCE_SAMPLES:
+            time.sleep(SANDBOX_ABSENCE_INTERVAL_SECONDS)
+    last_at = datetime.now(timezone.utc)
+    return {
+        "absence_sample_count": SANDBOX_ABSENCE_SAMPLES,
+        "absence_window_ns": max(1, time.monotonic_ns() - started_ns),
+        "absence_first_at": first_at.isoformat(),
+        "absence_last_at": last_at.isoformat(),
+    }
+
+
+def _sandboxed_generation_paths(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> tuple[Path, tuple[int, int], Path, Path]:
+    historical = parsed.armed.get("historical_runner")
+    if (
+        not isinstance(historical, dict)
+        or historical.get("source_sha256") not in SANDBOX_CONTRACTS
+    ):
+        raise CampaignPlanError(
+            "sandboxed-generation release lacks an approved historical runner"
+        )
+    _revalidate_historical_control(item, allow_abandoned_scratch=True)
+    scratch = _normalized_absolute_path(
+        historical.get("scratch_root"), "scratch_root"
+    )
+    scratch_identity = _host_directory_identity(scratch, "abandoned scratch root")
+    workspace, protected = _post_reboot_generation_paths(item, parsed.unquiesced)
+    _validate_post_reboot_generation_identities(
+        parsed, workspace, protected, require_both=True
+    )
+    return scratch, scratch_identity, workspace, protected
+
+
+def _validate_sandboxed_generation_baseline(
+    item: dict[str, Any],
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+) -> tuple[LedgerPrefixState, CanonicalRollbackState, WipRollbackState]:
+    _validate_post_reboot_dispatch_binding(item, parsed)
+    if marker.capsule_state is None or marker.capsule_record is None:
+        raise CampaignPlanError(
+            "sandboxed-generation release requires its full WIP capsule"
+        )
+    ledger, baseline, suffix = _read_post_reboot_ledger_surface(
+        item,
+        parsed.armed,
+        intent_root=marker.root,
+        intent_root_identity=marker.root_identity,
+    )
+    if suffix:
+        raise CampaignPlanError(
+            "sandboxed-generation release requires an exact zero ledger suffix"
+        )
+    canonical = _capture_canonical_rollback(item)
+    if any((
+        list(canonical.root_identity)
+        != parsed.armed.get("canonical_root_identity"),
+        canonical.digest != parsed.armed.get("canonical_digest"),
+        _checkpoint_reached(item["game"]) != item["reached"],
+        _canonical_frontier_binding(item)
+        != Status.validate_frontier_binding(dict(parsed.armed["frontier_binding"])),
+    )):
+        raise CampaignPlanError(
+            "sandboxed-generation canonical/frontier baseline changed"
+        )
+    return baseline, canonical, _capture_wip_rollback(item)
+
+
+def _arm_sandboxed_generation_release_locked(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider,
+) -> dict[str, Any]:
+    marker, parsed = _read_existing_dispatch_quarantine(
+        item,
+        require_recovery_arm=None,
+        marker_parser=RebootRecovery.parse_sandboxed_generation_marker,
+    )
+    held_lock: Any | None = None
+    try:
+        item = _reconstruct_historical_recovery_item(
+            item, parsed.armed, allow_abandoned_scratch=True
+        )
+        if confirm_dispatch_id != marker.dispatch_id:
+            raise CampaignPlanError(
+                "operator confirmation does not match the sandboxed dispatch"
+            )
+        boot = RebootRecovery.validate_boot_identity(boot_identity_provider())
+        baseline, canonical, current_wip = _validate_sandboxed_generation_baseline(
+            item, marker, parsed
+        )
+        scratch, scratch_identity, workspace, protected = (
+            _sandboxed_generation_paths(item, parsed)
+        )
+        held_lock, lock_schema, lock_path, lock_identity = (
+            _open_held_recovery_workspace_lock(item, workspace)
+        )
+        absence = _observe_named_root_group_absence(
+            scheduler_pid=int(parsed.armed["pid"]),
+            child_pid=int(parsed.unquiesced["child_pid"]),
+        )
+        if parsed.recovery_arm is not None:
+            arm = parsed.recovery_arm
+            if any((
+                arm.get("boot_identity_source") != boot.source,
+                arm.get("boot_identity") != boot.value,
+                arm.get("scratch_root") != os.fspath(scratch),
+                arm.get("scratch_root_identity") != list(scratch_identity),
+                arm.get("workspace_lock_identity") != list(lock_identity),
+                arm.get("wip_state_sha256")
+                != _wip_recovery_state_sha256(current_wip),
+            )):
+                raise CampaignPlanError(
+                    "installed sandboxed-generation arm context changed"
+                )
+            return {
+                "game": item["game"], "target_level": item["target_level"],
+                "result": "sandboxed_generation_release_already_armed",
+                "dispatch_id": marker.dispatch_id,
+                "recovery_nonce": arm["recovery_nonce"],
+            }
+        _taint_gate()
+        pre_arm_size = marker.recovery_sealed_size
+        pre_arm_sha = marker.recovery_sealed_sha256
+        if pre_arm_size is None or pre_arm_sha is None:
+            raise CampaignPlanError("sandboxed-generation marker seal is unavailable")
+        historical = parsed.armed["historical_runner"]
+        assert isinstance(historical, dict)
+        arm_record = {
+            "event": RebootRecovery.SANDBOXED_GENERATION_ARM_EVENT,
+            "recorded_at": datetime.now(timezone.utc).isoformat(),
+            "recovery_arm_schema": RebootRecovery.SANDBOXED_GENERATION_ARM_SCHEMA,
+            "recovery_nonce": os.urandom(16).hex(),
+            "boot_identity_source": boot.source,
+            "boot_identity": boot.value,
+            "marker_root_identity": list(marker.root_identity),
+            "pre_arm_marker_identity": list(marker.marker_identity),
+            "pre_arm_marker_bytes": pre_arm_size,
+            "pre_arm_marker_sha256": pre_arm_sha,
+            "projected_item_sha256": parsed.armed["projected_item_sha256"],
+            "historical_runner_sha256": hashlib.sha256(
+                RebootRecovery.canonical_json_line(historical)
+            ).hexdigest(),
+            "authority_kind": "explicit_operator_assumed_artifact_isolation_v1",
+            "operator_provenance_assumption": (
+                "historical_codex_workspace_write_effective_as_invoked"
+            ),
+            "sandbox_contract_sha256": SANDBOX_CONTRACTS[
+                str(historical["source_sha256"])
+            ],
+            "process_claim": "named_root_and_owned_group_absent_only",
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+            "isolation_claim": (
+                "published_artifact_namespace_unreachable_by_assumption"
+            ),
+            "scheduler_pid": parsed.armed["pid"],
+            "child_pid": parsed.unquiesced["child_pid"],
+            "child_pgid": parsed.unquiesced["child_pid"],
+            **absence,
+            "scratch_root": os.fspath(scratch),
+            "scratch_root_identity": list(scratch_identity),
+            "scratch_root_disposition": "abandoned_in_place",
+            "required_retry_scratch_relation": "outside_abandoned_path_and_inode",
+            "workspace": parsed.unquiesced["workspace"],
+            "workspace_identity": parsed.unquiesced["workspace_identity"],
+            "workspace_tree_observation_sha256": (
+                _generation_tree_observation_sha256(
+                    workspace, label="workspace audit observation"
+                )
+            ),
+            "protected": parsed.unquiesced["protected"],
+            "protected_identity": parsed.unquiesced["protected_identity"],
+            "protected_tree_sha256": _generation_tree_observation_sha256(
+                protected, label="protected generation"
+            ),
+            "workspace_lock_schema": lock_schema,
+            "workspace_lock_path": os.fspath(lock_path),
+            "workspace_lock_identity": list(lock_identity),
+            "canonical_digest": canonical.digest,
+            "ledger_prefix_bytes": len(baseline.raw_prefix),
+            "ledger_prefix_sha256": hashlib.sha256(baseline.raw_prefix).hexdigest(),
+            "wip_state_sha256": _wip_recovery_state_sha256(current_wip),
+            **{
+                field: parsed.armed[field]
+                for field in (
+                    "wip_rollback_capsule_name",
+                    "wip_rollback_capsule_identity",
+                    "wip_rollback_capsule_bytes",
+                    "wip_rollback_capsule_sha256",
+                    "wip_rollback_capsule_state_sha256",
+                    "wip_restore_logical_state_schema",
+                    "wip_restore_logical_state_sha256",
+                )
+            },
+            "operator_artifact_scanner_assumption": (
+                "current_full_artifact_scanner_reported_pass"
+            ),
+        }
+        # The scanner/tree observations above are deliberately not mutation
+        # authority.  Rebind every authoritative surface immediately before
+        # the one arm installation while retaining the inode-bound flock.
+        rebound_baseline, rebound_canonical, rebound_wip = (
+            _validate_sandboxed_generation_baseline(item, marker, parsed)
+        )
+        (
+            rebound_scratch,
+            rebound_scratch_identity,
+            rebound_workspace,
+            rebound_protected,
+        ) = _sandboxed_generation_paths(item, parsed)
+        lock_stat = os.fstat(held_lock.fileno())
+        lock_path_stat = lock_path.stat(follow_symlinks=False)
+        rebound_absence = _observe_named_root_group_absence(
+            scheduler_pid=int(parsed.armed["pid"]),
+            child_pid=int(parsed.unquiesced["child_pid"]),
+        )
+        if any((
+            rebound_baseline.raw_prefix != baseline.raw_prefix,
+            rebound_baseline.file_identity != baseline.file_identity,
+            rebound_canonical.digest != canonical.digest,
+            _wip_recovery_state_sha256(rebound_wip)
+            != arm_record["wip_state_sha256"],
+            rebound_scratch != scratch,
+            rebound_scratch_identity != scratch_identity,
+            rebound_workspace != workspace,
+            rebound_protected != protected,
+            (lock_stat.st_dev, lock_stat.st_ino) != lock_identity,
+            (lock_path_stat.st_dev, lock_path_stat.st_ino) != lock_identity,
+            rebound_absence["absence_sample_count"]
+            != SANDBOX_ABSENCE_SAMPLES,
+        )):
+            raise CampaignPlanError(
+                "sandboxed-generation authority changed before arm install"
+            )
+        installed = _atomic_recovery_arm_replace(
+            marker,
+            arm_record,
+            marker_parser=RebootRecovery.parse_sandboxed_generation_marker,
+            sidecar_suffix="sandboxed_generation_arm",
+        )
+        return {
+            "game": item["game"], "target_level": item["target_level"],
+            "result": "sandboxed_generation_release_armed",
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": installed["recovery_nonce"],
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+        }
+    except RebootRecovery.RecoveryEvidenceError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    finally:
+        if held_lock is not None:
+            held_lock.close()
+        _close_dispatch_quarantine(marker)
+
+
+def _arm_sandboxed_generation_release(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider = (
+        RebootRecovery.authoritative_boot_identity
+    ),
+) -> dict[str, Any]:
+    dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    try:
+        lineage_lock = _acquire_scheduler_lineage_lock(item)
+        try:
+            return _arm_sandboxed_generation_release_locked(
+                item,
+                confirm_dispatch_id=confirm_dispatch_id,
+                boot_identity_provider=boot_identity_provider,
+            )
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        _release_scheduler_artifact_lock(dispatch_lock)
+
+
+def _sandbox_wip_is_restored(
+    current: WipRollbackState,
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+) -> bool:
+    if marker.capsule_state is None:
+        raise CampaignPlanError("sandbox isolation lost its WIP capsule")
+    try:
+        _validate_capsule_restored_wip_state(
+            current,
+            marker.capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+    except CampaignPlanError:
+        return False
+    return True
+
+
+def _recover_sandboxed_generation_release_locked(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider,
+) -> dict[str, Any]:
+    marker, parsed = _read_existing_dispatch_quarantine(
+        item,
+        require_recovery_arm=True,
+        marker_parser=RebootRecovery.parse_sandboxed_generation_marker,
+    )
+    held_lock: Any | None = None
+    released = False
+    try:
+        item = _reconstruct_historical_recovery_item(
+            item, parsed.armed, allow_abandoned_scratch=True
+        )
+        arm = parsed.recovery_arm
+        if arm is None or any((
+            confirm_dispatch_id != marker.dispatch_id,
+            confirm_recovery_nonce != arm.get("recovery_nonce"),
+        )):
+            raise CampaignPlanError(
+                "operator confirmation does not match the sandboxed arm"
+            )
+        boot = RebootRecovery.validate_boot_identity(boot_identity_provider())
+        if (
+            arm.get("boot_identity_source") != boot.source
+            or arm.get("boot_identity") != boot.value
+        ):
+            raise CampaignPlanError(
+                "sandboxed-generation recovery changed boot session"
+            )
+        scratch, scratch_identity, workspace, protected = (
+            _sandboxed_generation_paths(item, parsed)
+        )
+        if any((
+            os.fspath(scratch) != arm.get("scratch_root"),
+            list(scratch_identity) != arm.get("scratch_root_identity"),
+        )):
+            raise CampaignPlanError(
+                "abandoned scratch namespace changed before recovery"
+            )
+        held_lock, lock_schema, lock_path, lock_identity = (
+            _open_held_recovery_workspace_lock(item, workspace)
+        )
+        if any((
+            lock_schema != arm.get("workspace_lock_schema"),
+            os.fspath(lock_path) != arm.get("workspace_lock_path"),
+            list(lock_identity) != arm.get("workspace_lock_identity"),
+        )):
+            raise CampaignPlanError(
+                "sandboxed-generation lock binding changed before recovery"
+            )
+        _observe_named_root_group_absence(
+            scheduler_pid=int(arm["scheduler_pid"]),
+            child_pid=int(arm["child_pid"]),
+        )
+        # Reconcile runs before marker recovery.  If it found a validated WAL
+        # whose authorization row was empty or only a canonical prefix, this
+        # authenticated operator path can now roll back exactly that suffix
+        # and retire exactly that WAL inode before strict ledger parsing.
+        _retire_incomplete_release_for_operator(item, marker)
+        ledger, baseline, suffix = _read_post_reboot_ledger_surface(
+            item,
+            parsed.armed,
+            intent_root=marker.root,
+            intent_root_identity=marker.root_identity,
+        )
+        if not (
+            not suffix
+            or (
+                len(suffix) == 1
+                and suffix[0].get("event") == SANDBOX_ABANDON_EVENT
+            )
+        ):
+            raise CampaignPlanError(
+                "sandbox isolation has an ambiguous ledger suffix"
+            )
+        canonical = _capture_canonical_rollback(item)
+        if any((
+            list(canonical.root_identity)
+            != parsed.armed.get("canonical_root_identity"),
+            canonical.digest != arm.get("canonical_digest"),
+            _checkpoint_reached(item["game"]) != item["reached"],
+            _canonical_frontier_binding(item)
+            != Status.validate_frontier_binding(
+                dict(parsed.armed["frontier_binding"])
+            ),
+        )):
+            raise CampaignPlanError(
+                "sandbox isolation canonical/frontier baseline changed"
+            )
+        current_wip = _capture_wip_rollback(item)
+        restored = _sandbox_wip_is_restored(current_wip, marker, parsed)
+        if (
+            not suffix
+            and not restored
+            and _wip_recovery_state_sha256(current_wip)
+            != arm.get("wip_state_sha256")
+        ):
+            raise CampaignPlanError(
+                "sandbox isolation disposable WIP state changed"
+            )
+        if not suffix:
+            event = _build_sandbox_abandon_event(item, parsed)
+            _validate_sandbox_abandon_event(item, parsed, event)
+            committed = _append_zero_ledger_event_cas(
+                marker=marker, baseline=baseline, record=event
+            )
+            _validate_sandbox_abandon_event(item, parsed, committed)
+            suffix = [committed]
+        else:
+            _validate_sandbox_abandon_event(item, parsed, suffix[0])
+
+        # The durable abandonment row is the mutation authority for an
+        # idempotent capsule restore.  A crash at any later point can resume
+        # only from the capsule's narrowly validated restore envelope.
+        current_wip = _capture_wip_rollback(item)
+        restored = _sandbox_wip_is_restored(current_wip, marker, parsed)
+        if not restored:
+            if marker.capsule_state is None or marker.capsule_record is None:
+                raise CampaignPlanError(
+                    "sandbox isolation lost its rollback capsule"
+                )
+            if (
+                _wip_recovery_state_sha256(current_wip)
+                != arm.get("wip_state_sha256")
+            ):
+                _validate_capsule_restore_progress(
+                    current_wip, marker.capsule_state
+                )
+            current_wip = _restore_wip_from_rollback_capsule(
+                item, marker.capsule_state, marker.capsule_record
+            )
+            restored = _sandbox_wip_is_restored(
+                current_wip, marker, parsed
+            )
+        if not restored:
+            raise CampaignPlanError(
+                "sandbox isolation failed to restore sealed WIP"
+            )
+        if (
+            _capture_canonical_rollback(item).digest
+            != arm.get("canonical_digest")
+        ):
+            raise CampaignPlanError(
+                "canonical artifact changed during WIP restore"
+            )
+        # The old scratch root is never renamed, deleted, or otherwise
+        # traversed for cleanup.  Its durable ledger receipt now blocks reuse.
+        if any((
+            _host_directory_identity(scratch, "abandoned scratch root")
+            != scratch_identity,
+            _host_directory_identity(workspace, "abandoned workspace")
+            != _marker_identity(
+                parsed.unquiesced["workspace_identity"], "workspace"
+            ),
+            _host_directory_identity(protected, "abandoned protected evidence")
+            != _marker_identity(
+                parsed.unquiesced["protected_identity"], "protected"
+            ),
+        )):
+            raise CampaignPlanError(
+                "abandoned sandbox namespace changed during artifact restore"
+            )
+        result = _sandbox_isolation_result(item, parsed)
+        if set(result) != SANDBOX_ISOLATION_RESULT_KEYS:
+            raise CampaignPlanError(
+                "sandbox isolation terminal result schema changed"
+            )
+        release_authority = _build_dispatch_release_authority(
+            item,
+            marker,
+            ledger,
+            result,
+            kind=SANDBOX_RELEASE_AUTHORITY_KIND,
+        )
+        _release_dispatch_quarantine(marker, item, release_authority)
+        released = True
+        return result
+    except RebootRecovery.RecoveryEvidenceError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    finally:
+        if held_lock is not None:
+            held_lock.close()
+        if not released:
+            _close_dispatch_quarantine(marker)
+
+
+def _completed_sandbox_isolation_result(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_recovery_nonce: str,
+) -> dict[str, Any] | None:
+    historical = item.get("historical_runner")
+    cwd = (
+        Path(str(historical["cwd"]))
+        if isinstance(historical, dict) and historical.get("cwd") is not None
+        else REPO
+    )
+    ledger = _ledger_path(item["argv"], cwd=cwd)
+    captured = _capture_ledger_prefix(ledger)
+    records = captured.records
+    matches = [
+        (index, record) for index, record in enumerate(records)
+        if (
+            record.get("event") == SANDBOX_ABANDON_EVENT
+            and record.get("schema") == SANDBOX_ABANDON_EVENT_SCHEMA
+            and record.get("dispatch_id") == confirm_dispatch_id
+            and record.get("recovery_nonce") == confirm_recovery_nonce
+            and record.get("game") == item.get("game")
+            and record.get("target_level") == item.get("target_level")
+        )
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise CampaignPlanError(
+            "sandbox isolation completion receipt is ambiguous"
+        )
+    event_index, event = matches[0]
+    _validate_sandbox_abandon_event(item, event)
+    if event_index + 1 >= len(records):
+        raise CampaignPlanError(
+            "sandbox isolation completion lacks release authorization"
+        )
+    authority = records[event_index + 1]
+    raw_lines = captured.raw_prefix.splitlines(keepends=True)
+    if len(raw_lines) != len(records):
+        raise CampaignPlanError(
+            "sandbox isolation completion ledger framing changed"
+        )
+    event_line = RebootRecovery.canonical_json_line(event)
+    authority_line = RebootRecovery.canonical_json_line(authority)
+    prefix_through_event = b"".join(raw_lines[:event_index + 1])
+    marker_name = _dispatch_quarantine_name(item)
+    intent_name, _preparing_name = _dispatch_release_intent_names(
+        marker_name
+    )
+    expected_authority = {
+        "event": "codex_dispatch_release_authorized",
+        "schema": "scheduler_dispatch_release_authorized_v1",
+        "dispatch_id": confirm_dispatch_id,
+        "intent_name": intent_name,
+        "projected_item_sha256": hashlib.sha256(json.dumps(
+            item, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")).hexdigest(),
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "terminal_kind": SANDBOX_RELEASE_AUTHORITY_KIND,
+        "terminal_event": SANDBOX_ABANDON_EVENT,
+        "terminal_record_sha256": _recovery_record_sha256(event),
+        "ledger": os.fspath(ledger),
+        "ledger_parent_identity": list(captured.parent_identity),
+        "ledger_file_identity": (
+            list(captured.file_identity)
+            if captured.file_identity is not None else None
+        ),
+        "ledger_prefix_bytes": len(prefix_through_event),
+        "ledger_prefix_sha256": hashlib.sha256(
+            prefix_through_event
+        ).hexdigest(),
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+    matching_authorities = [
+        row for row in records
+        if (
+            row.get("event") == "codex_dispatch_release_authorized"
+            and row.get("dispatch_id") == confirm_dispatch_id
+            and row.get("terminal_kind") == SANDBOX_RELEASE_AUTHORITY_KIND
+            and row.get("terminal_event") == SANDBOX_ABANDON_EVENT
+        )
+    ]
+    if (
+        len(matching_authorities) != 1
+        or authority is not matching_authorities[0]
+        or set(authority) != _DISPATCH_RELEASE_AUTHORITY_RECORD_KEYS
+        or raw_lines[event_index] != event_line
+        or raw_lines[event_index + 1] != authority_line
+        or any(
+            authority.get(field) != value
+            for field, value in expected_authority.items()
+        )
+        or not isinstance(authority.get("release_nonce"), str)
+        or SHA256_RE.fullmatch(authority["release_nonce"]) is None
+        or not isinstance(authority.get("intent_core_sha256"), str)
+        or SHA256_RE.fullmatch(authority["intent_core_sha256"]) is None
+    ):
+        raise CampaignPlanError(
+            "sandbox isolation release authorization is invalid"
+        )
+    _marker_identity(
+        authority.get("intent_identity"), "sandbox release intent"
+    )
+    event_at = _recovery_recorded_at(event, "sandbox isolation event")
+    authority_at = _recovery_recorded_at(
+        authority, "sandbox release authorization"
+    )
+    if authority_at < event_at:
+        raise CampaignPlanError(
+            "sandbox release authorization predates its terminal event"
+        )
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "sandbox_isolated_noncounting_already_completed",
+        "dispatch_id": confirm_dispatch_id,
+        "scratch_root": event["scratch_root"],
+        "scratch_root_disposition": "abandoned_in_place",
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+    }
+
+
+def _recover_sandboxed_generation_release(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    confirm_recovery_nonce: str,
+    boot_identity_provider: RebootRecovery.BootIdentityProvider = (
+        RebootRecovery.authoritative_boot_identity
+    ),
+) -> dict[str, Any]:
+    dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    try:
+        lineage_lock = _acquire_scheduler_lineage_lock(item)
+        try:
+            reconciled = _preflight_post_reboot_release_reconciliation(item)
+            if reconciled:
+                completed = _completed_sandbox_isolation_result(
+                    item,
+                    confirm_dispatch_id=confirm_dispatch_id,
+                    confirm_recovery_nonce=confirm_recovery_nonce,
+                )
+                if completed is None:
+                    raise CampaignPlanError(
+                        "reconciled sandbox release lacks its completion pair"
+                    )
+                return completed
+            try:
+                return _recover_sandboxed_generation_release_locked(
+                    item,
+                    confirm_dispatch_id=confirm_dispatch_id,
+                    confirm_recovery_nonce=confirm_recovery_nonce,
+                    boot_identity_provider=boot_identity_provider,
+                )
+            except NoDispatchQuarantine:
+                completed = _completed_sandbox_isolation_result(
+                    item,
+                    confirm_dispatch_id=confirm_dispatch_id,
+                    confirm_recovery_nonce=confirm_recovery_nonce,
+                )
+                if completed is None:
+                    raise
+                return completed
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        _release_scheduler_artifact_lock(dispatch_lock)
 
 
 def _arm_incomplete_safe_release_recovery(
@@ -15583,6 +16874,22 @@ def main() -> int:
             "kernel boot session"
         ),
     )
+    actions.add_argument(
+        "--arm-sandboxed-generation-release",
+        metavar="GAME",
+        help=(
+            "arm explicit same-boot artifact isolation for one exact "
+            "Darwin sandbox generation"
+        ),
+    )
+    actions.add_argument(
+        "--recover-sandboxed-generation-release",
+        metavar="GAME",
+        help=(
+            "restore and release one explicitly armed sandbox-isolated "
+            "generation without claiming process quiescence"
+        ),
+    )
     parser.add_argument("--max-items", type=int, default=Policy.DEFAULT_MAX_RUNS)
     parser.add_argument("--calibration-only", action="store_true")
     parser.add_argument(
@@ -15615,10 +16922,25 @@ def main() -> int:
         raise CampaignPlanError("plan has no initial_queue list")
     if not all(isinstance(item, dict) for item in items):
         raise CampaignPlanError("plan initial_queue contains a non-object item")
-    items = [_project_runner_receipt(plan, item) for item in items]
+    sandbox_arm_game = args.arm_sandboxed_generation_release
+    sandbox_recovery_game = args.recover_sandboxed_generation_release
+    sandbox_operator = (
+        sandbox_arm_game is not None or sandbox_recovery_game is not None
+    )
+    items = [
+        _project_runner_receipt(
+            plan, item, allow_abandoned_scratch=sandbox_operator
+        )
+        for item in items
+    ]
     arm_game = args.arm_post_reboot_recovery
     recovery_game = args.recover_post_reboot_quarantine
-    operator_game = arm_game if arm_game is not None else recovery_game
+    operator_game = next((
+        selected for selected in (
+            arm_game, recovery_game, sandbox_arm_game, sandbox_recovery_game
+        )
+        if selected is not None
+    ), None)
     if (
         operator_game is not None
         or args.confirm_dispatch_id is not None
@@ -15627,15 +16949,17 @@ def main() -> int:
     ):
         if operator_game is None or args.confirm_dispatch_id is None:
             raise CampaignPlanError(
-                "post-reboot operator action requires one game and "
+                "operator recovery action requires one game and "
                 "--confirm-dispatch-id"
             )
-        if arm_game is not None and args.confirm_recovery_nonce is not None:
+        if (
+            arm_game is not None or sandbox_arm_game is not None
+        ) and args.confirm_recovery_nonce is not None:
             raise CampaignPlanError(
-                "pre-reboot arm does not accept a recovery nonce"
+                "recovery arm does not accept a recovery nonce"
             )
         if (
-            recovery_game is not None
+            (recovery_game is not None or sandbox_recovery_game is not None)
             and args.confirm_current_wip_state_sha256 is not None
         ):
             raise CampaignPlanError(
@@ -15650,24 +16974,42 @@ def main() -> int:
             raise CampaignPlanError(
                 "current-WIP confirmation must be one SHA-256 hex digest"
             )
-        if recovery_game is not None and args.confirm_recovery_nonce is None:
+        if (
+            recovery_game is not None or sandbox_recovery_game is not None
+        ) and args.confirm_recovery_nonce is None:
             raise CampaignPlanError(
-                "post-reboot recovery requires --confirm-recovery-nonce"
+                "recovery requires --confirm-recovery-nonce"
             )
         if args.calibration_only:
             raise CampaignPlanError(
-                "post-reboot operator action cannot be combined with calibration"
+                "operator recovery cannot be combined with calibration"
             )
         selected = [item for item in items if item.get("game") == operator_game]
         if len(selected) != 1:
             raise CampaignPlanError(
-                "post-reboot recovery requires exactly one matching plan item"
+                "operator recovery requires exactly one matching plan item"
             )
         item = selected[0]
-        validate_item(item, plan)
+        validate_item(
+            item,
+            None if sandbox_operator else plan,
+            allow_abandoned_scratch=sandbox_operator,
+        )
         reached = _checkpoint_reached(operator_game)
         validate_inventory_item(item, targets, reached)
-        if arm_game is not None:
+        if sandbox_arm_game is not None:
+            outcome = _arm_sandboxed_generation_release(
+                item,
+                confirm_dispatch_id=args.confirm_dispatch_id,
+            )
+        elif sandbox_recovery_game is not None:
+            assert args.confirm_recovery_nonce is not None
+            outcome = _recover_sandboxed_generation_release(
+                item,
+                confirm_dispatch_id=args.confirm_dispatch_id,
+                confirm_recovery_nonce=args.confirm_recovery_nonce,
+            )
+        elif arm_game is not None:
             outcome = _arm_post_reboot_recovery(
                 item,
                 confirm_dispatch_id=args.confirm_dispatch_id,

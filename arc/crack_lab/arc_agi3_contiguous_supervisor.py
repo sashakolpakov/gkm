@@ -5461,9 +5461,14 @@ def _signal_exact_processes(
             # The still-unreaped group leader anchors this signal safely.
             continue
         if final:
-            raise ScopedProcessContainmentError(
-                "Darwin cannot safely signal a detached numeric PID"
-            )
+            # Darwin has no stable handle with which to signal this exact
+            # detached process without a PID-reuse race.  Leave it untouched
+            # and let the enclosing fixed-point loop observe the birth-bound
+            # identity through its bounded exit window.  A survivor still
+            # fails closed at the deadline; a naturally exiting descendant no
+            # longer turns a successful group seal into an immediate false
+            # containment failure.
+            continue
         # Darwin offers no stable PID handle and removed kqueue NOTE_TRACK in
         # 10.5.  Give the trusted direct runner its TERM grace to contain this
         # child, but never send a TOCTOU-prone raw PID signal ourselves.
@@ -5614,7 +5619,12 @@ def _seal_descendants_before_root_reap(
     *,
     timeout_seconds: float = 10,
 ) -> None:
-    """Capture and terminate to a fixed point while the root anchors its PGID."""
+    """Capture and seal to a fixed point while the root anchors its PGID.
+
+    Stable handles permit exact termination on Linux.  Darwin group members
+    are terminated through the anchored PGID, while a birth-bound detached
+    identity is observation-only and must disappear before the same deadline.
+    """
 
     deadline = time.monotonic() + timeout_seconds
     while True:

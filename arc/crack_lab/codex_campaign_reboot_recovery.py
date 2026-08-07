@@ -31,9 +31,19 @@ WIP_LOGICAL_RESTORE_SCHEMAS = frozenset({
 LEGACY_OPERATOR_RECOVERY_SCHEMA = "scheduler_post_reboot_recovery_v1"
 OPERATOR_RECOVERY_SCHEMA = "scheduler_post_reboot_recovery_v2"
 RECOVERY_ARM_SCHEMA_V2 = "scheduler_post_reboot_recovery_arm_v2"
+SANDBOXED_GENERATION_ARM_SCHEMA = (
+    "scheduler_sandboxed_generation_release_arm_v1"
+)
+SANDBOXED_GENERATION_ARM_EVENT = (
+    "sandboxed_generation_release_armed"
+)
 MAX_MARKER_BYTES = 1024 * 1024
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
 DISPATCH_ID_RE = re.compile(r"[0-9a-f]{32}")
+SAFE_COMPONENT_RE = re.compile(r"[A-Za-z0-9_.-]+")
+APPROVED_SANDBOXED_GENERATION_SOURCES = frozenset({
+    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64",
+})
 BOOT_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
     r"[89ab][0-9a-f]{3}-[0-9a-f]{12}"
@@ -164,6 +174,69 @@ RECOVERY_ARM_V2_KEYS = RECOVERY_ARM_V1_KEYS | frozenset({
     "wip_disposition",
     "discard_survivor_sha256",
     "restored_wip_logical_state_sha256",
+})
+
+# This is deliberately a separate authority from post-reboot containment.
+# It accepts the exact failure row emitted when Darwin could not prove a
+# detached process terminal, but only so a caller can retire a generation
+# whose writable namespace is independently confined.  It never upgrades the
+# row to ``dispatch_unquiesced`` and never asserts descendant absence.
+SANDBOXED_FAILED_KEYS = UNQUIESCED_REQUIRED_KEYS | frozenset({"child_pid"})
+SANDBOXED_GENERATION_ARM_KEYS = frozenset({
+    "schema",
+    "dispatch_id",
+    "event",
+    "recorded_at",
+    "recovery_arm_schema",
+    "recovery_nonce",
+    "boot_identity_source",
+    "boot_identity",
+    "marker_root_identity",
+    "pre_arm_marker_identity",
+    "armed_marker_identity",
+    "pre_arm_marker_bytes",
+    "pre_arm_marker_sha256",
+    "projected_item_sha256",
+    "historical_runner_sha256",
+    "authority_kind",
+    "operator_provenance_assumption",
+    "sandbox_contract_sha256",
+    "process_claim",
+    "process_tree_quiesced",
+    "detached_processes_proven_absent",
+    "isolation_claim",
+    "scheduler_pid",
+    "child_pid",
+    "child_pgid",
+    "absence_sample_count",
+    "absence_window_ns",
+    "absence_first_at",
+    "absence_last_at",
+    "scratch_root",
+    "scratch_root_identity",
+    "scratch_root_disposition",
+    "required_retry_scratch_relation",
+    "workspace",
+    "workspace_identity",
+    "workspace_tree_observation_sha256",
+    "protected",
+    "protected_identity",
+    "protected_tree_sha256",
+    "workspace_lock_schema",
+    "workspace_lock_path",
+    "workspace_lock_identity",
+    "canonical_digest",
+    "ledger_prefix_bytes",
+    "ledger_prefix_sha256",
+    "wip_state_sha256",
+    "wip_rollback_capsule_name",
+    "wip_rollback_capsule_identity",
+    "wip_rollback_capsule_bytes",
+    "wip_rollback_capsule_sha256",
+    "wip_rollback_capsule_state_sha256",
+    "wip_restore_logical_state_schema",
+    "wip_restore_logical_state_sha256",
+    "operator_artifact_scanner_assumption",
 })
 
 
@@ -628,6 +701,190 @@ def parse_dispatch_marker(
         )
         _identity(recovery_arm.get("workspace_lock_identity"), "workspace lock")
     return ParsedMarker(dispatch_id, armed, unquiesced, recovery_arm)
+
+
+def parse_sandboxed_generation_marker(
+    raw: bytes, *, require_recovery_arm: bool | None = None
+) -> ParsedMarker:
+    """Parse the one explicitly operator-assumed nonquiescent release shape."""
+
+    if not raw or len(raw) > MAX_MARKER_BYTES or not raw.endswith(b"\n"):
+        raise RecoveryEvidenceError("sandboxed-generation marker framing is malformed")
+    rows = parse_canonical_jsonl(raw, label="sandboxed-generation marker")
+    expected_lengths = (
+        {3} if require_recovery_arm is True
+        else {2} if require_recovery_arm is False
+        else {2, 3}
+    )
+    if len(rows) not in expected_lengths:
+        raise RecoveryEvidenceError(
+            "sandboxed-generation marker has an invalid phase row count"
+        )
+    armed, failed = rows[:2]
+    if (
+        set(failed) != SANDBOXED_FAILED_KEYS
+        or failed.get("event") != "dispatch_failed"
+        or failed.get("exception_type") != "UnquiescedChildError"
+        or failed.get("child_returncode") is not None
+    ):
+        raise RecoveryEvidenceError(
+            "sandboxed-generation failure row is not the exact incident shape"
+        )
+    for field in ("reason", "workspace", "protected", "transcript"):
+        if not isinstance(failed.get(field), str) or not failed[field]:
+            raise RecoveryEvidenceError(
+                f"sandboxed-generation {field} is malformed"
+            )
+    child_pid = _nonnegative_integer(failed.get("child_pid"), "child pid")
+    if child_pid <= 1:
+        raise RecoveryEvidenceError("sandboxed-generation child PID is malformed")
+    for field in ("workspace_identity", "protected_identity"):
+        _identity(failed.get(field), field)
+
+    # Reuse the exhaustively checked v1/v2 armed-row validator without ever
+    # treating the original failure as quiesced or terminal.  The synthetic
+    # row exists only in memory and is not returned as authority.
+    validation_row = dict(failed)
+    validation_row["event"] = "dispatch_unquiesced"
+    validation_row["child_returncode"] = -1
+    validated = parse_dispatch_marker(
+        canonical_json_line(armed) + canonical_json_line(validation_row),
+        require_recovery_arm=False,
+    )
+    if armed.get("schema") != DISPATCH_QUARANTINE_SCHEMA_V2:
+        raise RecoveryEvidenceError(
+            "sandboxed-generation release requires a v2 rollback capsule"
+        )
+    arm = rows[2] if len(rows) == 3 else None
+    if arm is None:
+        return ParsedMarker(validated.dispatch_id, armed, failed, None)
+    if (
+        set(arm) != SANDBOXED_GENERATION_ARM_KEYS
+        or arm.get("schema") != armed.get("schema")
+        or arm.get("dispatch_id") != validated.dispatch_id
+        or arm.get("event") != SANDBOXED_GENERATION_ARM_EVENT
+        or arm.get("recovery_arm_schema") != SANDBOXED_GENERATION_ARM_SCHEMA
+        or arm.get("authority_kind")
+        != "explicit_operator_assumed_artifact_isolation_v1"
+        or arm.get("operator_provenance_assumption")
+        != "historical_codex_workspace_write_effective_as_invoked"
+        or arm.get("process_claim") != "named_root_and_owned_group_absent_only"
+        or arm.get("process_tree_quiesced") is not False
+        or arm.get("detached_processes_proven_absent") is not False
+        or arm.get("isolation_claim")
+        != "published_artifact_namespace_unreachable_by_assumption"
+        or arm.get("scratch_root_disposition") != "abandoned_in_place"
+        or arm.get("required_retry_scratch_relation")
+        != "outside_abandoned_path_and_inode"
+        or arm.get("operator_artifact_scanner_assumption")
+        != "current_full_artifact_scanner_reported_pass"
+    ):
+        raise RecoveryEvidenceError(
+            "sandboxed-generation recovery arm schema is malformed"
+        )
+    armed_at = _utc_timestamp(armed.get("recorded_at"), "dispatch armed")
+    failed_at = _utc_timestamp(failed.get("recorded_at"), "dispatch failed")
+    absence_first = _utc_timestamp(arm.get("absence_first_at"), "absence first")
+    absence_last = _utc_timestamp(arm.get("absence_last_at"), "absence last")
+    arm_at = _utc_timestamp(arm.get("recorded_at"), "sandboxed-generation arm")
+    nonce = arm.get("recovery_nonce")
+    if not isinstance(nonce, str) or DISPATCH_ID_RE.fullmatch(nonce) is None:
+        raise RecoveryEvidenceError("sandboxed-generation nonce is malformed")
+    _validate_boot_identity_fields(
+        arm.get("boot_identity_source"), arm.get("boot_identity")
+    )
+    for field in (
+        "marker_root_identity", "pre_arm_marker_identity",
+        "armed_marker_identity", "scratch_root_identity",
+        "workspace_identity", "protected_identity", "workspace_lock_identity",
+        "wip_rollback_capsule_identity",
+    ):
+        _identity(arm.get(field), field)
+    if arm.get("pre_arm_marker_identity") == arm.get("armed_marker_identity"):
+        raise RecoveryEvidenceError("sandboxed-generation marker identities alias")
+    for field in (
+        "scheduler_pid", "child_pid", "child_pgid", "absence_sample_count",
+        "absence_window_ns", "pre_arm_marker_bytes", "ledger_prefix_bytes",
+        "wip_rollback_capsule_bytes",
+    ):
+        _nonnegative_integer(arm.get(field), field)
+    if any((
+        arm.get("scheduler_pid") != armed.get("pid"),
+        arm.get("child_pid") != child_pid,
+        arm.get("child_pgid") != child_pid,
+        int(arm["scheduler_pid"]) <= 1,
+        int(arm["child_pid"]) <= 1,
+        arm.get("scheduler_pid") == arm.get("child_pid"),
+        not 2 <= int(arm["absence_sample_count"]) <= 16,
+        not 0 < int(arm["absence_window_ns"]) <= 60_000_000_000,
+        not (armed_at <= failed_at <= absence_first <= absence_last <= arm_at),
+    )):
+        raise RecoveryEvidenceError("sandboxed-generation absence scope is malformed")
+    for field in (
+        "pre_arm_marker_sha256", "projected_item_sha256",
+        "historical_runner_sha256", "sandbox_contract_sha256",
+        "workspace_tree_observation_sha256", "protected_tree_sha256", "canonical_digest",
+        "ledger_prefix_sha256", "wip_state_sha256",
+        "wip_rollback_capsule_sha256", "wip_rollback_capsule_state_sha256",
+        "wip_restore_logical_state_sha256",
+    ):
+        value = arm.get(field)
+        if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+            raise RecoveryEvidenceError(
+                f"sandboxed-generation {field} is malformed"
+            )
+    for field in ("scratch_root", "workspace_lock_path"):
+        _normalized_absolute(arm.get(field), field)
+    for field in ("workspace", "protected", "workspace_lock_schema"):
+        if not isinstance(arm.get(field), str) or not arm[field]:
+            raise RecoveryEvidenceError(f"sandboxed-generation {field} is malformed")
+    pre_arm = b"".join(canonical_json_line(row) for row in rows[:2])
+    historical = armed.get("historical_runner")
+    if (
+        not isinstance(historical, dict)
+        or not historical
+        or historical.get("source_sha256")
+        not in APPROVED_SANDBOXED_GENERATION_SOURCES
+        or arm.get("scratch_root") != historical.get("scratch_root")
+        or arm.get("workspace_lock_schema") != historical.get("lock_schema")
+        or arm.get("protected") != arm.get("workspace")
+        or SAFE_COMPONENT_RE.fullmatch(str(arm.get("workspace"))) is None
+        or arm.get("workspace") in {".", ".."}
+        or Path(str(arm.get("workspace"))).name != arm.get("workspace")
+    ):
+        raise RecoveryEvidenceError(
+            "sandboxed-generation historical isolation binding is malformed"
+        )
+    historical_sha = hashlib.sha256(
+        canonical_json_line(historical)
+    ).hexdigest()
+    mirrored = {
+        "projected_item_sha256": armed.get("projected_item_sha256"),
+        "canonical_digest": armed.get("canonical_digest"),
+        "ledger_prefix_bytes": armed.get("ledger_prefix_bytes"),
+        "ledger_prefix_sha256": armed.get("ledger_prefix_sha256"),
+        "workspace": failed.get("workspace"),
+        "workspace_identity": failed.get("workspace_identity"),
+        "protected": failed.get("protected"),
+        "protected_identity": failed.get("protected_identity"),
+        "wip_rollback_capsule_name": armed.get("wip_rollback_capsule_name"),
+        "wip_rollback_capsule_identity": armed.get("wip_rollback_capsule_identity"),
+        "wip_rollback_capsule_bytes": armed.get("wip_rollback_capsule_bytes"),
+        "wip_rollback_capsule_sha256": armed.get("wip_rollback_capsule_sha256"),
+        "wip_rollback_capsule_state_sha256": armed.get("wip_rollback_capsule_state_sha256"),
+        "wip_restore_logical_state_schema": armed.get("wip_restore_logical_state_schema"),
+        "wip_restore_logical_state_sha256": armed.get("wip_restore_logical_state_sha256"),
+    }
+    if any((
+        arm.get("pre_arm_marker_bytes") != len(pre_arm),
+        arm.get("pre_arm_marker_sha256") != hashlib.sha256(pre_arm).hexdigest(),
+        arm.get("historical_runner_sha256") != historical_sha,
+        any(arm.get(field) != value for field, value in mirrored.items()),
+    )):
+        raise RecoveryEvidenceError(
+            "sandboxed-generation recovery arm binding changed"
+        )
+    return ParsedMarker(validated.dispatch_id, armed, failed, arm)
 
 
 def _validate_boot_identity_fields(source: object, value: object) -> None:

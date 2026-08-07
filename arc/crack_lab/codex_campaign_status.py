@@ -66,6 +66,15 @@ INFRASTRUCTURE_WIP_PHASES = frozenset({
 INFRASTRUCTURE_NONCOUNTING_EVENT = (
     "codex_infrastructure_generation_quarantined"
 )
+SANDBOX_ISOLATION_NONCOUNTING_EVENT = (
+    "codex_sandbox_isolated_generation_abandoned"
+)
+INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
+    INFRASTRUCTURE_NONCOUNTING_EVENT:
+        "scheduler_zero_ledger_generation_quarantine_v1",
+    SANDBOX_ISOLATION_NONCOUNTING_EVENT:
+        "scheduler_sandbox_isolated_generation_abandoned_v1",
+}
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -1607,9 +1616,9 @@ def infrastructure_noncounting_events(
     return [
         row for row in records
         if (
-            row.get("event") == INFRASTRUCTURE_NONCOUNTING_EVENT
+            row.get("event") in INFRASTRUCTURE_NONCOUNTING_SCHEMAS
             and row.get("schema")
-            == "scheduler_zero_ledger_generation_quarantine_v1"
+            == INFRASTRUCTURE_NONCOUNTING_SCHEMAS[row["event"]]
             and row.get("failure_class") == "infrastructure"
             and row.get("retry_increment") == 0
             and row.get("codex_exec_appended") is False

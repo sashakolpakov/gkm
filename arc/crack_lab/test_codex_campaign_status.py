@@ -190,6 +190,19 @@ def test_infrastructure_turn_is_visible_but_not_charged_as_solver_attempt():
     assert ranked[0]["failed_attempts_at_frontier"] == 0
 
 
+def test_sandbox_isolation_receipt_is_infrastructure_noncounting():
+    record = {
+        "event": "codex_sandbox_isolated_generation_abandoned",
+        "schema": "scheduler_sandbox_isolated_generation_abandoned_v1",
+        "failure_class": "infrastructure",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+    }
+    assert S.infrastructure_noncounting_events([record]) == [record]
+
+
 def test_append_only_failure_classification_correction_updates_old_turn():
     records = [
         {

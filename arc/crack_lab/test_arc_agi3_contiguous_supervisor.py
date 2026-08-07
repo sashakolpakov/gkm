@@ -649,7 +649,7 @@ def test_darwin_group_signal_eperm_needs_scoped_absence(monkeypatch):
         B._signal_owned_process_group(99, 15)
 
 
-def test_darwin_detached_descendant_is_never_raw_signaled(monkeypatch):
+def test_darwin_detached_descendant_is_observed_not_raw_signaled(monkeypatch):
     monkeypatch.setattr(
         B.os, "uname", lambda: SimpleNamespace(sysname="Darwin")
     )
@@ -668,7 +668,8 @@ def test_darwin_detached_descendant_is_never_raw_signaled(monkeypatch):
     identities = {201: "darwin:birth"}
 
     # TERM grace delegates cleanup to the trusted direct runner without a
-    # TOCTOU-prone numeric signal.  Final containment must then fail closed.
+    # TOCTOU-prone numeric signal.  Final sealing remains observation-only for
+    # this identity; the enclosing fixed-point loop owns its bounded timeout.
     B._signal_exact_processes(
         identities,
         B.signal.SIGTERM,
@@ -676,17 +677,127 @@ def test_darwin_detached_descendant_is_never_raw_signaled(monkeypatch):
         owned_pgid=100,
         final=False,
     )
+    B._signal_exact_processes(
+        identities,
+        B.signal.SIGKILL,
+        None,
+        owned_pgid=100,
+        final=True,
+    )
+
+
+def test_darwin_detached_descendant_may_exit_during_final_observation(
+    monkeypatch,
+):
+    custody = B._StartedProcessCustody(
+        SimpleNamespace(pid=100, returncode=None),
+        {201: "darwin:child"},
+        root_started="darwin:root",
+    )
+    child_observations = iter((
+        (1, 777, 777, "R", "darwin:child"),
+        None,
+        None,
+    ))
+
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Darwin")
+    )
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _custody: None)
+    monkeypatch.setattr(B, "_direct_child_exit_observed", lambda _pid: True)
+    monkeypatch.setattr(
+        B,
+        "_process_identity",
+        lambda pid: (
+            next(child_observations)
+            if pid == 201
+            else (os.getpid(), 100, 100, "Z", "darwin:root")
+        ),
+    )
+    monkeypatch.setattr(B, "_reap_adopted_linux_descendants", lambda _c: None)
+    monkeypatch.setattr(B.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(
+        B.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Darwin raw numeric PID signal")
+        ),
+    )
+
+    B._seal_descendants_before_root_reap(custody, timeout_seconds=1)
+
+
+def test_darwin_stubborn_detached_descendant_still_fails_closed(monkeypatch):
+    custody = B._StartedProcessCustody(
+        SimpleNamespace(pid=100, returncode=None),
+        {201: "darwin:child"},
+        root_started="darwin:root",
+    )
+
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Darwin")
+    )
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _custody: None)
+    monkeypatch.setattr(
+        B,
+        "_process_identity",
+        lambda pid: (
+            (1, 777, 777, "R", "darwin:child")
+            if pid == 201
+            else (os.getpid(), 100, 100, "Z", "darwin:root")
+        ),
+    )
+    monkeypatch.setattr(
+        B.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Darwin raw numeric PID signal")
+        ),
+    )
+    monkeypatch.setattr(B.time, "monotonic", lambda: 0.0)
+
     with pytest.raises(
-        B.ScopedProcessContainmentError,
-        match="cannot safely signal a detached numeric PID",
+        B.SupervisorContractError,
+        match="descendants resisted their pre-reap seal",
     ):
-        B._signal_exact_processes(
-            identities,
-            B.signal.SIGKILL,
-            None,
-            owned_pgid=100,
-            final=True,
-        )
+        B._seal_descendants_before_root_reap(custody, timeout_seconds=0)
+
+
+def test_darwin_success_never_upgrades_detached_process_proof(monkeypatch):
+    class FakeProcess:
+        pid = 100
+        returncode = None
+
+        def wait(self, *, timeout):
+            assert timeout == 10
+            self.returncode = 0
+            return 0
+
+    custody = B._StartedProcessCustody(
+        FakeProcess(),
+        {201: "darwin:child"},
+        root_started="darwin:root",
+        detached_tracking_complete=False,
+    )
+    tree = B.ScopedProcessTree(custody)
+
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _custody: None)
+    monkeypatch.setattr(B, "_direct_child_exit_observed", lambda _pid: True)
+    monkeypatch.setattr(B, "_custody_descendants_absent", lambda _c: True)
+    monkeypatch.setattr(B, "_signal_owned_process_group", lambda *_args: None)
+    monkeypatch.setattr(B, "_signal_custody_descendants", lambda *_a, **_k: None)
+    monkeypatch.setattr(B, "_seal_anchored_process_group", lambda _c: None)
+    monkeypatch.setattr(
+        B, "_seal_descendants_before_root_reap", lambda _c: None
+    )
+    monkeypatch.setattr(B, "_prove_postreap_process_absence", lambda _c: None)
+    monkeypatch.setattr(B, "_release_custody_kernel_state", lambda _c: None)
+    monkeypatch.setattr(B, "_process_identity", lambda _pid: None)
+
+    result = tree.seal(stop_requested=True, grace_seconds=0)
+
+    assert result.captured_descendants_absent is True
+    assert result.detached_processes_proven_absent is False
 
 
 def test_postreap_emergency_is_observation_only(monkeypatch):
