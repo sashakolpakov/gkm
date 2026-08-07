@@ -1,9 +1,9 @@
 """Headless object-hypothesis observer with Python-authoritative replay.
 
-This is the active successor to :mod:`bongard.prototype_scene_observer`.
-Reference catalog construction and transport identities remain compatible with
-that module, while decisional scene evidence is restricted to frozen,
-candidate-independent object hypotheses and the closed object-profile IR.
+The raw entry point observes any committed scene without references, prose, or
+profiles.  It produces a receipt-bound full-catalog shard bundle.  The legacy
+prototype-pair wrapper may subsequently evaluate fixed Python profiles against
+that evidence, without exposing those profiles to the scene observer.
 """
 
 from __future__ import annotations
@@ -31,6 +31,7 @@ from bongard.prototype_object_hypotheses import (
 )
 from bongard.prototype_object_profiles import (
     OBJECT_FEATURE_CATALOG_DIGEST,
+    ObjectFeatureCell,
     ObjectLocalObservationPacket,
     ObjectProfile,
     ObjectProfileEvaluation,
@@ -42,13 +43,22 @@ from bongard import prototype_scene_observer as _legacy
 
 PROTOTYPE_REFERENCE_CATALOG_SCHEMA = _legacy.PROTOTYPE_REFERENCE_CATALOG_SCHEMA
 PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA = (
-    "gkm.bongard-object-profile-description-artifact.v1"
+    "gkm.bongard-object-feature-family-description-artifact.v2"
 )
 PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA = (
-    "gkm.bongard-object-scene-observer-artifact.v1"
+    "gkm.bongard-object-scene-observer-artifact.v2"
+)
+PROTOTYPE_OBJECT_FEATURE_SHARD_ARTIFACT_SCHEMA = (
+    "gkm.bongard-object-feature-shard-artifact.v1"
+)
+PROTOTYPE_OBJECT_FEATURE_OBSERVER_ARTIFACT_SCHEMA = (
+    "gkm.bongard-raw-object-feature-observer-artifact.v1"
+)
+PROTOTYPE_OBJECT_FEATURE_OBSERVER_PROTOCOL_ID = (
+    "bongard.raw-object-feature-observer/profile-blind-atlas-shards-v1"
 )
 PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID = (
-    "bongard.prototype-object-scene-observer/profile-blind-atlas-v1"
+    "bongard.prototype-object-scene-observer/profile-blind-atlas-shards-v2"
 )
 PROTOTYPE_GROUP_IDS = _legacy.PROTOTYPE_GROUP_IDS
 PPM_SCALE = _legacy.PPM_SCALE
@@ -114,6 +124,7 @@ def _authority_data() -> dict[str, object]:
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
+_SCENE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}\Z")
 
 
 def _digest(value: object, label: str) -> str:
@@ -225,6 +236,38 @@ def prototype_scene_scoring_protocol_digest() -> str:
     )
 
 
+def prototype_object_feature_observer_protocol_digest() -> str:
+    """Profile-free raw observer identity for generic Bongard scenes."""
+
+    protocol = _object_protocol()
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-raw-object-feature-observer-protocol.v1",
+            "protocol_id": PROTOTYPE_OBJECT_FEATURE_OBSERVER_PROTOCOL_ID,
+            "observer_source_digest": prototype_scene_observer_source_digest(),
+            "transport_source_digest": prototype_scene_transport_source_digest(),
+            "hypothesis_extractor_artifact_digest": (
+                object_hypothesis_extractor_artifact_digest()
+            ),
+            "object_protocol_source_digest": (
+                protocol.prototype_object_protocol_source_digest()
+            ),
+            "feature_protocol_family_digest": (
+                protocol.prototype_object_feature_protocol_family_digest()
+            ),
+            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "input": "one exact committed scene PNG",
+            "output": "full-catalog typed local observation packets",
+            "description_or_profile_required": False,
+            "profile_blind": True,
+            "reference_blind": True,
+            "physical_calls": "one staged transport invocation per canonical shard",
+            "shard_admission_scope": "internal_scene_bundle_only",
+            **_authority_data(),
+        }
+    )
+
+
 def _receipt_to_data(receipt: object | None) -> object:
     return None if receipt is None else receipt.to_dict()  # type: ignore[union-attr]
 
@@ -324,6 +367,7 @@ def _validate_common(
     *,
     expected_protocol_digest: str,
     phase: str,
+    aggregate_model_output: bool = False,
 ) -> None:
     status = artifact.status  # type: ignore[attr-defined]
     if not isinstance(status, PrototypeSceneObserverStatus):
@@ -373,7 +417,12 @@ def _validate_common(
     )
     if artifact.failure_digest != expected_failure:  # type: ignore[attr-defined]
         raise PrototypeSceneObserverError(f"{phase} failure digest differs")
-    if status is PrototypeSceneObserverStatus.SUCCESS:
+    if aggregate_model_output:
+        if artifact.receipt is not None or payload is not None:  # type: ignore[attr-defined]
+            raise PrototypeSceneObserverError(
+                f"aggregate {phase} must store output in child artifacts"
+            )
+    elif status is PrototypeSceneObserverStatus.SUCCESS:
         if payload is None or artifact.receipt is None:  # type: ignore[attr-defined]
             raise PrototypeSceneObserverError(f"successful {phase} lacks receipt/payload")
     elif status is PrototypeSceneObserverStatus.PARSER_ERROR:
@@ -389,6 +438,7 @@ def _description_preimage(
     return {
         "schema": PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA,
         **_common_data(artifact),
+        "feature_families": [list(item) for item in artifact.feature_families],
         "profiles": [item.to_data() for item in artifact.profiles],
         "rubrics": [item.to_data() for item in artifact.rubrics],
         "runtime_authority": _authority_data(),
@@ -419,6 +469,7 @@ class PrototypeRubricDescriptionArtifact:
     failure_code: str | None
     failure_type: str | None
     failure_digest: str | None
+    feature_families: tuple[tuple[str, ...], ...]
     profiles: tuple[ObjectProfile, ...]
     rubrics: tuple[PrototypeRubric, ...]
     artifact_digest: str
@@ -449,6 +500,11 @@ class PrototypeRubricDescriptionArtifact:
             not isinstance(item, ObjectProfile) for item in self.profiles
         ):
             raise TypeError("profiles must be a typed tuple")
+        if not isinstance(self.feature_families, tuple) or any(
+            not isinstance(item, tuple) or any(not isinstance(value, str) for value in item)
+            for item in self.feature_families
+        ):
+            raise TypeError("feature families must be a tuple of string tuples")
         if not isinstance(self.rubrics, tuple) or len(self.rubrics) != 2:
             raise PrototypeSceneObserverError("audit rubrics must exhaust both groups")
         if self.status is PrototypeSceneObserverStatus.SUCCESS:
@@ -460,13 +516,15 @@ class PrototypeRubricDescriptionArtifact:
                 self.model_payload
             )
             if (
+                tuple(parsed.feature_families) != self.feature_families
+                or
                 tuple(parsed.profiles) != self.profiles
                 or _defined_rubrics(parsed.audit_rubrics) != self.rubrics
             ):
                 raise PrototypeSceneObserverError("description payload replay differs")
         else:
-            if self.profiles:
-                raise PrototypeSceneObserverError("failed description carries profiles")
+            if self.feature_families or self.profiles:
+                raise PrototypeSceneObserverError("failed description carries feature families")
             expected_errors = {
                 PrototypeSceneObserverStatus.PARSER_ERROR: _error_rubrics(
                     "observer_payload_rejected", "PrototypeScenePayloadError"
@@ -507,7 +565,7 @@ class PrototypeRubricDescriptionArtifact:
         raw = _exact(
             value,
             {
-                "schema", *_COMMON_FIELDS, "profiles", "rubrics",
+                "schema", *_COMMON_FIELDS, "feature_families", "profiles", "rubrics",
                 "runtime_authority", "artifact_digest",
             },
             "object description artifact",
@@ -516,8 +574,10 @@ class PrototypeRubricDescriptionArtifact:
             raise PrototypeSceneObserverError("unsupported description artifact")
         if raw["runtime_authority"] != _authority_data():
             raise PrototypeSceneObserverError("description authority differs")
-        if not isinstance(raw["presentation"], list) or not isinstance(raw["profiles"], list) or not isinstance(raw["rubrics"], list):
+        if not isinstance(raw["presentation"], list) or not isinstance(raw["feature_families"], list) or not isinstance(raw["profiles"], list) or not isinstance(raw["rubrics"], list):
             raise PrototypeSceneObserverError("description child collections are invalid")
+        if any(not isinstance(item, list) for item in raw["feature_families"]):
+            raise PrototypeSceneObserverError("description feature families are invalid")
         result = cls(
             status=PrototypeSceneObserverStatus(raw["status"]),
             plan_digest=raw["plan_digest"],
@@ -541,6 +601,7 @@ class PrototypeRubricDescriptionArtifact:
             failure_code=raw["failure_code"],
             failure_type=raw["failure_type"],
             failure_digest=raw["failure_digest"],
+            feature_families=tuple(tuple(item) for item in raw["feature_families"]),
             profiles=tuple(ObjectProfile.from_data(x) for x in raw["profiles"]),
             rubrics=tuple(PrototypeRubric.from_data(x) for x in raw["rubrics"]),
             artifact_digest=raw["artifact_digest"],
@@ -591,6 +652,7 @@ def _build_description_artifact(
     receipt: object | None,
     failure_code: str | None,
     failure_type: str | None,
+    feature_families: tuple[tuple[str, ...], ...],
     profiles: tuple[ObjectProfile, ...],
     rubrics: tuple[PrototypeRubric, ...],
 ) -> PrototypeRubricDescriptionArtifact:
@@ -633,6 +695,7 @@ def _build_description_artifact(
             failure_type,
             canonical_payload,
         ),
+        "feature_families": feature_families,
         "profiles": profiles,
         "rubrics": rubrics,
     }
@@ -727,12 +790,14 @@ def describe_prototype_references(
             receipt=None,
             failure_code="transport_failed",
             failure_type=_legacy._exception_type(exc),
+            feature_families=(),
             profiles=(),
             rubrics=_error_rubrics("observer_transport_failed", "PrototypeSceneTransportFailure"),
         )
     try:
         parsed = _object_protocol().parse_prototype_object_description_payload(payload)
         profiles = tuple(parsed.profiles)
+        feature_families = tuple(parsed.feature_families)
         rubrics = _defined_rubrics(parsed.audit_rubrics)
         return _build_description_artifact(
             status=PrototypeSceneObserverStatus.SUCCESS,
@@ -748,6 +813,7 @@ def describe_prototype_references(
             receipt=receipt,
             failure_code=None,
             failure_type=None,
+            feature_families=feature_families,
             profiles=profiles,
             rubrics=rubrics,
         )
@@ -766,6 +832,7 @@ def describe_prototype_references(
             receipt=receipt,
             failure_code="payload_rejected",
             failure_type="PrototypeScenePayloadError",
+            feature_families=(),
             profiles=(),
             rubrics=_error_rubrics("observer_payload_rejected", "PrototypeScenePayloadError"),
         )
@@ -812,6 +879,7 @@ def seal_prototype_rubric_description_internal_error(
         receipt=None,
         failure_code="observer_internal_error",
         failure_type=_legacy._exception_type(exception),
+        feature_families=(),
         profiles=(),
         rubrics=_error_rubrics("observer_internal_error", "PrototypeSceneInternalError"),
     )
@@ -872,7 +940,11 @@ def verify_prototype_rubric_description_artifact(
         )
     if artifact.status is PrototypeSceneObserverStatus.SUCCESS:
         parsed = _object_protocol().parse_prototype_object_description_payload(artifact.model_payload)
-        if tuple(parsed.profiles) != artifact.profiles or _defined_rubrics(parsed.audit_rubrics) != artifact.rubrics:
+        if (
+            tuple(parsed.feature_families) != artifact.feature_families
+            or tuple(parsed.profiles) != artifact.profiles
+            or _defined_rubrics(parsed.audit_rubrics) != artifact.rubrics
+        ):
             raise PrototypeSceneObserverError("description payload replay differs")
     decoded = PrototypeRubricDescriptionArtifact.from_data(
         artifact.to_data(), expected_artifact_digest=expected_artifact_digest
@@ -931,6 +1003,684 @@ def _audit_description(value: object) -> PrototypeSceneDescriptionObservation:
     )
 
 
+def _feature_shard_preimage(
+    artifact: "PrototypeObjectFeatureShardArtifact",
+) -> dict[str, object]:
+    return {
+        "schema": PROTOTYPE_OBJECT_FEATURE_SHARD_ARTIFACT_SCHEMA,
+        "spec": artifact.spec.to_data(),  # type: ignore[union-attr]
+        "status": artifact.status.value,  # type: ignore[union-attr]
+        "presentation": artifact.presentation.to_data(),
+        "prompt_digest": artifact.prompt_digest,
+        "output_schema_digest": artifact.output_schema_digest,
+        "protocol_digest": artifact.protocol_digest,
+        "model_payload": artifact.model_payload,
+        "receipt": _receipt_to_data(artifact.receipt),
+        "receipt_identity": artifact.receipt_identity,
+        "payload_digest": artifact.payload_digest,
+        "failure_code": artifact.failure_code,
+        "failure_type": artifact.failure_type,
+        "cells": [item.to_data() for item in artifact.cells],
+        "profile_blind": True,
+        "reference_blind": True,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PrototypeObjectFeatureShardArtifact:
+    """One issued transport invocation and its exact bounded cover."""
+
+    spec: object
+    status: object
+    presentation: PrototypeImageIdentity
+    prompt_digest: str
+    output_schema_digest: str
+    protocol_digest: str
+    model_payload: Mapping[str, Any] | None
+    receipt: object | None
+    receipt_identity: str | None
+    payload_digest: str | None
+    failure_code: str | None
+    failure_type: str | None
+    cells: tuple[ObjectFeatureCell, ...]
+    artifact_digest: str
+    _sealed_digest: str = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        protocol = _object_protocol()
+        if not isinstance(self.spec, protocol.ObjectFeatureShardSpec):
+            raise TypeError("feature shard spec has the wrong type")
+        if not isinstance(self.status, protocol.ObjectFeatureShardStatus):
+            raise TypeError("feature shard status has the wrong type")
+        if not isinstance(self.presentation, PrototypeImageIdentity):
+            raise TypeError("feature shard presentation has the wrong type")
+        if self.presentation.name != self.spec.sheet_name:
+            raise PrototypeSceneObserverError("feature shard presents another sheet")
+        for name in (
+            "prompt_digest",
+            "output_schema_digest",
+            "protocol_digest",
+            "artifact_digest",
+        ):
+            _digest(getattr(self, name), f"feature shard {name}")
+        payload = self.model_payload
+        if payload is not None:
+            payload = _canonical_payload(payload)
+            object.__setattr__(self, "model_payload", payload)
+        if not isinstance(self.cells, tuple) or any(
+            not isinstance(item, ObjectFeatureCell) for item in self.cells
+        ):
+            raise TypeError("feature shard cells must be a typed tuple")
+        if self.status is protocol.ObjectFeatureShardStatus.SUCCESS:
+            if (
+                payload is None
+                or self.receipt is None
+                or self.receipt_identity is None
+                or self.payload_digest is None
+                or self.failure_code is not None
+                or self.failure_type is not None
+            ):
+                raise PrototypeSceneObserverError("successful feature shard is incomplete")
+        elif self.status is protocol.ObjectFeatureShardStatus.PARSER_ERROR:
+            if (
+                payload is None
+                or self.receipt is None
+                or self.receipt_identity is None
+                or self.payload_digest is None
+                or self.failure_code is None
+                or self.failure_type is None
+                or self.cells
+            ):
+                raise PrototypeSceneObserverError("parser-error feature shard differs")
+        else:
+            if (
+                payload is not None
+                or self.receipt is not None
+                or self.receipt_identity is not None
+                or self.payload_digest is not None
+                or self.failure_code is None
+                or self.failure_type is None
+                or self.cells
+            ):
+                raise PrototypeSceneObserverError("transport-error feature shard differs")
+        if self.receipt is not None:
+            actual_receipt = getattr(self.receipt, "receipt_digest", None)
+            if actual_receipt != self.receipt_identity:
+                raise PrototypeSceneObserverError("feature shard receipt identity differs")
+        if self.receipt_identity is not None:
+            _digest(self.receipt_identity, "feature shard receipt identity")
+        if self.payload_digest is not None:
+            _digest(self.payload_digest, "feature shard payload digest")
+            if payload is None or self.payload_digest != canonical_digest(dict(payload)):
+                raise PrototypeSceneObserverError("feature shard payload digest differs")
+        for name in ("failure_code", "failure_type"):
+            value = getattr(self, name)
+            if value is not None and (
+                not isinstance(value, str) or not value or value != value.strip()
+            ):
+                raise PrototypeSceneObserverError(f"feature shard {name} is invalid")
+        computed = canonical_digest(_feature_shard_preimage(self))
+        if self.artifact_digest != computed:
+            raise PrototypeSceneObserverError("feature shard artifact digest differs")
+        object.__setattr__(self, "_sealed_digest", computed)
+
+    def to_data(self) -> dict[str, object]:
+        return {**_feature_shard_preimage(self), "artifact_digest": self.artifact_digest}
+
+    @classmethod
+    def from_data(cls, value: object) -> "PrototypeObjectFeatureShardArtifact":
+        raw = _exact(
+            value,
+            {
+                "schema", "spec", "status", "presentation", "prompt_digest",
+                "output_schema_digest", "protocol_digest", "model_payload",
+                "receipt", "receipt_identity", "payload_digest", "failure_code",
+                "failure_type", "cells", "profile_blind", "reference_blind",
+                "artifact_digest",
+            },
+            "feature shard artifact",
+        )
+        if (
+            raw["schema"] != PROTOTYPE_OBJECT_FEATURE_SHARD_ARTIFACT_SCHEMA
+            or raw["profile_blind"] is not True
+            or raw["reference_blind"] is not True
+            or not isinstance(raw["presentation"], Mapping)
+            or not isinstance(raw["cells"], list)
+        ):
+            raise PrototypeSceneObserverError("unsupported feature shard artifact")
+        protocol = _object_protocol()
+        result = cls(
+            spec=protocol.ObjectFeatureShardSpec.from_data(raw["spec"]),
+            status=protocol.ObjectFeatureShardStatus(raw["status"]),
+            presentation=PrototypeImageIdentity.from_data(raw["presentation"]),
+            prompt_digest=raw["prompt_digest"],
+            output_schema_digest=raw["output_schema_digest"],
+            protocol_digest=raw["protocol_digest"],
+            model_payload=(
+                None
+                if raw["model_payload"] is None
+                else _canonical_payload(raw["model_payload"])
+            ),
+            receipt=_receipt_from_data(raw["receipt"]),
+            receipt_identity=raw["receipt_identity"],
+            payload_digest=raw["payload_digest"],
+            failure_code=raw["failure_code"],
+            failure_type=raw["failure_type"],
+            cells=tuple(ObjectFeatureCell.from_data(item) for item in raw["cells"]),
+            artifact_digest=raw["artifact_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise PrototypeSceneObserverError("feature shard artifact is not canonical")
+        return result
+
+    def assert_untampered(self) -> None:
+        computed = canonical_digest(_feature_shard_preimage(self))
+        if computed != self.artifact_digest or computed != self._sealed_digest:
+            raise PrototypeSceneObserverError("feature shard artifact changed after sealing")
+
+
+def _build_feature_shard_artifact(
+    *,
+    packet: ObjectHypothesisPacket,
+    spec: object,
+    presentation: PrototypeImageIdentity,
+    status: object,
+    payload: Mapping[str, Any] | None,
+    receipt: object | None,
+    failure_code: str | None,
+    failure_type: str | None,
+    cells: tuple[ObjectFeatureCell, ...],
+) -> PrototypeObjectFeatureShardArtifact:
+    protocol = _object_protocol()
+    prompt = protocol.prototype_object_feature_shard_prompt(packet, spec)
+    schema = protocol.prototype_object_feature_output_schema()
+    canonical_payload = None if payload is None else _canonical_payload(payload)
+    values: dict[str, object] = {
+        "spec": spec,
+        "status": status,
+        "presentation": presentation,
+        "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+        "output_schema_digest": canonical_digest(schema),
+        "protocol_digest": protocol.prototype_object_feature_shard_protocol_digest(
+            packet, spec
+        ),
+        "model_payload": canonical_payload,
+        "receipt": receipt,
+        "receipt_identity": (
+            None if receipt is None else getattr(receipt, "receipt_digest")
+        ),
+        "payload_digest": (
+            None if canonical_payload is None else canonical_digest(dict(canonical_payload))
+        ),
+        "failure_code": failure_code,
+        "failure_type": failure_type,
+        "cells": cells,
+    }
+    provisional = object.__new__(PrototypeObjectFeatureShardArtifact)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return PrototypeObjectFeatureShardArtifact(
+        **values,  # type: ignore[arg-type]
+        artifact_digest=canonical_digest(_feature_shard_preimage(provisional)),
+    )
+
+
+def _feature_shard_outcomes(
+    packet: ObjectHypothesisPacket,
+    artifacts: Sequence[PrototypeObjectFeatureShardArtifact],
+) -> tuple[object, ...]:
+    protocol = _object_protocol()
+    outcomes: list[object] = []
+    for artifact in artifacts:
+        artifact.assert_untampered()
+        if artifact.status is protocol.ObjectFeatureShardStatus.SUCCESS:
+            parsed = protocol.parse_prototype_object_feature_shard_payload(
+                packet, artifact.spec, artifact.model_payload
+            )
+            if parsed.cells != artifact.cells or parsed.payload_digest != artifact.payload_digest:
+                raise PrototypeSceneObserverError("feature shard payload replay differs")
+            audit = parsed.audit_description
+        elif artifact.status is protocol.ObjectFeatureShardStatus.PARSER_ERROR:
+            try:
+                protocol.parse_prototype_object_feature_shard_payload(
+                    packet, artifact.spec, artifact.model_payload
+                )
+            except (TypeError, ValueError):
+                pass
+            else:
+                raise PrototypeSceneObserverError("parser-error feature shard is admissible")
+            audit = protocol.ObjectAuditText.rejected()
+        else:
+            audit = protocol.ObjectAuditText.rejected()
+        outcomes.append(
+            protocol.ObjectFeatureShardOutcome(
+                artifact.spec.spec_digest,
+                artifact.status,
+                artifact.cells,
+                artifact.receipt_identity,
+                artifact.payload_digest,
+                artifact.failure_code,
+                artifact.failure_type,
+                audit,
+            )
+        )
+    return tuple(outcomes)
+
+
+def _raw_feature_preimage(
+    artifact: "PrototypeObjectFeatureObserverArtifact",
+) -> dict[str, object]:
+    return {
+        "schema": PROTOTYPE_OBJECT_FEATURE_OBSERVER_ARTIFACT_SCHEMA,
+        "observation_context_digest": artifact.observation_context_digest,
+        "scene_id": artifact.scene_id,
+        "scene_digest": artifact.scene_digest,
+        "presentation": [item.to_data() for item in artifact.presentation],
+        "hypothesis_packet": artifact.hypothesis_packet.to_data(),
+        "feature_shard_plan": artifact.feature_shard_plan.to_data(),  # type: ignore[union-attr]
+        "feature_shards": [item.to_data() for item in artifact.feature_shards],
+        "physical_call_count": artifact.physical_call_count,
+        "ordered_receipt_identities": list(artifact.ordered_receipt_identities),
+        "shard_admission_scope": artifact.shard_admission_scope,
+        "local_packets": [item.to_data() for item in artifact.local_packets],
+        "description_observation": artifact.description_observation.to_data(),
+        "protocol_digest": artifact.protocol_digest,
+        "source_digest": artifact.source_digest,
+        "transport_source_digest": artifact.transport_source_digest,
+        "model": artifact.model,
+        "reasoning_effort": artifact.reasoning_effort,
+        "model_digest": artifact.model_digest,
+        "expected_launcher_digest": artifact.expected_launcher_digest,
+        "cloud_policy_cache_binding": artifact.cloud_policy_cache_binding,
+        "model_catalog_digest": artifact.model_catalog_digest,
+        "no_tools_attestation_digest": artifact.no_tools_attestation_digest,
+        "environment_digest": artifact.environment_digest,
+        "runtime_authority": _authority_data(),
+        "description_or_profile_required": False,
+        "profile_blind": True,
+        "reference_blind": True,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class PrototypeObjectFeatureObserverArtifact:
+    """Raw full-catalog vision evidence, independent of any Bongard rule."""
+
+    observation_context_digest: str
+    scene_id: str
+    scene_digest: str
+    presentation: tuple[PrototypeImageIdentity, ...]
+    hypothesis_packet: ObjectHypothesisPacket
+    feature_shard_plan: object
+    feature_shards: tuple[PrototypeObjectFeatureShardArtifact, ...]
+    physical_call_count: int
+    ordered_receipt_identities: tuple[str | None, ...]
+    shard_admission_scope: str
+    local_packets: tuple[ObjectLocalObservationPacket, ...]
+    description_observation: PrototypeSceneDescriptionObservation
+    protocol_digest: str
+    source_digest: str
+    transport_source_digest: str
+    model: str
+    reasoning_effort: str
+    model_digest: str
+    expected_launcher_digest: str | None
+    cloud_policy_cache_binding: str
+    model_catalog_digest: str
+    no_tools_attestation_digest: str
+    environment_digest: str
+    artifact_digest: str
+    _sealed_digest: str = field(init=False, repr=False, compare=False)
+
+    def __post_init__(self) -> None:
+        _address(self.observation_context_digest, "raw observation context digest")
+        if not isinstance(self.scene_id, str) or _SCENE_ID.fullmatch(self.scene_id) is None:
+            raise PrototypeSceneObserverError("raw scene identity is invalid")
+        _digest(self.scene_digest, "raw scene digest")
+        if not isinstance(self.hypothesis_packet, ObjectHypothesisPacket):
+            raise TypeError("raw hypothesis packet has the wrong type")
+        if self.hypothesis_packet.panel_digest != self.scene_digest:
+            raise PrototypeSceneObserverError("raw hypothesis packet binds another scene")
+        expected_presentation = tuple(
+            PrototypeImageIdentity(sheet.name, sheet.png_byte_count, sheet.png_digest)
+            for sheet in self.hypothesis_packet.atlas_sheets
+        )
+        if self.presentation != expected_presentation:
+            raise PrototypeSceneObserverError("raw atlas presentation differs")
+        protocol = _object_protocol()
+        if not isinstance(self.feature_shard_plan, protocol.ObjectFeatureShardPlan):
+            raise TypeError("raw feature shard plan has the wrong type")
+        protocol.verify_prototype_object_feature_shard_plan(
+            self.feature_shard_plan, self.hypothesis_packet
+        )
+        if tuple(item.spec for item in self.feature_shards) != self.feature_shard_plan.shards:
+            raise PrototypeSceneObserverError("raw feature shards differ from plan")
+        if (
+            isinstance(self.physical_call_count, bool)
+            or not isinstance(self.physical_call_count, int)
+            or self.physical_call_count != len(self.feature_shards)
+            or self.physical_call_count != len(self.feature_shard_plan.shards)
+        ):
+            raise PrototypeSceneObserverError("raw physical call count differs")
+        if self.ordered_receipt_identities != tuple(
+            item.receipt_identity for item in self.feature_shards
+        ):
+            raise PrototypeSceneObserverError("raw ordered receipt identities differ")
+        if self.shard_admission_scope != "internal_scene_bundle_only":
+            raise PrototypeSceneObserverError("raw shard admission scope differs")
+        identity_by_name = {item.name: item for item in self.presentation}
+        schema_digest = canonical_digest(protocol.prototype_object_feature_output_schema())
+        for shard in self.feature_shards:
+            prompt = protocol.prototype_object_feature_shard_prompt(
+                self.hypothesis_packet, shard.spec
+            )
+            if (
+                shard.presentation != identity_by_name.get(shard.spec.sheet_name)
+                or shard.prompt_digest
+                != hashlib.sha256(prompt.encode("utf-8")).hexdigest()
+                or shard.output_schema_digest != schema_digest
+                or shard.protocol_digest
+                != protocol.prototype_object_feature_shard_protocol_digest(
+                    self.hypothesis_packet, shard.spec
+                )
+            ):
+                raise PrototypeSceneObserverError("raw feature shard binding differs")
+        parsed = protocol.assemble_prototype_object_feature_shards(
+            self.hypothesis_packet,
+            self.feature_shard_plan,
+            _feature_shard_outcomes(self.hypothesis_packet, self.feature_shards),
+            feature_model_id=self.model,
+        )
+        if tuple(parsed.packets) != self.local_packets:
+            raise PrototypeSceneObserverError("raw local packets differ from shard assembly")
+        if _audit_description(parsed.audit_description) != self.description_observation:
+            raise PrototypeSceneObserverError("raw audit description differs")
+        if self.protocol_digest != prototype_object_feature_observer_protocol_digest():
+            raise PrototypeSceneObserverError("raw observer protocol digest differs")
+        if self.source_digest != prototype_scene_observer_source_digest():
+            raise PrototypeSceneObserverError("raw observer source digest differs")
+        if self.transport_source_digest != prototype_scene_transport_source_digest():
+            raise PrototypeSceneObserverError("raw transport source digest differs")
+        if self.model_digest != prototype_scene_observer_model_digest(
+            self.model, self.reasoning_effort
+        ):
+            raise PrototypeSceneObserverError("raw model digest differs")
+        if self.environment_digest != prototype_scene_observer_environment_digest(
+            model=self.model,
+            reasoning_effort=self.reasoning_effort,
+            expected_launcher_digest=self.expected_launcher_digest,
+            cloud_policy_cache_binding=self.cloud_policy_cache_binding,
+            model_catalog_digest=self.model_catalog_digest,
+            no_tools_attestation_digest=self.no_tools_attestation_digest,
+        ):
+            raise PrototypeSceneObserverError("raw environment digest differs")
+        for name in (
+            "protocol_digest", "source_digest", "transport_source_digest",
+            "model_digest", "model_catalog_digest", "no_tools_attestation_digest",
+            "environment_digest", "artifact_digest",
+        ):
+            _digest(getattr(self, name), f"raw {name}")
+        computed = canonical_digest(_raw_feature_preimage(self))
+        if self.artifact_digest != computed:
+            raise PrototypeSceneObserverError("raw feature artifact digest differs")
+        object.__setattr__(self, "_sealed_digest", computed)
+
+    def to_data(self) -> dict[str, object]:
+        return {**_raw_feature_preimage(self), "artifact_digest": self.artifact_digest}
+
+    @classmethod
+    def from_data(
+        cls,
+        value: object,
+        *,
+        expected_artifact_digest: str | None = None,
+    ) -> "PrototypeObjectFeatureObserverArtifact":
+        raw = _exact(
+            value,
+            {
+                "schema", "observation_context_digest", "scene_id", "scene_digest",
+                "presentation", "hypothesis_packet", "feature_shard_plan",
+                "feature_shards", "physical_call_count", "ordered_receipt_identities",
+                "shard_admission_scope", "local_packets", "description_observation",
+                "protocol_digest", "source_digest", "transport_source_digest",
+                "model", "reasoning_effort", "model_digest",
+                "expected_launcher_digest", "cloud_policy_cache_binding",
+                "model_catalog_digest", "no_tools_attestation_digest",
+                "environment_digest", "runtime_authority",
+                "description_or_profile_required", "profile_blind", "reference_blind",
+                "artifact_digest",
+            },
+            "raw feature observer artifact",
+        )
+        for name in (
+            "presentation", "feature_shards", "ordered_receipt_identities", "local_packets"
+        ):
+            if not isinstance(raw[name], list):
+                raise PrototypeSceneObserverError(f"raw {name} must be a JSON list")
+        if (
+            raw["schema"] != PROTOTYPE_OBJECT_FEATURE_OBSERVER_ARTIFACT_SCHEMA
+            or raw["runtime_authority"] != _authority_data()
+            or raw["description_or_profile_required"] is not False
+            or raw["profile_blind"] is not True
+            or raw["reference_blind"] is not True
+            or not isinstance(raw["hypothesis_packet"], Mapping)
+            or not isinstance(raw["feature_shard_plan"], Mapping)
+            or not isinstance(raw["description_observation"], Mapping)
+        ):
+            raise PrototypeSceneObserverError("unsupported raw feature artifact")
+        protocol = _object_protocol()
+        result = cls(
+            observation_context_digest=raw["observation_context_digest"],
+            scene_id=raw["scene_id"],
+            scene_digest=raw["scene_digest"],
+            presentation=tuple(
+                PrototypeImageIdentity.from_data(item) for item in raw["presentation"]
+            ),
+            hypothesis_packet=ObjectHypothesisPacket.from_data(raw["hypothesis_packet"]),
+            feature_shard_plan=protocol.ObjectFeatureShardPlan.from_data(
+                raw["feature_shard_plan"]
+            ),
+            feature_shards=tuple(
+                PrototypeObjectFeatureShardArtifact.from_data(item)
+                for item in raw["feature_shards"]
+            ),
+            physical_call_count=raw["physical_call_count"],
+            ordered_receipt_identities=tuple(raw["ordered_receipt_identities"]),
+            shard_admission_scope=raw["shard_admission_scope"],
+            local_packets=tuple(
+                ObjectLocalObservationPacket.from_data(item)
+                for item in raw["local_packets"]
+            ),
+            description_observation=PrototypeSceneDescriptionObservation.from_data(
+                raw["description_observation"]
+            ),
+            protocol_digest=raw["protocol_digest"],
+            source_digest=raw["source_digest"],
+            transport_source_digest=raw["transport_source_digest"],
+            model=raw["model"],
+            reasoning_effort=raw["reasoning_effort"],
+            model_digest=raw["model_digest"],
+            expected_launcher_digest=raw["expected_launcher_digest"],
+            cloud_policy_cache_binding=raw["cloud_policy_cache_binding"],
+            model_catalog_digest=raw["model_catalog_digest"],
+            no_tools_attestation_digest=raw["no_tools_attestation_digest"],
+            environment_digest=raw["environment_digest"],
+            artifact_digest=raw["artifact_digest"],
+        )
+        if expected_artifact_digest is not None and result.artifact_digest != _digest(
+            expected_artifact_digest, "expected raw feature artifact digest"
+        ):
+            raise PrototypeSceneObserverError("raw feature artifact commitment differs")
+        if result.to_data() != dict(raw):
+            raise PrototypeSceneObserverError("raw feature artifact is not canonical")
+        return result
+
+    def assert_untampered(self) -> None:
+        computed = canonical_digest(_raw_feature_preimage(self))
+        if computed != self.artifact_digest or computed != self._sealed_digest:
+            raise PrototypeSceneObserverError("raw feature artifact changed after sealing")
+
+
+def _build_raw_feature_artifact(
+    *,
+    observation_context_digest: str,
+    scene_id: str,
+    scene: bytes,
+    packet: ObjectHypothesisPacket,
+    identities: tuple[PrototypeImageIdentity, ...],
+    plan: object,
+    shards: tuple[PrototypeObjectFeatureShardArtifact, ...],
+    local_packets: tuple[ObjectLocalObservationPacket, ...],
+    description_observation: PrototypeSceneDescriptionObservation,
+    model: str,
+    reasoning_effort: str,
+    expected_launcher_digest: str | None,
+    cloud_policy_cache_binding: str,
+    model_catalog_digest: str,
+    no_tools_attestation_digest: str,
+) -> PrototypeObjectFeatureObserverArtifact:
+    values: dict[str, object] = {
+        "observation_context_digest": observation_context_digest,
+        "scene_id": scene_id,
+        "scene_digest": hashlib.sha256(scene).hexdigest(),
+        "presentation": identities,
+        "hypothesis_packet": packet,
+        "feature_shard_plan": plan,
+        "feature_shards": shards,
+        "physical_call_count": len(shards),
+        "ordered_receipt_identities": tuple(item.receipt_identity for item in shards),
+        "shard_admission_scope": "internal_scene_bundle_only",
+        "local_packets": local_packets,
+        "description_observation": description_observation,
+        "protocol_digest": prototype_object_feature_observer_protocol_digest(),
+        "source_digest": prototype_scene_observer_source_digest(),
+        "transport_source_digest": prototype_scene_transport_source_digest(),
+        "model": model,
+        "reasoning_effort": reasoning_effort,
+        "model_digest": prototype_scene_observer_model_digest(model, reasoning_effort),
+        "expected_launcher_digest": expected_launcher_digest,
+        "cloud_policy_cache_binding": cloud_policy_cache_binding,
+        "model_catalog_digest": model_catalog_digest,
+        "no_tools_attestation_digest": no_tools_attestation_digest,
+        "environment_digest": prototype_scene_observer_environment_digest(
+            model=model,
+            reasoning_effort=reasoning_effort,
+            expected_launcher_digest=expected_launcher_digest,
+            cloud_policy_cache_binding=cloud_policy_cache_binding,
+            model_catalog_digest=model_catalog_digest,
+            no_tools_attestation_digest=no_tools_attestation_digest,
+        ),
+    }
+    provisional = object.__new__(PrototypeObjectFeatureObserverArtifact)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return PrototypeObjectFeatureObserverArtifact(
+        **values,  # type: ignore[arg-type]
+        artifact_digest=canonical_digest(_raw_feature_preimage(provisional)),
+    )
+
+
+def _run_feature_shards(
+    packet: ObjectHypothesisPacket,
+    atlas: Sequence[tuple[str, bytes]],
+    *,
+    model: str,
+    reasoning_effort: str,
+    minutes: int,
+    verbose: bool,
+    executable: str,
+    cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None,
+    expected_launcher_digest: str | None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
+    transport: NamedImageTransport,
+    hidden_values: Sequence[str],
+) -> tuple[object, tuple[PrototypeObjectFeatureShardArtifact, ...]]:
+    """Issue the deterministic plan in order, continuing after typed failures."""
+
+    protocol = _object_protocol()
+    plan = protocol.plan_prototype_object_feature_shards(packet)
+    schema = protocol.prototype_object_feature_output_schema()
+    _legacy.validate_codex_strict_output_schema(schema)
+    atlas_by_name = dict(atlas)
+    identities = _legacy._image_identities(atlas)
+    identity_by_name = {item.name: item for item in identities}
+    artifacts: list[PrototypeObjectFeatureShardArtifact] = []
+    for spec in plan.shards:
+        prompt = protocol.prototype_object_feature_shard_prompt(packet, spec)
+        presentation = ((spec.sheet_name, atlas_by_name[spec.sheet_name]),)
+        _legacy._assert_model_visible_boundary(
+            prompt,
+            schema,
+            (spec.sheet_name,),
+            hidden_values=hidden_values,
+        )
+        try:
+            payload, receipt = _legacy._stage_and_call(
+                presentation,
+                prompt=prompt,
+                schema=schema,
+                model=model,
+                reasoning_effort=reasoning_effort,
+                minutes=minutes,
+                verbose=verbose,
+                executable=executable,
+                cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+                expected_launcher_digest=expected_launcher_digest,
+                model_catalog_snapshot=model_catalog_snapshot,
+                no_tools_attestation=no_tools_attestation,
+                transport=transport,
+            )
+        except Exception as exc:
+            artifacts.append(
+                _build_feature_shard_artifact(
+                    packet=packet,
+                    spec=spec,
+                    presentation=identity_by_name[spec.sheet_name],
+                    status=protocol.ObjectFeatureShardStatus.TRANSPORT_ERROR,
+                    payload=None,
+                    receipt=None,
+                    failure_code="shard_transport_failed",
+                    failure_type=_legacy._exception_type(exc),
+                    cells=(),
+                )
+            )
+            continue
+        try:
+            parsed = protocol.parse_prototype_object_feature_shard_payload(
+                packet, spec, payload
+            )
+        except (TypeError, ValueError):
+            artifacts.append(
+                _build_feature_shard_artifact(
+                    packet=packet,
+                    spec=spec,
+                    presentation=identity_by_name[spec.sheet_name],
+                    status=protocol.ObjectFeatureShardStatus.PARSER_ERROR,
+                    payload=payload,
+                    receipt=receipt,
+                    failure_code="shard_payload_rejected",
+                    failure_type="PrototypeScenePayloadError",
+                    cells=(),
+                )
+            )
+        else:
+            artifacts.append(
+                _build_feature_shard_artifact(
+                    packet=packet,
+                    spec=spec,
+                    presentation=identity_by_name[spec.sheet_name],
+                    status=protocol.ObjectFeatureShardStatus.SUCCESS,
+                    payload=payload,
+                    receipt=receipt,
+                    failure_code=None,
+                    failure_type=None,
+                    cells=tuple(parsed.cells),
+                )
+            )
+    return plan, tuple(artifacts)
+
+
 def _scene_preimage(artifact: "PrototypeSceneObserverArtifact") -> dict[str, object]:
     return {
         "schema": PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA,
@@ -940,11 +1690,21 @@ def _scene_preimage(artifact: "PrototypeSceneObserverArtifact") -> dict[str, obj
         "scene_task_id": artifact.scene_task_id,
         "scene_panel_id": artifact.scene_panel_id,
         "scene_digest": artifact.scene_digest,
+        "raw_feature_artifact_digest": artifact.raw_feature_artifact_digest,
         "hypothesis_packet": (
             None
             if artifact.hypothesis_packet is None
             else artifact.hypothesis_packet.to_data()
         ),
+        "feature_shard_plan": (
+            None
+            if artifact.feature_shard_plan is None
+            else artifact.feature_shard_plan.to_data()
+        ),
+        "feature_shards": [item.to_data() for item in artifact.feature_shards],
+        "physical_call_count": artifact.physical_call_count,
+        "ordered_receipt_identities": list(artifact.ordered_receipt_identities),
+        "shard_admission_scope": artifact.shard_admission_scope,
         "local_packets": [item.to_data() for item in artifact.local_packets],
         "evaluations": [item.to_data() for item in artifact.evaluations],
         "description_observation": artifact.description_observation.to_data(),
@@ -982,7 +1742,13 @@ class PrototypeSceneObserverArtifact:
     scene_task_id: str
     scene_panel_id: str
     scene_digest: str
+    raw_feature_artifact_digest: str | None
     hypothesis_packet: ObjectHypothesisPacket | None
+    feature_shard_plan: object | None
+    feature_shards: tuple[PrototypeObjectFeatureShardArtifact, ...]
+    physical_call_count: int
+    ordered_receipt_identities: tuple[str | None, ...]
+    shard_admission_scope: str
     local_packets: tuple[ObjectLocalObservationPacket, ...]
     evaluations: tuple[ObjectProfileEvaluation, ...]
     description_observation: PrototypeSceneDescriptionObservation
@@ -995,10 +1761,13 @@ class PrototypeSceneObserverArtifact:
             self,
             expected_protocol_digest=prototype_scene_scoring_protocol_digest(),
             phase="object-scene-features",
+            aggregate_model_output=True,
         )
         _address(self.observation_context_digest, "observation context digest")
         _digest(self.rubric_description_digest, "rubric description digest")
         _digest(self.scene_digest, "scene digest")
+        if self.raw_feature_artifact_digest is not None:
+            _digest(self.raw_feature_artifact_digest, "raw feature artifact digest")
         if (
             not isinstance(self.scene_task_id, str)
             or not self.scene_task_id
@@ -1021,14 +1790,37 @@ class PrototypeSceneObserverArtifact:
             raise TypeError("description observation has wrong type")
         if not isinstance(self.scores, tuple) or len(self.scores) != 2:
             raise PrototypeSceneObserverError("scores must exhaust both groups")
+        if (
+            isinstance(self.physical_call_count, bool)
+            or not isinstance(self.physical_call_count, int)
+            or self.physical_call_count < 0
+        ):
+            raise PrototypeSceneObserverError("physical call count is invalid")
+        if not isinstance(self.feature_shards, tuple) or any(
+            not isinstance(item, PrototypeObjectFeatureShardArtifact)
+            for item in self.feature_shards
+        ):
+            raise TypeError("feature shards must be a typed tuple")
+        if not isinstance(self.ordered_receipt_identities, tuple) or any(
+            item is not None and (not isinstance(item, str) or _SHA256.fullmatch(item) is None)
+            for item in self.ordered_receipt_identities
+        ):
+            raise PrototypeSceneObserverError("ordered receipt identities are invalid")
+        if self.shard_admission_scope != "internal_scene_bundle_only":
+            raise PrototypeSceneObserverError("feature shard admission scope differs")
         status = self.status
         if status in {
-            PrototypeSceneObserverStatus.SUCCESS,
             PrototypeSceneObserverStatus.PARSER_ERROR,
             PrototypeSceneObserverStatus.TRANSPORT_ERROR,
         }:
+            raise PrototypeSceneObserverError(
+                "v2 scene-level parser/transport failures must be typed per shard"
+            )
+        if status is PrototypeSceneObserverStatus.SUCCESS:
             if not isinstance(self.hypothesis_packet, ObjectHypothesisPacket):
                 raise PrototypeSceneObserverError("attempted scene lacks hypothesis packet")
+            if self.raw_feature_artifact_digest is None:
+                raise PrototypeSceneObserverError("attempted scene lacks raw feature commitment")
             if self.hypothesis_packet.panel_digest != self.scene_digest:
                 raise PrototypeSceneObserverError("hypothesis packet binds another scene")
             expected_presentation = tuple(
@@ -1037,26 +1829,69 @@ class PrototypeSceneObserverArtifact:
             )
             if self.presentation != expected_presentation:
                 raise PrototypeSceneObserverError("atlas presentation differs from packet")
-        elif self.hypothesis_packet is not None or self.presentation:
-            raise PrototypeSceneObserverError("unattempted scene carries pixel-derived evidence")
-        if status is PrototypeSceneObserverStatus.SUCCESS:
+            object_protocol = _object_protocol()
+            if not isinstance(
+                self.feature_shard_plan, object_protocol.ObjectFeatureShardPlan
+            ):
+                raise PrototypeSceneObserverError("attempted scene lacks feature shard plan")
+            object_protocol.verify_prototype_object_feature_shard_plan(
+                self.feature_shard_plan, self.hypothesis_packet
+            )
+            if tuple(item.spec for item in self.feature_shards) != self.feature_shard_plan.shards:
+                raise PrototypeSceneObserverError("feature shard artifacts differ from plan")
+            if self.physical_call_count != len(self.feature_shards) or self.physical_call_count != len(
+                self.feature_shard_plan.shards
+            ):
+                raise PrototypeSceneObserverError("physical call count differs from issued shards")
+            if self.ordered_receipt_identities != tuple(
+                item.receipt_identity for item in self.feature_shards
+            ):
+                raise PrototypeSceneObserverError("ordered receipt manifest differs")
+            identity_by_name = {item.name: item for item in self.presentation}
+            schema_digest = canonical_digest(
+                object_protocol.prototype_object_feature_output_schema()
+            )
+            for shard in self.feature_shards:
+                expected_prompt = object_protocol.prototype_object_feature_shard_prompt(
+                    self.hypothesis_packet, shard.spec
+                )
+                if (
+                    shard.presentation != identity_by_name.get(shard.spec.sheet_name)
+                    or shard.prompt_digest
+                    != hashlib.sha256(expected_prompt.encode("utf-8")).hexdigest()
+                    or shard.output_schema_digest != schema_digest
+                    or shard.protocol_digest
+                    != object_protocol.prototype_object_feature_shard_protocol_digest(
+                        self.hypothesis_packet, shard.spec
+                    )
+                ):
+                    raise PrototypeSceneObserverError("feature shard protocol binding differs")
+            outcomes = _feature_shard_outcomes(
+                self.hypothesis_packet, self.feature_shards
+            )
+            parsed = object_protocol.assemble_prototype_object_feature_shards(
+                self.hypothesis_packet,
+                self.feature_shard_plan,
+                outcomes,
+                feature_model_id=self.model,
+            )
+            if tuple(parsed.packets) != self.local_packets:
+                raise PrototypeSceneObserverError("local packets differ from shard assembly")
+            if _audit_description(parsed.audit_description) != self.description_observation:
+                raise PrototypeSceneObserverError("scene audit differs from shard assembly")
             if len(self.local_packets) != 3 or len(self.evaluations) != 2:
                 raise PrototypeSceneObserverError("successful scene lacks exhaustive decisions")
-            assert self.hypothesis_packet is not None
             expected_scenarios = tuple(
                 item.scenario_id for item in self.hypothesis_packet.scenarios
             )
             if tuple(item.scenario_id for item in self.local_packets) != expected_scenarios:
                 raise PrototypeSceneObserverError("local packet scenarios differ")
             packet_digest = self.hypothesis_packet.digest()
-            object_protocol = _object_protocol()
             expected_feature_protocol = (
                 object_protocol.prototype_object_feature_protocol_digest(
                     self.hypothesis_packet
                 )
             )
-            assert self.receipt is not None and self.model_payload is not None
-            expected_payload_digest = canonical_digest(dict(self.model_payload))
             for packet in self.local_packets:
                 if (
                     packet.panel_digest != self.scene_digest
@@ -1065,8 +1900,6 @@ class PrototypeSceneObserverArtifact:
                     or packet.hypothesis_catalog_digest != packet_digest
                     or packet.feature_protocol_digest != expected_feature_protocol
                     or packet.feature_model_id != self.model
-                    or packet.feature_receipt_digest != self.receipt.receipt_digest
-                    or packet.feature_payload_digest != expected_payload_digest
                 ):
                     raise PrototypeSceneObserverError("local packet provenance differs")
             local_digests = tuple(item.packet_digest for item in self.local_packets)
@@ -1078,19 +1911,19 @@ class PrototypeSceneObserverArtifact:
             if self.scores != _scores_from_evaluations(self.evaluations):
                 raise PrototypeSceneObserverError("scores differ from Python evaluations")
         else:
+            if (
+                self.hypothesis_packet is not None
+                or self.raw_feature_artifact_digest is not None
+                or self.presentation
+                or self.feature_shard_plan is not None
+                or self.feature_shards
+                or self.physical_call_count != 0
+                or self.ordered_receipt_identities
+            ):
+                raise PrototypeSceneObserverError("unattempted scene carries shard evidence")
             if self.local_packets or self.evaluations:
                 raise PrototypeSceneObserverError("failed scene carries decisional evaluation")
             expected_failure_rows = {
-                PrototypeSceneObserverStatus.PARSER_ERROR: (
-                    PrototypeSceneDescriptionObservation.rejected(),
-                    _error_scores("observer_payload_rejected", "PrototypeScenePayloadError"),
-                ),
-                PrototypeSceneObserverStatus.TRANSPORT_ERROR: (
-                    PrototypeSceneDescriptionObservation.unavailable(
-                        "observer_transport_failed", "PrototypeSceneTransportFailure"
-                    ),
-                    _error_scores("observer_transport_failed", "PrototypeSceneTransportFailure"),
-                ),
                 PrototypeSceneObserverStatus.INTERNAL_ERROR: (
                     PrototypeSceneDescriptionObservation.unavailable(
                         "observer_internal_error", "PrototypeSceneInternalError"
@@ -1136,7 +1969,10 @@ class PrototypeSceneObserverArtifact:
             {
                 "schema", *_COMMON_FIELDS, "observation_context_digest",
                 "rubric_description_digest", "scene_task_id", "scene_panel_id",
-                "scene_digest", "hypothesis_packet", "local_packets", "evaluations",
+                "scene_digest", "raw_feature_artifact_digest", "hypothesis_packet",
+                "feature_shard_plan",
+                "feature_shards", "physical_call_count", "ordered_receipt_identities",
+                "shard_admission_scope", "local_packets", "evaluations",
                 "description_observation", "scores", "runtime_authority",
                 "artifact_digest",
             },
@@ -1144,12 +1980,19 @@ class PrototypeSceneObserverArtifact:
         )
         if raw["schema"] != PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA or raw["runtime_authority"] != _authority_data():
             raise PrototypeSceneObserverError("unsupported scene artifact")
-        for name in ("presentation", "local_packets", "evaluations", "scores"):
+        for name in (
+            "presentation", "feature_shards", "ordered_receipt_identities",
+            "local_packets", "evaluations", "scores",
+        ):
             if not isinstance(raw[name], list):
                 raise PrototypeSceneObserverError(f"scene {name} must be a JSON list")
         packet = raw["hypothesis_packet"]
         if packet is not None and not isinstance(packet, Mapping):
             raise PrototypeSceneObserverError("hypothesis packet must be object or null")
+        if raw["feature_shard_plan"] is not None and not isinstance(
+            raw["feature_shard_plan"], Mapping
+        ):
+            raise PrototypeSceneObserverError("feature shard plan must be object or null")
         if not isinstance(raw["description_observation"], Mapping):
             raise PrototypeSceneObserverError("description observation must be object")
         result = cls(
@@ -1180,7 +2023,22 @@ class PrototypeSceneObserverArtifact:
             scene_task_id=raw["scene_task_id"],
             scene_panel_id=raw["scene_panel_id"],
             scene_digest=raw["scene_digest"],
+            raw_feature_artifact_digest=raw["raw_feature_artifact_digest"],
             hypothesis_packet=None if packet is None else ObjectHypothesisPacket.from_data(packet),
+            feature_shard_plan=(
+                None
+                if raw["feature_shard_plan"] is None
+                else _object_protocol().ObjectFeatureShardPlan.from_data(
+                    raw["feature_shard_plan"]
+                )
+            ),
+            feature_shards=tuple(
+                PrototypeObjectFeatureShardArtifact.from_data(item)
+                for item in raw["feature_shards"]
+            ),
+            physical_call_count=raw["physical_call_count"],
+            ordered_receipt_identities=tuple(raw["ordered_receipt_identities"]),
+            shard_admission_scope=raw["shard_admission_scope"],
             local_packets=tuple(ObjectLocalObservationPacket.from_data(x) for x in raw["local_packets"]),
             evaluations=tuple(ObjectProfileEvaluation.from_data(x) for x in raw["evaluations"]),
             description_observation=PrototypeSceneDescriptionObservation.from_data(raw["description_observation"]),
@@ -1276,7 +2134,7 @@ class PrototypeSceneObserverArtifact:
             model_id=self.model,
             model_identity_digest="sha256:" + self.model_digest,
             environment_digest="sha256:" + self.environment_digest,
-            observer_call_count=1,
+            observer_call_count=self.physical_call_count,
             scores=tuple(adapted),  # type: ignore[arg-type]
             adapter_protocol_id=OBSERVER_ADAPTER_PROTOCOL_ID,
         ).to_data()
@@ -1296,8 +2154,10 @@ def _scene_prompt_schema(
             },
         )
     protocol = _object_protocol()
+    plan = protocol.plan_prototype_object_feature_shards(packet)
     return (
-        protocol.prototype_object_feature_prompt(packet),
+        "Internal profile-blind feature-shard bundle; no aggregate model call. "
+        f"plan_digest={plan.plan_digest}; physical_calls={len(plan.shards)}.",
         protocol.prototype_object_feature_output_schema(),
     )
 
@@ -1311,6 +2171,7 @@ def _build_scene_artifact(
     scene_task_id: str,
     scene_panel_id: str,
     exact_scene_png_bytes: bytes,
+    raw_feature_artifact_digest: str | None,
     identities: tuple[PrototypeImageIdentity, ...],
     model: str,
     reasoning_effort: str,
@@ -1323,6 +2184,8 @@ def _build_scene_artifact(
     failure_code: str | None,
     failure_type: str | None,
     hypothesis_packet: ObjectHypothesisPacket | None,
+    feature_shard_plan: object | None,
+    feature_shards: tuple[PrototypeObjectFeatureShardArtifact, ...],
     local_packets: tuple[ObjectLocalObservationPacket, ...],
     evaluations: tuple[ObjectProfileEvaluation, ...],
     description_observation: PrototypeSceneDescriptionObservation,
@@ -1367,7 +2230,15 @@ def _build_scene_artifact(
         "scene_task_id": scene_task_id,
         "scene_panel_id": scene_panel_id,
         "scene_digest": hashlib.sha256(exact_scene_png_bytes).hexdigest(),
+        "raw_feature_artifact_digest": raw_feature_artifact_digest,
         "hypothesis_packet": hypothesis_packet,
+        "feature_shard_plan": feature_shard_plan,
+        "feature_shards": feature_shards,
+        "physical_call_count": len(feature_shards),
+        "ordered_receipt_identities": tuple(
+            item.receipt_identity for item in feature_shards
+        ),
+        "shard_admission_scope": "internal_scene_bundle_only",
         "local_packets": local_packets,
         "evaluations": evaluations,
         "description_observation": description_observation,
@@ -1380,6 +2251,156 @@ def _build_scene_artifact(
         **values,  # type: ignore[arg-type]
         artifact_digest=canonical_digest(_scene_preimage(provisional)),
     )
+
+
+def observe_prototype_object_features(
+    exact_scene_png_bytes: bytes,
+    *,
+    scene_id: str,
+    observation_context_digest: str,
+    expected_scene_sha256: str,
+    model: str,
+    reasoning_effort: str = "medium",
+    minutes: int = 15,
+    verbose: bool = False,
+    executable: str = "codex",
+    cloud_policy_cache_snapshot: CloudPolicyCacheSnapshot | None = None,
+    expected_launcher_digest: str | None = None,
+    model_catalog_snapshot: CodexModelCatalogSnapshot,
+    no_tools_attestation: CodexNoToolsAttestation,
+    transport: NamedImageTransport = run_codex_named_images_structured,
+) -> PrototypeObjectFeatureObserverArtifact:
+    """Observe one committed scene without references, descriptions, or profiles."""
+
+    if not callable(transport):
+        raise TypeError("transport must be callable")
+    scene = _legacy._validate_exact_png(exact_scene_png_bytes, "scene")
+    if hashlib.sha256(scene).hexdigest() != _digest(
+        expected_scene_sha256, "expected raw scene sha256"
+    ):
+        raise PrototypeSceneObserverError("raw scene differs from byte commitment")
+    _address(observation_context_digest, "raw observation context digest")
+    if not isinstance(scene_id, str) or _SCENE_ID.fullmatch(scene_id) is None:
+        raise PrototypeSceneObserverError("raw scene identity is invalid")
+    policy, model_catalog_digest, no_tools_digest = _runtime_identities(
+        model=model,
+        reasoning_effort=reasoning_effort,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+    )
+    packet = extract_object_hypotheses(scene)
+    atlas = render_object_hypothesis_atlas(packet, scene)
+    identities = _legacy._image_identities(atlas)
+    plan, shards = _run_feature_shards(
+        packet,
+        atlas,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        minutes=minutes,
+        verbose=verbose,
+        executable=executable,
+        cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        expected_launcher_digest=expected_launcher_digest,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        transport=transport,
+        hidden_values=(observation_context_digest, scene_id),
+    )
+    protocol = _object_protocol()
+    parsed = protocol.assemble_prototype_object_feature_shards(
+        packet,
+        plan,
+        _feature_shard_outcomes(packet, shards),
+        feature_model_id=model,
+    )
+    return _build_raw_feature_artifact(
+        observation_context_digest=observation_context_digest,
+        scene_id=scene_id,
+        scene=scene,
+        packet=packet,
+        identities=identities,
+        plan=plan,
+        shards=shards,
+        local_packets=tuple(parsed.packets),
+        description_observation=_audit_description(parsed.audit_description),
+        model=model,
+        reasoning_effort=reasoning_effort,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_digest,
+    )
+
+
+def verify_prototype_object_feature_observer_artifact(
+    artifact: PrototypeObjectFeatureObserverArtifact,
+    exact_scene_png_bytes: bytes,
+    *,
+    expected_scene_id: str,
+    expected_observation_context_digest: str,
+    expected_scene_sha256: str,
+    expected_artifact_digest: str,
+) -> PrototypeObjectFeatureObserverArtifact:
+    """Cold-rebuild the raw packet, atlas, receipts, and full-catalog packets."""
+
+    if not isinstance(artifact, PrototypeObjectFeatureObserverArtifact):
+        raise TypeError("artifact must be PrototypeObjectFeatureObserverArtifact")
+    artifact.assert_untampered()
+    scene = _legacy._validate_exact_png(exact_scene_png_bytes, "scene")
+    scene_digest = hashlib.sha256(scene).hexdigest()
+    if (
+        scene_digest != _digest(expected_scene_sha256, "expected raw scene sha256")
+        or artifact.scene_digest != scene_digest
+        or artifact.scene_id != expected_scene_id
+        or artifact.observation_context_digest
+        != _address(expected_observation_context_digest, "expected raw context digest")
+        or artifact.artifact_digest
+        != _digest(expected_artifact_digest, "expected raw feature artifact digest")
+    ):
+        raise PrototypeSceneObserverError("raw feature artifact differs from commitment")
+    rebuilt = extract_object_hypotheses(scene)
+    if rebuilt != artifact.hypothesis_packet:
+        raise PrototypeSceneObserverError("cold raw hypothesis extraction differs")
+    verify_object_hypothesis_packet(rebuilt, scene)
+    atlas = render_object_hypothesis_atlas(rebuilt, scene)
+    if artifact.presentation != _legacy._image_identities(atlas):
+        raise PrototypeSceneObserverError("cold raw atlas differs")
+    protocol = _object_protocol()
+    plan = protocol.plan_prototype_object_feature_shards(rebuilt)
+    if plan != artifact.feature_shard_plan:
+        raise PrototypeSceneObserverError("cold raw shard plan differs")
+    schema = protocol.prototype_object_feature_output_schema()
+    atlas_by_name = dict(atlas)
+    for shard in artifact.feature_shards:
+        if shard.receipt is not None:
+            assert shard.model_payload is not None
+            _verify_receipt(
+                shard.receipt,
+                ((shard.spec.sheet_name, atlas_by_name[shard.spec.sheet_name]),),
+                protocol.prototype_object_feature_shard_prompt(rebuilt, shard.spec),
+                schema,
+                shard.model_payload,
+            )
+    parsed = protocol.assemble_prototype_object_feature_shards(
+        rebuilt,
+        plan,
+        _feature_shard_outcomes(rebuilt, artifact.feature_shards),
+        feature_model_id=artifact.model,
+    )
+    if (
+        tuple(parsed.packets) != artifact.local_packets
+        or _audit_description(parsed.audit_description)
+        != artifact.description_observation
+    ):
+        raise PrototypeSceneObserverError("cold raw feature assembly differs")
+    decoded = PrototypeObjectFeatureObserverArtifact.from_data(
+        artifact.to_data(), expected_artifact_digest=expected_artifact_digest
+    )
+    if decoded != artifact:
+        raise PrototypeSceneObserverError("raw feature artifact cold round trip differs")
+    return artifact
 
 
 def _validate_scene_inputs(
@@ -1475,6 +2496,7 @@ def observe_prototype_scene(
             scene_task_id=scene_task_id,
             scene_panel_id=scene_panel_id,
             exact_scene_png_bytes=scene,
+            raw_feature_artifact_digest=None,
             identities=(),
             model=model,
             reasoning_effort=reasoning_effort,
@@ -1487,6 +2509,8 @@ def observe_prototype_scene(
             failure_code="profile_prerequisite_failed",
             failure_type="PrototypeObjectProfilePrerequisiteFailure",
             hypothesis_packet=None,
+            feature_shard_plan=None,
+            feature_shards=(),
             local_packets=(),
             evaluations=(),
             description_observation=PrototypeSceneDescriptionObservation.unavailable(
@@ -1494,135 +2518,55 @@ def observe_prototype_scene(
             ),
             scores=_error_scores("profile_prerequisite_failed", "PrototypeObjectProfilePrerequisiteFailure"),
         )
-    packet = extract_object_hypotheses(scene)
-    atlas = render_object_hypothesis_atlas(packet, scene)
-    identities = _legacy._image_identities(atlas)
-    prompt, schema = _scene_prompt_schema(packet)
-    _legacy.validate_codex_strict_output_schema(schema)
-    from bongard.prototype_pair_cohort import OPAQUE_TAG_IDS
-
-    _legacy._assert_model_visible_boundary(
-        prompt,
-        schema,
-        tuple(name for name, _ in atlas),
-        hidden_values=(
-            catalog.plan_digest,
-            observation_context_digest,
-            scene_task_id,
-            scene_panel_id,
-            *OPAQUE_TAG_IDS,
-            *(item.source_panel_id for item in catalog.bindings),
-            *(item.profile_digest for item in rubric_artifact.profiles),
-            *(item.prose or "" for item in rubric_artifact.rubrics),
-        ),
+    raw_features = observe_prototype_object_features(
+        scene,
+        scene_id=scene_panel_id,
+        observation_context_digest=observation_context_digest,
+        expected_scene_sha256=expected_scene_sha256,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        minutes=minutes,
+        verbose=verbose,
+        executable=executable,
+        cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
+        expected_launcher_digest=expected_launcher_digest,
+        model_catalog_snapshot=model_catalog_snapshot,
+        no_tools_attestation=no_tools_attestation,
+        transport=transport,
     )
-    try:
-        payload, receipt = _legacy._stage_and_call(
-            atlas,
-            prompt=prompt,
-            schema=schema,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            minutes=minutes,
-            verbose=verbose,
-            executable=executable,
-            cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
-            expected_launcher_digest=expected_launcher_digest,
-            model_catalog_snapshot=model_catalog_snapshot,
-            no_tools_attestation=no_tools_attestation,
-            transport=transport,
-        )
-    except Exception as exc:
-        return _build_scene_artifact(
-            status=PrototypeSceneObserverStatus.TRANSPORT_ERROR,
-            catalog=catalog,
-            rubric_artifact=rubric_artifact,
-            observation_context_digest=observation_context_digest,
-            scene_task_id=scene_task_id,
-            scene_panel_id=scene_panel_id,
-            exact_scene_png_bytes=scene,
-            identities=identities,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            expected_launcher_digest=expected_launcher_digest,
-            cloud_policy_cache_binding=policy,
-            model_catalog_digest=model_catalog_digest,
-            no_tools_attestation_digest=no_tools_digest,
-            payload=None,
-            receipt=None,
-            failure_code="transport_failed",
-            failure_type=_legacy._exception_type(exc),
-            hypothesis_packet=packet,
-            local_packets=(),
-            evaluations=(),
-            description_observation=PrototypeSceneDescriptionObservation.unavailable(
-                "observer_transport_failed", "PrototypeSceneTransportFailure"
-            ),
-            scores=_error_scores("observer_transport_failed", "PrototypeSceneTransportFailure"),
-        )
-    try:
-        parsed = _object_protocol().parse_prototype_object_feature_payload(
-            packet,
-            payload,
-            feature_model_id=model,
-            feature_receipt_digest=receipt.receipt_digest,
-        )
-        local_packets = tuple(parsed.packets)
-        evaluations = tuple(
-            evaluate_object_profile(profile, local_packets)
-            for profile in rubric_artifact.profiles
-        )
-        return _build_scene_artifact(
-            status=PrototypeSceneObserverStatus.SUCCESS,
-            catalog=catalog,
-            rubric_artifact=rubric_artifact,
-            observation_context_digest=observation_context_digest,
-            scene_task_id=scene_task_id,
-            scene_panel_id=scene_panel_id,
-            exact_scene_png_bytes=scene,
-            identities=identities,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            expected_launcher_digest=expected_launcher_digest,
-            cloud_policy_cache_binding=policy,
-            model_catalog_digest=model_catalog_digest,
-            no_tools_attestation_digest=no_tools_digest,
-            payload=payload,
-            receipt=receipt,
-            failure_code=None,
-            failure_type=None,
-            hypothesis_packet=packet,
-            local_packets=local_packets,
-            evaluations=evaluations,
-            description_observation=_audit_description(parsed.audit_description),
-            scores=_scores_from_evaluations(evaluations),
-        )
-    except (TypeError, ValueError):
-        return _build_scene_artifact(
-            status=PrototypeSceneObserverStatus.PARSER_ERROR,
-            catalog=catalog,
-            rubric_artifact=rubric_artifact,
-            observation_context_digest=observation_context_digest,
-            scene_task_id=scene_task_id,
-            scene_panel_id=scene_panel_id,
-            exact_scene_png_bytes=scene,
-            identities=identities,
-            model=model,
-            reasoning_effort=reasoning_effort,
-            expected_launcher_digest=expected_launcher_digest,
-            cloud_policy_cache_binding=policy,
-            model_catalog_digest=model_catalog_digest,
-            no_tools_attestation_digest=no_tools_digest,
-            payload=payload,
-            receipt=receipt,
-            failure_code="payload_rejected",
-            failure_type="PrototypeScenePayloadError",
-            hypothesis_packet=packet,
-            local_packets=(),
-            evaluations=(),
-            description_observation=PrototypeSceneDescriptionObservation.rejected(),
-            scores=_error_scores("observer_payload_rejected", "PrototypeScenePayloadError"),
-        )
+    local_packets = raw_features.local_packets
+    evaluations = tuple(
+        evaluate_object_profile(profile, local_packets)
+        for profile in rubric_artifact.profiles
+    )
+    return _build_scene_artifact(
+        status=PrototypeSceneObserverStatus.SUCCESS,
+        catalog=catalog,
+        rubric_artifact=rubric_artifact,
+        observation_context_digest=observation_context_digest,
+        scene_task_id=scene_task_id,
+        scene_panel_id=scene_panel_id,
+        exact_scene_png_bytes=scene,
+        raw_feature_artifact_digest=raw_features.artifact_digest,
+        identities=raw_features.presentation,
+        model=model,
+        reasoning_effort=reasoning_effort,
+        expected_launcher_digest=expected_launcher_digest,
+        cloud_policy_cache_binding=policy,
+        model_catalog_digest=model_catalog_digest,
+        no_tools_attestation_digest=no_tools_digest,
+        payload=None,
+        receipt=None,
+        failure_code=None,
+        failure_type=None,
+        hypothesis_packet=raw_features.hypothesis_packet,
+        feature_shard_plan=raw_features.feature_shard_plan,
+        feature_shards=raw_features.feature_shards,
+        local_packets=local_packets,
+        evaluations=evaluations,
+        description_observation=raw_features.description_observation,
+        scores=_scores_from_evaluations(evaluations),
+    )
 
 
 def seal_prototype_scene_internal_error(
@@ -1677,6 +2621,7 @@ def seal_prototype_scene_internal_error(
         scene_task_id=scene_task_id,
         scene_panel_id=scene_panel_id,
         exact_scene_png_bytes=scene,
+        raw_feature_artifact_digest=None,
         identities=(),
         model=model,
         reasoning_effort=reasoning_effort,
@@ -1689,6 +2634,8 @@ def seal_prototype_scene_internal_error(
         failure_code="observer_internal_error",
         failure_type=_legacy._exception_type(exception),
         hypothesis_packet=None,
+        feature_shard_plan=None,
+        feature_shards=(),
         local_packets=(),
         evaluations=(),
         description_observation=PrototypeSceneDescriptionObservation.unavailable(
@@ -1741,11 +2688,7 @@ def verify_prototype_scene_observer_artifact(
         or artifact.scene_digest != hashlib.sha256(scene).hexdigest()
     ):
         raise PrototypeSceneObserverError("scene differs from cold parent reconstruction")
-    if artifact.status in {
-        PrototypeSceneObserverStatus.SUCCESS,
-        PrototypeSceneObserverStatus.PARSER_ERROR,
-        PrototypeSceneObserverStatus.TRANSPORT_ERROR,
-    }:
+    if artifact.status is PrototypeSceneObserverStatus.SUCCESS:
         assert artifact.hypothesis_packet is not None
         rebuilt = extract_object_hypotheses(scene)
         if rebuilt != artifact.hypothesis_packet:
@@ -1760,40 +2703,71 @@ def verify_prototype_scene_observer_artifact(
             or artifact.output_schema_digest != canonical_digest(schema)
         ):
             raise PrototypeSceneObserverError("cold feature protocol differs")
-        if artifact.receipt is not None:
-            assert artifact.model_payload is not None
-            _verify_receipt(
-                artifact.receipt, atlas, prompt, schema, artifact.model_payload
-            )
-        if artifact.status is PrototypeSceneObserverStatus.SUCCESS:
-            assert artifact.receipt is not None and artifact.model_payload is not None
-            parsed = _object_protocol().parse_prototype_object_feature_payload(
-                rebuilt,
-                artifact.model_payload,
-                feature_model_id=artifact.model,
-                feature_receipt_digest=artifact.receipt.receipt_digest,
-            )
-            packets = tuple(parsed.packets)
-            if packets != artifact.local_packets:
-                raise PrototypeSceneObserverError("cold local feature packets differ")
-            evaluations = tuple(
-                evaluate_object_profile(profile, packets)
-                for profile in rubric_artifact.profiles
-            )
-            if evaluations != artifact.evaluations:
-                raise PrototypeSceneObserverError("cold profile evaluations differ")
-            for profile, evaluation in zip(
-                rubric_artifact.profiles, evaluations, strict=True
-            ):
-                verify_object_profile_evaluation(
-                    evaluation, profile=profile, packets=packets
+        protocol = _object_protocol()
+        rebuilt_plan = protocol.plan_prototype_object_feature_shards(rebuilt)
+        if rebuilt_plan != artifact.feature_shard_plan:
+            raise PrototypeSceneObserverError("cold feature shard plan differs")
+        atlas_by_name = dict(atlas)
+        for shard in artifact.feature_shards:
+            if shard.receipt is not None:
+                assert shard.model_payload is not None
+                shard_prompt = protocol.prototype_object_feature_shard_prompt(
+                    rebuilt, shard.spec
                 )
-            if (
-                _audit_description(parsed.audit_description)
-                != artifact.description_observation
-                or _scores_from_evaluations(evaluations) != artifact.scores
-            ):
-                raise PrototypeSceneObserverError("cold score mapping differs")
+                _verify_receipt(
+                    shard.receipt,
+                    ((shard.spec.sheet_name, atlas_by_name[shard.spec.sheet_name]),),
+                    shard_prompt,
+                    schema,
+                    shard.model_payload,
+                )
+        outcomes = _feature_shard_outcomes(rebuilt, artifact.feature_shards)
+        parsed = protocol.assemble_prototype_object_feature_shards(
+            rebuilt,
+            rebuilt_plan,
+            outcomes,
+            feature_model_id=artifact.model,
+        )
+        packets = tuple(parsed.packets)
+        if packets != artifact.local_packets:
+            raise PrototypeSceneObserverError("cold local feature packets differ")
+        evaluations = tuple(
+            evaluate_object_profile(profile, packets)
+            for profile in rubric_artifact.profiles
+        )
+        if evaluations != artifact.evaluations:
+            raise PrototypeSceneObserverError("cold profile evaluations differ")
+        for profile, evaluation in zip(
+            rubric_artifact.profiles, evaluations, strict=True
+        ):
+            verify_object_profile_evaluation(
+                evaluation, profile=profile, packets=packets
+            )
+        if (
+            _audit_description(parsed.audit_description)
+            != artifact.description_observation
+            or _scores_from_evaluations(evaluations) != artifact.scores
+        ):
+            raise PrototypeSceneObserverError("cold score mapping differs")
+        rebuilt_raw = _build_raw_feature_artifact(
+            observation_context_digest=artifact.observation_context_digest,
+            scene_id=artifact.scene_panel_id,
+            scene=scene,
+            packet=rebuilt,
+            identities=artifact.presentation,
+            plan=rebuilt_plan,
+            shards=artifact.feature_shards,
+            local_packets=artifact.local_packets,
+            description_observation=artifact.description_observation,
+            model=artifact.model,
+            reasoning_effort=artifact.reasoning_effort,
+            expected_launcher_digest=artifact.expected_launcher_digest,
+            cloud_policy_cache_binding=artifact.cloud_policy_cache_binding,
+            model_catalog_digest=artifact.model_catalog_digest,
+            no_tools_attestation_digest=artifact.no_tools_attestation_digest,
+        )
+        if rebuilt_raw.artifact_digest != artifact.raw_feature_artifact_digest:
+            raise PrototypeSceneObserverError("cold raw feature commitment differs")
     else:
         prompt, schema = _scene_prompt_schema(None)
         if (
@@ -1810,7 +2784,7 @@ def verify_prototype_scene_observer_artifact(
 
 
 def prototype_scene_observer_prompt(packet: ObjectHypothesisPacket) -> str:
-    return _object_protocol().prototype_object_feature_prompt(packet)
+    return _scene_prompt_schema(packet)[0]
 
 
 def prototype_scene_observer_output_schema(
@@ -1827,12 +2801,17 @@ observe_prototype_whole_scene = observe_prototype_scene
 __all__ = (
     "PPM_SCALE",
     "PROTOTYPE_GROUP_IDS",
+    "PROTOTYPE_OBJECT_FEATURE_OBSERVER_ARTIFACT_SCHEMA",
+    "PROTOTYPE_OBJECT_FEATURE_OBSERVER_PROTOCOL_ID",
+    "PROTOTYPE_OBJECT_FEATURE_SHARD_ARTIFACT_SCHEMA",
     "PROTOTYPE_REFERENCE_CATALOG_SCHEMA",
     "PROTOTYPE_RUBRIC_DESCRIPTION_ARTIFACT_SCHEMA",
     "PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA",
     "PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID",
     "NamedImageTransport",
     "PrototypeImageIdentity",
+    "PrototypeObjectFeatureObserverArtifact",
+    "PrototypeObjectFeatureShardArtifact",
     "PrototypeReferenceBinding",
     "PrototypeReferenceCatalog",
     "PrototypeRubric",
@@ -1848,11 +2827,13 @@ __all__ = (
     "PrototypeSceneScoreState",
     "build_prototype_reference_catalog",
     "describe_prototype_references",
+    "observe_prototype_object_features",
     "observe_prototype_scene",
     "observe_prototype_whole_scene",
     "prototype_rubric_description_output_schema",
     "prototype_rubric_description_prompt",
     "prototype_rubric_description_protocol_digest",
+    "prototype_object_feature_observer_protocol_digest",
     "prototype_scene_observer_environment_digest",
     "prototype_scene_observer_model_digest",
     "prototype_scene_observer_output_schema",
@@ -1863,6 +2844,7 @@ __all__ = (
     "seal_prototype_rubric_description_internal_error",
     "seal_prototype_scene_internal_error",
     "verify_prototype_reference_catalog",
+    "verify_prototype_object_feature_observer_artifact",
     "verify_prototype_rubric_description_artifact",
     "verify_prototype_scene_observer_artifact",
 )
