@@ -32,7 +32,7 @@ from bongard.prototype_object_scene_observer import (
     prototype_scene_observer_model_digest,
     prototype_scene_scoring_protocol_digest,
 )
-from bongard.prototype_object_profiles import OBJECT_FEATURE_IDS
+from bongard.prototype_object_observer_protocol import ObjectFeatureShardStatus
 from bongard.prototype_scene_headless_runner import (
     PrototypeSceneCandidateFreeze,
     PrototypeSceneFreezeCommitReceipt,
@@ -100,43 +100,43 @@ def _calibration_score(tag_id: str, expected: str) -> PrototypeSceneTagScore:
 
 def _feature_payload(prompt: str, states: tuple[str, str]) -> dict[str, object]:
     slot_ids = tuple(re.findall(r"slot_id=(slot-[0-9]{8})", prompt))
-    assert slot_ids
+    feature_ids = tuple(
+        re.findall(r"^- ([a-z][a-z0-9_]+); unit=", prompt, flags=re.MULTILINE)
+    )
+    assert slot_ids and feature_ids
     feature_state = {
         "bird_like_support_ppm": states[0],
         "straight_span_count": states[1],
     }
-    cells: list[dict[str, object]] = []
+    rows: list[dict[str, object]] = []
     for slot_id in slot_ids:
-        for feature_id in OBJECT_FEATURE_IDS:
+        row_states: list[str] = []
+        lowers: list[int | None] = []
+        uppers: list[int | None] = []
+        for feature_id in feature_ids:
             state = feature_state.get(feature_id, "absent")
             if state == "indeterminate":
-                cells.append(
-                    {
-                        "slot_id": slot_id,
-                        "feature_id": feature_id,
-                        "state": "indeterminate",
-                        "lower": None,
-                        "upper": None,
-                        "reason_code": "genuinely_unresolvable",
-                    }
-                )
+                row_states.append("i")
+                lowers.append(None)
+                uppers.append(None)
             else:
                 value = 900_000 if state == "present" else 0
                 if feature_id == "straight_span_count" and state == "present":
                     value = 1
-                cells.append(
-                    {
-                        "slot_id": slot_id,
-                        "feature_id": feature_id,
-                        "state": "scored",
-                        "lower": value,
-                        "upper": value,
-                        "reason_code": None,
-                    }
-                )
+                row_states.append("s")
+                lowers.append(value)
+                uppers.append(value)
+        rows.append(
+            {
+                "slot_id": slot_id,
+                "states": row_states,
+                "lowers": lowers,
+                "uppers": uppers,
+            }
+        )
     return {
         "description": "One bounded scene observation for offline replay.",
-        "cells": cells,
+        "rows": rows,
     }
 
 
@@ -296,7 +296,7 @@ def _observer_artifact(
             raise RuntimeError("offline fixture transport failure")
         payload = _feature_payload(prompt, ("present", "indeterminate"))
         if parser_failure:
-            payload["cells"].pop()
+            payload["rows"].pop()  # type: ignore[union-attr]
         return CodexStructuredResult(
             payload, _receipt(prompt, paths, names, schema, payload)
         )
@@ -643,7 +643,12 @@ def test_transport_failure_is_typed_error_never_absence(runtime_authority) -> No
     scene, artifact = _observer_artifact(
         runtime_authority, transport_failure=True
     )
-    assert artifact.status is PrototypeSceneObserverStatus.TRANSPORT_ERROR
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.feature_shards
+    assert all(
+        item.status is ObjectFeatureShardStatus.TRANSPORT_ERROR
+        for item in artifact.feature_shards
+    )
     archive = _archive(runtime_authority, scene, artifact)
     panel = materialize_prototype_scene_panel(
         archive,
@@ -652,7 +657,7 @@ def test_transport_failure_is_typed_error_never_absence(runtime_authority) -> No
         expected_archive_digest=archive.record_digest,
     )
     assert all(
-        item.status is PrototypeSceneScoreStatus.TRANSPORT_ERROR
+        item.status is PrototypeSceneScoreStatus.ERROR
         for item in panel.scores
     )
     assert all(
@@ -821,7 +826,12 @@ def test_parser_failure_is_error_and_never_numerical_absence(
     runtime_authority,
 ) -> None:
     scene, artifact = _observer_artifact(runtime_authority, parser_failure=True)
-    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.feature_shards
+    assert all(
+        item.status is ObjectFeatureShardStatus.PARSER_ERROR
+        for item in artifact.feature_shards
+    )
     archive = _archive(runtime_authority, scene, artifact)
     panel = materialize_prototype_scene_panel(
         archive,
@@ -830,7 +840,7 @@ def test_parser_failure_is_error_and_never_numerical_absence(
         expected_archive_digest=archive.record_digest,
     )
     assert all(
-        item.status is PrototypeSceneScoreStatus.PARSER_ERROR
+        item.status is PrototypeSceneScoreStatus.ERROR
         for item in panel.scores
     )
     assert all(
@@ -862,7 +872,7 @@ def test_loaded_adapter_source_identity_fails_on_disk_drift(monkeypatch) -> None
 
 
 def test_calibration_observation_is_adapted_only_after_cold_verification(
-    runtime_authority,
+    runtime_authority, monkeypatch,
 ) -> None:
     calibration_plan = runtime_authority[-3]
     scheduled = calibration_plan.scenes[0]
@@ -891,12 +901,43 @@ def test_calibration_observation_is_adapted_only_after_cold_verification(
         scheduled.panel_id,
         expected_archive_digest=archive.record_digest,
     )
+    assert observation.observer_call_count == artifact.physical_call_count
+    assert observation.observer_call_count == len(artifact.feature_shards)
+    assert observation.observer_call_count >= 1
     assert tuple(item.status for item in observation.scores) == (
         PrototypeSceneScoreStatus.SCORE,
         PrototypeSceneScoreStatus.INDETERMINATE,
     )
     assert observation.observer_artifact_digest == (
         "sha256:" + artifact.artifact_digest
+    )
+    original_adapter = runtime_adapter_module.adapt_prototype_scene_observation
+
+    def mismatched_call_count(*args, **kwargs):
+        adapted = original_adapter(*args, **kwargs)
+        return replace(
+            adapted, observer_call_count=adapted.observer_call_count + 1
+        )
+
+    monkeypatch.setattr(
+        runtime_adapter_module,
+        "adapt_prototype_scene_observation",
+        mismatched_call_count,
+    )
+    with pytest.raises(
+        PrototypeSceneRuntimeAdapterError, match="physical call count"
+    ):
+        materialize_prototype_scene_calibration_observation(
+            archive,
+            calibration_plan,
+            scheduled.task_id,
+            scheduled.panel_id,
+            expected_archive_digest=archive.record_digest,
+        )
+    monkeypatch.setattr(
+        runtime_adapter_module,
+        "adapt_prototype_scene_observation",
+        original_adapter,
     )
     with pytest.raises(
         PrototypeSceneRuntimeAdapterError, match="calibration artifact"
@@ -959,6 +1000,7 @@ def test_complete_calibration_archive_is_cold_adapted_in_plan_order(
     assert tuple((item.task_id, item.panel_id) for item in observations) == tuple(
         (item.task_id, item.panel_id) for item in calibration_plan.scenes
     )
+    assert all(item.observer_call_count >= 1 for item in observations)
     assert all(
         score.status is PrototypeSceneScoreStatus.SCORE
         for observation in observations

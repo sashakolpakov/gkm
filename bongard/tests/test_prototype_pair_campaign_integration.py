@@ -43,7 +43,6 @@ from bongard.prototype_pair_execution_precommit import (
     PrototypePairExecutionPrecommit,
     prepare_prototype_pair_execution_precommit,
 )
-from bongard.prototype_object_profiles import OBJECT_FEATURE_IDS
 from bongard.prototype_scene_calibration import (
     PrototypeSceneTagThreshold,
     calibration_algorithm_digest,
@@ -324,24 +323,12 @@ def _description_payload() -> dict[str, object]:
             {
                 "group_id": "group_0",
                 "rubric": "A bird-like angular outline with oblique wings.",
-                "atoms": [
-                    {
-                        "feature_id": "bird_like_support_ppm",
-                        "operator": "at_least",
-                        "target": 500_000,
-                    }
-                ],
+                "feature_ids": ["bird_like_support_ppm"],
             },
             {
                 "group_id": "group_1",
                 "rubric": "A rounded leaf-like contour arrangement.",
-                "atoms": [
-                    {
-                        "feature_id": "rounded_leaf_support_ppm",
-                        "operator": "at_least",
-                        "target": 500_000,
-                    }
-                ],
+                "feature_ids": ["rounded_leaf_support_ppm"],
             },
         ]
     }
@@ -370,6 +357,7 @@ def _description_transport(counter: list[int], *, fail: bool = False):
 
 def _feature_payload(
     slot_ids: Sequence[str],
+    feature_ids: Sequence[str],
     states: Mapping[str, str],
     *,
     indeterminate_tags: frozenset[str] = frozenset(),
@@ -379,41 +367,38 @@ def _feature_payload(
         OPAQUE_TAG_IDS[1]: "rounded_leaf_support_ppm",
     }
     tag_by_feature = {value: key for key, value in feature_by_tag.items()}
-    assert slot_ids
-    cells: list[dict[str, object]] = []
+    assert slot_ids and feature_ids
+    rows: list[dict[str, object]] = []
     for slot_id in slot_ids:
-        for feature_id in OBJECT_FEATURE_IDS:
+        row_states: list[str] = []
+        lowers: list[int | None] = []
+        uppers: list[int | None] = []
+        for feature_id in feature_ids:
             tag_id = tag_by_feature.get(feature_id)
             if tag_id in indeterminate_tags:
-                cells.append(
-                    {
-                        "slot_id": slot_id,
-                        "feature_id": feature_id,
-                        "state": "indeterminate",
-                        "lower": None,
-                        "upper": None,
-                        "reason_code": "ambiguous_visible_measurement",
-                    }
-                )
+                row_states.append("i")
+                lowers.append(None)
+                uppers.append(None)
                 continue
             value = (
                 900_000
                 if tag_id is not None and states[tag_id] == "present"
                 else 0
             )
-            cells.append(
-                {
-                    "slot_id": slot_id,
-                    "feature_id": feature_id,
-                    "state": "scored",
-                    "lower": value,
-                    "upper": value,
-                    "reason_code": None,
-                }
-            )
+            row_states.append("s")
+            lowers.append(value)
+            uppers.append(value)
+        rows.append(
+            {
+                "slot_id": slot_id,
+                "states": row_states,
+                "lowers": lowers,
+                "uppers": uppers,
+            }
+        )
     return {
         "description": "A connected angular drawing with several visible strokes.",
-        "cells": cells,
+        "rows": rows,
     }
 
 
@@ -444,6 +429,7 @@ def _scene_transport(
             counter[0] += 1
         assert _kwargs["model_catalog_snapshot"] is MODEL_CATALOG
         assert _kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
+        assert len(names) == 1
         assert all(name.startswith("sheet_") for name in names)
         with Image.open(paths[0]) as atlas_image:
             values = set(atlas_image.get_flattened_data())
@@ -469,6 +455,13 @@ def _scene_transport(
             indeterminate_tags = frozenset(OPAQUE_TAG_IDS)
         payload = _feature_payload(
             tuple(re.findall(r"slot_id=(slot-[0-9]{8})", prompt)),
+            tuple(
+                re.findall(
+                    r"^- ([a-z][a-z0-9_]+); unit=",
+                    prompt,
+                    flags=re.MULTILINE,
+                )
+            ),
             states,
             indeterminate_tags=indeterminate_tags,
         )

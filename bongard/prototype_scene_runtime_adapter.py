@@ -1203,9 +1203,10 @@ def materialize_prototype_scene_calibration_observation(
         or observation.model_identity_digest
         != calibration_plan.model_identity_digest
         or observation.environment_digest != calibration_plan.environment_digest
+        or observation.observer_call_count != artifact.physical_call_count
     ):
         raise PrototypeSceneRuntimeAdapterError(
-            "cold-verified calibration observation identity differs from plan"
+            "cold-verified calibration observation identity or physical call count differs"
         )
     return observation
 

@@ -48,6 +48,9 @@ from bongard.prototype_pair_cohort import (
 
 
 PPM_SCALE = 1_000_000
+# Audit the bounded physical work used to produce one scene-level observation;
+# this count is never a statistical sample size or cluster multiplier.
+MAX_PHYSICAL_OBSERVER_CALLS_PER_SCENE = 4_096
 PLAN_SCHEMA = "gkm.bongard-prototype-scene-calibration-plan.v1"
 THRESHOLD_SCHEMA = "gkm.bongard-prototype-scene-threshold.v1"
 SCENE_SCHEMA = "gkm.bongard-prototype-scene-calibration-scene.v1"
@@ -971,10 +974,12 @@ class PrototypeSceneCalibrationObservation:
         _identifier(self.observer_artifact_schema, "observer artifact schema")
         _identifier(self.observer_protocol_id, "observer protocol ID")
         _text(self.model_id, "observer model ID")
-        if self.observer_call_count != 1:
-            raise PrototypeSceneCalibrationError(
-                "each scene must be scored by exactly one observer call"
-            )
+        _integer(
+            self.observer_call_count,
+            "physical observer call count",
+            minimum=1,
+            maximum=MAX_PHYSICAL_OBSERVER_CALLS_PER_SCENE,
+        )
         if (
             tuple(item.tag_id for item in self.scores) != OPAQUE_TAG_IDS
             or any(not isinstance(item, PrototypeSceneTagScore) for item in self.scores)
@@ -2234,6 +2239,7 @@ __all__ = [
     "CALIBRATION_ALGORITHM_ID",
     "CALIBRATION_SOURCE_SHA256",
     "CalibrationDirection",
+    "MAX_PHYSICAL_OBSERVER_CALLS_PER_SCENE",
     "OBSERVER_ADAPTER_PROTOCOL_ID",
     "PrototypeSceneCalibratedResult",
     "PrototypeSceneCalibrationArtifactAdapter",

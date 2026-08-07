@@ -23,6 +23,7 @@ from bongard.prototype_pair_cohort import (
 )
 from bongard.prototype_scene_calibration import (
     CalibrationDirection,
+    MAX_PHYSICAL_OBSERVER_CALLS_PER_SCENE,
     PrototypeSceneCalibrationError,
     PrototypeSceneCalibrationFamily,
     PrototypeSceneCalibrationObservation,
@@ -159,7 +160,9 @@ def _score(tag_id: str, expected: str) -> PrototypeSceneTagScore:
     )
 
 
-def _observations(plan: PrototypeSceneCalibrationPlan):
+def _observations(
+    plan: PrototypeSceneCalibrationPlan, *, observer_call_count: int = 1
+):
     result = []
     for scene in plan.scenes:
         expected = dict(scene.expected_tag_states)
@@ -180,7 +183,7 @@ def _observations(plan: PrototypeSceneCalibrationPlan):
                 model_id=plan.model_id,
                 model_identity_digest=plan.model_identity_digest,
                 environment_digest=plan.environment_digest,
-                observer_call_count=1,
+                observer_call_count=observer_call_count,
                 scores=tuple(
                     _score(tag_id, expected[tag_id]) for tag_id in OPAQUE_TAG_IDS
                 ),
@@ -190,6 +193,30 @@ def _observations(plan: PrototypeSceneCalibrationPlan):
             )
         )
     return tuple(result)
+
+
+def test_physical_shard_call_count_is_bounded_and_not_a_statistical_denominator() -> None:
+    _cohort_plan, plan = _calibration_plan()
+    observations = _observations(plan, observer_call_count=7)
+    assessment = assess_prototype_scene_calibration(
+        plan,
+        observations,
+        expected_calibration_plan_digest=plan.record_digest,
+    )
+
+    assert all(item.observer_call_count == 7 for item in observations)
+    assert assessment.observation_count == 28
+    assert all(item.cluster_count == 14 for item in assessment.bounds)
+    assert PrototypeSceneCalibrationObservation.from_data(
+        observations[0].to_data()
+    ) == observations[0]
+
+    for invalid in (0, MAX_PHYSICAL_OBSERVER_CALLS_PER_SCENE + 1, True):
+        with pytest.raises(
+            PrototypeSceneCalibrationError,
+            match="physical observer call count",
+        ):
+            replace(observations[0], observer_call_count=invalid)
 
 
 def test_zero_error_accepts_exact_268752_and_cold_replays() -> None:
