@@ -25,7 +25,7 @@ import re
 import unicodedata
 from typing import Any, Mapping
 
-from bongard.artifacts import canonical_digest, canonical_json
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.canonical_cache import (
     cached_content_bytes,
     cached_content_data,

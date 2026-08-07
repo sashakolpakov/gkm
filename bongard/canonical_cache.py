@@ -21,7 +21,7 @@ from threading import RLock
 from typing import Any, Callable, Mapping, TypeVar
 import weakref
 
-from bongard.artifacts import canonical_json
+from bongard.canonical import canonical_json
 
 
 _T = TypeVar("_T")

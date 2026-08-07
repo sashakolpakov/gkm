@@ -1,5 +1,12 @@
 """Verified Bongard corpus, exposure, and benchmark infrastructure."""
 
+from .runtime_source_snapshot import capture_loaded_source
+
+
+_PACKAGE_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
+from importlib import import_module
+
 from .corpus import (
     BongardTask,
     CorpusError,
@@ -56,63 +63,83 @@ from .image_audit import (
     ImageExpectations,
     audit_corpus_images,
 )
-from .soft_predicates import (
-    CalibrationBand,
-    CalibrationDesign,
-    CalibrationError,
-    CalibrationObservation,
-    CalibratedPredictiveSupport,
-    DevelopmentUnit,
-    FrozenVisualScore,
-    MonotoneCalibrationArtifact,
-    ObservationRole,
-    PreregisteredCalibrationPlan,
-    RegisteredSoftPredicate,
-    SoftPredicateClaim,
-    SoftPredicateError,
-    SoftPredicateIntegrityError,
-    fit_monotone_calibration,
-    register_soft_predicate,
+_LAZY_EXPORT_MODULES = {
+    name: ".soft_predicates"
+    for name in (
+        "CalibrationBand",
+        "CalibrationDesign",
+        "CalibrationError",
+        "CalibrationObservation",
+        "CalibratedPredictiveSupport",
+        "DevelopmentUnit",
+        "FrozenVisualScore",
+        "MonotoneCalibrationArtifact",
+        "ObservationRole",
+        "PreregisteredCalibrationPlan",
+        "RegisteredSoftPredicate",
+        "SoftPredicateClaim",
+        "SoftPredicateError",
+        "SoftPredicateIntegrityError",
+        "fit_monotone_calibration",
+        "register_soft_predicate",
+    )
+}
+_LAZY_EXPORT_MODULES.update(
+    {
+        name: ".support_prototypes"
+        for name in (
+            "ContrastiveMargin",
+            "FeatureDimension",
+            "FeatureInterval",
+            "FrozenFeatureSpace",
+            "FrozenPanelFeatures",
+            "FrozenSupportPrototypes",
+            "PositivePrototypeFormula",
+            "SUPPORT_PROTOTYPE_FEATURES",
+            "SupportMember",
+            "SupportPrototypeError",
+            "SupportPrototypeIntegrityError",
+            "SupportPrototypePlan",
+            "contrastive_margin",
+            "evaluate_frozen_support_member",
+            "evaluate_support_prototype",
+            "fit_support_prototypes",
+            "panel_side_assignment_digest",
+            "register_support_prototype_leg",
+            "validate_prototype_formula",
+            "verify_support_prototypes",
+        )
+    }
 )
-from .support_prototypes import (
-    ContrastiveMargin,
-    FeatureDimension,
-    FeatureInterval,
-    FrozenFeatureSpace,
-    FrozenPanelFeatures,
-    FrozenSupportPrototypes,
-    PositivePrototypeFormula,
-    SUPPORT_PROTOTYPE_FEATURES,
-    SupportMember,
-    SupportPrototypeError,
-    SupportPrototypeIntegrityError,
-    SupportPrototypePlan,
-    contrastive_margin,
-    evaluate_frozen_support_member,
-    evaluate_support_prototype,
-    fit_support_prototypes,
-    panel_side_assignment_digest,
-    register_support_prototype_leg,
-    validate_prototype_formula,
-    verify_support_prototypes,
+_LAZY_EXPORT_MODULES.update(
+    {
+        name: ".prototype_artifacts"
+        for name in (
+            "FeatureExtractionPreimage",
+            "PrototypeFreezePolicy",
+            "PrototypePreQueryFreeze",
+            "PrototypeQueryArtifact",
+            "PrototypeSupportReplayArtifact",
+            "PrototypeTruthEvidence",
+        )
+    }
 )
-from .prototype_artifacts import (
-    FeatureExtractionPreimage,
-    PrototypeFreezePolicy,
-    PrototypePreQueryFreeze,
-    PrototypeQueryArtifact,
-    PrototypeSupportReplayArtifact,
-    PrototypeTruthEvidence,
+_LAZY_EXPORT_MODULES.update(
+    {
+        name: ".prototype_calibration"
+        for name in (
+            "PrototypeCalibrationError",
+            "PrototypeCalibrationIntegrityError",
+            "PrototypeCalibrationRecord",
+            "calibrate_prototype_margins",
+        )
+    }
 )
-from .prototype_calibration import (
-    PrototypeCalibrationError,
-    PrototypeCalibrationIntegrityError,
-    PrototypeCalibrationRecord,
-    calibrate_prototype_margins,
-)
-from .prototype_episode import (
-    HeadlessPrototypeEpisode,
-    PrototypeEpisodeError,
+_LAZY_EXPORT_MODULES.update(
+    {
+        name: ".prototype_episode"
+        for name in ("HeadlessPrototypeEpisode", "PrototypeEpisodeError")
+    }
 )
 
 __all__ = [
@@ -209,3 +236,23 @@ __all__ = [
     "verify_support_prototypes",
     "verify_historical_exposure",
 ]
+
+
+def __getattr__(name: str) -> object:
+    """Load compatibility-only experiment exports on first explicit use.
+
+    Importing ``bongard`` or an active ``bongard.*`` visual module therefore
+    no longer initializes the superseded soft/prototype pipelines.  Their
+    public names remain available until those pipelines are retired.
+    """
+
+    relative_module = _LAZY_EXPORT_MODULES.get(name)
+    if relative_module is None:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    value = getattr(import_module(relative_module, __name__), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))

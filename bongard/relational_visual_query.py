@@ -17,7 +17,7 @@ from pathlib import Path
 import re
 from typing import Any, Mapping, Sequence, TypeAlias
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
 from bongard.loop_geometry import LoopGeometryWitness
 from bongard.loop_scene_witnesses import LoopScenePacket

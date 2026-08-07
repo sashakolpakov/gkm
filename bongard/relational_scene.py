@@ -23,7 +23,7 @@ import math
 import re
 from typing import Any, Mapping
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition, Provenance
 from bongard.legs.contracts import Unit
 from bongard.visual_witness_bundle import VisualWitnessBundle

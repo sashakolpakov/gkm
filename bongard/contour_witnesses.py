@@ -24,7 +24,7 @@ from typing import Any, Mapping
 import numpy as np
 from scipy import ndimage
 
-from bongard.artifacts import canonical_digest, canonical_json
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.legs.contracts import ValueType
 from bongard import visual_witnesses as _base
 from bongard.visual_witnesses import Q16BBox

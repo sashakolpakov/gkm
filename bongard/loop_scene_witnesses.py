@@ -17,7 +17,7 @@ from typing import Any, Mapping
 import numpy as np
 from scipy import ndimage
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition, Provenance
 from bongard.legs.contracts import Unit, ValueType
 from bongard.loop_geometry import (

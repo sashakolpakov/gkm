@@ -18,7 +18,7 @@ import numpy as np
 from PIL import Image
 from scipy import ndimage
 
-from bongard.artifacts import canonical_digest, canonical_json
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.legs.contracts import ValueType
 
 

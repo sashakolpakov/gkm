@@ -13,6 +13,11 @@ of the functions below opens, hashes, decodes, or otherwise reads a PNG.
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 from dataclasses import dataclass
 import hashlib
 import json

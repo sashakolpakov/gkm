@@ -30,7 +30,7 @@ import re
 from typing import Any, Mapping, Sequence, TypeAlias
 
 import bongard.relational_visual_query as relational_visual_query
-from bongard.artifacts import canonical_digest, canonical_json
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.composite_visual_packet import (
     BilateralSymmetryScenarioWitness,
     ExactPanelWitnessPacket,

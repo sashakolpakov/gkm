@@ -19,6 +19,11 @@ instead of claiming stronger evidence than the CLI emits.
 """
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 import hashlib
 import io
 import json

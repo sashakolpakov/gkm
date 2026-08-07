@@ -24,7 +24,7 @@ from typing import Any, Mapping
 
 import numpy as np
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.contour_witnesses import Q16Point
 from bongard.evidence import Disposition
 from bongard.visual_witnesses import HoleWitness

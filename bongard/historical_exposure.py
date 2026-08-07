@@ -16,6 +16,11 @@ absence of a local Freeform run is not interpreted as certified non-exposure.
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 import csv
 from dataclasses import dataclass
 import hashlib

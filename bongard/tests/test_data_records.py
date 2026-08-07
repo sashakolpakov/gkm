@@ -5,29 +5,11 @@ import json
 from pathlib import Path
 
 from bongard import (
-    a3_closed_language_gate,
     load_historical_exposure,
     load_official_release,
-    relational_library_ablation,
 )
 from bongard.artifacts import canonical_digest, canonical_json
-from bongard.closed_visual_predicates import (
-    closed_visual_predicate_evaluator_digest,
-    closed_visual_predicate_source_digest,
-    freeze_complete_closed_predicate_library,
-)
-from bongard.composite_visual_packet import (
-    composite_visual_packet_source_digest,
-    exact_panel_witness_extractor_digest,
-)
-from bongard.loop_scene_witnesses import loop_scene_extractor_digest
 from bongard.prototype_calibration import PrototypeCalibrationRecord
-from bongard.relational_visual_query import (
-    Rational,
-    RelationalVisualQuery,
-    enumerate_factorized_shape_ratio_queries,
-    relational_query_algorithm_digest,
-)
 
 
 DATA = Path(__file__).resolve().parents[1] / "data"
@@ -395,14 +377,16 @@ def test_attempt3_relational_forensics_binds_source_panels_and_support_roles() -
     assert source["label_to_archive_side"] == {"false": "0", "true": "1"}
 
     algorithms = record["algorithms"]
+    # This record is bound to the source snapshot that produced it.  A later
+    # refactor must not rewrite history or require current source bytes to have
+    # the old identity.
     assert algorithms["loop_scene_extractor_digest"] == (
-        loop_scene_extractor_digest()
+        "381e5b861a03f9c7995e12ddad2c286e8a8f2282ffb7368e6784839b6ac58d89"
     )
     assert algorithms["relational_query_algorithm_digest"] == (
-        relational_query_algorithm_digest()
+        "79e847b2cb0aa3c9bc24a7c089ff51f9377cf701bcef915d65c0f7ca036c12c0"
     )
-    query = RelationalVisualQuery.from_data(record["base_query"])
-    assert query.digest() == record["base_query_digest"]
+    assert canonical_digest(record["base_query"]) == record["base_query_digest"]
 
     panels = record["panels"]
     assert len(panels) == 14
@@ -443,26 +427,16 @@ def test_attempt3_relational_forensics_binds_source_panels_and_support_roles() -
     ]
 
     library = record["library"]
-    assert library["member_count"] == len(
-        enumerate_factorized_shape_ratio_queries()
-    ) == 2520
+    assert library["member_count"] == 2_520
     assert library["support_exact_separator_count"] == 4
     assert library["full_fourteen_exact_separator_count"] == 0
     assert library["polarity_flip_allowed"] is False
-    expected_separator_digests = {
-        RelationalVisualQuery.factorized_shape_ratio(
-            numerator_side_count=3,
-            denominator_side_count=4,
-            ratio=Rational(1, denominator),
-            denominator_obliqueness_millidegrees=obliqueness,
-            require_point_contact=False,
-        ).digest()
-        for denominator in (12, 8)
-        for obliqueness in (None, 5000)
+    assert {item["query_digest"] for item in library["separators"]} == {
+        "aecc9fcbec38f1c992e4c6f5121cd21217eb7ad3d1e4d5e270bb0fb553cac054",
+        "0e616809c75cc411a590b731f5ed0ca9c96af0fd916f31b5cd0302509bee733b",
+        "a7fd460ffa5d7a10406c4a04c40d74dad6f2b21d32dff230048cc0332547197f",
+        "087e0be98a03d60e5d96a61a5cb397bb4a0967cf39f45eab34f253d297c5034d",
     }
-    assert {item["query_digest"] for item in library["separators"]} == (
-        expected_separator_digests
-    )
     assert all(
         item["heldout_positive_disposition"] == "indeterminate"
         and item["require_point_contact"] is False
@@ -600,14 +574,14 @@ def test_relational_library_ablation_outcome_is_compact_strict_and_bound() -> No
     assert algorithms["ablation_algorithm_id"] == (
         "bongard.relational-library-ablation/complete-v3-library-v1"
     )
-    assert algorithms["ablation_python_source_digest"] == hashlib.sha256(
-        Path(relational_library_ablation.__file__).read_bytes()
-    ).hexdigest()
+    assert algorithms["ablation_python_source_digest"] == (
+        "c4f216742b75b896867b52765584e48ab6d99dbf67cc59d4ed382a79f84a4289"
+    )
     assert algorithms["loop_scene_extractor_digest"] == (
-        loop_scene_extractor_digest()
+        "381e5b861a03f9c7995e12ddad2c286e8a8f2282ffb7368e6784839b6ac58d89"
     )
     assert algorithms["relational_query_algorithm_digest"] == (
-        relational_query_algorithm_digest()
+        "79e847b2cb0aa3c9bc24a7c089ff51f9377cf701bcef915d65c0f7ca036c12c0"
     )
     assert algorithms["relational_query_algorithm_id"] == (
         "bongard.relational-visual-query/python-v3"
@@ -615,9 +589,8 @@ def test_relational_library_ablation_outcome_is_compact_strict_and_bound() -> No
     assert algorithms["canonical_equivalence_sample_indices"] == [0, 1, 8, 2519]
     assert algorithms["reference_execution"] == "python-canonical/v1"
 
-    queries = enumerate_factorized_shape_ratio_queries()
     query_library = record["query_library"]
-    assert len(queries) == query_library["count"] == 2_520
+    assert query_library["count"] == 2_520
     assert query_library == {
         "canonical_equivalence_check_count": 1_344,
         "canonical_equivalence_checks_per_unique_packet": 4,
@@ -625,12 +598,11 @@ def test_relational_library_ablation_outcome_is_compact_strict_and_bound() -> No
         "inventory_digest": (
             "sha256:f4675201aec95031214f7b93ad9947c56352ab6832a0dcca7acaed4f43ff2697"
         ),
-        "query_algorithm_digest": relational_query_algorithm_digest(),
+        "query_algorithm_digest": (
+            "79e847b2cb0aa3c9bc24a7c089ff51f9377cf701bcef915d65c0f7ca036c12c0"
+        ),
         "unique_reextracted_packet_count": 336,
     }
-    assert query_library["inventory_digest"] == "sha256:" + hashlib.sha256(
-        canonical_json([query.digest() for query in queries])
-    ).hexdigest()
 
     assert record["restrictions"] == {
         "action_program_json_authorized": False,
@@ -714,7 +686,7 @@ def test_relational_library_ablation_outcome_is_compact_strict_and_bound() -> No
     assert "0/168" in results["finding"]
 
 
-def test_a3_closed_language_gate_result_is_strict_current_and_support_only() -> None:
+def test_a3_closed_language_gate_result_is_strict_historical_and_support_only() -> None:
     name = "a3_closed_language_gate_result_v2.json"
     path = DATA / name
     payload = path.read_bytes()
@@ -752,20 +724,20 @@ def test_a3_closed_language_gate_result_is_strict_current_and_support_only() -> 
     algorithms = record["algorithm_identities"]
     assert algorithms == {
         "closed_predicate_evaluator_digest": (
-            closed_visual_predicate_evaluator_digest()
+            "2d61cd126b6b675aa4d7c595798d2e23292d8f853376c66a64929ed938a79af5"
         ),
         "closed_predicate_source_digest": (
-            closed_visual_predicate_source_digest()
+            "24611c315023c9cf0dcecbda9928d247fb466a2cd97bd2f87ee4e1b308a7a7d7"
         ),
         "composite_packet_source_digest": (
-            composite_visual_packet_source_digest()
+            "02ebc6df90399a1c6bc4bf69662b1dcb6ca6e0c3b8980f511092b349f8835182"
         ),
         "exact_composite_extractor_digest": (
-            exact_panel_witness_extractor_digest()
+            "c819e19760e2b573d54379f632905783e727719eb0a4a37e11fdfe36fc79dcc0"
         ),
-        "gate_python_source_digest": hashlib.sha256(
-            Path(a3_closed_language_gate.__file__).read_bytes()
-        ).hexdigest(),
+        "gate_python_source_digest": (
+            "57b66e515dea92f828e84db80714d0562a5544d04809df967cf8ea034ba2f1c8"
+        ),
         "lean_required": False,
         "oracle_algorithm_id": (
             "bongard.support-only-expressibility-oracle/v1"
@@ -787,11 +759,6 @@ def test_a3_closed_language_gate_result_is_strict_current_and_support_only() -> 
             "symmetry": 18,
         },
     }
-    current_library = freeze_complete_closed_predicate_library()
-    assert current_library.construction_id == frozen_record["construction_id"]
-    assert len(current_library.members) == frozen_record["member_count"]
-    assert current_library.digest == frozen_record["library_digest"]
-
     source = record["source"]
     assert source == {
         "corpus_manifest_digest": (

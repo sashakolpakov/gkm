@@ -20,7 +20,7 @@ import re
 from typing import Any, Mapping
 
 from bongard import visual_witnesses as _base
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
 from bongard.legs.bilateral_symmetry import (
     _MaskScore,

@@ -21,7 +21,7 @@ import numpy as np
 from scipy import ndimage
 from scipy.spatial import cKDTree
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.contour_witnesses import Q16Point
 from bongard.evidence import Disposition
 from bongard.loop_geometry import (

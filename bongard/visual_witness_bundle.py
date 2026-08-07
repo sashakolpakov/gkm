@@ -14,7 +14,7 @@ from pathlib import Path
 import re
 from typing import Any, Mapping
 
-from bongard.artifacts import canonical_digest
+from bongard.canonical import canonical_digest
 from bongard.contour_witnesses import (
     CONTOUR_WITNESS_SCENARIO_IDS,
     ContourWitnessPacket,
