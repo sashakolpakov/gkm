@@ -372,6 +372,8 @@ def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
         if value == "--disable"
     ]
     assert disabled == list(T._DISABLED_FEATURES)
+    assert "code_mode" in disabled
+    assert "code_mode_host" not in disabled
     for secret in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "UNRELATED_SECRET"):
         assert secret not in observed["env"]
     assert len(calls) == 3  # version, turn, version

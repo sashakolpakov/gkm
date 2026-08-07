@@ -153,7 +153,11 @@ _DISABLED_FEATURES = (
     "computer_use",
     "image_generation",
     "in_app_browser",
-    "code_mode_host",
+    "code_mode",
+    # Keep the inert host bootstrap available while ``code_mode`` itself stays
+    # explicitly disabled.  Codex 0.147 emits a pre-turn error
+    # event for every schema-constrained call when the host is explicitly
+    # disabled, even though no code-mode tool is enabled or invoked.
     "auth_elicitation",
     "tool_call_mcp_elicitation",
     "tool_suggest",
