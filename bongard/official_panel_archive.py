@@ -33,7 +33,9 @@ RECEIPT_SCHEMA = "gkm.bongard-official-panel-receipt.v1"
 RELEASED_PANEL_SCHEMA = "gkm.bongard-released-panel.v1"
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
-_PANEL_ID = re.compile(r"bd/bd_[A-Za-z0-9_-]+/[01]/[0-6]\.png\Z")
+_PANEL_ID = re.compile(
+    r"(?P<family>bd|ff|hd)/(?P=family)_[A-Za-z0-9_-]+/[01]/[0-6]\.png\Z"
+)
 _PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
 _MAX_PNG_BYTES = 4_000_000
 
@@ -109,9 +111,11 @@ def _hash_open_file(descriptor: int) -> tuple[str, int, tuple[int, ...]]:
 
 def _panel_member(panel_id: str) -> str:
     if not isinstance(panel_id, str) or _PANEL_ID.fullmatch(panel_id) is None:
-        raise OfficialPanelArchiveError("panel_id is outside the Basic PNG namespace")
-    task_and_panel = panel_id.removeprefix("bd/")
-    return f"ShapeBongard_V2/bd/images/{task_and_panel}"
+        raise OfficialPanelArchiveError(
+            "panel_id is outside the official bd/ff/hd PNG namespace"
+        )
+    family, task_and_panel = panel_id.split("/", 1)
+    return f"ShapeBongard_V2/{family}/images/{task_and_panel}"
 
 
 @dataclass(frozen=True, slots=True)

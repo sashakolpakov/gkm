@@ -25,6 +25,12 @@ from bongard.release import OfficialReleaseDescriptor
 
 PANEL_ID = "bd/bd_triangle-circle_0000/1/0.png"
 MEMBER = "ShapeBongard_V2/bd/images/bd_triangle-circle_0000/1/0.png"
+FF_PANEL_ID = "ff/ff_nact2_5_0042/0/6.png"
+FF_MEMBER = "ShapeBongard_V2/ff/images/ff_nact2_5_0042/0/6.png"
+HD_PANEL_ID = "hd/hd_has_curve-exist_quadrangle_0011/1/3.png"
+HD_MEMBER = (
+    "ShapeBongard_V2/hd/images/hd_has_curve-exist_quadrangle_0011/1/3.png"
+)
 PRECOMMIT = "sha256:" + "c" * 64
 EXPOSURE = "sha256:" + "d" * 64
 
@@ -46,6 +52,8 @@ def official_zip(tmp_path: Path):
         archive_path, "w", compression=zipfile.ZIP_DEFLATED
     ) as bundle:
         bundle.writestr(MEMBER, payload)
+        bundle.writestr(FF_MEMBER, payload)
+        bundle.writestr(HD_MEMBER, payload)
         bundle.writestr("ShapeBongard_V2/README.txt", b"synthetic fixture\n")
     archive_bytes = archive_path.read_bytes()
     descriptor = OfficialReleaseDescriptor(
@@ -60,8 +68,8 @@ def official_zip(tmp_path: Path):
         split_size_bytes=1,
         upstream_repository="https://github.com/NVlabs/Bongard-LOGO",
         upstream_commit="2" * 40,
-        family_counts=(("bd", 1),),
-        primary_split_counts=(("test", 0), ("train", 1), ("val", 0)),
+        family_counts=(("bd", 1), ("ff", 1), ("hd", 1)),
+        primary_split_counts=(("test", 0), ("train", 3), ("val", 0)),
         regime_counts=(("BA", 0), ("CM", 0), ("FF", 0), ("NV", 0)),
         task_ids_sha256="sha256:" + "3" * 64,
         corpus_manifest_sha256="sha256:" + "4" * 64,
@@ -131,6 +139,22 @@ def test_load_read_release_and_cold_replay_exact_official_bytes(
         expected_execution_precommit_digest=PRECOMMIT,
         expected_exposure_successor_digest=EXPOSURE,
     )
+
+
+@pytest.mark.parametrize(
+    ("panel_id", "member"),
+    ((PANEL_ID, MEMBER), (FF_PANEL_ID, FF_MEMBER), (HD_PANEL_ID, HD_MEMBER)),
+)
+def test_archive_reads_every_official_family_namespace(
+    official_zip, panel_id: str, member: str
+) -> None:
+    _descriptor, _archive_path, expected_png = official_zip
+    archive = _load(official_zip)
+    payload, receipt = archive.read_panel(panel_id)
+    assert payload == expected_png
+    assert receipt.panel_id == panel_id
+    assert receipt.archive_member == member
+    assert archive.verify_panel(payload, receipt) == receipt
 
 
 def test_archive_and_panel_tamper_fail_cold_replay(official_zip) -> None:
