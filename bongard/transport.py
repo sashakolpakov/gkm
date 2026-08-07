@@ -136,6 +136,7 @@ _PANEL_NAMES = tuple(
 _CLOUD_CONFIG_BUNDLE_CACHE = "cloud-config-bundle-cache.json"
 _DISABLED_FEATURES = (
     "shell_tool",
+    "shell_snapshot",
     "unified_exec",
     "apps",
     "multi_agent",
@@ -151,6 +152,7 @@ _DISABLED_FEATURES = (
     "browser_use_external",
     "browser_use_full_cdp_access",
     "computer_use",
+    "view_image",
     "image_generation",
     "in_app_browser",
     "code_mode",

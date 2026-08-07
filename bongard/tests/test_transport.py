@@ -302,6 +302,64 @@ def test_named_transport_rejects_unsupported_schema_before_launcher(
     assert calls == []
 
 
+def test_named_transport_rejects_codex_0147_pre_turn_error_item(
+    panel_paths: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Preserve the exact fail-closed signature seen in the first live drill."""
+
+    events = [
+        {"type": "thread.started", "thread_id": THREAD_ID},
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "item_0",
+                "type": "error",
+                "message": "Code Mode host disabled",
+            },
+        },
+        {"type": "turn.started"},
+        {
+            "type": "item.completed",
+            "item": {
+                "id": "item_1",
+                "type": "agent_message",
+                "text": '{"answer":"ok"}',
+            },
+        },
+        {
+            "type": "turn.completed",
+            "usage": {
+                "input_tokens": 17,
+                "cached_input_tokens": 0,
+                "output_tokens": 5,
+                "reasoning_output_tokens": 0,
+            },
+        },
+    ]
+    stdout = (
+        "\n".join(json.dumps(event, separators=(",", ":")) for event in events)
+        + "\n"
+    ).encode("utf-8")
+    launcher = _fake_launcher(tmp_path)
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    _install_fake_cli(monkeypatch, stdout=stdout)
+
+    with pytest.raises(
+        T.CodexProposerFailure,
+        match="forbidden or malformed tool item at 1",
+    ):
+        T.run_codex_named_images_structured(
+            "inspect the attached image",
+            (panel_paths[0],),
+            ("scene.png",),
+            SIMPLE_SCHEMA,
+            model=MODEL,
+            executable=launcher,
+        )
+
+
 def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
     panel_paths: tuple[str, ...],
     tmp_path: Path,
@@ -374,6 +432,8 @@ def test_structured_turn_copies_exact_rgb_bytes_without_repository_exposure(
     assert disabled == list(T._DISABLED_FEATURES)
     assert "code_mode" in disabled
     assert "code_mode_host" not in disabled
+    assert "shell_snapshot" in disabled
+    assert "view_image" in disabled
     for secret in ("OPENAI_API_KEY", "ANTHROPIC_API_KEY", "UNRELATED_SECRET"):
         assert secret not in observed["env"]
     assert len(calls) == 3  # version, turn, version
