@@ -20,9 +20,9 @@ import re
 from typing import Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
+from bongard import prototype_object_observer_protocol as _protocol
 from bongard.prototype_object_observer_protocol import (
     OBJECT_FEATURE_IDS,
-    parse_prototype_object_description_payload,
     prototype_object_description_output_schema,
 )
 from bongard.prototype_object_profiles import (
@@ -137,8 +137,52 @@ def object_bongard_semantics_protocol_digest() -> str:
             "downstream_operationalization": (
                 "explicit-finite-python-version-space-only"
             ),
+            "semantic_parser_constructs_profiles": False,
             **_authority_data(),
         }
+    )
+
+
+def _parse_semantic_payload(
+    payload: object,
+) -> tuple[tuple[str, str], tuple[tuple[str, ...], tuple[str, ...]]]:
+    """Parse prose/IDs directly, without constructing a thresholded profile."""
+
+    if not isinstance(payload, Mapping) or set(payload) != {"profiles"}:
+        raise ObjectBongardSemanticsError("semantic payload fields differ")
+    rows = payload["profiles"]
+    if not isinstance(rows, list) or len(rows) != 2:
+        raise ObjectBongardSemanticsError("semantic payload must exhaust two groups")
+    rubrics: list[str] = []
+    families: list[tuple[str, ...]] = []
+    for index, (row, group_id) in enumerate(zip(rows, GROUP_IDS, strict=True)):
+        if (
+            not isinstance(row, Mapping)
+            or set(row) != {"group_id", "rubric", "feature_ids"}
+            or row["group_id"] != group_id
+        ):
+            raise ObjectBongardSemanticsError(
+                f"semantic group {index} fields or identity differ"
+            )
+        try:
+            rubric = _protocol._audit_prose(row["rubric"], "semantic rubric")
+        except (TypeError, ValueError) as exc:
+            raise ObjectBongardSemanticsError("semantic rubric is invalid") from exc
+        raw_ids = row["feature_ids"]
+        if (
+            not isinstance(raw_ids, list)
+            or not raw_ids
+            or any(not isinstance(item, str) or item not in OBJECT_FEATURE_IDS for item in raw_ids)
+            or len(set(raw_ids)) != len(raw_ids)
+        ):
+            raise ObjectBongardSemanticsError(
+                "semantic feature nominations are invalid"
+            )
+        rubrics.append(rubric)
+        families.append(tuple(sorted(raw_ids, key=OBJECT_FEATURE_IDS.index)))
+    return (
+        tuple(rubrics),  # type: ignore[return-value]
+        tuple(families),  # type: ignore[return-value]
     )
 
 
@@ -526,7 +570,7 @@ def describe_object_bongard_support(
             failure_type=type(exc).__name__,
         )
     try:
-        parsed = parse_prototype_object_description_payload(payload)
+        rubrics, feature_families = _parse_semantic_payload(payload)
     except (TypeError, ValueError):
         return _build_artifact(
             **common,
@@ -545,8 +589,8 @@ def describe_object_bongard_support(
         model_payload=payload,
         receipt=receipt,
         receipt_identity=receipt.receipt_digest,
-        rubrics=tuple(item.prose for item in parsed.audit_rubrics),
-        feature_families=tuple(parsed.feature_families),
+        rubrics=rubrics,
+        feature_families=feature_families,
         failure_code=None,
         failure_type=None,
     )
@@ -585,10 +629,10 @@ def verify_object_bongard_semantic_artifact(
             artifact.model_payload,
         )
     if artifact.status is PrototypeSceneObserverStatus.SUCCESS:
-        parsed = parse_prototype_object_description_payload(artifact.model_payload)
+        rubrics, feature_families = _parse_semantic_payload(artifact.model_payload)
         if (
-            tuple(item.prose for item in parsed.audit_rubrics) != artifact.rubrics
-            or tuple(parsed.feature_families) != artifact.feature_families
+            rubrics != artifact.rubrics
+            or feature_families != artifact.feature_families
         ):
             raise ObjectBongardSemanticsError("semantic payload replay differs")
     restored = ObjectBongardSemanticArtifact.from_data(

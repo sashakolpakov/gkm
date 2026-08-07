@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import ast
 from copy import deepcopy
+from pathlib import Path
 
 import pytest
 
@@ -190,3 +192,20 @@ def test_group_partition_is_exact_and_disjoint() -> None:
             **NO_TOOLS_KWARGS,
             transport=lambda *_args, **_kwargs: None,
         )
+
+
+def test_semantic_module_constructs_no_profile_and_imports_no_lean() -> None:
+    source = (
+        Path(__file__).parents[1] / "object_bongard_semantics.py"
+    ).read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    imported: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            imported.extend(alias.name for alias in node.names)
+        elif isinstance(node, ast.ImportFrom) and node.module is not None:
+            imported.append(node.module)
+    assert not any("lean" in name.lower() for name in imported)
+    assert "ObjectProfile" not in source
+    assert "DESCRIPTION_SUPPORT_TARGET" not in source
+    assert "parse_prototype_object_description_payload" not in source
