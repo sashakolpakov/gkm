@@ -23,7 +23,7 @@ from bongard.runtime_source_snapshot import (
 
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from enum import Enum
 import hashlib
@@ -1207,6 +1207,30 @@ class _CallTicket:
     terminal_outcome: object | None
 
 
+@dataclass(frozen=True, slots=True)
+class _PersistedObserverResult:
+    """One completed observer turn durably terminalized off the archive order.
+
+    Model calls may finish in any order.  The canonical campaign state is still
+    assembled in the precommitted schedule order, but each completed result is
+    written and its call journal entry terminalized immediately on the
+    coordinator thread.  Thus a slow low-index turn cannot strand already
+    completed higher-index evidence in volatile worker memory.
+    """
+
+    artifact: PrototypeSceneObserverArtifact
+    stored_objects: tuple[PrototypePairStoredObject, ...]
+    call_terminals: tuple[Mapping[str, Any], ...]
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.artifact, PrototypeSceneObserverArtifact):
+            raise TypeError("persisted observer artifact has wrong type")
+        if len(self.stored_objects) != 1 or len(self.call_terminals) != 1:
+            raise PrototypePairCampaignError(
+                "one fresh observer result must create one object and one terminal"
+            )
+
+
 def _record_json_bytes(value: object, label: str) -> bytes:
     return canonical_json(_to_data(value, label))
 
@@ -1837,6 +1861,86 @@ def _persist_observer_result(
     )
 
 
+def _run_fresh_observer_batch(
+    state: _CampaignState,
+    store: CampaignStore,
+    clock: CampaignClock,
+    *,
+    fresh_indices: Sequence[int],
+    tickets: Sequence[_CallTicket],
+    subject_ids: Sequence[str],
+    turn: Callable[[int], PrototypeSceneObserverArtifact],
+    phase: str,
+    kind: str,
+    precommit: PrototypePairExecutionPrecommit,
+    max_workers: int,
+) -> dict[int, PrototypeSceneObserverArtifact]:
+    """Run fresh observer turns and persist each one as soon as it completes.
+
+    Persistence happens only on this coordinator thread.  Per-result state
+    deltas are staged by schedule index and merged after the batch so campaign
+    serialization remains independent of worker completion order.
+    """
+
+    indices = tuple(fresh_indices)
+    if (
+        tuple(sorted(set(indices))) != indices
+        or any(
+            isinstance(index, bool) or not 0 <= index < len(tickets)
+            for index in indices
+        )
+        or len(subject_ids) != len(tickets)
+        or isinstance(max_workers, bool)
+        or not isinstance(max_workers, int)
+        or max_workers <= 0
+    ):
+        raise PrototypePairCampaignError("observer batch schedule is malformed")
+    persisted: dict[int, _PersistedObserverResult] = {}
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures: dict[Future[PrototypeSceneObserverArtifact], int] = {
+            executor.submit(turn, index): index for index in indices
+        }
+        for future in as_completed(futures):
+            index = futures[future]
+            artifact = future.result()
+            detached = _CampaignState()
+            _persist_observer_result(
+                detached,
+                store,
+                clock,
+                claim=tickets[index].claim,
+                phase=phase,
+                subject_id=subject_ids[index],
+                artifact=artifact,
+                kind=kind,
+                precommit=precommit,
+            )
+            if (
+                detached.released_panels
+                or detached.calibration_artifacts
+                or detached.support_artifacts
+                or detached.support_panels
+                or detached.query_artifacts
+                or detached.call_failures
+                or detached.model_calls_made != 0
+            ):
+                raise PrototypePairCampaignError(
+                    "detached observer persistence mutated unrelated campaign state"
+                )
+            persisted[index] = _PersistedObserverResult(
+                artifact=artifact,
+                stored_objects=tuple(detached.stored_objects),
+                call_terminals=tuple(detached.call_terminals),
+            )
+    if set(persisted) != set(indices):
+        raise PrototypePairCampaignError("observer batch omitted a completed result")
+    for index in indices:
+        row = persisted[index]
+        state.stored_objects.extend(row.stored_objects)
+        state.call_terminals.extend(row.call_terminals)
+    return {index: persisted[index].artifact for index in indices}
+
+
 def _assert_observer_preflight_binding(
     artifact: PrototypeRubricDescriptionArtifact | PrototypeSceneObserverArtifact,
     precommit: PrototypePairExecutionPrecommit,
@@ -2259,28 +2363,25 @@ def run_prototype_pair_campaign(
     fresh_indices = tuple(
         index for index, ticket in enumerate(calibration_tickets) if ticket.fresh
     )
-    fresh_results: dict[int, PrototypeSceneObserverArtifact] = {}
-    with ThreadPoolExecutor(max_workers=configuration.parallel_workers) as executor:
-        futures = {index: executor.submit(calibration_turn, index) for index in fresh_indices}
-        for index in fresh_indices:
-            fresh_results[index] = futures[index].result()
+    fresh_results = _run_fresh_observer_batch(
+        state,
+        store,
+        clock,
+        fresh_indices=fresh_indices,
+        tickets=calibration_tickets,
+        subject_ids=tuple(item.panel_id for item in calibration_plan.scenes),
+        turn=calibration_turn,
+        phase=calibration_phase,
+        kind="observer_artifact",
+        precommit=precommit,
+        max_workers=configuration.parallel_workers,
+    )
     for index, (scheduled, ticket) in enumerate(
         zip(calibration_plan.scenes, calibration_tickets, strict=True)
     ):
         subject_id = scheduled.panel_id
         if ticket.fresh:
             artifact = fresh_results[index]
-            _persist_observer_result(
-                state,
-                store,
-                clock,
-                claim=ticket.claim,
-                phase=calibration_phase,
-                subject_id=subject_id,
-                artifact=artifact,
-                kind="observer_artifact",
-                precommit=precommit,
-            )
         else:
             artifact = PrototypeSceneObserverArtifact.from_data(
                 _load_reused_call_result(
@@ -2433,27 +2534,24 @@ def run_prototype_pair_campaign(
     support_fresh = tuple(
         index for index, ticket in enumerate(support_tickets) if ticket.fresh
     )
-    support_results: dict[int, PrototypeSceneObserverArtifact] = {}
-    with ThreadPoolExecutor(max_workers=configuration.parallel_workers) as executor:
-        futures = {index: executor.submit(support_turn, index) for index in support_fresh}
-        for index in support_fresh:
-            support_results[index] = futures[index].result()
+    support_results = _run_fresh_observer_batch(
+        state,
+        store,
+        clock,
+        fresh_indices=support_fresh,
+        tickets=support_tickets,
+        subject_ids=tuple(item.source_panel_id for item in precommit.support_roles),
+        turn=support_turn,
+        phase=support_phase,
+        kind="observer_artifact",
+        precommit=precommit,
+        max_workers=configuration.parallel_workers,
+    )
     for index, (role, ticket) in enumerate(
         zip(precommit.support_roles, support_tickets, strict=True)
     ):
         if ticket.fresh:
             artifact = support_results[index]
-            _persist_observer_result(
-                state,
-                store,
-                clock,
-                claim=ticket.claim,
-                phase=support_phase,
-                subject_id=role.source_panel_id,
-                artifact=artifact,
-                kind="observer_artifact",
-                precommit=precommit,
-            )
         else:
             artifact = PrototypeSceneObserverArtifact.from_data(
                 _load_reused_call_result(
