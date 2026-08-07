@@ -14,6 +14,11 @@ interval is indeterminate, never a negative observation.
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 from dataclasses import dataclass
 import hashlib
 import math
@@ -95,7 +100,10 @@ def _digest(value: object, label: str) -> str:
 
 
 def _source_digest() -> str:
-    return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    current = hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    if current != _LOADED_SOURCE_SHA256:
+        raise RuntimeError("contour witness source changed after import")
+    return _LOADED_SOURCE_SHA256
 
 
 def _artifact_digest(source_digest: str, base_extractor_digest: str) -> str:
