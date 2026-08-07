@@ -1,58 +1,63 @@
 Historical Abstraction-Emergence Control
 =========================================
 
-This is a retained internal control, not a visual Bongard benchmark.  It does
-not use the complete ``ShapeBongard_V2`` corpus and does not learn primitive
-observations from pixels.
-
-Question tested
----------------
-
-The experiment asks whether conditional description-length accounting favors
-one shared predicate macro when the same predefined conjunction is reused,
-rather than paying for duplicated inline rule bodies:
+This retained control asks whether description-length accounting favors one
+shared predicate macro when the same predefined conjunction is reused:
 
 .. code-block:: text
 
    objective = task loss + lambda * (library complexity + rule complexity)
 
-The primitive Boolean atoms are supplied by the experiment.  Conditions
-compare inline rules, a shared macro, macro syntax that repays the definition
-at every use, and an oracle upper bound.  The historical result was that
-repeated structure could make the shared macro cheaper, while single-use,
-unrelated-disjunction, and no-sharing controls did not.
+The primitive Boolean atoms are supplied by the experiment.  Historical
+conditions compared duplicated inline rules, a shared macro, syntax that
+repaid the definition at every use, and an oracle upper bound.  Repeated
+structure could make the shared macro cheaper; single-use and no-sharing
+controls did not.
 
 Claim boundary
 --------------
 
-This demonstrates an accounting incentive for encapsulation and reuse.  It
-does not demonstrate visual grounding, semantic predicate discovery, Bongard
-generalization, or self-improvement on the official corpus.  In particular,
-it supplies the atoms that the active visual track must obtain from fallible
-panel observations.
+This is an accounting result, not a visual Bongard benchmark.  It does not use
+the complete ``ShapeBongard_V2`` protocol, learn observations from pixels,
+demonstrate semantic predicate discovery, or establish generalization.
 
-The original implementation and detailed reports are preserved at the
-annotated Git tag ``pre-bongard-complete-rewrite-20260805``.  They should not
-be combined numerically with the current Stage-A or Stage-B protocol.
+The active visual track has the prior problem that this control assumes away:
+constructing stable typed objects and factorized relations from exact PNGs.
+Python now defines candidate-independent loop packets, four-valued evidence,
+and closed positive same-binding predicates.  Lean is optional and removable.
+Even after transport attestation and calibration, soft tags would remain
+operational observer evidence, not theorems about pixels.  The current v1
+envelope has neither production attestation nor calibrated absence.
 
-Relationship to the active track
---------------------------------
+Atomic attempt three illustrates the gap.  Its fluent sentence bundled shape,
+relative size, orientation, and attachment.  The historical 2,520-member
+contact-inclusive diagnostic relational superlanguage has four exact
+separators on those supports, but the
+positive held-out remains indeterminate under all four and no candidate
+separates all fourteen panels; point contact remains unresolved.  Macro reuse
+cannot repair a missing empirical leg, and support resubstitution cannot
+establish generalization.
 
-The active track uses Python as the sole runtime semantics for predicates, the
-closed IR, evidence, synthesis, selection, evaluation, persistence, replay, and
-decisions.  Lean is neither imported nor required.  The strict ``un-Lean``
-migration is nevertheless incomplete: old whole-tree provenance enters one
-atomic lineage identity, a legacy config literal names Lean, and the unused
-optional checker API is still in-process rather than isolated.  Those residues
-do not affect the current Python execution, but must be removed before claiming
-that every lineage ID is checker-byte-independent.
+The same issue invalidates the proposed 15-task DEV benchmark before model
+execution: none of its intended concepts is fully expressible in the current
+two-closed-loop polygon/ratio language.  Existing topology, curvature, and
+symmetry observers are now glued into a corrected v2 frozen 65,678-member
+proposer-reachable Python tagged union, and an exhaustive support-only oracle
+separates language failure from proposer failure.  On A3 it finds exactly four
+separators, all among 1,260 contact-disabled relational predicates, with zero
+from the 64,400 direct-count and 18 symmetry members.  The first
+tagged union still lacks object-bound cross-family conjunctions; macro
+accounting does not fill that gap either.
 
-Atomic attempt three made the missing abstraction concrete.  Candidate-
-independent prose retained useful object relations, but one surface-valid
-``atom`` bundled shape, relative size, tilt, and directed attachment.  The
-candidate-aware scorer then lost object roles on negative supports, so Python
-found no exact separator and stopped before query access.  The immediate problem
-is therefore not macro syntax: it is obtaining stable typed objects and
-factorized relational micro-predicates from pixels, calibrating them honestly,
-and preventing support-set artifacts or negation from masquerading as concepts.
-See :doc:`bongard` for the current design and status.
+The hardened v4 runner and v4 campaign are implemented and fixture-tested,
+including an explicit fixed five-task exact-unused TRAIN semantics-reused
+engineering mode.  No real plan or model campaign has run at this pre-run
+snapshot.  Strict DEV remains stopped at 0/15 expressibility.  The 24-task
+v3-library ablation also found 0/24 exact full separators and 0/168 exact 6+6
+folds, so runner completion does not repair the representation gap.  Python is
+canonical and Lean remains optional and removable.
+
+The original implementation and detailed historical reports are preserved at
+the annotated Git tag ``pre-bongard-complete-rewrite-20260805``.  They should
+not be combined numerically with the completed coverage pilot or future frozen
+DEV benchmark.

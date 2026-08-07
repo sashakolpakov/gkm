@@ -16,10 +16,14 @@ from __future__ import annotations
 import copy
 from dataclasses import dataclass
 from enum import Enum
+import json
+import os
+from pathlib import Path
 import re
-from typing import Any, Callable, Mapping
+import subprocess
+from typing import Any, Mapping
 
-from bongard.artifacts import canonical_digest
+from bongard.artifacts import canonical_digest, canonical_json
 from bongard.benchmark import EpisodeResult, EpisodeStatus
 from bongard.ir import formula_digest
 from bongard.semantic_commitment import REFERENCE_EXECUTION_SEMANTICS
@@ -59,6 +63,51 @@ class OptionalCheckerDisagreement(SemanticCheckerError):
         super().__init__(
             "optional checker disagreed with the authoritative Python result"
         )
+
+
+@dataclass(frozen=True, slots=True)
+class OptionalCheckerProcess:
+    """A no-shell checker process receiving one immutable JSON request on stdin.
+
+    The child receives no live Python objects and a deliberately minimal
+    environment.  This is a process-memory boundary, not a filesystem or
+    network sandbox; deployment may add an OS sandbox around the command.
+    """
+
+    checker_id: str
+    checker_version: str
+    command: tuple[str, ...]
+    timeout_seconds: int = 30
+
+    def __post_init__(self) -> None:
+        _identifier(self.checker_id, "checker process ID")
+        _identifier(self.checker_version, "checker process version")
+        if (
+            not isinstance(self.command, tuple)
+            or not 1 <= len(self.command) <= 64
+            or any(
+                not isinstance(item, str)
+                or not item
+                or "\x00" in item
+                or len(item) > 16_384
+                for item in self.command
+            )
+        ):
+            raise SemanticCheckerProtocolError(
+                "checker process command must be 1..64 bounded exact arguments"
+            )
+        executable = Path(self.command[0])
+        if not executable.is_absolute():
+            raise SemanticCheckerProtocolError(
+                "checker process executable must be an absolute path"
+            )
+        if (
+            type(self.timeout_seconds) is not int
+            or not 1 <= self.timeout_seconds <= 300
+        ):
+            raise SemanticCheckerProtocolError(
+                "checker process timeout must be an integer in 1..300 seconds"
+            )
 
 
 def _identifier(value: object, label: str) -> str:
@@ -501,16 +550,66 @@ class OptionalCheckerSidecar:
         return {**self.content_data(), "sidecar_digest": self.digest}
 
 
-CheckerCallable = Callable[
-    [Mapping[str, Any]], OptionalCheckerResponse | Mapping[str, Any]
-]
+def _run_optional_checker_process(
+    process: OptionalCheckerProcess,
+    request: OptionalCheckerRequest,
+) -> Mapping[str, Any]:
+    """Invoke one checker outside the benchmark process over canonical bytes."""
+
+    request_payload = canonical_json(request.to_data()) + b"\n"
+    environment = {
+        "PATH": os.defpath,
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "PYTHONIOENCODING": "utf-8",
+        "PYTHONNOUSERSITE": "1",
+    }
+    try:
+        completed = subprocess.run(
+            list(process.command),
+            input=request_payload,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            check=False,
+            timeout=process.timeout_seconds,
+            shell=False,
+            close_fds=True,
+            start_new_session=True,
+            env=environment,
+        )
+    except (OSError, subprocess.SubprocessError) as exc:
+        raise OptionalCheckerUnavailable(
+            "optional checker process could not complete"
+        ) from exc
+    if completed.returncode != 0:
+        raise OptionalCheckerUnavailable(
+            "optional checker process exited unsuccessfully"
+        )
+    if len(completed.stdout) > 1_048_576 or len(completed.stderr) > 1_048_576:
+        raise SemanticCheckerProtocolError(
+            "optional checker process output exceeds the bounded protocol"
+        )
+    try:
+        decoded = json.loads(completed.stdout)
+    except (UnicodeError, json.JSONDecodeError) as exc:
+        raise SemanticCheckerProtocolError(
+            "optional checker process did not return UTF-8 JSON"
+        ) from exc
+    if (
+        not isinstance(decoded, Mapping)
+        or canonical_json(decoded) + b"\n" != completed.stdout
+    ):
+        raise SemanticCheckerProtocolError(
+            "optional checker process response is not exact canonical JSON plus newline"
+        )
+    return decoded
 
 
 def audit_optional_semantic_checker(
     episode: VisualSemanticEpisode,
     result: EpisodeResult,
     *,
-    checker: CheckerCallable | None = None,
+    checker: OptionalCheckerProcess | None = None,
     checker_id: str | None = None,
     checker_version: str | None = None,
 ) -> OptionalCheckerSidecar:
@@ -542,13 +641,20 @@ def audit_optional_semantic_checker(
             None,
         )
 
-    if not callable(checker):
-        raise TypeError("checker must be callable or None")
-    checked_id = _identifier(checker_id, "checker_id")
-    checked_version = _identifier(checker_version, "checker_version")
+    if not isinstance(checker, OptionalCheckerProcess):
+        raise SemanticCheckerProtocolError(
+            "in-process optional checker callables are forbidden; provide an "
+            "OptionalCheckerProcess"
+        )
+    if checker_id is not None or checker_version is not None:
+        raise SemanticCheckerProtocolError(
+            "checker process identity must come from OptionalCheckerProcess"
+        )
+    checked_id = checker.checker_id
+    checked_version = checker.checker_version
     raw_response: OptionalCheckerResponse | Mapping[str, Any]
     try:
-        raw_response = checker(copy.deepcopy(request.to_data()))
+        raw_response = _run_optional_checker_process(checker, request)
     except OptionalCheckerUnavailable as exc:
         after = capture_python_semantic_authority(episode, result)
         if after != authority:
@@ -616,8 +722,8 @@ __all__ = [
     "OPTIONAL_CHECKER_RESPONSE_SCHEMA",
     "OPTIONAL_CHECKER_SIDECAR_SCHEMA",
     "PYTHON_SEMANTIC_AUTHORITY_SCHEMA",
-    "CheckerCallable",
     "OptionalCheckerDisagreement",
+    "OptionalCheckerProcess",
     "OptionalCheckerRequest",
     "OptionalCheckerResponse",
     "OptionalCheckerSidecar",

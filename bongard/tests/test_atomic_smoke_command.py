@@ -230,12 +230,10 @@ def test_production_pins_and_secret_free_config() -> None:
     )
     config = _config()
     assert C.AtomicSmokeCommandConfig.from_data(config.to_data()) == config
-    assert config.to_data()["schema"] == "gkm.bongard-atomic-smoke-command-config.v4"
+    assert config.to_data()["schema"] == "gkm.bongard-atomic-smoke-command-config.v5"
     assert config.to_data()["attempt_ordinal"] == 3
     assert config.to_data()["scope"] == C.ATOMIC_SMOKE_COMMAND_SCOPE
-    assert config.to_data()["reference_execution"] == (
-        "python-canonical/lean-optional/v1"
-    )
+    assert config.to_data()["reference_execution"] == "python-canonical/v1"
     assert config.to_data()["official_active_exposure_predecessor_digest"] == (
         P.OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
     )
@@ -247,17 +245,28 @@ def test_production_pins_and_secret_free_config() -> None:
     )
     prior = config.to_data()["prior_attempt_record"]
     assert isinstance(prior, dict)
-    assert prior["record_file_sha256"] == (
-        C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
-    )
+    assert "record_file_sha256" not in prior
+    assert set(prior["source_snapshot"]) == {
+        "scope", "source_dependency_digest"
+    }
     assert prior["artifacts"]["command_config_content_address"] == (
         C.ATOMIC_SMOKE_PRIOR_CONFIG_DIGEST
     )
     assert prior["failure"]["reason_digest"] == C.ATOMIC_SMOKE_PRIOR_REASON_DIGEST
+    display = config.to_data()["lineage_display_metadata"]
+    assert display["record_file_sha256"] == C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
+    assert display["source_snapshot"] == {
+        "commit": C.ATOMIC_SMOKE_PRIOR_SOURCE_COMMIT,
+        "tag": C.ATOMIC_SMOKE_PRIOR_SOURCE_TAG,
+    }
     encoded = json.dumps(config.to_data(), sort_keys=True)
+    encoded_authority = json.dumps(config.content_data(), sort_keys=True)
     assert "official_a3_successor_ledger_digest" not in encoded
     assert "official_active_exposure_predecessor_digest" in encoded
     assert C.ATOMIC_SMOKE_PRIOR_REASON_DIGEST in encoded
+    assert "lean-optional" not in encoded_authority
+    assert C.ATOMIC_SMOKE_PRIOR_SOURCE_COMMIT not in encoded_authority
+    assert C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256 not in encoded_authority
     assert config.to_data()["transport_preflight"]["bongard_call_count"] == 0
     assert config.to_data()["transport_preflight"]["secret_count"] == 0
     assert config.digest.startswith("sha256:")
@@ -300,6 +309,9 @@ def test_prior_attempt_file_and_consumed_lineage_are_exact(tmp_path: Path) -> No
         C.ATOMIC_SMOKE_PRIOR_JOURNAL_RECEIPT_DIGEST
     )
     assert prior.failure_reason_digest == C.ATOMIC_SMOKE_PRIOR_REASON_DIGEST
+    assert prior.legacy_digest == (
+        "sha256:42a41e4cf53a1f109e469fe99a79f2aeebb751e3c8f638e43bc36080cac7211e"
+    )
     assert prior.remaining_universe_digest == (
         "sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9"
     )
@@ -349,6 +361,65 @@ def test_prior_attempt_file_and_consumed_lineage_are_exact(tmp_path: Path) -> No
             malformed,
             file_sha256=C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256,
         )
+
+
+def test_display_lineage_bytes_cannot_change_v5_authority(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    config = _config()
+    claim = _claim(config, tmp_path / "claim")
+    baseline_prior_authority_digest = C._prior_attempt_authority_digest()
+    baseline_prior_legacy_digest = C._prior_attempt_legacy_digest()
+    baseline_config_content = config.content_data()
+    baseline_config_digest = config.digest
+    baseline_claim_content = claim.content_data()
+    baseline_claim_digest = claim.claim_digest
+    baseline_display = config.to_data()["lineage_display_metadata"]
+
+    monkeypatch.setattr(C, "ATOMIC_SMOKE_PRIOR_SOURCE_COMMIT", "e" * 40)
+    monkeypatch.setattr(C, "ATOMIC_SMOKE_PRIOR_SOURCE_TAG", "display-only-tag")
+    monkeypatch.setattr(C, "ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256", "f" * 64)
+
+    assert C._prior_attempt_authority_digest() == baseline_prior_authority_digest
+    assert config.content_data() == baseline_config_content
+    assert config.digest == baseline_config_digest
+    assert claim.content_data() == baseline_claim_content
+    assert claim.claim_digest == baseline_claim_digest
+    assert config.to_data()["lineage_display_metadata"] != baseline_display
+    assert C._prior_attempt_legacy_digest() != baseline_prior_legacy_digest
+
+
+def test_historical_v4_config_v1_claim_and_v4_terminal_remain_exactly_decodable(
+    tmp_path: Path,
+) -> None:
+    legacy_config = replace(_config(), protocol_version="v4")
+    config_data = legacy_config.to_data()
+    assert config_data["schema"] == C.ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA_V4
+    assert config_data["reference_execution"] == (
+        C.LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+    )
+    assert "lineage_display_metadata" not in config_data
+    assert C.AtomicSmokeCommandConfig.from_data(config_data) == legacy_config
+
+    legacy_claim = _claim(legacy_config, tmp_path / "legacy-claim")
+    claim_data = legacy_claim.to_data()
+    assert claim_data["schema"] == C.ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1
+    assert claim_data["prior_attempt_record_raw_file_sha256"] == (
+        C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
+    )
+    assert C.AtomicSmokeAttemptClaim.from_data(claim_data) == legacy_claim
+
+    legacy_terminal = C.AtomicSmokeCommandTerminal.failure(
+        RuntimeError("historical fixture failure"),
+        phase="fixture",
+        config=legacy_config,
+        precommit=None,
+        launcher_version=legacy_config.launcher_version,
+    )
+    terminal_data = legacy_terminal.to_data()
+    assert terminal_data["schema"] == C.ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4
+    assert C.AtomicSmokeCommandTerminal.from_data(terminal_data) == legacy_terminal
 
 
 def test_content_addressed_config_and_terminal_are_reloaded_and_tamper_fails(
@@ -866,9 +937,8 @@ def test_claim_rejects_identical_recreate_but_copy_path_is_outside_protection(
     first_path = C._persist_attempt_claim(first)
     claim_data = first.to_data()
     assert claim_data["attempt_ordinal"] == 3
-    assert claim_data["reference_execution"] == (
-        "python-canonical/lean-optional/v1"
-    )
+    assert claim_data["schema"] == "gkm.bongard-atomic-smoke-attempt-claim.v2"
+    assert claim_data["reference_execution"] == "python-canonical/v1"
     assert claim_data["predecessor_content_address"] == (
         P.OFFICIAL_SUCCESSOR_PREDECESSOR_LEDGER_DIGEST
     )
@@ -878,8 +948,12 @@ def test_claim_rejects_identical_recreate_but_copy_path_is_outside_protection(
     assert claim_data["prior_attempt_record_content_address"] == (
         first.prior_attempt_digest
     )
-    assert claim_data["prior_attempt_record_raw_file_sha256"] == (
+    assert "prior_attempt_record_raw_file_sha256" not in claim_data
+    assert claim_data["lineage_display_metadata"]["record_file_sha256"] == (
         C.ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
+    )
+    assert claim_data["prior_attempt_record_content_address"] == (
+        C._prior_attempt_authority_digest()
     )
     assert claim_data["command_config_content_address"] == config.digest
     assert claim_data["source_snapshot_digest"] == config.source_dependencies.digest
@@ -1319,7 +1393,7 @@ def test_cli_output_is_machine_readable_and_never_contains_selected_id(
     assert decoded["selected_task_id_included"] is False
     assert decoded["run_persistence"]["filename"] == "fixture.json"
     assert decoded["attempt_ordinal"] == 3
-    assert decoded["schema"] == "gkm.bongard-atomic-smoke-cli-result.v4"
+    assert decoded["schema"] == "gkm.bongard-atomic-smoke-cli-result.v5"
     assert decoded["transport_preflight_receipt_digest"] == "sha256:" + HEX_B
     assert decoded["attempt_claim_digest"] == "sha256:" + HEX_C
     assert decoded["attempt_claim_filename"] == "attempt.claim.json"

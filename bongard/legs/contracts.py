@@ -25,8 +25,10 @@ class Unit(str, Enum):
     DIMENSIONLESS = "dimensionless"
     COUNT = "count"
     PIXEL = "pixel"
+    PIXEL_AREA = "pixel_area"
     RADIANS = "radians"
     DEGREES = "degrees"
+    MILLIDEGREES = "millidegrees"
     FRACTION = "fraction"
     PROBABILITY = "probability"
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
+import sys
 
 import pytest
 
@@ -15,10 +16,9 @@ from bongard.benchmark import (
 )
 from bongard.semantic_checker import (
     OptionalCheckerDisagreement,
+    OptionalCheckerProcess,
     OptionalCheckerResponse,
     OptionalCheckerStatus,
-    OptionalCheckerUnavailable,
-    SemanticCheckerAuthorityMutation,
     SemanticCheckerProtocolError,
     audit_optional_semantic_checker,
     capture_python_semantic_authority,
@@ -115,6 +115,50 @@ def _reply(request, *, agrees: bool, detail: str):
     ).to_data()
 
 
+_CHECKER_CHILD = r"""
+import hashlib
+import json
+import sys
+
+request = json.load(sys.stdin)
+mode = sys.argv[1]
+response = {
+    "schema": "gkm.bongard-optional-semantic-checker-response.v1",
+    "checker_id": "fixture-proof-checker",
+    "checker_version": "v1",
+    "request_digest": request["request_digest"],
+    "authority_digest": request["authority"]["authority_digest"],
+    "agrees": mode != "disagree",
+    "detail": "independent process replay " + mode,
+}
+if mode == "foreign-authority":
+    response["authority_digest"] = "0" * 64
+payload = json.dumps(
+    response,
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=False,
+    allow_nan=False,
+).encode("utf-8")
+response["response_digest"] = hashlib.sha256(payload).hexdigest()
+sys.stdout.buffer.write(json.dumps(
+    response,
+    sort_keys=True,
+    separators=(",", ":"),
+    ensure_ascii=False,
+    allow_nan=False,
+).encode("utf-8") + b"\n")
+"""
+
+
+def _checker_process(mode: str = "agree") -> OptionalCheckerProcess:
+    return OptionalCheckerProcess(
+        checker_id="fixture-proof-checker",
+        checker_version="v1",
+        command=(str(Path(sys.executable).resolve()), "-c", _CHECKER_CHILD, mode),
+    )
+
+
 def test_checker_absent_agreeing_or_unavailable_cannot_change_python_authority(
     tmp_path: Path,
 ) -> None:
@@ -131,31 +175,26 @@ def test_checker_absent_agreeing_or_unavailable_cannot_change_python_authority(
     agreeing = audit_optional_semantic_checker(
         episode,
         result,
-        checker=lambda request: _reply(
-            request, agrees=True, detail="independent replay agrees"
-        ),
-        checker_id="fixture-proof-checker",
-        checker_version="v1",
+        checker=_checker_process(),
     )
     assert agreeing.status is OptionalCheckerStatus.AGREED
     assert agreeing.response is not None and agreeing.response.agrees
     assert agreeing.authority_digest == authority.digest
     assert _authoritative_projection(episode, result) == before
 
-    def unavailable(_request):
-        raise OptionalCheckerUnavailable("Lean executable is not installed")
-
     unavailable_sidecar = audit_optional_semantic_checker(
         episode,
         result,
-        checker=unavailable,
-        checker_id="fixture-proof-checker",
-        checker_version="v1",
+        checker=OptionalCheckerProcess(
+            checker_id="fixture-proof-checker",
+            checker_version="v1",
+            command=("/definitely/missing/optional-checker",),
+        ),
     )
     assert unavailable_sidecar.status is OptionalCheckerStatus.UNAVAILABLE
     assert unavailable_sidecar.response is None
     assert unavailable_sidecar.unavailability_reason == (
-        "Lean executable is not installed"
+        "optional checker process could not complete"
     )
     assert _authoritative_projection(episode, result) == before
 
@@ -179,11 +218,7 @@ def test_checker_disagreement_is_explicit_and_cannot_rewrite_predictions(
         audit_optional_semantic_checker(
             episode,
             result,
-            checker=lambda request: _reply(
-                request, agrees=False, detail="checker derived a different Boolean"
-            ),
-            checker_id="fixture-proof-checker",
-            checker_version="v1",
+            checker=_checker_process("disagree"),
         )
 
     sidecar = raised.value.sidecar
@@ -197,42 +232,38 @@ def test_checker_response_must_bind_exact_python_authority(tmp_path: Path) -> No
     episode, result = _complete_python_episode(tmp_path)
     before = _authoritative_projection(episode, result)
 
-    def foreign_authority(request):
-        response = _reply(request, agrees=True, detail="claims agreement")
-        response["authority_digest"] = "0" * 64
-        response["response_digest"] = canonical_digest(
-            {key: value for key, value in response.items() if key != "response_digest"}
-        )
-        return response
-
     with pytest.raises(
         SemanticCheckerProtocolError, match="another Python authority"
     ):
         audit_optional_semantic_checker(
             episode,
             result,
-            checker=foreign_authority,
-            checker_id="fixture-proof-checker",
-            checker_version="v1",
+            checker=_checker_process("foreign-authority"),
         )
     assert _authoritative_projection(episode, result) == before
 
 
-def test_checker_cannot_mutate_live_semantic_archive(tmp_path: Path) -> None:
+def test_in_process_checker_is_rejected_before_it_can_mutate_live_state(
+    tmp_path: Path,
+) -> None:
     episode, result = _complete_python_episode(tmp_path)
+    before = _authoritative_projection(episode, result)
+    invoked = False
 
     def mutating_checker(request):
+        nonlocal invoked
+        invoked = True
         episode.query_artifacts.clear()
         return _reply(request, agrees=True, detail="attempted to rewrite archive")
 
     with pytest.raises(
-        SemanticCheckerAuthorityMutation,
-        match="changed authoritative Python state",
+        SemanticCheckerProtocolError,
+        match="in-process optional checker callables are forbidden",
     ):
         audit_optional_semantic_checker(
             episode,
             result,
             checker=mutating_checker,
-            checker_id="fixture-proof-checker",
-            checker_version="v1",
         )
+    assert invoked is False
+    assert _authoritative_projection(episode, result) == before

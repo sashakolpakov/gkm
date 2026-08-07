@@ -1,666 +1,362 @@
-# Bongard visual-semantic benchmark
+# Bongard visual predicates
 
-This directory contains the official-ShapeBongard visual track. Its purpose is
-to test whether a headless Codex proposer can infer one affirmative rule from
-six positive and six negative panels, pass a fresh exact support replay, and
-then classify one held-out panel from each side.
+This directory is the active ShapeBongard V2 work. The goal is a headless
+Codex proposer that infers one affirmative visual rule from six positive and
+six negative support panels, freezes that rule, and predicts held-out panels
+without seeing their labels.
 
-There is no good benchmark result yet. The earlier raster-prototype baselines
-failed their support gates; A1 terminated as an infrastructure/schema failure;
-and A2 was invalidated by a concurrent source edit. A3 finally exercised the
-complete headless Stage-A proposer/scorer transport chain, but terminated as a
-canonical scientific failure because its upper calibration bin was
-underpopulated. It did not reach an end-to-end Bongard benchmark.
+There is no successful benchmark result yet. The current work is fixing the
+representation layer before spending the remaining evaluation holdout.
 
-## Current status: A1 failed; A2 invalidated; A3 failed; atomic attempts 1--3 failed
+## Status
 
-The atomic successor is implemented and offline-verified, but none of its
-three live N=1 attempts produced a Bongard result. Its synthetic causal
-harness completed all 29 model-receipt slots, made both query predictions, and
-cold-replayed; that verifies the protocol only. Atomic attempt one was launched
-from commit
-`62ea577f5d86d109577f4f5e49b8b4866eb76c92`, tagged
-`bongard-atomic-pre-smoke-20260806`. It durably persisted the cache snapshot,
-secret-free config, and exact-task exposure, then failed to persist a terminal.
-No prediction or terminal artifact exists. The selected task is consumed and
-will not be rerolled.
-
-The exact outer CLI error was `failed run precommit is not canonical JSON`,
-with reason digest
-`2825061e41346b498f7ceb0e338b0382fa807b2c968d534703927d6ce5f8376d`.
-The runner was entered and returned a typed `AtomicSmokeRun`. Fallback terminal
-construction then tried to JSON-clone its frozen `MappingProxy` precommit and
-failed. Normal terminal construction contains the same deterministic defect,
-but the surviving outer error does not establish which exception first entered
-the fallback path. The underlying run status, phase, output, and successful
-model-call count are not recoverable. The only valid call-count statement is
-**unknown, bounded 0..29**. Because no prediction was persisted, labels could
-not be materialized or revealed. There is no score, calibration, semantic,
-benchmark, or official-test claim. This is an operational failure, not a poor
-or successful Bongard result.
-
-The persisted content addresses are cache
-`sha256:1094dfd6794d4dfd141b9d0d1c89cf648d5c7d57ea0a545868bc38df928f28a4`,
-config
-`sha256:9dad0a5f468d1e8f3c65f7b83ac1ce7d2072e6541078bfbe9b4289ae3abdd451`,
-and exposure successor
-`sha256:b0533c1a8e94a190f5f382be5031e4318acb6ded2b635ac32172ee238c97de0a`.
-The sanitized machine record is
-[`data/atomic_smoke_n1_operational_failure_v1.json`](data/atomic_smoke_n1_operational_failure_v1.json).
-Its file SHA-256 is
-`2cf35e733c9a392999ec904660b2b0bf17814c253e3936476023f3e815fc14ad`.
-An earlier pre-exposure setup launch found a cache store at mode `0755`; the
-required mode is `0700`. That launch persisted no exposure and consumed
-nothing.
-
-### Atomic attempt two: terminal proposal-contract failure
-
-Attempt two ran exactly once from commit
-`d0864525146a05795c030674fa0159feb43913c1`, tagged
-`bongard-atomic-successor-pre-smoke-20260806`. It selected from the historical
-nine-ID input universe with digest
-`sha256:094e195fd8892cf09bcb8287e68bd747fdbb47a87075a60d0d23c291b17466ed`
-and durably appended exposure successor
-`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`.
-Its journal closed with exactly 13 intents and 13 validated results: twelve
-neutral support descriptions followed by one text-only atom proposal.
-
-The proposal receipt and structured-output schema were valid. The model emitted
-ten sensible observer questions, all ending in the question mark explicitly
-required by the prompt. The shared soft-cue parser then rejected that same
-U+003F character. The exact failure was
-`invalid positive_description: soft cue positive_description contains a
-forbidden prose character U+003F`, at phase `atom-proposal`, reason digest
-`34b41a10ae89287ed97c875c6833047ff5896a7081debd144f484833292fe42f`.
-This was a contradictory implementation contract, not a bad visual proposal.
-
-No support-scoring call, formula, selection archive, query call, prediction,
-label materialization, label reveal, or score occurred. The run, journal
-terminal, and command terminal persisted, and cold replay passed. The selected
-task is consumed without reroll. This failure supplies no vision-accuracy,
-predicate-quality, negation, calibration, semantic, benchmark, or official-test
-evidence. The sanitized record is
-[`data/atomic_smoke_attempt2_proposal_contract_failure_v1.json`](data/atomic_smoke_attempt2_proposal_contract_failure_v1.json),
-file SHA-256
-`242ebc5914020a683a6f34a0b50688bf3190f4c4cbd6d345d15ebb5e775eb6b3`.
-
-### Atomic attempt three: terminal support-synthesis failure
-
-Attempt three ran exactly once from commit
-`89b7124da62a5dd62a55abe7025bbaec8f90794b`, tagged
-`bongard-atomic-attempt3-pre-smoke-20260806`. It was a distinct consuming
-successor, not a reroll. The fixed non-Bongard transport preflight and exclusive
-one-shot claim both passed before selection or exposure. The claim protects the
-canonical predecessor path; copied ledger bytes remain an external-control
-problem. The call journal separately forbids resume or retry.
-
-The run authenticated attempt two's exposure successor,
-`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
-and selected once from its exact eight-task universe, digest
-`sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-It consumed that task and durably appended exposure successor
-`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`.
-Seven tasks remain in that historical repeated-generator frame, digest
-`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
-This frame tests transport and synthesis, not independent generalization.
-
-The journal closed with 25 intents and 25 validated results: twelve neutral
-support descriptions, one text-only proposal, and twelve one-panel support
-scorings. The sole proposed question was `Is a small triangle attached to a
-tilted quadrilateral?`. All six positive supports were `present`. Among the six
-negative supports, three were `operational_nonmatch`, two were `present`, and
-one was `indeterminate`.
-
-Python then failed honestly with `NoExactSeparatorError` at phase
-`support-scoring`: `no atom is total and present on every positive support
-panel; diagnostic_digest=b0d204d9eac2f36a66f13790dcb0eefe19f4b4ed99058e61fccd365c0e3dff14`.
-The one indeterminate negative made the only atom non-total. Even if that
-observation had resolved to nonmatch, the two negative `present` observations
-would still prevent separation. No formula or selection archive was frozen;
-no query source was read or scored; no prediction was persisted; query labels
-were neither materialized nor revealed; and there is no score. Cold replay of
-the exact closed 25-call prefix passed.
-
-A post-hoc support-only orientation diagnostic counts the affirmative rule
-correct on 9/12 panels and its complement on 2/12, with indeterminate counted
-incorrect. This is not an accuracy, score, calibration, semantic, benchmark,
-or negation claim; it only establishes that negation did not win this support
-diagnostic. All scientific-authorization flags remain false. Complete-release
-authentication hashed official-test bytes, but no official-test task or panel
-was selected, exposed to a proposer or scorer, evaluated, or scored. The
-sanitized record is
-[`data/atomic_smoke_attempt3_no_exact_separator_v1.json`](data/atomic_smoke_attempt3_no_exact_separator_v1.json),
-file SHA-256
-`533d57f8e0757ecd819c4e5bd95eeb8f2d2478193a366ba67178cf291ee953fc`.
-
-### A1 terminal record
-
-A1 was a descriptive, exploratory calibration attempt on the clean DRILL
-cohort. Its command receipt is
-`sha256:9aa247d953204bb12c06a09af6c081c47ae884be8e9c642a9a2bb6d587ba40cb`.
-It terminated with scoring-failure digest
-`sha256:a130d9e608c38581d34043d4d9c071f93483026592ec9c27a406dbad46d65b83`.
-
-| A1 funnel | count |
-|---|---:|
-| selected candidates / successful proposer calls | 48 / 48 |
-| accepted soft claims | 37 |
-| direct-only attrition | 10 |
-| typed-parser rejections | 1 |
-| scorer transport errors | 37 / 37 |
-| successful scores | 0 |
-
-The labels remained withheld. A1 produced no scores, fitted calibration,
-semantic-accuracy estimate, or evidence about whether negation helps. Its
-protocol digest was
-`sha256:861397b2fb9597ab6ad72b8993d7b032c6dfdce985840b30684a1d15d28a3c54`.
-Its consumed no-reroll seed was
-`f9ee0fc4433df603049734153ae5eeac7e7227873fd2f3f36bc163449f107857`,
-and its durable exposure successor remains
-`sha256:99597cf6477cd7e145c3bf62daf885fe7bf5ef5c0c829741353b5d6a0f5d7a78`.
-Those identities are historical and cannot be reused.
-
-### A2 invalidation incident
-
-A2 removes the provider-incompatible `minItems`, `maxItems`, and `uniqueItems`
-keywords from the scorer transport schema; exact cue coverage, ordering,
-uniqueness, and witness ownership remain fail-closed Python decoder checks.
-This changes the protocol identity, so A2 is not an A1 retry.
-
-| A2 field | frozen value |
-|---|---|
-| design | `descriptive-exploratory-only/v1` |
-| candidate tasks | 48, from `bd` and `hd` |
-| model | `gpt-5.6-sol`, medium reasoning |
-| protocol | `sha256:2d9261c763d3f9242ffc7cf42d773f54aa1a51f29b610e10b75c9ae59dea81ca` |
-| predecessor exposure ledger | `sha256:99597cf6477cd7e145c3bf62daf885fe7bf5ef5c0c829741353b5d6a0f5d7a78` |
-| fresh no-reroll seed | `eb031fe199b7d7553444d29cd213663c8afaf99d9b9cccec896f862f445a40b1` |
-| durable successor ledger | `sha256:9b7cb7ee7d759e899f5194d115a8bd20ebf8e078397a64de8f4b32e6805b1ce8` |
-| state | **INVALIDATED BY LIVE SOURCE MUTATION** |
-
-A concurrent agent edited `bongard/typed_visual_proposal.py` after A2 froze its
-protocol and cohort. The resulting grammar digest no longer matched the frozen
-protocol, so the process exited without writing a Stage-A terminal artifact.
-The incident record has file digest
-`sha256:4ace426bafbc051f2ad620dd8cdb3742a365b43503c673a9acc462665d47ccd4`.
-Process output showed only that 48 proposer and 34 scorer launches occurred;
-their outputs were lost and are not scientific results. Labels were not
-revealed. A2 supports no calibration, accuracy, or semantic inference, its
-selected cohort remains consumed, and the same cohort may not be rerun.
-
-### A3 terminal scientific failure
-
-A3 ran from frozen source with a fresh no-reroll selection. It exited 2 with
-the exact scientific failure reason `calibration score bins are
-underpopulated: 1`. Its command receipt is
-`sha256:2a01933321a0578af51a8db7f2a3c1cf5508908ee4521eb43d7a63f8f7985681`
-and its terminal failure is
-`sha256:cc1b86d7097a1986a7eeb2ddb3a82e30e302ff93a41cf64078be1c5be8df31eb`.
-
-| A3 funnel | count |
-|---|---:|
-| selected candidates / successful proposer calls | 22 / 22 |
-| accepted soft claims | 15 |
-| direct-only attrition | 6 |
-| typed-parser rejections | 1 |
-| successful scorer calls | 15 / 15 |
-| scores `0 / 0.5 / 1` | `8 / 1 / 6` |
-
-The lower fixed bin `[0, 0.75)` contained 9 clusters with 1 affirmative label;
-the upper bin `[0.75, 1]` contained 6 clusters with 5 affirmative labels. The
-preregistered minimum was 8 per bin, so no calibration was fitted and Stage B
-remained unauthorized. Intended-bin orientation was 13/15 versus 2/15 for its
-exact complement. At the naive `score >= 0.5` threshold, orientation was 12/15
-versus 3/15. **Negation did not win.** A3 exposed 22 tasks and leaves 10,047
-exact-unused train/validation IDs: 2,998 `ff`, 3,434 `bd`, and 3,615 `hd`.
-Complete-release authentication hashed all release bytes, including official-test
-bytes, but no official-test task or panel was selected for an episode, exposed
-to the proposer or scorer, evaluated, or scored.
-
-The sole parser rejection also exposed a concrete bug: the forbidden-code
-regular expression matched the prefix `def` in the ordinary word `defines`.
-The boundary now requires a complete keyword match, so `defines` is accepted
-while the actual Python keyword `def` remains rejected. This was fixed after
-A3 and does not alter its terminal record.
-
-A later executable-closure audit found an independent receipt limitation.
-A3 committed launcher digest
-`134063e133f0b4244fa3b251acf973d4fe4b4aeeacbdc135211bf480f59f1477`,
-which is the installed JavaScript wrapper, plus reported version
-`codex-cli 0.146.0`. That wrapper dynamically spawned a native client whose
-bytes were not committed. The native file currently installed has digest
-`sha256:ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02`
-and size 271,056,976 bytes, but that is a post-hoc observation and cannot prove
-which native bytes A3 executed. There is no evidence of mutation; there is
-also no exact native-client authentication claim. New live runs must resolve,
-execute, hash, and recheck the native binary itself.
-
-Stage B did not run and is unauthorized by A1, A2, and A3. A metadata-only
-post-A2 audit found that task count was the wrong capacity measure. Before A3,
-after collapsing semantic siblings and projecting every complete-A2 exposure into
-owner-independent HD constituent tokens, DRILL has an exact reservoir maximum
-of 24 units: 24 `bd` and zero `hd`. The earlier 28-unit upper bound enforced HD
-disjointness only inside the proposed new batch and failed to seed that token
-exclusion set from the predecessor ledger. The original 48-task design is
-impossible on the remaining frozen frame.
-DEV has 16 `bd` units and **zero** `hd` units disjoint from the complete live
-ledger. The Stage-B default of 24 therefore fails before pixels or model calls;
-even a 16-task BD-only pilot cannot meet its preregistered 24-cluster minimum.
-Any later experiment remains descriptive and hard-codes
-`dependence_design_authorized = false`.
-
-The exact v3 selector replay against A3's successor ledger reduces strict
-DRILL capacity from that pre-A3 maximum of 24 to **zero**: zero eligible tasks,
-zero eligible generator groups, and `0 bd + 0 hd`. Its capacity-certificate
-digest is
-`sha256:48fba29c8a33a5fd773baed373694ac32d91a6f456b17ede563113eeeecd18b1`.
-DEV remains exactly `16 bd + 0 hd`, certificate
-`sha256:434c0756e89891c4a10e31fdf0c97e2e9373930a2ed48e1ecfa011c36f15c4c8`.
-
-The pre-A3 24 and post-A3 zero are policy capacities, not the size of the
-archive. After A3, 10,047 of
-the 10,200 official train/validation task IDs remain exact-unused: 2,998 `ff`,
-3,434 `bd`, and 3,615 `hd`. They are not all
-semantically independent or certified clean. The current Stage-A selector
-conflates calibration with strong holdout evaluation by forbidding every
-constituent exposed by the predecessor ledger or shared inside a batch. A later
-calibration-frame redesign should
-use exact-unused training tasks, keep DEV/SEALED semantic keys reserved, model
-shared-generator dependence explicitly, and score both held-out task panels
-before either label is opened. The evaluation split must remain stricter; in
-particular, HD must be partitioned by constituent attribute rather than by
-ordered pair.
-
-A3 fixed eight distinct clusters per bin before its seed, pixels, or model
-output. That was the smallest count whose 90% simultaneous Hoeffding radius
-(0.480161) could possibly decide against the fixed 0.5 boundary. The run then
-produced only six upper-bin clusters. This is recruitment and power failure,
-not evidence that the scorer's polarity is reversed. With only 15 accepted
-claims, two bins of eight were mathematically impossible even before their
-observed rates were considered.
-
-New Stage-A command receipts are source-bound v2 records. The runner snapshots
-the Python source boundary and checks it around exposure, every proposer and
-scorer call, cold replay, and terminal serialization. A post-precommit source
-change now writes a durable operational-failure artifact and failed receipt
-with labels withheld. Canonical serialization caches preserve exact bytes and
-digests while reducing the synthetic Stage-A replay from 161.15 s to 11.50 s;
-the compact central-campaign Stage-B replay fell from 218.88 s to 51.10 s.
-
-Visual-semantic SEALED/test execution is disabled both in the CLI and in the
-direct benchmark runner. It must stay disabled after Stage B: the current
-design does not support an inferential authorization claim.
-
-## What the pipeline actually is
-
-It is not `panel -> prose -> Lean -> truth`. Lean cannot certify that prose
-matches pixels. The new atomic smoke instead makes the empirical boundary and
-the logical boundary separate and replayable:
-
-```text
-12 support PNGs
-  -> 12 isolated, neutrally named vision descriptions
-  -> labelled descriptions only, with no pixels, to one atom proposer
-  -> 1..12 pairwise-distinct exact affirmative observer questions
-  -> 12 isolated one-panel scoring calls covering every atom
-  -> complete atom x support-panel matrix
-  -> deterministic positive conjunction of at most four atoms
-  -> frozen formula
-
-only after that freeze:
-  2 query PNGs
-  -> 2 isolated vision descriptions
-  -> 2 isolated selected-atom scoring calls
-  -> durable joint prediction commitment
-  -> label reveal and score
-  -> model-free cold replay of all 29 call receipts
-  -> durable call-journal terminal before runner return
-```
-
-That is the implemented successor to A3. In A3, the descriptions were
-audit-only, the proposer made one irreversible bundled guess, and no complete
-formula was evaluated. The atomic path now uses the descriptions as the sole
-input to atom proposal, preserves every atom-by-panel result, and lets Python
-select the formula. It removes the old minimum-over-cues collapse and every
-post-hoc polarity flip.
-
-The successful path has exactly 29 model calls: 14 neutral image-description
-calls, one text-only atom proposal, and 14 one-panel atom scoring calls. Every
-description binds the exact panel digest, support/query phase, protocol,
-validated receipt, run commitment, and call ordinal. Every atom observation
-also binds the scorer producer/version/method, output, receipt, run, and call
-ordinal. The formula is frozen before a query source is read.
-
-This makes the computation rigorous, not the English ontology. A phrase such
-as `Does the panel contain a bird-like object?` denotes a fixed operational
-observer question. Its
-answer is reproducible under the frozen model, prompt, pixels, description,
-and receipt. It is not a proof that the depicted object really is a bird.
-Scientific construct validity still requires an independent calibration
-artifact. The atomic calibrated-semantic mode is therefore hard-disabled
-until the core can cold-validate such an artifact and its interval rule.
-
-“Candidate-independent” has a narrow, testable meaning: the witness extractor
-receives only one panel's PNG bytes. It does not receive the task ID, side,
-label, proposed phrase, or formula. Every packet binds the source bytes,
-extractor code, preprocessing choices, component ownership, and uncertainty.
-
-The same condition holds for the atomic descriptions: each vision call sees
-one neutrally named panel and no task ID, label, side, other panel, or candidate
-phrase. Candidate phrases are proposed only after all twelve support
-descriptions have been frozen.
-
-The three retained preprocessing scenarios are:
-
-- `threshold032.raw`;
-- `threshold064.close-cross-1`;
-- `threshold096.raw`.
-
-The complete direct conjunction is evaluated separately inside each scenario.
-Only then are the three outcomes combined. This preserves correlations such
-as which hole belongs to which component; it does not manufacture independent
-feature intervals.
-
-## The direct catalog, exactly
-
-The current catalog contains these ten atom families:
-
-| catalog key | measured positive claim |
-|---|---|
-| `component.count` | exact number of separated ink components |
-| `hole.owner_count` | exact number of enclosed regions with one component owner |
-| `topology.endpoint_count` | exact number of open-stroke endpoints |
-| `topology.branchpoint_count` | exact number of skeleton branchpoints |
-| `topology.cycle_count` | exact number of stroke cycles |
-| `topology.crossing_count` | exact number of certified four-arm X junctions |
-| `curvature.reversal_count` | exact number of persistent signed-curvature reversals |
-| `curvature.run_count` | exact number of persistent signed-curvature runs |
-| `curvature.s_like_count` | exact number of simple open S-like strokes |
-| `curvature.u_like_count` | exact number of simple open U-like strokes |
-
-Every selectable target count is an integer from 1 through 8. Zero is excluded
-because “count equals zero” is a negated existence claim disguised as an
-equality.
-
-That is the whole direct catalog. There is no implemented direct atom for
-point contact, exterior gaps, owner-labelled contact rays, oblique-angle
-bands, part correspondence, or bird-likeness. A previous narrative described
-a complete two-loop point-contact signature; the executable catalog does not
-contain it. Adding those capabilities is future perception work, not a
-documentation synonym for what exists.
-
-The crossing atom also has a limited meaning: it detects a geometric X in a
-thinned raster graph. It cannot distinguish an over/under crossing from a
-four-way attachment.
-
-## What a soft predicate means
-
-Soft prose is allowed because some concepts, such as “bird-like object” or
-“mostly oblique parts,” are not in the direct catalog. The phrase does not
-become ground truth or executable geometry. In the atomic path it becomes one
-opaque, affirmative observer predicate:
-
-1. Twelve candidate-independent vision descriptions are frozen first.
-2. A text-only proposer sees those descriptions and their support labels and
-   emits 1--12 pairwise-distinct exact observer questions. It sees no pixels.
-3. Each question is at most 192 UTF-8 bytes, has no outer whitespace, matches
-   `[A-Za-z0-9]+(?:[ -][A-Za-z0-9]+)*\?`, contains exactly one final ASCII `?`,
-   and is retained byte-for-byte without normalization or repair.
-4. The same closed Python surface policy rejects negation, disjunction,
-   negation laundering, cue bundling, support-relative language, and
-   control/code text. This syntactic guard is not a proof of logical atomicity
-   or perceptual truth.
-5. A blind one-panel observer evaluates every atom with the same prompt and
-   returns `present`, `operational_nonmatch`, `indeterminate`, or `error`.
-6. Python keeps the complete matrix and deterministically chooses the
-   shortest positive conjunction that presents every positive support panel
-   and operationally rejects every negative one.
-
-Attempt three exposed the semantic gap behind that clean syntax. Its one
-surface-valid “atom” bundled two object shapes, relative size, quadrilateral
-orientation, and directed attachment. The frozen candidate-independent prose
-contained useful relational structure, but the proposal did not factor it into
-micro-predicates and the candidate-aware scorer lost object-role and size
-direction on two negative supports. A grammar with no word `and` therefore did
-not make the predicate atomic.
-
-`operational_nonmatch` means only that the frozen observer returned nonmatch.
-It may act as false inside an archive explicitly scoped to that observer. When
-projected into the general semantic evidence lattice it is
-`indeterminate`, never `certified_absent`. The archive permanently records
-`calibration_authorized = false`, `semantic_truth_claim = false`, and
-`benchmark_claim_authorized = false`.
-
-The exact phrase, description, model, prompt, PNG digest, output, receipt,
-run, call ordinal, matrix, selection rule, formula, and replay are rigorous.
-Whether the phrase corresponds to a human category is an empirical question.
-That is the correct boundary: Python can verify the computation over frozen
-observations; neither Python nor Lean can prove the original visual judgment
-from prose alone.
-
-A1 was intended to estimate scorer behavior conditional on the proposer
-emitting a soft claim, but all 37 scorer calls failed before producing a score.
-It therefore estimated nothing about semantic correctness or scorer accuracy.
-A2 was a separate repaired-protocol experiment, but live source mutation
-invalidated it before a terminal artifact was written. Its observed launches
-and lost outputs provide no scorer or semantic estimate.
-
-A3 repaired the transport path: all 15 scorer calls succeeded. It still did
-not fit a calibration because the high-score bin had only 6 clusters instead
-of 8. Its positive orientation was strong (13/15 by intended bin; 12/15 at the
-naive threshold), so its failure cannot honestly be summarized as “negation
-wins.”
-
-## Four dispositions, without word games
-
-- `present`: the frozen affirmative predicate has constructive evidence.
-- `certified_absent`: the affirmative predicate has an operationally certified
-  nonmatch under a frozen direct or independently calibrated semantics. The
-  new uncalibrated atomic scorer cannot emit it.
-- `indeterminate`: retained scenarios disagree or the evidence interval cannot
-  decide the threshold.
-- `error`: extraction, transport, parsing, identity, or replay failed.
-
-A fifth serialized value exists only inside operational atomic archives:
-`operational_nonmatch`. It is an exact observer response, not a fifth semantic
-truth value. Its general semantic projection is `indeterminate`. A failed fit
-or failed model call is never a negative. `indeterminate` and `error` count as
-incorrect in headline accuracy; they are also reported separately.
-
-## Why reverse alignment appeared in earlier diagnostics
-
-The earlier PURE support-prototype diagnostic recorded 10 reversed outcomes
-among 132 executable support-panel outcomes. That was an alignment diagnostic,
-not an A1 negation experiment and not permission to execute a complement.
-
-If the complement of a synthesized rule scores better, the synthesized rule
-has learned the wrong orientation or a spurious correlate. That can happen
-even when the English phrase sounds plausible:
-
-- twelve support panels underdetermine the concept;
-- a feature can separate one generator sample while reversing on another;
-- pooled `bd`/`hd` selection can reward family or attribute reuse instead of
-  concept transfer;
-- a parser, fit, or observer failure can look like Boolean false if the
-  evidence type collapses failures into negatives;
-- post-hoc polarity search can rescue a bad predicate by flipping it after it
-  has seen the support outcomes.
-
-The old statistical story also treated reused generator attributes too much
-like independent examples. Its claimed eight HD DEV units were only distinct
-as exact ordered pairs; they were not disjoint from prior constituent
-attributes. Replaying the complete A2 ledger leaves 16 `bd` and zero `hd` DEV
-units. The historical mixed-family total of 24 was therefore not a valid
-strict-disjoint capacity claim.
-
-The current path removes the cheap rescue: the proposer must state the
-positive-side rule, the IR has no `Not`, all selected atoms are used once in a
-conjunction, and the exact support gate rejects a reversed rule before query
-pixels are released. This makes failure honest; it does not make perception
-good. Better results require better panel observables and a better calibrated
-visual scorer.
-
-The atomic smoke now implements the Python-native description/matrix/selection
-path: one-phrase atoms, complete atom-by-panel observations, deterministic
-small positive conjunctions, no `Not`, and no polarity flip. Attempt three
-shows that factorization and role binding are still missing. The next
-candidate-independent representation needs stable object identities,
-per-object shape and closure, area and orientation intervals, and owner-labelled
-contact relations, kinds, rays, and exterior gaps. Python can then synthesize
-relational micro-predicates instead of asking an opaque scorer to re-interpret a
-whole sentence. The complete two-loop point-contact signature is not currently
-implemented. A future semantic claim also needs a powered, independently
-frozen calibration design; the exploratory operational path does not pretend
-to supply one.
-
-## Python runtime is canonical; strict un-Lean migration is pending
-
-Python is the sole runtime semantic authority. Python defines the predicates,
-closed IR, evidence dispositions and projections, calibration, synthesis and
-selection, evaluation, persistence, cold replay, admission, and benchmark
-decisions. Canonical JSON is the interchange format.
-
-Lean is neither imported nor required by the authoritative path. The intended
-future checker boundary is a process-isolated, detached, non-authoritative
-sidecar that consumes only persisted immutable Python artifacts:
-
-- no Lean term may enter a predicate or artifact identity;
-- no benchmark result may depend on Lean being installed;
-- installing, changing, failing, disagreeing, or deleting the checker must
-  leave every predicate, evidence value, formula, result, decision, replay,
-  and ID unchanged;
-- a Lean proof may establish consequences of recorded evidence, never the
-  correctness of the original visual observation.
-
-This is the explicit target “un-Lean” portability invariant. Attempt three's runtime
-was Python-only and invoked no Lean or optional checker. Strict migration is
-not yet complete, however: its wider provenance chain binds an earlier
-whole-tree Git commit containing the checker source, its configuration identity
-retains the legacy literal `python-canonical/lean-optional/v1`, and the optional
-checker API remains an in-process audit utility. A future use must process-
-isolate that utility and remove these residual identity bindings. The narrower
-runtime source-dependency receipt already excludes the exact non-authoritative
-`bongard/semantic_checker.py` sidecar boundary; changing an authoritative Python
-module still invalidates the receipt.
-
-## Corpus boundary
-
-The pinned ShapeBongard V2 release has 12,000 tasks and 168,000 panels:
+The pinned complete release contains 12,000 tasks and 168,000 PNG panels:
 
 | family | tasks |
-|---|---:|
-| `ff` | 3,600 |
-| `bd` | 4,000 |
-| `hd` | 4,400 |
+| --- | ---: |
+| Freeform (`ff`) | 3,600 |
+| Basic (`bd`) | 4,000 |
+| Abstract (`hd`) | 4,400 |
 
-This is the complete public Bongard-LOGO release, not the earlier project
-subset. The [upstream dataset repository](https://github.com/NVlabs/Bongard-LOGO)
-also records 12,000 tasks in these three families and pairs every image with
-an action program. Those programs and rule-bearing paths remain verifier-side;
-the visual proposer never receives them. A recent
-[symbolic-grounding diagnostic](https://arxiv.org/abs/2604.21346) reports a
-large pixels-versus-structured-input gap on Bongard-LOGO, which supports the
-working diagnosis here: representation is the bottleneck, not Lean.
+The primary split is 9,300 train, 900 validation, and 1,800 test tasks. The
+official test split is sealed: its bytes may be hashed to authenticate the
+release, but no test panel is available to the proposer, synthesis, threshold
+work, or evaluation.
 
-The primary split is 9,300 train, 900 validation, and 1,800 test. The pinned
-content identities are:
+Immediately before the coverage pilot, 156 task IDs had been exposed and
+10,044 train/validation tasks remained image-unseen: 2,998 `ff`, 3,431 `bd`,
+and 3,615 `hd` (9,156 train and 888 validation). The completed pilot consumed
+24 more task IDs, four per split/family cell. The current ledger therefore has
+180 exposed IDs and 10,020 exact-image-unseen train/validation tasks. This is a
+large engineering pool, not 10,020 independent concepts: most tasks reuse
+generator semantics already represented in the exposure ledger.
 
-- archive: `sha256:8c5542ac7b9ce8a6a14d157a0656dbde9da5b7843424eade4bd653759d9a27d0`;
-- split: `sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230`;
-- extracted corpus: `sha256:6fa51548520190a412812ba8f872dc3c7a7a2b2c47c0e42a4d9f6df351dce138`;
-- release descriptor: `sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b`.
+Strict reusable DRILL capacity is zero. The strict DEV reserve had 16 `bd`
+tasks before the pilot and has 15 afterward. The pilot protected exact DEV task
+IDs but failed to protect other tasks sharing their semantic disclosure keys;
+one selected engineering task therefore disqualified one DEV unit. This is a
+selector bug, not benchmark evidence, and the lost unit is not restored or
+rerolled. The prospective selector now excludes the complete disclosure-token
+closure (family plus morphology for ``bd``; pair plus attributes for ``hd``).
+A metadata-only regression check kept every baseline-viable DEV task viable;
+it opened no new pixels. The hardened v4 headless runner and v4 campaign
+orchestrator are now implemented and fixture-tested, including an explicit
+five-task exact-unused TRAIN mode for semantics-reused representation
+engineering. At this pre-run snapshot, no real five-task plan has been frozen
+or published and no model campaign has been executed. The 15-task strict DEV
+cohort remains stopped because intended-concept expressibility is 0/15 in the
+current v3 relational language; it is not a pending runnable plan.
 
-The complete decoding audit found 168,000 single-frame RGB 512x512 PNGs and
-zero anomalies. Complete-release authentication and inventory hash or decode
-official-test bytes as part of that integrity check. No official-test task or
-panel has been selected for an episode, exposed to a proposer or scorer,
-evaluated, or scored in this pipeline.
+The first metadata-only 15-task public plan is rejected and must never be
+executed. It published an unkeyed digest of the six selected indices on each
+side. Because there are only 49 possible omitted-index pairs, that digest
+revealed both held-out indices for every task by brute force. No DEV pixels or
+model calls were made under that plan. The v4/v3 implementation now supplies
+hiding commitments and fresh private schedules, but the rejected 0/15 DEV
+cohort must not be regenerated merely because those controls exist.
+
+The compact, non-runnable rejection record is
+[`data/relational_headless_full_current_dev_20260807.rejection.json`](data/relational_headless_full_current_dev_20260807.rejection.json).
+The leaking plan and its private schedule/cache files were deleted.
+
+## The actual pipeline
+
+The system is not `panel -> prose -> Lean predicate -> truth`. A proof checker
+cannot establish that prose such as “bird-like object” is true of a PNG. The
+hard part is the empirical first arrow.
+
+The target protocol is:
+
+```text
+exact PNG bytes
+  -> candidate-independent Python loop packet
+  -> optional candidate-independent neutral vision tags
+  -> one closed positive same-binding Python predicate
+  -> exact support gate
+  -> durable formula freeze
+  -> query release and joint prediction
+  -> label reveal
+  -> model-free, tamper-detecting replay
+```
+
+Python is canonical. It defines evidence, predicates, evaluation, selection,
+persistence, and replay. Lean is not required. An optional checker may consume
+persisted canonical JSON after the fact, but installing, removing, changing,
+or failing that checker cannot change an artifact identity or benchmark
+decision. Historical records with Lean-named literals remain historical; they
+do not define the current authority boundary.
+
+The loop packet, relational query layer, closed-union path, hardened v4 runner,
+and v4 campaign are implemented and fixture-tested. They have not yet been
+used in a real Codex campaign. The packet binds the exact PNG digest,
+extractor identities, every retained hole/loop, polygon fits, area intervals,
+edge-axis obliqueness, ownership evidence, and every unordered loop-pair
+contact observation. All serialized quantitative values use integers and
+explicit units.
+
+The v4 runner implements the four previously missing controls. Hiding
+schedule commitments replace low-entropy public schedule digests; every
+opened PNG is authenticated against the official-release manifest; source
+identities are frozen plan values; and a durable, exclusively locked task
+claim prevents a crash or restart from making a second proposer call. A
+claimed task with no sealed outcome is a terminal failure on recovery, not
+permission to call again. These are fixture-tested implementation facts, not
+evidence that a real plan or model campaign has run.
+
+The closed relational language currently has factorized clauses for:
+
+- polygon side count;
+- directed enclosed-area ratio;
+- minimum edge-axis obliqueness; and
+- point contact.
+
+That v3 language is far narrower than the reserved DEV tasks. It requires two
+distinct substantive closed loops, polygon side counts in the frozen 3--8
+grid, and a directed area-ratio clause; obliqueness is optional and the first
+protocol disables contact. A metadata-only concept audit of the rejected
+15-task DEV cohort found **0/15 intended concepts expressible** in that
+language. Open bands and arcs, lamps, axes, balance, transposition, and most
+symmetry concepts are outside it. At most two tasks have partial polygon
+overlap. Running that cohort with v3 would measure accidental correlates, not
+Bongard induction, so it is not authorized.
+
+This exposed a concrete integration failure: deterministic component/hole,
+skeleton endpoint/branch/cycle/crossing, curvature, and bilateral-symmetry
+witnesses already existed in the repository, but the earlier relational-only
+runner threw them away. The implemented repair is a frozen closed Python union
+over those existing legs plus the same-binding relational leg, with an
+exhaustive support-only expressibility oracle. Its first version remains only
+a tagged sum with panel-global direct/symmetry atoms; cross-family conjunction
+and object-bound direct/symmetry relations remain explicit follow-up work.
+
+Two explicit roles must be distinct, and every clause is evaluated over the
+same object binding. This prevents a triangle witness from one object, a size
+witness from another, and a contact witness from a third from being spliced
+into a fake conjunction.
+
+The library is deliberately positive-only. Synthesis may choose affirmative
+atoms and conjunctions that cover all positive supports. It has no `Not`, no
+polarity bit, no disjunction, no complement rescue, and no reroll. A proposed
+predicate that does not pass the exact support gate is a failed proposal.
+
+## Four dispositions
+
+Every empirical observation and predicate result is one of:
+
+- `present`: there is a replayable affirmative witness;
+- `certified_absent`: the registered observer has enough scoped evidence to
+  rule the predicate out;
+- `indeterminate`: the observer cannot decide within its certified scope; or
+- `error`: extraction, transport, integrity, or evaluation failed.
+
+A failed fit, missing observation, or model error is never Boolean false.
+`indeterminate` and `error` therefore cannot be laundered into a negative
+example and then “fixed” by negation.
+
+## Soft predicates
+
+Words such as “bird-like” and “oblique” can be useful, but their rigor comes
+from their transport and calibration contract, not from turning the words into
+a theorem.
+
+The experimental vision-tag layer has a finite catalog (`gestalt.bird_like`
+and `geometry.oblique_edges` in v1). A neutral observer is intended to score
+every neutrally named loop object before seeing a candidate formula. The
+current envelope binds the PNG, loop packet, complete object-by-tag inventory,
+integer score intervals, prose, and caller-supplied prompt/model/protocol
+digests. Those opaque digests are content fields, not proof that Codex ran.
+
+The evaluator now requires the actual frozen calibration record for every
+result and rejects an omitted or mismatched record. The prototype still must
+not enter a benchmark: calibration and receipt digests remain caller-declared,
+not a causally attested Codex transport.
+
+The prose is audit material only; it is never executed. A closed tag predicate
+is `present` only when its lower interval bound clears a frozen threshold.
+Version 1 cannot certify negative visual semantics: every low score remains
+`indeterminate`, and v1 rejects any purported absence authorization. The typed
+envelope is fixture-tested, but the neutral Codex transport, object overlays,
+receipt attestation, calibration, and benchmark run do not yet exist.
+
+For deterministic notions, deterministic geometry remains authoritative. A
+vision tag saying “oblique” can corroborate a geometric observation; it does
+not override its uncertainty.
+
+## The point-contact limit
+
+The contact schema is intentionally demanding: two explicit loop owners, one
+contact, four owner-labelled incident rays, both exterior gaps, cyclic-order
+uncertainty, and provenance. The extractor can certify some separations and
+can represent a full positive signature when it has one.
+
+It cannot currently recognize the thick-stroke vertex attachment in atomic
+attempt three. Those panels must remain `indeterminate` for contact. Contact is
+therefore optional in synthesis and cannot be used as a negative merely
+because the fit failed. Claiming otherwise would recreate the original bug.
+
+## What atomic attempt three actually showed
+
+The historical one-shot proposer asked:
+
+> Is a small triangle attached to a tilted quadrilateral?
+
+The live scorer produced six positive `present` results; on negatives it
+produced three operational nonmatches, two `present`, and one `indeterminate`.
+Python correctly stopped before formula freeze or query access because there
+was no exact support separator.
+
+A later deterministic forensic check found a shape/ratio separator on the
+twelve actual support panels. A subsequent report saying that the base query
+instead gave 5+1 versus 5+1 and that the library had no support separator was
+itself wrong: it substituted the two held-out panels into the support set and
+dropped two resolved supports.
+
+The [canonical A3 forensic record](data/atomic_smoke_attempt3_relational_forensics_v1.json)
+has record digest
+`0487edf805fda6de40ecfc42add1d8bf95e435e0f6912f6e2fd8d2a25e89eb2a`.
+It binds the archived support-call order to all fourteen source PNG hashes,
+support/held-out indices, loop packets, base results, and all four formula
+digests. It is the authority for the counts below.
+
+With the archived source-index mapping restored, the base query--triangle as
+role 0, quadrilateral as role 1, and directed area ratio at most 1/8--gives all
+six support positives `present` and all six support negatives
+`certified_absent`. Exhaustive enumeration finds four exact support
+separators: area threshold 1/12 or 1/8, each either without an obliqueness
+clause or with role 1 obliqueness at least 5 degrees. All four omit contact.
+
+This is support resubstitution, not generalization. Held-out positive source
+index 4 and held-out negative source index 5 are both `indeterminate` under the
+1/8 base query, so that query's full seven-per-side result is 6 `present` plus
+1 `indeterminate`, versus 6 `certified_absent` plus 1 `indeterminate`. Under
+the two 1/12 support separators the negative held-out becomes
+`certified_absent`, but the positive held-out remains `indeterminate`. None of
+the historical 2,520-member contact-inclusive diagnostic relational
+superlanguage separates all fourteen panels. Its contact-disabled,
+proposer-reachable half contains 1,260 members and retains the same four
+support separators. Point contact remains unresolved on the thick-stroke
+attachment.
+
+The corrected v2 closed-language gate now reproduces that result mechanically.
+It froze all 65,678 proposer-reachable positive predicates before reading the
+twelve authenticated supports, replayed exact composite packets, and found
+exactly four forward support separators. All four are among the 1,260
+contact-disabled relational members; the 64,400 direct-count members and 18
+symmetry members add **zero** A3 separators. The gate therefore passes
+its protocol check but does not improve the concept result or establish
+generalization: it read no held-out, query, or test pixels and called no model.
+The stable checked-in
+[gate result](data/a3_closed_language_gate_result_v2.json) has record digest
+`sha256:f9b6373df4dbe5d63807cf7e21be931db7ec0e9dfba106917df73d0e170a52d6`.
+
+## Coverage pilot result
+
+The exact-unused 24-task pilot completed on four tasks per split/family cell.
+All 336 panels extracted successfully. Across three renderer scenarios per
+panel it recorded 17,876 loops, of which 10,354 met the substantiveness floor.
+Polygon and obliqueness observations were `present` for 4,516 loops and
+`indeterminate` for 13,360. Among 267,197 unordered loop pairs, contact was
+`present` 46 times, `certified_absent` 116,520 times, and `indeterminate`
+150,631 times.
+
+The content-addressed report is
+`sha256:f78626c51b0af34cb0ccd96ed56041a51bcaeb453d3f26b10ea1ed1377542ae0`.
+It is coverage evidence on exact-image-unseen but semantics-reused
+train/validation tasks, not a proposer benchmark or a generalization score.
+
+## Closed-library ablation result
+
+The historical 2,520-member contact-inclusive diagnostic v3 superlanguage was
+then replayed on all 24 already-exposed pilot tasks. It is broader than the
+current 1,260-member proposer-reachable relational branch and remains valid as
+a coverage ablation. The result is unambiguously bad: **0/24** tasks have an exact
+separator over all seven panels per side, and **0/168** deterministic paired
+leave-one-index folds have even an exact 6+6 fit. Consequently there are zero
+held-out generalizers. The best forward-oriented predicate on any task gets
+only **8/14** panels correct.
+
+This is not a proposer failure: no proposer participated. It is not an
+extractor crash: all 336 PNGs reproduced their authenticated loop-packet
+digests, with zero extraction errors, and 1,344 sampled results matched the
+canonical evaluator. It is a direct falsification of the current library's
+coverage on this engineering cohort. The mandatory two-closed-polygon role
+domain and shape/ratio vocabulary usually fail to make the positive panels
+`present`; negation or a polarity flip would only conceal that missing
+representation.
+
+The compact checked-in outcome is
+[`data/relational_library_ablation_24task_outcome_v1.json`](data/relational_library_ablation_24task_outcome_v1.json),
+with record digest
+`sha256:ea6ee897513c22f1db8e656570e6572f2955855bbadb5caa39d8dc5dc8d423cd`.
+It binds the full write-once report
+`sha256:0a4b601ffc794a640175d2afda4f4b0d7f57fc980700bafbf09848ea4768c59b`,
+the diagnostic 2,520-query inventory, the exposure successor, and the
+no-test/no-model/
+no-negation restrictions. This remains resubstitution/library-coverage, not a
+benchmark or generalization estimate.
+
+The qualified next run is therefore explicitly representation engineering,
+not DEV: five exact-unused TRAIN tasks whose generator semantics are already
+historically exposed. The hardened v4 runner and v4 campaign implement and
+fixture-test this exact fixed-allowlist mode. The candidate set is the three
+`big_small_*_triangles` tasks, `two_unbalanced_triangles`, and
+`two_mirror_unbala_triangles`. At this pre-run snapshot no real plan has been
+frozen and no model call or campaign execution has occurred; live admission
+still requires the frozen union and expressibility checks. The exact-unused
+`unbala_trapezoid_right_triangle` task is in the sealed semantic partition and
+must not be substituted.
+
+## Historical experiments
+
+Earlier Stage-A experiments are immutable diagnostics, not benchmarks:
+
+| run | outcome |
+| --- | --- |
+| A1 | proposer transport ran; scorer transport failed; no scores or calibration |
+| A2 | invalidated by concurrent source mutation; no terminal scientific result |
+| A3 | scorer transport completed, but a preregistered calibration bin was underpowered; Stage B did not run |
+| atomic attempt 1 | wrapper/precommit failure after exposure; no recoverable prediction |
+| atomic attempt 2 | prompt/parser contract mismatch after descriptions and proposal; no scoring or query |
+| atomic attempt 3 | live soft predicate did not separate support; stopped before query |
+
+The historical post-Stage-A-A3 ledger had 10,047 exact-unused
+train/validation task IDs. Later atomic records consumed three more, giving the
+pre-pilot baseline of 10,044; the coverage pilot then gave the current 10,020.
+Do not mix those snapshots.
+
+No run above authorizes an official score, a claim that negation helps, or
+access to the official test split.
 
 ## Code map
 
-- `visual_witnesses.py`, `contour_witnesses.py`, and
-  `visual_witness_bundle.py`: exact-byte candidate-independent extraction.
-- `visual_predicate_catalog.py` and `direct_visual_leg.py`: the finite direct
-  catalog and registered Python atoms.
-- `typed_visual_proposal.py` and `typed_visual_transport.py`: the closed
-  support-only proposer boundary.
-- `blind_soft_transport.py`, `soft_predicates.py`, and
-  `family_soft_leg.py`: blind ordinal scoring and family calibration.
-- `scenario_semantics.py`, `semantic_synthesis.py`, and
-  `semantic_observation.py`: positive conjunction lowering and four-valued
-  evaluation.
-- `semantic_calibration_command.py`: write-once Stage-A command, durable
-  exposure precommit, environment binding, and cold-verified receipt.
-- `atomic_semantic_synthesis.py`: one-phrase atoms, exact atom-by-panel
-  matrices, operational-versus-semantic scope separation, positive-only
-  conjunction synthesis, and cold replay.
-- `atomic_smoke_precommit.py`: complete-corpus authentication, metadata-only
-  selection, and durable exposure before selected pixels are hashed.
-- `atomic_smoke_runner.py`: the exact 29-call description/proposal/observer
-  schedule, intent-before-transport/result-before-next call journal,
-  prediction persistence, label reveal, score, terminal persistence, and
-  model-free replay.
-- `atomic_smoke_command.py`: source-frozen, native-launcher-authenticated
-  production boundary with a non-Bongard transport preflight, pristine-store
-  checks, and a canonical-path one-shot claim for one exploratory train smoke.
-- `semantic_gated_dev_validation.py`: strict-disjoint descriptive Stage B.
-- `semantic_run_verification.py`, `semantic_commitment.py`, and
-  `artifacts.py`: exact archive reconstruction and model-free replay.
-- `benchmark.py` and `cli.py`: freeze/query/reveal runner and external command
-  boundary, including the visual-semantic test/SEALED hard stop.
+- `loop_geometry.py`, `point_contact.py`, and `loop_scene_witnesses.py` build
+  candidate-independent, provenance-bound loop observations.
+- `relational_scene.py` provides typed entities, ordered facts, and
+  all-or-nothing additive gluing.
+- `relational_visual_query.py` defines and evaluates the closed positive
+  same-binding Python predicates.
+- `composite_visual_packet.py` and `closed_visual_predicates.py` glue the
+  existing direct, relational, and symmetry legs into a finite Python tagged
+  union and distinguish language failure from proposer failure.
+- `vision_tags.py` defines the neutral soft-observer packet, calibration, and
+  presence-only closed tag predicate.
+- `relational_coverage_drill.py` selects and measures an exact-unused
+  train/validation engineering pilot while preserving strict DEV.
+- `relational_headless_runner.py` implements the hardened v4 one-shot runner;
+  `relational_headless_campaign.py` implements the v4 crash-safe campaign and
+  its explicit five-task exact-unused TRAIN engineering mode.
+- `atomic_smoke_*`, `benchmark.py`, and `semantic_*` preserve the earlier
+  frozen experiment line and replay contracts.
 
-## Local verification
+## Verification
+
+From the repository root:
 
 ```bash
-python3 -m venv .venv
-.venv/bin/python -m pip install -r bongard/requirements.txt
-.venv/bin/python -m pytest -q bongard/tests
+python3 -m pytest -q bongard/tests
+sphinx-build -W -b html docs docs/_build/html
+make -C bongard/manuscript
 ```
 
-Do not run a live calibration merely to test the command. Live runs consume
-the exposure ledger before model access. Use the synthetic tests for command
-and replay validation.
-
-The historical attempt-three command was consuming: it durably recorded the
-selected exact task before reading its selected pixels. It was invoked once in
-the following form and must not be rerun against the consumed predecessor:
-
-```bash
-python -B -m bongard.atomic_smoke_command \
-  --corpus /absolute/path/to/ShapeBongard_V2 \
-  --archive /absolute/path/to/ShapeBongard_V2.zip \
-  --predecessor-ledger /absolute/path/to/bfd-successor.exposure.json \
-  --prior-attempt-record /absolute/path/to/atomic_smoke_attempt2_proposal_contract_failure_v1.json \
-  --config-store /absolute/path/to/config-store \
-  --exposure-store /absolute/path/to/exposure-store \
-  --journal-store /absolute/path/to/fresh-empty-journal-store \
-  --prediction-store /absolute/path/to/prediction-store \
-  --terminal-store /absolute/path/to/terminal-store \
-  --cache-store /absolute/path/to/cache-store \
-  --preflight-store /absolute/path/to/preflight-store
-```
-
-All stores began as canonical, non-symlink directories with mode `0700` and
-were pristine. The historical predecessor had digest
-`sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d`,
-and its exact eight-task input universe had digest
-`sha256:3b1a0ce4f9df6e1f9881fb932ec680a988e76afde860c687154401d005c52ee9`.
-The exact attempt-two machine record was an authenticated input. The fixed
-transport preflight and canonical-path attempt claim persisted before any
-selection, episode, or label secret and before exact-task exposure. The CLI
-printed one ID-redacted failure status. The resulting successor is
-`sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6`;
-the seven unconsumed tasks have digest
-`sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357`.
-
-Any future separately authorized operational command must use a new frozen
-protocol and successor, run from a detached immutable commit with a newly
-created empty `PYTHONPYCACHEPREFIX` and `python -B`. The source receipt hashes
-`.py` bytes; this launch discipline prevents an older or crafted `.pyc` from
-becoming the executed program. Dependency-injection parameters on the Python
-functions are test seams, not adversarial command authority, because they can
-substitute transports, verifiers, or a watched source root. Stage B
-independently rechecks a successful source identity.
-
-See [CONTINUATION_PLAN.md](CONTINUATION_PLAN.md) for the next decisions and
-[HISTORY.md](HISTORY.md) for falsified baselines and removed narratives.
+Do not launch a live run merely as a smoke test. Exposure is persisted before
+pixels or model calls, and consumed tasks are not rerolled.

@@ -25,6 +25,7 @@ from pathlib import Path
 import re
 import shutil
 import sys
+from dataclasses import replace
 
 
 class _RejectSemanticChecker(importlib.abc.MetaPathFinder):
@@ -95,6 +96,7 @@ if not Path(bongard.__file__).resolve().is_relative_to(package_root):
 from bongard.artifacts import canonical_digest
 from bongard.semantic_calibration_command import (
     StageAPersistenceConfig,
+    freeze_stage_a_source_dependencies,
     load_stage_a_command_receipt,
     persist_stage_a_outcome,
 )
@@ -123,6 +125,19 @@ from bongard.tests.test_semantic_gated_dev_validation import (
 from bongard.transport import CloudPolicyCacheSnapshot
 from bongard import semantic_gated_dev_validation as stage_b_module
 from bongard import exposure as exposure_module
+from bongard.atomic_smoke_runner import (
+    atomic_smoke_run_protocol_digest,
+    run_atomic_smoke,
+)
+from bongard.tests.test_atomic_smoke_command import _config as _atomic_config
+from bongard.tests.test_atomic_smoke_runner import (
+    EFFORT as ATOMIC_EFFORT,
+    LABEL_NONCE as ATOMIC_LABEL_NONCE,
+    LAUNCHER_DIGEST as ATOMIC_LAUNCHER_DIGEST,
+    MODEL as ATOMIC_MODEL,
+    _OfflineCodex,
+    _synthetic_precommit,
+)
 
 
 command_work = work / "stage-a-command"
@@ -286,6 +301,35 @@ decoded = GatedDevValidationArtifact.from_data(
 if decoded.digest != artifact.digest:
     raise AssertionError("Stage-B cold replay changed artifact identity")
 
+# Exercise the current atomic command authority and the complete offline runner
+# under the same import/executable guards.  The real source identity is used so
+# deleting or replacing semantic_checker.py is the only varied package byte.
+atomic_sources = freeze_stage_a_source_dependencies(package_root)
+atomic_config = replace(
+    _atomic_config(),
+    source_dependencies=atomic_sources,
+)
+atomic_fixture = _synthetic_precommit(
+    work / ("atomic-runner-" + mode),
+    source_digest=atomic_sources.digest,
+)
+atomic_observer = _OfflineCodex()
+atomic_run = run_atomic_smoke(
+    atomic_fixture.precommit,
+    source_dependency_digest=atomic_sources.digest,
+    command_config_digest=atomic_config.digest,
+    expected_protocol_digest=atomic_smoke_run_protocol_digest(),
+    expected_launcher_digest=ATOMIC_LAUNCHER_DIGEST,
+    prediction_store_dir=atomic_fixture.prediction_store,
+    journal_store_dir=atomic_fixture.journal_store,
+    model=ATOMIC_MODEL,
+    reasoning_effort=ATOMIC_EFFORT,
+    named_image_transport=atomic_observer.named,
+    text_transport=atomic_observer.text,
+)
+if atomic_run.status != "complete" or atomic_observer.calls != 29:
+    raise AssertionError("atomic un-Lean acceptance did not complete exactly once")
+
 replay_manifest = {
     task_id: {
         blob_id: {
@@ -335,6 +379,16 @@ print(
                 "artifact_file_sha256": hashlib.sha256(
                     artifact_bytes
                 ).hexdigest(),
+            },
+            "atomic": {
+                "source_identity_digest": atomic_sources.digest,
+                "config_authority": atomic_config.content_data(),
+                "config_digest": atomic_config.digest,
+                "run_digest": atomic_run.digest,
+                "evidence_digest": atomic_run.evidence_digest,
+                "status": atomic_run.status,
+                "call_count": len(atomic_run.calls),
+                "score": atomic_run.to_data()["score"],
             },
             "guard": {
                 "semantic_checker_import_attempts": checker_guard.attempts,
@@ -437,6 +491,17 @@ def test_checker_absence_and_arbitrary_bytes_are_authoritatively_identical(
     ] is False
     assert absent["stage_b"]["artifact_digest"]
     assert len(absent["stage_b"]["task_replay_receipt_digests"]) == 1
+    assert absent["atomic"]["status"] == "complete"
+    assert absent["atomic"]["call_count"] == 29
+    assert absent["atomic"]["config_authority"]["reference_execution"] == (
+        "python-canonical/v1"
+    )
+    assert "lineage_display_metadata" not in absent["atomic"][
+        "config_authority"
+    ]
+    assert "lean-optional" not in json.dumps(
+        absent["atomic"]["config_authority"], sort_keys=True
+    )
 
 
 def test_real_authoritative_source_boundary_has_one_exact_sidecar_exclusion() -> None:

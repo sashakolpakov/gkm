@@ -146,10 +146,11 @@ same lens to a different substrate:
   deterministic **register transducers** from opaque-token pattern transitions;
   tiered primitives ask which capabilities a task family needs, with validation-frontier
   Pareto selection.
-- **[bongard/](bongard/README.md)** — visual concept induction over the complete
-  official Bongard-LOGO corpus, with provenance-bearing empirical witnesses,
-  signed typed predicates, sealed support/query boundaries, and verifier-gated
-  growth of reusable visual legs.
+- **[bongard/](bongard/README.md)** — Python-first visual concept induction over
+  the complete official Bongard-LOGO corpus, with candidate-independent typed
+  observations, positive same-binding predicates, sealed support/query
+  boundaries, and model-free replay; the production benchmark is still in
+  progress.
 - **[cone/](cone/README.md)** — the substrate-agnostic core of the **colimit-cone
   program**: learn a compiled, verifiable *cone* over goal atoms rather than a
   monolithic policy; cone-leg discovery, goal induction from scalar reward, and the

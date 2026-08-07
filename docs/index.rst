@@ -1,79 +1,55 @@
 Gödel--Kolmogorov Machine
 =========================
 
-This repository studies verifier-gated program growth.  Each experiment has
-its own claim boundary: deterministic replay can check a computation over
-recorded observations, but it cannot prove that a vision model interpreted an
-image correctly.
+This repository studies verifier-gated program growth.  Deterministic replay
+can verify a computation over recorded observations; it cannot prove that a
+fallible observer interpreted an image correctly.  Each experiment therefore
+states its empirical boundary and its claim boundary separately.
 
-Current Bongard status
-----------------------
+Current Bongard track
+---------------------
 
-The active Bongard track targets the complete official ``ShapeBongard_V2``
-release.  Python is the sole runtime semantic authority: it defines predicates,
-the closed IR, evidence dispositions and projections, calibration, synthesis,
-selection, evaluation, persistence, cold replay, and decisions.  Lean is
-neither imported nor required.  Strict un-Leaning remains explicit migration
-work because one atomic lineage retains checker-linked whole-tree provenance, a
-legacy Lean-named identity literal, and an in-process optional checker boundary.
+The active visual track uses the complete 12,000-task, 168,000-panel
+``ShapeBongard_V2`` release.  Python is the canonical semantics for typed
+observations, closed predicates, selection, persistence, decisions, and cold
+replay.  Lean is optional and removable; a detached checker cannot provide
+visual truth or change a result.
 
-The scientific and operational record is explicit:
+The current architecture is exact PNG bytes to candidate-independent typed
+loop packets, with optional neutral vision tags, followed by one closed
+positive same-binding Python predicate.  The rule must pass all supports and
+be durably frozen before query release.  There is no negation, polarity rescue,
+reroll, or conversion of observer failure into a negative.
 
-* A1 failed before scoring.  All 48 proposer calls succeeded, producing 37
-  accepted soft claims, 10 direct-only records, and one parser rejection, but
-  all 37 scorer calls were transport errors.  There were zero scores, labels
-  remained withheld, and no calibration, accuracy, or negation evidence was
-  produced.  Its receipt is ``sha256:9aa247d9...40cb`` and terminal failure is
-  ``sha256:a130d9e6...65b83``.
-* A2 was a distinct repaired-protocol 48-task DRILL experiment, not an A1 retry.
-  It used protocol ``sha256:2d9261c7...81ca``, fresh no-reroll seed
-  ``eb031fe1...5a40b1``, and durable successor ``sha256:9b7cb7ee...5b1ce8``.
-  A concurrent agent source edit after freeze invalidated the run.  It wrote no
-  Stage-A terminal artifact; 48 proposer and 34 scorer launches were observed,
-  but outputs were lost, labels were not revealed, and no semantic inference is
-  valid.  Its incident file digest is ``sha256:4ace426b...7ccd4``.  The same
-  cohort may not be rerun.
-* A3 completed 22 proposer calls and 15 scorer calls, but its fixed upper bin
-  had only six clusters against a minimum of eight.  It is a terminal
-  underpopulated-bin failure, not a benchmark score.  Intended orientation was
-  13/15 versus 2/15 for the complement; negation did not win.
-* The first live atomic N=1 persisted exact-task exposure but neither a
-  prediction nor a terminal.  Its successful-call count is irrecoverably
-  unknown in 0--29.  The task is consumed without reroll, and the incident is
-  operational rather than a Bongard result.
-* Atomic attempt two ran once from commit ``d0864525...13c1``.  Its journal
-  closed 13 intents/results: twelve neutral support descriptions and one valid
-  proposal receipt.  All ten questions ended in the ``?`` demanded by the
-  prompt, but the shared soft-cue parser rejected U+003F.  No support scoring,
-  formula, query call, prediction, label reveal, or score occurred.  Run and
-  terminal artifacts persisted and cold replay passed.  This is an
-  implementation-contract failure, not vision or benchmark evidence.  Its
-  exposure successor is
-  ``sha256:bfd47a3797b4ac840630a4d0207e1fc04be386dba059db0e45e58e249501da8d``.
-* Atomic attempt three ran once from commit ``89b7124d...94b``.  Its preflight
-  and one-shot claim passed, and its journal closed 25 validated calls: twelve
-  neutral descriptions, one proposal, and twelve support scorings.  The sole
-  phrase was ``Is a small triangle attached to a tilted quadrilateral?``.  All
-  six positive supports were ``present``; the negatives were three
-  ``operational_nonmatch``, two ``present``, and one ``indeterminate``.  Python
-  therefore stopped with ``NoExactSeparatorError`` before formula freeze,
-  query access, prediction, query-label materialization, or score.  Cold
-  closed-prefix replay passed.  This is a representation diagnostic, not a
-  benchmark result.  Its successor is
-  ``sha256:66678615dd766dcababfd57cb0435dfc2e18a366bd2a806127afb00a5b1ecfe6``;
-  seven tasks remain under the historical resolver, digest
-  ``sha256:5dc36a2336abdb46d8096f0951739c3d825fb6e88833cb9b19735b426d1df357``.
-* Stage B is unauthorized by A1, A2, and A3.  Strict DRILL capacity after A3 is
-  zero; DEV remains 16 BD + 0 HD under the same ledger-disjoint policy.
-* Visual-semantic model execution on the official test split is hard-disabled.
-  Complete-release authentication still hashes official-test bytes, but no
-  test task or panel is selected, exposed to a proposer or scorer, evaluated,
-  or scored.
+The loop, relational, and closed-union layers are fixture-tested.  The
+hardened v4 runner and v4 campaign are also implemented and fixture-tested,
+including an explicit fixed five-task exact-unused TRAIN semantics-reused
+engineering mode.  At this pre-run snapshot no real plan has been frozen or
+published and no model campaign has executed.  Atomic attempt three has four
+exact support-resubstitution separators in the historical 2,520-member
+contact-inclusive diagnostic relational superlanguage.  The positive
+held-out remains ``indeterminate`` under all four, so no candidate separates
+all fourteen panels.  The intervening 5+1-versus-5+1 and
+zero-support-separator report was a panel-mapping error.  Point contact cannot
+yet resolve the thick-stroke vertex attachment in that task.
 
-No score from this sequence is an official benchmark result.  Old
-symbolic, generated, and small-pilot results belong to an earlier protocol and
-are preserved at the annotated Git tag
-``pre-bongard-complete-rewrite-20260805``.
+The corrected v2 65,678-member proposer-reachable A3 gate likewise finds
+exactly four support separators, all among its 1,260 contact-disabled
+relational members; its 64,400 direct-count and 18 symmetry members contribute
+zero.  The strict 15-task DEV cohort remains stopped at 0/15
+intended-concept expressibility in the current v3 relational language.
+
+Before the completed 24-task engineering pilot, 156 IDs had been exposed and
+10,044 train/validation IDs remained exact-image-unseen.  Most reuse known
+generator semantics.  The pilot leaves 180 exposed and 10,020 exact-unused.
+All 336 selected panels extracted, but polygon/obliqueness was indeterminate on
+13,360 of 17,876 loops and contact on 150,631 of 267,197 pairs.  Strict
+reusable DRILL capacity is zero; strict ``bd`` DEV capacity fell from 16 to 15
+because the pilot guard missed shared semantic disclosure keys.  The 1,800
+official-test tasks remain sealed.  The 24-task v3-library ablation found 0/24
+exact full separators and 0/168 exact 6+6 folds, with zero held-out
+generalizers.  The headless implementation is present, but no real plan or
+model campaign has run, so there is no new benchmark score.
 
 Subject directories
 -------------------

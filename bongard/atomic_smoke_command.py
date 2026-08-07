@@ -75,17 +75,31 @@ from bongard.transport import (
 )
 
 
-ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA = (
+ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA_V4 = (
     "gkm.bongard-atomic-smoke-authenticated-inputs.v4"
 )
-ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA = "gkm.bongard-atomic-smoke-command-config.v4"
-ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA = "gkm.bongard-atomic-smoke-command-terminal.v4"
+ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA = (
+    "gkm.bongard-atomic-smoke-authenticated-inputs.v5"
+)
+ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA_V4 = (
+    "gkm.bongard-atomic-smoke-command-config.v4"
+)
+ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA = "gkm.bongard-atomic-smoke-command-config.v5"
+ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4 = (
+    "gkm.bongard-atomic-smoke-command-terminal.v4"
+)
+ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA = (
+    "gkm.bongard-atomic-smoke-command-terminal.v5"
+)
 ATOMIC_SMOKE_COMMAND_RECEIPT_SCHEMA = "gkm.bongard-atomic-smoke-command-receipt.v1"
 ATOMIC_SMOKE_PREFLIGHT_SCHEMA = "gkm.bongard-atomic-smoke-transport-preflight.v1"
 ATOMIC_SMOKE_PREFLIGHT_PROTOCOL_SCHEMA = (
     "gkm.bongard-atomic-smoke-transport-preflight-protocol.v1"
 )
-ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA = "gkm.bongard-atomic-smoke-attempt-claim.v1"
+ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1 = (
+    "gkm.bongard-atomic-smoke-attempt-claim.v1"
+)
+ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA = "gkm.bongard-atomic-smoke-attempt-claim.v2"
 ATOMIC_SMOKE_ATTEMPT_ORDINAL = 3
 ATOMIC_SMOKE_COMMAND_SCOPE = (
     "one-exploratory-repeated-generator-train-successor-smoke/v4"
@@ -94,6 +108,10 @@ ATOMIC_SMOKE_PREFLIGHT_MINUTES = 5
 ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE = (
     "local-canonical-predecessor-path-only; copied-ledger-paths-"
     "require-external-copy-control"
+)
+PYTHON_CANONICAL_REFERENCE_EXECUTION = "python-canonical/v1"
+LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION = (
+    "python-canonical/lean-optional/v1"
 )
 ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST = (
     "ae1d3ffe6d48aec6a4dc3f50e7eb8e0d11962485a6a9406c5a7012139383da02"
@@ -482,6 +500,14 @@ def _write_content_addressed(
 
 
 def _prior_attempt_binding_data() -> dict[str, object]:
+    """Return the exact historical v4 lineage preimage.
+
+    Historical attempt-three artifacts hashed this representation, including a
+    whole-tree Git commit and the raw checked-in record hash.  It is retained
+    only so those artifacts remain exactly decodable; new authority uses the
+    checker-excluded projection below.
+    """
+
     return {
         "schema": "gkm.bongard-atomic-smoke-prior-attempt-binding.v2",
         "record_schema": ATOMIC_SMOKE_PRIOR_RECORD_SCHEMA,
@@ -573,6 +599,51 @@ def _prior_attempt_binding_data() -> dict[str, object]:
     }
 
 
+def _prior_attempt_authority_binding_data() -> dict[str, object]:
+    """Return scientific lineage with display-only Git metadata removed."""
+
+    legacy = _prior_attempt_binding_data()
+    source = legacy["source_snapshot"]
+    assert isinstance(source, Mapping)
+    return {
+        **{
+            key: value
+            for key, value in legacy.items()
+            if key not in {"record_file_sha256", "source_snapshot"}
+        },
+        "schema": "gkm.bongard-atomic-smoke-prior-attempt-authority.v1",
+        "source_snapshot": {
+            "source_dependency_digest": source["source_dependency_digest"],
+            "scope": (
+                "checker-excluded-authoritative-python-source-identity/v1"
+            ),
+        },
+    }
+
+
+def _prior_attempt_display_metadata() -> dict[str, object]:
+    """Return provenance retained in envelopes but excluded from every ID."""
+
+    return {
+        "schema": "gkm.bongard-atomic-smoke-lineage-display-metadata.v1",
+        "non_authoritative": True,
+        "excluded_from_authority_digest": True,
+        "record_file_sha256": ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256,
+        "source_snapshot": {
+            "commit": ATOMIC_SMOKE_PRIOR_SOURCE_COMMIT,
+            "tag": ATOMIC_SMOKE_PRIOR_SOURCE_TAG,
+        },
+    }
+
+
+def _prior_attempt_authority_digest() -> str:
+    return "sha256:" + canonical_digest(_prior_attempt_authority_binding_data())
+
+
+def _prior_attempt_legacy_digest() -> str:
+    return "sha256:" + canonical_digest(_prior_attempt_binding_data())
+
+
 @dataclass(frozen=True, slots=True)
 class AtomicSmokePriorAttemptRecord:
     """Authenticated machine record and closed lineage of attempt two."""
@@ -621,11 +692,27 @@ class AtomicSmokePriorAttemptRecord:
             raise AtomicSmokeCommandError("prior attempt record lineage differs")
 
     def to_data(self) -> dict[str, object]:
+        """Return the exact historical display envelope for audit UI use."""
+
         return _prior_attempt_binding_data()
+
+    def authority_data(self) -> dict[str, object]:
+        """Return the checker-excluded lineage admitted by new protocols."""
+
+        return _prior_attempt_authority_binding_data()
+
+    def display_metadata(self) -> dict[str, object]:
+        return _prior_attempt_display_metadata()
 
     @property
     def digest(self) -> str:
-        return "sha256:" + canonical_digest(self.to_data())
+        return _prior_attempt_authority_digest()
+
+    @property
+    def legacy_digest(self) -> str:
+        """Identity used by historical v4/v1 command artifacts only."""
+
+        return _prior_attempt_legacy_digest()
 
     @classmethod
     def _from_data(
@@ -880,7 +967,9 @@ class AtomicSmokeAuthenticatedInputs:
                 "prior attempt record differs from active exposure lineage"
             )
 
-    def to_data(self) -> dict[str, object]:
+    def content_data(self) -> dict[str, object]:
+        """Return only inputs allowed to affect new authoritative identities."""
+
         return {
             "schema": ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA,
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
@@ -898,13 +987,19 @@ class AtomicSmokeAuthenticatedInputs:
             ),
             "immediate_b053_parent_ledger_digest": OFFICIAL_B053_LEDGER_DIGEST,
             "historical_a3_ancestor_ledger_digest": OFFICIAL_A3_LEDGER_DIGEST,
-            "prior_attempt_record": self.prior_attempt.to_data(),
+            "prior_attempt_record": self.prior_attempt.authority_data(),
             "prior_attempt_record_binding_digest": self.prior_attempt.digest,
+        }
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **self.content_data(),
+            "lineage_display_metadata": self.prior_attempt.display_metadata(),
         }
 
     @property
     def digest(self) -> str:
-        return "sha256:" + canonical_digest(self.to_data())
+        return "sha256:" + canonical_digest(self.content_data())
 
 
 def authenticate_atomic_smoke_inputs(
@@ -1329,6 +1424,7 @@ class AtomicSmokeCommandConfig:
     minutes: int
     verifier_id: str
     verbose: bool = False
+    protocol_version: str = "v5"
 
     def __post_init__(self) -> None:
         _address(self.input_authentication_digest, "input authentication digest")
@@ -1386,13 +1482,29 @@ class AtomicSmokeCommandConfig:
         _text(self.verifier_id, "verifier ID", maximum=256)
         if not isinstance(self.verbose, bool):
             raise AtomicSmokeCommandError("verbose must be Boolean")
+        if self.protocol_version not in {"v4", "v5"}:
+            raise AtomicSmokeCommandError("unsupported command config protocol version")
 
     def content_data(self) -> dict[str, object]:
+        legacy = self.protocol_version == "v4"
+        prior_attempt = (
+            _prior_attempt_binding_data()
+            if legacy
+            else _prior_attempt_authority_binding_data()
+        )
         return {
-            "schema": ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA,
+            "schema": (
+                ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA_V4
+                if legacy
+                else ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
-            "reference_execution": "python-canonical/lean-optional/v1",
+            "reference_execution": (
+                LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+                if legacy
+                else PYTHON_CANONICAL_REFERENCE_EXECUTION
+            ),
             "official_release_descriptor_digest": (
                 OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
             ),
@@ -1407,9 +1519,9 @@ class AtomicSmokeCommandConfig:
             "official_historical_a3_ancestor_ledger_digest": (
                 OFFICIAL_A3_LEDGER_DIGEST
             ),
-            "prior_attempt_record": _prior_attempt_binding_data(),
+            "prior_attempt_record": prior_attempt,
             "prior_attempt_record_binding_digest": (
-                "sha256:" + canonical_digest(_prior_attempt_binding_data())
+                "sha256:" + canonical_digest(prior_attempt)
             ),
             "input_authentication_digest": self.input_authentication_digest,
             "source_dependencies": self.source_dependencies.to_data(),
@@ -1453,10 +1565,22 @@ class AtomicSmokeCommandConfig:
         return "sha256:" + canonical_digest(self.content_data())
 
     def to_data(self) -> dict[str, object]:
-        return {**self.content_data(), "config_digest": self.digest}
+        data = self.content_data()
+        if self.protocol_version == "v5":
+            data["lineage_display_metadata"] = _prior_attempt_display_metadata()
+        return {**data, "config_digest": self.digest}
 
     @classmethod
     def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandConfig":
+        if not isinstance(value, Mapping):
+            raise AtomicSmokeCommandError("command config fields differ")
+        schema = value.get("schema")
+        if schema == ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA_V4:
+            protocol_version = "v4"
+        elif schema == ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA:
+            protocol_version = "v5"
+        else:
+            raise AtomicSmokeCommandError("unsupported command config schema")
         expected = {
             "schema", "scope", "attempt_ordinal", "reference_execution",
             "official_release_descriptor_digest",
@@ -1482,16 +1606,25 @@ class AtomicSmokeCommandConfig:
             "calibration_authorized", "benchmark_claim_authorized",
             "official_test_authorized", "config_digest",
         }
-        if not isinstance(value, Mapping) or set(value) != expected:
+        if protocol_version == "v5":
+            expected.add("lineage_display_metadata")
+        if set(value) != expected:
             raise AtomicSmokeCommandError("command config fields differ")
         prior_attempt_record = value["prior_attempt_record"]
-        expected_prior_attempt_record = _prior_attempt_binding_data()
+        expected_prior_attempt_record = (
+            _prior_attempt_binding_data()
+            if protocol_version == "v4"
+            else _prior_attempt_authority_binding_data()
+        )
+        expected_reference = (
+            LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+            if protocol_version == "v4"
+            else PYTHON_CANONICAL_REFERENCE_EXECUTION
+        )
         if (
-            value["schema"] != ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA
-            or value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
+            value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
             or value["attempt_ordinal"] != ATOMIC_SMOKE_ATTEMPT_ORDINAL
-            or value["reference_execution"]
-            != "python-canonical/lean-optional/v1"
+            or value["reference_execution"] != expected_reference
             or value["official_release_descriptor_digest"]
             != OFFICIAL_RELEASE_DESCRIPTOR_DIGEST
             or value["official_corpus_manifest_digest"]
@@ -1524,6 +1657,11 @@ class AtomicSmokeCommandConfig:
             )
             or not isinstance(value["source_dependencies"], Mapping)
             or not isinstance(value["transport_preflight"], Mapping)
+            or (
+                protocol_version == "v5"
+                and canonical_json(value["lineage_display_metadata"])
+                != canonical_json(_prior_attempt_display_metadata())
+            )
         ):
             raise AtomicSmokeCommandError("command config authority differs")
         sources = StageASourceDependencyIdentity.from_data(
@@ -1565,6 +1703,7 @@ class AtomicSmokeCommandConfig:
             minutes=value["minutes"],
             verifier_id=value["verifier_id"],
             verbose=value["verbose"],
+            protocol_version=protocol_version,
         )
         if value["config_digest"] != result.digest or result.to_data() != _canonical_clone(
             value, "command config"
@@ -1676,6 +1815,7 @@ class AtomicSmokeAttemptClaim:
     preflight_receipt: AtomicSmokeTransportPreflightReceipt
     preflight_file_sha256: str
     claim_digest: str
+    protocol_version: str = "v2"
 
     def __post_init__(self) -> None:
         if (
@@ -1689,11 +1829,16 @@ class AtomicSmokeAttemptClaim:
         _hex(self.predecessor_file_sha256, "claim predecessor raw file digest")
         _address(self.prior_attempt_digest, "claim prior attempt digest")
         _hex(self.prior_attempt_file_sha256, "claim prior attempt raw file digest")
+        if self.protocol_version not in {"v1", "v2"}:
+            raise AtomicSmokeCommandError("unsupported attempt claim protocol version")
+        expected_prior_digest = (
+            _prior_attempt_legacy_digest()
+            if self.protocol_version == "v1"
+            else _prior_attempt_authority_digest()
+        )
         if (
-            self.prior_attempt_digest
-            != "sha256:" + canonical_digest(_prior_attempt_binding_data())
-            or self.prior_attempt_file_sha256
-            != ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
+            self.prior_attempt_digest != expected_prior_digest
+            or self.prior_attempt_file_sha256 != ATOMIC_SMOKE_PRIOR_RECORD_FILE_SHA256
         ):
             raise AtomicSmokeCommandError("claim prior attempt record differs")
         _address(self.config_digest, "claim config digest")
@@ -1732,18 +1877,24 @@ class AtomicSmokeAttemptClaim:
             raise AtomicSmokeCommandError("attempt claim digest differs")
 
     def content_data(self) -> dict[str, object]:
-        return {
-            "schema": ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA,
+        legacy = self.protocol_version == "v1"
+        data: dict[str, object] = {
+            "schema": (
+                ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1
+                if legacy
+                else ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
-            "reference_execution": "python-canonical/lean-optional/v1",
+            "reference_execution": (
+                LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+                if legacy
+                else PYTHON_CANONICAL_REFERENCE_EXECUTION
+            ),
             "canonical_predecessor_path": str(self.predecessor_path),
             "predecessor_content_address": self.predecessor_digest,
             "predecessor_raw_file_sha256": self.predecessor_file_sha256,
             "prior_attempt_record_content_address": self.prior_attempt_digest,
-            "prior_attempt_record_raw_file_sha256": (
-                self.prior_attempt_file_sha256
-            ),
             "command_config_content_address": self.config_digest,
             "source_snapshot": self.source_dependencies.to_data(),
             "source_snapshot_digest": self.source_dependencies.digest,
@@ -1768,9 +1919,17 @@ class AtomicSmokeAttemptClaim:
                 ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE
             ),
         }
+        if legacy:
+            data["prior_attempt_record_raw_file_sha256"] = (
+                self.prior_attempt_file_sha256
+            )
+        return data
 
     def to_data(self) -> dict[str, object]:
-        return {**self.content_data(), "claim_digest": self.claim_digest}
+        data = self.content_data()
+        if self.protocol_version == "v2":
+            data["lineage_display_metadata"] = _prior_attempt_display_metadata()
+        return {**data, "claim_digest": self.claim_digest}
 
     @classmethod
     def create(
@@ -1802,11 +1961,19 @@ class AtomicSmokeAttemptClaim:
             raise AtomicSmokeCommandError(
                 "claim preflight persistence chain differs"
             )
+        protocol_version = (
+            "v4" if config.protocol_version == "v4" else "v5"
+        )
+        claim_protocol_version = "v1" if protocol_version == "v4" else "v2"
         values = {
             "predecessor_path": inputs.predecessor_path,
             "predecessor_digest": inputs.predecessor.digest,
             "predecessor_file_sha256": inputs.predecessor_file_sha256,
-            "prior_attempt_digest": inputs.prior_attempt.digest,
+            "prior_attempt_digest": (
+                inputs.prior_attempt.legacy_digest
+                if config.protocol_version == "v4"
+                else inputs.prior_attempt.digest
+            ),
             "prior_attempt_file_sha256": inputs.prior_attempt.file_sha256,
             "config_digest": config.digest,
             "source_dependencies": config.source_dependencies,
@@ -1817,22 +1984,27 @@ class AtomicSmokeAttemptClaim:
             "reasoning_effort": config.reasoning_effort,
             "preflight_receipt": config.preflight_receipt,
             "preflight_file_sha256": preflight_persistence.file_sha256,
+            "protocol_version": claim_protocol_version,
         }
-        content = {
-            "schema": ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA,
+        legacy = claim_protocol_version == "v1"
+        content: dict[str, object] = {
+            "schema": (
+                ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1
+                if legacy
+                else ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
-            "reference_execution": "python-canonical/lean-optional/v1",
+            "reference_execution": (
+                LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+                if legacy
+                else PYTHON_CANONICAL_REFERENCE_EXECUTION
+            ),
             "canonical_predecessor_path": str(values["predecessor_path"]),
             "predecessor_content_address": values["predecessor_digest"],
-            "predecessor_raw_file_sha256": values[
-                "predecessor_file_sha256"
-            ],
+            "predecessor_raw_file_sha256": values["predecessor_file_sha256"],
             "prior_attempt_record_content_address": values[
                 "prior_attempt_digest"
-            ],
-            "prior_attempt_record_raw_file_sha256": values[
-                "prior_attempt_file_sha256"
             ],
             "command_config_content_address": values["config_digest"],
             "source_snapshot": config.source_dependencies.to_data(),
@@ -1856,10 +2028,12 @@ class AtomicSmokeAttemptClaim:
             "persistence_protocol": (
                 "canonical-predecessor-path-exclusive-create-fsync-reload/v1"
             ),
-            "protection_scope": (
-                ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE
-            ),
+            "protection_scope": ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE,
         }
+        if legacy:
+            content["prior_attempt_record_raw_file_sha256"] = values[
+                "prior_attempt_file_sha256"
+            ]
         return cls(
             **values,
             claim_digest="sha256:" + canonical_digest(content),
@@ -1867,12 +2041,20 @@ class AtomicSmokeAttemptClaim:
 
     @classmethod
     def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeAttemptClaim":
+        if not isinstance(value, Mapping):
+            raise AtomicSmokeCommandError("attempt claim fields differ")
+        schema = value.get("schema")
+        if schema == ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1:
+            protocol_version = "v1"
+        elif schema == ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA:
+            protocol_version = "v2"
+        else:
+            raise AtomicSmokeCommandError("unsupported attempt claim schema")
         expected = {
             "schema", "scope", "attempt_ordinal", "reference_execution",
             "canonical_predecessor_path", "predecessor_content_address",
             "predecessor_raw_file_sha256",
             "prior_attempt_record_content_address",
-            "prior_attempt_record_raw_file_sha256",
             "command_config_content_address", "source_snapshot",
             "source_snapshot_digest", "launcher", "model",
             "reasoning_effort", "transport_preflight",
@@ -1881,7 +2063,11 @@ class AtomicSmokeAttemptClaim:
             "exposure_created_at_claim", "persistence_protocol",
             "protection_scope", "claim_digest",
         }
-        if not isinstance(value, Mapping) or set(value) != expected:
+        if protocol_version == "v1":
+            expected.add("prior_attempt_record_raw_file_sha256")
+        else:
+            expected.add("lineage_display_metadata")
+        if set(value) != expected:
             raise AtomicSmokeCommandError("attempt claim fields differ")
         launcher = value["launcher"]
         if not isinstance(launcher, Mapping) or set(launcher) != {
@@ -1896,12 +2082,15 @@ class AtomicSmokeAttemptClaim:
         preflight = AtomicSmokeTransportPreflightReceipt.from_data(
             value["transport_preflight"]
         )
+        expected_reference = (
+            LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION
+            if protocol_version == "v1"
+            else PYTHON_CANONICAL_REFERENCE_EXECUTION
+        )
         if (
-            value["schema"] != ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA
-            or value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
+            value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
             or value["attempt_ordinal"] != ATOMIC_SMOKE_ATTEMPT_ORDINAL
-            or value["reference_execution"]
-            != "python-canonical/lean-optional/v1"
+            or value["reference_execution"] != expected_reference
             or value["source_snapshot_digest"] != sources.digest
             or value["transport_preflight_receipt_digest"]
             != preflight.receipt_digest
@@ -1912,6 +2101,11 @@ class AtomicSmokeAttemptClaim:
             != "canonical-predecessor-path-exclusive-create-fsync-reload/v1"
             or value["protection_scope"]
             != ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE
+            or (
+                protocol_version == "v2"
+                and canonical_json(value["lineage_display_metadata"])
+                != canonical_json(_prior_attempt_display_metadata())
+            )
         ):
             raise AtomicSmokeCommandError("attempt claim authority differs")
         result = cls(
@@ -1921,9 +2115,11 @@ class AtomicSmokeAttemptClaim:
             prior_attempt_digest=value[
                 "prior_attempt_record_content_address"
             ],
-            prior_attempt_file_sha256=value[
-                "prior_attempt_record_raw_file_sha256"
-            ],
+            prior_attempt_file_sha256=(
+                value["prior_attempt_record_raw_file_sha256"]
+                if protocol_version == "v1"
+                else _prior_attempt_display_metadata()["record_file_sha256"]
+            ),
             config_digest=value["command_config_content_address"],
             source_dependencies=sources,
             launcher_path=launcher["canonical_staged_path"],
@@ -1934,6 +2130,7 @@ class AtomicSmokeAttemptClaim:
             preflight_receipt=preflight,
             preflight_file_sha256=value["transport_preflight_file_sha256"],
             claim_digest=value["claim_digest"],
+            protocol_version=protocol_version,
         )
         if result.to_data() != _canonical_clone(value, "attempt claim"):
             raise AtomicSmokeCommandError("attempt claim is not canonical")
@@ -2093,8 +2290,11 @@ class AtomicSmokeCommandTerminal:
     failure_type: str | None
     failure_reason_digest: str | None
     terminal_digest: str
+    protocol_version: str = "v5"
 
     def __post_init__(self) -> None:
+        if self.protocol_version not in {"v4", "v5"}:
+            raise AtomicSmokeCommandError("unsupported terminal protocol version")
         if self.status not in {"complete", "failed"}:
             raise AtomicSmokeCommandError("terminal status differs")
         _text(self.phase, "terminal phase", maximum=128)
@@ -2219,7 +2419,11 @@ class AtomicSmokeCommandTerminal:
 
     def content_data(self) -> dict[str, object]:
         return {
-            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "schema": (
+                ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4
+                if self.protocol_version == "v4"
+                else ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": self.status,
@@ -2274,6 +2478,15 @@ class AtomicSmokeCommandTerminal:
 
     @classmethod
     def from_data(cls, value: Mapping[str, Any]) -> "AtomicSmokeCommandTerminal":
+        if not isinstance(value, Mapping):
+            raise AtomicSmokeCommandError("terminal fields differ")
+        schema = value.get("schema")
+        if schema == ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4:
+            protocol_version = "v4"
+        elif schema == ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA:
+            protocol_version = "v5"
+        else:
+            raise AtomicSmokeCommandError("unsupported terminal schema")
         expected = {
             "schema", "scope", "attempt_ordinal", "status", "phase",
             "config_digest",
@@ -2288,11 +2501,10 @@ class AtomicSmokeCommandTerminal:
             "benchmark_claim_authorized", "official_test_authorized",
             "terminal_digest",
         }
-        if not isinstance(value, Mapping) or set(value) != expected:
+        if set(value) != expected:
             raise AtomicSmokeCommandError("terminal fields differ")
         if (
-            value["schema"] != ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA
-            or value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
+            value["scope"] != ATOMIC_SMOKE_COMMAND_SCOPE
             or value["attempt_ordinal"] != ATOMIC_SMOKE_ATTEMPT_ORDINAL
             or any(
             value[name] is not False
@@ -2371,6 +2583,7 @@ class AtomicSmokeCommandTerminal:
             failure_type=None if failure is None else failure["error_type"],
             failure_reason_digest=None if failure is None else failure["reason_digest"],
             terminal_digest=value["terminal_digest"],
+            protocol_version=protocol_version,
         )
         if result.to_data() != _canonical_clone(value, "terminal"):
             raise AtomicSmokeCommandError("terminal is not canonical")
@@ -2422,9 +2635,14 @@ class AtomicSmokeCommandTerminal:
             "launcher_version": launcher_version,
             "failure_type": None,
             "failure_reason_digest": None,
+            "protocol_version": config.protocol_version,
         }
         content = {
-            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "schema": (
+                ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4
+                if config.protocol_version == "v4"
+                else ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": values["status"],
@@ -2535,9 +2753,14 @@ class AtomicSmokeCommandTerminal:
             "launcher_version": launcher_version,
             "failure_type": type(error).__name__,
             "failure_reason_digest": hashlib.sha256(reason).hexdigest(),
+            "protocol_version": config.protocol_version,
         }
         content = {
-            "schema": ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA,
+            "schema": (
+                ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4
+                if config.protocol_version == "v4"
+                else ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA
+            ),
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": values["status"], "phase": values["phase"],
@@ -3135,7 +3358,7 @@ def main(argv: list[str] | None = None) -> int:
             "utf-8", errors="replace"
         )[:4096]
         payload = {
-            "schema": "gkm.bongard-atomic-smoke-cli-result.v4",
+            "schema": "gkm.bongard-atomic-smoke-cli-result.v5",
             "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
             "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
             "status": "operational-error-before-terminal",
@@ -3156,7 +3379,7 @@ def main(argv: list[str] | None = None) -> int:
         print(canonical_json(payload).decode("utf-8"), flush=True)
         return 2
     payload = {
-        "schema": "gkm.bongard-atomic-smoke-cli-result.v4",
+        "schema": "gkm.bongard-atomic-smoke-cli-result.v5",
         "scope": ATOMIC_SMOKE_COMMAND_SCOPE,
         "attempt_ordinal": ATOMIC_SMOKE_ATTEMPT_ORDINAL,
         "status": result.terminal.status,
@@ -3207,11 +3430,15 @@ def main(argv: list[str] | None = None) -> int:
 __all__ = [
     "ATOMIC_SMOKE_ATTEMPT_ORDINAL",
     "ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA",
+    "ATOMIC_SMOKE_COMMAND_AUTHENTICATED_SCHEMA_V4",
     "ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA",
+    "ATOMIC_SMOKE_COMMAND_CONFIG_SCHEMA_V4",
     "ATOMIC_SMOKE_COMMAND_RECEIPT_SCHEMA",
     "ATOMIC_SMOKE_COMMAND_SCOPE",
     "ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA",
+    "ATOMIC_SMOKE_COMMAND_TERMINAL_SCHEMA_V4",
     "ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA",
+    "ATOMIC_SMOKE_ATTEMPT_CLAIM_SCHEMA_V1",
     "ATOMIC_SMOKE_CLAIM_PROTECTION_SCOPE",
     "ATOMIC_SMOKE_NATIVE_LAUNCHER_DIGEST",
     "ATOMIC_SMOKE_PREFLIGHT_PROTOCOL_SCHEMA",
@@ -3229,6 +3456,8 @@ __all__ = [
     "ATOMIC_SMOKE_PRIOR_REMAINING_UNIVERSE_DIGEST",
     "ATOMIC_SMOKE_PRIOR_RUN_DIGEST",
     "ATOMIC_SMOKE_PRIOR_TERMINAL_DIGEST",
+    "LEGACY_LEAN_OPTIONAL_REFERENCE_EXECUTION",
+    "PYTHON_CANONICAL_REFERENCE_EXECUTION",
     "AtomicSmokeAuthenticatedInputs",
     "AtomicSmokeAttemptClaim",
     "AtomicSmokeCommandConfig",
