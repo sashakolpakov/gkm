@@ -184,6 +184,40 @@ For deterministic notions, deterministic geometry remains authoritative. A
 vision tag saying “oblique” can corroborate a geometric observation; it does
 not override its uncertainty.
 
+### First attested prototype-pair run
+
+The preregistered recovery campaign completed as ``calibration_gap``. This is
+a valid fail-closed engineering result, not a query-accuracy score: one rubric
+description and 28 calibration observations made 29 receipted model calls,
+then Python rejected three of the four required calibration bounds. No support
+or query panel was released, no predicate was synthesized, and the sealed
+campaign cold-replayed with zero model calls.
+
+The result exposed two separate defects. First, the audit-prose firewall
+rejected two otherwise valid observations solely because their descriptions
+used the ordinary geometry word ``side`` or ``sides``; nondecisional prose
+must not erase independently valid score cells. Second, even accepting those
+cells leaves genuine visual collisions. Generator-identity absence is not the
+same fact as absence of a broad prose appearance: other generators really can
+look like “an open outline with a curved edge” or “a rounded outline with a
+pointed appendage.” No scalar threshold separates the observed true and false
+matches.
+
+The next observer therefore needs object-local typed witnesses--contour
+ownership, open/closed state, straight-span and smooth-arc count intervals,
+branches, appendage topology, and marker evidence--with soft similarity as
+calibrated accompanying evidence. Prose remains audit material and hypothesis
+input. The executable predicate remains a closed Python value; Lean is
+optional, removable, and cannot affect identity, selection, evaluation, or
+replay.
+
+The compact [sealed result](data/prototype_pair_targeted_engineering_20260807_live_v3_result_v1.json)
+binds campaign record
+``sha256:9851200d84132b36febe2dd1f029df37780fe56272ba8c636132f796fad45406``,
+journal seal
+``sha256:17ed15f2e902c1a7960f68cac67d4b885128a510da9308ca549c751564ba0ecf``,
+and the exact source revision used for replay.
+
 ## The point-contact limit
 
 The contact schema is intentionally demanding: two explicit loop owners, one

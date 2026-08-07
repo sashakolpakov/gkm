@@ -1,0 +1,155 @@
+{
+  "calibration": {
+    "accepted_bound_count": 1,
+    "assessment_file_sha256": "9215910c7ae007132a2b4fbb9a90dcd7588b593ca1b22caa21e8f03d194acf66",
+    "assessment_record_digest": "sha256:4a9f9e2a0729b43e0c31c6d1eaf3cc03670f8fb721d3b90c9d6d303216469c7f",
+    "bounds": [
+      {
+        "abstention_cluster_count": 1,
+        "accepted": false,
+        "conditional_error_upper_ppm": 377292,
+        "correct_decision_cluster_count": 12,
+        "coverage_gate_accepted": false,
+        "direction": "false_present_on_expected_absent",
+        "error_cluster_count": 1,
+        "tag_id": "opaque_visual_tag_0"
+      },
+      {
+        "abstention_cluster_count": 0,
+        "accepted": false,
+        "conditional_error_upper_ppm": 466636,
+        "correct_decision_cluster_count": 12,
+        "coverage_gate_accepted": true,
+        "direction": "false_absent_on_expected_present",
+        "error_cluster_count": 2,
+        "tag_id": "opaque_visual_tag_0"
+      },
+      {
+        "abstention_cluster_count": 0,
+        "accepted": false,
+        "conditional_error_upper_ppm": 545462,
+        "correct_decision_cluster_count": 11,
+        "coverage_gate_accepted": true,
+        "direction": "false_present_on_expected_absent",
+        "error_cluster_count": 3,
+        "tag_id": "opaque_visual_tag_1"
+      },
+      {
+        "abstention_cluster_count": 0,
+        "accepted": true,
+        "conditional_error_upper_ppm": 268752,
+        "correct_decision_cluster_count": 14,
+        "coverage_gate_accepted": true,
+        "direction": "false_absent_on_expected_present",
+        "error_cluster_count": 0,
+        "tag_id": "opaque_visual_tag_1"
+      }
+    ],
+    "calibration_observation_count": 28,
+    "failed_bound_count": 3,
+    "familywise_confidence_level_ppm": 950000,
+    "maximum_conditional_error_ppm": 300000,
+    "zero_errors_and_zero_abstentions_effectively_required": true
+  },
+  "campaign": {
+    "artifact_file_sha256": "7f3966f3a4848e5e4f12f188b0ddfd0372f5b5a11a1da35d54434302d27b6dc7",
+    "campaign_record_digest": "sha256:9851200d84132b36febe2dd1f029df37780fe56272ba8c636132f796fad45406",
+    "call_failure_count": 0,
+    "call_terminal_count": 29,
+    "cohort_plan_digest": "sha256:62606ee3c25776dfa878cc9bb6b0ee2fed5027dcec1f97e00229dba94864c484",
+    "execution_precommit_digest": "sha256:684a3b7caf99b87230787c4ebdfbb72e90ad4f8ece70ac7457ed06decbb55206",
+    "exposure_successor_digest": "sha256:a7056e1ecb6a4e3ae708aa4399844557da331a4a168ed5ee4fd8fbfa1f023b37",
+    "model_calls_made": 29,
+    "query_artifact_count": 0,
+    "query_panels_released": false,
+    "released_panel_count": 34,
+    "source_commit": "0e2038cfd2073dd4d8d9d14e1b017e54fb08c41b",
+    "status": "calibration_gap",
+    "support_artifact_count": 0
+  },
+  "cold_replay": {
+    "artifact_equal": true,
+    "call_terminal_count": 29,
+    "journal_complete": true,
+    "journal_seal_digest": "sha256:17ed15f2e902c1a7960f68cac67d4b885128a510da9308ca549c751564ba0ecf",
+    "model_calls_made": 0,
+    "passed": true,
+    "released_panels_reverified": 34,
+    "unique_terminal_key_count": 29
+  },
+  "forensics": {
+    "changes_campaign_result": false,
+    "generator_identity_absence_is_not_visual_rubric_absence": true,
+    "posthoc": true,
+    "prose_parser_collisions": [
+      {
+        "raw_scores_directionally_correct": true,
+        "rejected_word": "side",
+        "task_id": "bd_thin_irregular_x-open_symm_bridge_0000"
+      },
+      {
+        "raw_scores_directionally_correct": true,
+        "rejected_word": "sides",
+        "task_id": "bd_inverse_trapez_parallel-open_symm_bridge_0000"
+      }
+    ],
+    "scalar_threshold_rescue_exists": false,
+    "semantic_failures": [
+      {
+        "diagnosis": "visual_false_present",
+        "interval_ppm": [
+          900000,
+          975000
+        ],
+        "tag_id": "opaque_visual_tag_0",
+        "task_id": "bd_exist_triangle_three_lines8-symm_trans_exist_quad2_0000"
+      },
+      {
+        "diagnosis": "visual_indeterminate",
+        "interval_ppm": [
+          650000,
+          850000
+        ],
+        "tag_id": "opaque_visual_tag_0",
+        "task_id": "bd_trans_band-exist_triangle_three_lines8_0000"
+      },
+      {
+        "diagnosis": "visual_false_present",
+        "interval_ppm": [
+          880000,
+          970000
+        ],
+        "tag_id": "opaque_visual_tag_1",
+        "task_id": "bd_open_symm_bridge-irregular_jar_dagger6_0000"
+      }
+    ]
+  },
+  "qualification": {
+    "benchmark_or_generalization_result": false,
+    "evaluation_kind": "exact-unused-train-semantics-reused-targeted-engineering",
+    "official_benchmark_result": false,
+    "official_test_authorized": false,
+    "official_test_split_used": false,
+    "query_accuracy_score_available": false,
+    "reroll_count": 0,
+    "valid_claim": "sealed fail-closed calibration result"
+  },
+  "record_digest": "sha256:fe65219decc9d492fa0ae1b6fbb15da6a77e27142d15f15c9341213eef95024c",
+  "runtime": {
+    "codex_cli_version": "codex-cli 0.147.0",
+    "model": "gpt-5.6-sol",
+    "model_catalog_digest": "a93f2b355b33582b7867bb16f9026e504d34212f6d4e8d685124e75bd3ac602d",
+    "no_tools_attestation_digest": "c4d1749d1bcbb0d78027aea3c5862ca11a25e12d616dd7bbf2fbfc393b870f1f",
+    "reasoning_effort": "medium",
+    "tool_surface_digest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945"
+  },
+  "runtime_authority": {
+    "lean_affects_identity_or_decision": false,
+    "lean_present": false,
+    "lean_removable": true,
+    "lean_required": false,
+    "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+    "python_is_canonical_authority": true
+  },
+  "schema": "gkm.bongard-prototype-pair-targeted-engineering-result.v1"
+}

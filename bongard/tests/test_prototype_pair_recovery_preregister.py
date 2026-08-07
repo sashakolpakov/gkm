@@ -27,6 +27,8 @@ from bongard.prototype_pair_cohort import (
     task_id_inventory_digest,
 )
 from bongard.prototype_pair_recovery_preregister import (
+    CALIBRATION_GAP_CAMPAIGN_STATUS,
+    CALIBRATION_GAP_PHASE_STATUS,
     EXPECTED_FAILED_CAMPAIGN_STATUS,
     EXPECTED_FAILED_OBSERVER_STATUS,
     PrototypePairRecoveryError,
@@ -269,6 +271,7 @@ def _generation_kwargs(
     successor_object: Path | None = None,
     successor_digest: str | None = None,
     failed_campaign_status: str = EXPECTED_FAILED_CAMPAIGN_STATUS,
+    failed_observer_status: str = EXPECTED_FAILED_OBSERVER_STATUS,
 ) -> dict[str, object]:
     return {
         "old_preregistration_path": fixture.preregistration,
@@ -284,7 +287,7 @@ def _generation_kwargs(
         ),
         "failed_campaign_digest": _FAILED_CAMPAIGN_DIGEST,
         "failed_campaign_status": failed_campaign_status,
-        "failed_observer_status": EXPECTED_FAILED_OBSERVER_STATUS,
+        "failed_observer_status": failed_observer_status,
         "release_descriptor_path": fixture.release,
         "split_path": fixture.split,
         "historical_seed_path": DEFAULT_SEED_PATH,
@@ -412,12 +415,40 @@ def test_wrong_failure_status_fails_before_outputs(tmp_path: Path) -> None:
         failed_campaign_status="completed",
     )
 
-    with pytest.raises(PrototypePairRecoveryError, match="not description_gap"):
+    with pytest.raises(PrototypePairRecoveryError, match="not an allowed terminal"):
         generate_prototype_pair_recovery_preregistration(**kwargs)
 
     assert not Path(kwargs["output_exposure_predecessor_path"]).exists()
     assert not Path(kwargs["output_cohort_plan_path"]).exists()
     assert not Path(kwargs["output_preregistration_path"]).exists()
+
+
+def test_calibration_gap_is_a_terminal_same_seed_continuation(
+    tmp_path: Path,
+) -> None:
+    fixture = _fixture(tmp_path)
+    kwargs = _generation_kwargs(
+        fixture,
+        tmp_path,
+        failed_campaign_status=CALIBRATION_GAP_CAMPAIGN_STATUS,
+        failed_observer_status=CALIBRATION_GAP_PHASE_STATUS,
+    )
+
+    artifacts = generate_prototype_pair_recovery_preregistration(**kwargs)
+
+    preregistration = json.loads(
+        Path(kwargs["output_preregistration_path"]).read_bytes()
+    )
+    provenance = preregistration["seed"]["provenance"]
+    assert (
+        f"failed_campaign_status={CALIBRATION_GAP_CAMPAIGN_STATUS}"
+        in provenance
+    )
+    assert f"failed_observer_status={CALIBRATION_GAP_PHASE_STATUS}" in provenance
+    assert artifacts.predecessor_digest == fixture.successor.digest
+    assert set(artifacts.selected_task_ids).isdisjoint(
+        fixture.old_plan.selected_task_ids
+    )
 
 
 def test_generator_has_no_archive_panel_model_or_store_input_surface() -> None:

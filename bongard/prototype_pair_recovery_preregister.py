@@ -43,10 +43,18 @@ from bongard.release import OfficialReleaseDescriptor
 
 
 RECOVERY_POLICY_ID = (
-    "bongard.prototype-pair-recovery/same-seed-next-exact-unused-v1"
+    "bongard.prototype-pair-recovery/same-seed-next-exact-unused-v2"
 )
 EXPECTED_FAILED_CAMPAIGN_STATUS = "description_gap"
 EXPECTED_FAILED_OBSERVER_STATUS = "transport_error"
+CALIBRATION_GAP_CAMPAIGN_STATUS = "calibration_gap"
+CALIBRATION_GAP_PHASE_STATUS = "not_applicable"
+ALLOWED_TERMINAL_FAILURES = frozenset(
+    {
+        (EXPECTED_FAILED_CAMPAIGN_STATUS, EXPECTED_FAILED_OBSERVER_STATUS),
+        (CALIBRATION_GAP_CAMPAIGN_STATUS, CALIBRATION_GAP_PHASE_STATUS),
+    }
+)
 EXPECTED_RELEASE_PHASE = "prototype_pair_selected_task_release"
 RECOVERY_GENERATOR_SOURCE_SHA256 = hashlib.sha256(
     Path(__file__).read_bytes()
@@ -159,6 +167,8 @@ def _recovery_provenance(
     prior_preregistration_digest: str,
     prior_plan_digest: str,
     failed_campaign_digest: str,
+    failed_campaign_status: str,
+    failed_observer_status: str,
     successor_exposure_digest: str,
 ) -> str:
     return ";".join(
@@ -167,8 +177,8 @@ def _recovery_provenance(
             f"prior_preregistration_digest={prior_preregistration_digest}",
             f"prior_plan_digest={prior_plan_digest}",
             f"failed_campaign_digest={failed_campaign_digest}",
-            f"failed_campaign_status={EXPECTED_FAILED_CAMPAIGN_STATUS}",
-            f"failed_observer_status={EXPECTED_FAILED_OBSERVER_STATUS}",
+            f"failed_campaign_status={failed_campaign_status}",
+            f"failed_observer_status={failed_observer_status}",
             f"successor_exposure_digest={successor_exposure_digest}",
             "seed_and_namespace_reused=true",
             "prior_attempt_retained_in_denominator=true",
@@ -185,6 +195,8 @@ def _preregistration(
     plan: PrototypePairCohortPlan,
     selection_seed: str,
     failed_campaign_digest: str,
+    failed_campaign_status: str,
+    failed_observer_status: str,
 ) -> dict[str, Any]:
     body: dict[str, Any] = {
         "schema": PREREGISTRATION_SCHEMA,
@@ -196,6 +208,8 @@ def _preregistration(
                 prior_preregistration_digest=old_preregistration_digest,
                 prior_plan_digest=old_plan.record_digest,
                 failed_campaign_digest=failed_campaign_digest,
+                failed_campaign_status=failed_campaign_status,
+                failed_observer_status=failed_observer_status,
                 successor_exposure_digest=plan.exposure_predecessor_digest,
             ),
             "namespace": plan.namespace,
@@ -298,10 +312,12 @@ def generate_prototype_pair_recovery_preregistration(
         "successor exposure digest",
     )
     failed_digest = _address(failed_campaign_digest, "failed campaign digest")
-    if failed_campaign_status != EXPECTED_FAILED_CAMPAIGN_STATUS:
-        raise PrototypePairRecoveryError("failed campaign status is not description_gap")
-    if failed_observer_status != EXPECTED_FAILED_OBSERVER_STATUS:
-        raise PrototypePairRecoveryError("failed observer status is not transport_error")
+    if (failed_campaign_status, failed_observer_status) not in (
+        ALLOWED_TERMINAL_FAILURES
+    ):
+        raise PrototypePairRecoveryError(
+            "failed campaign/phase status is not an allowed terminal recovery"
+        )
     recovery_time = _utc_timestamp(created_at, "recovery created_at")
 
     old_metadata = verify_prototype_pair_campaign_metadata(
@@ -424,6 +440,8 @@ def generate_prototype_pair_recovery_preregistration(
         plan=plan,
         selection_seed=seed,
         failed_campaign_digest=failed_digest,
+        failed_campaign_status=failed_campaign_status,
+        failed_observer_status=failed_observer_status,
     )
     predecessor_payload = successor.to_json().encode("utf-8")
     plan_payload = canonical_json(plan.to_data()) + b"\n"
@@ -497,12 +515,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--failed-campaign-status",
         required=True,
-        choices=(EXPECTED_FAILED_CAMPAIGN_STATUS,),
+        choices=tuple(sorted({item[0] for item in ALLOWED_TERMINAL_FAILURES})),
     )
     parser.add_argument(
         "--failed-observer-status",
         required=True,
-        choices=(EXPECTED_FAILED_OBSERVER_STATUS,),
+        choices=tuple(sorted({item[1] for item in ALLOWED_TERMINAL_FAILURES})),
     )
     parser.add_argument("--created-at", required=True)
     return parser
@@ -546,6 +564,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = (
+    "ALLOWED_TERMINAL_FAILURES",
+    "CALIBRATION_GAP_CAMPAIGN_STATUS",
+    "CALIBRATION_GAP_PHASE_STATUS",
     "EXPECTED_FAILED_CAMPAIGN_STATUS",
     "EXPECTED_FAILED_OBSERVER_STATUS",
     "PrototypePairRecoveryArtifacts",
