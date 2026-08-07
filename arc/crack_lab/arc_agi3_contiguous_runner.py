@@ -1122,11 +1122,19 @@ def _path_pointer_prefix(
         raise ContiguousRunnerError(
             f"cached evidence path is not absolute: {selected}"
         )
-    current = Path(selected.anchor)
+    # This helper is on every external-authority hot path.  Constructing a new
+    # ``Path`` for each ancestor made a full campaign audit spend most of its
+    # time reparsing the same absolute prefixes.  Preserve the exact sequence
+    # of no-follow stats while building those prefixes as plain path strings.
+    current = selected.anchor
     result: list[tuple[object, ...]] = []
     for part in selected.parts[1:]:
-        current = current / part
-        metadata = current.stat(follow_symlinks=False)
+        current = (
+            current + part
+            if current.endswith(os.sep)
+            else current + os.sep + part
+        )
+        metadata = os.stat(current, follow_symlinks=False)
         if stat.S_ISLNK(metadata.st_mode):
             raise ContiguousRunnerError(
                 f"cached evidence path contains a symlink: {current}"

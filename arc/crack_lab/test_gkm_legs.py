@@ -96,6 +96,35 @@ def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
         ), label
 
 
+@pytest.mark.parametrize(
+    "source, expected_code",
+    (
+        (
+            "import os, pwd\n"
+            "root = pwd.getpwuid(os.getuid()).pw_dir + '/gkm'\n"
+            "os.setxattr(root, 'user.probe', b'x')\n",
+            "host_filesystem_mutation",
+        ),
+        (
+            "import os\n"
+            "path = ''.join(['usage', '.jsonl'])\n"
+            "os.chmod(path, 0o600)\n",
+            "host_filesystem_mutation",
+        ),
+        (
+            "import os\nos.execvp('python', ['python', 'probe.py'])\n",
+            "detached_process_escape",
+        ),
+    ),
+)
+def test_python_boundary_rejects_host_mutation_and_exec_families(
+    source, expected_code
+):
+    findings = L.APB.scan_python_source(source, logical_path="probe.py")
+
+    assert expected_code in {finding.code for finding in findings}
+
+
 def test_authenticated_private_arena_is_exact_and_compatible():
     arena_root = Path(L.__file__).resolve().parent
     arena, digest = L._load_authenticated_arena(arena_root)
@@ -512,6 +541,303 @@ def test_historical_transcript_rejects_nonstring_workspace_binding(
     assert any(item.code == "invalid_workspace_binding" for item in findings)
 
 
+def test_historical_transport_banner_requires_explicit_static_compatibility(
+    tmp_path,
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    banner = b"Reading additional input from stdin...\n"
+    event = json.dumps({
+        "type": "thread.started", "thread_id": "historical-thread",
+    }).encode("utf-8") + b"\n"
+    transcript.write_bytes(banner + event)
+
+    default_findings = L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+    assert any(
+        finding.code == "malformed_transcript"
+        for finding in default_findings
+    )
+    assert L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+        allow_historical_transport_banner=True,
+    ) == ()
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        (
+            b"Reading additional input from stdin..\n"
+            b'{"type":"thread.started","thread_id":"historical"}\n'
+        ),
+        (
+            b"Reading additional input from stdin...\r\n"
+            b'{"type":"thread.started","thread_id":"historical"}\n'
+        ),
+        (
+            b"Reading additional input from stdin...\n"
+            b"Reading additional input from stdin...\n"
+            b'{"type":"thread.started","thread_id":"historical"}\n'
+        ),
+        (
+            b'{"type":"thread.started","thread_id":"historical"}\n'
+            b"Reading additional input from stdin...\n"
+        ),
+        b"Reading additional input from stdin...\n",
+    ],
+    ids=["altered", "crlf", "repeated", "later", "no-json-object"],
+)
+def test_historical_transport_banner_static_exception_is_byte_exact(
+    tmp_path, payload
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_bytes(payload)
+
+    findings = L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+        allow_historical_transport_banner=True,
+    )
+
+    assert any(finding.code == "malformed_transcript" for finding in findings)
+
+
+def test_live_historical_transport_banner_preserves_partial_json_semantics(
+    tmp_path,
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    banner = b"Reading additional input from stdin...\n"
+    event = json.dumps({
+        "type": "thread.started", "thread_id": "historical-thread",
+    }).encode("utf-8")
+    split_banner = len(banner) - 7
+    split_event = len(event) // 2
+    transcript.write_bytes(banner[:split_banner])
+    monitor = L.APB.LiveBoundaryMonitor(
+        workspace,
+        arena_module_root=Path(L.__file__).resolve().parent,
+        allow_historical_transport_banner=True,
+    )
+
+    assert monitor.scan_transcript(transcript) == ()
+    with transcript.open("ab") as stream:
+        stream.write(banner[split_banner:] + event[:split_event])
+    assert monitor.scan_transcript(transcript) == ()
+    with transcript.open("ab") as stream:
+        stream.write(event[split_event:] + b"\n")
+    assert monitor.scan_transcript(transcript, final=True) == ()
+
+    banner_only = tmp_path / "banner-only.jsonl"
+    banner_only.write_bytes(banner)
+    incomplete = L.APB.LiveBoundaryMonitor(
+        workspace,
+        allow_historical_transport_banner=True,
+    )
+    assert incomplete.scan_transcript(banner_only) == ()
+    assert any(
+        finding.code == "malformed_transcript"
+        for finding in incomplete.scan_transcript(banner_only, final=True)
+    )
+
+    modern_default = L.APB.LiveBoundaryMonitor(workspace)
+    assert any(
+        finding.code == "malformed_transcript"
+        for finding in modern_default.scan_transcript(transcript)
+    )
+
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        (
+            b"2026-08-05T18:34:28.194487Z ERROR "
+            b"codex_models_manager::manager: failed to refresh available "
+            b"models: timeout waiting for child process to exit"
+        ),
+        (
+            b"2026-08-05T19:58:25.748462Z ERROR "
+            b"codex_cloud_config::service: Timed out refreshing cloud config "
+            b"bundle cache from remote; keeping existing cache"
+        ),
+        (
+            b"2026-08-05T19:58:25.748462Z ERROR "
+            b"codex_models_manager::cache: failed to load models cache: EOF "
+            b"while parsing a value at line 1 column 0"
+        ),
+    ],
+)
+def test_historical_fixed_cli_telemetry_is_exactly_compatible(
+    tmp_path, diagnostic
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_bytes(
+        b"Reading additional input from stdin...\n"
+        + diagnostic
+        + b"\n"
+        + b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+
+    assert L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        allow_historical_transport_banner=True,
+    ) == ()
+    live = L.APB.LiveBoundaryMonitor(
+        workspace, allow_historical_transport_banner=True
+    )
+    assert live.scan_transcript(transcript, final=True) == ()
+
+@pytest.mark.parametrize(
+    "diagnostic",
+    [
+        (
+            b"2026-08-05T18:34:28.194487Z ERROR "
+            b"codex_models_manager::manager: failed to refresh available "
+            b"models: timeout waiting for child process to exit!"
+        ),
+        (
+            b"2026-08-05T18:14:09.542808Z ERROR "
+            b"codex_core::tools::router: error=apply_patch verification failed"
+        ),
+    ],
+)
+def test_historical_arbitrary_cli_diagnostics_remain_fail_closed(
+    tmp_path, diagnostic
+):
+    workspace = tmp_path / "gkm_legs_ws_lf52_historical"
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_bytes(
+        b"Reading additional input from stdin...\n"
+        + diagnostic
+        + b"\n"
+        + b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+
+    findings = L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        allow_historical_transport_banner=True,
+    )
+    assert any(finding.code == "malformed_transcript" for finding in findings)
+
+
+def test_historical_apply_patch_failure_continuation_is_workspace_bound(
+    tmp_path,
+):
+    workspace = (tmp_path / "gkm_legs_ws_lf52_historical").absolute()
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    diagnostic = (
+        b"2026-08-05T18:14:09.542808Z ERROR "
+        b"codex_core::tools::router: error=apply_patch verification failed: "
+        b"Failed to find expected lines in "
+        + str(workspace / "probe.py").encode()
+        + b":\n"
+        b"        expected_source_line()\n"
+    )
+    transcript.write_bytes(
+        b"Reading additional input from stdin...\n"
+        + diagnostic
+        + b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+
+    assert L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        accepted_workspace_root=str(workspace),
+        allow_historical_transport_banner=True,
+    ) == ()
+    live = L.APB.LiveBoundaryMonitor(
+        workspace, allow_historical_transport_banner=True
+    )
+    assert live.scan_transcript(transcript, final=True) == ()
+
+    indented_json = tmp_path / "indented-json.jsonl"
+    indented_json.write_bytes(
+        b"Reading additional input from stdin...\n"
+        + diagnostic.split(b"\n", 1)[0]
+        + b"\n"
+        + b'        {"type":"item.completed","item":{"id":"hidden",'
+        + b'"type":"command_execution","command":"find ."}}\n'
+        + b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+    indented_findings = L.APB.scan_codex_transcript(
+        indented_json,
+        workspace_root=workspace,
+        accepted_workspace_root=str(workspace),
+        allow_historical_transport_banner=True,
+    )
+    assert any(
+        finding.code == "shell_or_host_filesystem_escape"
+        for finding in indented_findings
+    )
+    indented_live = L.APB.LiveBoundaryMonitor(
+        workspace, allow_historical_transport_banner=True
+    )
+    assert any(
+        finding.code == "shell_or_host_filesystem_escape"
+        for finding in indented_live.scan_transcript(
+            indented_json, final=True
+        )
+    )
+
+    escaped = tmp_path / "escaped.jsonl"
+    escaped.write_bytes(
+        b"Reading additional input from stdin...\n"
+        + diagnostic.replace(
+            str(workspace / "probe.py").encode(), b"/tmp/outside.py"
+        )
+        + b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+    assert any(
+        finding.code == "malformed_transcript"
+        for finding in L.APB.scan_codex_transcript(
+            escaped,
+            workspace_root=workspace,
+            accepted_workspace_root=str(workspace),
+            allow_historical_transport_banner=True,
+        )
+    )
+
+
+def test_historical_apply_patch_invalid_hunk_is_standalone_diagnostic(
+    tmp_path,
+):
+    workspace = (tmp_path / "gkm_legs_ws_lf52_historical").absolute()
+    workspace.mkdir()
+    transcript = tmp_path / "turn.jsonl"
+    transcript.write_bytes(
+        b"Reading additional input from stdin...\n"
+        b"2026-08-05T19:25:07.398349Z ERROR "
+        b"codex_core::tools::router: error=apply_patch verification failed: "
+        b"invalid hunk at line 13, Unexpected line found in update hunk: "
+        b"'*** Update File: probe.py'. Every line should start with ' ' "
+        b"(context line), '+' (added line), or '-' (removed line)\n"
+        b'{"type":"thread.started","thread_id":"historical"}\n'
+    )
+
+    assert L.APB.scan_codex_transcript(
+        transcript,
+        workspace_root=workspace,
+        allow_historical_transport_banner=True,
+    ) == ()
+
+
 def test_workspace_boundary_precedes_marker_reads_and_transcript_aliases_fail(
     tmp_path, monkeypatch
 ):
@@ -683,6 +1009,103 @@ def test_shell_boundary_unwraps_and_scans_inline_interpreters():
             line=1,
             arena_module_root=arena_root,
         ), label
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "/bin/zsh -lc \"printf 'print(1)\\n' | python -\"",
+        "/bin/zsh -lc \"printf 'print(1)\\n' | python\"",
+        (
+            "/bin/zsh -lc \"python - <<'PY'\n"
+            "print('audited')\n"
+            "PY\n"
+            "printf 'print(1)\\n' | python -\""
+        ),
+    ),
+)
+def test_shell_boundary_rejects_unscannable_stdin_python(command):
+    findings = L.APB.scan_shell_command(
+        command,
+        logical_path="turn.jsonl",
+        line=1,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+
+    assert "unscannable_python_stdin" in {
+        finding.code for finding in findings
+    }
+
+
+@pytest.mark.parametrize(
+    "command",
+    (
+        "/bin/zsh -lc \"eval 'python -c \\\"print(1)\\\"'\"",
+        "/bin/zsh -lc \"printf 'print(1)' | xargs echo\"",
+        "/bin/zsh -lc \"command sh -c 'true'\"",
+        "/bin/zsh -lc \"make\"",
+        "/bin/zsh -lc \"X=1 make\"",
+        "/bin/zsh -lc \"time sh -c 'true'\"",
+        "/bin/zsh -lc \"if true; then make; fi\"",
+        "/bin/zsh -lc \"while false; do make; done\"",
+        "/bin/zsh -lc \"osascript -e 'return 1'\"",
+        (
+            "/bin/zsh -lc \"python - <<'PY'\n"
+            "print('audited')\n"
+            "PY\n"
+            "make\""
+        ),
+    ),
+)
+def test_shell_boundary_rejects_dynamic_shell_dispatch(command):
+    findings = L.APB.scan_shell_command(
+        command,
+        logical_path="turn.jsonl",
+        line=1,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    )
+
+    assert "dynamic_execution" in {finding.code for finding in findings}
+
+
+def test_shell_boundary_allows_nonexecuting_command_lookup():
+    assert L.APB.scan_shell_command(
+        "/bin/zsh -lc 'command -v jq'",
+        logical_path="turn.jsonl",
+        line=1,
+        arena_module_root=Path(L.__file__).resolve().parent,
+    ) == ()
+
+
+def test_live_terminal_transcript_carries_stdin_python_finding(tmp_path):
+    workspace = tmp_path / "gkm_legs_ws_terminal_stdin"
+    workspace.mkdir()
+    transcript = tmp_path / "codex_turn_terminal.jsonl"
+    transcript.write_text(
+        "\n".join((
+            json.dumps({
+                "type": "thread.started", "thread_id": "terminal-stdin",
+            }),
+            json.dumps({
+                "type": "item.completed",
+                "item": {
+                    "id": "stdin-python",
+                    "type": "command_execution",
+                    "command": "printf 'print(1)\\n' | python -",
+                    "aggregated_output": "1\\n",
+                },
+            }),
+            json.dumps({"type": "turn.completed", "usage": {}}),
+        )) + "\n",
+        encoding="utf-8",
+    )
+    monitor = L.APB.LiveBoundaryMonitor(workspace)
+
+    findings = monitor.scan_transcript(transcript, final=True)
+
+    assert "unscannable_python_stdin" in {
+        finding.code for finding in findings
+    }
 
 
 def test_shell_boundary_types_broad_host_process_introspection_only():

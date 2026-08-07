@@ -97,3 +97,4 @@ runs/
 
 # Live campaign coordination state is host-local and must never enter evidence commits.
 arc/crack_lab/agent_solutions/.campaign_locks/
+arc/crack_lab/agent_solutions/.campaign_quarantine/

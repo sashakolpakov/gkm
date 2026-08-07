@@ -121,6 +121,32 @@ PASSIVE_EVENT_TYPES = frozenset({
 PASSIVE_ITEM_TYPES = frozenset({"agent_message", "reasoning", "todo_list"})
 ACTION_ITEM_TYPES = frozenset({"command_execution", "file_change"})
 ITEM_EVENT_TYPES = frozenset({"item.started", "item.updated", "item.completed"})
+HISTORICAL_STDIN_DIAGNOSTIC = b"Reading additional input from stdin...\n"
+HISTORICAL_TRUSTED_DIAGNOSTIC_RES = tuple(re.compile(pattern) for pattern in (
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z ERROR "
+    rb"codex_models_manager::manager: failed to refresh available models: "
+    rb"timeout waiting for child process to exit",
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z ERROR "
+    rb"codex_cloud_config::service: Timed out refreshing cloud config bundle "
+    rb"cache from remote; keeping existing cache",
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z ERROR "
+    rb"codex_models_manager::cache: failed to load models cache: EOF while "
+    rb"parsing a value at line 1 column 0",
+))
+HISTORICAL_APPLY_PATCH_DIAGNOSTIC_RE = re.compile(
+    rb"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z ERROR "
+    rb"codex_core::tools::router: error=apply_patch verification failed: "
+    rb"(?P<message>[^\r\n]{1,8192})"
+)
+HISTORICAL_APPLY_PATCH_INVALID_HUNK_RES = tuple(
+    re.compile(pattern) for pattern in (
+        rb"invalid hunk at line \d+, Unexpected line found in update hunk: "
+        rb"'[^\r\n]{1,4096}'\. Every line should start with ' ' \(context "
+        rb"line\), '\+' \(added line\), or '-' \(removed line\)",
+        rb"invalid hunk at line \d+, Update file hunk for path "
+        rb"'[^\r\n]{1,4096}' is empty",
+    )
+)
 
 FORBIDDEN_IMPORT_ROOTS = frozenset(
     {
@@ -140,6 +166,8 @@ FORBIDDEN_IMPORT_ROOTS = frozenset(
         "pickle",
         "platform",
         "posix",
+        "pwd",
+        "grp",
         "pkgutil",
         "pydoc",
         "pty",
@@ -229,8 +257,9 @@ PATH_READ_METHODS = frozenset(
     {"glob", "iterdir", "open", "read_bytes", "read_text", "rglob"}
 )
 PATH_WRITE_METHODS = frozenset({
-    "hardlink_to", "link_to", "rename", "replace", "symlink_to", "touch",
-    "write_bytes", "write_text",
+    "chmod", "lchmod", "hardlink_to", "link_to", "mkdir", "rename",
+    "replace", "rmdir", "symlink_to", "touch", "unlink", "write_bytes",
+    "write_text",
 })
 PATH_ESCAPE_METHODS = frozenset({"absolute", "expanduser", "resolve"})
 PATH_ESCAPE_CALLS = frozenset(
@@ -241,10 +270,20 @@ PATH_ESCAPE_CALLS = frozenset(
 )
 PROCESS_ESCAPE_CALLS = frozenset(
     {
-        "os.daemon", "os.fork", "os.forkpty", "os.posix_spawn",
+        "os.abort", "os.daemon", "os.execl", "os.execle", "os.execlp",
+        "os.execlpe", "os.execv", "os.execve", "os.execvp", "os.execvpe",
+        "os.fork", "os.forkpty", "os.kill", "os.killpg", "os.posix_spawn",
         "os.posix_spawnp", "os.setpgrp", "os.setsid",
     }
 )
+HOST_MUTATION_CALLS = frozenset({
+    "os.chflags", "os.chmod", "os.chown", "os.fchflags", "os.fchmod",
+    "os.fchown", "os.fremovexattr", "os.fsetxattr", "os.ftruncate",
+    "os.lchflags", "os.lchmod", "os.lchown", "os.makedirs", "os.mkdir",
+    "os.mkfifo", "os.mknod", "os.remove", "os.removedirs",
+    "os.removexattr", "os.rename", "os.renames", "os.replace", "os.rmdir",
+    "os.setxattr", "os.truncate", "os.unlink", "os.utime", "os.write",
+})
 FILESYSTEM_ALIAS_CALLS = frozenset({
     "os.link", "os.symlink", "pathlib.Path.hardlink_to",
     "pathlib.Path.link_to", "pathlib.Path.symlink_to",
@@ -270,6 +309,89 @@ class BoundaryFinding:
     def describe(self) -> str:
         where = f"{self.path}:{self.line}" if self.line else self.path
         return f"{self.code} in {where}: {self.detail}"
+
+
+def _trusted_historical_diagnostic(raw_line: bytes) -> bool:
+    """Recognize only fixed, non-user-derived legacy CLI telemetry lines."""
+
+    return any(pattern.fullmatch(raw_line) for pattern in (
+        HISTORICAL_TRUSTED_DIAGNOSTIC_RES
+    ))
+
+
+def _lexical_path_within_roots(
+    raw_path: bytes, roots: Iterable[Path]
+) -> bool:
+    try:
+        decoded = raw_path.decode("utf-8")
+    except UnicodeError:
+        return False
+    candidate = Path(decoded)
+    if (
+        not candidate.is_absolute()
+        or Path(os.path.abspath(decoded)) != candidate
+    ):
+        return False
+    for root in roots:
+        selected = Path(root)
+        if not selected.is_absolute():
+            continue
+        try:
+            candidate.relative_to(selected)
+        except ValueError:
+            continue
+        return True
+    return False
+
+
+def _historical_diagnostic_mode(
+    raw_line: bytes, *, workspace_roots: Iterable[Path]
+) -> str | None:
+    """Classify one receipt-bound legacy stderr line.
+
+    The old runner merged Codex stderr into JSONL.  Fixed cache telemetry is a
+    standalone trusted record.  ``apply_patch`` failures are also host-router
+    diagnostics, but only the exact no-effect grammar is admitted.  A
+    ``Failed to find`` message opens a continuation state whose subsequent
+    lines must remain indented until the next JSON object; the reported path
+    must be lexically inside the bound attempt workspace.
+    """
+
+    if _trusted_historical_diagnostic(raw_line):
+        return "standalone"
+    match = HISTORICAL_APPLY_PATCH_DIAGNOSTIC_RE.fullmatch(raw_line)
+    if match is None:
+        return None
+    message = match.group("message")
+    prefix = b"Failed to find expected lines in "
+    if message.startswith(prefix) and message.endswith(b":"):
+        if _lexical_path_within_roots(
+            message[len(prefix):-1], workspace_roots
+        ):
+            return "indented_continuation"
+        return None
+    if any(
+        pattern.fullmatch(message)
+        for pattern in HISTORICAL_APPLY_PATCH_INVALID_HUNK_RES
+    ):
+        return "standalone"
+    return None
+
+
+def _historical_plaintext_continuation(raw_line: bytes) -> bool:
+    """Admit indented router prose, never an indented JSON action record."""
+
+    if not raw_line.startswith((b" ", b"\t")):
+        return False
+    try:
+        decoded = raw_line.decode("utf-8")
+    except UnicodeError:
+        return False
+    try:
+        json.loads(decoded)
+    except json.JSONDecodeError:
+        return True
+    return False
 
 
 def _stat_identity(value: os.stat_result) -> tuple[int, ...]:
@@ -835,6 +957,12 @@ def scan_python_source(
                     f"{name} can outlive the supervised process group",
                 ))
                 continue
+            if name in HOST_MUTATION_CALLS:
+                findings.append(BoundaryFinding(
+                    "host_filesystem_mutation", logical_path, line,
+                    f"{name} can mutate host state outside audited writes",
+                ))
+                continue
             if name in FILESYSTEM_ALIAS_CALLS:
                 findings.append(BoundaryFinding(
                     "filesystem_alias_escape", logical_path, line,
@@ -1043,6 +1171,68 @@ def has_forbidden_host_process_command(command: str) -> bool:
     return False
 
 
+_DYNAMIC_SHELL_HEADS = frozenset({
+    "bash", "bun", "cmake", "eval", "exec",
+    "gmake", "ipython", "jupyter", "just", "lua", "luajit", "make",
+    "meson", "ninja", "node", "nox", "npm", "osascript", "perl", "php",
+    "pnpm", "pytest", "rake", "rscript", "sh", "task", "tox", "xargs",
+    "yarn", "zsh",
+})
+_SHELL_ASSIGNMENT_WORD_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*=.*$")
+
+
+def _shell_command_heads(payload: str) -> tuple[str, ...]:
+    """Return lexical command heads after assignments and shell keywords."""
+
+    lexer = shlex.shlex(
+        payload.replace("\n", " ; "),
+        posix=True,
+        punctuation_chars=";&|()<>",
+    )
+    lexer.whitespace_split = True
+    tokens = list(lexer)
+    heads: list[str] = []
+    expecting = True
+    time_prefix = False
+    for token in tokens:
+        if token in {"then", "do", "else", "elif", "{"}:
+            expecting = True
+            time_prefix = False
+            continue
+        if token in {"fi", "done", "esac", "}"}:
+            expecting = False
+            time_prefix = False
+            continue
+        if token and all(character in ";&|()<>" for character in token):
+            expecting = token not in {")", ">", ">>", "<", "<<", "<<<"}
+            time_prefix = False
+            continue
+        if not expecting:
+            continue
+        if token in {"if", "while", "until", "!"}:
+            continue
+        if token in {"for", "select", "case", "function"}:
+            expecting = False
+            continue
+        if _SHELL_ASSIGNMENT_WORD_RE.fullmatch(token):
+            continue
+        normalized = PurePosixPath(token.replace("\\", "/")).name.lower()
+        if normalized == "time":
+            heads.append(normalized)
+            time_prefix = True
+            continue
+        if time_prefix and token.startswith("-"):
+            continue
+        heads.append(normalized)
+        if normalized in {
+            "builtin", "command", "env", "exec", "nohup", "sudo",
+        }:
+            continue
+        expecting = False
+        time_prefix = False
+    return tuple(heads)
+
+
 def scan_shell_command(
     command: str,
     *,
@@ -1120,11 +1310,20 @@ def scan_shell_command(
     # not masquerade as shell redirection while a real ``python - < file``
     # remains visible.
     shell_structure_source = PYTHON_HEREDOC_RE.sub(
-        "python - <<__AUDITED_PYTHON_HEREDOC__", payload
+        "__AUDITED_PYTHON_HEREDOC__; ", payload
     )
     structural_payload = QUOTED_SHELL_DATA_RE.sub(
         " __QUOTED_SHELL_DATA__ ", shell_structure_source
     )
+    try:
+        dynamic_heads = set(_shell_command_heads(structural_payload))
+    except ValueError:
+        dynamic_heads = set()
+    if dynamic_heads & _DYNAMIC_SHELL_HEADS:
+        findings.append(BoundaryFinding(
+            "dynamic_execution", logical_path, line,
+            "dynamic shell dispatch has no statically fixed execution surface",
+        ))
     if (
         SHELL_ESCAPE_RE.search(structural_payload)
         or SHELL_PARENT_ENUM_RE.search(structural_payload)
@@ -1138,6 +1337,15 @@ def scan_shell_command(
         findings.append(BoundaryFinding(
             "detached_process_escape", logical_path, line,
             "background shell jobs can outlive the supervised process group",
+        ))
+    if re.search(
+        r"(?:^|[\n;&|]\s*)(?:setsid|nohup|disown|bash|zsh|sh|perl|ruby|node)\b",
+        structural_payload,
+        re.IGNORECASE,
+    ):
+        findings.append(BoundaryFinding(
+            "detached_process_escape", logical_path, line,
+            "nested/detaching process launch can escape supervised cleanup",
         ))
     if re.search(r"(?<!<)<(?!<)", structural_payload):
         findings.append(BoundaryFinding(
@@ -1219,13 +1427,20 @@ def scan_shell_command(
             "a redirection target must be literal and workspace-relative",
         ))
 
-    inline_sources: list[str] = []
-    inline_sources.extend(
-        match.group(3) for match in PYTHON_HEREDOC_RE.finditer(payload)
+    python_heredocs = list(PYTHON_HEREDOC_RE.finditer(payload))
+    inline_sources: list[str] = [
+        match.group(3) for match in python_heredocs
+    ]
+    # Exact Python heredocs are parsed above as Python.  Mask each whole
+    # construct before tokenizing interpreter commands so its deliberate
+    # ``python -`` transport cannot authorize a different stdin-fed Python
+    # command later in the same shell payload.
+    interpreter_surface = PYTHON_HEREDOC_RE.sub(
+        "__AUDITED_PYTHON_HEREDOC__; ", payload
     )
     try:
         lexer = shlex.shlex(
-            payload, posix=True, punctuation_chars=";&|()<>"
+            interpreter_surface, posix=True, punctuation_chars=";&|()<>"
         )
         lexer.whitespace_split = True
         tokens = list(lexer)
@@ -1241,7 +1456,13 @@ def scan_shell_command(
         cursor = index + 1
         while cursor < len(tokens):
             argument = tokens[cursor]
-            if argument in {";", "&&", "||", "|", "&"}:
+            if argument in {
+                ";", "&&", "||", "|", "&", "(", ")", "<", ">",
+            }:
+                findings.append(BoundaryFinding(
+                    "unscannable_python_stdin", logical_path, line,
+                    "Python reached a shell boundary without one visible source",
+                ))
                 break
             if argument == "-c":
                 if cursor + 1 >= len(tokens):
@@ -1253,6 +1474,10 @@ def scan_shell_command(
                     inline_sources.append(tokens[cursor + 1])
                 break
             if argument == "-":
+                findings.append(BoundaryFinding(
+                    "unscannable_python_stdin", logical_path, line,
+                    "stdin-fed Python is outside the statically scanned source surface",
+                ))
                 break
             if argument == "-m":
                 module = tokens[cursor + 1] if cursor + 1 < len(tokens) else ""
@@ -1275,7 +1500,15 @@ def scan_shell_command(
                     "Python file execution must name a visible .py/.pyw workspace source",
                 ))
             break
-    if re.search(r"\bpython(?:3(?:\.\d+)*)?\s+-[^\n]*<<", payload) and not inline_sources:
+        else:
+            findings.append(BoundaryFinding(
+                "unscannable_python_stdin", logical_path, line,
+                "Python execution has no statically visible source operand",
+            ))
+    if (
+        re.search(r"\bpython(?:3(?:\.\d+)*)?\s+-[^\n]*<<", payload)
+        and not python_heredocs
+    ):
         findings.append(BoundaryFinding(
             "malformed_inline_python", logical_path, line,
             "Python heredoc could not be parsed fail closed",
@@ -1382,8 +1615,15 @@ def scan_codex_transcript(
     workspace_root: Path,
     arena_module_root: Path | str | None = None,
     accepted_workspace_root: str | None = None,
+    allow_historical_transport_banner: bool = False,
 ) -> tuple[BoundaryFinding, ...]:
-    """Reopen every immutable command/file-change record fail closed."""
+    """Reopen every immutable command/file-change record fail closed.
+
+    ``allow_historical_transport_banner`` is a receipt-bound compatibility
+    exception for the one exact diagnostic emitted at byte offset zero by the
+    pinned transcript-only runner.  Current split-stream transcripts must leave
+    it disabled.
+    """
 
     selected = Path(path)
     logical = selected.name
@@ -1396,8 +1636,17 @@ def scan_codex_transcript(
     )
     if read_finding is not None or raw is None:
         return (read_finding,) if read_finding is not None else ()
+    historical_banner = False
+    physical_line_offset = 0
+    if (
+        allow_historical_transport_banner is True
+        and raw.startswith(HISTORICAL_STDIN_DIAGNOSTIC)
+    ):
+        raw = raw[len(HISTORICAL_STDIN_DIAGNOSTIC):]
+        historical_banner = True
+        physical_line_offset = 1
     try:
-        text = raw.decode("utf-8")
+        raw.decode("utf-8")
     except UnicodeError:
         return (BoundaryFinding(
             "non_utf8_transcript", logical, 0,
@@ -1423,23 +1672,56 @@ def scan_codex_transcript(
             ))
         else:
             accepted_root = bound
-    for line_number, raw_line in enumerate(text.splitlines(), 1):
-        if not raw_line:
+    valid_json_objects = 0
+    diagnostic_continuation = False
+    diagnostic_requires_json = False
+    diagnostic_roots = tuple(
+        root for root in (workspace, accepted_root) if root is not None
+    )
+    raw_lines = raw.split(b"\n")
+    partial_terminal_line = bool(raw_lines[-1])
+    for line_number, raw_line_bytes in enumerate(
+        raw_lines, 1 + physical_line_offset
+    ):
+        if not raw_line_bytes:
+            continue
+        if (
+            diagnostic_continuation
+            and _historical_plaintext_continuation(raw_line_bytes)
+        ):
             continue
         try:
-            event = json.loads(raw_line)
-        except json.JSONDecodeError:
+            event = json.loads(raw_line_bytes.decode("utf-8"))
+        except (UnicodeError, json.JSONDecodeError):
+            mode = (
+                _historical_diagnostic_mode(
+                    raw_line_bytes, workspace_roots=diagnostic_roots
+                )
+                if allow_historical_transport_banner is True
+                else None
+            )
+            if mode is not None:
+                if mode == "indented_continuation":
+                    diagnostic_continuation = True
+                    diagnostic_requires_json = True
+                else:
+                    diagnostic_continuation = False
+                continue
+            diagnostic_continuation = False
             findings.append(BoundaryFinding(
                 "malformed_transcript", logical, line_number,
                 "unrecognized line could hide a command surface",
             ))
             continue
+        diagnostic_continuation = False
+        diagnostic_requires_json = False
         if not isinstance(event, dict):
             findings.append(BoundaryFinding(
                 "malformed_transcript", logical, line_number,
                 "JSONL record is not an object",
             ))
             continue
+        valid_json_objects += 1
         event_type = event.get("type")
         item = event.get("item")
         if not isinstance(item, dict):
@@ -1533,6 +1815,23 @@ def scan_codex_transcript(
                                 "file_change_escape", logical, line_number,
                                 "absolute changed path is outside the attempt workspace",
                             ))
+    if diagnostic_requires_json:
+        findings.append(BoundaryFinding(
+            "malformed_transcript", logical,
+            physical_line_offset + max(1, len(raw_lines) - 1),
+            "historical router diagnostic block lacks a closing JSON record",
+        ))
+    if partial_terminal_line:
+        findings.append(BoundaryFinding(
+            "partial_transcript", logical,
+            physical_line_offset + len(raw_lines),
+            "sealed command transcript lacks a complete final record",
+        ))
+    if historical_banner and valid_json_objects == 0:
+        findings.append(BoundaryFinding(
+            "malformed_transcript", logical, 2,
+            "historical transport banner lacks a complete JSON object",
+        ))
     return tuple(sorted(set(findings)))
 
 
@@ -1551,15 +1850,21 @@ class LiveBoundaryMonitor:
         *,
         arena_module_root: Path | str | None = None,
         trusted_host_scaffolds: Mapping[str, Any] | None = None,
+        allow_historical_transport_banner: bool = False,
     ) -> None:
         self.workspace_root = Path(workspace_root).resolve()
         self.arena_module_root = arena_module_root
         self.trusted_host_scaffolds = dict(trusted_host_scaffolds or {})
+        self.allow_historical_transport_banner = (
+            allow_historical_transport_banner is True
+        )
         self._source_cache: dict[
             str, tuple[str, tuple[BoundaryFinding, ...]]
         ] = {}
         self._transcripts: dict[
-            str, tuple[int, int, int, bytes, int, str]
+            str, tuple[
+                int, int, int, bytes, int, str, bool, bool, bool, bool
+            ]
         ] = {}
 
     def scan_workspace(self) -> tuple[BoundaryFinding, ...]:
@@ -1704,8 +2009,23 @@ class LiveBoundaryMonitor:
         state = self._transcripts.get(os.fspath(selected))
         if state is None:
             offset, carry, line_number = 0, b"", 0
+            historical_banner = False
+            valid_json_object_seen = False
+            diagnostic_continuation = False
+            diagnostic_requires_json = False
         else:
-            device, inode, offset, carry, line_number, prefix_sha256 = state
+            (
+                device,
+                inode,
+                offset,
+                carry,
+                line_number,
+                prefix_sha256,
+                historical_banner,
+                valid_json_object_seen,
+                diagnostic_continuation,
+                diagnostic_requires_json,
+            ) = state
             if (
                 (device, inode) != (metadata_device, metadata_inode)
                 or len(raw) < offset
@@ -1725,20 +2045,51 @@ class LiveBoundaryMonitor:
             line_number += 1
             if not raw_line:
                 continue
+            if (
+                self.allow_historical_transport_banner
+                and not historical_banner
+                and line_number == 1
+                and raw_line == HISTORICAL_STDIN_DIAGNOSTIC[:-1]
+            ):
+                historical_banner = True
+                continue
+            if (
+                diagnostic_continuation
+                and _historical_plaintext_continuation(raw_line)
+            ):
+                continue
             try:
                 event = json.loads(raw_line.decode("utf-8"))
             except (UnicodeError, json.JSONDecodeError):
+                mode = (
+                    _historical_diagnostic_mode(
+                        raw_line, workspace_roots=(self.workspace_root,)
+                    )
+                    if self.allow_historical_transport_banner
+                    else None
+                )
+                if mode is not None:
+                    if mode == "indented_continuation":
+                        diagnostic_continuation = True
+                        diagnostic_requires_json = True
+                    else:
+                        diagnostic_continuation = False
+                    continue
+                diagnostic_continuation = False
                 findings.append(BoundaryFinding(
                     "malformed_transcript", logical, line_number,
                     "unrecognized line could hide a command surface",
                 ))
                 continue
+            diagnostic_continuation = False
+            diagnostic_requires_json = False
             if not isinstance(event, dict):
                 findings.append(BoundaryFinding(
                     "malformed_transcript", logical, line_number,
                     "JSONL record is not an object",
                 ))
                 continue
+            valid_json_object_seen = True
             event_type = event.get("type")
             item = event.get("item")
             if not isinstance(item, dict):
@@ -1830,11 +2181,25 @@ class LiveBoundaryMonitor:
             new_carry,
             line_number,
             hashlib.sha256(raw).hexdigest(),
+            historical_banner,
+            valid_json_object_seen,
+            diagnostic_continuation,
+            diagnostic_requires_json,
         )
         if final and new_carry:
             findings.append(BoundaryFinding(
                 "partial_transcript", logical, line_number + 1,
                 "terminal command transcript lacks a complete final record",
+            ))
+        if final and historical_banner and not valid_json_object_seen:
+            findings.append(BoundaryFinding(
+                "malformed_transcript", logical, 2,
+                "historical transport banner lacks a complete JSON object",
+            ))
+        if final and diagnostic_requires_json:
+            findings.append(BoundaryFinding(
+                "malformed_transcript", logical, line_number,
+                "historical router diagnostic block lacks a closing JSON record",
             ))
         return tuple(sorted(set(findings)))
 

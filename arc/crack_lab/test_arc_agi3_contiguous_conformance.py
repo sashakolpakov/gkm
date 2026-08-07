@@ -228,6 +228,7 @@ def test_loaded_control_modules_classify_pseudo_origins_by_control_name(
 def test_loaded_control_module_origins_have_no_ambient_conflict():
     observed = C.loaded_control_modules_snapshot()
     repository = Path(__file__).resolve().parents[2]
+    runtime_root = Path(sys.prefix).resolve()
     local_unsealed = sorted({
         path.relative_to(repository).as_posix()
         for module in sys.modules.values()
@@ -239,9 +240,16 @@ def test_loaded_control_module_origins_have_no_ambient_conflict():
         not in C.CONTROL_CONTRACT_FILES
     })
     assert observed["summary"]["conflicting_origins"] == 0, observed
-    # Ordinary repository pytest imports its root conftest before this
-    # component suite.  The hermetic immutable runner has no such file.
-    assert local_unsealed in ([], ["conftest.py"])
+    # An ordinary focused pytest run may use a venv nested in the repository
+    # and imports its root conftest.  The production suite binds that Python
+    # environment separately in the runtime manifest and executes from the
+    # immutable control root, where neither origin is local.
+    assert [
+        relative
+        for relative in local_unsealed
+        if relative != "conftest.py"
+        and not (repository / relative).is_relative_to(runtime_root)
+    ] == []
     assert observed["summary"]["unsealed_local_modules"] == len(
         local_unsealed
     )
@@ -870,6 +878,42 @@ def test_terminal_launch_authority_binds_release_and_image(
         output_root=tmp_path / "scenario",
     )
     assert scenario["status"] == "BLOCKED"
+
+    def verify_blocked_receipt(
+        argv,
+        *,
+        cwd,
+        environment,
+        timeout_seconds,
+        scratch_root,
+    ):
+        # This unit case exercises the semantic launch-authority rejection.
+        # Process-table containment is covered by the supervisor suite and is
+        # deliberately not required by this focused conformance test.
+        assert tuple(argv[-5:]) == (
+            "verify",
+            "--repository",
+            str(snapshot),
+            "--receipt",
+            scenario["receipt_path"],
+        )
+        assert cwd == snapshot / ".neutral"
+        assert environment["TMPDIR"] == str(scratch_root)
+        assert timeout_seconds == 120
+        verified = D.verify(
+            Path(scenario["receipt_path"]), repository=snapshot
+        )
+        return SimpleNamespace(
+            returncode=3,
+            stdout=D.canonical_json(verified).decode("ascii"),
+            stderr="",
+            timed_out=False,
+            captured_descendants_absent=True,
+        )
+
+    monkeypatch.setattr(
+        S, "_run_bounded_process_group", verify_blocked_receipt
+    )
     with pytest.raises(
         C.ConformanceError,
         match="production S01--S12 observations are not exact PASS",

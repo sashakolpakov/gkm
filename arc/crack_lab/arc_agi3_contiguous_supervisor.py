@@ -11,6 +11,8 @@ attestation.  A scheduler that cannot pass these gates must not start.
 from __future__ import annotations
 
 import argparse
+import ctypes
+import errno
 import fcntl
 import hashlib
 import hmac
@@ -20,6 +22,7 @@ import os
 import re
 import resource
 import secrets
+import select
 import shutil
 import signal
 import stat
@@ -28,7 +31,7 @@ import tempfile
 import threading
 import time
 import uuid
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Iterable, Literal, Mapping, Sequence
 
@@ -159,6 +162,14 @@ _TERMINAL_LAUNCH_IDENTITY_FIELDS = (
 
 class SupervisorContractError(RuntimeError):
     """A fail-closed supervisor admission or integrity error."""
+
+
+class ScopedProcessContainmentError(SupervisorContractError):
+    """A launched scoped tree could not be proven terminal."""
+
+
+class _RootExitObservationPending(SupervisorContractError):
+    """The owned root is between PID visibility and waitid visibility."""
 
 
 PROBE_ISOLATION_SCHEMA = 1
@@ -513,10 +524,22 @@ def decide_turn_drain(
 def _reject_symlinked_path_components(path: Path, *, label: str) -> None:
     """Reject every existing symlink from the filesystem anchor to ``path``."""
     absolute = Path(os.path.abspath(path))
-    current = Path(absolute.anchor)
+    # Avoid a second lstat through ``lexists``/``Path.is_symlink`` and avoid
+    # reparsing a fresh ``Path`` at every ancestor.  One no-follow stat has the
+    # same existing/missing/symlink semantics and materially reduces the cost
+    # of authenticating every file in a campaign-wide source-tree audit.
+    current = absolute.anchor
     for component in absolute.parts[1:]:
-        current /= component
-        if os.path.lexists(current) and current.is_symlink():
+        current = (
+            current + component
+            if current.endswith(os.sep)
+            else current + os.sep + component
+        )
+        try:
+            metadata = os.stat(current, follow_symlinks=False)
+        except (OSError, ValueError):
+            continue
+        if stat.S_ISLNK(metadata.st_mode):
             raise SupervisorContractError(
                 f"{label} contains a symlinked path component: {current}"
             )
@@ -1774,53 +1797,21 @@ def _operator_lease_authenticated(
 
 
 def _operator_lease_process_start_identity(pid: int) -> str:
-    """Bind one live PID to its observed OS start time without signalling it."""
+    """Bind one live PID to its kernel birth record without signalling it."""
 
     if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 1:
         raise SupervisorContractError(
             "operator lease requires a non-init process PID"
         )
-    try:
-        observed = subprocess.run(
-            (
-                "/bin/ps",
-                "-p",
-                str(pid),
-                "-o",
-                "pid=,lstart=",
-            ),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={"LANG": "C", "LC_ALL": "C"},
-            text=True,
-            timeout=10,
-            check=False,
-            shell=False,
-            close_fds=True,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
-        raise SupervisorContractError(
-            "cannot observe operator process-start identity"
-        ) from exc
-    rows = [row.strip() for row in observed.stdout.splitlines() if row.strip()]
-    if (
-        observed.returncode != 0
-        or observed.stderr
-        or len(rows) != 1
-    ):
+    identity = _process_identity(pid)
+    if identity is None or identity[3].startswith("Z"):
         raise SupervisorContractError(
             "operator process-start identity observation failed"
-        )
-    parts = rows[0].split(None, 1)
-    if len(parts) != 2 or parts[0] != str(pid) or not parts[1]:
-        raise SupervisorContractError(
-            "operator process-start identity response is malformed"
         )
     return hashlib.sha256(
         _operator_lease_canonical_json({
             "pid": pid,
-            "os_process_start": parts[1],
+            "os_process_start": identity[4],
         })
     ).hexdigest()
 
@@ -4558,6 +4549,9 @@ def validate_launch_attestation(
 
 MAX_CONTROL_SUITE_STREAM_BYTES = 128 * 1024 * 1024
 CONTROL_SUITE_TERM_GRACE_SECONDS = 2.0
+MAX_SCOPED_PROCESS_IDENTITIES = 65536
+MAX_LINUX_PROCESS_RECORD_BYTES = 64 * 1024
+MAX_LINUX_CHILDREN_RECORD_BYTES = 1024 * 1024
 
 
 @dataclass(frozen=True)
@@ -4573,6 +4567,29 @@ class _BoundedProcessResult:
     captured_descendants_absent: bool
 
 
+@dataclass
+class _StartedProcessCustody:
+    process: Any
+    descendants: dict[int, str]
+    root_started: str | None = None
+    sealed: bool = False
+    stable_handles: dict[int, int] = field(default_factory=dict)
+    linux_subreaper_active: bool = False
+    detached_tracking_complete: bool = False
+
+
+@dataclass(frozen=True)
+class ScopedProcessTreeResult:
+    """Terminal proof for one host-launched, dedicated process tree."""
+
+    returncode: int
+    stop_requested: bool
+    forced_kill: bool
+    captured_descendant_count: int
+    captured_descendants_absent: bool
+    detached_processes_proven_absent: bool
+
+
 def _limit_control_suite_child() -> None:
     resource.setrlimit(
         resource.RLIMIT_FSIZE,
@@ -4583,144 +4600,1676 @@ def _limit_control_suite_child() -> None:
     )
 
 
-def _process_identity_table(
-) -> dict[int, tuple[int, int, int, str, str]]:
-    """Return PID -> (PPID, PGID, SID, state, start identity)."""
+_ProcessIdentity = tuple[int, int, int, str, str]
 
-    try:
-        observed = subprocess.run(
-            (
-                "/bin/ps",
-                "-axo",
-                "pid=,ppid=,pgid=,stat=,lstart=",
-            ),
-            stdin=subprocess.DEVNULL,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            env={"LANG": "C", "LC_ALL": "C"},
-            text=True,
-            timeout=10,
-            check=False,
-            shell=False,
-            close_fds=True,
-        )
-    except (OSError, subprocess.SubprocessError) as exc:
+_LINUX_PR_SET_CHILD_SUBREAPER = 36
+_LINUX_PR_GET_CHILD_SUBREAPER = 37
+
+
+def _spawn_blocked_signals() -> set[signal.Signals]:
+    selected = {
+        getattr(signal, name)
+        for name in ("SIGINT", "SIGTERM", "SIGHUP", "SIGQUIT")
+        if hasattr(signal, name)
+    }
+    if not selected or not hasattr(signal, "pthread_sigmask"):
         raise SupervisorContractError(
-            "cannot inventory control-suite process identities"
-        ) from exc
-    if observed.returncode != 0:
-        raise SupervisorContractError(
-            "control-suite process identity inventory failed"
+            "atomic scoped spawn signal masking is unavailable"
         )
-    result: dict[int, tuple[int, int, int, str, str]] = {}
-    for raw in observed.stdout.splitlines():
-        parts = raw.strip().split(None, 4)
-        if len(parts) != 5:
-            continue
-        try:
-            pid, ppid, pgid = (int(parts[index]) for index in range(3))
-            sid = os.getsid(pid)
-        except (ValueError, ProcessLookupError, PermissionError):
-            continue
-        if (
-            pid > 1
-            and ppid >= 0
-            and pgid >= 0
-            and parts[3]
-            and parts[4]
-        ):
-            result[pid] = (
-                ppid,
-                pgid,
-                sid,
-                parts[3],
-                parts[4],
-            )
-    return result
-
-
-def _descendant_identities(
-    root_pid: int,
-    table: dict[int, tuple[int, int, int, str, str]],
-) -> dict[int, str]:
-    selected: dict[int, str] = {}
-    frontier = [root_pid]
-    while frontier:
-        parent = frontier.pop()
-        for pid, (
-            ppid,
-            _pgid,
-            _sid,
-            _state,
-            started,
-        ) in table.items():
-            if ppid == parent and pid not in selected:
-                selected[pid] = started
-                frontier.append(pid)
     return selected
+
+
+def _block_scoped_spawn_signals() -> set[signal.Signals]:
+    try:
+        return set(signal.pthread_sigmask(
+            signal.SIG_BLOCK, _spawn_blocked_signals()
+        ))
+    except (OSError, ValueError) as exc:
+        raise SupervisorContractError(
+            "atomic scoped spawn signal masking failed"
+        ) from exc
+
+
+def _restore_scoped_spawn_signals(
+    previous: set[signal.Signals],
+) -> None:
+    try:
+        signal.pthread_sigmask(signal.SIG_SETMASK, previous)
+    except (OSError, ValueError) as exc:
+        raise SupervisorContractError(
+            "atomic scoped spawn signal restoration failed"
+        ) from exc
+
+
+def _linux_prctl(option: int, argument: Any) -> int:
+    library = ctypes.CDLL(None, use_errno=True)
+    operation = getattr(library, "prctl", None)
+    if operation is None:
+        raise SupervisorContractError(
+            "Linux child-subreaper control is unavailable"
+        )
+    ctypes.set_errno(0)
+    result = operation(
+        ctypes.c_int(option),
+        argument,
+        ctypes.c_ulong(0),
+        ctypes.c_ulong(0),
+        ctypes.c_ulong(0),
+    )
+    if result != 0:
+        error = ctypes.get_errno()
+        raise SupervisorContractError(
+            "Linux child-subreaper control failed"
+        ) from OSError(error, os.strerror(error))
+    return int(result)
+
+
+def _linux_child_subreaper_enabled() -> bool:
+    selected = ctypes.c_int(-1)
+    _linux_prctl(
+        _LINUX_PR_GET_CHILD_SUBREAPER,
+        ctypes.byref(selected),
+    )
+    if selected.value not in {0, 1}:
+        raise SupervisorContractError(
+            "Linux child-subreaper state is malformed"
+        )
+    return bool(selected.value)
+
+
+def _set_linux_child_subreaper(enabled: bool) -> None:
+    _linux_prctl(
+        _LINUX_PR_SET_CHILD_SUBREAPER,
+        ctypes.c_ulong(1 if enabled else 0),
+    )
+    if _linux_child_subreaper_enabled() != enabled:
+        raise SupervisorContractError(
+            "Linux child-subreaper state did not commit"
+        )
+
+
+def _begin_linux_subreaper_custody() -> bool:
+    if os.uname().sysname != "Linux":
+        return False
+    if (
+        not callable(getattr(os, "pidfd_open", None))
+        or not callable(getattr(signal, "pidfd_send_signal", None))
+    ):
+        raise SupervisorContractError(
+            "Linux stable PID custody is unavailable"
+        )
+    if _linux_child_subreaper_enabled():
+        raise SupervisorContractError(
+            "Linux scheduler already has ambiguous subreaper custody"
+        )
+    if _linux_task_ids(os.getpid()) != (os.getpid(),):
+        raise SupervisorContractError(
+            "Linux subreaper custody requires a single-threaded scheduler"
+        )
+    if _scoped_child_pids(os.getpid()):
+        raise SupervisorContractError(
+            "Linux scheduler has another child before scoped launch"
+        )
+    _set_linux_child_subreaper(True)
+    try:
+        if _scoped_child_pids(os.getpid()):
+            raise SupervisorContractError(
+                "Linux scheduler child inventory raced scoped launch"
+            )
+    except BaseException:
+        _set_linux_child_subreaper(False)
+        raise
+    return True
+
+
+def _end_linux_subreaper_custody(custody: _StartedProcessCustody) -> None:
+    if not custody.linux_subreaper_active:
+        return
+    children = _scoped_child_pids(os.getpid())
+    if children:
+        raise SupervisorContractError(
+            "Linux subreaper retains an unreaped scoped child"
+        )
+    _set_linux_child_subreaper(False)
+    custody.linux_subreaper_active = False
+
+
+def _linux_open_stable_process_handle(pid: int) -> int:
+    opener = getattr(os, "pidfd_open", None)
+    sender = getattr(signal, "pidfd_send_signal", None)
+    if not callable(opener) or not callable(sender):
+        raise SupervisorContractError(
+            "Linux stable PID signaling is unavailable"
+        )
+    try:
+        return int(opener(pid, 0))
+    except ProcessLookupError:
+        return -1
+    except OSError as exc:
+        raise SupervisorContractError(
+            "Linux stable PID handle acquisition failed"
+        ) from exc
+
+
+def _stable_handle_exited(descriptor: int) -> bool:
+    poller_factory = getattr(select, "poll", None)
+    if callable(poller_factory):
+        try:
+            poller = poller_factory()
+            observed_mask = (
+                select.POLLIN
+                | getattr(select, "POLLHUP", 0)
+                | getattr(select, "POLLERR", 0)
+            )
+            poller.register(descriptor, observed_mask)
+            events = poller.poll(0)
+        except (OSError, ValueError) as exc:
+            raise SupervisorContractError(
+                "stable PID handle observation failed"
+            ) from exc
+        if len(events) > 1 or any(
+            event_descriptor != descriptor for event_descriptor, _ in events
+        ):
+            raise SupervisorContractError(
+                "stable PID handle observation was malformed"
+            )
+        if not events:
+            return False
+        flags = events[0][1]
+        if flags & getattr(select, "POLLNVAL", 0):
+            raise SupervisorContractError(
+                "stable PID handle became invalid"
+            )
+        if flags & getattr(select, "POLLERR", 0):
+            raise SupervisorContractError(
+                "stable PID handle observation failed"
+            )
+        return bool(
+            flags
+            & (select.POLLIN | getattr(select, "POLLHUP", 0))
+        )
+    try:
+        readable, _, _ = select.select([descriptor], [], [], 0)
+    except (OSError, ValueError) as exc:
+        raise SupervisorContractError(
+            "stable PID handle observation failed"
+        ) from exc
+    return bool(readable)
+
+
+class _DarwinProcBsdInfo(ctypes.Structure):
+    _fields_ = [
+        ("pbi_flags", ctypes.c_uint32),
+        ("pbi_status", ctypes.c_uint32),
+        ("pbi_xstatus", ctypes.c_uint32),
+        ("pbi_pid", ctypes.c_uint32),
+        ("pbi_ppid", ctypes.c_uint32),
+        ("pbi_uid", ctypes.c_uint32),
+        ("pbi_gid", ctypes.c_uint32),
+        ("pbi_ruid", ctypes.c_uint32),
+        ("pbi_rgid", ctypes.c_uint32),
+        ("pbi_svuid", ctypes.c_uint32),
+        ("pbi_svgid", ctypes.c_uint32),
+        ("rfu_1", ctypes.c_uint32),
+        ("pbi_comm", ctypes.c_char * 16),
+        ("pbi_name", ctypes.c_char * 32),
+        ("pbi_nfiles", ctypes.c_uint32),
+        ("pbi_pgid", ctypes.c_uint32),
+        ("pbi_pjobc", ctypes.c_uint32),
+        ("e_tdev", ctypes.c_uint32),
+        ("e_tpgid", ctypes.c_uint32),
+        ("pbi_nice", ctypes.c_int32),
+        ("pbi_start_tvsec", ctypes.c_uint64),
+        ("pbi_start_tvusec", ctypes.c_uint64),
+    ]
+
+
+_DARWIN_LIBPROC: Any | None = None
+
+
+def _darwin_libproc() -> Any:
+    """Load only PID-scoped Darwin process observation primitives."""
+
+    global _DARWIN_LIBPROC
+    if _DARWIN_LIBPROC is not None:
+        return _DARWIN_LIBPROC
+    try:
+        library = ctypes.CDLL(
+            "/usr/lib/libproc.dylib", use_errno=True
+        )
+        library.proc_pidinfo.argtypes = [
+            ctypes.c_int,
+            ctypes.c_int,
+            ctypes.c_uint64,
+            ctypes.c_void_p,
+            ctypes.c_int,
+        ]
+        library.proc_pidinfo.restype = ctypes.c_int
+        for name in ("proc_listchildpids", "proc_listpgrppids"):
+            function = getattr(library, name)
+            function.argtypes = [
+                ctypes.c_int,
+                ctypes.c_void_p,
+                ctypes.c_int,
+            ]
+            function.restype = ctypes.c_int
+    except (OSError, AttributeError) as exc:
+        raise SupervisorContractError(
+            "Darwin scoped process observation is unavailable"
+        ) from exc
+    _DARWIN_LIBPROC = library
+    return library
+
+
+def _darwin_process_identity(pid: int) -> _ProcessIdentity | None:
+    library = _darwin_libproc()
+
+    def observe() -> _DarwinProcBsdInfo | None:
+        info = _DarwinProcBsdInfo()
+        ctypes.set_errno(0)
+        observed = library.proc_pidinfo(
+            pid,
+            3,  # PROC_PIDTBSDINFO
+            0,
+            ctypes.byref(info),
+            ctypes.sizeof(info),
+        )
+        error_number = ctypes.get_errno()
+        if observed == 0 and error_number in {0, errno.ESRCH}:
+            return None
+        if observed != ctypes.sizeof(info) or info.pbi_pid != pid:
+            raise SupervisorContractError(
+                "Darwin PID-scoped process identity observation failed"
+            )
+        return info
+
+    before = observe()
+    if before is None:
+        return None
+    sid: int | None
+    try:
+        sid = os.getsid(pid)
+    except ProcessLookupError:
+        sid = None
+    except PermissionError as exc:
+        raise SupervisorContractError(
+            "Darwin PID-scoped session observation failed"
+        ) from exc
+    after = observe()
+    if after is None:
+        return None
+    before_start = (
+        int(before.pbi_start_tvsec),
+        int(before.pbi_start_tvusec),
+    )
+    after_start = (
+        int(after.pbi_start_tvsec),
+        int(after.pbi_start_tvusec),
+    )
+    if before_start != after_start:
+        raise SupervisorContractError(
+            "process identity changed during PID-scoped observation"
+        )
+    state = "Z" if int(after.pbi_status) == 5 else "L"
+    if sid is None and state != "Z":
+        raise SupervisorContractError(
+            "Darwin live process lost its session identity"
+        )
+    return (
+        int(after.pbi_ppid),
+        int(after.pbi_pgid),
+        -1 if sid is None else sid,
+        state,
+        f"darwin:{after_start[0]}:{after_start[1]}",
+    )
+
+
+def _read_bounded_linux_proc_record(
+    path: Path, *, maximum_bytes: int, label: str
+) -> str | None:
+    """Read one PID-scoped procfs record without an unbounded allocation."""
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            path,
+            os.O_RDONLY
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        raw = bytearray()
+        while len(raw) <= maximum_bytes:
+            block = os.read(
+                descriptor,
+                min(65536, maximum_bytes + 1 - len(raw)),
+            )
+            if not block:
+                break
+            raw.extend(block)
+        if len(raw) > maximum_bytes:
+            raise SupervisorContractError(
+                f"{label} exceeded its hard byte bound"
+            )
+        try:
+            return bytes(raw).decode("ascii")
+        except UnicodeError as exc:
+            raise SupervisorContractError(
+                f"{label} is not ASCII"
+            ) from exc
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        raise SupervisorContractError(
+            f"{label} observation failed"
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+
+
+def _parse_linux_process_identity(
+    pid: int, raw: str
+) -> _ProcessIdentity:
+    """Parse fields 3--6 and 22 from one exact ``/proc/PID/stat`` row."""
+
+    closing = raw.rfind(")")
+    if closing < 0 or not raw.startswith(f"{pid} ("):
+        raise SupervisorContractError(
+            "Linux PID-scoped process identity is malformed"
+        )
+    fields = raw[closing + 2 :].split()
+    try:
+        state = fields[0]
+        ppid = int(fields[1])
+        pgid = int(fields[2])
+        sid = int(fields[3])
+        # The split suffix begins at procfs field 3 (state), making
+        # field 22 (starttime) zero-based index 19.
+        started = int(fields[19])
+    except (IndexError, ValueError) as exc:
+        raise SupervisorContractError(
+            "Linux PID-scoped process identity is malformed"
+        ) from exc
+    if (
+        len(state) != 1
+        or ppid < 0
+        or pgid < 0
+        or sid < 0
+        or started < 0
+    ):
+        raise SupervisorContractError(
+            "Linux PID-scoped process identity is malformed"
+        )
+    return (ppid, pgid, sid, state, f"linux:{started}")
+
+
+def _linux_process_identity(pid: int) -> _ProcessIdentity | None:
+    raw = _read_bounded_linux_proc_record(
+        Path(f"/proc/{pid}/stat"),
+        maximum_bytes=MAX_LINUX_PROCESS_RECORD_BYTES,
+        label="Linux PID-scoped process identity",
+    )
+    if raw is None:
+        return None
+    return _parse_linux_process_identity(pid, raw)
+
+
+def _linux_task_ids(pid: int) -> tuple[int, ...]:
+    """List only one process's thread IDs through its anchored task dir."""
+
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            Path(f"/proc/{pid}/task"),
+            os.O_RDONLY
+            | getattr(os, "O_DIRECTORY", 0)
+            | getattr(os, "O_CLOEXEC", 0)
+            | getattr(os, "O_NOFOLLOW", 0),
+        )
+        metadata = os.fstat(descriptor)
+        if not stat.S_ISDIR(metadata.st_mode):
+            raise SupervisorContractError(
+                "Linux scoped task inventory is not a directory"
+            )
+        names = os.listdir(descriptor)
+    except FileNotFoundError:
+        return ()
+    except OSError as exc:
+        raise SupervisorContractError(
+            "Linux scoped task inventory failed"
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    if len(names) > MAX_SCOPED_PROCESS_IDENTITIES:
+        raise SupervisorContractError(
+            "Linux scoped task inventory exceeded its hard bound"
+        )
+    if any(not name.isascii() or not name.isdecimal() for name in names):
+        raise SupervisorContractError(
+            "Linux scoped task inventory is malformed"
+        )
+    tids = tuple(sorted(int(name) for name in names))
+    if (
+        any(tid <= 1 for tid in tids)
+        or len(set(tids)) != len(tids)
+    ):
+        raise SupervisorContractError(
+            "Linux scoped task inventory is malformed"
+        )
+    return tids
+
+
+def _process_identity(pid: int) -> _ProcessIdentity | None:
+    """Observe exactly one PID; never enumerate the host process table."""
+
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 1:
+        raise SupervisorContractError(
+            "PID-scoped process identity requires a non-init PID"
+        )
+    platform_name = os.uname().sysname
+    if platform_name == "Darwin":
+        return _darwin_process_identity(pid)
+    if platform_name == "Linux":
+        return _linux_process_identity(pid)
+    raise SupervisorContractError(
+        "PID-scoped process identity is unsupported on this platform"
+    )
+
+
+def _darwin_scoped_pids(function_name: str, identifier: int) -> set[int]:
+    library = _darwin_libproc()
+    function = getattr(library, function_name)
+    capacity = 32
+    while capacity <= MAX_SCOPED_PROCESS_IDENTITIES:
+        buffer = (ctypes.c_int * capacity)()
+        ctypes.set_errno(0)
+        observed = function(
+            identifier, buffer, ctypes.sizeof(buffer)
+        )
+        if observed < 0:
+            raise SupervisorContractError(
+                "Darwin scoped process lineage observation failed"
+            )
+        if observed < capacity:
+            return {
+                int(buffer[index])
+                for index in range(observed)
+                if int(buffer[index]) > 1
+            }
+        capacity *= 2
+    raise SupervisorContractError(
+        "Darwin scoped process lineage exceeded its hard bound"
+    )
+
+
+def _scoped_child_pids(pid: int) -> set[int]:
+    platform_name = os.uname().sysname
+    if platform_name == "Darwin":
+        return _darwin_scoped_pids("proc_listchildpids", pid)
+    if platform_name == "Linux":
+        values: list[int] = []
+        for tid in _linux_task_ids(pid):
+            raw = _read_bounded_linux_proc_record(
+                Path(f"/proc/{pid}/task/{tid}/children"),
+                maximum_bytes=MAX_LINUX_CHILDREN_RECORD_BYTES,
+                label="Linux scoped thread child",
+            )
+            if raw is None:
+                continue
+            fields = raw.split()
+            if (
+                len(fields) > MAX_SCOPED_PROCESS_IDENTITIES
+                or len(values) + len(fields)
+                > MAX_SCOPED_PROCESS_IDENTITIES
+            ):
+                raise SupervisorContractError(
+                    "Linux scoped child observation exceeded its PID bound"
+                )
+            try:
+                values.extend(int(item) for item in fields)
+            except ValueError as exc:
+                raise SupervisorContractError(
+                    "Linux scoped child observation is malformed"
+                ) from exc
+        if (
+            any(value <= 1 for value in values)
+            or len(set(values)) != len(values)
+        ):
+            raise SupervisorContractError(
+                "Linux scoped child observation is malformed"
+            )
+        return set(values)
+    raise SupervisorContractError(
+        "scoped child observation is unsupported on this platform"
+    )
+
+
+def _scoped_group_pids(pgid: int) -> set[int]:
+    if os.uname().sysname == "Darwin":
+        return _darwin_scoped_pids("proc_listpgrppids", pgid)
+    # Linux exposes direct-child lineage without exposing a process-table
+    # search.  Known descendants remain tracked after changing group/session.
+    if os.uname().sysname == "Linux":
+        return set()
+    raise SupervisorContractError(
+        "scoped process-group observation is unsupported on this platform"
+    )
+
+
+def _process_group_has_live_members(pgid: int) -> bool:
+    """Probe only one owned process group; never inventory unrelated PIDs."""
+
+    if isinstance(pgid, bool) or not isinstance(pgid, int) or pgid <= 1:
+        raise SupervisorContractError(
+            "scoped process-group probe requires a non-init PGID"
+        )
+    platform_name = os.uname().sysname
+    if platform_name == "Darwin":
+        for pid in _scoped_group_pids(pgid):
+            current = _process_identity(pid)
+            if (
+                current is not None
+                and current[1] == pgid
+                and not current[3].startswith("Z")
+            ):
+                return True
+        return False
+    if platform_name == "Linux":
+        try:
+            os.killpg(pgid, 0)
+        except ProcessLookupError:
+            return False
+        except PermissionError as exc:
+            raise SupervisorContractError(
+                "cannot prove owned process-group custody"
+            ) from exc
+        return True
+    raise SupervisorContractError(
+        "scoped process-group probe is unsupported on this platform"
+    )
+
+
+def _signal_owned_process_group(pgid: int, signum: int) -> None:
+    try:
+        os.killpg(pgid, signum)
+    except ProcessLookupError:
+        pass
+    except PermissionError as exc:
+        if (
+            os.uname().sysname == "Darwin"
+            and not _process_group_has_live_members(pgid)
+        ):
+            # Darwin reports EPERM for a group containing only the held,
+            # WNOWAIT-observed zombie leader.  Scoped libproc absence is the
+            # required proof; raw EPERM is never accepted by itself.
+            return
+        raise SupervisorContractError(
+            "cannot signal the owned control-suite process group"
+        ) from exc
 
 
 def _accumulate_related_identities(
     root_pid: int,
-    root_sid: int,
+    root_started: str,
     identities: dict[int, str],
-    table: dict[int, tuple[int, int, int, str, str]],
+    stable_handles: dict[int, int] | None = None,
+    adoption_parent_pid: int | None = None,
 ) -> None:
-    """Accumulate descendants plus exact process-group/session members."""
+    """Sample only the launched tree and its dedicated process group.
 
-    related = {
-        pid
-        for pid, (_ppid, pgid, sid, _state, _started)
-        in table.items()
-        if pid != root_pid and (pgid == root_pid or sid == root_sid)
-    }
-    frontier = {root_pid, *identities, *related}
-    changed = True
-    while changed:
-        changed = False
-        for pid, (ppid, _pgid, _sid, _state, _started) in (
-            table.items()
+    Linux production callers enable child-subreaper custody before launch, so
+    a descendant that reparents between samples becomes an exact child of
+    ``adoption_parent_pid`` and cannot escape the next bounded traversal.
+    Stable pidfds bind all signals to process objects rather than numeric PIDs.
+    Darwin has no supported equivalent to Linux subreapers (and Darwin removed
+    kqueue NOTE_TRACK); callers therefore never claim detached-process proof.
+    """
+
+    if (
+        not isinstance(root_started, str)
+        or not root_started
+        or len(identities) > MAX_SCOPED_PROCESS_IDENTITIES
+        or (
+            stable_handles is not None
+            and len(stable_handles) > MAX_SCOPED_PROCESS_IDENTITIES
+        )
+    ):
+        raise SupervisorContractError(
+            "scoped process lineage identity bound is malformed"
+        )
+
+    frontier: list[tuple[int, str]] = []
+    queued: set[tuple[int, str]] = set()
+
+    def queue(pid: int, current: _ProcessIdentity) -> None:
+        if pid == root_pid:
+            return
+        started = current[4]
+        existing = identities.get(pid)
+        if existing is not None and existing != started:
+            raise SupervisorContractError(
+                "scoped process PID changed its birth identity"
+            )
+        if (
+            existing is None
+            and len(identities) >= MAX_SCOPED_PROCESS_IDENTITIES
         ):
-            if pid != root_pid and ppid in frontier and pid not in frontier:
-                frontier.add(pid)
-                related.add(pid)
-                changed = True
-    for pid in related:
-        current = table.get(pid)
-        if current is not None:
-            identities.setdefault(pid, current[4])
+            raise SupervisorContractError(
+                "scoped process lineage exceeded its hard PID bound"
+            )
+        if existing is None and stable_handles is not None:
+            descriptor = _linux_open_stable_process_handle(pid)
+            if descriptor < 0:
+                return
+            after = _process_identity(pid)
+            if after is not None and after[4] != started:
+                os.close(descriptor)
+                raise SupervisorContractError(
+                    "scoped process changed while binding its stable handle"
+                )
+            stable_handles[pid] = descriptor
+        elif (
+            existing is not None
+            and stable_handles is not None
+            and pid not in stable_handles
+        ):
+            raise SupervisorContractError(
+                "scoped process lacks its stable PID handle"
+            )
+        identities[pid] = started
+        if current[3].startswith("Z"):
+            return
+        selected = (pid, started)
+        if selected not in queued:
+            if len(queued) >= MAX_SCOPED_PROCESS_IDENTITIES + 1:
+                raise SupervisorContractError(
+                    "scoped process expansion exceeded its hard PID bound"
+                )
+            queued.add(selected)
+            frontier.append(selected)
+
+    root_identity = _process_identity(root_pid)
+    root_exit_held = False
+    if root_identity is None:
+        root_exit_held = _direct_child_exit_observed(root_pid)
+        if not root_exit_held:
+            raise _RootExitObservationPending(
+                "control-suite root identity became unavailable"
+            )
+    elif root_identity[4] != root_started:
+        raise SupervisorContractError(
+            "control-suite root changed its birth identity"
+        )
+    if (
+        root_identity is not None
+        and not root_identity[3].startswith("Z")
+    ):
+        selected_root = (root_pid, root_started)
+        queued.add(selected_root)
+        frontier.append(selected_root)
+
+    group_pids = _scoped_group_pids(root_pid)
+    if len(group_pids) > MAX_SCOPED_PROCESS_IDENTITIES:
+        raise SupervisorContractError(
+            "scoped process group exceeded its hard PID bound"
+        )
+    for pid in group_pids:
+        current = _process_identity(pid)
+        # Recheck group membership after resolving the birth record.  A PID
+        # reused between the list and identity calls is not adopted.
+        if current is not None and current[1] == root_pid:
+            root_after = _process_identity(root_pid)
+            if root_after is None:
+                if not (
+                    root_exit_held
+                    or _direct_child_exit_observed(root_pid)
+                ):
+                    raise SupervisorContractError(
+                        "control-suite root vanished during group observation"
+                    )
+            elif root_after[4] != root_started:
+                raise SupervisorContractError(
+                    "control-suite root changed during group observation"
+                )
+            queue(pid, current)
+
+    if adoption_parent_pid is not None:
+        if adoption_parent_pid != os.getpid():
+            raise SupervisorContractError(
+                "scoped adoption parent is not this supervisor"
+            )
+        adopted = _scoped_child_pids(adoption_parent_pid)
+        if len(adopted) > MAX_SCOPED_PROCESS_IDENTITIES:
+            raise SupervisorContractError(
+                "scoped adopted child set exceeded its hard PID bound"
+            )
+        for pid in adopted:
+            if pid == root_pid:
+                continue
+            current = _process_identity(pid)
+            if current is None or current[0] != adoption_parent_pid:
+                continue
+            queue(pid, current)
+
+    for pid, started in tuple(identities.items()):
+        if stable_handles is not None:
+            descriptor = stable_handles.get(pid)
+            if descriptor is None:
+                raise SupervisorContractError(
+                    "scoped process lacks its stable PID handle"
+                )
+            if _stable_handle_exited(descriptor):
+                # The numeric PID may already name an unrelated new process;
+                # the pidfd is the authoritative identity after binding.
+                continue
+        current = _process_identity(pid)
+        if current is not None and current[4] != started:
+            raise SupervisorContractError(
+                "scoped process PID changed its birth identity"
+            )
+        if (
+            current is not None
+            and not current[3].startswith("Z")
+        ):
+            selected = (pid, started)
+            if selected not in queued:
+                if len(queued) >= MAX_SCOPED_PROCESS_IDENTITIES + 1:
+                    raise SupervisorContractError(
+                        "scoped process expansion exceeded its hard PID bound"
+                    )
+                queued.add(selected)
+                frontier.append(selected)
+
+    expanded: set[tuple[int, str]] = set()
+    while frontier:
+        parent, parent_started = frontier.pop()
+        selected_parent = (parent, parent_started)
+        if selected_parent in expanded:
+            continue
+        expanded.add(selected_parent)
+        current = _process_identity(parent)
+        if (
+            current is None
+            or current[4] != parent_started
+            or current[3].startswith("Z")
+        ):
+            continue
+        for child in _scoped_child_pids(parent):
+            child_identity = _process_identity(child)
+            # A child PID may exit and be reused after enumeration.  Admit it
+            # only while its current birth record still names the exact
+            # authenticated parent sampled above.
+            if (
+                child_identity is not None
+                and child_identity[0] == parent
+            ):
+                parent_after = _process_identity(parent)
+                if (
+                    parent_after is None
+                    or parent_after[4] != parent_started
+                ):
+                    raise SupervisorContractError(
+                        "scoped parent changed during child observation"
+                    )
+                queue(child, child_identity)
 
 
 def _signal_exact_processes(
     identities: dict[int, str],
     signum: int,
+    stable_handles: dict[int, int] | None = None,
+    owned_pgid: int | None = None,
+    final: bool = False,
 ) -> None:
-    live = _process_identity_table()
+    platform_name = os.uname().sysname
     for pid, started in sorted(identities.items(), reverse=True):
-        current = live.get(pid)
+        if platform_name == "Linux":
+            if stable_handles is None or pid not in stable_handles:
+                raise ScopedProcessContainmentError(
+                    "Linux descendant lacks a stable PID handle"
+                )
+            descriptor = stable_handles[pid]
+            if _stable_handle_exited(descriptor):
+                continue
+            sender = getattr(signal, "pidfd_send_signal", None)
+            if not callable(sender):
+                raise ScopedProcessContainmentError(
+                    "Linux stable PID signaling became unavailable"
+                )
+            try:
+                sender(descriptor, signum, None, 0)
+            except ProcessLookupError:
+                pass
+            except OSError as exc:
+                raise ScopedProcessContainmentError(
+                    "cannot signal a stable scoped descendant"
+                ) from exc
+            continue
+        if platform_name != "Darwin":
+            raise ScopedProcessContainmentError(
+                "stable scoped descendant signaling is unsupported"
+            )
+        current = _process_identity(pid)
         if (
             current is None
             or current[4] != started
             or current[3].startswith("Z")
         ):
             continue
-        try:
-            os.kill(pid, signum)
-        except ProcessLookupError:
-            pass
-        except PermissionError as exc:
+        if owned_pgid is not None and current[1] == owned_pgid:
+            # The still-unreaped group leader anchors this signal safely.
+            continue
+        if final:
+            raise ScopedProcessContainmentError(
+                "Darwin cannot safely signal a detached numeric PID"
+            )
+        # Darwin offers no stable PID handle and removed kqueue NOTE_TRACK in
+        # 10.5.  Give the trusted direct runner its TERM grace to contain this
+        # child, but never send a TOCTOU-prone raw PID signal ourselves.
+
+
+def _identities_absent(
+    identities: dict[int, str],
+    stable_handles: dict[int, int] | None = None,
+) -> bool:
+    for pid, started in identities.items():
+        if stable_handles is not None:
+            descriptor = stable_handles.get(pid)
+            if descriptor is None:
+                raise SupervisorContractError(
+                    "scoped identity lacks its stable PID handle"
+                )
+            if not _stable_handle_exited(descriptor):
+                return False
+            continue
+        current = _process_identity(pid)
+        if (
+            current is not None
+            and current[4] == started
+            and not current[3].startswith("Z")
+        ):
+            return False
+    return True
+
+
+def _custody_stable_handles(
+    custody: _StartedProcessCustody,
+) -> dict[int, int] | None:
+    return custody.stable_handles if custody.linux_subreaper_active else None
+
+
+def _accumulate_custody(custody: _StartedProcessCustody) -> None:
+    if custody.root_started is None:
+        raise SupervisorContractError(
+            "scoped custody lacks its bound root identity"
+        )
+    _accumulate_related_identities(
+        custody.process.pid,
+        custody.root_started,
+        custody.descendants,
+        _custody_stable_handles(custody),
+        os.getpid() if custody.linux_subreaper_active else None,
+    )
+
+
+def _signal_custody_descendants(
+    custody: _StartedProcessCustody,
+    signum: int,
+    *,
+    final: bool,
+) -> None:
+    _signal_exact_processes(
+        custody.descendants,
+        signum,
+        _custody_stable_handles(custody),
+        custody.process.pid,
+        final,
+    )
+
+
+def _custody_descendants_absent(
+    custody: _StartedProcessCustody,
+) -> bool:
+    return _identities_absent(
+        custody.descendants,
+        _custody_stable_handles(custody),
+    )
+
+
+def _reap_adopted_linux_descendants(
+    custody: _StartedProcessCustody,
+) -> None:
+    if not custody.linux_subreaper_active:
+        return
+    if not _custody_descendants_absent(custody):
+        raise SupervisorContractError(
+            "Linux adopted descendants are not terminal"
+        )
+    for pid in sorted(custody.descendants, reverse=True):
+        while True:
+            try:
+                waited, _status = os.waitpid(pid, os.WNOHANG)
+                break
+            except InterruptedError:
+                continue
+            except ChildProcessError:
+                waited = pid
+                break
+        if waited not in {0, pid}:
             raise SupervisorContractError(
-                "cannot contain an exact control-suite descendant"
+                "Linux adopted descendant wait identity changed"
+            )
+        if waited == 0:
+            raise SupervisorContractError(
+                "Linux adopted descendant could not be reaped"
+            )
+
+
+def _release_custody_kernel_state(
+    custody: _StartedProcessCustody,
+) -> None:
+    _end_linux_subreaper_custody(custody)
+    failures: list[OSError] = []
+    for descriptor in custody.stable_handles.values():
+        try:
+            os.close(descriptor)
+        except OSError as exc:
+            failures.append(exc)
+    custody.stable_handles.clear()
+    if failures:
+        raise SupervisorContractError(
+            "stable PID handle release failed"
+        ) from failures[0]
+
+
+def _direct_child_exit_observed(pid: int) -> bool:
+    """Observe an owned child exit without consuming its PID/group anchor."""
+
+    while True:
+        try:
+            observed = os.waitid(
+                os.P_PID,
+                pid,
+                os.WEXITED | os.WNOHANG | os.WNOWAIT,
+            )
+            break
+        except InterruptedError:
+            continue
+        except (ChildProcessError, OSError) as exc:
+            raise SupervisorContractError(
+                "control-suite direct-child exit observation failed"
             ) from exc
+    if observed is None:
+        return False
+    if observed.si_pid != pid:
+        raise SupervisorContractError(
+            "control-suite wait identity differs from its owned child"
+        )
+    return True
 
 
-def _identities_absent(identities: dict[int, str]) -> bool:
-    live = _process_identity_table()
-    return all(
-        pid not in live
-        or live[pid][4] != started
-        or live[pid][3].startswith("Z")
-        for pid, started in identities.items()
+def _seal_descendants_before_root_reap(
+    custody: _StartedProcessCustody,
+    *,
+    timeout_seconds: float = 10,
+) -> None:
+    """Capture and terminate to a fixed point while the root anchors its PGID."""
+
+    deadline = time.monotonic() + timeout_seconds
+    while True:
+        try:
+            _accumulate_custody(custody)
+        except _RootExitObservationPending:
+            if time.monotonic() >= deadline:
+                raise
+            time.sleep(0.01)
+            continue
+        _signal_custody_descendants(
+            custody, signal.SIGKILL, final=True
+        )
+        if _custody_descendants_absent(custody):
+            if not _direct_child_exit_observed(custody.process.pid):
+                # Do not reap/admit a fixed point while the root can still
+                # own zombie children.  Once WNOWAIT observes its exit, Linux
+                # has synchronously reparented those children to our active
+                # subreaper and the next traversal can bind/reap them.
+                if time.monotonic() >= deadline:
+                    raise SupervisorContractError(
+                        "scoped root resisted its pre-reap seal"
+                    )
+                time.sleep(0.01)
+                continue
+            # A second kernel traversal closes the fork/reparent edge between
+            # the prior traversal and its absence test.  Linux subreaper
+            # adoption makes every still-live detached descendant visible here.
+            try:
+                _accumulate_custody(custody)
+            except _RootExitObservationPending:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.01)
+                continue
+            if _custody_descendants_absent(custody):
+                _reap_adopted_linux_descendants(custody)
+                if custody.linux_subreaper_active:
+                    adopted_after_reap = _scoped_child_pids(os.getpid())
+                    adopted_after_reap.discard(custody.process.pid)
+                    if adopted_after_reap:
+                        # Reaping a tracked intermediate can expose its own
+                        # already-orphaned child.  Bind that new direct child
+                        # before declaring the subreaper fixed point closed.
+                        _accumulate_custody(custody)
+                        continue
+                return
+        if time.monotonic() >= deadline:
+            raise SupervisorContractError(
+                "scoped descendants resisted their pre-reap seal"
+            )
+        time.sleep(0.01)
+
+
+def _prove_postreap_process_absence(
+    custody: _StartedProcessCustody,
+) -> None:
+    """Require both exact descendants and the dedicated group to disappear."""
+
+    deadline = time.monotonic() + 10
+    while True:
+        exact_absent = _custody_descendants_absent(custody)
+        group_absent = not _process_group_has_live_members(
+            custody.process.pid
+        )
+        if exact_absent and group_absent:
+            return
+        if time.monotonic() >= deadline:
+            raise SupervisorContractError(
+                "control-suite process absence could not be proven"
+            )
+        # The numeric group anchor has been reaped.  This phase is deliberately
+        # observation-only: all group and exact signals precede the reap.
+        time.sleep(0.01)
+
+
+def _emergency_contain_started_process(
+    custody: _StartedProcessCustody,
+) -> None:
+    """Best-effort containment that succeeds only with terminal proof."""
+
+    failures: list[BaseException] = []
+
+    def attempt(operation) -> None:
+        try:
+            operation()
+        except BaseException as exc:
+            failures.append(exc)
+
+    # ``returncode is None`` means Popen has not reaped the direct child.  Its
+    # PID therefore still anchors the dedicated group even if it is a zombie.
+    if custody.process.returncode is None:
+        attempt(lambda: _signal_owned_process_group(
+            custody.process.pid, signal.SIGKILL
+        ))
+        attempt(lambda: _seal_descendants_before_root_reap(custody))
+    if custody.process.returncode is None:
+        attempt(lambda: custody.process.wait(timeout=10))
+    attempt(lambda: _prove_postreap_process_absence(custody))
+    if not failures:
+        attempt(lambda: _release_custody_kernel_state(custody))
+    if not failures:
+        custody.sealed = True
+    if failures or not custody.sealed:
+        raise SupervisorContractError(
+            "post-launch failure left process containment unproven"
+        ) from (failures[0] if failures else None)
+
+
+def _seal_anchored_process_group(
+    custody: _StartedProcessCustody,
+) -> None:
+    """SIGKILL the dedicated group while its unreaped leader owns the PGID."""
+
+    _signal_owned_process_group(custody.process.pid, signal.SIGKILL)
+    if os.uname().sysname != "Darwin":
+        # Linux cannot list group members without a process-table scan.  The
+        # unconditional killpg above is the scoped seal; post-reap killpg(0)
+        # must subsequently report ESRCH.
+        return
+    deadline = time.monotonic() + 10
+    while _process_group_has_live_members(custody.process.pid):
+        if time.monotonic() >= deadline:
+            raise SupervisorContractError(
+                "owned control-suite process group resisted its final seal"
+            )
+        _signal_owned_process_group(
+            custody.process.pid, signal.SIGKILL
+        )
+        time.sleep(0.01)
+
+
+def _bind_started_process_custody(
+    custody: _StartedProcessCustody,
+) -> None:
+    process = custody.process
+    root = _process_identity(process.pid)
+    if root is None:
+        if not _direct_child_exit_observed(process.pid):
+            raise SupervisorContractError(
+                "scoped process root identity became unavailable"
+            )
+        custody.root_started = f"owned-exited:{process.pid}"
+    else:
+        if (
+            root[0] != os.getpid()
+            or root[1] != process.pid
+            or root[2] != process.pid
+        ):
+            raise SupervisorContractError(
+                "scoped process root lacks an owned dedicated session"
+            )
+        if (
+            root[3].startswith("Z")
+            and not _direct_child_exit_observed(process.pid)
+        ):
+            raise SupervisorContractError(
+                "scoped process root zombie is not an owned exit"
+            )
+        custody.root_started = root[4]
+    _accumulate_custody(custody)
+
+
+def _start_scoped_process(
+    argv: Sequence[str],
+    *,
+    cwd: Path,
+    environment: Mapping[str, str] | None,
+    stdin: Any = None,
+    stdout: Any = None,
+    stderr: Any = None,
+    preexec_fn: Any = None,
+    ownership: list[_StartedProcessCustody | None] | None = None,
+) -> _StartedProcessCustody:
+    """Atomically launch and bind custody before async signals are restored."""
+
+    command = tuple(argv)
+    if not command or not all(
+        isinstance(part, str) and part for part in command
+    ):
+        raise SupervisorContractError(
+            "scoped process-tree command is malformed"
+        )
+    if ownership is not None and (
+        len(ownership) != 1 or ownership[0] is not None
+    ):
+        raise SupervisorContractError(
+            "scoped process custody handoff is malformed"
+        )
+    if _process_identity(os.getpid()) is None:
+        raise SupervisorContractError(
+            "scoped process identity preflight failed"
+        )
+    if os.uname().sysname == "Darwin":
+        _scoped_child_pids(os.getpid())
+
+    previous_mask = _block_scoped_spawn_signals()
+    mask_pending: set[signal.Signals] | None = previous_mask
+    custody: _StartedProcessCustody | None = None
+    subreaper_active = False
+
+    def restore_parent_mask() -> None:
+        nonlocal mask_pending
+        selected = mask_pending
+        if selected is not None:
+            _restore_scoped_spawn_signals(selected)
+            mask_pending = None
+
+    def child_setup() -> None:
+        _restore_scoped_spawn_signals(previous_mask)
+        if preexec_fn is not None:
+            preexec_fn()
+
+    try:
+        subreaper_active = _begin_linux_subreaper_custody()
+        factory = subprocess.Popen
+        process: Any = None
+        try:
+            if isinstance(factory, type):
+                process = factory.__new__(factory)
+                factory.__init__(
+                    process,
+                    command,
+                    cwd=cwd,
+                    env=(
+                        dict(environment)
+                        if environment is not None
+                        else None
+                    ),
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                    shell=False,
+                    close_fds=True,
+                    start_new_session=True,
+                    preexec_fn=child_setup,
+                )
+            else:
+                process = factory(
+                    command,
+                    cwd=cwd,
+                    env=(
+                        dict(environment)
+                        if environment is not None
+                        else None
+                    ),
+                    stdin=stdin,
+                    stdout=stdout,
+                    stderr=stderr,
+                    shell=False,
+                    close_fds=True,
+                    start_new_session=True,
+                    preexec_fn=child_setup,
+                )
+        except BaseException:
+            if (
+                process is not None
+                and isinstance(getattr(process, "pid", None), int)
+                and process.pid > 1
+                and getattr(process, "_child_created", True)
+            ):
+                if not hasattr(process, "returncode"):
+                    process.returncode = None
+                custody = _StartedProcessCustody(
+                    process,
+                    {},
+                    linux_subreaper_active=subreaper_active,
+                    detached_tracking_complete=subreaper_active,
+                )
+                if ownership is not None:
+                    ownership[0] = custody
+                _bind_started_process_custody(custody)
+            raise
+        custody = _StartedProcessCustody(
+            process,
+            {},
+            linux_subreaper_active=subreaper_active,
+            detached_tracking_complete=subreaper_active,
+        )
+        if ownership is not None:
+            ownership[0] = custody
+        _bind_started_process_custody(custody)
+        restore_parent_mask()
+        return custody
+    except BaseException as failure:
+        restore_failure: BaseException | None = None
+        if mask_pending is not None:
+            try:
+                restore_parent_mask()
+            except BaseException as exc:
+                restore_failure = exc
+        if custody is not None:
+            try:
+                _emergency_contain_started_process(custody)
+            except BaseException as containment_failure:
+                raise ScopedProcessContainmentError(
+                    "scoped process launch could not prove containment"
+                ) from containment_failure
+        elif subreaper_active:
+            try:
+                _set_linux_child_subreaper(False)
+            except BaseException as containment_failure:
+                raise ScopedProcessContainmentError(
+                    "failed launch retained Linux subreaper custody"
+                ) from containment_failure
+        if restore_failure is not None:
+            raise restore_failure
+        raise failure
+
+
+class ScopedProcessTree:
+    """Birth-bound custody for one exact host command and its descendants.
+
+    The direct child is launched as a dedicated session leader.  ``observe``
+    samples only that owned PID, its dedicated group, and descendants already
+    reached from that tree.  ``seal`` holds the direct child unreaped while it
+    sends the final group signal, then proves every captured identity and the
+    owned group absent.  No host-wide process inventory is used.
+    """
+
+    def __init__(self, custody: _StartedProcessCustody) -> None:
+        self._custody = custody
+
+    @property
+    def pid(self) -> int:
+        return int(self._custody.process.pid)
+
+    @property
+    def sealed(self) -> bool:
+        return self._custody.sealed
+
+    @classmethod
+    def launch(
+        cls,
+        argv: Sequence[str],
+        *,
+        cwd: Path,
+        environment: Mapping[str, str] | None,
+        ownership: list[ScopedProcessTree | None] | None = None,
+    ) -> "ScopedProcessTree":
+        command = tuple(argv)
+        if (
+            not command
+            or not all(isinstance(part, str) and part for part in command)
+        ):
+            raise SupervisorContractError(
+                "scoped process-tree command is malformed"
+            )
+        if ownership is not None and (
+            len(ownership) != 1 or ownership[0] is not None
+        ):
+            raise SupervisorContractError(
+                "scoped process-tree ownership handoff is malformed"
+            )
+        custody_owner: list[_StartedProcessCustody | None] = [None]
+        try:
+            _start_scoped_process(
+                command,
+                cwd=cwd,
+                environment=environment,
+                ownership=custody_owner,
+            )
+            custody = custody_owner[0]
+            if custody is None:
+                raise SupervisorContractError(
+                    "scoped process custody handoff was lost"
+                )
+            tree = cls(custody)
+            if ownership is not None:
+                ownership[0] = tree
+            return tree
+        except BaseException as failure:
+            custody = custody_owner[0]
+            if custody is not None and not custody.sealed:
+                try:
+                    _emergency_contain_started_process(custody)
+                except BaseException as containment_failure:
+                    raise ScopedProcessContainmentError(
+                        "scoped process launch could not prove containment"
+                    ) from containment_failure
+            if isinstance(failure, OSError):
+                raise SupervisorContractError(
+                    "scoped process tree could not start"
+                ) from failure
+            raise failure
+
+    def observe_exit(self) -> bool:
+        """Observe, but do not reap, the exact child and reachable tree."""
+
+        if self._custody.sealed:
+            raise SupervisorContractError(
+                "scoped process tree was already sealed"
+            )
+        if self._custody.root_started is None:
+            raise SupervisorContractError(
+                "scoped process tree lacks a bound root identity"
+            )
+        _accumulate_custody(self._custody)
+        return _direct_child_exit_observed(self.pid)
+
+    def seal(
+        self,
+        *,
+        stop_requested: bool,
+        grace_seconds: float,
+    ) -> ScopedProcessTreeResult:
+        """Reach one terminal, fully reaped and descendant-free boundary."""
+
+        if (
+            not isinstance(stop_requested, bool)
+            or isinstance(grace_seconds, bool)
+            or not isinstance(grace_seconds, (int, float))
+            or not math.isfinite(grace_seconds)
+            or grace_seconds < 0
+        ):
+            raise SupervisorContractError(
+                "scoped process seal request is malformed"
+            )
+        if self._custody.sealed:
+            raise SupervisorContractError(
+                "scoped process tree was already sealed"
+            )
+        try:
+            direct_exited = self.observe_exit()
+            residual_after_normal_exit = (
+                direct_exited
+                and not _custody_descendants_absent(self._custody)
+            )
+            if not stop_requested and not direct_exited:
+                raise SupervisorContractError(
+                    "normal scoped process seal preceded direct-child exit"
+                )
+
+            # Give the exact runner its bounded cleanup window, but address its
+            # complete dedicated group and every birth-bound descendant rather
+            # than only the leader PID.
+            _signal_owned_process_group(self.pid, signal.SIGTERM)
+            _signal_custody_descendants(
+                self._custody, signal.SIGTERM, final=False
+            )
+            if stop_requested or residual_after_normal_exit:
+                deadline = time.monotonic() + float(grace_seconds)
+                while True:
+                    observed_exit = self.observe_exit()
+                    direct_exited = direct_exited or observed_exit
+                    if (
+                        direct_exited
+                        and _custody_descendants_absent(self._custody)
+                    ):
+                        break
+                    if time.monotonic() >= deadline:
+                        break
+                    _signal_owned_process_group(self.pid, signal.SIGTERM)
+                    _signal_custody_descendants(
+                        self._custody, signal.SIGTERM, final=False
+                    )
+                    time.sleep(0.05)
+
+            _accumulate_custody(self._custody)
+            forced_kill = (
+                not direct_exited
+                or not _custody_descendants_absent(self._custody)
+            )
+
+            # Keep the unreaped direct child as the group anchor until all
+            # terminal signals have been issued.  Reaping is deliberately the
+            # last mutation; post-reap work is observation-only.
+            _seal_anchored_process_group(self._custody)
+            _seal_descendants_before_root_reap(self._custody)
+            try:
+                returncode = self._custody.process.wait(timeout=10)
+            except subprocess.TimeoutExpired as exc:
+                raise SupervisorContractError(
+                    "scoped process direct child could not be reaped"
+                ) from exc
+            _prove_postreap_process_absence(self._custody)
+            if not _custody_descendants_absent(self._custody):
+                raise SupervisorContractError(
+                    "scoped process captured identity survived containment"
+                )
+            root_after = _process_identity(self.pid)
+            if (
+                root_after is not None
+                and root_after[4] == self._custody.root_started
+                and not root_after[3].startswith("Z")
+            ):
+                raise SupervisorContractError(
+                    "scoped process root survived containment"
+                )
+            if residual_after_normal_exit and not stop_requested:
+                raise SupervisorContractError(
+                    "normally exited scoped process left a descendant"
+                )
+            detached_proof = self._custody.detached_tracking_complete
+            _release_custody_kernel_state(self._custody)
+            self._custody.sealed = True
+            return ScopedProcessTreeResult(
+                returncode=int(returncode),
+                stop_requested=stop_requested,
+                forced_kill=forced_kill,
+                captured_descendant_count=len(
+                    self._custody.descendants
+                ),
+                captured_descendants_absent=True,
+                detached_processes_proven_absent=detached_proof,
+            )
+        except BaseException as failure:
+            if not self._custody.sealed:
+                try:
+                    _emergency_contain_started_process(self._custody)
+                except BaseException as containment_failure:
+                    raise ScopedProcessContainmentError(
+                        "scoped process failure could not prove containment"
+                    ) from containment_failure
+            raise failure
+
+
+def _supervise_started_process(
+    custody: _StartedProcessCustody,
+    *,
+    argv: tuple[str, ...],
+    timeout_seconds: float,
+    started_at_ns: int,
+    stdout_file: Any,
+    stderr_file: Any,
+) -> _BoundedProcessResult:
+    process = custody.process
+    root_identity = _process_identity(process.pid)
+    if root_identity is None or root_identity[3].startswith("Z"):
+        if (
+            custody.root_started is None
+            or not _direct_child_exit_observed(process.pid)
+        ):
+            raise SupervisorContractError(
+                "control-suite root lacks a held birth-bound exit"
+            )
+        if (
+            root_identity is not None
+            and custody.root_started != root_identity[4]
+        ):
+            raise SupervisorContractError(
+                "control-suite root binding changed before supervision"
+            )
+    else:
+        if (
+            root_identity[0] != os.getpid()
+            or root_identity[1] != process.pid
+            or root_identity[2] != process.pid
+        ):
+            raise SupervisorContractError(
+                "control-suite root lacks a live birth-bound session"
+            )
+        if (
+            custody.root_started is not None
+            and custody.root_started != root_identity[4]
+        ):
+            raise SupervisorContractError(
+                "control-suite root binding changed before supervision"
+            )
+        custody.root_started = root_identity[4]
+    deadline = time.monotonic() + timeout_seconds
+    timed_out = False
+    direct_exited = False
+    while True:
+        _accumulate_custody(custody)
+        direct_exited = _direct_child_exit_observed(process.pid)
+        if direct_exited:
+            break
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            timed_out = True
+            break
+        time.sleep(min(0.05, remaining))
+
+    # The direct child remains unreaped, so its PID still anchors its original
+    # process group throughout this final traversal and containment phase.
+    _accumulate_custody(custody)
+    residual_after_normal_exit = (
+        not timed_out
+        and not _custody_descendants_absent(custody)
+    )
+
+    # Seal the dedicated group on every terminal path, including ordinary
+    # exit.  This catches a same-group Linux child that escaped entirely
+    # between two direct-child samples without requiring a host PID inventory.
+    _signal_owned_process_group(process.pid, signal.SIGTERM)
+    _signal_custody_descendants(
+        custody, signal.SIGTERM, final=False
+    )
+    if timed_out or residual_after_normal_exit:
+        grace_deadline = (
+            time.monotonic() + CONTROL_SUITE_TERM_GRACE_SECONDS
+        )
+        while time.monotonic() < grace_deadline:
+            _accumulate_custody(custody)
+            _signal_owned_process_group(
+                process.pid, signal.SIGTERM
+            )
+            _signal_custody_descendants(
+                custody, signal.SIGTERM, final=False
+            )
+            observed_exit = _direct_child_exit_observed(process.pid)
+            direct_exited = direct_exited or observed_exit
+            if (
+                direct_exited
+                and _custody_descendants_absent(custody)
+            ):
+                break
+            time.sleep(0.05)
+
+    _accumulate_custody(custody)
+    _seal_anchored_process_group(custody)
+    _seal_descendants_before_root_reap(custody)
+    try:
+        returncode = process.wait(timeout=10)
+    except subprocess.TimeoutExpired as exc:
+        raise SupervisorContractError(
+            "control-suite direct child could not be reaped"
+        ) from exc
+    _prove_postreap_process_absence(custody)
+    if not _custody_descendants_absent(custody):
+        raise SupervisorContractError(
+            "control-suite captured process survived containment"
+        )
+    root_after = _process_identity(process.pid)
+    if (
+        root_after is not None
+        and root_after[4] == custody.root_started
+        and not root_after[3].startswith("Z")
+    ):
+        raise SupervisorContractError(
+            "control-suite root survived containment"
+        )
+    _release_custody_kernel_state(custody)
+    custody.sealed = True
+    if residual_after_normal_exit:
+        raise SupervisorContractError(
+            "normally exited control suite left a descendant"
+        )
+    stdout = _read_bounded_process_stream(
+        stdout_file, label="stdout"
+    )
+    stderr = _read_bounded_process_stream(
+        stderr_file, label="stderr"
+    )
+    return _BoundedProcessResult(
+        argv=argv,
+        returncode=returncode,
+        stdout=stdout,
+        stderr=stderr,
+        started_at_ns=started_at_ns,
+        ended_at_ns=time.time_ns(),
+        timed_out=timed_out,
+        captured_descendant_count=len(custody.descendants),
+        captured_descendants_absent=True,
     )
 
 
@@ -4760,7 +6309,6 @@ def _run_bounded_process_group(
     if (
         not argv
         or not all(isinstance(part, str) and part for part in argv)
-        or not Path(argv[0]).is_absolute()
         or timeout_seconds <= 0
     ):
         raise SupervisorContractError(
@@ -4785,177 +6333,57 @@ def _run_bounded_process_group(
             raise SupervisorContractError(
                 "bounded control-suite scratch root is not private"
             )
-    # Do not start a process tree unless the supervisor can enumerate exact
-    # descendant identities for the timeout path.
-    _process_identity_table()
     started_at_ns = time.time_ns()
     with tempfile.TemporaryFile(
         mode="w+b", dir=temporary_root
     ) as stdout_file, (
         tempfile.TemporaryFile(mode="w+b", dir=temporary_root)
     ) as stderr_file:
+        custody_owner: list[_StartedProcessCustody | None] = [None]
+        start_completed = False
         try:
-            process = subprocess.Popen(
+            _start_scoped_process(
                 argv,
                 cwd=cwd,
-                env=environment,
+                environment=environment,
                 stdin=subprocess.DEVNULL,
                 stdout=stdout_file,
                 stderr=stderr_file,
-                shell=False,
-                close_fds=True,
-                start_new_session=True,
                 preexec_fn=_limit_control_suite_child,
+                ownership=custody_owner,
             )
-        except OSError as exc:
-            raise SupervisorContractError(
-                "runtime control-suite process could not start"
-            ) from exc
-        timed_out = False
-        descendants: dict[int, str] = {}
-        root_start: str | None = None
-        deadline = time.monotonic() + timeout_seconds
-        while True:
-            table = _process_identity_table()
-            root_identity = table.get(process.pid)
-            if root_identity is not None:
-                root_start = root_start or root_identity[4]
-            _accumulate_related_identities(
-                process.pid,
-                process.pid,
-                descendants,
-                table,
+            start_completed = True
+            custody = custody_owner[0]
+            if custody is None:
+                raise SupervisorContractError(
+                    "runtime control-suite custody handoff was lost"
+                )
+            return _supervise_started_process(
+                custody,
+                argv=argv,
+                timeout_seconds=timeout_seconds,
+                started_at_ns=started_at_ns,
+                stdout_file=stdout_file,
+                stderr_file=stderr_file,
             )
-            polled = process.poll()
-            if polled is not None:
-                returncode = polled
-                break
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                timed_out = True
-                returncode = -signal.SIGTERM
-                break
-            time.sleep(min(0.05, remaining))
-
-        # Capture children that exited their parent concurrently with the
-        # direct child's state transition.  Same-session/group processes are
-        # retained even after reparenting.
-        table = _process_identity_table()
-        _accumulate_related_identities(
-            process.pid,
-            process.pid,
-            descendants,
-            table,
-        )
-        captured = {
-            **descendants,
-            **(
-                {process.pid: root_start}
-                if root_start is not None
-                else {}
-            ),
-        }
-        residual_after_normal_exit = (
-            not timed_out
-            and not _identities_absent(descendants)
-        )
-        if timed_out or residual_after_normal_exit:
-            _signal_exact_processes(descendants, signal.SIGTERM)
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                # macOS may report EPERM after the group leader is reaped
-                # and only already-signalled zombies remain.  Exact
-                # PID/start identities are still signalled below and their
-                # absence is mandatory before return.
-                pass
-
-            # Continue accumulating exact identities throughout the grace
-            # period; a child may fork, setsid, or reparent while teardown is
-            # underway.
-            grace_deadline = (
-                time.monotonic()
-                + CONTROL_SUITE_TERM_GRACE_SECONDS
-            )
-            while time.monotonic() < grace_deadline:
-                table = _process_identity_table()
-                _accumulate_related_identities(
-                    process.pid,
-                    process.pid,
-                    descendants,
-                    table,
-                )
-                _signal_exact_processes(
-                    descendants, signal.SIGTERM
-                )
-                if (
-                    process.poll() is not None
-                    and _identities_absent(descendants)
-                ):
-                    break
-                time.sleep(0.05)
-            captured = {
-                **descendants,
-                **(
-                    {process.pid: root_start}
-                    if root_start is not None
-                    else {}
-                ),
-            }
-            _signal_exact_processes(captured, signal.SIGKILL)
-            try:
-                os.killpg(process.pid, signal.SIGKILL)
-            except ProcessLookupError:
-                pass
-            except PermissionError:
-                pass
-            try:
-                final_returncode = process.wait(timeout=10)
-            except subprocess.TimeoutExpired as exc:
+        except BaseException as failure:
+            custody = custody_owner[0]
+            if custody is not None and not custody.sealed:
+                try:
+                    _emergency_contain_started_process(custody)
+                except BaseException as containment_failure:
+                    if isinstance(
+                        failure, ScopedProcessContainmentError
+                    ) and not start_completed:
+                        raise failure from containment_failure
+                    raise ScopedProcessContainmentError(
+                        "post-launch failure could not prove containment"
+                    ) from containment_failure
+            if custody is None and isinstance(failure, OSError):
                 raise SupervisorContractError(
-                    "control-suite direct child could not be reaped"
-                ) from exc
-            if timed_out:
-                returncode = final_returncode
-            final_table = _process_identity_table()
-            _accumulate_related_identities(
-                process.pid,
-                process.pid,
-                descendants,
-                final_table,
-            )
-            _signal_exact_processes(descendants, signal.SIGKILL)
-            if not _identities_absent(captured):
-                raise SupervisorContractError(
-                    "control-suite descendant survived containment"
-                )
-            if not _identities_absent(descendants):
-                raise SupervisorContractError(
-                    "late control-suite descendant survived containment"
-                )
-            if residual_after_normal_exit:
-                raise SupervisorContractError(
-                    "normally exited control suite left a descendant"
-                )
-        stdout = _read_bounded_process_stream(
-            stdout_file, label="stdout"
-        )
-        stderr = _read_bounded_process_stream(
-            stderr_file, label="stderr"
-        )
-    return _BoundedProcessResult(
-        argv=argv,
-        returncode=returncode,
-        stdout=stdout,
-        stderr=stderr,
-        started_at_ns=started_at_ns,
-        ended_at_ns=time.time_ns(),
-        timed_out=timed_out,
-        captured_descendant_count=len(descendants),
-        captured_descendants_absent=True,
-    )
+                    "runtime control-suite process could not start"
+                ) from failure
+            raise failure
 
 
 def _private_system_scratch() -> Path:

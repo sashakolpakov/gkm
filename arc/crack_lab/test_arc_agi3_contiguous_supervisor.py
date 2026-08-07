@@ -7,6 +7,7 @@ import os
 import shutil
 import stat
 import sys
+import time
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -178,36 +179,905 @@ def _write_pass_conformance(path: Path) -> dict:
     return value
 
 
-@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
-def test_bounded_control_suite_kills_setsid_grandchild_and_reaps_parent(
-    tmp_path,
-):
-    script = tmp_path / "escaped_grandchild.py"
-    pid_path = tmp_path / "grandchild.pid"
-    script.write_text(
-        "\n".join(
-            (
-                "import os",
-                "import signal",
-                "import sys",
-                "import time",
-                "child = os.fork()",
-                "if child == 0:",
-                "    os.setsid()",
-                "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
-                "    with open(sys.argv[1], 'w', encoding='ascii') as out:",
-                "        out.write(str(os.getpid()))",
-                "        out.flush()",
-                "        os.fsync(out.fileno())",
-                "    while True:",
-                "        time.sleep(1)",
-                "signal.signal(signal.SIGTERM, signal.SIG_IGN)",
-                "while True:",
-                "    time.sleep(1)",
-            )
+def test_darwin_scoped_process_abi_and_pid_count_contract(monkeypatch):
+    assert B.ctypes.sizeof(B._DarwinProcBsdInfo) == 136
+    assert {
+        name: getattr(B._DarwinProcBsdInfo, name).offset
+        for name, _kind in B._DarwinProcBsdInfo._fields_
+    } == {
+        "pbi_flags": 0,
+        "pbi_status": 4,
+        "pbi_xstatus": 8,
+        "pbi_pid": 12,
+        "pbi_ppid": 16,
+        "pbi_uid": 20,
+        "pbi_gid": 24,
+        "pbi_ruid": 28,
+        "pbi_rgid": 32,
+        "pbi_svuid": 36,
+        "pbi_svgid": 40,
+        "rfu_1": 44,
+        "pbi_comm": 48,
+        "pbi_name": 64,
+        "pbi_nfiles": 96,
+        "pbi_pgid": 100,
+        "pbi_pjobc": 104,
+        "e_tdev": 108,
+        "e_tpgid": 112,
+        "pbi_nice": 116,
+        "pbi_start_tvsec": 120,
+        "pbi_start_tvusec": 128,
+    }
+    calls = []
+
+    def list_children(identifier, buffer, buffer_bytes):
+        assert identifier == 77
+        capacity = buffer_bytes // B.ctypes.sizeof(B.ctypes.c_int)
+        calls.append(capacity)
+        if capacity == 32:
+            for index in range(capacity):
+                buffer[index] = 1000 + index
+            # libproc returns a PID count, not a byte count.  Equality means
+            # the result may have filled the buffer and must be retried.
+            return capacity
+        buffer[0] = 2001
+        buffer[1] = 2002
+        return 2
+
+    monkeypatch.setattr(
+        B,
+        "_darwin_libproc",
+        lambda: SimpleNamespace(proc_listchildpids=list_children),
+    )
+    assert B._darwin_scoped_pids("proc_listchildpids", 77) == {
+        2001,
+        2002,
+    }
+    assert calls == [32, 64]
+
+
+def test_linux_process_stat_indices_and_proc_record_bounds(tmp_path):
+    suffix = ["R", "11", "12", "13", *("0" for _ in range(15)), "987"]
+    identity = B._parse_linux_process_identity(
+        4321,
+        f"4321 (name with ) delimiter) {' '.join(suffix)}\n",
+    )
+    assert identity == (11, 12, 13, "R", "linux:987")
+
+    oversized = tmp_path / "oversized-proc-record"
+    oversized.write_bytes(b"x" * 9)
+    with pytest.raises(
+        B.SupervisorContractError, match="hard byte bound"
+    ):
+        B._read_bounded_linux_proc_record(
+            oversized, maximum_bytes=8, label="synthetic proc record"
         )
+
+
+def test_linux_child_pid_count_and_tokens_fail_closed(monkeypatch):
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "MAX_SCOPED_PROCESS_IDENTITIES", 2)
+    monkeypatch.setattr(B, "_linux_task_ids", lambda _pid: (10,))
+    monkeypatch.setattr(
+        B,
+        "_read_bounded_linux_proc_record",
+        lambda *_args, **_kwargs: "20 21 22\n",
+    )
+    with pytest.raises(
+        B.SupervisorContractError, match="PID bound"
+    ):
+        B._scoped_child_pids(10)
+
+    monkeypatch.setattr(
+        B,
+        "_read_bounded_linux_proc_record",
+        lambda *_args, **_kwargs: "20 20\n",
+    )
+    with pytest.raises(B.SupervisorContractError, match="malformed"):
+        B._scoped_child_pids(10)
+
+
+def test_linux_child_inventory_reads_every_thread(monkeypatch):
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "_linux_task_ids", lambda _pid: (100, 104))
+    observed = []
+
+    def read_children(path, **_kwargs):
+        observed.append(Path(path))
+        if str(path).endswith("/task/100/children"):
+            return "201\n"
+        if str(path).endswith("/task/104/children"):
+            return "202 203\n"
+        raise AssertionError(f"unexpected scoped proc record: {path}")
+
+    monkeypatch.setattr(
+        B, "_read_bounded_linux_proc_record", read_children
+    )
+    assert B._scoped_child_pids(100) == {201, 202, 203}
+    assert len(observed) == 2
+
+
+def test_linux_descendant_signal_uses_only_bound_pidfd(monkeypatch):
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "_stable_handle_exited", lambda _fd: False)
+    monkeypatch.setattr(
+        B.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("raw numeric PID signal")
+        ),
+    )
+    calls = []
+    monkeypatch.setattr(
+        B.signal,
+        "pidfd_send_signal",
+        lambda fd, signum, siginfo, flags: calls.append(
+            (fd, signum, siginfo, flags)
+        ),
+        raising=False,
+    )
+
+    B._signal_exact_processes(
+        {201: "linux:old"},
+        B.signal.SIGKILL,
+        {201: 77},
+        owned_pgid=100,
+        final=True,
+    )
+    assert calls == [(77, B.signal.SIGKILL, None, 0)]
+
+
+def test_linux_pid_reuse_during_pidfd_binding_is_rejected(monkeypatch):
+    root_pid = 100
+    root = (os.getpid(), root_pid, root_pid, "R", "linux:root")
+    child_calls = 0
+    closed = []
+
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "_scoped_group_pids", lambda _pgid: set())
+    monkeypatch.setattr(
+        B,
+        "_scoped_child_pids",
+        lambda pid: {201} if pid == root_pid else set(),
+    )
+
+    def identity(pid):
+        nonlocal child_calls
+        if pid == root_pid:
+            return root
+        assert pid == 201
+        child_calls += 1
+        started = "linux:old" if child_calls == 1 else "linux:reused"
+        return (root_pid, root_pid, root_pid, "R", started)
+
+    monkeypatch.setattr(B, "_process_identity", identity)
+    monkeypatch.setattr(
+        B, "_linux_open_stable_process_handle", lambda _pid: 77
+    )
+    monkeypatch.setattr(B.os, "close", lambda fd: closed.append(fd))
+    identities = {}
+    stable_handles = {}
+
+    with pytest.raises(
+        B.SupervisorContractError,
+        match="changed while binding its stable handle",
+    ):
+        B._accumulate_related_identities(
+            root_pid,
+            root[4],
+            identities,
+            stable_handles,
+        )
+    assert identities == {}
+    assert stable_handles == {}
+    assert closed == [77]
+
+
+def test_linux_exited_pidfd_ignores_later_numeric_pid_reuse(monkeypatch):
+    root_pid = 100
+    root = (os.getpid(), root_pid, root_pid, "R", "linux:root")
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "_scoped_group_pids", lambda _pgid: set())
+    monkeypatch.setattr(B, "_scoped_child_pids", lambda _pid: set())
+    monkeypatch.setattr(B, "_stable_handle_exited", lambda fd: fd == 77)
+
+    def identity(pid):
+        if pid == root_pid:
+            return root
+        raise AssertionError("re-observed an exited pidfd by numeric PID")
+
+    monkeypatch.setattr(B, "_process_identity", identity)
+    identities = {201: "linux:old"}
+    stable_handles = {201: 77}
+    B._accumulate_related_identities(
+        root_pid,
+        root[4],
+        identities,
+        stable_handles,
+    )
+    assert identities == {201: "linux:old"}
+    assert stable_handles == {201: 77}
+
+
+def test_linux_subreaper_inventory_adopts_fast_reparent(monkeypatch):
+    root_pid = 100
+    supervisor_pid = os.getpid()
+    root = (
+        supervisor_pid,
+        root_pid,
+        root_pid,
+        "R",
+        "linux:root",
+    )
+    adopted = (
+        supervisor_pid,
+        301,
+        301,
+        "R",
+        "linux:adopted",
+    )
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B, "_scoped_group_pids", lambda _pgid: set())
+
+    def children(pid):
+        if pid == supervisor_pid:
+            return {root_pid, 301}
+        return set()
+
+    monkeypatch.setattr(B, "_scoped_child_pids", children)
+    monkeypatch.setattr(
+        B,
+        "_process_identity",
+        lambda pid: root if pid == root_pid else adopted,
+    )
+    monkeypatch.setattr(
+        B, "_linux_open_stable_process_handle", lambda pid: pid + 1000
+    )
+    monkeypatch.setattr(B, "_stable_handle_exited", lambda _fd: False)
+    identities = {}
+    stable_handles = {}
+    B._accumulate_related_identities(
+        root_pid,
+        root[4],
+        identities,
+        stable_handles,
+        supervisor_pid,
+    )
+    assert identities == {301: "linux:adopted"}
+    assert stable_handles == {301: 1301}
+
+
+def test_linux_subreaper_rejects_multithreaded_scheduler(monkeypatch):
+    scheduler_pid = os.getpid()
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(B.os, "pidfd_open", lambda *_args: 77, raising=False)
+    monkeypatch.setattr(
+        B.signal, "pidfd_send_signal", lambda *_args: None, raising=False
+    )
+    monkeypatch.setattr(B, "_linux_child_subreaper_enabled", lambda: False)
+    monkeypatch.setattr(
+        B,
+        "_linux_task_ids",
+        lambda _pid: (scheduler_pid, scheduler_pid + 1),
+    )
+
+    with pytest.raises(
+        B.SupervisorContractError, match="single-threaded scheduler"
+    ):
+        B._begin_linux_subreaper_custody()
+
+
+def test_linux_subreaper_seal_rechecks_children_after_reap(monkeypatch):
+    custody = B._StartedProcessCustody(
+        SimpleNamespace(pid=100, returncode=None),
+        {},
+        root_started="linux:root",
+        linux_subreaper_active=True,
+    )
+    accumulations = 0
+    reap_calls = 0
+    post_reap_inventories = iter(({100, 301}, {100}))
+
+    def accumulate(_custody):
+        nonlocal accumulations
+        accumulations += 1
+
+    def reap(_custody):
+        nonlocal reap_calls
+        reap_calls += 1
+
+    monkeypatch.setattr(B, "_accumulate_custody", accumulate)
+    monkeypatch.setattr(B, "_signal_custody_descendants", lambda *_a, **_k: None)
+    monkeypatch.setattr(B, "_custody_descendants_absent", lambda _c: True)
+    monkeypatch.setattr(B, "_direct_child_exit_observed", lambda _pid: True)
+    monkeypatch.setattr(B, "_reap_adopted_linux_descendants", reap)
+    monkeypatch.setattr(
+        B, "_scoped_child_pids", lambda _pid: set(next(post_reap_inventories))
+    )
+
+    B._seal_descendants_before_root_reap(custody, timeout_seconds=1)
+    assert reap_calls == 2
+    assert accumulations == 5
+
+
+def test_descendant_seal_holds_root_until_exit_is_observed(monkeypatch):
+    custody = B._StartedProcessCustody(
+        SimpleNamespace(pid=100, returncode=None),
+        {},
+        root_started="root:one",
+    )
+    root_observations = iter((False, True))
+    accumulation_calls = 0
+
+    def accumulate(_custody):
+        nonlocal accumulation_calls
+        accumulation_calls += 1
+
+    monkeypatch.setattr(B, "_accumulate_custody", accumulate)
+    monkeypatch.setattr(B, "_signal_custody_descendants", lambda *_a, **_k: None)
+    monkeypatch.setattr(B, "_custody_descendants_absent", lambda _c: True)
+    monkeypatch.setattr(
+        B,
+        "_direct_child_exit_observed",
+        lambda _pid: next(root_observations),
+    )
+    monkeypatch.setattr(B, "_reap_adopted_linux_descendants", lambda _c: None)
+    monkeypatch.setattr(B.time, "sleep", lambda _seconds: None)
+
+    B._seal_descendants_before_root_reap(custody, timeout_seconds=1)
+    # One traversal waits for the root; the second plus its confirmation
+    # traversal closes the descendant fixed point after reparenting.
+    assert accumulation_calls == 3
+
+
+def test_scoped_lineage_rejects_root_and_descendant_pid_reuse(monkeypatch):
+    root_pid = 100
+    root = (9, 100, 100, "R", "root:old")
+    monkeypatch.setattr(B, "_scoped_group_pids", lambda _pgid: set())
+    monkeypatch.setattr(B, "_scoped_child_pids", lambda _pid: set())
+    monkeypatch.setattr(
+        B, "_process_identity", lambda _pid: (*root[:4], "root:new")
+    )
+    with pytest.raises(
+        B.SupervisorContractError, match="root changed its birth identity"
+    ):
+        B._accumulate_related_identities(root_pid, root[4], {})
+
+    identities = {201: "child:old"}
+
+    def reused_child(pid):
+        if pid == root_pid:
+            return root
+        assert pid == 201
+        return (root_pid, root_pid, root_pid, "R", "child:new")
+
+    monkeypatch.setattr(B, "_process_identity", reused_child)
+    with pytest.raises(
+        B.SupervisorContractError, match="changed its birth identity"
+    ):
+        B._accumulate_related_identities(
+            root_pid, root[4], identities
+        )
+    assert identities == {201: "child:old"}
+
+
+def test_scoped_lineage_rechecks_parent_after_child_sample(monkeypatch):
+    root_pid = 100
+    root_old = (9, 100, 100, "R", "root:old")
+    root_new = (9, 100, 100, "R", "root:new")
+    root_calls = 0
+
+    def identity(pid):
+        nonlocal root_calls
+        if pid == root_pid:
+            root_calls += 1
+            return root_new if root_calls >= 3 else root_old
+        assert pid == 201
+        return (root_pid, 100, 100, "R", "child:one")
+
+    monkeypatch.setattr(B, "_process_identity", identity)
+    monkeypatch.setattr(B, "_scoped_group_pids", lambda _pgid: set())
+    monkeypatch.setattr(
+        B,
+        "_scoped_child_pids",
+        lambda pid: {201} if pid == root_pid else set(),
+    )
+    with pytest.raises(
+        B.SupervisorContractError, match="parent changed"
+    ):
+        B._accumulate_related_identities(root_pid, root_old[4], {})
+
+
+def test_waitid_wnowait_retries_interrupt_without_reaping(monkeypatch):
+    calls = []
+
+    def waitid(kind, pid, flags):
+        calls.append((kind, pid, flags))
+        if len(calls) == 1:
+            raise InterruptedError
+        return SimpleNamespace(si_pid=pid)
+
+    monkeypatch.setattr(B.os, "waitid", waitid)
+    assert B._direct_child_exit_observed(321) is True
+    assert len(calls) == 2
+    assert calls[-1][2] & B.os.WNOWAIT
+
+
+def test_darwin_group_signal_eperm_needs_scoped_absence(monkeypatch):
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Darwin")
+    )
+    monkeypatch.setattr(
+        B.os,
+        "killpg",
+        lambda *_args: (_ for _ in ()).throw(PermissionError()),
+    )
+    monkeypatch.setattr(
+        B, "_process_group_has_live_members", lambda _pgid: False
+    )
+    B._signal_owned_process_group(99, 15)
+    monkeypatch.setattr(
+        B, "_process_group_has_live_members", lambda _pgid: True
+    )
+    with pytest.raises(
+        B.SupervisorContractError, match="cannot signal"
+    ):
+        B._signal_owned_process_group(99, 15)
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(
+        B, "_process_group_has_live_members", lambda _pgid: False
+    )
+    with pytest.raises(
+        B.SupervisorContractError, match="cannot signal"
+    ):
+        B._signal_owned_process_group(99, 15)
+
+
+def test_darwin_detached_descendant_is_never_raw_signaled(monkeypatch):
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Darwin")
+    )
+    monkeypatch.setattr(
+        B,
+        "_process_identity",
+        lambda _pid: (1, 777, 777, "R", "darwin:birth"),
+    )
+    monkeypatch.setattr(
+        B.os,
+        "kill",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("Darwin raw numeric PID signal")
+        ),
+    )
+    identities = {201: "darwin:birth"}
+
+    # TERM grace delegates cleanup to the trusted direct runner without a
+    # TOCTOU-prone numeric signal.  Final containment must then fail closed.
+    B._signal_exact_processes(
+        identities,
+        B.signal.SIGTERM,
+        None,
+        owned_pgid=100,
+        final=False,
+    )
+    with pytest.raises(
+        B.ScopedProcessContainmentError,
+        match="cannot safely signal a detached numeric PID",
+    ):
+        B._signal_exact_processes(
+            identities,
+            B.signal.SIGKILL,
+            None,
+            owned_pgid=100,
+            final=True,
+        )
+
+
+def test_postreap_emergency_is_observation_only(monkeypatch):
+    custody = B._StartedProcessCustody(
+        SimpleNamespace(pid=99, returncode=0),
+        {101: "child:one"},
+    )
+    monkeypatch.setattr(
+        B,
+        "_signal_owned_process_group",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("post-reap numeric group signal")
+        ),
+    )
+    monkeypatch.setattr(
+        B,
+        "_signal_exact_processes",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("post-reap exact PID signal")
+        ),
+    )
+
+    def prove(selected):
+        selected.sealed = True
+
+    monkeypatch.setattr(B, "_prove_postreap_process_absence", prove)
+    B._emergency_contain_started_process(custody)
+    assert custody.sealed is True
+
+
+def test_emergency_seals_before_single_wait_without_popen_kill(monkeypatch):
+    events = []
+
+    class FakeProcess:
+        pid = 500
+        returncode = None
+
+        def kill(self):
+            raise AssertionError("Popen.kill reaped or polled the root")
+
+        def wait(self, *, timeout):
+            assert timeout == 10
+            events.append("wait")
+            self.returncode = -9
+            return self.returncode
+
+    custody = B._StartedProcessCustody(
+        FakeProcess(), {}, root_started="root:one"
+    )
+    monkeypatch.setattr(
+        B,
+        "_signal_owned_process_group",
+        lambda _pgid, signum: events.append(("group", signum)),
+    )
+    monkeypatch.setattr(
+        B,
+        "_seal_descendants_before_root_reap",
+        lambda _custody: events.append("seal-descendants"),
+    )
+    monkeypatch.setattr(
+        B,
+        "_prove_postreap_process_absence",
+        lambda _custody: events.append("prove-absence"),
+    )
+    monkeypatch.setattr(
+        B,
+        "_release_custody_kernel_state",
+        lambda _custody: events.append("release-kernel-state"),
+    )
+
+    B._emergency_contain_started_process(custody)
+    assert custody.sealed is True
+    assert events == [
+        ("group", B.signal.SIGKILL),
+        "seal-descendants",
+        "wait",
+        "prove-absence",
+        "release-kernel-state",
+    ]
+
+
+def test_clean_exit_seals_group_before_one_deliberate_reap(monkeypatch):
+    events = []
+
+    class FakeProcess:
+        pid = 500
+        returncode = None
+
+        def wait(self, *, timeout):
+            assert timeout == 10
+            assert self.returncode is None
+            events.append("wait")
+            self.returncode = 0
+            return 0
+
+    process = FakeProcess()
+    custody = B._StartedProcessCustody(process, {})
+
+    def identity(pid):
+        assert pid == process.pid
+        if process.returncode is not None:
+            return None
+        return (os.getpid(), pid, pid, "R", "root:one")
+
+    monkeypatch.setattr(B, "_process_identity", identity)
+    monkeypatch.setattr(
+        B, "_accumulate_related_identities", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        B, "_direct_child_exit_observed", lambda _pid: True
+    )
+    monkeypatch.setattr(
+        B,
+        "_signal_owned_process_group",
+        lambda _pgid, signum: events.append(("group", signum)),
+    )
+    monkeypatch.setattr(
+        B, "_signal_exact_processes", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+
+    def prove(selected):
+        events.append("prove")
+        selected.sealed = True
+
+    monkeypatch.setattr(B, "_prove_postreap_process_absence", prove)
+    monkeypatch.setattr(
+        B, "_read_bounded_process_stream", lambda *_args, **_kwargs: ""
+    )
+    result = B._supervise_started_process(
+        custody,
+        argv=("/bin/true",),
+        timeout_seconds=1,
+        started_at_ns=1,
+        stdout_file=SimpleNamespace(),
+        stderr_file=SimpleNamespace(),
+    )
+    assert result.returncode == 0
+    assert events == [
+        ("group", 15),
+        ("group", 9),
+        "wait",
+        "prove",
+    ]
+
+
+def test_bounded_process_stream_rejects_hard_overflow(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(B, "MAX_CONTROL_SUITE_STREAM_BYTES", 8)
+    path = tmp_path / "captured-stream"
+    path.write_bytes(b"123456789")
+    with path.open("r+b") as stream:
+        with pytest.raises(
+            B.SupervisorContractError, match="hard byte bound"
+        ):
+            B._read_bounded_process_stream(stream, label="stdout")
+
+
+def test_postlaunch_observer_failure_kills_and_reaps_owned_group(
+    tmp_path, monkeypatch
+):
+    launched = []
+    real_popen = B.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        launched.append(process)
+        return process
+
+    def fail_observation(*_args, **_kwargs):
+        raise B.SupervisorContractError("injected scoped observer failure")
+
+    monkeypatch.setattr(B.subprocess, "Popen", recording_popen)
+    monkeypatch.setattr(B, "_accumulate_related_identities", fail_observation)
+    with pytest.raises(
+        B.ScopedProcessContainmentError,
+        match="launch could not prove containment",
+    ):
+        B._run_bounded_process_group(
+            ("/bin/sleep", "30"),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+            timeout_seconds=10,
+        )
+    assert len(launched) == 1
+    assert launched[0].returncode is not None
+    observed = B._process_identity(launched[0].pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+def test_postlaunch_keyboard_interrupt_kills_and_reaps_owned_group(
+    tmp_path, monkeypatch
+):
+    launched = []
+    real_popen = B.subprocess.Popen
+
+    def recording_popen(*args, **kwargs):
+        process = real_popen(*args, **kwargs)
+        launched.append(process)
+        return process
+
+    monkeypatch.setattr(B.subprocess, "Popen", recording_popen)
+    monkeypatch.setattr(
+        B,
+        "_accumulate_related_identities",
+        lambda *_args: (_ for _ in ()).throw(
+            KeyboardInterrupt("injected interrupt")
+        ),
+    )
+    with pytest.raises(
+        B.ScopedProcessContainmentError,
+        match="launch could not prove containment",
+    ):
+        B._run_bounded_process_group(
+            ("/bin/sleep", "30"),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+            timeout_seconds=10,
+        )
+    assert len(launched) == 1
+    assert launched[0].returncode is not None
+
+
+def test_pending_sigint_between_fork_and_factory_return_is_contained(
+    tmp_path, monkeypatch
+):
+    launched = []
+    real_popen = B.subprocess.Popen
+
+    class InterruptBeforeReturnPopen(real_popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            launched.append(self)
+            # _start_scoped_process has SIGINT blocked here.  Delivery occurs
+            # only after the child has a bound custody object.
+            B.signal.raise_signal(B.signal.SIGINT)
+
+    monkeypatch.setattr(B.subprocess, "Popen", InterruptBeforeReturnPopen)
+    with pytest.raises(KeyboardInterrupt):
+        B.ScopedProcessTree.launch(
+            ("/bin/sleep", "30"),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+        )
+
+    assert len(launched) == 1
+    assert launched[0].returncode is not None
+    observed = B._process_identity(launched[0].pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+def test_popen_init_baseexception_after_fork_is_contained(
+    tmp_path, monkeypatch
+):
+    launched = []
+    real_popen = B.subprocess.Popen
+
+    class ConstructorFailurePopen(real_popen):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            launched.append(self)
+            raise RuntimeError("injected constructor failure after fork")
+
+    monkeypatch.setattr(B.subprocess, "Popen", ConstructorFailurePopen)
+    with pytest.raises(RuntimeError, match="constructor failure after fork"):
+        B.ScopedProcessTree.launch(
+            ("/bin/sleep", "30"),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+        )
+
+    assert len(launched) == 1
+    assert launched[0].returncode is not None
+    observed = B._process_identity(launched[0].pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+def test_bounded_runner_contains_start_return_handoff_failure(
+    tmp_path, monkeypatch
+):
+    real_start = B._start_scoped_process
+    launched = []
+
+    def fail_after_custody_publish(*args, **kwargs):
+        custody = real_start(*args, **kwargs)
+        launched.append(custody.process)
+        raise KeyboardInterrupt("injected start-return handoff failure")
+
+    monkeypatch.setattr(
+        B, "_start_scoped_process", fail_after_custody_publish
+    )
+    with pytest.raises(KeyboardInterrupt, match="handoff failure"):
+        B._run_bounded_process_group(
+            ("/bin/sleep", "30"),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+            timeout_seconds=10,
+        )
+
+    assert len(launched) == 1
+    assert launched[0].returncode is not None
+    observed = B._process_identity(launched[0].pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+def test_postlaunch_cleanup_failure_surfaces_unproven(
+    tmp_path, monkeypatch
+):
+    process = SimpleNamespace(pid=500, returncode=None)
+    monkeypatch.setattr(
+        B,
+        "_process_identity",
+        lambda _pid: (1, 1, 1, "R", "preflight"),
+    )
+    monkeypatch.setattr(B, "_scoped_child_pids", lambda _pid: set())
+    monkeypatch.setattr(B.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(
+        B,
+        "_supervise_started_process",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            B.SupervisorContractError("injected observation failure")
+        ),
+    )
+    monkeypatch.setattr(
+        B,
+        "_emergency_contain_started_process",
+        lambda *_args: (_ for _ in ()).throw(
+            B.SupervisorContractError("injected containment failure")
+        ),
+    )
+    with pytest.raises(
+        B.ScopedProcessContainmentError,
+        match="launch could not prove containment",
+    ):
+        B._run_bounded_process_group(
+            ("/bin/true",),
+            cwd=tmp_path,
+            environment={"LANG": "C", "LC_ALL": "C"},
+            timeout_seconds=1,
+        )
+
+
+def test_bounded_control_suite_accepts_path_resolved_argv0(tmp_path):
+    result = B._run_bounded_process_group(
+        ("true",),
+        cwd=tmp_path,
+        environment={
+            "LANG": "C",
+            "LC_ALL": "C",
+            "PATH": "/usr/bin:/bin",
+        },
+        timeout_seconds=2,
+    )
+    assert result.returncode == 0
+    assert result.timed_out is False
+    assert result.captured_descendants_absent is True
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_normal_exit_seals_same_group_child_missed_by_lineage_poll(
+    tmp_path, monkeypatch
+):
+    script = tmp_path / "same_group_orphan.py"
+    pid_path = tmp_path / "same-group.pid"
+    script.write_text(
+        "\n".join((
+            "import os",
+            "import signal",
+            "import sys",
+            "import time",
+            "child = os.fork()",
+            "if child == 0:",
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+            "    with open(sys.argv[1], 'w', encoding='ascii') as out:",
+            "        out.write(str(os.getpid()))",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    while True:",
+            "        time.sleep(1)",
+            "while not os.path.exists(sys.argv[1]):",
+            "    time.sleep(0.01)",
+            "time.sleep(0.1)",
+        ))
         + "\n",
         encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        B, "_accumulate_related_identities", lambda *_args: None
     )
     result = B._run_bounded_process_group(
         (
@@ -226,17 +1096,252 @@ def test_bounded_control_suite_kills_setsid_grandchild_and_reaps_parent(
             "LC_ALL": "C",
             "TMPDIR": str(tmp_path),
         },
+        timeout_seconds=3,
+    )
+    assert result.returncode == 0
+    assert result.captured_descendant_count == 0
+    child_pid = int(pid_path.read_text(encoding="ascii"))
+    observed = B._process_identity(child_pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_bounded_control_suite_kills_setsid_grandchild_and_reaps_parent(
+    tmp_path,
+):
+    script = tmp_path / "escaped_grandchild.py"
+    pid_path = tmp_path / "grandchild.pid"
+    release_path = tmp_path / "release-grandchild"
+    exited_path = tmp_path / "grandchild-exiting"
+    script.write_text(
+        "\n".join(
+            (
+                "import os",
+                "import signal",
+                "import sys",
+                "import time",
+                "child = os.fork()",
+                "if child == 0:",
+                "    os.setsid()",
+                "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+                "    with open(sys.argv[1], 'w', encoding='ascii') as out:",
+                "        out.write(str(os.getpid()))",
+                "        out.flush()",
+                "        os.fsync(out.fileno())",
+                "    while not os.path.exists(sys.argv[2]):",
+                "        time.sleep(1)",
+                "    with open(sys.argv[3], 'wb') as out:",
+                "        out.write(b'exiting\\n')",
+                "        out.flush()",
+                "        os.fsync(out.fileno())",
+                "    raise SystemExit(0)",
+                "signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+                "while True:",
+                "    time.sleep(1)",
+            )
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    command = (
+        str(PYTHON_EXECUTABLE),
+        "-I",
+        "-E",
+        "-s",
+        "-B",
+        str(script),
+        str(pid_path),
+        str(release_path),
+        str(exited_path),
+    )
+    environment = {
+        "HOME": str(tmp_path),
+        "LANG": "C",
+        "LC_ALL": "C",
+        "TMPDIR": str(tmp_path),
+    }
+    if os.uname().sysname == "Darwin":
+        try:
+            with pytest.raises(
+                B.SupervisorContractError,
+                match="could not prove containment",
+            ):
+                B._run_bounded_process_group(
+                    command,
+                    cwd=tmp_path,
+                    environment=environment,
+                    timeout_seconds=0.75,
+                )
+        finally:
+            # Never strand the intentionally uncontained Darwin synthetic if
+            # the assertion itself fails before the normal cleanup line.
+            release_path.write_bytes(b"release\n")
+            cleanup_deadline = time.monotonic() + 10
+            while pid_path.exists() and not exited_path.exists():
+                if time.monotonic() >= cleanup_deadline:
+                    break
+                time.sleep(0.01)
+        deadline = time.monotonic() + 10
+        while not exited_path.exists():
+            assert time.monotonic() < deadline
+            time.sleep(0.01)
+        # Darwin may retain an orphan zombie briefly.  The child-authored,
+        # fsynced terminal marker proves the synthetic escapee executed its
+        # cooperative cleanup path without relying on PID-reuse-prone polling.
+        assert exited_path.read_bytes() == b"exiting\n"
+        return
+    result = B._run_bounded_process_group(
+        command,
+        cwd=tmp_path,
+        environment=environment,
         timeout_seconds=0.75,
     )
     assert result.timed_out is True
     assert result.captured_descendant_count == 1
     assert result.captured_descendants_absent is True
     grandchild_pid = int(pid_path.read_text(encoding="ascii"))
-    observed = B._process_identity_table().get(grandchild_pid)
+    observed = B._process_identity(grandchild_pid)
     assert observed is None or observed[3].startswith("Z")
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+@pytest.mark.skipif(
+    os.uname().sysname != "Linux",
+    reason="detached descendant sealing requires Linux pidfd/subreaper",
+)
+def test_scoped_process_tree_seals_sigterm_resistant_child_and_descendant(
+    tmp_path,
+):
+    script = tmp_path / "stubborn_scoped_tree.py"
+    child_path = tmp_path / "stubborn-child.pid"
+    script.write_text(
+        "\n".join((
+            "import os",
+            "import signal",
+            "import sys",
+            "import time",
+            "signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+            "child = os.fork()",
+            "if child == 0:",
+            "    os.setsid()",
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+            "    with open(sys.argv[1], 'w', encoding='ascii') as out:",
+            "        out.write(str(os.getpid()))",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    while True:",
+            "        time.sleep(1)",
+            "while True:",
+            "    time.sleep(1)",
+        )) + "\n",
+        encoding="utf-8",
+    )
+    tree = B.ScopedProcessTree.launch(
+        (
+            str(PYTHON_EXECUTABLE),
+            "-I",
+            "-E",
+            "-s",
+            "-B",
+            str(script),
+            str(child_path),
+        ),
+        cwd=tmp_path,
+        environment={
+            "HOME": str(tmp_path),
+            "LANG": "C",
+            "LC_ALL": "C",
+            "TMPDIR": str(tmp_path),
+        },
+    )
+    deadline = time.monotonic() + 5
+    while not child_path.exists():
+        assert time.monotonic() < deadline
+        assert tree.observe_exit() is False
+        time.sleep(0.01)
+    # One final sample binds the setsid descendant before quarantine starts.
+    assert tree.observe_exit() is False
+    result = tree.seal(stop_requested=True, grace_seconds=0.2)
+
+    assert result.returncode == -9
+    assert result.forced_kill is True
+    assert result.captured_descendant_count >= 1
+    assert result.captured_descendants_absent is True
+    child_pid = int(child_path.read_text(encoding="ascii"))
+    observed = B._process_identity(child_pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+@pytest.mark.skipif(
+    os.uname().sysname != "Linux",
+    reason="detached descendant sealing requires Linux pidfd/subreaper",
+)
+def test_scoped_process_tree_seals_descendant_after_root_exit_race(tmp_path):
+    script = tmp_path / "exited_root_scoped_tree.py"
+    child_path = tmp_path / "exited-root-child.pid"
+    script.write_text(
+        "\n".join((
+            "import os",
+            "import signal",
+            "import sys",
+            "import time",
+            "child = os.fork()",
+            "if child == 0:",
+            "    os.setsid()",
+            "    signal.signal(signal.SIGTERM, signal.SIG_IGN)",
+            "    with open(sys.argv[1], 'w', encoding='ascii') as out:",
+            "        out.write(str(os.getpid()))",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    while True:",
+            "        time.sleep(1)",
+            "while not os.path.exists(sys.argv[1]):",
+            "    time.sleep(0.01)",
+            "time.sleep(0.15)",
+        )) + "\n",
+        encoding="utf-8",
+    )
+    tree = B.ScopedProcessTree.launch(
+        (
+            str(PYTHON_EXECUTABLE),
+            "-I",
+            "-E",
+            "-s",
+            "-B",
+            str(script),
+            str(child_path),
+        ),
+        cwd=tmp_path,
+        environment={
+            "HOME": str(tmp_path),
+            "LANG": "C",
+            "LC_ALL": "C",
+            "TMPDIR": str(tmp_path),
+        },
+    )
+    deadline = time.monotonic() + 5
+    exited = False
+    while not exited:
+        assert time.monotonic() < deadline
+        exited = tree.observe_exit()
+        time.sleep(0.01)
+    result = tree.seal(stop_requested=True, grace_seconds=0.1)
+
+    assert result.returncode == 0
+    assert result.forced_kill is True
+    assert result.captured_descendant_count >= 1
+    assert result.captured_descendants_absent is True
+    child_pid = int(child_path.read_text(encoding="ascii"))
+    observed = B._process_identity(child_pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+@pytest.mark.skipif(
+    os.uname().sysname != "Linux",
+    reason="detached descendant sealing requires Linux pidfd/subreaper",
+)
 def test_bounded_control_suite_rejects_normal_exit_orphan(tmp_path):
     script = tmp_path / "normal_exit_orphan.py"
     pid_path = tmp_path / "orphan.pid"
@@ -287,11 +1392,15 @@ def test_bounded_control_suite_rejects_normal_exit_orphan(tmp_path):
             timeout_seconds=3,
         )
     orphan_pid = int(pid_path.read_text(encoding="ascii"))
-    observed = B._process_identity_table().get(orphan_pid)
+    observed = B._process_identity(orphan_pid)
     assert observed is None or observed[3].startswith("Z")
 
 
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+@pytest.mark.skipif(
+    os.uname().sysname != "Linux",
+    reason="detached descendant sealing requires Linux pidfd/subreaper",
+)
 def test_bounded_control_suite_contains_reparented_double_fork(
     tmp_path,
 ):
@@ -347,7 +1456,7 @@ def test_bounded_control_suite_contains_reparented_double_fork(
     assert result.timed_out is True
     assert result.captured_descendant_count >= 2
     grandchild_pid = int(pid_path.read_text(encoding="ascii"))
-    observed = B._process_identity_table().get(grandchild_pid)
+    observed = B._process_identity(grandchild_pid)
     assert observed is None or observed[3].startswith("Z")
 
 
