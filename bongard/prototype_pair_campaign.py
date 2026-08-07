@@ -134,6 +134,12 @@ _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}\Z")
 
 _RUNTIME_SOURCE_MODULES = {
     "observer": "bongard.prototype_scene_observer",
+    "object-hypotheses": "bongard.prototype_object_hypotheses",
+    "object-profiles": "bongard.prototype_object_profiles",
+    "visual-runtime": "bongard.prototype_visual_runtime",
+    "visual-witnesses": "bongard.visual_witnesses",
+    "contour-witnesses": "bongard.contour_witnesses",
+    "visual-witness-bundle": "bongard.visual_witness_bundle",
     "calibration": "bongard.prototype_scene_calibration",
     "predicate": "bongard.prototype_scene_predicates",
     "version-space": "bongard.prototype_scene_support_version_space",

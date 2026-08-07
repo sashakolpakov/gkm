@@ -19,6 +19,7 @@ import hashlib
 import importlib
 import importlib.metadata
 import importlib.util
+from functools import lru_cache
 from pathlib import Path
 import platform
 import re
@@ -180,6 +181,7 @@ def visual_runtime_dependency_manifest() -> dict[str, Any]:
     }
 
 
+@lru_cache(maxsize=1)
 def visual_runtime_dependency_digest() -> str:
     """Return the content identity consumed by observation/replay protocols."""
 
