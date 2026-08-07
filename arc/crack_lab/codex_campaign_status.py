@@ -63,6 +63,9 @@ INFRASTRUCTURE_WIP_PHASES = frozenset({
     "infrastructure_failure_transport",
     "containment_timeout",
 })
+INFRASTRUCTURE_NONCOUNTING_EVENT = (
+    "codex_infrastructure_generation_quarantined"
+)
 
 
 def _read_json(path: Path) -> dict[str, Any]:
@@ -1596,6 +1599,24 @@ def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return result
 
 
+def infrastructure_noncounting_events(
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Return scheduler failures that deliberately are not solver turns."""
+
+    return [
+        row for row in records
+        if (
+            row.get("event") == INFRASTRUCTURE_NONCOUNTING_EVENT
+            and row.get("schema")
+            == "scheduler_zero_ledger_generation_quarantine_v1"
+            and row.get("failure_class") == "infrastructure"
+            and row.get("retry_increment") == 0
+            and row.get("codex_exec_appended") is False
+        )
+    ]
+
+
 def _joined_window_turns(
     records: list[dict[str, Any]], exec_records: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
@@ -1763,6 +1784,9 @@ def campaign_report(*, ledger: Path = Guard.DEFAULT_LEDGER,
         "local_window": local_totals,
         "readiness": readiness,
         "turns": turns,
+        "infrastructure_noncounting_events": (
+            infrastructure_noncounting_events(records)
+        ),
         "effort_efficiency": effort_efficiency(turns),
         "window_effort_efficiency": effort_efficiency(window_turns),
         "effort_efficiency_by_phase": effort_efficiency_by_phase(turns),

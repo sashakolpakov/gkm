@@ -659,6 +659,461 @@ def _append_clean_dispatch_ledger(fixture, *, reached_after=0):
     }, fixture["ledger"])
 
 
+def _zero_ledger_child_result(fixture):
+    return R.GuardedChildResult(
+        returncode=-15,
+        taint_reason="host process introspection: synthetic boundary stop",
+        workspace=fixture["workspace"].name,
+        transcript=fixture["record"]["transcript"],
+        workspace_identity=(
+            fixture["workspace"].stat().st_dev,
+            fixture["workspace"].stat().st_ino,
+        ),
+        protected_identity=(
+            fixture["protected"].stat().st_dev,
+            fixture["protected"].stat().st_ino,
+        ),
+        process_tree_quiesced=True,
+        detached_processes_proven_absent=True,
+    )
+
+
+def test_quiesced_zero_exec_is_infrastructure_noncounting_and_exactly_cleaned(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    canonical = tmp_path / "agent_solutions" / "ar25_legs" / "solver.py"
+    canonical.write_bytes(b"sealed canonical baseline\n")
+    level = R._target_wip_level(fixture["item"])
+    old_attempt = level / "old_attempt"
+    old_attempt.mkdir(parents=True)
+    (old_attempt / "sealed.txt").write_bytes(b"sealed WIP baseline\n")
+    latest = level / "latest.json"
+    old_latest = b'{"attempt":"old_attempt","status":"clean"}\n'
+    latest.write_bytes(old_latest)
+    transcript_payload = (
+        fixture["protected"] / fixture["record"]["transcript"]
+    ).read_bytes()
+
+    def zero_child(*_args, **_kwargs):
+        canonical.write_bytes(b"late unpublished promotion\n")
+        _write_authenticated_tainted_attempt(
+            fixture["item"],
+            level,
+            attempt="interrupted_zero_ledger",
+            transcript_name=fixture["record"]["transcript"],
+            transcript_payload=transcript_payload,
+            update_latest=True,
+        )
+        return _zero_ledger_child_result(fixture)
+
+    monkeypatch.setattr(R, "_run_guarded_child", zero_child)
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "infrastructure_noncounting"
+    assert result["retry_complexity_n"] == 0
+    assert result["reached"] == 0
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert not fixture["exact_lock"].exists()
+    assert canonical.read_bytes() == b"sealed canonical baseline\n"
+    assert latest.read_bytes() == old_latest
+    assert (old_attempt / "sealed.txt").read_bytes() == b"sealed WIP baseline\n"
+    assert not (level / "interrupted_zero_ledger").exists()
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        R.ZERO_LEDGER_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    event = rows[0]
+    assert event["failure_class"] == "infrastructure"
+    assert event["retry_increment"] == 0
+    assert event["codex_exec_appended"] is False
+    assert R.Status.joined_turns(rows) == []
+    assert R.Status.infrastructure_noncounting_events(rows) == [event]
+
+
+def test_zero_exec_recovery_requires_an_exact_empty_dispatch_suffix(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def child_with_unrelated_row(*_args, **_kwargs):
+        R.Guard.append_ledger(
+            {"event": "rate_limit_snapshot", "allowance": {}},
+            fixture["ledger"],
+        )
+        return _zero_ledger_child_result(fixture)
+
+    monkeypatch.setattr(R, "_run_guarded_child", child_with_unrelated_row)
+    with pytest.raises(
+        R.CampaignPlanError, match="did not append the bound Codex exec"
+    ):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert all(
+        row.get("event") != R.ZERO_LEDGER_EVENT
+        for row in R.Guard.read_ledger(fixture["ledger"])
+    )
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    marker_rows = [
+        json.loads(line)
+        for line in marker.read_text(encoding="utf-8").splitlines()
+    ]
+    failed = marker_rows[-1]
+    assert failed["event"] == "dispatch_failed"
+    assert failed["workspace"] == fixture["workspace"].name
+    assert failed["transcript"] == fixture["record"]["transcript"]
+    assert failed["workspace_identity"] == [
+        fixture["workspace"].stat().st_dev,
+        fixture["workspace"].stat().st_ino,
+    ]
+    assert failed["protected_identity"] == [
+        fixture["protected"].stat().st_dev,
+        fixture["protected"].stat().st_ino,
+    ]
+
+
+def test_zero_exec_durable_marker_replays_without_second_child(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def zero_child(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        return _zero_ledger_child_result(fixture)
+
+    real_complete = R._complete_zero_ledger_recovery
+    injected = False
+
+    def crash_after_marker(*args, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("injected crash after zero-ledger marker")
+        return real_complete(*args, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", zero_child)
+    monkeypatch.setattr(R, "_complete_zero_ledger_recovery", crash_after_marker)
+    with pytest.raises(RuntimeError, match="injected crash"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    parsed = R.RebootRecovery.parse_dispatch_marker(
+        marker.read_bytes(), require_recovery_arm=False
+    )
+    assert parsed.unquiesced["event"] == "dispatch_zero_ledger_quarantined"
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "infrastructure_noncounting"
+    assert result["zero_ledger_replayed"] is True
+    assert child_calls == 1
+    assert not marker.exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [R.ZERO_LEDGER_EVENT, "codex_dispatch_release_authorized"]
+
+
+def test_zero_exec_replay_rejects_protected_evidence_mutation(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_run_guarded_child",
+        lambda *_args, **_kwargs: _zero_ledger_child_result(fixture),
+    )
+    real_complete = R._complete_zero_ledger_recovery
+    injected = False
+
+    def crash_once(*args, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("injected crash after zero-ledger marker")
+        return real_complete(*args, **kwargs)
+
+    monkeypatch.setattr(R, "_complete_zero_ledger_recovery", crash_once)
+    with pytest.raises(RuntimeError, match="injected crash"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+    transcript = fixture["protected"] / fixture["record"]["transcript"]
+    transcript.write_bytes(b"replaced protected evidence\n")
+
+    with pytest.raises(R.CampaignPlanError, match="hash does not match"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert marker.is_file()
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert transcript.read_bytes() == b"replaced protected evidence\n"
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+
+
+def _leave_zero_ledger_marker(fixture, tmp_path, monkeypatch):
+    monkeypatch.setattr(
+        R,
+        "_run_guarded_child",
+        lambda *_args, **_kwargs: _zero_ledger_child_result(fixture),
+    )
+    with monkeypatch.context() as fault:
+        fault.setattr(
+            R,
+            "_complete_zero_ledger_recovery",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(
+                RuntimeError("injected crash after zero-ledger marker")
+            ),
+        )
+        with pytest.raises(RuntimeError, match="injected crash"):
+            R._run_item(
+                fixture["plan"],
+                fixture["item"],
+                allowance=fixture["allowance"],
+            )
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    parsed = R.RebootRecovery.parse_dispatch_marker(
+        marker.read_bytes(), require_recovery_arm=False
+    )
+    assert parsed.unquiesced["event"] == "dispatch_zero_ledger_quarantined"
+    return marker, parsed
+
+
+@pytest.mark.parametrize("forgery", ("unexpected_field", "workspace_identity"))
+def test_forged_zero_ledger_event_cannot_authorize_two_row_marker_release(
+    tmp_path, monkeypatch, forgery
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    marker_path, parsed = _leave_zero_ledger_marker(
+        fixture, tmp_path, monkeypatch
+    )
+    marker, opened = R._read_existing_dispatch_quarantine(
+        fixture["item"], require_recovery_arm=False
+    )
+    try:
+        forged = R._build_zero_ledger_event(fixture["item"], opened)
+        if forgery == "unexpected_field":
+            forged["forged_release_authority"] = True
+        else:
+            forged["workspace_identity"] = [
+                parsed.unquiesced["workspace_identity"][0],
+                parsed.unquiesced["workspace_identity"][1] + 1,
+            ]
+        with pytest.raises(
+            R.CampaignPlanError, match="zero-ledger infrastructure event"
+        ):
+            R._validate_zero_ledger_event(fixture["item"], opened, forged)
+        R.Guard.append_ledger(forged, fixture["ledger"])
+        result = R._zero_ledger_result(
+            fixture["item"], opened, replayed=True
+        )
+        with pytest.raises(
+            R.CampaignPlanError, match="zero-ledger infrastructure event"
+        ):
+            R._build_dispatch_release_authority(
+                fixture["item"],
+                marker,
+                fixture["ledger"],
+                result,
+                kind="ordinary_safe_terminal_v1",
+            )
+    finally:
+        R._close_dispatch_quarantine(marker)
+    assert marker_path.is_file()
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+
+
+def test_zero_ledger_phase_intent_crash_replays_once_and_retires_all_residue(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_run_guarded_child",
+        lambda *_args, **_kwargs: _zero_ledger_child_result(fixture),
+    )
+    real_append = R._append_zero_ledger_event_cas
+
+    def append_then_crash(**kwargs):
+        def crash():
+            raise RuntimeError("injected crash after zero-ledger phase intent")
+
+        return real_append(**kwargs, after_intent=crash)
+
+    with monkeypatch.context() as fault:
+        fault.setattr(R, "_append_zero_ledger_event_cas", append_then_crash)
+        with pytest.raises(RuntimeError, match="after zero-ledger phase intent"):
+            R._run_item(
+                fixture["plan"],
+                fixture["item"],
+                allowance=fixture["allowance"],
+            )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    parsed = R.RebootRecovery.parse_dispatch_marker(
+        marker.read_bytes(), require_recovery_arm=False
+    )
+    capsule_name = parsed.armed["wip_rollback_capsule_name"]
+    phase_name = R._recovery_phase_intent_names(
+        fixture["ledger"], parsed.dispatch_id
+    )[R.ZERO_LEDGER_EVENT]
+    phase_intent = marker.parent / phase_name
+    assert phase_intent.is_file()
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["zero_ledger_replayed"] is True
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        R.ZERO_LEDGER_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    assert not marker.exists()
+    assert not (marker.parent / capsule_name).exists()
+    assert not phase_intent.exists()
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert not fixture["exact_lock"].exists()
+
+
+def test_zero_ledger_final_wip_mutation_blocks_release(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_run_guarded_child",
+        lambda *_args, **_kwargs: _zero_ledger_child_result(fixture),
+    )
+    real_cleanup = R._resume_zero_ledger_generation_cleanup
+    level = R._target_wip_level(fixture["item"])
+
+    def cleanup_then_mutate(**kwargs):
+        real_cleanup(**kwargs)
+        level.mkdir(parents=True, exist_ok=True)
+        (level / "injected-after-cleanup").write_bytes(b"must block release\n")
+
+    monkeypatch.setattr(
+        R, "_resume_zero_ledger_generation_cleanup", cleanup_then_mutate
+    )
+    with pytest.raises(R.CampaignPlanError, match="WIP"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert marker.is_file()
+    assert (level / "injected-after-cleanup").read_bytes() == (
+        b"must block release\n"
+    )
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        R.ZERO_LEDGER_EVENT,
+    ]
+
+
+def test_zero_ledger_release_authority_crash_reconciles_before_next_dispatch(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def zero_child(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        return _zero_ledger_child_result(fixture)
+
+    monkeypatch.setattr(R, "_run_guarded_child", zero_child)
+    real_finish = R._finish_dispatch_release_intent
+
+    def crash_after_authority(*args, **kwargs):
+        assert [
+            row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+        ] == [R.ZERO_LEDGER_EVENT, "codex_dispatch_release_authorized"]
+        raise RuntimeError("injected crash after release authority")
+
+    with monkeypatch.context() as fault:
+        fault.setattr(R, "_finish_dispatch_release_intent", crash_after_authority)
+        with pytest.raises(RuntimeError, match="after release authority"):
+            R._run_item(
+                fixture["plan"],
+                fixture["item"],
+                allowance=fixture["allowance"],
+            )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    parsed = R.RebootRecovery.parse_dispatch_marker(
+        marker.read_bytes(), require_recovery_arm=False
+    )
+    capsule_name = parsed.armed["wip_rollback_capsule_name"]
+    intent_name, preparing_name = R._dispatch_release_intent_names(marker.name)
+    assert (marker.parent / intent_name).is_file()
+
+    monkeypatch.setattr(R, "_finish_dispatch_release_intent", real_finish)
+    stopped = R._run_item(
+        fixture["plan"],
+        fixture["item"],
+        allowance=SimpleNamespace(remaining_percent=0, window_name="weekly"),
+    )
+
+    assert stopped["result"] == "reserve_stop"
+    assert child_calls == 1
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        R.ZERO_LEDGER_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    for residue in (
+        marker,
+        marker.parent / capsule_name,
+        marker.parent / intent_name,
+        marker.parent / preparing_name,
+    ):
+        assert not residue.exists()
+
+
 def test_nonzero_confirmed_taint_is_noncounting_and_exactly_cleaned(
     tmp_path, monkeypatch
 ):

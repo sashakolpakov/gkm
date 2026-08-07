@@ -79,7 +79,29 @@ RECOVERY_PHASE_EVENTS = {
     "codex_exec_classification_correction": "correction",
     "codex_taint_cleanup_completed": "cleanup",
     "codex_post_reboot_operator_recovery_completed": "operator",
+    "codex_infrastructure_generation_quarantined": "zero_ledger",
 }
+ZERO_LEDGER_EVENT = "codex_infrastructure_generation_quarantined"
+ZERO_LEDGER_EVENT_SCHEMA = "scheduler_zero_ledger_generation_quarantine_v1"
+ZERO_LEDGER_EVENT_BASE_KEYS = frozenset({
+    "event", "schema", "recorded_at", "infrastructure_authority",
+    "dispatch_id", "game", "target_level", "reached",
+    "parent_action_count", "retry_complexity_n", "workspace",
+    "workspace_identity", "protected_identity", "transcript",
+    "protected_transcript_sha256", "child_returncode", "failure_class",
+    "failure_detail_class", "terminal_errors", "taint_verdict",
+    "retry_increment", "codex_exec_appended", "process_tree_quiesced",
+    "wip_restore_logical_state_sha256", "canonical_digest",
+    *Status.FRONTIER_BINDING_FIELDS,
+})
+ZERO_LEDGER_EVENT_DIAGNOSTICS_KEYS = frozenset({
+    "diagnostics", "protected_diagnostics_sha256",
+})
+ZERO_LEDGER_RESULT_KEYS = frozenset({
+    "game", "target_level", "reached", "result", "reason",
+    "child_returncode", "retry_complexity_n", "seed_mode", "wip_mode",
+    "lineage_input_mode", "zero_ledger_replayed",
+})
 RUNNER_RECEIPT_KEYS = frozenset({
     "schema",
     "worktree",
@@ -671,6 +693,46 @@ def _capture_ledger_prefix(path: Path) -> LedgerPrefixState:
         raw_prefix=raw,
         records=records,
     )
+
+
+def _ensure_durable_ledger_file(path: Path) -> None:
+    """Ensure a dispatch can bind one stable ledger inode before arming."""
+
+    selected = Path(path).absolute()
+    _reject_symlinked_ancestry(selected.parent, "Codex ledger parent")
+    with Guard.ledger_append_lock(selected):
+        if os.path.lexists(selected):
+            metadata = selected.stat(follow_symlinks=False)
+            if (
+                selected.is_symlink()
+                or not stat.S_ISREG(metadata.st_mode)
+                or metadata.st_nlink != 1
+            ):
+                raise CampaignPlanError("Codex ledger is not an unaliased file")
+            return
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(
+                selected,
+                os.O_WRONLY | os.O_CREAT | os.O_EXCL
+                | getattr(os, "O_NOFOLLOW", 0),
+                0o600,
+            )
+            os.fchmod(descriptor, 0o600)
+            metadata = os.fstat(descriptor)
+            if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+                raise CampaignPlanError(
+                    "new Codex ledger is not an unaliased file"
+                )
+            os.fsync(descriptor)
+            _fsync_directory(selected.parent)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "could not durably create the Codex ledger"
+            ) from exc
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
 
 
 def _ledger_records_after_prefix(
@@ -2389,6 +2451,163 @@ def _exact_tainted_generation(
         diagnostics_sha,
         descendant_unproven,
     )
+
+
+def _zero_ledger_suffix_is_exact(
+    state: LedgerPrefixState,
+) -> bool:
+    records = _ledger_records_after_prefix(state)
+    return len(records) == len(state.records)
+
+
+def _seal_zero_ledger_observation(
+    item: dict[str, Any], observed: GuardedChildResult
+) -> tuple[dict[str, Any], Path, Path]:
+    """Seal a complete quiesced generation that has no ``codex_exec`` row."""
+
+    if (
+        observed.process_tree_quiesced is not True
+        or observed.descendant_quiescence_unproven
+        or observed.workspace is None
+        or observed.transcript is None
+        or observed.workspace_identity is None
+        or observed.protected_identity is None
+    ):
+        raise CampaignPlanError(
+            "zero-ledger recovery lacks one complete quiesced observation"
+        )
+    workspace_name = _safe_component(observed.workspace, "workspace")
+    transcript_name = _safe_component(observed.transcript, "transcript")
+    if (
+        not workspace_name.startswith(_dispatch_workspace_prefix(item))
+        or workspace_name == _dispatch_workspace_prefix(item)
+        or not transcript_name.startswith("codex_turn_")
+        or not transcript_name.endswith(".jsonl")
+    ):
+        raise CampaignPlanError(
+            "zero-ledger observation does not bind the dispatch generation"
+        )
+    scratch = Path(Legs.SCRATCH).absolute()
+    protected_root = scratch / ".proposer_transcripts"
+    _host_directory_identity(scratch, "scratch root")
+    _host_directory_identity(protected_root, "protected transcript root")
+    workspace = scratch / workspace_name
+    protected = protected_root / workspace_name
+    if (
+        workspace.parent != scratch
+        or protected.parent != protected_root
+        or _host_directory_identity(workspace, "zero-ledger workspace")
+        != observed.workspace_identity
+        or _host_directory_identity(protected, "zero-ledger evidence")
+        != observed.protected_identity
+    ):
+        raise CampaignPlanError(
+            "zero-ledger generation identity changed after observation"
+        )
+    evidence_schema = _evidence_schema(item)
+    diagnostics_name = transcript_name.removesuffix(
+        ".jsonl"
+    ) + ".stderr.log"
+    expected_inventory = {transcript_name}
+    if evidence_schema == "sealed_transcript_diagnostics_v1":
+        expected_inventory.add(diagnostics_name)
+    try:
+        inventory = {entry.name for entry in protected.iterdir()}
+    except OSError as exc:
+        raise CampaignPlanError(
+            "zero-ledger protected evidence inventory is unavailable"
+        ) from exc
+    if inventory != expected_inventory:
+        raise CampaignPlanError(
+            "zero-ledger protected evidence inventory is ambiguous"
+        )
+    try:
+        transcript_bytes = Legs._read_single_link_regular(
+            os.fspath(protected / transcript_name)
+        )
+        diagnostics_bytes = (
+            Legs._read_single_link_regular(
+                os.fspath(protected / diagnostics_name)
+            )
+            if evidence_schema == "sealed_transcript_diagnostics_v1"
+            else None
+        )
+    except (OSError, Legs.WorkspaceTainted) as exc:
+        raise CampaignPlanError(
+            "zero-ledger protected evidence is unstable"
+        ) from exc
+    evidence_record: dict[str, Any] = {
+        "workspace": workspace_name,
+        "transcript": transcript_name,
+        "protected_transcript_status": "sealed",
+        "protected_transcript_sha256": hashlib.sha256(
+            transcript_bytes
+        ).hexdigest(),
+    }
+    if diagnostics_bytes is not None:
+        evidence_record.update({
+            "diagnostics": diagnostics_name,
+            "protected_diagnostics_status": "sealed",
+            "protected_diagnostics_sha256": hashlib.sha256(
+                diagnostics_bytes
+            ).hexdigest(),
+        })
+    (
+        rescanned_workspace,
+        rescanned_protected,
+        authenticated_reason,
+        transcript_sha,
+        diagnostics_sha,
+        descendant_unproven,
+    ) = _exact_tainted_generation(
+        item, evidence_record, require_taint=False
+    )
+    if (
+        rescanned_workspace != workspace
+        or rescanned_protected != protected
+        or descendant_unproven
+        and not observed.detached_processes_proven_absent
+    ):
+        raise CampaignPlanError(
+            "zero-ledger terminal rescan lacks complete generation custody"
+        )
+    lock_schema, lock_path, lock_identity = (
+        _capture_recovery_workspace_lock(item, workspace)
+    )
+    reason = (
+        observed.taint_reason
+        or authenticated_reason
+        or "exact child exited before appending its Codex exec record"
+    )
+    marker_record: dict[str, Any] = {
+        "event": "dispatch_zero_ledger_quarantined",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "exception_type": "ZeroLedgerSuffixInfrastructure",
+        "reason": reason,
+        "child_returncode": observed.returncode,
+        "workspace": workspace_name,
+        "protected": workspace_name,
+        "transcript": transcript_name,
+        "workspace_identity": list(observed.workspace_identity),
+        "protected_identity": list(observed.protected_identity),
+        "process_tree_quiesced": True,
+        "descendant_quiescence_unproven": False,
+        "detached_processes_proven_absent": (
+            observed.detached_processes_proven_absent
+        ),
+        "ledger_suffix_rows": 0,
+        "evidence_schema": evidence_schema,
+        "protected_transcript_sha256": transcript_sha,
+        "workspace_lock_schema": lock_schema,
+        "workspace_lock_path": os.fspath(lock_path),
+        "workspace_lock_identity": list(lock_identity),
+    }
+    if diagnostics_sha is not None:
+        marker_record.update({
+            "diagnostics": diagnostics_name,
+            "protected_diagnostics_sha256": diagnostics_sha,
+        })
+    return marker_record, workspace, protected
 
 
 def _append_taint_correction(
@@ -4775,11 +4994,12 @@ def _build_dispatch_release_authority(
         )
     terminal_event = terminal.get("event")
     if kind == "ordinary_safe_terminal_v1":
-        expected_events = (
-            {"codex_taint_cleanup_completed"}
-            if terminal_result.get("result") == "tainted_noncounting"
-            else {"codex_level_outcome"}
-        )
+        if terminal_result.get("result") == "tainted_noncounting":
+            expected_events = {"codex_taint_cleanup_completed"}
+        elif terminal_result.get("result") == "infrastructure_noncounting":
+            expected_events = {ZERO_LEDGER_EVENT}
+        else:
+            expected_events = {"codex_level_outcome"}
     else:
         expected_events = {
             "codex_post_reboot_operator_recovery_completed"
@@ -4787,6 +5007,29 @@ def _build_dispatch_release_authority(
     if terminal_event not in expected_events:
         raise CampaignPlanError(
             "dispatch release ledger lacks its terminal phase"
+        )
+    if (
+        kind == "ordinary_safe_terminal_v1"
+        and terminal_result.get("result") == "infrastructure_noncounting"
+    ):
+        try:
+            parsed_zero = RebootRecovery.parse_dispatch_marker(
+                marker_payload, require_recovery_arm=False
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if (
+            len(marker_rows) != 2
+            or parsed_zero.dispatch_id != marker.dispatch_id
+            or parsed_zero.unquiesced.get("event")
+            != "dispatch_zero_ledger_quarantined"
+        ):
+            raise CampaignPlanError(
+                "zero-ledger release lacks its exact durable marker"
+            )
+        _validate_zero_ledger_event(item, parsed_zero, terminal)
+        _validate_zero_ledger_result(
+            item, parsed_zero, terminal, terminal_result
         )
     result_payload = json.dumps(
         terminal_result,
@@ -5080,7 +5323,32 @@ def _read_dispatch_release_marker_phase(
             and result.get("detached_processes_proven_absent") is False
             and result.get("published_frontier_unchanged") is True
         )
-        if len(rows) == 1:
+        zero_ledger_terminal = (
+            isinstance(result, dict)
+            and result.get("result") == "infrastructure_noncounting"
+            and isinstance(result.get("zero_ledger_replayed"), bool)
+        )
+        if zero_ledger_terminal:
+            if len(rows) != 2:
+                raise CampaignPlanError(
+                    "zero-ledger release requires its exact two-row marker"
+                )
+            try:
+                parsed = RebootRecovery.parse_dispatch_marker(
+                    payload, require_recovery_arm=False
+                )
+            except RebootRecovery.RecoveryEvidenceError as exc:
+                raise CampaignPlanError(str(exc)) from exc
+            if (
+                parsed.dispatch_id != record.get("dispatch_id")
+                or parsed.unquiesced.get("event")
+                != "dispatch_zero_ledger_quarantined"
+            ):
+                raise CampaignPlanError(
+                    "zero-ledger release marker authority changed"
+                )
+            armed = dict(parsed.armed)
+        elif len(rows) == 1:
             armed = dict(rows[0])
         elif len(rows) == 3 and operator_discard:
             try:
@@ -5303,6 +5571,68 @@ def _validate_dispatch_release_terminal_prefix(
             ):
                 raise CampaignPlanError(
                     "ordinary clean release outcome changed"
+                )
+        elif result.get("result") == "infrastructure_noncounting":
+            if len(suffix) != 1 or suffix[0].get("event") != ZERO_LEDGER_EVENT:
+                raise CampaignPlanError(
+                    "zero-ledger release lacks its exact infrastructure event"
+                )
+            infrastructure = suffix[0]
+            event_keys = ZERO_LEDGER_EVENT_BASE_KEYS | (
+                ZERO_LEDGER_EVENT_DIAGNOSTICS_KEYS
+                if "diagnostics" in infrastructure
+                else frozenset()
+            )
+            expected = {
+                "event": ZERO_LEDGER_EVENT,
+                "schema": ZERO_LEDGER_EVENT_SCHEMA,
+                "infrastructure_authority": (
+                    "scheduler_quiesced_zero_ledger_suffix_v1"
+                ),
+                "dispatch_id": dispatch_id,
+                "game": authority["game"],
+                "target_level": authority["target_level"],
+                "reached": authority["reached"],
+                "parent_action_count": authority["parent_action_count"],
+                "retry_complexity_n": authority["retry_complexity_n"],
+                "failure_class": "infrastructure",
+                "failure_detail_class": (
+                    "interrupted_before_codex_exec_append"
+                ),
+                "taint_verdict": "quarantined",
+                "retry_increment": 0,
+                "codex_exec_appended": False,
+                "process_tree_quiesced": True,
+                **{
+                    field: authority[field]
+                    for field in Status.FRONTIER_BINDING_FIELDS
+                },
+            }
+            if (
+                set(infrastructure) != event_keys
+                or set(result) != ZERO_LEDGER_RESULT_KEYS
+                or not isinstance(result.get("zero_ledger_replayed"), bool)
+                or any(
+                    infrastructure.get(field) != value
+                    for field, value in expected.items()
+                )
+                or result.get("reached") != authority.get("reached")
+                or result.get("retry_complexity_n")
+                != authority.get("retry_complexity_n")
+                or infrastructure.get("terminal_errors")
+                != [result.get("reason")]
+                or infrastructure.get("child_returncode")
+                != result.get("child_returncode")
+                or any(
+                    not isinstance(result.get(field), str)
+                    or not result[field]
+                    for field in (
+                        "seed_mode", "wip_mode", "lineage_input_mode"
+                    )
+                )
+            ):
+                raise CampaignPlanError(
+                    "zero-ledger infrastructure release binding changed"
                 )
         elif result.get("result") == "tainted_noncounting":
             events = [row.get("event") for row in suffix]
@@ -7861,6 +8191,83 @@ def _recovery_recorded_at(record: dict[str, Any], label: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _build_zero_ledger_event(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> dict[str, Any]:
+    observed = parsed.unquiesced
+    armed = parsed.armed
+    event: dict[str, Any] = {
+        "event": ZERO_LEDGER_EVENT,
+        "schema": ZERO_LEDGER_EVENT_SCHEMA,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "infrastructure_authority": (
+            "scheduler_quiesced_zero_ledger_suffix_v1"
+        ),
+        "dispatch_id": parsed.dispatch_id,
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "workspace": observed["workspace"],
+        "workspace_identity": observed["workspace_identity"],
+        "protected_identity": observed["protected_identity"],
+        "transcript": observed["transcript"],
+        "protected_transcript_sha256": observed[
+            "protected_transcript_sha256"
+        ],
+        "child_returncode": observed["child_returncode"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": "interrupted_before_codex_exec_append",
+        "terminal_errors": [observed["reason"]],
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": True,
+        "wip_restore_logical_state_sha256": armed[
+            "wip_restore_logical_state_sha256"
+        ],
+        "canonical_digest": armed["canonical_digest"],
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+    if observed.get("diagnostics") is not None:
+        event.update({
+            "diagnostics": observed["diagnostics"],
+            "protected_diagnostics_sha256": observed[
+                "protected_diagnostics_sha256"
+            ],
+        })
+    return event
+
+
+def _validate_zero_ledger_event(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+) -> None:
+    expected_keys = ZERO_LEDGER_EVENT_BASE_KEYS | (
+        ZERO_LEDGER_EVENT_DIAGNOSTICS_KEYS
+        if parsed.unquiesced.get("diagnostics") is not None
+        else frozenset()
+    )
+    if set(record) != expected_keys:
+        raise CampaignPlanError(
+            "zero-ledger infrastructure event has an invalid exact schema"
+        )
+    expected = _build_zero_ledger_event(item, parsed)
+    expected.pop("recorded_at")
+    observed = dict(record)
+    observed.pop("recorded_at", None)
+    if observed != expected:
+        raise CampaignPlanError(
+            "zero-ledger infrastructure event binding changed"
+        )
+    _recovery_recorded_at(record, "zero-ledger infrastructure event")
+
+
 def _validate_recovery_correction(
     item: dict[str, Any],
     record: dict[str, Any],
@@ -8534,12 +8941,16 @@ def _reconcile_recovery_phase_intent_locked(
             "codex_taint_cleanup_completed",
             "codex_post_reboot_operator_recovery_completed",
         ]
-        if (
-            not 1 <= len(phase_rows) < len(expected_events)
-            or [row.get("event") for row in phase_rows]
-            != expected_events[:len(phase_rows)]
-            or intent.get("event") != expected_events[len(phase_rows)]
-        ):
+        zero_ledger_phase = (
+            intent.get("event") == ZERO_LEDGER_EVENT and not phase_rows
+        )
+        ordinary_phase = (
+            1 <= len(phase_rows) < len(expected_events)
+            and [row.get("event") for row in phase_rows]
+            == expected_events[:len(phase_rows)]
+            and intent.get("event") == expected_events[len(phase_rows)]
+        )
+        if not (zero_ledger_phase or ordinary_phase):
             raise CampaignPlanError(
                 "recovery phase intent does not follow the ledger phase"
             )
@@ -8815,6 +9226,114 @@ def _append_recovery_phase_cas(
         finally:
             os.close(parent_fd)
     return selected_record
+
+
+def _append_zero_ledger_event_cas(
+    *,
+    marker: DispatchQuarantine,
+    baseline: LedgerPrefixState,
+    record: dict[str, Any],
+    after_intent: Any | None = None,
+) -> dict[str, Any]:
+    """Append the first zero-ledger phase behind the recovery intent WAL."""
+
+    state = PostRebootLedgerState(
+        dispatch_id=marker.dispatch_id,
+        intent_root=marker.root,
+        intent_root_identity=marker.root_identity,
+        ledger=baseline.path,
+        baseline=baseline,
+        record={},
+        correction=None,
+        cleanup=None,
+        operator=None,
+    )
+    expected_raw = baseline.raw_prefix
+    with Guard.ledger_append_lock(baseline.path):
+        if (
+            _host_directory_identity(
+                baseline.path.parent, "Codex ledger parent"
+            ) != baseline.parent_identity
+            or baseline.file_identity is None
+        ):
+            raise CampaignPlanError(
+                "zero-ledger event lost its ledger custody"
+            )
+        metadata = baseline.path.stat(follow_symlinks=False)
+        if (
+            baseline.path.is_symlink()
+            or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_nlink != 1
+            or (metadata.st_dev, metadata.st_ino) != baseline.file_identity
+        ):
+            raise CampaignPlanError(
+                "zero-ledger event ledger identity changed"
+            )
+        try:
+            raw = Legs._read_single_link_regular(os.fspath(baseline.path))
+        except (OSError, Legs.WorkspaceTainted) as exc:
+            raise CampaignPlanError(
+                "zero-ledger event ledger is unstable"
+            ) from exc
+        if raw != expected_raw:
+            raise CampaignPlanError(
+                "zero-ledger event no longer has an empty dispatch suffix"
+            )
+        intent_name, selected_intent = _prepare_recovery_phase_intent_locked(
+            state, record, expected_raw
+        )
+        selected = dict(selected_intent["record"])
+        line = RebootRecovery.canonical_json_line(selected)
+        if after_intent is not None:
+            after_intent()
+        descriptor: int | None = None
+        try:
+            descriptor = os.open(
+                baseline.path,
+                os.O_WRONLY | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0),
+            )
+            opened = os.fstat(descriptor)
+            if (
+                not stat.S_ISREG(opened.st_mode)
+                or opened.st_nlink != 1
+                or (opened.st_dev, opened.st_ino) != baseline.file_identity
+            ):
+                raise CampaignPlanError(
+                    "zero-ledger event descriptor identity changed"
+                )
+            offset = 0
+            while offset < len(line):
+                written = os.write(descriptor, line[offset:])
+                if written <= 0:
+                    raise OSError("short write appending zero-ledger event")
+                offset += written
+            os.fsync(descriptor)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "zero-ledger infrastructure event append failed"
+            ) from exc
+        finally:
+            if descriptor is not None:
+                os.close(descriptor)
+        if Legs._read_single_link_regular(
+            os.fspath(baseline.path)
+        ) != expected_raw + line:
+            raise CampaignPlanError(
+                "zero-ledger infrastructure event append was not exact"
+            )
+        parent_fd = _open_recovery_intent_parent(
+            marker.root, marker.root_identity
+        )
+        try:
+            os.unlink(intent_name, dir_fd=parent_fd)
+            os.fsync(parent_fd)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "could not retire the zero-ledger event intent"
+            ) from exc
+        finally:
+            os.close(parent_fd)
+    return selected
 
 
 def _has_exact_pending_cleanup_intent(
@@ -11737,6 +12256,508 @@ def _resume_post_reboot_generation_cleanup(
         raise CampaignPlanError("external workspace lock cleanup was incomplete")
 
 
+def _open_zero_ledger_cleanup_lock(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    workspace: Path,
+    workspace_tombstone: Path,
+    protected: Path,
+    protected_tombstone: Path,
+) -> tuple[Any | None, Path, tuple[int, int]]:
+    observed = parsed.unquiesced
+    schema = observed.get("workspace_lock_schema")
+    recorded_path = Path(str(observed.get("workspace_lock_path")))
+    recorded_identity = _marker_identity(
+        observed.get("workspace_lock_identity"), "workspace lock"
+    )
+    expected_path = (
+        workspace / ".orchestrate.lock"
+        if schema == "in_workspace_v1"
+        else Path(Legs._workspace_lock_path(os.fspath(workspace)))
+    )
+    if schema != _lock_schema(item) or recorded_path != expected_path:
+        raise CampaignPlanError("zero-ledger workspace lock binding changed")
+    candidates = [recorded_path]
+    if schema == "in_workspace_v1":
+        candidates.append(workspace_tombstone / ".orchestrate.lock")
+    existing = [path for path in candidates if os.path.lexists(path)]
+    if len(existing) > 1:
+        raise CampaignPlanError("zero-ledger workspace lock is ambiguous")
+    if not existing:
+        if schema == "hashed_external_v1" and any(
+            os.path.lexists(path) for path in (
+                workspace, workspace_tombstone,
+                protected, protected_tombstone,
+            )
+        ):
+            raise CampaignPlanError(
+                "zero-ledger external workspace lock disappeared"
+            )
+        if os.path.lexists(workspace):
+            raise CampaignPlanError(
+                "zero-ledger workspace remains without its bound lock"
+            )
+        return None, recorded_path, recorded_identity
+    lock_path = existing[0]
+    lock: Any | None = None
+    try:
+        lock = Legs._open_unaliased_lock(os.fspath(lock_path), create=False)
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, RuntimeError, BlockingIOError) as exc:
+        if lock is not None:
+            lock.close()
+        raise CampaignPlanError(
+            "zero-ledger workspace lock remains active"
+        ) from exc
+    metadata = os.fstat(lock.fileno())
+    if (metadata.st_dev, metadata.st_ino) != recorded_identity:
+        lock.close()
+        raise CampaignPlanError("zero-ledger workspace lock identity changed")
+    return lock, recorded_path, recorded_identity
+
+
+def _resume_zero_ledger_generation_cleanup(
+    *,
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    workspace: Path,
+    protected: Path,
+) -> None:
+    """Idempotently retire only the two marker-bound generation directories."""
+
+    workspace_tombstone, protected_tombstone = _post_reboot_tombstones(
+        parsed.dispatch_id, workspace, protected
+    )
+    expected_workspace = _marker_identity(
+        parsed.unquiesced.get("workspace_identity"), "workspace"
+    )
+    expected_protected = _marker_identity(
+        parsed.unquiesced.get("protected_identity"), "protected"
+    )
+    workspace_exists, protected_exists = _validate_post_reboot_generation_identities(
+        parsed, workspace, protected, require_both=False
+    )
+    workspace_tombstone_exists = os.path.lexists(workspace_tombstone)
+    protected_tombstone_exists = os.path.lexists(protected_tombstone)
+    _validate_recovery_tombstone_inventory(
+        workspace_exists,
+        protected_exists,
+        workspace_tombstone_exists,
+        protected_tombstone_exists,
+    )
+    if workspace_tombstone_exists and _host_directory_identity(
+        workspace_tombstone, "zero-ledger workspace tombstone"
+    ) != expected_workspace:
+        raise CampaignPlanError(
+            "zero-ledger workspace tombstone identity changed"
+        )
+    if protected_tombstone_exists and _host_directory_identity(
+        protected_tombstone, "zero-ledger protected tombstone"
+    ) != expected_protected:
+        raise CampaignPlanError(
+            "zero-ledger protected tombstone identity changed"
+        )
+    cleanup_lock, lock_path, lock_identity = _open_zero_ledger_cleanup_lock(
+        item,
+        parsed,
+        workspace,
+        workspace_tombstone,
+        protected,
+        protected_tombstone,
+    )
+    try:
+        if workspace_exists:
+            _rename_recovery_tombstone(
+                workspace, workspace_tombstone, expected_workspace
+            )
+        if protected_exists:
+            _rename_recovery_tombstone(
+                protected, protected_tombstone, expected_protected
+            )
+        if not getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+            raise CampaignPlanError(
+                "platform lacks symlink-safe recursive deletion"
+            )
+        for tombstone, identity in (
+            (workspace_tombstone, expected_workspace),
+            (protected_tombstone, expected_protected),
+        ):
+            if os.path.lexists(tombstone):
+                if _host_directory_identity(
+                    tombstone, "zero-ledger cleanup tombstone"
+                ) != identity:
+                    raise CampaignPlanError(
+                        "zero-ledger cleanup tombstone identity changed"
+                    )
+                shutil.rmtree(tombstone)
+            _fsync_directory(tombstone.parent)
+        if _lock_schema(item) == "hashed_external_v1":
+            if os.path.lexists(lock_path):
+                metadata = lock_path.stat(follow_symlinks=False)
+                if (
+                    lock_path.is_symlink()
+                    or not stat.S_ISREG(metadata.st_mode)
+                    or (metadata.st_dev, metadata.st_ino) != lock_identity
+                ):
+                    raise CampaignPlanError(
+                        "zero-ledger external lock identity changed"
+                    )
+                os.unlink(lock_path)
+            _fsync_directory(lock_path.parent)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "zero-ledger tombstone cleanup failed"
+        ) from exc
+    finally:
+        if cleanup_lock is not None:
+            cleanup_lock.close()
+    if any(os.path.lexists(path) for path in (
+        workspace, protected, workspace_tombstone, protected_tombstone,
+    )):
+        raise CampaignPlanError(
+            "zero-ledger tombstone cleanup was incomplete"
+        )
+    if _lock_schema(item) == "hashed_external_v1" and os.path.lexists(
+        lock_path
+    ):
+        raise CampaignPlanError(
+            "zero-ledger external lock cleanup was incomplete"
+        )
+
+
+def _zero_ledger_generation_paths(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> tuple[Path, Path]:
+    workspace, protected = _post_reboot_generation_paths(
+        item, parsed.unquiesced
+    )
+    if parsed.unquiesced.get("protected") != workspace.name:
+        raise CampaignPlanError(
+            "zero-ledger protected generation name changed"
+        )
+    return workspace, protected
+
+
+def _authenticate_zero_ledger_marker_evidence(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    workspace: Path,
+    protected: Path,
+) -> None:
+    observed = parsed.unquiesced
+    _validate_post_reboot_generation_identities(
+        parsed, workspace, protected, require_both=True
+    )
+    evidence: dict[str, Any] = {
+        "workspace": observed["workspace"],
+        "transcript": observed["transcript"],
+        "protected_transcript_status": "sealed",
+        "protected_transcript_sha256": observed[
+            "protected_transcript_sha256"
+        ],
+    }
+    if observed.get("diagnostics") is not None:
+        evidence.update({
+            "diagnostics": observed["diagnostics"],
+            "protected_diagnostics_status": "sealed",
+            "protected_diagnostics_sha256": observed[
+                "protected_diagnostics_sha256"
+            ],
+        })
+    (
+        scanned_workspace,
+        scanned_protected,
+        _reason,
+        transcript_sha,
+        diagnostics_sha,
+        descendant_unproven,
+    ) = _exact_tainted_generation(item, evidence, require_taint=False)
+    if any((
+        scanned_workspace != workspace,
+        scanned_protected != protected,
+        transcript_sha != observed.get("protected_transcript_sha256"),
+        diagnostics_sha
+        != observed.get("protected_diagnostics_sha256"),
+        descendant_unproven
+        and not observed.get("detached_processes_proven_absent"),
+    )):
+        raise CampaignPlanError(
+            "zero-ledger protected evidence binding changed"
+        )
+    schema, lock_path, lock_identity = _capture_recovery_workspace_lock(
+        item, workspace
+    )
+    if any((
+        schema != observed.get("workspace_lock_schema"),
+        os.fspath(lock_path) != observed.get("workspace_lock_path"),
+        list(lock_identity) != observed.get("workspace_lock_identity"),
+    )):
+        raise CampaignPlanError("zero-ledger workspace lock binding changed")
+
+
+def _zero_ledger_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    replayed: bool,
+) -> dict[str, Any]:
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "infrastructure_noncounting",
+        "reason": parsed.unquiesced["reason"],
+        "child_returncode": parsed.unquiesced["child_returncode"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "seed_mode": item["seed_mode"],
+        "wip_mode": item["wip_mode"],
+        "lineage_input_mode": item["lineage_input_mode"],
+        "zero_ledger_replayed": replayed,
+    }
+
+
+def _validate_zero_ledger_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    event: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    """Cross-bind the public terminal result to its marker and ledger row."""
+
+    if (
+        set(result) != ZERO_LEDGER_RESULT_KEYS
+        or not isinstance(result.get("zero_ledger_replayed"), bool)
+    ):
+        raise CampaignPlanError(
+            "zero-ledger terminal result has an invalid exact schema"
+        )
+    expected = _zero_ledger_result(
+        item,
+        parsed,
+        replayed=bool(result["zero_ledger_replayed"]),
+    )
+    if result != expected or any((
+        event.get("child_returncode") != result["child_returncode"],
+        event.get("retry_complexity_n") != result["retry_complexity_n"],
+        event.get("terminal_errors") != [result["reason"]],
+    )):
+        raise CampaignPlanError(
+            "zero-ledger terminal result binding changed"
+        )
+
+
+def _validate_zero_ledger_baseline(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    reached_before: int,
+) -> None:
+    canonical = _capture_canonical_rollback(item)
+    if any((
+        list(canonical.root_identity)
+        != parsed.armed.get("canonical_root_identity"),
+        canonical.digest != parsed.armed.get("canonical_digest"),
+        _checkpoint_reached(item["game"]) != reached_before,
+        _canonical_frontier_binding(item)
+        != Status.validate_frontier_binding(
+            dict(parsed.armed["frontier_binding"])
+        ),
+    )):
+        raise CampaignPlanError(
+            "zero-ledger recovery has not restored the sealed baseline"
+        )
+
+
+def _complete_zero_ledger_recovery(
+    item: dict[str, Any],
+    *,
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+    ledger_before: LedgerPrefixState,
+    reached_before: int,
+    wip_before: WipRollbackState | None,
+    canonical_before: CanonicalRollbackState | None,
+    replayed: bool,
+    release_marker: bool,
+) -> dict[str, Any]:
+    """Restore, journal, and retire one exact zero-``codex_exec`` generation."""
+
+    _validate_post_reboot_dispatch_binding(item, parsed)
+    if (
+        parsed.armed.get("schema")
+        != RebootRecovery.DISPATCH_QUARANTINE_SCHEMA_V2
+        or marker.capsule_state is None
+        or marker.capsule_record is None
+    ):
+        raise CampaignPlanError(
+            "zero-ledger recovery requires the full v2 WIP capsule"
+        )
+    workspace, protected = _zero_ledger_generation_paths(item, parsed)
+    ledger, baseline, suffix = _read_post_reboot_ledger_surface(
+        item,
+        parsed.armed,
+        intent_root=marker.root,
+        intent_root_identity=marker.root_identity,
+    )
+    if (
+        baseline.raw_prefix != ledger_before.raw_prefix
+        or baseline.file_identity != ledger_before.file_identity
+        or baseline.parent_identity != ledger_before.parent_identity
+    ):
+        raise CampaignPlanError("zero-ledger baseline custody changed")
+    if not suffix:
+        _authenticate_zero_ledger_marker_evidence(
+            item, parsed, workspace, protected
+        )
+        if replayed:
+            # Canonical bytes have no durable payload capsule in marker v2.
+            # Automatic replay is therefore authorized only when they already
+            # match the sealed pre-dispatch digest; otherwise quarantine stays.
+            _validate_zero_ledger_baseline(
+                item, parsed, reached_before=reached_before
+            )
+            restored = _restore_wip_from_rollback_capsule(
+                item, marker.capsule_state, marker.capsule_record
+            )
+            _validate_capsule_restored_wip_state(
+                restored,
+                marker.capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+        else:
+            if wip_before is None or canonical_before is None:
+                raise CampaignPlanError(
+                    "live zero-ledger recovery lost its rollback state"
+                )
+            evidence = {
+                "transcript": parsed.unquiesced["transcript"],
+            }
+            if _target_wip_snapshot(item) != wip_before.baseline_snapshot:
+                _rollback_tainted_wip(
+                    item,
+                    wip_before,
+                    evidence,
+                    str(parsed.unquiesced[
+                        "protected_transcript_sha256"
+                    ]),
+                )
+            if not _canonical_matches(canonical_before):
+                _rollback_tainted_canonical(canonical_before)
+            _validate_zero_ledger_baseline(
+                item, parsed, reached_before=reached_before
+            )
+        event = _build_zero_ledger_event(item, parsed)
+        _validate_zero_ledger_event(item, parsed, event)
+        committed = _append_zero_ledger_event_cas(
+            marker=marker, baseline=baseline, record=event
+        )
+        _validate_zero_ledger_event(item, parsed, committed)
+    elif len(suffix) == 1 and suffix[0].get("event") == ZERO_LEDGER_EVENT:
+        _validate_zero_ledger_event(item, parsed, suffix[0])
+        _validate_zero_ledger_baseline(
+            item, parsed, reached_before=reached_before
+        )
+        restored = _capture_wip_rollback(item)
+        _validate_capsule_restored_wip_state(
+            restored,
+            marker.capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+    else:
+        raise CampaignPlanError(
+            "zero-ledger quarantine has an ambiguous ledger suffix"
+        )
+    _resume_zero_ledger_generation_cleanup(
+        item=item,
+        parsed=parsed,
+        workspace=workspace,
+        protected=protected,
+    )
+    restored_wip = _capture_wip_rollback(item)
+    _validate_capsule_restored_wip_state(
+        restored_wip,
+        marker.capsule_state,
+        parsed.armed.get("wip_restore_logical_state_sha256"),
+        logical_schema=str(parsed.armed.get(
+            "wip_restore_logical_state_schema"
+        )),
+    )
+    _validate_zero_ledger_baseline(
+        item, parsed, reached_before=reached_before
+    )
+    result = _zero_ledger_result(item, parsed, replayed=replayed)
+    if release_marker:
+        release_authority = _build_dispatch_release_authority(
+            item,
+            marker,
+            ledger,
+            result,
+            kind="ordinary_safe_terminal_v1",
+        )
+        _release_dispatch_quarantine(marker, item, release_authority)
+    return result
+
+
+def _resume_existing_zero_ledger_quarantine(
+    item: dict[str, Any],
+) -> dict[str, Any] | None:
+    """Auto-resume only the exact durable quiesced zero-ledger marker phase."""
+
+    opened = _open_dispatch_quarantine_root(item, create=False)
+    if opened is not None:
+        _root, root_fd, _root_identity = opened
+        try:
+            if _reconcile_dispatch_release_intent_at(
+                item,
+                root_fd,
+                marker_name=_dispatch_quarantine_name(item),
+            ):
+                return None
+        finally:
+            os.close(root_fd)
+    try:
+        marker, parsed = _read_existing_dispatch_quarantine(
+            item, require_recovery_arm=False
+        )
+    except (NoDispatchQuarantine, CampaignPlanError, OSError):
+        return None
+    if parsed.unquiesced.get("event") != (
+        "dispatch_zero_ledger_quarantined"
+    ):
+        _close_dispatch_quarantine(marker)
+        return None
+    released = False
+    try:
+        _ledger, baseline, _suffix = _read_post_reboot_ledger_surface(
+            item,
+            parsed.armed,
+            intent_root=marker.root,
+            intent_root_identity=marker.root_identity,
+        )
+        result = _complete_zero_ledger_recovery(
+            item,
+            marker=marker,
+            parsed=parsed,
+            ledger_before=baseline,
+            reached_before=int(parsed.armed["frontier_binding"]["reached"]),
+            wip_before=None,
+            canonical_before=None,
+            replayed=True,
+            release_marker=True,
+        )
+        released = True
+        return result
+    finally:
+        if not released:
+            _close_dispatch_quarantine(marker)
+
+
 def _validate_post_reboot_clean_state(
     *,
     item: dict[str, Any],
@@ -14212,6 +15233,9 @@ def _run_item_locked(
     # Reconcile a previously authorized release before the solved-target
     # short-circuit.  Otherwise a crash after the checkpoint became durable
     # could strand the final target's marker forever.
+    resumed_zero_ledger = _resume_existing_zero_ledger_quarantine(item)
+    if resumed_zero_ledger is not None:
+        return resumed_zero_ledger
     _assert_no_dispatch_quarantine(item)
     if reached_before >= target:
         return {
@@ -14242,6 +15266,7 @@ def _run_item_locked(
         _release_scheduler_artifact_lock(lineage_probe)
     runner_cwd = _runner_cwd(item)
     ledger = _ledger_path(argv, cwd=runner_cwd)
+    _ensure_durable_ledger_file(ledger)
     ledger_before = _capture_ledger_prefix(ledger)
     _assert_no_incomplete_taint_cleanup(ledger_before.records)
     wip_rollback_before = _capture_wip_rollback(item)
@@ -14250,6 +15275,7 @@ def _run_item_locked(
     quarantine_owner: list[DispatchQuarantine | None] = [None]
     quarantine: DispatchQuarantine | None = None
     safe_terminal = False
+    quarantine_failure_recorded = False
     try:
         _arm_dispatch_quarantine(
             item,
@@ -14285,6 +15311,40 @@ def _run_item_locked(
                     "protected_identity": child.protected_identity,
                 },
             )
+        if _zero_ledger_suffix_is_exact(ledger_before):
+            zero_marker_record, _workspace, _protected = (
+                _seal_zero_ledger_observation(item, child)
+            )
+            _write_dispatch_quarantine_record(
+                quarantine, zero_marker_record
+            )
+            quarantine_failure_recorded = True
+            marker_payload = _read_bound_release_file_at(
+                quarantine.root_fd,
+                quarantine.name,
+                quarantine.marker_identity,
+                label="zero-ledger dispatch quarantine marker",
+                maximum_bytes=RebootRecovery.MAX_MARKER_BYTES,
+            )
+            try:
+                zero_parsed = RebootRecovery.parse_dispatch_marker(
+                    marker_payload, require_recovery_arm=False
+                )
+            except RebootRecovery.RecoveryEvidenceError as exc:
+                raise CampaignPlanError(str(exc)) from exc
+            result = _complete_zero_ledger_recovery(
+                item,
+                marker=quarantine,
+                parsed=zero_parsed,
+                ledger_before=ledger_before,
+                reached_before=reached_before,
+                wip_before=wip_rollback_before,
+                canonical_before=canonical_rollback_before,
+                replayed=False,
+                release_marker=False,
+            )
+            safe_terminal = True
+            return result
         if child.returncode != 0 or child.taint_reason is not None:
             result = _recover_confirmed_taint(
                 item,
@@ -14423,15 +15483,37 @@ def _run_item_locked(
             # routine has already durably removed its exact created inode, or
             # replaced this exception with a fail-closed cleanup error.
             raise
-        try:
-            _write_dispatch_quarantine_record(quarantine, {
-                "event": "dispatch_failed",
-                "recorded_at": datetime.now(timezone.utc).isoformat(),
-                "exception_type": type(exc).__name__,
-                "reason": str(exc),
-            })
-        except CampaignPlanError:
-            pass
+        if not quarantine_failure_recorded:
+            observed_child = locals().get("child")
+            observed_fields: dict[str, Any] = {}
+            if isinstance(observed_child, GuardedChildResult):
+                observed_fields = {
+                    "child_returncode": observed_child.returncode,
+                    "workspace": observed_child.workspace,
+                    "protected": observed_child.workspace,
+                    "transcript": observed_child.transcript,
+                    "workspace_identity": observed_child.workspace_identity,
+                    "protected_identity": observed_child.protected_identity,
+                    "process_tree_quiesced": (
+                        observed_child.process_tree_quiesced
+                    ),
+                    "descendant_quiescence_unproven": (
+                        observed_child.descendant_quiescence_unproven
+                    ),
+                    "detached_processes_proven_absent": (
+                        observed_child.detached_processes_proven_absent
+                    ),
+                }
+            try:
+                _write_dispatch_quarantine_record(quarantine, {
+                    "event": "dispatch_failed",
+                    "recorded_at": datetime.now(timezone.utc).isoformat(),
+                    "exception_type": type(exc).__name__,
+                    "reason": str(exc),
+                    **observed_fields,
+                })
+            except CampaignPlanError:
+                pass
         try:
             _rollback_control_failure_canonical(
                 item,

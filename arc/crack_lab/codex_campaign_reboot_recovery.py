@@ -109,6 +109,32 @@ UNQUIESCED_REQUIRED_KEYS = frozenset({
     "protected_identity",
 })
 UNQUIESCED_OPTIONAL_KEYS = frozenset({"child_pid"})
+ZERO_LEDGER_REQUIRED_KEYS = frozenset({
+    "schema",
+    "dispatch_id",
+    "event",
+    "recorded_at",
+    "exception_type",
+    "reason",
+    "child_returncode",
+    "workspace",
+    "protected",
+    "transcript",
+    "workspace_identity",
+    "protected_identity",
+    "process_tree_quiesced",
+    "descendant_quiescence_unproven",
+    "detached_processes_proven_absent",
+    "ledger_suffix_rows",
+    "evidence_schema",
+    "protected_transcript_sha256",
+    "workspace_lock_schema",
+    "workspace_lock_path",
+    "workspace_lock_identity",
+})
+ZERO_LEDGER_DIAGNOSTICS_KEYS = frozenset({
+    "diagnostics", "protected_diagnostics_sha256",
+})
 RECOVERY_ARM_V1_KEYS = frozenset({
     "schema",
     "dispatch_id",
@@ -249,17 +275,30 @@ def parse_dispatch_marker(
     armed_keys = set(armed)
     armed_v1 = armed_keys == ARMED_V1_KEYS
     armed_v2 = armed_keys == ARMED_V2_KEYS
-    if not (armed_v1 or armed_v2) or armed.get("event") != "dispatch_armed":
+    if not (armed_v1 or armed_v2) or armed.get(
+        "event"
+    ) != "dispatch_armed":
         raise RecoveryEvidenceError("dispatch armed row has an invalid schema")
-    if (
-        not UNQUIESCED_REQUIRED_KEYS.issubset(unquiesced)
-        or not set(unquiesced).issubset(
+    unquiesced_phase = (
+        UNQUIESCED_REQUIRED_KEYS.issubset(unquiesced)
+        and set(unquiesced).issubset(
             UNQUIESCED_REQUIRED_KEYS | UNQUIESCED_OPTIONAL_KEYS
         )
-        or unquiesced.get("event") != "dispatch_unquiesced"
-    ):
+        and unquiesced.get("event") == "dispatch_unquiesced"
+    )
+    zero_keys = set(unquiesced)
+    zero_phase = (
+        ZERO_LEDGER_REQUIRED_KEYS.issubset(zero_keys)
+        and (
+            zero_keys == ZERO_LEDGER_REQUIRED_KEYS
+            or zero_keys
+            == ZERO_LEDGER_REQUIRED_KEYS | ZERO_LEDGER_DIAGNOSTICS_KEYS
+        )
+        and unquiesced.get("event") == "dispatch_zero_ledger_quarantined"
+    )
+    if not (unquiesced_phase or zero_phase):
         raise RecoveryEvidenceError(
-            "dispatch unquiesced row has an invalid schema"
+            "dispatch terminal quarantine row has an invalid schema"
         )
     dispatch_id = armed.get("dispatch_id")
     if (
@@ -374,11 +413,67 @@ def parse_dispatch_marker(
         raise RecoveryEvidenceError("dispatch child return code is malformed")
     _identity(unquiesced.get("workspace_identity"), "workspace")
     _identity(unquiesced.get("protected_identity"), "protected")
-    if "child_pid" in unquiesced:
+    if unquiesced_phase and "child_pid" in unquiesced:
         child_pid = _nonnegative_integer(unquiesced["child_pid"], "child pid")
         if child_pid == 0:
             raise RecoveryEvidenceError("dispatch child pid is malformed")
+    if zero_phase:
+        if (
+            armed_v2 is not True
+            or unquiesced.get("process_tree_quiesced") is not True
+            or unquiesced.get("descendant_quiescence_unproven") is not False
+            or not isinstance(
+                unquiesced.get("detached_processes_proven_absent"), bool
+            )
+            or unquiesced.get("ledger_suffix_rows") != 0
+            or unquiesced.get("evidence_schema") not in {
+                "sealed_transcript_only_v1",
+                "sealed_transcript_diagnostics_v1",
+            }
+            or unquiesced.get("workspace_lock_schema") not in {
+                "in_workspace_v1", "hashed_external_v1",
+            }
+        ):
+            raise RecoveryEvidenceError(
+                "zero-ledger quarantine proof is malformed"
+            )
+        _normalized_absolute(
+            unquiesced.get("workspace_lock_path"), "workspace lock"
+        )
+        _identity(unquiesced.get("workspace_lock_identity"), "workspace lock")
+        for field in (
+            "protected_transcript_sha256",
+            "protected_diagnostics_sha256",
+        ):
+            if field not in unquiesced:
+                continue
+            value = unquiesced[field]
+            if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+                raise RecoveryEvidenceError(
+                    f"zero-ledger quarantine {field} is malformed"
+                )
+        diagnostics_schema = (
+            unquiesced.get("evidence_schema")
+            == "sealed_transcript_diagnostics_v1"
+        )
+        if diagnostics_schema != ZERO_LEDGER_DIAGNOSTICS_KEYS.issubset(
+            unquiesced
+        ):
+            raise RecoveryEvidenceError(
+                "zero-ledger quarantine diagnostics binding is malformed"
+            )
+        if diagnostics_schema and (
+            not isinstance(unquiesced.get("diagnostics"), str)
+            or not unquiesced["diagnostics"]
+        ):
+            raise RecoveryEvidenceError(
+                "zero-ledger quarantine diagnostics name is malformed"
+            )
     recovery_arm = rows[2] if len(rows) == 3 else None
+    if zero_phase and recovery_arm is not None:
+        raise RecoveryEvidenceError(
+            "zero-ledger quarantine cannot carry a reboot recovery arm"
+        )
     if recovery_arm is not None:
         arm_keys = set(recovery_arm)
         is_v1 = arm_keys == RECOVERY_ARM_V1_KEYS
