@@ -160,6 +160,11 @@ def test_scene_evidence_is_full_ordered_side_free_and_canonical() -> None:
     assert scene.to_data()["support_side_is_visual_evidence"] is False
     assert tuple(item.feature_id for item in lineage.feature_values) == OBJECT_FEATURE_IDS
 
+    official = _scene(
+        "ff/ff_nact2_5_0042/1/0.png", _lineage("official-lineage")
+    )
+    assert ObjectSceneEvidence.from_data(official.to_data()) == official
+
     with pytest.raises(ObjectVersionSpaceError, match="exhaust"):
         ObjectStableLineageEvidence.create("broken", lineage.feature_values[:-1])
     with pytest.raises(ObjectVersionSpaceError, match="empty lineage inventory"):

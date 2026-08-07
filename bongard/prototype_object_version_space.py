@@ -62,6 +62,7 @@ MAX_CONJUNCTION_ATOMS = 2
 
 _SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _CODE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,255}\Z")
+_SCENE_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,511}\Z")
 _FEATURE_INDEX = {feature_id: index for index, feature_id in enumerate(OBJECT_FEATURE_IDS)}
 _FEATURE_SPEC = {item.feature_id: item for item in OBJECT_FEATURE_CATALOG}
 
@@ -100,6 +101,12 @@ def _fields(value: object, expected: set[str], label: str) -> Mapping[str, Any]:
 def _code(value: object, label: str) -> str:
     if not isinstance(value, str) or _CODE.fullmatch(value) is None:
         raise ObjectVersionSpaceError(f"{label} must be a bounded code")
+    return value
+
+
+def _scene_id(value: object, label: str = "scene_id") -> str:
+    if not isinstance(value, str) or _SCENE_ID.fullmatch(value) is None:
+        raise ObjectVersionSpaceError(f"{label} must be a bounded panel identifier")
     return value
 
 
@@ -464,7 +471,7 @@ class ObjectSceneEvidence:
     scene_digest: str
 
     def __post_init__(self) -> None:
-        _code(self.scene_id, "scene_id")
+        _scene_id(self.scene_id)
         _digest(self.lineage_catalog_digest, "lineage_catalog_digest")
         if (
             not isinstance(self.lineages, tuple)
@@ -815,7 +822,7 @@ class ObjectSupportDiagnostic:
             values = getattr(self, name)
             if (
                 not isinstance(values, tuple)
-                or any(_CODE.fullmatch(item) is None for item in values)
+                or any(_SCENE_ID.fullmatch(item) is None for item in values)
                 or len(values) != len(set(values))
             ):
                 raise ObjectVersionSpaceError(f"{name} is not canonical")
@@ -1035,7 +1042,7 @@ class ObjectSupportVersionSpace:
         if (
             panel_count < 2
             or len(set(self.support_scene_ids)) != panel_count
-            or any(_CODE.fullmatch(item) is None for item in self.support_scene_ids)
+            or any(_SCENE_ID.fullmatch(item) is None for item in self.support_scene_ids)
             or len(self.support_scene_digests) != panel_count
             or len(self.support_sides) != panel_count
             or ObjectSupportSide.POSITIVE not in self.support_sides
