@@ -39,7 +39,7 @@ from bongard.prototype_scene_calibration import (
     PrototypeSceneTagScore,
     adapt_prototype_scene_observation,
 )
-from bongard.prototype_scene_observer import (
+from bongard.prototype_object_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA,
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
     PrototypeReferenceCatalog,

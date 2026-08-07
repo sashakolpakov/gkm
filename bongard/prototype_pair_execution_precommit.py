@@ -49,6 +49,8 @@ SPLIT_RULE_ID = "per-side-sha256-rank-lowest-query-remaining-support-v1"
 REQUIRED_RUNTIME_SOURCE_ROLES = frozenset(
     {
         "observer",
+        "observer-legacy-transport",
+        "object-observer-protocol",
         "object-hypotheses",
         "object-profiles",
         "visual-runtime",

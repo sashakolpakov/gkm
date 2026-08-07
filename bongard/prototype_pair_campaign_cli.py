@@ -77,7 +77,7 @@ from bongard.prototype_scene_headless_runner import (
     RUNNER_ID,
     prototype_scene_runner_source_digest,
 )
-from bongard.prototype_scene_observer import (
+from bongard.prototype_object_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
     prototype_rubric_description_protocol_digest,
     prototype_scene_observer_environment_digest,

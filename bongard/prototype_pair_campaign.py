@@ -80,7 +80,7 @@ from bongard.prototype_scene_codex_ranker import (
     prototype_scene_codex_ranker_transport_source_digest,
     verify_prototype_scene_codex_rank_response,
 )
-from bongard.prototype_scene_observer import (
+from bongard.prototype_object_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
     PrototypeReferenceCatalog,
     PrototypeRubricDescriptionArtifact,
@@ -133,7 +133,9 @@ _RAW_SHA256 = re.compile(r"[0-9a-f]{64}\Z")
 _IDENTIFIER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,255}\Z")
 
 _RUNTIME_SOURCE_MODULES = {
-    "observer": "bongard.prototype_scene_observer",
+    "observer": "bongard.prototype_object_scene_observer",
+    "observer-legacy-transport": "bongard.prototype_scene_observer",
+    "object-observer-protocol": "bongard.prototype_object_observer_protocol",
     "object-hypotheses": "bongard.prototype_object_hypotheses",
     "object-profiles": "bongard.prototype_object_profiles",
     "visual-runtime": "bongard.prototype_visual_runtime",
