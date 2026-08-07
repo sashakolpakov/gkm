@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 from dataclasses import replace
 import hashlib
+import re
 
 import pytest
 
@@ -21,7 +22,7 @@ from bongard.prototype_scene_calibration import (
     fit_prototype_scene_calibration_family,
     threshold_commitment,
 )
-from bongard.prototype_scene_observer import (
+from bongard.prototype_object_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_ARTIFACT_SCHEMA,
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
     PrototypeSceneObserverStatus,
@@ -31,6 +32,7 @@ from bongard.prototype_scene_observer import (
     prototype_scene_observer_model_digest,
     prototype_scene_scoring_protocol_digest,
 )
+from bongard.prototype_object_profiles import OBJECT_FEATURE_IDS
 from bongard.prototype_scene_headless_runner import (
     PrototypeSceneCandidateFreeze,
     PrototypeSceneFreezeCommitReceipt,
@@ -59,11 +61,11 @@ from bongard.prototype_scene_support_version_space import (
 )
 from bongard.tests.test_prototype_pair_cohort import _fixture, _kwargs
 from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
+from bongard.tests.test_prototype_object_scene_observer import _description_payload
 from bongard.tests.test_prototype_scene_observer import (
     EFFORT,
     LAUNCHER_DIGEST,
     MODEL,
-    _description_payload,
     _png,
     _receipt,
 )
@@ -94,6 +96,48 @@ def _calibration_score(tag_id: str, expected: str) -> PrototypeSceneTagScore:
         reason_code="scored",
         error_type=None,
     )
+
+
+def _feature_payload(prompt: str, states: tuple[str, str]) -> dict[str, object]:
+    slot_ids = tuple(re.findall(r"slot_id=(slot-[0-9]{8})", prompt))
+    assert slot_ids
+    feature_state = {
+        "bird_like_support_ppm": states[0],
+        "straight_span_count": states[1],
+    }
+    cells: list[dict[str, object]] = []
+    for slot_id in slot_ids:
+        for feature_id in OBJECT_FEATURE_IDS:
+            state = feature_state.get(feature_id, "absent")
+            if state == "indeterminate":
+                cells.append(
+                    {
+                        "slot_id": slot_id,
+                        "feature_id": feature_id,
+                        "state": "indeterminate",
+                        "lower": None,
+                        "upper": None,
+                        "reason_code": "genuinely_unresolvable",
+                    }
+                )
+            else:
+                value = 900_000 if state == "present" else 0
+                if feature_id == "straight_span_count" and state == "present":
+                    value = 1
+                cells.append(
+                    {
+                        "slot_id": slot_id,
+                        "feature_id": feature_id,
+                        "state": "scored",
+                        "lower": value,
+                        "upper": value,
+                        "reason_code": None,
+                    }
+                )
+    return {
+        "description": "One bounded scene observation for offline replay.",
+        "cells": cells,
+    }
 
 
 @pytest.fixture(scope="module")
@@ -250,25 +294,7 @@ def _observer_artifact(
     def transport(prompt, paths, names, schema, **_kwargs):
         if transport_failure:
             raise RuntimeError("offline fixture transport failure")
-        payload = {
-            "description": "One angular bird-like object is visibly present.",
-            "cells": [
-                {
-                    "group_id": "group_0",
-                    "state": "scored",
-                    "lower_ppm": 1_000_000,
-                    "upper_ppm": 1_000_000,
-                    "reason_code": None,
-                },
-                {
-                    "group_id": "group_1",
-                    "state": "indeterminate",
-                    "lower_ppm": None,
-                    "upper_ppm": None,
-                    "reason_code": "genuinely_unresolvable",
-                },
-            ],
-        }
+        payload = _feature_payload(prompt, ("present", "indeterminate"))
         if parser_failure:
             payload["cells"].pop()
         return CodexStructuredResult(
@@ -319,33 +345,7 @@ def _observe_scheduled_panel(
     scene = _png(scene_seed)
 
     def transport(prompt, paths, names, schema, **_kwargs):
-        cells = []
-        for index, state in enumerate(states):
-            if state == "indeterminate":
-                cells.append(
-                    {
-                        "group_id": f"group_{index}",
-                        "state": "indeterminate",
-                        "lower_ppm": None,
-                        "upper_ppm": None,
-                        "reason_code": "genuinely_unresolvable",
-                    }
-                )
-            else:
-                value = 1_000_000 if state == "present" else 0
-                cells.append(
-                    {
-                        "group_id": f"group_{index}",
-                        "state": "scored",
-                        "lower_ppm": value,
-                        "upper_ppm": value,
-                        "reason_code": None,
-                    }
-                )
-        payload = {
-            "description": "One bounded scene observation for offline replay.",
-            "cells": cells,
-        }
+        payload = _feature_payload(prompt, states)
         return CodexStructuredResult(
             payload, _receipt(prompt, paths, names, schema, payload)
         )

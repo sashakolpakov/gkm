@@ -5,15 +5,16 @@ from dataclasses import dataclass, replace
 import hashlib
 from io import BytesIO
 from pathlib import Path
+import re
 import threading
 from typing import Any, Mapping, Sequence
 import zipfile
 
-from PIL import Image
+from PIL import Image, ImageDraw
 from PIL.PngImagePlugin import PngInfo
 import pytest
 
-from bongard.canonical import canonical_json
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.exposure import ExposureLedger
 from bongard.official_panel_archive import OfficialPanelArchive
 from bongard.prototype_pair_campaign import (
@@ -42,6 +43,7 @@ from bongard.prototype_pair_execution_precommit import (
     PrototypePairExecutionPrecommit,
     prepare_prototype_pair_execution_precommit,
 )
+from bongard.prototype_object_profiles import OBJECT_FEATURE_IDS
 from bongard.prototype_scene_calibration import (
     PrototypeSceneTagThreshold,
     calibration_algorithm_digest,
@@ -59,7 +61,7 @@ from bongard.prototype_scene_headless_runner import (
     RUNNER_ID,
     prototype_scene_runner_source_digest,
 )
-from bongard.prototype_scene_observer import (
+from bongard.prototype_object_scene_observer import (
     PROTOTYPE_SCENE_OBSERVER_PROTOCOL_ID,
     prototype_rubric_description_protocol_digest,
     prototype_scene_observer_environment_digest,
@@ -79,7 +81,6 @@ from bongard.tests.test_prototype_scene_observer import (
     EFFORT,
     LAUNCHER_DIGEST,
     MODEL,
-    _description_payload,
     _receipt as _observer_receipt,
 )
 from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
@@ -96,8 +97,15 @@ MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(
 )
 
 
-def _panel_png(panel_id: str) -> bytes:
-    image = Image.new("RGB", (8, 8), "white")
+def _panel_png(panel_id: str, marker_values: tuple[int, int, int]) -> bytes:
+    """Make identity-distinct visible pixels, not metadata-only test panels."""
+
+    image = Image.new("RGB", (64, 48), "white")
+    draw = ImageDraw.Draw(image)
+    draw.line((3, 33, 60, 33), fill="black", width=2)
+    for index, marker_value in enumerate(marker_values):
+        x0 = 4 + index * 19
+        draw.rectangle((x0, 21, x0 + 15, 32), fill=(marker_value,) * 3)
     metadata = PngInfo()
     metadata.add_text("panel_id", panel_id)
     output = BytesIO()
@@ -127,7 +135,7 @@ class _Fixture:
     descriptor: OfficialReleaseDescriptor
     archive: OfficialPanelArchive
     configuration: PrototypePairCampaignConfiguration
-    panel_id_by_digest: Mapping[str, str]
+    panel_id_by_marker: Mapping[tuple[int, int, int], str]
 
     def run_kwargs(self, store: PrototypePairCampaignStore) -> dict[str, object]:
         return {
@@ -160,16 +168,22 @@ def campaign_fixture(tmp_path_factory: pytest.TempPathFactory) -> _Fixture:
         _cohort_fixture()
     )
     archive_path = root / "ShapeBongard_V2.zip"
-    panel_id_by_digest: dict[str, str] = {}
+    panel_id_by_marker: dict[tuple[int, int, int], str] = {}
+    marker_ordinal = 0
     with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_STORED) as bundle:
         for task_id in inventory:
             for side in ("0", "1"):
                 for index in range(7):
                     panel_id = f"bd/{task_id}/{side}/{index}.png"
-                    payload = _panel_png(panel_id)
-                    digest = hashlib.sha256(payload).hexdigest()
-                    assert digest not in panel_id_by_digest
-                    panel_id_by_digest[digest] = panel_id
+                    marker_values = (
+                        20 + marker_ordinal % 50,
+                        80 + (marker_ordinal // 50) % 50,
+                        170 + (marker_ordinal // 2500) % 50,
+                    )
+                    marker_ordinal += 1
+                    payload = _panel_png(panel_id, marker_values)
+                    assert marker_values not in panel_id_by_marker
+                    panel_id_by_marker[marker_values] = panel_id
                     bundle.writestr(
                         f"ShapeBongard_V2/bd/images/{task_id}/{side}/{index}.png",
                         payload,
@@ -300,8 +314,37 @@ def campaign_fixture(tmp_path_factory: pytest.TempPathFactory) -> _Fixture:
         descriptor=descriptor,
         archive=archive,
         configuration=configuration,
-        panel_id_by_digest=panel_id_by_digest,
+        panel_id_by_marker=panel_id_by_marker,
     )
+
+
+def _description_payload() -> dict[str, object]:
+    return {
+        "profiles": [
+            {
+                "group_id": "group_0",
+                "rubric": "A bird-like angular outline with oblique wings.",
+                "atoms": [
+                    {
+                        "feature_id": "bird_like_support_ppm",
+                        "operator": "at_least",
+                        "target": 500_000,
+                    }
+                ],
+            },
+            {
+                "group_id": "group_1",
+                "rubric": "A rounded leaf-like contour arrangement.",
+                "atoms": [
+                    {
+                        "feature_id": "rounded_leaf_support_ppm",
+                        "operator": "at_least",
+                        "target": 500_000,
+                    }
+                ],
+            },
+        ]
+    }
 
 
 def _description_transport(counter: list[int], *, fail: bool = False):
@@ -323,6 +366,55 @@ def _description_transport(counter: list[int], *, fail: bool = False):
         )
 
     return transport
+
+
+def _feature_payload(
+    slot_ids: Sequence[str],
+    states: Mapping[str, str],
+    *,
+    indeterminate_tags: frozenset[str] = frozenset(),
+) -> dict[str, object]:
+    feature_by_tag = {
+        OPAQUE_TAG_IDS[0]: "bird_like_support_ppm",
+        OPAQUE_TAG_IDS[1]: "rounded_leaf_support_ppm",
+    }
+    tag_by_feature = {value: key for key, value in feature_by_tag.items()}
+    assert slot_ids
+    cells: list[dict[str, object]] = []
+    for slot_id in slot_ids:
+        for feature_id in OBJECT_FEATURE_IDS:
+            tag_id = tag_by_feature.get(feature_id)
+            if tag_id in indeterminate_tags:
+                cells.append(
+                    {
+                        "slot_id": slot_id,
+                        "feature_id": feature_id,
+                        "state": "indeterminate",
+                        "lower": None,
+                        "upper": None,
+                        "reason_code": "ambiguous_visible_measurement",
+                    }
+                )
+                continue
+            value = (
+                900_000
+                if tag_id is not None and states[tag_id] == "present"
+                else 0
+            )
+            cells.append(
+                {
+                    "slot_id": slot_id,
+                    "feature_id": feature_id,
+                    "state": "scored",
+                    "lower": value,
+                    "upper": value,
+                    "reason_code": None,
+                }
+            )
+    return {
+        "description": "A connected angular drawing with several visible strokes.",
+        "cells": cells,
+    }
 
 
 def _scene_transport(
@@ -352,8 +444,15 @@ def _scene_transport(
             counter[0] += 1
         assert _kwargs["model_catalog_snapshot"] is MODEL_CATALOG
         assert _kwargs["tool_surface_attestation"] is NO_TOOLS_ATTESTATION
-        digest = hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
-        panel_id = fixture.panel_id_by_digest[digest]
+        assert all(name.startswith("sheet_") for name in names)
+        with Image.open(paths[0]) as atlas_image:
+            values = set(atlas_image.get_flattened_data())
+        marker_key = (
+            next(value for value in values if 20 <= value < 70),
+            next(value for value in values if 80 <= value < 130),
+            next(value for value in values if 170 <= value < 220),
+        )
+        panel_id = fixture.panel_id_by_marker[marker_key]
         if panel_id in calibration_states:
             states = calibration_states[panel_id]
         elif panel_id in positive:
@@ -363,43 +462,16 @@ def _scene_transport(
             states = {tag_id: drill_state for tag_id in OPAQUE_TAG_IDS}
         else:  # pragma: no cover - catches a campaign release-schedule regression
             raise AssertionError(f"unexpected scene panel: {panel_id}")
-        cells = []
-        for index, tag_id in enumerate(OPAQUE_TAG_IDS):
-            if (
-                mode == "calibration_gap"
-                and panel_id == next(iter(calibration_states))
-                and index == 0
-            ) or (
-                mode == "support_witness_gap" and panel_id == witness_panel
-            ):
-                cells.append(
-                    {
-                        "group_id": f"group_{index}",
-                        "state": "indeterminate",
-                        "lower_ppm": None,
-                        "upper_ppm": None,
-                        "reason_code": "ambiguous_visible_match",
-                    }
-                )
-                continue
-            lower, upper = (
-                (800_000, 900_000)
-                if states[tag_id] == "present"
-                else (100_000, 200_000)
-            )
-            cells.append(
-                {
-                    "group_id": f"group_{index}",
-                    "state": "scored",
-                    "lower_ppm": lower,
-                    "upper_ppm": upper,
-                    "reason_code": None,
-                }
-            )
-        payload = {
-            "description": "A compact angular drawing with oblique strokes.",
-            "cells": cells,
-        }
+        indeterminate_tags: frozenset[str] = frozenset()
+        if mode == "calibration_gap" and panel_id == next(iter(calibration_states)):
+            indeterminate_tags = frozenset((OPAQUE_TAG_IDS[0],))
+        elif mode == "support_witness_gap" and panel_id == witness_panel:
+            indeterminate_tags = frozenset(OPAQUE_TAG_IDS)
+        payload = _feature_payload(
+            tuple(re.findall(r"slot_id=(slot-[0-9]{8})", prompt)),
+            states,
+            indeterminate_tags=indeterminate_tags,
+        )
         return CodexStructuredResult(
             payload, _observer_receipt(prompt, paths, names, schema, payload)
         )
