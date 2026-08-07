@@ -96,6 +96,29 @@ def test_description_protocol_freezes_closed_profiles() -> None:
     assert "executable" in envelope
 
 
+def test_description_canonicalizes_commutative_atom_order() -> None:
+    payload = _description_payload()
+    payload["profiles"][0]["atoms"] = [  # type: ignore[index]
+        {
+            "feature_id": "bird_like_support_ppm",
+            "operator": "at_least",
+            "target": 800_000,
+        },
+        {
+            "feature_id": "oblique_span_support_ppm",
+            "operator": "at_least",
+            "target": 600_000,
+        },
+    ]
+    parsed = parse_prototype_object_description_payload(payload)
+    assert tuple(
+        atom.feature_id for atom in parsed.profiles[0].atoms
+    ) == (
+        "oblique_span_support_ppm",
+        "bird_like_support_ppm",
+    )
+
+
 def test_description_rejects_order_unknown_fields_and_bad_operator() -> None:
     wrong = deepcopy(_description_payload())
     wrong["profiles"][0]["group_id"] = "group_1"  # type: ignore[index]

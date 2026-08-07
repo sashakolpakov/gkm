@@ -163,7 +163,8 @@ def prototype_object_description_prompt() -> str:
         "same-object conjunction. Use only the declared feature identifiers, "
         "operators, and strictly positive integer targets. Return group_0 then "
         "group_1. Do not emit executable text, negation, disjunction, weights, "
-        "or hidden-role guesses.\n\nFrozen measurement catalog:\n"
+        "or hidden-role guesses. Atom order is ignored and canonicalized by "
+        "the Python verifier.\n\nFrozen measurement catalog:\n"
         + _feature_catalog_lines()
     )
 
@@ -238,6 +239,12 @@ def parse_prototype_object_description_payload(
         if not atom_rows:
             raise PrototypeObjectProtocolError("profile atoms cannot be empty")
         atoms = tuple(ObjectProfileAtom.from_data(value) for value in atom_rows)
+        atoms = tuple(
+            sorted(
+                atoms,
+                key=lambda atom: OBJECT_FEATURE_IDS.index(atom.feature_id),
+            )
+        )
         profiles.append(ObjectProfile.create(group_id, atoms))
     return ParsedPrototypeObjectDescription(
         tuple(audits),  # type: ignore[arg-type]
