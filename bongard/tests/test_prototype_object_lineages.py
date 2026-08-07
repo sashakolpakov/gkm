@@ -303,7 +303,10 @@ def test_aggregation_failure_precedence_and_version_space_conversion() -> None:
         "bd/train/synthetic-task/1/0.png", aggregation
     )
     assert isinstance(evidence, ObjectSceneEvidence)
-    assert evidence.lineage_catalog_digest == aggregation.lineage_packet_digest
+    from bongard.prototype_object_lineages import object_lineage_artifact_digest
+
+    assert evidence.lineage_catalog_digest == object_lineage_artifact_digest()
+    assert evidence.lineage_catalog_digest != aggregation.lineage_packet_digest
     assert evidence.unresolved_lineage_possible is False
     assert tuple(item.lineage_id for item in evidence.lineages) == (
         "lineage-00000000",

@@ -1587,7 +1587,7 @@ def object_scene_evidence_from_lineage_aggregation(
         )
     return ObjectSceneEvidence.create(
         scene_id,
-        aggregation.lineage_packet_digest,
+        object_lineage_artifact_digest(),
         lineages,
         unresolved_lineage_possible=aggregation.unresolved_lineage_possible,
     )
