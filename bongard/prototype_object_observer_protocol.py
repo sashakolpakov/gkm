@@ -64,6 +64,12 @@ def _source_digest() -> str:
     return verify_loaded_source(__name__, expected_source_sha256=_LOADED_SOURCE_SHA256)
 
 
+def prototype_object_protocol_source_digest() -> str:
+    """Public import-time source identity for precommit and cold replay."""
+
+    return _source_digest()
+
+
 def _authority_data() -> dict[str, object]:
     return {
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
@@ -317,13 +323,35 @@ def prototype_object_feature_protocol_digest(packet: ObjectHypothesisPacket) -> 
         {
             "schema": FEATURE_SCHEMA_ID,
             "protocol_id": FEATURE_PROTOCOL_ID,
-            "source_digest": _source_digest(),
+            "protocol_family_digest": prototype_object_feature_protocol_family_digest(),
             "hypothesis_packet_digest": packet.digest(),
             "hypothesis_extractor_digest": object_hypothesis_extractor_artifact_digest(),
             "visual_runtime_dependency_digest": visual_runtime_dependency_digest(),
             "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
             "prompt_sha256": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
             "output_schema_digest": canonical_digest(schema),
+            "profile_blind": True,
+            "reference_blind": True,
+            "coverage": "every-occupied-slot-by-every-feature-in-exact-order",
+            **_authority_data(),
+        }
+    )
+
+
+def prototype_object_feature_protocol_family_digest() -> str:
+    """Packet-independent identity of the profile-blind feature protocol."""
+
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-object-feature-protocol-family.v1",
+            "protocol_id": FEATURE_PROTOCOL_ID,
+            "source_digest": _source_digest(),
+            "output_schema_digest": canonical_digest(
+                prototype_object_feature_output_schema()
+            ),
+            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "hypothesis_extractor_digest": object_hypothesis_extractor_artifact_digest(),
+            "visual_runtime_dependency_digest": visual_runtime_dependency_digest(),
             "profile_blind": True,
             "reference_blind": True,
             "coverage": "every-occupied-slot-by-every-feature-in-exact-order",
@@ -461,5 +489,7 @@ __all__ = (
     "prototype_object_description_protocol_digest",
     "prototype_object_feature_output_schema",
     "prototype_object_feature_prompt",
+    "prototype_object_feature_protocol_family_digest",
     "prototype_object_feature_protocol_digest",
+    "prototype_object_protocol_source_digest",
 )
