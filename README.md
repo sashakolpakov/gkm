@@ -149,8 +149,9 @@ same lens to a different substrate:
 - **[bongard/](bongard/README.md)** — Python-first visual concept induction over
   the complete official Bongard-LOGO corpus, with candidate-independent typed
   observations, positive same-binding predicates, sealed support/query
-  boundaries, and model-free replay; the production benchmark is still in
-  progress.
+  boundaries, and model-free replay. A completed five-task exact-unused TRAIN
+  engineering campaign scored 2/5 jointly correct (4/10 fixed-denominator
+  queries); the official test benchmark remains sealed and pending.
 - **[cone/](cone/README.md)** — the substrate-agnostic core of the **colimit-cone
   program**: learn a compiled, verifiable *cone* over goal atoms rather than a
   monolithic policy; cone-leg discovery, goal induction from scalar reward, and the

@@ -5,15 +5,17 @@ paper: *Python-First Visual Predicates for Bongard-LOGO*. The compatibility
 entry point [`semantic_cones.tex`](semantic_cones.tex) inputs the same source;
 it is not a second manuscript.
 
-The paper is a protocol and representation report, not a successful benchmark
-paper. Its current claims are:
+The paper is a protocol and representation report with one completed
+five-task engineering result, not an official benchmark paper. Its current
+claims are:
 
 - ShapeBongard V2 has 12,000 tasks and 168,000 panels, split 9,300 train, 900
   validation, and 1,800 official test.
 - At the pre-pilot ledger snapshot, 156 task IDs were exposed and 10,044
   train/validation IDs were exact-image-unseen. The completed 24-task pilot
-  leaves 180 exposed and 10,020 exact-image-unseen. Most reuse already exposed
-  generator semantics. Strict reusable DRILL capacity is zero; strict DEV fell
+  left 180 exposed and 10,020 exact-image-unseen; the five-task campaign leaves
+  185 and 10,015. Most reuse already exposed generator semantics. Strict
+  reusable DRILL capacity is zero; strict DEV fell
   from 16 to 15 `bd` tasks because the pilot's guard missed shared semantic
   disclosure keys. The prospective selector now protects the complete
   disclosure-token closure; a metadata-only regression preserved every
@@ -44,7 +46,7 @@ paper. Its current claims are:
   relational branch.
 - The first metadata-only 15-task plan is rejected without execution: its
   unkeyed 49-choice support commitment disclosed every held-out index. A
-  The hardened v4 runner and v4 campaign now implement and fixture-test a
+  hardened v4 runner and v4 campaign now implement and fixture-test a
   fresh hidden schedule, authenticated panel-manifest membership, immutable
   source identities, and a crash-safe exclusive task claim journal. The
   cohort nevertheless remains stopped at 0/15 intended-concept expressibility.
@@ -72,17 +74,42 @@ paper. Its current claims are:
   The v3-library ablation on those 24 tasks found 0/24 exact full separators,
   0/168 exact 6+6 folds, zero held-out generalizers, and a best profile of
   8/14.
-- The hardened v4 runner and v4 campaign are implemented and fixture-tested,
-  including an explicit fixed five-task exact-unused TRAIN
-  representation-engineering mode over historically exposed semantics. At
-  this pre-run snapshot no real plan has been frozen or published and no model
-  campaign has executed. This is not an independent DEV score; strict DEV
-  remains stopped at 0/15 expressibility, and the sealed semantic partition
-  and official test remain untouched.
+- The fixed five-task exact-unused TRAIN representation-engineering campaign
+  over historically exposed semantics is complete. Its headline is 2/5
+  jointly correct, with 4/10 on the fixed query denominator. Released queries
+  were 4/4, a conditional diagnostic only. Three tasks were
+  `support_rejected`, two were `complete`, and there were zero terminal
+  failures and zero rerolls. Cold durable replay made zero proposer/model
+  calls. Plan/report/replay/exposure-successor digests are
+  `fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3`,
+  `760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4`,
+  `0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee`,
+  and
+  `sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70`.
+  This is not strict DEV, official test, or unbiased generalization. Strict
+  DEV remains stopped at 0/15 expressibility and official test remains sealed.
+  Python is canonical; Lean is optional and removable.
+- A post-hoc support-only sweep over all 65,678 frozen predicates used no new
+  pixels, model, or query access. Its separator-count vector was
+  `[0, 0, 0, 1, 1]`: zero for every rejected task and exactly one for each
+  completed task. Codex selected the unique
+  `reflection_mismatch >= 500000` predicate both times; its digest is
+  `0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8`.
+  The five matrix digests are
+  `eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9`,
+  `e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2`,
+  `78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3`,
+  `c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342`,
+  and
+  `586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d`.
+  This is diagnostic, not a campaign metric: the rejections are current
+  observer/language holes, not proposer misses; support outcome perfectly
+  tracked frozen-language expressibility.
 
 The historical 10,047 exact-unused count is retained only as the
 post-Stage-A-A3 snapshot. Three later atomic records produced the pre-pilot
-count of 10,044; the 24-task pilot produced the current count of 10,020.
+count of 10,044; the 24-task pilot produced 10,020, and the five-task campaign
+produced the current count of 10,015.
 
 Build from the repository root:
 

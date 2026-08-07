@@ -118,7 +118,8 @@ it remains optional and `indeterminate`. That is the honest missing leg.
 The complete ShapeBongard V2 release has 12,000 tasks and 168,000 panels, split
 9,300 train, 900 validation, and 1,800 official test. Before the coverage pilot,
 10,044 train/validation tasks were exact-image-unseen after 156 exposed IDs.
-The completed 24-task pilot leaves 10,020 exact-image-unseen and 180 exposed;
+The completed 24-task pilot left 10,020 exact-image-unseen and 180 exposed;
+the subsequent five-task engineering campaign leaves 10,015 and 185;
 most reuse known generator semantics. Strict reusable DRILL capacity is zero.
 Strict DEV was 16 `bd` tasks before the pilot and is 15 afterward because the
 pilot protected exact task IDs but not shared semantic disclosure keys.
@@ -162,14 +163,39 @@ in the language” from “the proposer missed an available formula.” The firs
 union is still panel-global outside the relational branch and cannot conjoin
 different branches; object-bound cross-leg gluing remains future work.
 
-The intended episode order is support observation, one-shot proposal,
-support-only verification, durable freeze, query release, joint prediction,
-label reveal, and model-free replay. There are no rerolls. Coverage drilling
-is complete. The hardened v4 runner and v4 campaign orchestrator now implement
-and fixture-test that order, including an explicit fixed five-task
-exact-unused TRAIN mode for semantics-reused representation engineering. At
-this pre-run snapshot, no real plan has been frozen or published and no model
-campaign has been executed, so there is no new benchmark number to report.
+The episode order is support observation, one-shot proposal, support-only
+verification, durable freeze, query release, joint prediction, label reveal,
+and model-free replay. There are no rerolls. The hardened v4 runner and v4
+campaign exercised that order on the fixed five-task exact-unused TRAIN
+semantics-reused engineering cohort. The blunt result is **2/5 jointly
+correct** and **4/10** on the fixed query denominator. The two released tasks
+were 4/4, but that is a conditional diagnostic only. Three tasks were
+`support_rejected`, two were `complete`, and there were zero terminal failures
+and zero rerolls. Cold durable replay reproduced that accounting with zero
+proposer/model calls.
+
+The plan, campaign report, durable replay, and exposure successor are bound by
+these exact digests, respectively:
+`fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3`,
+`760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4`,
+`0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee`,
+and
+`sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70`.
+Python is canonical; Lean was not required, was not imported during replay,
+and remains optional and removable.
+
+A post-hoc support-only sweep over all 65,678 frozen predicates used only the
+already released support packets. Its separator counts in frozen task order
+were `[0, 0, 0, 1, 1]`; Codex selected the unique
+`reflection_mismatch >= 500000` separator on both expressible tasks. Thus the
+three rejections are observer/language gaps, not proposer misses. The schema
+had forced exactly one predicate and offered no typed
+`no_expressible_predicate`. The next repair is to add internal-angle/triangle-
+class, side-ratio, and qualitative-size witnesses, compute the viable support
+version space before proposal, report a typed gap when it is empty, and ask
+Codex to rank only verified candidates when it is nonempty. Vision prose and
+soft tags remain hypotheses or calibrated four-disposition observations, not
+truth promoted by Python or Lean.
 
 The first metadata-only 15-task plan is rejected without execution: an
 unkeyed, 49-choice support-selection digest disclosed every held-out index.
@@ -185,7 +211,8 @@ Only its compact rejection record remains at
 `data/relational_headless_full_current_dev_20260807.rejection.json`; the
 runnable plan and stale private schedule/cache were removed.
 
-The only implemented live-mode candidate at this snapshot is the explicitly
-labelled five-task exact-unused TRAIN semantics-reused engineering mode. Its
-fixed allowlist and sealed-task exclusion are fixture-tested, but no real plan
-or model campaign has yet been executed.
+This completed run is representation engineering on exact-image-unused TRAIN
+tasks with historically exposed generator semantics. It is not strict DEV,
+official test, or an unbiased generalization estimate. Official test remains
+sealed, and the rejected strict DEV cohort remains stopped at 0/15 intended-
+concept expressibility.

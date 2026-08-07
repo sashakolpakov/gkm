@@ -72,7 +72,8 @@ PNG is opened.  A failed run remains exposed and is never rerolled.
 At the pre-pilot ledger snapshot, 156 task IDs were exposed and 10,044
 train/validation IDs remained exact-image-unseen.  The historical 10,047 count
 belongs to the earlier post-Stage-A-A3 snapshot.  The completed 24-task pilot
-leaves 180 exposed and 10,020 exact-image-unseen.  Strict reusable DRILL
+left 180 exposed and 10,020 exact-image-unseen; the five-task campaign leaves
+185 exposed and 10,015 exact-image-unseen.  Strict reusable DRILL
 capacity is zero.  Strict ``bd`` DEV capacity was 16 before the pilot and is 15
 afterward because the selector protected task IDs but not shared semantic
 disclosure keys.  That historical loss remains charged.  The prospective
@@ -157,12 +158,45 @@ immutable source pins, and crash-safe exclusive task claims.
 
 The old 15-task DEV cohort must not be regenerated merely with better
 commitments.  A metadata-only audit found 0/15 intended concepts fully
-expressible in the current v3 two-closed-loop polygon/ratio language.  The
-only currently qualified live target is the implemented explicit fixed
-five-task exact-unused TRAIN representation-engineering mode with historically
-exposed semantics.  Its admission and exposed-panel expressibility checks are
-fixture-tested.  At this pre-run snapshot no real plan has been frozen or
-published and no model campaign has executed.
+expressible in the current v3 two-closed-loop polygon/ratio language.
+
+The fixed five-task exact-unused TRAIN representation-engineering campaign on
+historically exposed semantics has now run.  It ended with two ``complete``
+and three ``support_rejected`` tasks, zero terminal failures, and zero rerolls.
+Its headline is 2/5 jointly correct and its fixed query denominator is 4/10;
+the released-query 4/4 is diagnostic only.  Cold durable replay accounted for
+all five tasks and made zero proposer/model calls.  Do not rerun it as a smoke
+test.
+
+The checked-in plan is
+``bongard/data/closed_visual_exact_unused_train_engineering_20260807.plan.json``.
+Its exact plan, campaign-report, durable-replay, and exposure-successor digests
+are:
+
+* ``fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3``;
+* ``760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4``;
+* ``0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee``;
+* ``sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70``.
+
+This is representation engineering on exact-image-unused TRAIN tasks whose
+generator semantics were already exposed, not strict DEV, official test, or
+an unbiased generalization estimate.  Official test remains sealed.  Python
+is canonical and Lean optional/removable.
+
+A separate post-hoc support-only sweep over the already released freeze
+packets opened no new pixels, queried no model, and accessed no query packet.
+Its frozen-order separator-count vector was ``[0, 0, 0, 1, 1]``.  Codex
+selected the unique ``reflection_mismatch >= 500000`` predicate on both
+expressible tasks; its digest is
+``0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8``.
+The five matrix digests are
+``eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9``,
+``e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2``,
+``78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3``,
+``c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342``,
+and
+``586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d``.
+Treat this as diagnosis, not as a campaign metric.
 
 A valid headless episode must retain enough canonical bytes to verify, without
 a model:

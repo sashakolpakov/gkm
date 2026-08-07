@@ -78,14 +78,30 @@ generalizers without invoking a proposer.
 
 The complete corpus contains 12,000 tasks, but exact-image novelty is not
 semantic independence.  Before the completed coverage pilot, 10,044
-train/validation tasks remained exact-image-unseen after 156 exposures; now
-10,020 remain after 180 exposures.  Strict reusable DRILL capacity is zero,
+train/validation tasks remained exact-image-unseen after 156 exposures; the
+pilot left 10,020 after 180, and the five-task campaign leaves 10,015 after
+185.  Strict reusable DRILL capacity is zero,
 and strict DEV fell from 16 to 15 ``bd`` tasks because the pilot protected
 task IDs rather than semantic disclosure keys.  The pilot extracted all 336
 panels but left most polygon and contact observations indeterminate.  Official
-test remains sealed.  The hardened v4 runner and v4 campaign are implemented
-and fixture-tested, including an explicit fixed five-task exact-unused TRAIN
-semantics-reused engineering mode.  No real plan or model campaign has run at
-this pre-run snapshot.  The strict 15-task DEV cohort remains stopped at 0/15
-intended-concept expressibility, and no complete-corpus generalization claim
-is made.  Python remains canonical and Lean optional and removable.
+test remains sealed.  The hardened v4 runner and v4 campaign completed the
+fixed five-task exact-unused TRAIN semantics-reused engineering mode: 2/5
+jointly correct and 4/10 on the fixed query denominator.  Released queries
+were 4/4, but that conditional diagnostic excludes three ``support_rejected``
+tasks.  Two tasks completed, with zero terminal failures, zero rerolls, and a
+cold durable replay making zero proposer/model calls.  This is not strict DEV,
+official test, or unbiased generalization.  The strict 15-task DEV cohort
+remains stopped at 0/15 intended-concept expressibility, official test remains
+sealed, and no complete-corpus generalization claim is made.  Python remains
+canonical and Lean optional and removable.  A post-hoc support-only sweep of
+all 65,678 frozen predicates produced separator counts ``[0, 0, 0, 1, 1]``;
+Codex selected the unique separator on both expressible tasks.  The immediate
+deficit is observer/language coverage rather than a proposer miss; that sweep
+is diagnostic, not a campaign metric.
+Plan/report/replay/exposure
+identities are
+``fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3``,
+``760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4``,
+``0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee``,
+and
+``sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70``.

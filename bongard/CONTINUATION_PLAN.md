@@ -1,12 +1,14 @@
 # Bongard continuation plan
 
-The next useful result is a frozen headless **representation-engineering**
-benchmark on exact-unused TRAIN tasks with already exposed semantics. The
-reserved non-test DEV set must wait: a metadata-only audit found that none of
-its 15 intended concepts is fully expressible in the current v3 predicate
-language. Reaching a real DEV benchmark requires finishing the Python visual
-representation, not adding a theorem prover or searching for a complement of
-a failed rule.
+The frozen five-task headless **representation-engineering** campaign on
+exact-unused TRAIN tasks with already exposed semantics is complete: 2/5
+jointly correct and 4/10 on the fixed query denominator. The next useful work
+is to repair witness/language coverage and add a typed empty-version-space
+outcome before asking the proposer to rank anything. The
+reserved non-test DEV set must wait: none of its 15 intended concepts is fully
+expressible in the current v3 predicate language. Reaching a real DEV
+benchmark requires finishing the Python visual representation, not adding a
+theorem prover or searching for a complement of a failed rule.
 
 ## Non-negotiable protocol
 
@@ -43,8 +45,11 @@ flip, disjunction, complement rescue, or reroll is allowed.
   panels, split 9,300/900/1,800.
 - Exposure is durable and exact-task based. The pre-pilot ledger had 156
   exposed IDs and 10,044 exact-unused train/validation IDs. The completed
-  24-task coverage pilot leaves 180 exposed and 10,020 exact-unused. The
-  historical post-Stage-A-A3 count was 10,047; these are distinct snapshots.
+  24-task coverage pilot left 180 exposed and 10,020 exact-unused; the
+  five-task campaign leaves 185 exposed and 10,015 exact-unused. The current
+  split is 161/9,300 TRAIN and 24/900 validation IDs exposed, with all 1,800
+  official-test tasks sealed. The historical post-Stage-A-A3 count was
+  10,047; these are distinct snapshots.
 - Strict reusable DRILL capacity is zero. Strict DEV was 16 `bd` tasks before
   the pilot and is 15 afterward. The pilot protected exact DEV task IDs but not
   their semantic disclosure keys: selecting
@@ -72,18 +77,26 @@ flip, disjunction, complement rescue, or reroll is allowed.
   finds exactly four separators, all relational; the new branches contribute
   zero.
 - The hardened v4 runner and v4 campaign orchestrator are implemented and
-  fixture-tested. They include hiding schedule commitments, official-manifest
-  panel authentication, immutable source pins, crash-safe exclusive claims,
-  and an explicit fixed five-task exact-unused TRAIN semantics-reused
-  engineering mode.
+  exercised. They include hiding schedule commitments, official-manifest panel
+  authentication, immutable source pins, crash-safe exclusive claims, and the
+  fixed five-task exact-unused TRAIN semantics-reused engineering mode.
 - The experimental vision-tag schema binds a finite neutral catalog, complete
   object inventory, prose, integer score intervals, and opaque caller-supplied
   digests. Version 1 is presence-only; no neutral Codex transport or receipt
   attestation exists yet.
 
-These components are fixture-tested. At this pre-run snapshot no real
-five-task plan has been frozen or published and no model campaign has been
-executed, so they have not produced a production headless benchmark result.
+The campaign ended with two `complete` and three `support_rejected` tasks,
+zero terminal failures, and zero rerolls. The headline is 2/5 jointly correct;
+the fixed-denominator query score is 4/10. The released-query 4/4 is a
+conditional diagnostic only. Cold durable replay reproduced the accounting
+with zero proposer/model calls. The exact plan, report, replay, and exposure
+successor digests are, respectively:
+`fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3`,
+`760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4`,
+`0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee`,
+and
+`sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70`.
+Python is canonical; Lean is optional and removable.
 
 The current v3 library is not a general Bongard language. It requires exactly
 two substantive closed loops, frozen 3--8 side-count clauses, and a directed
@@ -180,13 +193,13 @@ positive Python language rather than emit arbitrary code. It receives support
 observations and labels, proposes once, cannot access query pixels or
 query-derived packets, and freezes the exact predicate before creating query
 observations. The v4 campaign supplies crash-safe serial execution and replay;
-these paths are fixture-tested, not yet exercised by a real plan or model
-campaign.
+the completed five-task campaign and its cold durable replay exercised these
+paths.
 
 Retain the full candidate-by-support matrix even when no candidate passes.
 “No exact separator” is a valid terminal scientific outcome.
 
-### 5. Qualify the language, then run TRAIN engineering
+### 5. Learn from the completed TRAIN engineering campaign
 
 The composite packet, closed predicate union, and exhaustive expressibility
 oracle are implemented. The corrected v2 authenticated A3 gate froze all
@@ -199,26 +212,61 @@ all among the 1,260 contact-disabled relational predicates, with zero from the
 - a registered separator exists and the model missed it; and
 - the model found a registered separator.
 
-The hardened v4 runner and v4 campaign, including the fixed five-task mode,
-are technically implemented and fixture-tested. The next live action is to
-prepare and publish a real qualified plan, then execute it once; neither has
-happened at this pre-run snapshot. Before that action, freeze the extractor
-identities, predicate catalog, proposer prompt/model, and required
-exposed-panel qualification:
+The fixed five-task campaign did exactly one proposer call per task. The three
+`big_small_*_triangles` tasks were support-rejected; the two balance/reflection
+tasks completed and were jointly correct. Equilateral and right-triangle
+proposals selected area-ratio atoms whose positive evidence was indeterminate
+and whose negatives contained a present counterexample. The obtuse-triangle
+proposal selected `cycle_count == 1`, but five positives were
+scenario-discordant or indeterminate. Both successes selected the robust
+`reflection_mismatch >= 500000` witness, stable on all twelve supports and
+then correct on all four released queries.
 
-- snapshot and tag the repository;
-- use the implemented fixed allowlist of five metadata-verified exact-unused
-  TRAIN engineering tasks with historically exposed semantics: the three
-  `big_small_*_triangles` tasks, `two_unbalanced_triangles`, and
-  `two_mirror_unbala_triangles`;
-- publish a replacement plan whose commitments pass a brute-force secrecy
-  test, then execute one crash-safe headless run with no rerolls;
-- report joint task accuracy, disposition/abstention rates, proposal failures,
-  and model-free replay status;
-- preserve all failed runs in the denominator.
+A post-hoc support-only counterfactual then evaluated all 65,678 predicates on
+the already released support packets, with no new pixels, model call, or query
+access. Its frozen-order separator-count vector was `[0, 0, 0, 1, 1]`: zero
+for every rejected task and exactly one for each completed task. Codex selected
+that unique `reflection_mismatch >= 500000` separator both times; its predicate
+digest is
+`0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8`.
+The five task-matrix digests are
+`eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9`,
+`e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2`,
+`78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3`,
+`c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342`,
+and
+`586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d`.
+This is diagnosis, not a campaign metric: all three rejections are current
+observer/language holes, not proposer misses. On this cohort the support
+outcome exactly tracks frozen-language expressibility, and the proposer found
+the unique separator whenever one existed.
 
-This is a semantics-reused representation-engineering benchmark, not an
-independent development score. The sealed
+The schema itself exposed the theoretical mistake: it forced exactly one
+predicate and had no typed `no_expressible_predicate` result. The three
+big/small tasks require internal angle/triangle class and qualitative relative
+size, but the current IR offered only area-ratio and cycle-count proxies.
+
+The next implementation target is therefore candidate-independent witness and
+language coverage, followed by version-space-gated proposal:
+
+- add internal-angle/triangle-class, side-ratio, and qualitative-size
+  observables and positive predicates first;
+- let vision emit candidate prose and object bindings, but never execute prose;
+- compute the complete viable support version space deterministically;
+- emit a typed language/witness gap when that version space is empty;
+- only when it is nonempty, let Codex rank verified candidates by semantic fit,
+  scenario agreement, evidence margin, and witness robustness;
+- preserve the one-shot/no-negation/no-reroll protocol and all fixed
+  denominators; and
+- rerun only on newly qualified exact-unused engineering tasks, never by
+  rerolling these five or substituting a sealed task.
+
+Soft tags remain calibrated four-disposition observers with provenance. Raw
+phrases such as “bird-like” or “oblique” are hypotheses and audit traces, not
+truth values. Python remains canonical; Lean remains optional.
+
+This was a semantics-reused representation-engineering campaign, not an
+independent development score or unbiased generalization estimate. The sealed
 `unbala_trapezoid_right_triangle` task is not a substitute. The 15 strict DEV
 tasks remain reserved until their intended concepts are expressible by a
 frozen object-bound language. Official test access requires a separate later

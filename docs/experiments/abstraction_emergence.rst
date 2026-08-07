@@ -49,13 +49,30 @@ from the 64,400 direct-count and 18 symmetry members.  The first
 tagged union still lacks object-bound cross-family conjunctions; macro
 accounting does not fill that gap either.
 
-The hardened v4 runner and v4 campaign are implemented and fixture-tested,
-including an explicit fixed five-task exact-unused TRAIN semantics-reused
-engineering mode.  No real plan or model campaign has run at this pre-run
-snapshot.  Strict DEV remains stopped at 0/15 expressibility.  The 24-task
-v3-library ablation also found 0/24 exact full separators and 0/168 exact 6+6
-folds, so runner completion does not repair the representation gap.  Python is
+The hardened v4 runner and v4 campaign completed the fixed five-task
+exact-unused TRAIN semantics-reused engineering mode.  The result was 2/5
+jointly correct and 4/10 fixed-denominator queries.  Released queries were
+4/4, a diagnostic conditioned on only the two ``complete`` tasks; three were
+``support_rejected``.  There were zero terminal failures and zero rerolls, and
+cold durable replay made zero proposer/model calls.  The failed proposals used
+brittle or indeterminate ratio/cycle witnesses, while both successes used a
+stable reflection-mismatch witness.  A later support-only sweep of all 65,678
+members produced the frozen-order separator counts ``[0, 0, 0, 1, 1]``.
+Codex selected the unique separator on both expressible tasks, so the immediate
+failure is observer/language coverage, not proposer selection.  The schema had
+forced one predicate without a typed ``no_expressible_predicate`` outcome.
+This is a representation result, not a proof-engine result.  Strict DEV remains stopped at
+0/15 expressibility and official test remains sealed.  The 24-task v3-library
+ablation also found 0/24 exact full separators and 0/168 exact 6+6 folds, so
+runner completion does not repair the representation gap.  Python is
 canonical and Lean remains optional and removable.
+
+The plan, report, replay, and exposure-successor identities are
+``fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3``,
+``760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4``,
+``0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee``,
+and
+``sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70``.
 
 The original implementation and detailed historical reports are preserved at
 the annotated Git tag ``pre-bongard-complete-rewrite-20260805``.  They should

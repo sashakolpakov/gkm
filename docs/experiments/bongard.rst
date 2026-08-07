@@ -8,11 +8,12 @@ Can a headless visual proposer infer a reusable affirmative rule from six
 positive and six negative support panels, commit to it, and classify held-out
 panels without query leakage or post-hoc repair?
 
-There is no successful benchmark result yet.  The pixel-to-observation and
-closed-language layers, hardened v4 runner, and v4 campaign are implemented and
-fixture-tested, but no real plan or model campaign has run at this pre-run
-snapshot.  The reserved development holdout remains stopped at 0/15
-intended-concept expressibility.
+One five-task representation-engineering campaign is complete.  Its blunt
+headline is **2/5 jointly correct**, with **4/10** on the fixed query
+denominator.  The two released tasks scored **4/4**, but that is a conditional
+diagnostic only.  This is not strict DEV, official test, or an unbiased
+generalization estimate.  The reserved development holdout remains stopped at
+0/15 intended-concept expressibility and official test remains sealed.
 
 Corpus and exposure
 -------------------
@@ -43,9 +44,11 @@ Immediately before the coverage pilot, 156 task IDs were exposed and
 This is an engineering pool, not 10,044 independent concepts; generator
 semantics are heavily reused.
 
-The completed pilot exposed 24 additional tasks, four per split/family cell.
-The current ledger has 180 exposed IDs and 10,020 exact-image-unseen
-train/validation IDs.  Strict reusable DRILL capacity is zero.  Strict DEV had
+The completed pilot exposed 24 additional tasks, four per split/family cell,
+leaving 180 exposed IDs and 10,020 exact-image-unseen train/validation IDs.
+The five-task campaign leaves 185 exposed and 10,015 exact-unused: 161/9,300
+TRAIN and 24/900 validation are exposed, while all 1,800 official-test tasks
+remain sealed.  Strict reusable DRILL capacity is zero.  Strict DEV had
 16 ``bd`` tasks before the pilot and has 15 afterward.  The coverage selector
 protected exact DEV task IDs but not shared semantic disclosure keys; the
 selected ``bd_asymmetric_goldfish-unbala_three_intersect_circles2_0000``
@@ -292,9 +295,10 @@ The earlier runs remain useful diagnostics:
   run stopped before query access.
 
 The historical post-Stage-A-A3 exact-unused count was 10,047.  Three subsequent
-atomic records produced the pre-pilot baseline 10,044, and the coverage pilot
-produced the current 10,020.  None of these runs is an official benchmark or
-evidence for a polarity flip.
+atomic records produced the pre-pilot baseline 10,044, the coverage pilot
+produced 10,020, and the five-task campaign produced the current 10,015.  None
+of these engineering runs is an official benchmark or evidence for a polarity
+flip.
 
 Authority and current work
 --------------------------
@@ -306,12 +310,22 @@ version, output, or failure cannot change artifact identity or a decision.
 
 The loop packet, relational evaluator, contact uncertainty, and soft-tag schema
 are fixture-tested.  Production neutral-tag transport remains separate future
-work.  The hardened v4 headless runner and v4 campaign are implemented and
-fixture-tested, including an explicit fixed five-task exact-unused TRAIN
-semantics-reused engineering mode.  At this pre-run snapshot no real plan has
-been frozen or published and no model campaign has executed.  The remaining
-15-task non-test DEV run is stopped at 0/15 intended-concept expressibility;
-there is no benchmark result placeholder.
+work.  The hardened v4 headless runner and v4 campaign completed the fixed
+five-task exact-unused TRAIN semantics-reused engineering mode.  Three tasks
+were ``support_rejected`` and two were ``complete``; there were zero terminal
+failures and zero rerolls.  Cold durable replay reproduced that accounting
+with zero proposer/model calls.
+
+The exact plan, campaign-report, durable-replay, and exposure-successor digests
+are, respectively:
+
+* ``fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3``;
+* ``760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4``;
+* ``0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee``;
+* ``sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70``.
+
+The remaining 15-task non-test DEV run stays stopped at 0/15 intended-concept
+expressibility.
 
 The first metadata-only 15-task plan is rejected and was never executed.  Its
 public support-index digest had only 49 possible preimages and disclosed both
@@ -323,8 +337,39 @@ retryable.  The v4 runner and v4 campaign now implement and fixture-test those
 controls, but the 0/15 language audit means the rejected strict DEV cohort must
 not be regenerated.
 
-The implemented qualified mode is a fixed five-task exact-unused TRAIN run on
-historically exposed generator semantics.  It is representation engineering,
-not independent generalization.  Its closed-union and expressibility gates,
-fixed allowlist, and sealed-task exclusion are fixture-tested; no real plan or
-model campaign has yet run.  The sealed semantic partition remains untouched.
+The completed cohort consisted of exact-image-unused TRAIN tasks with
+historically exposed generator semantics.  Equilateral and right-triangle
+proposals chose brittle ratio witnesses, while the obtuse-triangle proposal's
+cycle-count witness was scenario-discordant on five positives.  Both passing
+tasks chose the robust ``reflection_mismatch >= 500000`` witness, stable on all
+twelve supports and correct on all four released queries.
+
+A post-hoc support-only counterfactual evaluated all 65,678 frozen predicates
+on already released support packets, with no new pixels, model call, or query
+access.  Its frozen-order separator-count vector was **[0, 0, 0, 1, 1]**:
+zero for every rejected task and exactly one for each completed task.  Codex
+selected that unique ``reflection_mismatch >= 500000`` predicate both times;
+its digest is
+``0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8``.
+The five task-matrix digests are
+``eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9``,
+``e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2``,
+``78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3``,
+``c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342``,
+and
+``586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d``.
+This is diagnostic, not a campaign metric.  Support outcome perfectly tracked
+frozen-language expressibility, and the proposer selected the unique separator
+whenever one existed.
+
+The theoretical defect was an exactly-one-predicate schema with no typed
+``no_expressible_predicate`` outcome.  The big/small tasks need internal-angle
+or triangle-class and qualitative-size witnesses, absent from the frozen IR;
+area ratio and cycle count were false proxies.  The next pipeline should let
+vision propose prose plus object bindings, compute the viable support version
+space deterministically, emit a typed language/witness gap when it is empty,
+and ask Codex to rank only verified candidates when it is nonempty.  Add
+internal-angle/triangle-class, side-ratio, and qualitative-size predicates
+first.  Soft tags remain calibrated four-disposition observers; raw prose is
+never executable truth.  Python remains canonical and Lean optional/removable.
+The sealed semantic partition remains untouched.

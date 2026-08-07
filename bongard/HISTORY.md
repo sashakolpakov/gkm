@@ -1,8 +1,9 @@
 # Bongard experiment history
 
-This file keeps the experimental record separate from the current design.
-None of the runs below is a successful Bongard benchmark, and none authorizes
-official-test model access.
+This file keeps the experimental record separate from the current design. One
+five-task TRAIN representation-engineering campaign is now complete, but it is
+not an official Bongard benchmark or an unbiased generalization estimate. No
+run authorizes official-test model access.
 
 ## Corpus and ledger snapshots
 
@@ -10,15 +11,17 @@ The pinned ShapeBongard V2 release has 12,000 tasks and 168,000 panels:
 3,600 `ff`, 4,000 `bd`, and 4,400 `hd`. Its primary split is 9,300 train, 900
 validation, and 1,800 test.
 
-Three exact-unused counts appear in artifacts and are correct for their time:
+Four exact-unused counts appear in artifacts and are correct for their time:
 
 - **10,047** was the train/validation count after Stage-A A3;
 - **10,044** was the pre-coverage-pilot baseline after three later atomic
-  records; and
-- **10,020** is the post-pilot count after 24 further exposures.
+  records;
+- **10,020** is the post-pilot count after 24 further exposures; and
+- **10,015** is the current count after the five-task engineering campaign.
 
 At the second snapshot, 156 task IDs had been exposed. At the third, 180 had
-been exposed. The pre-pilot 10,044 remaining
+been exposed; the current ledger has 185 (161 TRAIN, 24 validation, zero
+official test). The pre-pilot 10,044 remaining
 IDs comprise 2,998 `ff`, 3,431 `bd`, and 3,615 `hd`, or 9,156 train and 888
 validation. Exact-image-unseen does not imply semantic independence: most of
 this pool reuses generator concepts already represented in the ledger.
@@ -148,11 +151,39 @@ present versus 13,360 indeterminate polygon/obliqueness observations, and
 exact seven-per-side separators, 0/168 exact 6+6 folds, zero held-out
 generalizers, and a best forward profile of 8/14. No proposer participated.
 
-The hardened v4 runner and v4 campaign orchestrator are implemented and
-fixture-tested, including the explicit fixed five-task exact-unused TRAIN
-semantics-reused engineering mode. At this pre-run snapshot no real plan has
-been frozen or published and no model campaign has been executed. There is no
-benchmark number to infer yet.
+The hardened v4 runner and v4 campaign orchestrator completed the explicit
+fixed five-task exact-unused TRAIN semantics-reused engineering mode. The
+headline result is **2/5 jointly correct**, with **4/10** on the fixed query
+denominator. The **4/4** released-query score is conditional diagnostic
+evidence only. Three tasks were `support_rejected`, two were `complete`, and
+there were zero terminal failures and zero rerolls. Cold durable replay
+reproduced the two completions and three rejections with zero proposer/model
+calls.
+
+The exact plan, campaign-report, durable-replay, and exposure-successor
+digests are, respectively:
+`fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3`,
+`760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4`,
+`0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee`,
+and
+`sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70`.
+
+A later support-only recomputation over all 65,678 frozen members used only
+already released support packets. Its frozen-order separator counts were
+`[0, 0, 0, 1, 1]`: zero for each rejected task and exactly one for each
+completed task. Codex selected that unique
+`reflection_mismatch >= 500000` predicate both times; its digest is
+`0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8`.
+The five matrix digests are
+`eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9`,
+`e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2`,
+`78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3`,
+`c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342`,
+and
+`586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d`.
+This post-hoc diagnosis is not a campaign metric; it attributes the three
+rejections to current observer/language coverage rather than proposer misses.
+On this cohort support outcome perfectly tracked language expressibility.
 
 The next adversarial audit found that the proposed 15-task strict DEV run was
 invalid for a second, independent reason beyond its leaking schedule
@@ -166,5 +197,7 @@ gate found exactly four separators, all among 1,260 contact-disabled
 relational predicates, and zero from the direct-count and symmetry branches. The
 strict 15-task DEV cohort remains stopped at 0/15 intended-concept
 expressibility. Any exact-unused TRAIN run before a new DEV freeze is reported
-only as semantics-reused representation engineering; none has run at this
-snapshot. Python remains canonical and Lean optional and removable.
+only as semantics-reused representation engineering. The completed five-task
+campaign is exactly such a run: its tasks were image-unused but its generator
+semantics were historically exposed. Python remains canonical and Lean
+optional and removable.

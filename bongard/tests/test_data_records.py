@@ -887,3 +887,369 @@ def test_a3_closed_language_gate_result_is_strict_current_and_support_only() -> 
         "polarity_flip_authorized": False,
         "query_pixels_read": False,
     }
+
+
+def test_closed_visual_five_task_engineering_result_is_strict_and_self_contained() -> None:
+    name = "closed_visual_exact_unused_train_engineering_5task_result_v1.json"
+    path = DATA / name
+    payload = path.read_bytes()
+    record = _canonical_record(name)
+
+    assert len(payload) == 11_967
+    assert hashlib.sha256(payload).hexdigest() == (
+        "ce279ca4f3943850c280d3926667e8cd6ed31778d4b80ee5a3f5b66e53f62d51"
+    )
+    assert set(record) == {
+        "campaign",
+        "exposure",
+        "posthoc_support_only_diagnostic",
+        "predicate_execution_boundary",
+        "qualification",
+        "record_digest",
+        "results",
+        "schema",
+        "source_artifacts",
+    }
+    content = dict(record)
+    declared_digest = content.pop("record_digest")
+    assert declared_digest == "sha256:" + canonical_digest(content) == (
+        "sha256:eab6dc107a21b12493307ef1070fe62534f728299113254dddd937a4f2498b4e"
+    )
+    assert record["schema"] == (
+        "gkm.bongard-closed-visual-exact-unused-train-engineering-result.v1"
+    )
+
+    sources = record["source_artifacts"]
+    assert sources == {
+        "exposure": {
+            "artifact_digest": (
+                "sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70"
+            ),
+            "byte_count": 96_478,
+            "raw_sha256": (
+                "09ead7cf441a61580d6f44f2df3a1bc35bd330552fbbca0451bc4391d002123d"
+            ),
+            "relative_path": (
+                "downloads/ShapeBongard_V2_full/"
+                "closed_visual_exact_unused_train_engineering_20260807_a338fd15/"
+                "exposure/0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da"
+                "770460902d6d70.exposure.json"
+            ),
+            "schema": "gkm.bongard-exposure-ledger.v1",
+        },
+        "plan": {
+            "artifact_digest": (
+                "fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498f2247ac3e3d3"
+            ),
+            "byte_count": 32_285,
+            "checked_in_relative_path": (
+                "bongard/data/"
+                "closed_visual_exact_unused_train_engineering_20260807.plan.json"
+            ),
+            "durable_copy_byte_identical": True,
+            "durable_relative_path": (
+                "downloads/ShapeBongard_V2_full/"
+                "closed_visual_exact_unused_train_engineering_20260807_a338fd15/"
+                "artifacts/fa4e59fec47bef5f43cb530f3718d69b528059e5f219a1520498"
+                "f2247ac3e3d3.relational-headless-campaign-plan.json"
+            ),
+            "raw_sha256": (
+                "1b62a175116a9f8f7359c080cf099ccfb25985826ce969fbb4f55c95f69ef2cc"
+            ),
+            "schema": "gkm.bongard-relational-headless-dev-campaign-plan.v4",
+        },
+        "replay": {
+            "artifact_digest": (
+                "0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad9272a5f30dcee"
+            ),
+            "byte_count": 1_171,
+            "raw_sha256": (
+                "af61ec9d93c8d3a2cf94e1ac85aa216f28df5118ae7188ea41544bb831aba507"
+            ),
+            "relative_path": (
+                "downloads/ShapeBongard_V2_full/"
+                "closed_visual_exact_unused_train_engineering_20260807_a338fd15/"
+                "artifacts/0211f7b7480d580fc47dffaa1577a73a266a866e0f680446cad927"
+                "2a5f30dcee.relational-headless-campaign-replay.json"
+            ),
+            "schema": "gkm.bongard-relational-headless-dev-campaign-replay.v4",
+        },
+        "report": {
+            "artifact_digest": (
+                "760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70a4175ebc0c4"
+            ),
+            "byte_count": 4_734,
+            "raw_sha256": (
+                "9a1b33a9d998926b133f16df85a4e30b2bf9de4d4572ace3c7d6d9a06b81ae0d"
+            ),
+            "relative_path": (
+                "downloads/ShapeBongard_V2_full/"
+                "closed_visual_exact_unused_train_engineering_20260807_a338fd15/"
+                "artifacts/760448ab7d7be19325884e90e27a5eced3d4a5b9c7d356b7b6d70"
+                "a4175ebc0c4.relational-headless-campaign-run.json"
+            ),
+            "schema": "gkm.bongard-relational-headless-dev-campaign-run.v4",
+        },
+    }
+
+    checked_in_plan = DATA / (
+        "closed_visual_exact_unused_train_engineering_20260807.plan.json"
+    )
+    plan_payload = checked_in_plan.read_bytes()
+    assert len(plan_payload) == sources["plan"]["byte_count"]
+    assert hashlib.sha256(plan_payload).hexdigest() == sources["plan"]["raw_sha256"]
+    plan = json.loads(plan_payload)
+    assert plan_payload == canonical_json(plan) + b"\n"
+    assert plan["schema"] == sources["plan"]["schema"]
+    assert plan["digest"] == sources["plan"]["artifact_digest"]
+
+    campaign = record["campaign"]
+    assert campaign["campaign_mode"] == (
+        "exact-unused-train-semantics-reused-engineering"
+    )
+    assert campaign["campaign_protocol_id"] == (
+        "bongard.closed-visual/exact-unused-train-semantics-reused-engineering-v2"
+    )
+    assert campaign["task_protocol_id"] == (
+        "bongard.relational-headless/python-query-v4"
+    )
+    assert campaign["task_count"] == 5
+    assert campaign["proposer"] == {
+        "headless": True,
+        "minutes_per_task": 15,
+        "model": "gpt-5.6-sol",
+        "proposals_per_task": 1,
+        "reasoning_effort": "medium",
+    }
+    assert campaign["serial_frozen_order"] is True
+    assert campaign["cohort_exposed_atomically_before_task_1"] is True
+
+    assert record["exposure"] == {
+        "campaign_event_digest": (
+            "sha256:7c0ffa714cc7dcc60c7d880df28304312d9bd9f1fb97de596ab90e3ad85e6e51"
+        ),
+        "campaign_event_sequence": 151,
+        "event_count": 152,
+        "phase": "closed-visual-exact-unused-train-engineering-campaign-v2",
+        "previous_event_digest": (
+            "sha256:4c66356860a1a9f58410d9459650abebb294bed583fdf33a885b531904fd1d2c"
+        ),
+        "successor_ledger_digest": (
+            "sha256:0d16900ac51f89885d1fb24c486b9b813f82c7863e1aa220da770460902d6d70"
+        ),
+    }
+
+    boundary = record["predicate_execution_boundary"]
+    assert boundary["closed_library_member_count"] == 65_678
+    assert boundary["closed_library_construction_id"] == (
+        "complete-proposer-reachable-closed-union/v2"
+    )
+    assert boundary["closed_library_digest"] == (
+        "5c7141efa23a433ff1a653dd5c6ebe88dca5b350a1d40ca4e303b31f422c4a3e"
+    )
+    assert boundary["closed_library_digest_schema"] == (
+        "gkm.bongard-compact-proposer-reachable-closed-library-index.v2"
+    )
+    assert boundary["canonical_predicate_authority"] == "canonical-pure-python"
+    assert boundary["predicate_authority"] == (
+        "pure-python-closed-visual-predicate-union"
+    )
+    assert boundary["python_only"] is True
+    assert boundary["lean_required"] is False
+    assert boundary["lean_removable_for_this_campaign_and_replay"] is True
+    assert boundary["semantic_checker_imported"] is False
+    assert boundary["proposer_or_model_called_during_replay"] is False
+
+    assert record["qualification"] == {
+        "active_ledger_exact_task_required": "unseen",
+        "benchmark_or_generalization_result": False,
+        "evaluation_kind": "exact-unused-train-semantics-reused-engineering",
+        "historical_exact_task_required": "not_recorded",
+        "historical_panel_count_required": 0,
+        "historical_semantics": "historically_exposed",
+        "historically_clean_required": False,
+        "official_benchmark_result": False,
+        "official_test_authorized": False,
+        "official_test_split_used": False,
+        "semantic_unseen_asserted": False,
+        "selection_kind": "fixed-explicit-allowlist",
+        "split": "train",
+        "valid_claim": (
+            "five-task exact-unused TRAIN engineering cohort with historically "
+            "exposed semantics"
+        ),
+    }
+
+    results = record["results"]
+    assert results["status_counts"] == {
+        "complete": 2,
+        "support_rejected": 3,
+        "terminal_failure": 0,
+    }
+    assert results["joint_task_accuracy"] == {"correct": 2, "denominator": 5}
+    assert results["fixed_denominator_query_score"] == {
+        "correct": 4,
+        "denominator": 10,
+        "unreleased_or_incorrect": 6,
+    }
+    assert results["released_query_accuracy_diagnostic"] == {
+        "abstentions": 0,
+        "correct": 4,
+        "denominator": 4,
+        "errors": 0,
+        "headline_metric": False,
+    }
+    assert results["reroll_count"] == 0
+    assert results["terminal_failure_count"] == 0
+    assert results["attempt_journal_persistence_failure_count"] == 0
+    assert results["replay"] == {
+        "all_tasks_accounted_for": True,
+        "complete_runs_replayed": 2,
+        "proposer_or_model_called": False,
+        "support_rejections_replayed": 3,
+        "terminal_failures_integrity_verified": 0,
+    }
+
+    tasks = results["tasks"]
+    assert [
+        (
+            item["ordinal"],
+            item["task_id"],
+            item["status"],
+            item["jointly_correct"],
+            item["plan_digest"],
+            item["freeze_digest"],
+            item["prediction_digest"],
+            item["terminal_digest"],
+        )
+        for item in tasks
+    ] == [
+        (
+            0,
+            "bd_big_small_equil_triangles_0000",
+            "support_rejected",
+            False,
+            "61484bfbf0fa224689e8b9836641ce1750edc47a2354d5f1eba4355116837efe",
+            "27469519b056969e32c43a5843bb85ec9e309f53d9c4b87aefb1ef555f9f8512",
+            None,
+            "ab1c097c9d58fd7359fb7d7f24a62d6bd93bf53f8da31e35b3e6e9199e75c060",
+        ),
+        (
+            1,
+            "bd_big_small_obtuse_triangles_0000",
+            "support_rejected",
+            False,
+            "3bdf6ee9e61fd0a728cf99ca5acb05efd9694c3cf19f2d9ba089fa8fc0278d12",
+            "00c413a48a4223240af99614fcd8de160f97a6b49ffc8e9219def5cc51298c40",
+            None,
+            "bb9f74ec08603beb73569746d2d5e96eb863ebce7d1309bd906824a6002c7f2d",
+        ),
+        (
+            2,
+            "bd_big_small_right_triangles_0000",
+            "support_rejected",
+            False,
+            "47921bf0954b0b2a0f2719521c660188eaa702fcdaff1207eb6f84fdccfb12c8",
+            "522f66a7ee8da9134223045f470c1cbe0c5b505298ae3ffbbdafa7dcf5af2b6a",
+            None,
+            "caab8965ba3f93d5cc04dae329d178455d82d7a650b27d70230e785748ed9262",
+        ),
+        (
+            3,
+            "bd_two_mirror_unbala_triangles_0000",
+            "complete",
+            True,
+            "559a7e718fcd9ca6a0f418f3a8fc7e61d48d3e1f806a844d2578e3a1ab6cb271",
+            "4ac87222c7fdd5cbbcb7aa107c91838e380dc9e049c60683f08260df241864c7",
+            "ebb855f92fe44030b3266fee2dc795a5e2e422143b7f9ca981dcb96d72780568",
+            "b5cc2125648266578e911a9c52bbe23f81d52c7447a21afa7ebc0954eb63fa84",
+        ),
+        (
+            4,
+            "bd_two_unbalanced_triangles_0000",
+            "complete",
+            True,
+            "9aa2789716c67649b42c8d8169c225ae6fdfd543e32d8e25afe92181533896db",
+            "dea0e25744dc8618251011a83bb2d300f378add9904a95002fe858e234180cdd",
+            "72619bad6422be4306d9d70b0b9a188016f9f17a56116072cb58b9d3fdfa451c",
+            "468abef92b25c6676a151ce2be3f33ac574ef96df063ac4b69124fe5a2a85e69",
+        ),
+    ]
+    assert all(item["reroll_attempted"] is False for item in tasks)
+    assert all(item["attempt_resumed"] is False for item in tasks)
+    assert all(item["attempt_journal_persistence_error"] is None for item in tasks)
+
+    posthoc = record["posthoc_support_only_diagnostic"]
+    assert posthoc["campaign_metric"] is False
+    assert posthoc["closed_library_member_count"] == 65_678
+    assert posthoc["existing_released_support_packets_only"] is True
+    assert posthoc["frozen_library_digest"] == (
+        "4d1db17ce37a46fb7c220ce57557b44e4883175617347a01bb4ef1bb5871df35"
+    )
+    assert posthoc["frozen_library_schema"] == (
+        "gkm.bongard-frozen-closed-predicate-library.v1"
+    )
+    assert posthoc["new_pixels_opened"] is False
+    assert posthoc["model_or_proposer_called"] is False
+    assert posthoc["query_accessed"] is False
+    assert posthoc["separator_count_vector_in_campaign_order"] == [0, 0, 0, 1, 1]
+    assert posthoc["support_outcome_matches_language_expressibility"] is True
+    assert posthoc["proposer_found_unique_separator_when_available"] is True
+    assert [
+        (
+            item["task_id"],
+            item["freeze_digest"],
+            item["evaluation_matrix_digest"],
+            item["exact_forward_separator_count"],
+            item["diagnosis"],
+            item["model_exact_separator"],
+            item.get("model_predicate_digest"),
+        )
+        for item in posthoc["tasks"]
+    ] == [
+        (
+            "bd_big_small_equil_triangles_0000",
+            "27469519b056969e32c43a5843bb85ec9e309f53d9c4b87aefb1ef555f9f8512",
+            "eec8ce14b2158436bd461ea6fcafc57a33a28e232e0065e7bb48505c2ce861c9",
+            0,
+            "no_language_separator",
+            False,
+            None,
+        ),
+        (
+            "bd_big_small_obtuse_triangles_0000",
+            "00c413a48a4223240af99614fcd8de160f97a6b49ffc8e9219def5cc51298c40",
+            "e5c641ba447f7e1c133331b8e09841162cb2d2e60b7c103bd11c897c9a08d0b2",
+            0,
+            "no_language_separator",
+            False,
+            None,
+        ),
+        (
+            "bd_big_small_right_triangles_0000",
+            "522f66a7ee8da9134223045f470c1cbe0c5b505298ae3ffbbdafa7dcf5af2b6a",
+            "78abde91274995d46e0d3d817a3e351a091c9b8d8aee6f49b9dc5d42176b28d3",
+            0,
+            "no_language_separator",
+            False,
+            None,
+        ),
+        (
+            "bd_two_mirror_unbala_triangles_0000",
+            "4ac87222c7fdd5cbbcb7aa107c91838e380dc9e049c60683f08260df241864c7",
+            "c9fcd58f564e6f6bbe25b13516b95b697762c487420ca82ab4f3ac58147bf342",
+            1,
+            "model_found_separator",
+            True,
+            "0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8",
+        ),
+        (
+            "bd_two_unbalanced_triangles_0000",
+            "dea0e25744dc8618251011a83bb2d300f378add9904a95002fe858e234180cdd",
+            "586383b884c403347c12223603079480f402a5adc8822a479a34ca8f16da161d",
+            1,
+            "model_found_separator",
+            True,
+            "0be38dc8ac08a4aab10e0b6a9fce3f11b730b809e1f77476802a173c70b12de8",
+        ),
+    ]
