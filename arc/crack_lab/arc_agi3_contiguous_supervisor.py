@@ -5209,6 +5209,41 @@ def _signal_owned_process_group(pgid: int, signum: int) -> None:
         ) from exc
 
 
+def _signal_owned_direct_process(
+    custody: _StartedProcessCustody,
+    signum: int,
+) -> None:
+    """Signal the held direct child without a numeric-PID reuse window."""
+
+    if custody.root_started is None:
+        raise SupervisorContractError(
+            "scoped custody lacks its bound root identity"
+        )
+    pid = int(custody.process.pid)
+    current = _process_identity(pid)
+    if current is None or current[3].startswith("Z"):
+        if not _direct_child_exit_observed(pid):
+            raise SupervisorContractError(
+                "owned direct process vanished before signaling"
+            )
+        return
+    if current[4] != custody.root_started:
+        raise SupervisorContractError(
+            "owned direct process changed before signaling"
+        )
+    try:
+        os.kill(pid, signum)
+    except ProcessLookupError:
+        if not _direct_child_exit_observed(pid):
+            raise SupervisorContractError(
+                "owned direct process vanished during signaling"
+            )
+    except PermissionError as exc:
+        raise SupervisorContractError(
+            "cannot signal the owned direct process"
+        ) from exc
+
+
 def _accumulate_related_identities(
     root_pid: int,
     root_started: str,
@@ -6058,18 +6093,52 @@ class ScopedProcessTree:
                     "normal scoped process seal preceded direct-child exit"
                 )
 
-            # Give the exact runner its bounded cleanup window, but address its
-            # complete dedicated group and every birth-bound descendant rather
-            # than only the leader PID.
-            _signal_owned_process_group(self.pid, signal.SIGTERM)
-            _signal_custody_descendants(
-                self._custody, signal.SIGTERM, final=False
-            )
+            # Give the exact runner one TERM and its bounded cleanup window.
+            # Repeated TERM delivery can re-enter a slow cleanup handler before
+            # it has durably appended its terminal record.  Linux can signal
+            # the held root directly and every descendant through a stable
+            # pidfd, including descendants first observed during grace.  This
+            # avoids mixing group and exact delivery, whose recipient sets
+            # cannot be sampled atomically.  Darwin has no stable descendant
+            # handle, so its only race-free option is one anchored group TERM;
+            # later observations are polling-only until the fixed-point KILL.
+            term_signaled_descendants: set[tuple[int, str]] = set()
+            platform_name = os.uname().sysname
+
+            def signal_new_descendants_once() -> None:
+                pending: dict[int, str] = {}
+                for pid, started in self._custody.descendants.items():
+                    identity = (pid, started)
+                    if identity in term_signaled_descendants:
+                        continue
+                    term_signaled_descendants.add(identity)
+                    pending[pid] = started
+                if pending and platform_name == "Linux":
+                    _signal_exact_processes(
+                        pending,
+                        signal.SIGTERM,
+                        _custody_stable_handles(self._custody),
+                        self.pid,
+                        final=False,
+                    )
+
+            if platform_name == "Linux":
+                _signal_owned_direct_process(
+                    self._custody, signal.SIGTERM
+                )
+            elif platform_name == "Darwin":
+                _signal_owned_process_group(self.pid, signal.SIGTERM)
+            else:
+                raise SupervisorContractError(
+                    "scoped process signaling is unsupported"
+                )
+            signal_new_descendants_once()
             if stop_requested or residual_after_normal_exit:
                 deadline = time.monotonic() + float(grace_seconds)
                 while True:
                     observed_exit = self.observe_exit()
                     direct_exited = direct_exited or observed_exit
+                    signal_new_descendants_once()
                     if (
                         direct_exited
                         and _custody_descendants_absent(self._custody)
@@ -6077,10 +6146,6 @@ class ScopedProcessTree:
                         break
                     if time.monotonic() >= deadline:
                         break
-                    _signal_owned_process_group(self.pid, signal.SIGTERM)
-                    _signal_custody_descendants(
-                        self._custody, signal.SIGTERM, final=False
-                    )
                     time.sleep(0.05)
 
             _accumulate_custody(self._custody)

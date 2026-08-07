@@ -1315,6 +1315,279 @@ def test_bounded_control_suite_kills_setsid_grandchild_and_reaps_parent(
     assert observed is None or observed[3].startswith("Z")
 
 
+def test_scoped_process_tree_delivers_one_term_to_slow_cleanup_handler(
+    tmp_path,
+):
+    script = tmp_path / "slow_term_cleanup.py"
+    ready_path = tmp_path / "slow-term-ready"
+    count_path = tmp_path / "slow-term-count"
+    append_path = tmp_path / "slow-term-append"
+    script.write_text(
+        "\n".join((
+            "import os",
+            "import signal",
+            "import sys",
+            "import time",
+            "def handle_term(_signum, _frame):",
+            "    with open(sys.argv[2], 'ab') as out:",
+            "        out.write(b'term\\n')",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    time.sleep(0.2)",
+            "    with open(sys.argv[3], 'ab') as out:",
+            "        out.write(b'terminal append\\n')",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    raise SystemExit(0)",
+            "signal.signal(signal.SIGTERM, handle_term)",
+            "with open(sys.argv[1], 'wb') as out:",
+            "    out.write(b'ready\\n')",
+            "    out.flush()",
+            "    os.fsync(out.fileno())",
+            "while True:",
+            "    time.sleep(1)",
+        )) + "\n",
+        encoding="utf-8",
+    )
+    tree = B.ScopedProcessTree.launch(
+        (
+            str(PYTHON_EXECUTABLE),
+            "-I",
+            "-E",
+            "-s",
+            "-B",
+            str(script),
+            str(ready_path),
+            str(count_path),
+            str(append_path),
+        ),
+        cwd=tmp_path,
+        environment={
+            "HOME": str(tmp_path),
+            "LANG": "C",
+            "LC_ALL": "C",
+            "TMPDIR": str(tmp_path),
+        },
+    )
+    deadline = time.monotonic() + 5
+    while not ready_path.exists():
+        assert time.monotonic() < deadline
+        assert tree.observe_exit() is False
+        time.sleep(0.01)
+
+    result = tree.seal(stop_requested=True, grace_seconds=0.75)
+
+    assert result.returncode == 0
+    assert result.forced_kill is False
+    assert count_path.read_bytes() == b"term\n"
+    assert append_path.read_bytes() == b"terminal append\n"
+
+
+@pytest.mark.parametrize("platform_name", ("Linux", "Darwin"))
+def test_scoped_process_tree_term_policy_has_no_group_sampling_race(
+    monkeypatch,
+    platform_name,
+):
+    root_pid = 91001
+    existing_pid = 91002
+    new_pid = 91003
+    process = SimpleNamespace(
+        pid=root_pid,
+        wait=lambda *, timeout: 0,
+    )
+    custody = B._StartedProcessCustody(
+        process=process,
+        descendants={existing_pid: "existing-birth"},
+        root_started="root-birth",
+        stable_handles=(
+            {existing_pid: 101} if platform_name == "Linux" else {}
+        ),
+        linux_subreaper_active=platform_name == "Linux",
+        detached_tracking_complete=platform_name == "Linux",
+    )
+    tree = B.ScopedProcessTree(custody)
+    observation_count = 0
+
+    def observe_exit():
+        nonlocal observation_count
+        observation_count += 1
+        if observation_count == 2:
+            custody.descendants[new_pid] = "new-birth"
+            if platform_name == "Linux":
+                custody.stable_handles[new_pid] = 102
+        # Include an extra poll after discovering the descendant to prove it
+        # is not signaled again on the next grace iteration.
+        return observation_count >= 4
+
+    direct_signals = []
+    group_signals = []
+    exact_signals = []
+
+    monkeypatch.setattr(
+        B.os,
+        "uname",
+        lambda: SimpleNamespace(sysname=platform_name),
+    )
+    monkeypatch.setattr(tree, "observe_exit", observe_exit)
+    monkeypatch.setattr(
+        B,
+        "_signal_owned_direct_process",
+        lambda selected, signum: direct_signals.append(
+            (selected, signum)
+        ),
+    )
+    monkeypatch.setattr(
+        B,
+        "_signal_owned_process_group",
+        lambda pgid, signum: group_signals.append((pgid, signum)),
+    )
+
+    def record_exact(
+        identities,
+        signum,
+        stable_handles=None,
+        owned_pgid=None,
+        final=False,
+    ):
+        exact_signals.append((
+            dict(identities),
+            signum,
+            stable_handles,
+            owned_pgid,
+            final,
+        ))
+
+    monkeypatch.setattr(B, "_signal_exact_processes", record_exact)
+    monkeypatch.setattr(B, "_custody_descendants_absent", lambda _c: True)
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _c: None)
+    monkeypatch.setattr(
+        B, "_seal_anchored_process_group", lambda _c: None
+    )
+    monkeypatch.setattr(
+        B, "_seal_descendants_before_root_reap", lambda _c: None
+    )
+    monkeypatch.setattr(
+        B, "_prove_postreap_process_absence", lambda _c: None
+    )
+    monkeypatch.setattr(
+        B, "_release_custody_kernel_state", lambda _c: None
+    )
+    monkeypatch.setattr(B, "_process_identity", lambda _pid: None)
+
+    result = tree.seal(stop_requested=True, grace_seconds=1)
+
+    assert result.forced_kill is False
+    if platform_name == "Linux":
+        assert direct_signals == [(custody, B.signal.SIGTERM)]
+        assert group_signals == []
+        assert [call[0] for call in exact_signals] == [
+            {existing_pid: "existing-birth"},
+            {new_pid: "new-birth"},
+        ]
+    else:
+        assert direct_signals == []
+        assert group_signals == [(root_pid, B.signal.SIGTERM)]
+        assert exact_signals == []
+
+
+@pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
+def test_scoped_process_tree_slow_root_cleanup_precedes_stubborn_child_kill(
+    tmp_path,
+):
+    script = tmp_path / "slow_root_stubborn_child.py"
+    ready_path = tmp_path / "slow-root-child-ready"
+    child_path = tmp_path / "slow-root-stubborn-child.pid"
+    count_path = tmp_path / "slow-root-term-count"
+    append_path = tmp_path / "slow-root-terminal-append"
+    child_count_path = tmp_path / "stubborn-child-term-count"
+    script.write_text(
+        "\n".join((
+            "import os",
+            "import signal",
+            "import sys",
+            "import time",
+            "def handle_term(_signum, _frame):",
+            "    with open(sys.argv[3], 'ab') as out:",
+            "        out.write(b'term\\n')",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    time.sleep(0.2)",
+            "    with open(sys.argv[4], 'ab') as out:",
+            "        out.write(b'terminal append\\n')",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    while True:",
+            "        time.sleep(1)",
+            "def handle_child_term(_signum, _frame):",
+            "    with open(sys.argv[5], 'ab') as out:",
+            "        out.write(b'term\\n')",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "signal.signal(signal.SIGTERM, handle_term)",
+            "child = os.fork()",
+            "if child == 0:",
+            "    signal.signal(signal.SIGTERM, handle_child_term)",
+            "    with open(sys.argv[2], 'w', encoding='ascii') as out:",
+            "        out.write(str(os.getpid()))",
+            "        out.flush()",
+            "        os.fsync(out.fileno())",
+            "    while True:",
+            "        time.sleep(1)",
+            "while not os.path.exists(sys.argv[2]):",
+            "    time.sleep(0.01)",
+            "with open(sys.argv[1], 'wb') as out:",
+            "    out.write(b'ready\\n')",
+            "    out.flush()",
+            "    os.fsync(out.fileno())",
+            "while True:",
+            "    time.sleep(1)",
+        )) + "\n",
+        encoding="utf-8",
+    )
+    tree = B.ScopedProcessTree.launch(
+        (
+            str(PYTHON_EXECUTABLE),
+            "-I",
+            "-E",
+            "-s",
+            "-B",
+            str(script),
+            str(ready_path),
+            str(child_path),
+            str(count_path),
+            str(append_path),
+            str(child_count_path),
+        ),
+        cwd=tmp_path,
+        environment={
+            "HOME": str(tmp_path),
+            "LANG": "C",
+            "LC_ALL": "C",
+            "TMPDIR": str(tmp_path),
+        },
+    )
+    deadline = time.monotonic() + 5
+    while not ready_path.exists():
+        assert time.monotonic() < deadline
+        assert tree.observe_exit() is False
+        time.sleep(0.01)
+    # Bind the child before beginning the grace interval.
+    assert tree.observe_exit() is False
+
+    result = tree.seal(stop_requested=True, grace_seconds=0.5)
+
+    assert result.returncode == -9
+    assert result.forced_kill is True
+    assert result.captured_descendant_count >= 1
+    assert result.captured_descendants_absent is True
+    assert count_path.read_bytes() == b"term\n"
+    assert append_path.read_bytes() == b"terminal append\n"
+    assert child_count_path.read_bytes() == b"term\n"
+    child_pid = int(child_path.read_text(encoding="ascii"))
+    observed = B._process_identity(child_pid)
+    assert observed is None or observed[3].startswith("Z")
+
+
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
 @pytest.mark.skipif(
     os.uname().sysname != "Linux",
