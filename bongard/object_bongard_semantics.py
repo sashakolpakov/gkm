@@ -1,10 +1,12 @@
-"""Profile-free visual prose and feature nominations for one Bongard task.
+"""Profile-free visual prose and one frozen cue nomination per neutral group.
 
 The model sees two neutral groups of six support images.  It may emit prose
-and nominate identifiers from the frozen feature catalog, but it cannot pick
-operators, thresholds, polarity, formulas, or executable code.  A later
-Python-only version-space stage is the sole authority for operationalizing
-the nominated feature family.
+and nominate exactly one identifier from the frozen feature catalog for each
+group, but it cannot pick operators, thresholds, polarity, formulas, or
+executable code.  The prose is audit evidence only.  The nominated identifier
+selects the frozen catalog entry whose operational description is the sole
+rubric used by the downstream observer; a later Python-only version-space
+stage remains the sole authority for thresholds and executable predicates.
 """
 
 from __future__ import annotations
@@ -113,15 +115,18 @@ def object_bongard_semantics_prompt() -> str:
         "Inspect twelve drawings arranged as two neutral groups of six, named "
         "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
         "group_1_ref_05. For each group, write one concise sentence describing "
-        "a recurring visible appearance and nominate one or more matching "
-        "feature identifiers from the complete frozen measurement catalog. "
+        "a recurring visible appearance and nominate exactly one matching "
+        "feature identifier from the complete frozen measurement catalog. "
         "Ignore pose, scale, location, and incidental stroke variation. Return "
         "group_0 then group_1. Emit prose and feature identifiers only: do not "
         "choose an operator, threshold, number, polarity, weight, negation, "
         "disjunction, executable text, or experimental role. Express only "
         "positively visible cues; do not use constructions such as no, not, "
         "without, lacking, absent, or missing. Python "
-        "alone may later test a finite predeclared operationalization.\n\n"
+        "alone uses that identifier to select the catalog entry's frozen "
+        "operational description as the observer rubric, and may later test "
+        "a finite predeclared operationalization. Your prose is retained only "
+        "as audit text and cannot add, remove, conjoin, or complement cues.\n\n"
         "Frozen measurement catalog:\n"
         + _catalog_lines()
     )
@@ -142,6 +147,12 @@ def object_bongard_semantics_protocol_digest() -> str:
             "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
             "group_ids": list(GROUP_IDS),
             "images_per_group": GROUP_SIZE,
+            "feature_ids_per_group": 1,
+            "distinct_group_feature_ids_required": True,
+            "vision_prose_authority": "audit-only",
+            "observer_rubric_derivation": (
+                "exact-frozen-catalog-operational-description-by-feature-id"
+            ),
             "downstream_operationalization": (
                 "explicit-finite-python-version-space-only"
             ),
@@ -183,15 +194,19 @@ def _parse_semantic_payload(
         raw_ids = row["feature_ids"]
         if (
             not isinstance(raw_ids, list)
-            or not raw_ids
-            or any(not isinstance(item, str) or item not in OBJECT_FEATURE_IDS for item in raw_ids)
-            or len(set(raw_ids)) != len(raw_ids)
+            or len(raw_ids) != 1
+            or not isinstance(raw_ids[0], str)
+            or raw_ids[0] not in OBJECT_FEATURE_IDS
         ):
             raise ObjectBongardSemanticsError(
-                "semantic feature nominations are invalid"
+                "semantic group must nominate exactly one frozen feature ID"
             )
         rubrics.append(rubric)
-        families.append(tuple(sorted(raw_ids, key=OBJECT_FEATURE_IDS.index)))
+        families.append((raw_ids[0],))
+    if families[0] == families[1]:
+        raise ObjectBongardSemanticsError(
+            "semantic groups must nominate distinct frozen feature IDs"
+        )
     return (
         tuple(rubrics),  # type: ignore[return-value]
         tuple(families),  # type: ignore[return-value]
@@ -353,17 +368,17 @@ class ObjectBongardSemanticArtifact:
                 or self.receipt is None
                 or len(self.rubrics) != 2
                 or len(self.feature_families) != 2
-                or any(not family for family in self.feature_families)
+                or any(len(family) != 1 for family in self.feature_families)
+                or self.feature_families[0] == self.feature_families[1]
                 or self.failure_code is not None
                 or self.failure_type is not None
             ):
                 raise ObjectBongardSemanticsError("successful semantic artifact differs")
             for family in self.feature_families:
-                if (
-                    family != tuple(sorted(set(family), key=OBJECT_FEATURE_IDS.index))
-                    or any(item not in OBJECT_FEATURE_IDS for item in family)
-                ):
-                    raise ObjectBongardSemanticsError("feature family is not canonical")
+                if family[0] not in OBJECT_FEATURE_IDS:
+                    raise ObjectBongardSemanticsError(
+                        "semantic cue nomination is outside the frozen catalog"
+                    )
         elif parser_error:
             if (
                 self.model_payload is None
@@ -498,7 +513,7 @@ def describe_object_bongard_support(
     no_tools_attestation: CodexNoToolsAttestation,
     transport: object = run_codex_named_images_structured,
 ) -> ObjectBongardSemanticArtifact:
-    """Produce prose plus feature IDs without exposing labels or numeric choices."""
+    """Produce audit prose plus one cue ID per neutral group."""
 
     task = _task_id(task_id)
     context = _address(observation_context_digest, "observation context digest")
@@ -616,7 +631,7 @@ def verify_object_bongard_semantic_artifact(
     expected_observation_context_digest: str,
     expected_artifact_digest: str,
 ) -> ObjectBongardSemanticArtifact:
-    """Cold-replay exact support bytes, receipt, parser, and nominations."""
+    """Cold-replay exact support bytes, receipt, audit prose, and cue IDs."""
 
     if not isinstance(artifact, ObjectBongardSemanticArtifact):
         raise TypeError("artifact must be ObjectBongardSemanticArtifact")

@@ -16,6 +16,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
+    object_bongard_catalog_cue_rubric,
     object_bongard_rubric_ordinal_scale_digest,
 )
 from bongard.object_bongard_rubric_ranker import (
@@ -38,11 +39,15 @@ from bongard.object_bongard_turn_journal import (
     ObjectBongardTextTurnJournalTransport,
     ObjectBongardTurnRuntime,
 )
-from bongard.tests.test_object_bongard_semantics import _describe as _describe_semantic
+from bongard.tests.test_object_bongard_semantics import (
+    _describe as _describe_semantic,
+    _payload as _semantic_payload,
+)
 from bongard.tests.test_object_bongard_rubric_version_space import (
     _observed_artifact,
 )
 from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
+from bongard.prototype_object_profiles import OBJECT_FEATURE_CATALOG_DIGEST
 import bongard.transport as transport_module
 from bongard.transport import (
     CODEX_APPLY_PATCH_TOOL_TYPE,
@@ -64,9 +69,13 @@ LAUNCHER_DIGEST = "b" * 64
 MODEL_CATALOG, NO_TOOLS_ATTESTATION = canonical_no_tools_runtime(
     LAUNCHER_DIGEST
 )
-TARGET_RUBRIC = "A winged angular form with several slanted spans."
-CONTRAST_RUBRIC = "A rounded compact form with a curved boundary."
-FEATURES = ("oblique_span_support_ppm", "bird_like_support_ppm")
+AUDIT_TARGET_RUBRIC = "A winged angular form with several slanted spans."
+AUDIT_CONTRAST_RUBRIC = "A rounded compact form with a curved boundary."
+TARGET_RUBRIC = object_bongard_catalog_cue_rubric("bird_like_support_ppm")
+CONTRAST_RUBRIC = object_bongard_catalog_cue_rubric(
+    "rounded_leaf_support_ppm"
+)
+FEATURES = ("bird_like_support_ppm",)
 
 
 @lru_cache(maxsize=1)
@@ -323,6 +332,11 @@ def test_prompt_contains_only_rubrics_and_immutable_candidate_inventory() -> Non
     )
 
     assert TARGET_RUBRIC in prompt and CONTRAST_RUBRIC in prompt
+    assert AUDIT_TARGET_RUBRIC not in prompt
+    assert AUDIT_CONTRAST_RUBRIC not in prompt
+    assert OBJECT_FEATURE_CATALOG_DIGEST in prompt
+    assert "target_cue_id: bird_like_support_ppm" in prompt
+    assert "neutral_contrast_cue_id: rounded_leaf_support_ppm" in prompt
     for digest in version.survivor_candidate_digests:
         candidate = version.survivor(digest)
         assert candidate.candidate_id in prompt
@@ -354,6 +368,49 @@ def test_prompt_contains_only_rubrics_and_immutable_candidate_inventory() -> Non
         "required": ["ordered_aliases"],
         "additionalProperties": False,
     }
+
+
+def test_contrast_is_derived_from_group_one_cue_and_bound_by_rank_input() -> None:
+    payload = _semantic_payload()
+    payload["profiles"][1]["feature_ids"] = [  # type: ignore[index]
+        "oblique_span_support_ppm"
+    ]
+    semantic, calls = _describe_semantic(payload)
+    assert calls == 1
+    spec = _spec(semantic)
+    version, positives, negatives = _version_space(spec)
+    rank_input = object_bongard_rubric_rank_input_digest(
+        version_space=version,
+        rubric_spec=spec,
+        semantic_artifact=semantic,
+        positive_support_artifacts=positives,
+        negative_support_artifacts=negatives,
+    )
+    prompt = object_bongard_rubric_ranker_prompt(
+        version_space=version,
+        rubric_spec=spec,
+        semantic_artifact=semantic,
+        positive_support_artifacts=positives,
+        negative_support_artifacts=negatives,
+        rank_input_digest=rank_input,
+    )
+    expected_contrast = object_bongard_catalog_cue_rubric(
+        "oblique_span_support_ppm"
+    )
+    assert "neutral_contrast_cue_id: oblique_span_support_ppm" in prompt
+    assert expected_contrast in prompt
+    assert semantic.rubrics[1] not in prompt
+
+    _, _, _, _, _, stale_rank_input = _inputs()
+    with pytest.raises(ObjectBongardRubricRankerError, match="canonical preimage"):
+        object_bongard_rubric_ranker_prompt(
+            version_space=version,
+            rubric_spec=spec,
+            semantic_artifact=semantic,
+            positive_support_artifacts=positives,
+            negative_support_artifacts=negatives,
+            rank_input_digest=stale_rank_input,
+        )
 
 
 @pytest.mark.parametrize(

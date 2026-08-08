@@ -1,11 +1,12 @@
 """Text-only Codex ranking over verified rubric-predicate survivors.
 
 The closed Python rubric version space supplies the exact survivor set.  This
-module exposes only an opaque version-space digest, one target rubric, one
-neutral contrast rubric, and immutable candidate aliases/formulas to Codex.
-Codex may order those aliases; it cannot create or edit a predicate.  Python
-checks the exact permutation, resolves aliases to candidate digests, and cold
-verifies the complete causal receipt without another model call.
+module exposes only an opaque version-space digest, the two rubrics derived
+from the neutral groups' frozen catalog cue IDs, and immutable candidate
+aliases/formulas to Codex.  The semantic model's free prose is never shown to
+the ranker.  Codex may order the aliases; it cannot create or edit a predicate.
+Python checks the exact permutation, resolves aliases to candidate digests,
+and cold verifies the complete causal receipt without another model call.
 
 No pixels, panel identities, support-side names, held-out material, or Lean
 content enter the model-visible prompt.  Python remains the sole predicate,
@@ -36,6 +37,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
+    object_bongard_catalog_cue_rubric,
     object_bongard_rubric_ordinal_scale_digest,
 )
 from bongard.object_bongard_semantics import ObjectBongardSemanticArtifact
@@ -46,6 +48,7 @@ from bongard.object_bongard_rubric_version_space import (
     object_bongard_rubric_version_space_algorithm_digest,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
+from bongard.prototype_object_profiles import OBJECT_FEATURE_CATALOG_DIGEST
 from bongard.transport import (
     CODEX_ISOLATION_POLICY,
     CODEX_RECEIPT_SCHEMA,
@@ -240,22 +243,64 @@ def _freeze_semantic_artifact(
         raise ObjectBongardRubricRankerError(
             "semantic artifact cold round trip differs"
         )
+    try:
+        expected_spec = ObjectBongardRubricSpec.from_semantic_artifact(
+            value, expected_artifact_digest=value.artifact_digest
+        )
+    except Exception as exc:
+        raise ObjectBongardRubricRankerError(
+            "semantic artifact cannot derive a frozen catalog rubric"
+        ) from exc
     if (
         value.artifact_digest != spec.semantic_artifact_digest
-        or len(value.rubrics) != 2
-        or len(value.feature_families) != 2
-        or value.rubrics[0] != spec.rubric
-        or value.feature_families[0] != spec.feature_nominations
+        or value.feature_catalog_digest != OBJECT_FEATURE_CATALOG_DIGEST
+        or expected_spec != spec
     ):
         raise ObjectBongardRubricRankerError(
-            "semantic artifact target does not exactly reproduce the rubric spec"
+            "rubric spec is not exactly derived from the semantic target cue"
         )
-    _neutral_rubric(value.rubrics[1], "neutral contrast rubric")
-    if value.rubrics[1] == spec.rubric:
+    target_id, target_rubric, contrast_id, contrast_rubric = (
+        _semantic_catalog_cues(value)
+    )
+    if (
+        spec.feature_nominations != (target_id,)
+        or spec.rubric != target_rubric
+        or contrast_id == target_id
+        or contrast_rubric == target_rubric
+    ):
         raise ObjectBongardRubricRankerError(
-            "target and neutral contrast rubrics must differ"
+            "target and neutral contrast cues do not derive distinct catalog rubrics"
         )
     return value
+
+
+def _semantic_catalog_cues(
+    semantic: ObjectBongardSemanticArtifact,
+) -> tuple[str, str, str, str]:
+    if (
+        semantic.feature_catalog_digest != OBJECT_FEATURE_CATALOG_DIGEST
+        or len(semantic.feature_families) != 2
+        or any(len(group) != 1 for group in semantic.feature_families)
+    ):
+        raise ObjectBongardRubricRankerError(
+            "semantic artifact must bind one frozen catalog cue per group"
+        )
+    target_id = semantic.feature_families[0][0]
+    contrast_id = semantic.feature_families[1][0]
+    try:
+        target_rubric = _neutral_rubric(
+            object_bongard_catalog_cue_rubric(target_id),
+            "target catalog cue rubric",
+        )
+        contrast_rubric = _neutral_rubric(
+            object_bongard_catalog_cue_rubric(contrast_id),
+            "neutral contrast catalog cue rubric",
+        )
+    except (TypeError, ValueError) as exc:
+        raise ObjectBongardRubricRankerError(
+            "semantic cue does not resolve in the frozen feature catalog"
+        ) from exc
+    return target_id, target_rubric, contrast_id, contrast_rubric
 
 
 def _freeze_version_space(
@@ -398,14 +443,21 @@ def _rank_input_digest_from_frozen(
     survivors: tuple[ObjectBongardRubricCandidate, ...],
 ) -> str:
     scale_digest, anchors = _ordinal_scale()
+    target_id, target_rubric, contrast_id, contrast_rubric = (
+        _semantic_catalog_cues(semantic)
+    )
     return canonical_digest(
         {
             "schema": OBJECT_BONGARD_RUBRIC_RANK_INPUT_SCHEMA,
             "rubric_spec_digest": spec.spec_digest,
             "semantic_artifact_digest": semantic.artifact_digest,
-            "target_rubric": spec.rubric,
-            "target_feature_nominations": list(spec.feature_nominations),
-            "neutral_contrast_rubric": semantic.rubrics[1],
+            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "target_rubric": target_rubric,
+            "target_feature_nominations": [target_id],
+            "neutral_contrast_rubric": contrast_rubric,
+            "neutral_contrast_feature_nominations": [contrast_id],
+            "catalog_rubric_derivation_verified": True,
+            "semantic_audit_rubrics_model_visible": False,
             "rubric_ordinal_scale_digest": scale_digest,
             "rubric_ordinal_level_anchors": [
                 {"level": level, "meaning": text} for level, text in anchors
@@ -506,22 +558,28 @@ def _ranker_prompt_from_frozen(
         for alias, candidate in zip(_aliases(len(survivors)), survivors, strict=True)
     )
     scale_digest, anchors = _ordinal_scale()
+    target_id, target_rubric, contrast_id, contrast_rubric = (
+        _semantic_catalog_cues(semantic)
+    )
     anchor_rows = "\n".join(
         f"- level={level}; meaning={text}" for level, text in anchors
     )
     prompt = (
         "Rank the already-admissible immutable candidates by how naturally "
-        "each fixed scope and threshold operationalizes the target rubric "
-        "against the neutral contrast rubric. Return every bounded alias "
+        "each fixed scope and threshold operationalizes the target frozen "
+        "catalog cue rubric against the neutral frozen catalog contrast cue "
+        "rubric. Return every bounded alias "
         "exactly once, best first. Do not change a scope, operator, threshold, "
         "formula, identity, or polarity. Use only the material below and return "
         "no explanation.\n\n"
         f"rank_input_digest: {rank_input_digest}\n"
         f"version_space_digest: {version.version_space_digest}\n"
         f"rubric_spec_digest: {spec.spec_digest}\n"
-        f"target_rubric: {spec.rubric}\n"
-        f"target_feature_nominations: {', '.join(spec.feature_nominations)}\n"
-        f"neutral_contrast_rubric: {semantic.rubrics[1]}\n\n"
+        f"feature_catalog_digest: {OBJECT_FEATURE_CATALOG_DIGEST}\n"
+        f"target_cue_id: {target_id}\n"
+        f"target_rubric: {target_rubric}\n"
+        f"neutral_contrast_cue_id: {contrast_id}\n"
+        f"neutral_contrast_rubric: {contrast_rubric}\n\n"
         f"rubric_ordinal_scale_digest: {scale_digest}\n"
         f"rubric_ordinal_level_anchors:\n{anchor_rows}\n\n"
         f"immutable_candidates:\n{rows}"
@@ -582,6 +640,12 @@ def object_bongard_rubric_ranker_protocol_digest() -> str:
             "version_space_algorithm_digest": (
                 object_bongard_rubric_version_space_algorithm_digest()
             ),
+            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "semantic_cue_policy": "one-distinct-feature-id-per-neutral-group",
+            "rubric_grounding_policy": (
+                "exact-frozen-catalog-operational-description-by-feature-id"
+            ),
+            "semantic_audit_prose_model_visible": False,
             "rubric_ordinal_scale_digest": scale_digest,
             "rubric_ordinal_level_anchors": [
                 {"level": level, "meaning": text} for level, text in anchors

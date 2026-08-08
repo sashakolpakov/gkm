@@ -14,6 +14,10 @@ from bongard.object_bongard_semantics import (
     object_bongard_semantics_prompt,
     verify_object_bongard_semantic_artifact,
 )
+from bongard.object_bongard_rubric_observer import (
+    ObjectBongardRubricSpec,
+    object_bongard_catalog_cue_rubric,
+)
 from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.tests.test_prototype_scene_observer import (
     CONTEXT_DIGEST,
@@ -45,10 +49,7 @@ def _payload() -> dict[str, object]:
             {
                 "group_id": "group_0",
                 "rubric": "A winged angular form with several slanted spans.",
-                "feature_ids": [
-                    "oblique_span_support_ppm",
-                    "bird_like_support_ppm",
-                ],
+                "feature_ids": ["bird_like_support_ppm"],
             },
             {
                 "group_id": "group_1",
@@ -90,7 +91,7 @@ def _describe(payload: dict[str, object] | None = None):
     return artifact, calls
 
 
-def test_semantic_turn_emits_prose_and_catalog_ids_but_no_predicate() -> None:
+def test_semantic_turn_emits_audit_prose_and_one_catalog_cue_per_group() -> None:
     artifact, calls = _describe()
     assert calls == artifact.to_data()["physical_call_count"] == 1
     assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
@@ -99,11 +100,13 @@ def test_semantic_turn_emits_prose_and_catalog_ids_but_no_predicate() -> None:
         "A rounded compact form with a curved boundary.",
     )
     assert artifact.feature_families == (
-        ("oblique_span_support_ppm", "bird_like_support_ppm"),
+        ("bird_like_support_ppm",),
         ("rounded_leaf_support_ppm",),
     )
     prompt = object_bongard_semantics_prompt()
     assert "two neutral groups of six" in prompt
+    assert "exactly one matching feature identifier" in prompt
+    assert "retained only as audit text" in prompt
     assert "do not choose an operator, threshold" in prompt
     assert "500000" not in prompt and "500_000" not in prompt
     assert artifact.to_data()["model_can_choose_operator_threshold_or_polarity"] is False
@@ -158,6 +161,60 @@ def test_parser_and_transport_failures_are_typed_not_empty_nominations() -> None
     assert failed.status is PrototypeSceneObserverStatus.TRANSPORT_ERROR
     assert failed.feature_families == ()
     assert failed.failure_code == "semantic_transport_failed"
+
+
+@pytest.mark.parametrize(
+    "feature_ids",
+    (
+        [],
+        ["bird_like_support_ppm", "oblique_span_support_ppm"],
+    ),
+)
+def test_zero_or_multiple_cues_fail_closed(feature_ids: list[str]) -> None:
+    payload = _payload()
+    payload["profiles"][0]["feature_ids"] = feature_ids  # type: ignore[index]
+    artifact, calls = _describe(payload)
+    assert calls == 1
+    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert artifact.feature_families == ()
+
+
+def test_same_cue_cannot_masquerade_as_a_contrast() -> None:
+    payload = _payload()
+    payload["profiles"][1]["feature_ids"] = [  # type: ignore[index]
+        "bird_like_support_ppm"
+    ]
+    artifact, calls = _describe(payload)
+    assert calls == 1
+    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert artifact.feature_families == ()
+
+
+@pytest.mark.parametrize(
+    "audit_prose",
+    (
+        "A bird-like contour and several rounded appendages recur.",
+        "A figure distinct from compact rounded leaves recurs.",
+    ),
+)
+def test_audit_prose_cannot_conjoin_or_implicitly_complement_the_predicate(
+    audit_prose: str,
+) -> None:
+    payload = _payload()
+    payload["profiles"][0]["rubric"] = audit_prose  # type: ignore[index]
+    artifact, calls = _describe(payload)
+    assert calls == 1
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.rubrics[0] == audit_prose
+
+    spec = ObjectBongardRubricSpec.from_semantic_artifact(
+        artifact, expected_artifact_digest=artifact.artifact_digest
+    )
+    assert spec.feature_nominations == ("bird_like_support_ppm",)
+    assert spec.rubric == object_bongard_catalog_cue_rubric(
+        "bird_like_support_ppm"
+    )
+    assert audit_prose != spec.rubric
 
 
 @pytest.mark.parametrize(

@@ -16,6 +16,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
     RubricObservationState,
+    object_bongard_catalog_cue_rubric,
     object_bongard_rubric_observer_prompt,
     object_bongard_rubric_ordinal_scale_digest,
     observe_object_bongard_rubric,
@@ -31,6 +32,7 @@ from bongard.tests.test_prototype_scene_observer import (
     _png,
     _receipt,
 )
+from bongard.tests.test_object_bongard_semantics import _describe as _describe_semantic
 from bongard.transport import CodexStructuredResult
 
 
@@ -128,6 +130,29 @@ def test_live_ordinal_rows_project_and_cold_replay() -> None:
     ) == artifact
     assert spec == ObjectBongardRubricSpec.from_data(spec.to_data())
     assert len(object_bongard_rubric_ordinal_scale_digest()) == 64
+
+
+def test_semantic_cue_derives_catalog_rubric_while_direct_specs_remain_usable() -> None:
+    semantic, calls = _describe_semantic()
+    assert calls == 1
+    derived = ObjectBongardRubricSpec.from_semantic_artifact(
+        semantic, expected_artifact_digest=semantic.artifact_digest
+    )
+    assert derived.feature_nominations == ("bird_like_support_ppm",)
+    assert derived.rubric == object_bongard_catalog_cue_rubric(
+        "bird_like_support_ppm"
+    )
+    assert derived.rubric != semantic.rubrics[0]
+
+    fixed_calibration = ObjectBongardRubricSpec.create(
+        SEMANTIC_DIGEST,
+        "A fixed calibration-only visible description.",
+        ("bird_like_support_ppm",),
+    )
+    assert fixed_calibration.rubric == "A fixed calibration-only visible description."
+    assert ObjectBongardRubricSpec.from_data(
+        fixed_calibration.to_data()
+    ) == fixed_calibration
 
 
 def test_receipted_payload_cannot_be_decoupled_from_projected_rows() -> None:

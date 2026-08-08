@@ -42,7 +42,11 @@ from bongard.prototype_object_lineages import (
     ObjectLineagePacket,
     verify_object_lineage_packet,
 )
-from bongard.prototype_object_profiles import OBJECT_FEATURE_IDS
+from bongard.prototype_object_profiles import (
+    OBJECT_FEATURE_CATALOG,
+    OBJECT_FEATURE_CATALOG_DIGEST,
+    OBJECT_FEATURE_IDS,
+)
 from bongard.prototype_scene_observer import (
     CloudPolicyCacheSnapshot,
     CodexModelCatalogSnapshot,
@@ -152,12 +156,38 @@ def object_bongard_rubric_ordinal_scale_digest() -> str:
     )
 
 
+def object_bongard_catalog_cue_rubric(feature_id: str) -> str:
+    """Return the one frozen observer rubric selected by a semantic cue ID."""
+
+    if not isinstance(feature_id, str) or feature_id not in OBJECT_FEATURE_IDS:
+        raise ObjectBongardRubricObserverError(
+            "semantic cue ID is outside the frozen feature catalog"
+        )
+    item = OBJECT_FEATURE_CATALOG[OBJECT_FEATURE_IDS.index(feature_id)]
+    rubric = item.operational_description
+    try:
+        checked = _object_protocol._audit_prose(rubric, "catalog cue rubric")
+    except (TypeError, ValueError) as exc:  # pragma: no cover - frozen catalog guard
+        raise ObjectBongardRubricObserverError(
+            "frozen catalog cue rubric violates the observer prose grammar"
+        ) from exc
+    if checked != rubric:
+        raise ObjectBongardRubricObserverError(
+            "frozen catalog cue rubric is not canonical"
+        )
+    return rubric
+
+
 def object_bongard_rubric_observer_catalog_digest() -> str:
     return canonical_digest(
         {
             "schema": "gkm.bongard-object-rubric-observer-catalog.v1",
             "protocol_id": RUBRIC_OBSERVER_PROTOCOL_ID,
             "source_digest": object_bongard_rubric_observer_source_digest(),
+            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "semantic_cue_rubric_derivation": (
+                "exact-operational-description-by-single-feature-id"
+            ),
             "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
             "hypothesis_extractor_digest": (
                 _object_observer.object_hypothesis_extractor_artifact_digest()
@@ -233,14 +263,38 @@ class ObjectBongardRubricSpec:
     def from_semantic_artifact(
         cls, artifact: object, *, expected_artifact_digest: str
     ) -> "ObjectBongardRubricSpec":
+        from bongard.object_bongard_semantics import ObjectBongardSemanticArtifact
+
         expected = _digest(expected_artifact_digest, "expected semantic digest")
+        if not isinstance(artifact, ObjectBongardSemanticArtifact):
+            raise TypeError(
+                "artifact must be ObjectBongardSemanticArtifact"
+            )
+        try:
+            semantic = ObjectBongardSemanticArtifact.from_data(
+                artifact.to_data(), expected_artifact_digest=expected
+            )
+        except Exception as exc:
+            raise ObjectBongardRubricObserverError(
+                "semantic artifact is not canonical"
+            ) from exc
         if (
-            getattr(artifact, "artifact_digest", None) != expected
-            or len(getattr(artifact, "rubrics", ())) != 2
-            or len(getattr(artifact, "feature_families", ())) != 2
+            semantic != artifact
+            or semantic.artifact_digest != expected
+            or semantic.status is not PrototypeSceneObserverStatus.SUCCESS
+            or semantic.feature_catalog_digest != OBJECT_FEATURE_CATALOG_DIGEST
+            or len(semantic.rubrics) != 2
+            or len(semantic.feature_families) != 2
+            or any(len(group) != 1 for group in semantic.feature_families)
+            or semantic.feature_families[0] == semantic.feature_families[1]
         ):
             raise ObjectBongardRubricObserverError("semantic artifact differs")
-        return cls.create(expected, artifact.rubrics[0], artifact.feature_families[0])
+        cue_id = semantic.feature_families[0][0]
+        return cls.create(
+            expected,
+            object_bongard_catalog_cue_rubric(cue_id),
+            (cue_id,),
+        )
 
     def to_data(self) -> dict[str, object]:
         return {**_spec_content(self), "spec_digest": self.spec_digest}
@@ -1553,6 +1607,7 @@ __all__ = (
     "RubricObservationState",
     "RubricScope",
     "RubricScopeObservation",
+    "object_bongard_catalog_cue_rubric",
     "object_bongard_rubric_observer_catalog_digest",
     "object_bongard_rubric_observer_model_digest",
     "object_bongard_rubric_observer_output_schema",
