@@ -509,20 +509,52 @@ def test_generated_tester_supports_fresh_replay_without_checkpoint_mutation(
 
 
 def test_clean_room_instruction_is_inherited_by_propose_and_debrief():
-    expected = (
+    boundary = (
         "The supervisor-owned gkm_try.py bootstrap is not reusable authority: "
         "proposer-authored files must not import private harness or runner modules "
         "(including gkm_legs) or use dynamic import or execution facilities "
-        "(including importlib, imp, runpy, __import__, compile, eval, or exec)."
+        "(including importlib, imp, or runpy)."
+    )
+    termination_rule = (
+        "LIVE AST TERMINATION RULE: the live AST scanner terminates the whole turn "
+        "if ANY proposer-authored workspace file--including temporary probes, search "
+        "scripts, or tests--contains calls to"
+    )
+    forbidden_calls = (
+        "__import__",
+        "builtins.__import__",
+        "compile",
+        "builtins.compile",
+        "eval",
+        "builtins.eval",
+        "exec",
+        "builtins.exec",
+        "runpy.run_module",
+        "runpy.run_path",
     )
 
-    assert expected in L.CLEAN_ROOM_INSTRUCTION
+    assert boundary in L.CLEAN_ROOM_INSTRUCTION
+    assert termination_rule in L.CLEAN_ROOM_INSTRUCTION
+    assert "Never write any of these calls, even temporarily" in (
+        L.CLEAN_ROOM_INSTRUCTION
+    )
+    assert "use only ordinary static imports and direct calls" in (
+        L.CLEAN_ROOM_INSTRUCTION
+    )
+    assert "Statically check every file edit for this entire list before proceeding" in (
+        L.CLEAN_ROOM_INSTRUCTION
+    )
+    for call in forbidden_calls:
+        assert f"`{call}`" in L.CLEAN_ROOM_INSTRUCTION
     for task in (
         L._propose_task("ls20", 5, "", []),
         L._debrief_task("ls20", 5),
     ):
         assert task.startswith(L.CLEAN_ROOM_INSTRUCTION + "\n\n")
-        assert expected in task
+        assert boundary in task
+        assert termination_rule in task
+        for call in forbidden_calls:
+            assert f"`{call}`" in task
 
 
 def test_repository_promoted_artifacts_are_clean_and_consistent():
