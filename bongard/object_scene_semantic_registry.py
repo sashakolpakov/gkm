@@ -26,8 +26,14 @@ from typing import Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.object_scene_visual_frontend import (
+    OBJECT_SCENE_MAX_ACCEPTED_VARIANTS,
+    OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES,
     OBJECT_SCENE_MAX_REGISTERED_TAGS,
+    OBJECT_SCENE_MAX_REQUIRED_WITNESSES,
     OBJECT_SCENE_MAX_TAG_CHARACTERS,
+    OBJECT_SCENE_MIN_REQUIRED_WITNESSES,
+    OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS,
+    ObjectSceneOperationalWitness,
     ObjectSceneSoftTag,
     ObjectSceneSoftTagRegistry,
     ObjectSceneTranscriptArtifact,
@@ -41,10 +47,10 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v2"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v2"
-DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v1"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v2"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v3"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v3"
+DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v2"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v3"
 MAX_CONCEPTS_PER_ORIENTATION = 16
 MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
 MIN_CITATIONS_PER_CONCEPT = 2
@@ -57,9 +63,17 @@ _ALIAS = re.compile(r"panel_[0-9]{3}\Z")
 _SEMANTIC_POLICY_LEAK = re.compile(
     r"\b(?:side|support|bucket|orientation|more|less|fewer|most|least|"
     r"common|frequent|typically|usually|never|isn't|isnt|avoids?|avoiding|"
-    r"fails?|cannot|can't|cant|and|or|than|plus|also|while|combined|"
+    r"fails?|cannot|can't|cant|or|plus|also|while|combined|"
     r"rarer|dominant|prevalent|exclusive|contrastive|"
     r"occurrences?|frequency|often|always|sometimes|only)\b|\bnon[- ]?[a-z]",
+    re.IGNORECASE,
+)
+_OPERATIONAL_CRITERION_POLICY_LEAK = re.compile(
+    r"\b(?:support(?:s|ed)?|bucket|orientation|historical[ -]?role|"
+    r"side[01]|positive[ -]examples?|negative[ -]examples?|citations?|"
+    r"frequency|frequent|typically|usually|never|always|sometimes|"
+    r"prevalent|rarer|more[ -]common|less[ -]common|fewer[ -]panels?|"
+    r"most[ -]panels?|least[ -]panels?|across[ -]panels?)\b|panel_[0-9]{3}\b",
     re.IGNORECASE,
 )
 _GAP_CODES = frozenset(("payload_rejected", "insufficient_discovery_evidence"))
@@ -68,6 +82,7 @@ _DROP_REASON_CODES = frozenset(
         "malformed_concept",
         "citation_policy",
         "phrase_policy",
+        "criteria_policy",
         "foreign_citation",
         "duplicate_scoped_phrase",
     )
@@ -95,6 +110,9 @@ def _authority_data() -> dict[str, object]:
         "both_orientations_in_one_call": True,
         "registered_evaluator_receives_roles": False,
         "semantic_proposal_is_not_a_truth_assignment": True,
+        "soft_predicates_are_transparent_witness_macros": True,
+        "registered_observer_authors_macro_disposition": False,
+        "python_compiles_witness_dispositions": True,
         "citation_count_is_not_visual_confidence": True,
         "invalid_optional_concept_discards_valid_concepts": False,
         "all_quarantined_invalid_concepts_and_finite_reasons_persisted": True,
@@ -109,7 +127,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v2",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v3",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
@@ -119,6 +137,15 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             "maximum_concepts_per_orientation": MAX_CONCEPTS_PER_ORIENTATION,
             "maximum_concept_phrase_characters": MAX_CONCEPT_PHRASE_CHARACTERS,
             "maximum_union_concepts": OBJECT_SCENE_MAX_REGISTERED_TAGS,
+            "operational_witness_kinds": list(
+                OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS
+            ),
+            "minimum_required_witnesses": OBJECT_SCENE_MIN_REQUIRED_WITNESSES,
+            "maximum_required_witnesses": OBJECT_SCENE_MAX_REQUIRED_WITNESSES,
+            "maximum_accepted_variants": OBJECT_SCENE_MAX_ACCEPTED_VARIANTS,
+            "maximum_near_miss_boundaries": (
+                OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES
+            ),
             "minimum_distinct_same_orientation_citations": MIN_CITATIONS_PER_CONCEPT,
             "support_panel_count": SUPPORT_PANEL_COUNT,
             "support_panel_count_per_role": SUPPORT_PANEL_COUNT_PER_ROLE,
@@ -131,6 +158,15 @@ def object_scene_semantic_registry_protocol_digest() -> str:
                 "accept-only-if-each-orientation-retains-one-concept"
             ),
             "duplicate_scoped_phrase_rule": "quarantine-every-member-of-group",
+            "operational_card_rule": (
+                "freeze-typed-affirmative-witnesses-inclusion-variants-and-"
+                "near-miss-boundaries;observer-judges-witnesses-not-macro;"
+                "python-error-dominant-strong-kleene-conjunction"
+            ),
+            "operational_card_identity_rule": (
+                "criteria-digest-binds-cues-and-variants;"
+                "tag-digest-binds-scope-phrase-and-criteria-digest"
+            ),
             **_authority_data(),
         }
     )
@@ -241,6 +277,49 @@ def _proposal_output_schema(
                         "no negation, alternatives, labels, or bucket comparisons."
                     ),
                 },
+                "required_witnesses": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "kind": {
+                                "type": "string",
+                                "enum": list(OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS),
+                            },
+                            "statement": {"type": "string"},
+                        },
+                        "required": ["kind", "statement"],
+                        "additionalProperties": False,
+                    },
+                    "description": (
+                        f"Between {OBJECT_SCENE_MIN_REQUIRED_WITNESSES} and "
+                        f"{OBJECT_SCENE_MAX_REQUIRED_WITNESSES} typed affirmative "
+                        "visual witnesses. "
+                        "Every witness must visibly hold "
+                        "on the same scope-derived binding for PRESENT."
+                    ),
+                },
+                "accepted_variants": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Between 0 and "
+                        f"{OBJECT_SCENE_MAX_ACCEPTED_VARIANTS} affirmative "
+                        "inclusion/equivalence clauses saying which visible "
+                        "variants count; these clauses never vote."
+                    ),
+                },
+                "near_miss_boundaries": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                    "description": (
+                        "Between 0 and "
+                        f"{OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES} explicit "
+                        "exclusions for visually "
+                        "confusable configurations; these clauses guide witness "
+                        "interpretation and never vote."
+                    ),
+                },
                 "citations": {
                     "type": "array",
                     "items": {"type": "string", "enum": list(aliases)},
@@ -251,7 +330,14 @@ def _proposal_output_schema(
                     ),
                 },
             },
-            "required": ["scope", "phrase", "citations"],
+            "required": [
+                "scope",
+                "phrase",
+                "required_witnesses",
+                "accepted_variants",
+                "near_miss_boundaries",
+                "citations",
+            ],
             "additionalProperties": False,
         }
 
@@ -537,17 +623,36 @@ def prepare_object_scene_semantic_registry_proposal(
         "From the frozen visual descriptions below, propose candidate visual "
         "concepts for BOTH support orientations in one response. Each concept "
         "must be a single lowercase affirmative visual phrase, scoped either "
-        "to the whole panel or to one visible entity. Cite at least two distinct "
-        "panel aliases from that concept's own support bucket. A citation says "
-        "where the prose suggests the concept; it is not a truth assignment. "
-        "Do not compare the buckets, mention roles or labels, use negation, say "
-        "that something is missing, or package multiple conditions into one "
-        "phrase. Every phrase must be 2 to 80 ASCII characters. Internal visible "
-        "relations such as mismatched parts, lower-left placement, or unequal "
-        "edge lengths are affirmative and allowed. Supply at most 16 concepts "
-        "per bucket. Python will discard bucket membership, freeze one union, "
-        "and two fresh role-blind visual passes will judge every phrase. Return "
-        "only the required JSON object.\n\nFrozen descriptions:\n"
+        "to the whole panel or to one visible entity. For every phrase, freeze "
+        "an operational card rather than merely restating its label: provide "
+        "one to three required_witnesses. Each witness has a bounded kind and "
+        "one affirmative visually local statement that can be judged separately "
+        "from the visible rendering. Also provide zero to two accepted_variants "
+        "that state affirmative visual inclusions or equivalences, plus zero to "
+        "two near_miss_boundaries that explicitly exclude visually confusable "
+        "configurations. Variants and boundaries clarify witness interpretation; "
+        "they never replace a witness and never vote. For entity scope, every "
+        "witness binds to the same single frozen entity proposal. For panel "
+        "scope, every witness binds to the same whole composition. A fresh "
+        "role-blind observer will judge each witness separately. Python alone "
+        "will compile the card: ERROR dominates; otherwise any clearly "
+        "contradicted witness yields CERTIFIED_ABSENT; all PRESENT yields PRESENT; "
+        "every other combination yields INDETERMINATE. Do not ask the observer "
+        "for the card's final state. Resolve meaningful visual tolerances and "
+        "category boundaries such as wedge/fan/sector in the card. Do not use "
+        "a citation, support frequency, or bucket identity "
+        "as a visual cue. Cite at least two distinct panel aliases from the "
+        "concept's own support bucket; a citation says where the prose suggests "
+        "the concept and is not a truth assignment. Do not compare buckets, "
+        "mention experimental roles or labels, use negation, or say something "
+        "is missing. Ordinary internal visual relations and conjunctions such "
+        "as mismatched upper and lower portions, circular and triangular marks, "
+        "lower-left placement, or unequal edge lengths are affirmative and "
+        "allowed. Every phrase must be 2 to 80 ASCII characters. Every cue or "
+        "variant must be 8 to 160 ASCII characters. Supply at most 16 concepts "
+        "per bucket. Python will discard bucket membership, freeze one union of "
+        "transparent witness macros, and two fresh role-blind visual passes will "
+        "judge their witnesses. Return only the required JSON object.\n\nFrozen descriptions:\n"
         + canonical_json(model_view).decode("utf-8")
     )
     hidden = {
@@ -607,10 +712,72 @@ def _concept_content(value: "ObjectSceneSemanticRegistryConcept") -> dict[str, o
         "orientation": value.orientation,
         "scope": value.scope,
         "phrase": value.phrase,
+        "required_witnesses": [
+            item.to_data() for item in value.required_witnesses
+        ],
+        "accepted_variants": list(value.accepted_variants),
+        "near_miss_boundaries": list(value.near_miss_boundaries),
+        "criteria_digest": value.criteria_digest,
         "citations": list(value.citations),
         "citation_count": len(value.citations),
         "affirmative_observation_hypothesis_not_truth": True,
+        "observer_judges_witnesses_not_macro": True,
+        "python_compiles_macro_disposition": True,
     }
+
+
+def _normalized_semantic_scope_phrase(
+    scope: object,
+    phrase: object,
+) -> tuple[str, str]:
+    try:
+        normalized_scope = _frontend._soft_tag_scope(scope)
+        normalized_phrase = _frontend._normalized_positive_tag(phrase)
+    except Exception as exc:
+        raise ObjectSceneSemanticRegistryError(
+            "concept is not scoped affirmative visual prose"
+        ) from exc
+    if (
+        len(normalized_phrase) > MAX_CONCEPT_PHRASE_CHARACTERS
+        or _SEMANTIC_POLICY_LEAK.search(normalized_phrase) is not None
+    ):
+        raise ObjectSceneSemanticRegistryError(
+            "concept phrase contains policy or experimental logic"
+        )
+    return normalized_scope, normalized_phrase
+
+
+def _compiled_semantic_operational_card(
+    scope: str,
+    phrase: str,
+    required_witnesses: object,
+    accepted_variants: object,
+    near_miss_boundaries: object,
+) -> ObjectSceneSoftTag:
+    try:
+        card = ObjectSceneSoftTag.create(
+            "tag_0000",
+            scope,
+            phrase,
+            MIN_CITATIONS_PER_CONCEPT,
+            required_witnesses,
+            accepted_variants,
+            near_miss_boundaries,
+        )
+    except Exception as exc:
+        raise ObjectSceneSemanticRegistryError(
+            "concept operational witness card differs"
+        ) from exc
+    clauses = (
+        *(item.statement for item in card.required_witnesses),
+        *card.accepted_variants,
+        *card.near_miss_boundaries,
+    )
+    if any(_OPERATIONAL_CRITERION_POLICY_LEAK.search(item) for item in clauses):
+        raise ObjectSceneSemanticRegistryError(
+            "concept operational witness card leaks experimental policy"
+        )
+    return card
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -618,24 +785,33 @@ class ObjectSceneSemanticRegistryConcept:
     orientation: str
     scope: str
     phrase: str
+    required_witnesses: tuple[ObjectSceneOperationalWitness, ...]
+    accepted_variants: tuple[str, ...]
+    near_miss_boundaries: tuple[str, ...]
+    criteria_digest: str
     citations: tuple[str, ...]
     concept_digest: str
 
     def __post_init__(self) -> None:
         if self.orientation not in ("side0_positive", "side1_positive"):
             raise ObjectSceneSemanticRegistryError("concept orientation differs")
-        try:
-            scope = _frontend._soft_tag_scope(self.scope)
-            phrase = _frontend._normalized_positive_tag(self.phrase)
-        except Exception as exc:
-            raise ObjectSceneSemanticRegistryError(
-                "concept is not scoped atomic affirmative prose"
-            ) from exc
+        scope, phrase = _normalized_semantic_scope_phrase(
+            self.scope, self.phrase
+        )
+        card = _compiled_semantic_operational_card(
+            scope,
+            phrase,
+            self.required_witnesses,
+            self.accepted_variants,
+            self.near_miss_boundaries,
+        )
         if (
             scope != self.scope
             or phrase != self.phrase
-            or len(self.phrase) > MAX_CONCEPT_PHRASE_CHARACTERS
-            or _SEMANTIC_POLICY_LEAK.search(self.phrase) is not None
+            or card.required_witnesses != self.required_witnesses
+            or card.accepted_variants != self.accepted_variants
+            or card.near_miss_boundaries != self.near_miss_boundaries
+            or card.criteria_digest != self.criteria_digest
             or not MIN_CITATIONS_PER_CONCEPT
             <= len(self.citations)
             <= MAX_CITATIONS_PER_CONCEPT
@@ -643,8 +819,9 @@ class ObjectSceneSemanticRegistryConcept:
             or any(_ALIAS.fullmatch(item) is None for item in self.citations)
         ):
             raise ObjectSceneSemanticRegistryError(
-                "semantic concept scope, phrase, or citations differ"
+                "semantic concept phrase, card, or citations differ"
             )
+        _digest(self.criteria_digest, "semantic concept criteria digest")
         _digest(self.concept_digest, "semantic concept digest")
         if self.concept_digest != canonical_digest(_concept_content(self)):
             raise ObjectSceneSemanticRegistryError("semantic concept digest differs")
@@ -655,6 +832,9 @@ class ObjectSceneSemanticRegistryConcept:
         orientation: str,
         scope: object,
         phrase: object,
+        required_witnesses: object,
+        accepted_variants: object,
+        near_miss_boundaries: object,
         citations: object,
     ) -> "ObjectSceneSemanticRegistryConcept":
         if (
@@ -665,19 +845,26 @@ class ObjectSceneSemanticRegistryConcept:
             raise ObjectSceneSemanticRegistryError(
                 "semantic concept citations must be distinct"
             )
-        try:
-            normalized_scope = _frontend._soft_tag_scope(scope)
-            normalized_phrase = _frontend._normalized_positive_tag(phrase)
-            normalized_citations = tuple(sorted(citations))
-        except Exception as exc:
-            raise ObjectSceneSemanticRegistryError(
-                "semantic concept payload differs"
-            ) from exc
+        normalized_scope, normalized_phrase = _normalized_semantic_scope_phrase(
+            scope, phrase
+        )
+        card = _compiled_semantic_operational_card(
+            normalized_scope,
+            normalized_phrase,
+            required_witnesses,
+            accepted_variants,
+            near_miss_boundaries,
+        )
+        normalized_citations = tuple(sorted(citations))
         provisional = object.__new__(cls)
         values = {
             "orientation": orientation,
             "scope": normalized_scope,
             "phrase": normalized_phrase,
+            "required_witnesses": card.required_witnesses,
+            "accepted_variants": card.accepted_variants,
+            "near_miss_boundaries": card.near_miss_boundaries,
+            "criteria_digest": card.criteria_digest,
             "citations": normalized_citations,
         }
         for key, item in values.items():
@@ -692,24 +879,46 @@ class ObjectSceneSemanticRegistryConcept:
         raw = _fields(
             value,
             {
-                "schema", "orientation", "scope", "phrase", "citations",
+                "schema", "orientation", "scope", "phrase",
+                "required_witnesses", "accepted_variants",
+                "near_miss_boundaries", "criteria_digest", "citations",
                 "citation_count", "affirmative_observation_hypothesis_not_truth",
-                "concept_digest",
+                "observer_judges_witnesses_not_macro",
+                "python_compiles_macro_disposition", "concept_digest",
             },
             "semantic registry concept",
         )
         if (
             raw["schema"] != CONCEPT_SCHEMA
             or raw["affirmative_observation_hypothesis_not_truth"] is not True
+            or raw["observer_judges_witnesses_not_macro"] is not True
+            or raw["python_compiles_macro_disposition"] is not True
             or raw["citation_count"]
             != (len(raw["citations"]) if isinstance(raw["citations"], list) else -1)
             or not isinstance(raw["citations"], list)
+            or not isinstance(raw["required_witnesses"], list)
+            or not isinstance(raw["accepted_variants"], list)
+            or not isinstance(raw["near_miss_boundaries"], list)
         ):
             raise ObjectSceneSemanticRegistryError("semantic concept policy differs")
-        result = cls(
-            raw["orientation"], raw["scope"], raw["phrase"],
-            tuple(raw["citations"]), raw["concept_digest"],
-        )
+        try:
+            result = cls(
+                raw["orientation"], raw["scope"], raw["phrase"],
+                tuple(
+                    ObjectSceneOperationalWitness.from_data(item)
+                    for item in raw["required_witnesses"]
+                ),
+                tuple(raw["accepted_variants"]),
+                tuple(raw["near_miss_boundaries"]),
+                raw["criteria_digest"], tuple(raw["citations"]),
+                raw["concept_digest"],
+            )
+        except ObjectSceneSemanticRegistryError:
+            raise
+        except Exception as exc:
+            raise ObjectSceneSemanticRegistryError(
+                "semantic concept operational card differs"
+            ) from exc
         if result.to_data() != dict(raw):
             raise ObjectSceneSemanticRegistryError("semantic concept is not canonical")
         return result
@@ -1030,10 +1239,14 @@ def _semantic_registry(
         key=lambda item: (-len(item.citations), item.scope, item.phrase),
     )
     tags = tuple(
-        ObjectSceneSoftTag(
-            f"tag_{index:04d}", item.scope, item.phrase,
+        ObjectSceneSoftTag.create(
+            f"tag_{index:04d}",
+            item.scope,
+            item.phrase,
             len(item.citations),
-            _frontend._soft_tag_content_digest(item.scope, item.phrase),
+            item.required_witnesses,
+            item.accepted_variants,
+            item.near_miss_boundaries,
         )
         for index, item in enumerate(ranked)
     )
@@ -1142,7 +1355,14 @@ def _project_semantic_payload(
             try:
                 concept_raw = _fields(
                     item,
-                    {"scope", "phrase", "citations"},
+                    {
+                        "scope",
+                        "phrase",
+                        "required_witnesses",
+                        "accepted_variants",
+                        "near_miss_boundaries",
+                        "citations",
+                    },
                     "semantic concept payload",
                 )
             except ObjectSceneSemanticRegistryError:
@@ -1169,16 +1389,44 @@ def _project_semantic_payload(
                 )
                 continue
             try:
-                concept = ObjectSceneSemanticRegistryConcept.create(
-                    key,
-                    concept_raw["scope"],
-                    concept_raw["phrase"],
-                    citations,
+                _normalized_semantic_scope_phrase(
+                    concept_raw["scope"], concept_raw["phrase"]
                 )
             except ObjectSceneSemanticRegistryError:
                 dropped.append(
                     ObjectSceneDroppedSemanticRegistryConcept.create(
                         key, input_index, item, "phrase_policy"
+                    )
+                )
+                continue
+            if any(
+                not isinstance(concept_raw[field], list)
+                for field in (
+                    "required_witnesses",
+                    "accepted_variants",
+                    "near_miss_boundaries",
+                )
+            ):
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "criteria_policy"
+                    )
+                )
+                continue
+            try:
+                concept = ObjectSceneSemanticRegistryConcept.create(
+                    key,
+                    concept_raw["scope"],
+                    concept_raw["phrase"],
+                    concept_raw["required_witnesses"],
+                    concept_raw["accepted_variants"],
+                    concept_raw["near_miss_boundaries"],
+                    citations,
+                )
+            except ObjectSceneSemanticRegistryError:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "criteria_policy"
                     )
                 )
                 continue

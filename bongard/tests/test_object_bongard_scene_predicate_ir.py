@@ -41,6 +41,8 @@ from bongard.object_bongard_scene_predicate_ir import (
 from bongard.object_scene_visual_frontend import (
     OBJECT_SCENE_COUNT_OBSERVABLE_IDS,
     OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS,
+    ObjectSceneRegisteredTagCell,
+    ObjectSceneSoftTag,
     ObjectSceneTranscriptMode,
     extract_object_scene_proposal_inventory,
     freeze_object_scene_soft_tag_registry,
@@ -88,7 +90,7 @@ def _entity(bird: Disposition, *, object_id: str = "object_0000") -> SceneEntity
         _raw_digest("crop-" + object_id),
         (1000, 1000, 9000, 7000),
         80,
-        1,
+        1 if bird is Disposition.PRESENT else 2,
         0,
         (),
         qualitative,
@@ -182,8 +184,13 @@ def _artifact_fixture(*, flip_group0_b: bool = False, b_only_numeric_threshold: 
                     cell["state"] = state
                     cell["evidence"] = "bird silhouette visibly supported" if state == "present" else "bird silhouette is not visible"
             for cell in row["registered_tags"]:
-                cell["state"] = state
-                cell["evidence"] = "bird silhouette visibly supported" if state == "present" else "bird silhouette is not visible"
+                for witness in cell["witness_cells"]:
+                    witness["state"] = state
+                    witness["evidence"] = (
+                        "bird silhouette visibly supported"
+                        if state == "present"
+                        else "bird silhouette is not visible"
+                    )
         return payload
 
     pass_a = tuple(
@@ -206,7 +213,9 @@ def _artifact_fixture(*, flip_group0_b: bool = False, b_only_numeric_threshold: 
     return registry, discovery, pass_a, pass_b, roles
 
 
-def _bird_candidate(language, orientation=SceneOrientation.GROUP0_POSITIVE):
+def _single_component_candidate(
+    language, orientation=SceneOrientation.GROUP0_POSITIVE
+):
     return next(
         candidate
         for candidate in enumerate_object_scene_candidates(language)
@@ -214,8 +223,8 @@ def _bird_candidate(language, orientation=SceneOrientation.GROUP0_POSITIVE):
         and candidate.formula.node is SceneFormulaNode.QUANTIFIED
         and candidate.formula.quantifier is SceneQuantifier.EXISTS
         and candidate.formula.children[0].atom is not None
-        and candidate.formula.children[0].atom.kind is SceneAtomKind.QUALITATIVE
-        and candidate.formula.children[0].atom.observable_id == "bird_like"
+        and candidate.formula.children[0].atom.kind is SceneAtomKind.GEOMETRY
+        and candidate.formula.children[0].atom.observable_id == "single_component"
     )
 
 
@@ -234,6 +243,62 @@ def test_four_state_merge_interval_and_error_dominance():
     assert merge_repeated_interval(SceneNumericInterval(SceneNumericUnit.COUNT, 0, 1), SceneNumericInterval(SceneNumericUnit.COUNT, 2, 3)) == (Disposition.INDETERMINATE, None)
 
 
+def test_registered_macro_repeat_merge_is_witnesswise_before_conjunction():
+    tag = ObjectSceneSoftTag.create(
+        "tag_0000",
+        "entity",
+        "opposed mismatched wedge portions",
+        2,
+        (
+            {
+                "kind": "part_topology",
+                "statement": "two joined wedge-like portions are visibly opposed",
+            },
+            {
+                "kind": "shape_appearance",
+                "statement": "the upper and lower portions visibly differ",
+            },
+        ),
+    )
+    first = ObjectSceneRegisteredTagCell.create(
+        tag,
+        [
+            {
+                "witness_id": "witness_00",
+                "state": "absent",
+                "evidence": "the joined opposed portions are contradicted",
+            },
+            {
+                "witness_id": "witness_01",
+                "state": "present",
+                "evidence": "the portions visibly differ",
+            },
+        ],
+    )
+    second = ObjectSceneRegisteredTagCell.create(
+        tag,
+        [
+            {
+                "witness_id": "witness_00",
+                "state": "present",
+                "evidence": "the joined opposed portions are visible",
+            },
+            {
+                "witness_id": "witness_01",
+                "state": "absent",
+                "evidence": "the portions have matching appearance",
+            },
+        ],
+    )
+    assert first.disposition is second.disposition is Disposition.CERTIFIED_ABSENT
+    merged = ir._merge_registered_macro_cell(first, second, tag=tag)
+    assert merged.disposition is Disposition.INDETERMINATE
+    assert len(merged.source_cell_digests) == 6
+
+    repeated_first = ir._merge_registered_macro_cell(first, first, tag=tag)
+    assert repeated_first.disposition is Disposition.CERTIFIED_ABSENT
+
+
 def test_positive_closed_language_both_orientations_registry_binding_and_empty_all():
     registry = freeze_object_scene_soft_tag_registry(())
     group0, group1 = _panel("group0", Disposition.PRESENT), _panel("group1", Disposition.CERTIFIED_ABSENT)
@@ -243,9 +308,9 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
         source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
     )
     candidates = enumerate_object_scene_candidates(language)
-    bird0 = _bird_candidate(language)
-    assert evaluate_object_scene_candidate(bird0, language, group0) is Disposition.PRESENT
-    assert evaluate_object_scene_candidate(bird0, language, group1) is Disposition.CERTIFIED_ABSENT
+    component0 = _single_component_candidate(language)
+    assert evaluate_object_scene_candidate(component0, language, group0) is Disposition.PRESENT
+    assert evaluate_object_scene_candidate(component0, language, group1) is Disposition.CERTIFIED_ABSENT
     assert {item.orientation for item in candidates} == set(SceneOrientation)
     assert len(candidates) > ir.SCENE_MAX_RANK_SLATE
     selected = ir._semantically_stratified_rank_selection(candidates)
@@ -266,16 +331,33 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
         stack = [candidate.formula]
         while stack:
             formula = stack.pop(); stack.extend(formula.children)
+            if formula.atom is not None:
+                assert formula.atom.kind is not SceneAtomKind.QUALITATIVE
             boundary_id = formula.count_boundary_id or (None if formula.atom is None else formula.atom.boundary_id)
             if boundary_id is not None:
                 boundary = language.boundary(boundary_id)
                 assert boundary.value >= 1
                 assert boundary.comparison is not SceneComparison.AT_MOST
-    all_bird = next(item for item in candidates if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.quantifier is SceneQuantifier.ALL and item.formula.children[0].atom is not None and item.formula.children[0].atom.observable_id == "bird_like")
-    assert evaluate_object_scene_candidate(all_bird, language, _panel("empty", Disposition.INDETERMINATE, empty=True)) is Disposition.ERROR
+    diagnostic = ir.SceneFormula.quantified(
+        SceneScope.ENTITY,
+        SceneQuantifier.EXISTS,
+        ir.SceneFormula.atom_formula(
+            ir.SceneAtom.create(
+                SceneScope.ENTITY, SceneAtomKind.QUALITATIVE, "bird_like"
+            )
+        ),
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateIRError, match="diagnostic-only"
+    ):
+        ir.ScenePredicateCandidate.create(
+            language, SceneOrientation.GROUP0_POSITIVE, diagnostic
+        )
+    all_single_component = next(item for item in candidates if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.quantifier is SceneQuantifier.ALL and item.formula.children[0].atom is not None and item.formula.children[0].atom.observable_id == "single_component")
+    assert evaluate_object_scene_candidate(all_single_component, language, _panel("empty", Disposition.INDETERMINATE, empty=True)) is Disposition.ERROR
     with pytest.raises(ObjectBongardScenePredicateIRError, match="different soft-tag registry"):
         wrong = deepcopy(group0.to_data()); wrong["registry_digest"] = _raw_digest("wrong-registry"); wrong["observation_digest"] = canonical_digest({key: value for key, value in wrong.items() if key != "observation_digest"})
-        evaluate_object_scene_candidate(bird0, language, ScenePanelObservation.from_data(wrong))
+        evaluate_object_scene_candidate(component0, language, ScenePanelObservation.from_data(wrong))
     with pytest.raises(ObjectBongardScenePredicateIRError, match="pass-A support-training"):
         freeze_object_scene_predicate_language(
             registry,
@@ -348,6 +430,11 @@ def test_pass_b_cannot_add_a_numeric_separator_or_refit_the_language():
         item.observable_id == "straight_segment_count" and item.value == 6
         for item in language.boundaries
     )
+    assert any(
+        formula.atom is not None and formula.atom.kind is SceneAtomKind.COUNT
+        for candidate in enumerate_object_scene_candidates(language)
+        for formula in (candidate.formula, *candidate.formula.children)
+    )
     assert cold_replay_object_bongard_scene_predicate_calibration_bundle(
         bundle, registry
     ) == bundle
@@ -368,7 +455,7 @@ def test_zero_proposal_panels_remain_panel_usable_but_never_certify_entity_or_pa
         (_panel("group0z", Disposition.PRESENT), _panel("group1z", Disposition.CERTIFIED_ABSENT)),
         source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
     )
-    assert evaluate_object_scene_candidate(_bird_candidate(language), language, merged) is Disposition.ERROR
+    assert evaluate_object_scene_candidate(_single_component_candidate(language), language, merged) is Disposition.ERROR
     pair_exists = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.EXISTS)
     pair_all = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.ALL)
     one = _panel("one_entity", Disposition.PRESENT)
@@ -437,7 +524,7 @@ def test_panel_scoped_soft_tag_is_directly_decidable_with_zero_proposals():
         is Disposition.PRESENT
     )
     assert (
-        evaluate_object_scene_candidate(_bird_candidate(language), language, observation)
+        evaluate_object_scene_candidate(_single_component_candidate(language), language, observation)
         is Disposition.ERROR
     )
 
@@ -449,11 +536,12 @@ def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratifi
     assert bundle.registry_derivation_digest == registry.registry_digest
     assert bundle.version_space["registry_derivation_mode"] == bundle.registry_derivation_mode
     assert bundle.version_space["registry_derivation_digest"] == bundle.registry_derivation_digest
-    assert len(bundle.candidates) == 1888
+    assert len(bundle.candidates) == 376
     assert len(canonical_json(bundle.to_data())) < 16 * 1024 * 1024
     restored = ir.ScenePredicateCalibrationBundle.from_data(bundle.to_data())
     assert cold_replay_object_bongard_scene_predicate_calibration_bundle(restored, registry) == bundle
-    assert any("resembles a bird or flying bird silhouette" in str(item) for item in bundle.ranker_slate)
+    assert any("single component" in str(item) for item in bundle.ranker_slate)
+    assert all("fixed_qualitative" not in str(item) for item in bundle.ranker_slate)
     if len(bundle.complete_survivor_digests) > 64:
         complexities = {item["complexity"] for item in bundle.ranker_slate}
         survivor_complexities = {item.complexity for item in bundle.candidates if item.candidate_digest in bundle.complete_survivor_digests}
@@ -474,7 +562,11 @@ def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratifi
         ir.ScenePredicateCalibrationBundle.from_data(split_derivation)
     language = ir.ScenePredicateLanguage.from_data(bundle.version_space["language"])
     forbidden_boundary = next(item for item in language.boundaries if item.observable_id == "matching_entity_count" and item.comparison is SceneComparison.AT_MOST and item.value >= 1)
-    body = ir.SceneFormula.atom_formula(ir.SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.QUALITATIVE, "bird_like"))
+    body = ir.SceneFormula.atom_formula(
+        ir.SceneAtom.create(
+            SceneScope.ENTITY, SceneAtomKind.GEOMETRY, "single_component"
+        )
+    )
     formula = ir.SceneFormula.quantified(SceneScope.ENTITY, SceneQuantifier.COUNT, body, forbidden_boundary.boundary_id)
     values = {"language_digest": language.language_digest, "orientation": SceneOrientation.GROUP0_POSITIVE, "formula": formula, "complexity": formula.complexity}
     provisional = object.__new__(ir.ScenePredicateCandidate)

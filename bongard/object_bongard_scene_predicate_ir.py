@@ -40,15 +40,15 @@ from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v2"
-SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v2"
-SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v2"
-SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v2"
-SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v2"
-SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v2"
-SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v2"
-SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v2"
-SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-version-space-v2"
+SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v3"
+SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v3"
+SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v3"
+SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v3"
+SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v3"
+SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v3"
+SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v3"
+SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v3"
+SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-witness-macro-version-space-v3"
 SCENE_MAX_RANK_SLATE = 64
 SCENE_MAX_ENUMERATED_FORMULAS = 250_000
 EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE = "exact_open_tag_frequency"
@@ -188,6 +188,11 @@ def _authority_data() -> dict[str, object]:
         "natural_affirmative_complement_equivalents_predeclared": True,
         "both_orientations_share_one_frozen_formula_inventory": True,
         "both_orientations_enumerated_before_candidate_scoring": True,
+        "registered_soft_tags_are_python_compiled_witness_macros": True,
+        "repeated_registered_macros_merge_witnesses_before_compilation": True,
+        "ranker_sees_frozen_operational_cards": True,
+        "fixed_qualitative_observations_are_diagnostic_only": True,
+        "fixed_qualitative_atoms_are_decision_authorized": False,
         "arbitrary_code": False,
     }
 
@@ -356,7 +361,9 @@ class SceneEntityObservation:
 
 def _observation_content(value: "ScenePanelObservation") -> dict[str, object]:
     merge_policies = {
-        "repeated_registered_merge": "two-registered-calls-exact-agreement-or-indeterminate",
+        "repeated_registered_merge": (
+            "two-registered-calls-witnesswise-exact-agreement-then-python-macro"
+        ),
         SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value: "one-registered-call-support-training-pass-a",
         SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value: "one-registered-call-held-repeatability-pass-b",
         SceneSingleObservationPurpose.QUERY_EVALUATION.value: "one-registered-call-post-freeze-query-evaluation",
@@ -447,7 +454,9 @@ class ScenePanelObservation:
         expected = {"schema", "panel_id", "panel_digest", "inventory_digest", "registry_digest", "observation_mode", "source_artifact_digests", "source_transcript_digests", "disposition", "panel_registered_tag_cells", "entities", "merge_policy", "geometry_binding", *_authority_data(), "observation_digest"}
         raw = _fields(value, expected, "scene panel observation")
         merge_policies = {
-            "repeated_registered_merge": "two-registered-calls-exact-agreement-or-indeterminate",
+            "repeated_registered_merge": (
+                "two-registered-calls-witnesswise-exact-agreement-then-python-macro"
+            ),
             SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value: "one-registered-call-support-training-pass-a",
             SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value: "one-registered-call-held-repeatability-pass-b",
             SceneSingleObservationPurpose.QUERY_EVALUATION.value: "one-registered-call-post-freeze-query-evaluation",
@@ -477,6 +486,69 @@ def _merge_visual_cell(first: object | None, second: object | None, *, observabl
     return SceneMergedCell(observable_id, state, None, digests)
 
 
+def _merge_registered_macro_cell(
+    first: object | None,
+    second: object | None,
+    *,
+    tag: object,
+) -> SceneMergedCell:
+    """Merge corresponding witnesses first, then compile their conjunction."""
+
+    tag_id = getattr(tag, "tag_id", None)
+    tag_digest = getattr(tag, "tag_digest", None)
+    required = tuple(getattr(tag, "required_witnesses", ()))
+    source_objects = (
+        first,
+        second,
+        *(getattr(first, "witness_cells", ()) if first is not None else ()),
+        *(getattr(second, "witness_cells", ()) if second is not None else ()),
+    )
+    digests = tuple(
+        sorted(
+            {
+                digest
+                for item in source_objects
+                if isinstance((digest := getattr(item, "cell_digest", None)), str)
+            }
+        )
+    )
+    if not isinstance(tag_id, str) or first is None or second is None:
+        return SceneMergedCell(str(tag_id), Disposition.ERROR, None, digests)
+    first_witnesses = tuple(getattr(first, "witness_cells", ()))
+    second_witnesses = tuple(getattr(second, "witness_cells", ()))
+    expected = tuple(
+        (getattr(item, "witness_id", None), getattr(item, "witness_digest", None))
+        for item in required
+    )
+    if (
+        getattr(first, "tag_id", None) != tag_id
+        or getattr(second, "tag_id", None) != tag_id
+        or getattr(first, "tag_digest", None) != tag_digest
+        or getattr(second, "tag_digest", None) != tag_digest
+        or tuple(
+            (getattr(item, "witness_id", None), getattr(item, "witness_digest", None))
+            for item in first_witnesses
+        )
+        != expected
+        or tuple(
+            (getattr(item, "witness_id", None), getattr(item, "witness_digest", None))
+            for item in second_witnesses
+        )
+        != expected
+    ):
+        return SceneMergedCell(tag_id, Disposition.ERROR, None, digests)
+    merged_witnesses = tuple(
+        merge_repeated_disposition(
+            getattr(first_cell, "disposition", None),
+            getattr(second_cell, "disposition", None),
+        )
+        for first_cell, second_cell in zip(
+            first_witnesses, second_witnesses, strict=True
+        )
+    )
+    return SceneMergedCell(tag_id, scene_and(merged_witnesses), None, digests)
+
+
 def _tag_scope_value(value: object) -> str:
     raw = getattr(value, "scope", None)
     scope = getattr(raw, "value", raw)
@@ -490,6 +562,14 @@ def _registry_tag_ids(
 ) -> tuple[str, ...]:
     return tuple(
         item.tag_id for item in registry.tags if _tag_scope_value(item) == scope
+    )
+
+
+def _registry_tags(
+    registry: ObjectSceneSoftTagRegistry, scope: str
+) -> tuple[object, ...]:
+    return tuple(
+        item for item in registry.tags if _tag_scope_value(item) == scope
     )
 
 
@@ -523,8 +603,10 @@ def adapt_object_scene_registered_pair(
     if not isinstance(first.registry, ObjectSceneSoftTagRegistry) or first.registry != second.registry:
         raise ObjectBongardScenePredicateIRError("registered passes do not bind one frozen registry")
     inventory = first.inventory
-    entity_tag_ids = _registry_tag_ids(first.registry, "entity")
-    panel_tag_ids = _registry_tag_ids(first.registry, "panel")
+    entity_tags = _registry_tags(first.registry, "entity")
+    panel_tags = _registry_tags(first.registry, "panel")
+    entity_tag_ids = tuple(item.tag_id for item in entity_tags)
+    panel_tag_ids = tuple(item.tag_id for item in panel_tags)
     successful = first.status is PrototypeSceneObserverStatus.SUCCESS and second.status is PrototypeSceneObserverStatus.SUCCESS
     entities: list[SceneEntityObservation] = []
     panel_cells: tuple[SceneMergedCell, ...]
@@ -535,10 +617,10 @@ def adapt_object_scene_registered_pair(
             pa = {item.tag_id: item for item in first.transcript.panel_registered_tag_cells}
             pb = {item.tag_id: item for item in second.transcript.panel_registered_tag_cells}
             panel_cells = tuple(
-                _merge_visual_cell(
-                    pa.get(item), pb.get(item), observable_id=item, numeric=False
+                _merge_registered_macro_cell(
+                    pa.get(item.tag_id), pb.get(item.tag_id), tag=item
                 )
-                for item in panel_tag_ids
+                for item in panel_tags
             )
         else:
             panel_cells = _error_cells(panel_tag_ids)
@@ -555,10 +637,10 @@ def adapt_object_scene_registered_pair(
         pa = {item.tag_id: item for item in first.transcript.panel_registered_tag_cells}
         pb = {item.tag_id: item for item in second.transcript.panel_registered_tag_cells}
         panel_cells = tuple(
-            _merge_visual_cell(
-                pa.get(item), pb.get(item), observable_id=item, numeric=False
+            _merge_registered_macro_cell(
+                pa.get(item.tag_id), pb.get(item.tag_id), tag=item
             )
-            for item in panel_tag_ids
+            for item in panel_tags
         )
         for receipt in inventory.objects:
             row_a, row_b = first_rows.get(receipt.object_id), second_rows.get(receipt.object_id)
@@ -569,7 +651,7 @@ def adapt_object_scene_registered_pair(
             ca, cb = {x.observable_id: x for x in row_a.count_cells}, {x.observable_id: x for x in row_b.count_cells}
             ta, tb = {x.tag_id: x for x in row_a.registered_tag_cells}, {x.tag_id: x for x in row_b.registered_tag_cells}
             bbox = receipt.bbox_q16
-            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_merge_visual_cell(qa.get(item), qb.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_merge_visual_cell(ca.get(item), cb.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_merge_visual_cell(ta.get(item), tb.get(item), observable_id=item, numeric=False) for item in entity_tag_ids)))
+            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_merge_visual_cell(qa.get(item), qb.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_merge_visual_cell(ca.get(item), cb.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_merge_registered_macro_cell(ta.get(item.tag_id), tb.get(item.tag_id), tag=item) for item in entity_tags)))
         disposition = Disposition.PRESENT
         transcript_digests = tuple(sorted((first.transcript.transcript_digest, second.transcript.transcript_digest)))
     values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": first.registry.registry_digest, "observation_mode": "repeated_registered_merge", "source_artifact_digests": tuple(sorted((first.artifact_digest, second.artifact_digest))), "source_transcript_digests": transcript_digests, "disposition": disposition, "panel_registered_tag_cells": panel_cells, "entities": tuple(entities)}
@@ -789,12 +871,19 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
         "support_observation_digests": list(value.support_observation_digests),
         "boundaries": [item.to_data() for item in value.boundaries],
         "grammar": {
-            "entity_atoms": ["fixed_qualitative", "registered_soft_tag", "typed_count_boundary", "exact_geometry_preset"],
+            "entity_atoms": [
+                "registered_witness_macro",
+                "typed_count_boundary",
+                "exact_geometry_preset",
+            ],
+            "diagnostic_only_entity_observations": ["fixed_qualitative"],
             "pair_atoms": ["exact_pair_relation_preset"],
             "panel_atoms": ["typed_entity_count_boundary", "registered_panel_soft_tag"],
             "quantifiers": ["exists", "all", "count"],
             "count_quantifier_body": "one-positive-atom",
-            "same_entity_conjunction": "exactly-two-distinct-qualitative-tag-or-geometry-atoms",
+            "same_entity_conjunction": (
+                "exactly-two-distinct-registered-witness-macro-or-geometry-atoms"
+            ),
             "connectives": ["and"],
             "or_is_only_exists_aggregation": True,
             "syntactic_not_operator": False,
@@ -946,7 +1035,7 @@ class SceneFormula:
         if self.node is SceneFormulaNode.ATOM:
             if not isinstance(self.atom, SceneAtom) or self.atom.scope is not self.scope or self.children or self.quantifier is not None or self.count_boundary_id is not None: raise ObjectBongardScenePredicateIRError("atom formula differs")
         elif self.node is SceneFormulaNode.AND:
-            eligible = {SceneAtomKind.QUALITATIVE, SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY}
+            eligible = {SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY}
             if self.scope is not SceneScope.ENTITY or self.atom is not None or len(self.children) != 2 or self.children != tuple(sorted(self.children, key=lambda x: x.formula_digest)) or len({x.formula_digest for x in self.children}) != 2 or any(x.node is not SceneFormulaNode.ATOM or x.scope is not self.scope or x.atom is None or x.atom.kind not in eligible for x in self.children) or self.quantifier is not None or self.count_boundary_id is not None: raise ObjectBongardScenePredicateIRError("same-binding conjunction differs")
         else:
             if self.scope is SceneScope.PANEL or self.atom is not None or len(self.children) != 1 or self.children[0].scope is not self.scope or self.children[0].node not in (SceneFormulaNode.ATOM, SceneFormulaNode.AND) or not isinstance(self.quantifier, SceneQuantifier): raise ObjectBongardScenePredicateIRError("quantified formula differs")
@@ -996,6 +1085,10 @@ def validate_scene_formula(language: ScenePredicateLanguage, formula: SceneFormu
     if formula.node is SceneFormulaNode.ATOM:
         assert formula.atom is not None
         atom = formula.atom
+        if atom.kind is SceneAtomKind.QUALITATIVE:
+            raise ObjectBongardScenePredicateIRError(
+                "fixed qualitative observations are diagnostic-only"
+            )
         if atom.kind is SceneAtomKind.REGISTERED_TAG and atom.observable_id not in language.entity_registered_tag_ids: raise ObjectBongardScenePredicateIRError("formula names an entity tag outside the frozen registry")
         if atom.kind is SceneAtomKind.PANEL_REGISTERED_TAG and atom.observable_id not in language.panel_registered_tag_ids: raise ObjectBongardScenePredicateIRError("formula names a panel tag outside the frozen registry")
         if atom.boundary_id is not None:
@@ -1073,8 +1166,12 @@ def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[S
     """Enumerate the complete label-blind finite grammar before orientation."""
     if not isinstance(language, ScenePredicateLanguage): raise TypeError("language must be ScenePredicateLanguage")
     boundaries = {key: tuple(item for item in values if item.value >= 1 and item.comparison is not SceneComparison.AT_MOST) for key, values in _boundary_groups(language).items()}
-    entity_atoms: list[SceneAtom] = [SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.QUALITATIVE, item) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS]
-    entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, item) for item in language.entity_registered_tag_ids)
+    entity_atoms: list[SceneAtom] = [
+        SceneAtom.create(
+            SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, item
+        )
+        for item in language.entity_registered_tag_ids
+    ]
     entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.GEOMETRY, item.value) for item in SceneGeometryPreset)
     for observable in OBJECT_SCENE_COUNT_OBSERVABLE_IDS:
         entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.COUNT, observable, item.boundary_id) for item in boundaries.get(observable, ()))
@@ -1088,7 +1185,10 @@ def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[S
     )
     entity_local = [SceneFormula.atom_formula(item) for item in entity_atoms]
     pair_local = [SceneFormula.atom_formula(item) for item in pair_atoms]
-    eligible_atom_count = sum(item.kind in (SceneAtomKind.QUALITATIVE, SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY) for item in entity_atoms)
+    eligible_atom_count = sum(
+        item.kind in (SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY)
+        for item in entity_atoms
+    )
     prospective = len(panel_atoms) + len(entity_atoms) * (2 + len(boundaries.get("matching_entity_count", ()))) + eligible_atom_count * (eligible_atom_count - 1) + len(pair_atoms) * (2 + len(boundaries.get("matching_pair_count", ())))
     if prospective > SCENE_MAX_ENUMERATED_FORMULAS:
         raise SceneLanguageCapacityGap(prospective)
@@ -1096,7 +1196,12 @@ def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[S
     for body in entity_local:
         formulas.extend(SceneFormula.quantified(SceneScope.ENTITY, quantifier, body) for quantifier in (SceneQuantifier.EXISTS, SceneQuantifier.ALL))
         formulas.extend(SceneFormula.quantified(SceneScope.ENTITY, SceneQuantifier.COUNT, body, boundary.boundary_id) for boundary in boundaries.get("matching_entity_count", ()))
-    eligible = [body for body in entity_local if body.atom is not None and body.atom.kind in (SceneAtomKind.QUALITATIVE, SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY)]
+    eligible = [
+        body
+        for body in entity_local
+        if body.atom is not None
+        and body.atom.kind in (SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY)
+    ]
     for index, first in enumerate(eligible):
         for second in eligible[index + 1:]:
             body = SceneFormula.conjunction(first, second)
@@ -1404,7 +1509,7 @@ class SceneVersionSpace:
 
 
 def object_bongard_scene_predicate_algorithm_digest(language: ScenePredicateLanguage) -> str:
-    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v1", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "pass_b_can_extend_or_refit_language": False, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "two_orientations_predeclared_before_roles": True, "post_hoc_complement_after_failure": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
+    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v2", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "pass_b_can_extend_or_refit_language": False, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "registered_tag_semantics": "transparent-witness-macro-compiled-by-python", "fixed_qualitative_semantics": "diagnostic-only-never-enumerated", "two_orientations_predeclared_before_roles": True, "post_hoc_complement_after_failure": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
 
 
 def _build_orientation_space(language: ScenePredicateLanguage, algorithm_digest: str, candidates: Sequence[ScenePredicateCandidate], panels: Sequence[ScenePanelObservation], pass_a_panels: Sequence[ScenePanelObservation], pass_b_panels: Sequence[ScenePanelObservation], group0_count: int, orientation: SceneOrientation) -> SceneVersionSpace:
@@ -1436,9 +1541,22 @@ def _semantic_atom_view(atom: SceneAtom, language: ScenePredicateLanguage, regis
         SceneAtomKind.REGISTERED_TAG,
         SceneAtomKind.PANEL_REGISTERED_TAG,
     ):
-        phrases = {item.tag_id: item.tag for item in registry.tags}
-        if atom.observable_id not in phrases: raise ObjectBongardScenePredicateIRError("rank view tag is absent from registry")
-        view.update({"tag_id": atom.observable_id, "affirmative_phrase": phrases[atom.observable_id]})
+        tags = {item.tag_id: item for item in registry.tags}
+        if atom.observable_id not in tags: raise ObjectBongardScenePredicateIRError("rank view tag is absent from registry")
+        tag = tags[atom.observable_id]
+        view.update(
+            {
+                "tag_id": atom.observable_id,
+                "tag_digest": tag.tag_digest,
+                "criteria_digest": tag.criteria_digest,
+                "affirmative_phrase": tag.tag,
+                "required_witnesses": [
+                    item.to_data() for item in tag.required_witnesses
+                ],
+                "accepted_variants": list(tag.accepted_variants),
+                "near_miss_boundaries": list(tag.near_miss_boundaries),
+            }
+        )
     elif atom.boundary_id is not None:
         boundary = language.boundary(atom.boundary_id)
         view.update({"observable": atom.observable_id.replace("_", " "), "comparison": boundary.comparison.value, "value": boundary.value, "unit": boundary.unit.value})

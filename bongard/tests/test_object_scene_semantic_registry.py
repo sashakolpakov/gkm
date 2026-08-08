@@ -93,8 +93,28 @@ def _aliases(prepared, side: int) -> tuple[str, ...]:
     )
 
 
-def _concept(scope: str, phrase: str, citations) -> dict[str, object]:
-    return {"scope": scope, "phrase": phrase, "citations": list(citations)}
+def _concept(
+    scope: str,
+    phrase: str,
+    citations,
+    *,
+    required_witnesses=None,
+    accepted_variants=(),
+    near_miss_boundaries=(),
+) -> dict[str, object]:
+    witnesses = (
+        [{"kind": "shape_appearance", "statement": phrase}]
+        if required_witnesses is None
+        else list(required_witnesses)
+    )
+    return {
+        "scope": scope,
+        "phrase": phrase,
+        "required_witnesses": witnesses,
+        "accepted_variants": list(accepted_variants),
+        "near_miss_boundaries": list(near_miss_boundaries),
+        "citations": list(citations),
+    }
 
 
 def _valid_payload(prepared):
@@ -132,6 +152,17 @@ def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs
     assert prepared.output_schema["additionalProperties"] is False
     assert set(prepared.output_schema["required"]) == {
         "side0_positive", "side1_positive"
+    }
+    concept_schema = prepared.output_schema["properties"]["side0_positive"][
+        "items"
+    ]
+    assert set(concept_schema["required"]) == {
+        "scope",
+        "phrase",
+        "required_witnesses",
+        "accepted_variants",
+        "near_miss_boundaries",
+        "citations",
     }
 
     lowered = prepared.prompt.lower()
@@ -194,6 +225,10 @@ def test_valid_both_bucket_union_uses_citations_for_counts_and_order(
         ("tag_0003", "panel", "balanced spacing", 2),
     )
     assert {item.scope for item in registry.tags} == {"panel", "entity"}
+    assert all(len(item.required_witnesses) == 1 for item in registry.tags)
+    assert all(item.required_witnesses[0].witness_id == "witness_00" for item in registry.tags)
+    assert all(len(item.criteria_digest) == 64 for item in registry.tags)
+    assert all(len(item.tag_digest) == 64 for item in registry.tags)
     assert registry.source_panel_digests == tuple(
         sorted(artifact.panel_digest for artifact in artifacts)
     )
@@ -216,12 +251,169 @@ def test_same_phrase_may_exist_at_panel_and_entity_scope(discovery_inputs):
     )
 
 
+def test_transparent_witness_macro_is_canonical_and_digest_bound(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    payload["side0_positive"][1] = _concept(
+        "entity",
+        "mismatched upper and lower portions",
+        _aliases(prepared, 0)[:2],
+        required_witnesses=(
+            {
+                "kind": "shape_appearance",
+                "statement": (
+                    "corresponding upper and lower portions visibly differ in outline"
+                ),
+            },
+            {
+                "kind": "part_topology",
+                "statement": (
+                    "two joined opposing wedge-like portions share one narrow waist"
+                ),
+            },
+        ),
+        accepted_variants=(
+            "fan-like and sector-like portions count as wedge-like portions",
+        ),
+        near_miss_boundaries=(
+            "one closed triangle made from three strands does not qualify",
+        ),
+    )
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+
+    concept = next(
+        item
+        for item in proposal.side0_positive
+        if item.phrase == "mismatched upper and lower portions"
+    )
+    tag = next(item for item in registry.tags if item.tag == concept.phrase)
+    assert tuple(item.kind for item in concept.required_witnesses) == (
+        "part_topology",
+        "shape_appearance",
+    )
+    assert tuple(item.witness_id for item in concept.required_witnesses) == (
+        "witness_00",
+        "witness_01",
+    )
+    assert tag.required_witnesses == concept.required_witnesses
+    assert tag.accepted_variants == concept.accepted_variants
+    assert tag.near_miss_boundaries == concept.near_miss_boundaries
+    assert tag.criteria_digest == concept.criteria_digest
+
+    concept_raw = concept.to_data()
+    concept_raw["required_witnesses"][0]["statement"] = (
+        "three joined portions share one narrow waist"
+    )
+    with pytest.raises(ObjectSceneSemanticRegistryError):
+        type(concept).from_data(concept_raw)
+
+    registry_raw = registry.to_data()
+    registry_index = next(
+        index
+        for index, item in enumerate(registry_raw["tags"])
+        if item["tag_id"] == tag.tag_id
+    )
+    registry_raw["tags"][registry_index]["near_miss_boundaries"] = []
+    with pytest.raises(Exception):
+        ObjectSceneSoftTagRegistry.from_data(registry_raw)
+
+
+@pytest.mark.parametrize(
+    "field,replacement",
+    (
+        ("required_witnesses", []),
+        (
+            "required_witnesses",
+            [
+                {
+                    "kind": "shape_appearance",
+                    "statement": f"visible pointed form number {index}",
+                }
+                for index in range(4)
+            ],
+        ),
+        (
+            "accepted_variants",
+            [
+                "rounded corners count as pointed corners",
+                "short corners count as pointed corners",
+                "broad corners count as pointed corners",
+            ],
+        ),
+        (
+            "near_miss_boundaries",
+            [
+                "one rounded form does not qualify",
+                "one square form does not qualify",
+                "one circular form does not qualify",
+            ],
+        ),
+        (
+            "required_witnesses",
+            [
+                {
+                    "kind": "shape_appearance",
+                    "statement": "this is common across support panels",
+                }
+            ],
+        ),
+    ),
+)
+def test_bad_operational_card_is_quarantined_without_losing_valid_rows(
+    discovery_inputs, field, replacement,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    payload["side0_positive"][0][field] = replacement
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
+        "criteria_policy",
+    )
+    assert "paired visible forms" not in {item.tag for item in registry.tags}
+    assert "mismatched parts" in {item.tag for item in registry.tags}
+
+
+def test_orientation_is_audit_only_and_union_registry_is_role_blind(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    _, registry = build_object_scene_semantic_registry_proposal(prepared, payload)
+
+    swapped_roles = tuple(
+        {**row, "historical_role": 1 - row["historical_role"]} for row in roles
+    )
+    swapped_prepared = prepare_object_scene_semantic_registry_proposal(
+        artifacts, swapped_roles
+    )
+    swapped_payload = {
+        "side0_positive": deepcopy(payload["side1_positive"]),
+        "side1_positive": deepcopy(payload["side0_positive"]),
+    }
+    _, swapped_registry = build_object_scene_semantic_registry_proposal(
+        swapped_prepared, swapped_payload
+    )
+    assert swapped_registry == registry
+    evaluator_view = str(registry.to_data())
+    assert "side0_positive" not in evaluator_view
+    assert "side1_positive" not in evaluator_view
+    assert "citations" not in evaluator_view
+
+
 @pytest.mark.parametrize(
     "phrase",
     (
         "not pointed",
         "without internal marks",
-        "pointed and curved",
         "pointed or curved",
         "more common forms",
         "side marker",
@@ -268,6 +460,10 @@ def test_quarantines_duplicate_scoped_phrase_and_duplicate_citation(discovery_in
     payload = _valid_payload(prepared)
     payload["side1_positive"][1]["scope"] = "entity"
     payload["side1_positive"][1]["phrase"] = "mismatched parts"
+    assert (
+        payload["side1_positive"][1]["required_witnesses"]
+        != payload["side0_positive"][1]["required_witnesses"]
+    )
     proposal, registry = build_object_scene_semantic_registry_proposal(
         prepared, payload
     )
@@ -334,7 +530,7 @@ def test_all_invalid_rows_in_one_bucket_produce_typed_payload_error(
         build_object_scene_semantic_registry_proposal(prepared, payload)
 
 
-def test_long_spatial_phrases_survive_while_one_compound_is_quarantined(
+def test_long_spatial_and_compound_visual_phrases_survive(
     discovery_inputs,
 ):
     artifacts, roles = discovery_inputs
@@ -360,7 +556,7 @@ def test_long_spatial_phrases_survive_while_one_compound_is_quarantined(
             ),
             _concept(
                 "entity",
-                "mixed circular triangular and quadrilateral outlines",
+                "mixed circular and triangular marks",
                 side1[1:3],
             ),
         ],
@@ -369,15 +565,12 @@ def test_long_spatial_phrases_survive_while_one_compound_is_quarantined(
         prepared, payload
     )
     assert proposal.status == "proposed"
-    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
-        "phrase_policy",
-    )
-    assert proposal.dropped_concepts[0].orientation == "side1_positive"
-    assert proposal.dropped_concepts[0].input_index == 1
+    assert proposal.dropped_concepts == ()
     assert {item.tag for item in registry.tags} == {
         "a jagged region paired with chains of outlined motifs",
         "a larger intricate figure in the lower-left region",
         "serrated edging along decorated bands",
+        "mixed circular and triangular marks",
     }
 
 
@@ -475,6 +668,13 @@ def test_proposal_and_prepared_tampering_is_rejected(discovery_inputs):
     with pytest.raises(ObjectSceneSemanticRegistryError):
         verify_object_scene_semantic_registry_proposal(raw, registry, artifacts, roles)
 
+    raw = proposal.to_data()
+    raw["model_payload"]["side0_positive"][0]["required_witnesses"][0][
+        "statement"
+    ] = "a visibly altered witness statement"
+    with pytest.raises(ObjectSceneSemanticRegistryError):
+        verify_object_scene_semantic_registry_proposal(raw, registry, artifacts, roles)
+
     prepared_raw = prepared.to_data()
     prepared_raw["alias_bindings"][0]["historical_role"] = (
         1 - prepared_raw["alias_bindings"][0]["historical_role"]
@@ -535,7 +735,7 @@ def test_orientation_coverage_gap_binds_valid_rows_and_quarantines_invalid_rows(
         ],
         "side1_positive": [
             _concept(
-                "entity", "circular and triangular outlines", _aliases(prepared, 1)[:2]
+                "entity", "circular or triangular outlines", _aliases(prepared, 1)[:2]
             )
         ],
     }

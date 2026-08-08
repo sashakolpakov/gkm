@@ -68,9 +68,9 @@ from bongard.visual_witnesses import Q16BBox
 OBJECT_SCENE_INVENTORY_SCHEMA = "gkm.object-scene-proposal-inventory.v1"
 OBJECT_SCENE_CROP_RECEIPT_SCHEMA = "gkm.object-scene-crop-receipt.v1"
 OBJECT_SCENE_ATLAS_SHEET_SCHEMA = "gkm.object-scene-atlas-sheet.v1"
-OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v3"
-OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v3"
-OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v3"
+OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v4"
+OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v4"
+OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v4"
 OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA = "gkm.object-scene-dropped-open-tag.v1"
 OBJECT_SCENE_CANONICAL_SCENARIO_ID = "threshold064.close-cross-1"
 OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS = (
@@ -111,6 +111,19 @@ OBJECT_SCENE_COUNT_OBSERVABLE_IDS = (
 OBJECT_SCENE_MAX_TAGS_PER_OBJECT = 8
 OBJECT_SCENE_MAX_TAGS_PER_PANEL = 8
 OBJECT_SCENE_MAX_TAG_CHARACTERS = 80
+OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS = (
+    "part_topology",
+    "spatial_relation",
+    "shape_appearance",
+    "marking_pattern",
+    "count_relation",
+)
+OBJECT_SCENE_MIN_REQUIRED_WITNESSES = 1
+OBJECT_SCENE_MAX_REQUIRED_WITNESSES = 3
+OBJECT_SCENE_MAX_ACCEPTED_VARIANTS = 2
+OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES = 2
+OBJECT_SCENE_MIN_CRITERION_CHARACTERS = 8
+OBJECT_SCENE_MAX_CRITERION_CHARACTERS = 160
 OBJECT_SCENE_MAX_REGISTERED_TAGS = 32
 OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY = 2
 OBJECT_SCENE_SOFT_TAG_SCOPES = ("entity", "panel")
@@ -121,10 +134,15 @@ _OBJECT_ID = re.compile(r"object_[0-9]{4}\Z")
 _LINEAGE_ID = re.compile(r"lineage-[0-9]{8}\Z")
 _HYPOTHESIS_ID = re.compile(r"hypothesis-[0-9]{8}\Z")
 _TAG_ID = re.compile(r"tag_[0-9]{4}\Z")
+_WITNESS_ID = re.compile(r"witness_[0-9]{2}\Z")
 _ATLAS_NAME = re.compile(r"objects_[0-9]{3}\.png\Z")
 _CODE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _POSITIVE_TAG = re.compile(
     rf"[a-z][a-z' -]{{1,{OBJECT_SCENE_MAX_TAG_CHARACTERS - 1}}}\Z"
+)
+_OPERATIONAL_CRITERION = re.compile(
+    rf"[a-z][a-z' -]{{{OBJECT_SCENE_MIN_CRITERION_CHARACTERS - 1},"
+    rf"{OBJECT_SCENE_MAX_CRITERION_CHARACTERS - 1}}}\Z"
 )
 _PROSE = re.compile(r"[ -~]+\Z")
 _FORBIDDEN_VISIBLE = re.compile(
@@ -136,7 +154,22 @@ _FORBIDDEN_VISIBLE = re.compile(
 )
 _FORBIDDEN_TAG_LOGIC = re.compile(
     r"\b(?:no|not|none|neither|without|lacks?|lacking|absent|missing|"
-    r"except|or|either|versus|unlike|different|other)\b",
+    r"except|or|either|versus|unlike)\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_OPERATIONAL_CARD_LEAK = re.compile(
+    r"\b(?:citations?|orientations?|roles?|experiments?|frequency|frequencies|"
+    r"frequent|recurring|dataset|training|sides?|paths?)\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_BOUNDARY_LOGIC = re.compile(
+    r"\b(?:no|none|neither|without|lacks?|lacking|absent|missing|except|or|"
+    r"either|versus|unlike)\b",
+    re.IGNORECASE,
+)
+_EXPLICIT_BOUNDARY_EXCLUSION = re.compile(
+    r"\b(?:does not qualify|do not qualify|is excluded|are excluded|"
+    r"falls outside|fall outside)\b",
     re.IGNORECASE,
 )
 OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES = (
@@ -266,10 +299,300 @@ def _soft_tag_scope(value: object, label: str = "soft tag scope") -> str:
     return value
 
 
-def _soft_tag_content_digest(scope: str, tag: str) -> str:
+def _normalized_operational_clause(value: object, *, label: str) -> str:
+    normalized = _normalize_model_visible_text(value)
+    if (
+        not isinstance(normalized, str)
+        or normalized != normalized.strip()
+        or "  " in normalized
+        or _OPERATIONAL_CRITERION.fullmatch(normalized) is None
+        or _FORBIDDEN_VISIBLE.search(normalized) is not None
+        or _FORBIDDEN_OPERATIONAL_CARD_LEAK.search(normalized) is not None
+    ):
+        raise ObjectSceneVisualFrontendError(
+            f"{label} is not image-local operational prose"
+        )
+    return normalized
+
+
+def normalize_object_scene_witness_statement(value: object) -> str:
+    """Normalize one affirmative, independently judgeable image witness."""
+
+    normalized = _normalized_operational_clause(
+        value, label="operational witness statement"
+    )
+    if _FORBIDDEN_TAG_LOGIC.search(normalized) is not None:
+        raise ObjectSceneVisualFrontendError(
+            "operational witness statement is not affirmative atomic prose"
+        )
+    return normalized
+
+
+def normalize_object_scene_accepted_variant(value: object) -> str:
+    """Normalize affirmative inclusion/equivalence guidance."""
+
+    normalized = _normalized_operational_clause(
+        value, label="accepted variant"
+    )
+    if _FORBIDDEN_TAG_LOGIC.search(normalized) is not None:
+        raise ObjectSceneVisualFrontendError(
+            "accepted variant is not affirmative inclusion guidance"
+        )
+    return normalized
+
+
+def normalize_object_scene_near_miss_boundary(value: object) -> str:
+    """Normalize one explicit, controlled exclusion boundary."""
+
+    normalized = _normalized_operational_clause(
+        value, label="near-miss boundary"
+    )
+    if (
+        _FORBIDDEN_BOUNDARY_LOGIC.search(normalized) is not None
+        or _EXPLICIT_BOUNDARY_EXCLUSION.search(normalized) is None
+    ):
+        raise ObjectSceneVisualFrontendError(
+            "near-miss boundary is not an explicit controlled exclusion"
+        )
+    return normalized
+
+
+def _canonical_operational_criteria(
+    values: object,
+    *,
+    label: str,
+    minimum: int,
+    maximum: int,
+    normalizer: Any,
+) -> tuple[str, ...]:
+    if (
+        isinstance(values, (str, bytes))
+        or not isinstance(values, Sequence)
+    ):
+        raise ObjectSceneVisualFrontendError(
+            f"{label} must be a finite sequence"
+        )
+    normalized = tuple(normalizer(item) for item in values)
+    canonical = tuple(sorted(set(normalized)))
+    if not minimum <= len(canonical) <= maximum or len(canonical) != len(normalized):
+        raise ObjectSceneVisualFrontendError(f"{label} bounds or uniqueness differ")
+    return canonical
+
+
+def _operational_witness_content(
+    value: "ObjectSceneOperationalWitness",
+) -> dict[str, object]:
+    return {
+        "witness_id": value.witness_id,
+        "kind": value.kind,
+        "statement": value.statement,
+    }
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class ObjectSceneOperationalWitness:
+    witness_id: str
+    kind: str
+    statement: str
+    witness_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.witness_id, str)
+            or _WITNESS_ID.fullmatch(self.witness_id) is None
+        ):
+            raise ObjectSceneVisualFrontendError("operational witness ID differs")
+        if self.kind not in OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS:
+            raise ObjectSceneVisualFrontendError("operational witness kind differs")
+        if normalize_object_scene_witness_statement(self.statement) != self.statement:
+            raise ObjectSceneVisualFrontendError(
+                "operational witness statement is not canonical"
+            )
+        _digest(self.witness_digest, "operational witness digest")
+        if self.witness_digest != canonical_digest(
+            _operational_witness_content(self)
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "operational witness content digest differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        witness_id: str,
+        kind: str,
+        statement: object,
+    ) -> "ObjectSceneOperationalWitness":
+        normalized = normalize_object_scene_witness_statement(statement)
+        provisional = object.__new__(cls)
+        for name, item in (
+            ("witness_id", witness_id),
+            ("kind", kind),
+            ("statement", normalized),
+        ):
+            object.__setattr__(provisional, name, item)
+        return cls(
+            witness_id,
+            kind,
+            normalized,
+            canonical_digest(_operational_witness_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_operational_witness_content(self),
+            "witness_digest": self.witness_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "ObjectSceneOperationalWitness":
+        raw = _fields(
+            value,
+            {"witness_id", "kind", "statement", "witness_digest"},
+            "operational witness",
+        )
+        result = cls(
+            raw["witness_id"],
+            raw["kind"],
+            raw["statement"],
+            raw["witness_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneVisualFrontendError(
+                "operational witness is not canonical"
+            )
+        return result
+
+
+def canonicalize_object_scene_operational_witnesses(
+    value: object,
+) -> tuple[ObjectSceneOperationalWitness, ...]:
+    """Sort unique proposer witnesses, then assign stable local IDs."""
+
+    if isinstance(value, (str, bytes)) or not isinstance(value, Sequence):
+        raise ObjectSceneVisualFrontendError(
+            "required witnesses must be a finite sequence"
+        )
+    pairs: list[tuple[str, str]] = []
+    for item in value:
+        if isinstance(item, ObjectSceneOperationalWitness):
+            kind, statement = item.kind, item.statement
+        else:
+            raw = _fields(
+                item,
+                {"kind", "statement"},
+                "required witness specification",
+            )
+            kind, statement = raw["kind"], raw["statement"]
+        if kind not in OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS:
+            raise ObjectSceneVisualFrontendError("operational witness kind differs")
+        pairs.append((kind, normalize_object_scene_witness_statement(statement)))
+    canonical = sorted(set(pairs))
+    if (
+        not OBJECT_SCENE_MIN_REQUIRED_WITNESSES
+        <= len(canonical)
+        <= OBJECT_SCENE_MAX_REQUIRED_WITNESSES
+        or len(canonical) != len(pairs)
+    ):
+        raise ObjectSceneVisualFrontendError(
+            "required witness bounds or uniqueness differ"
+        )
+    return tuple(
+        ObjectSceneOperationalWitness.create(
+            f"witness_{index:02d}", kind, statement
+        )
+        for index, (kind, statement) in enumerate(canonical)
+    )
+
+
+def object_scene_soft_tag_criteria_digest(
+    required_witnesses: object,
+    accepted_variants: object,
+    near_miss_boundaries: object,
+) -> str:
+    witnesses = canonicalize_object_scene_operational_witnesses(
+        required_witnesses
+    )
+    variants = _canonical_operational_criteria(
+        accepted_variants,
+        label="accepted variants",
+        minimum=0,
+        maximum=OBJECT_SCENE_MAX_ACCEPTED_VARIANTS,
+        normalizer=normalize_object_scene_accepted_variant,
+    )
+    boundaries = _canonical_operational_criteria(
+        near_miss_boundaries,
+        label="near-miss boundaries",
+        minimum=0,
+        maximum=OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES,
+        normalizer=normalize_object_scene_near_miss_boundary,
+    )
+    return canonical_digest(
+        {
+            "required_witnesses": [item.to_data() for item in witnesses],
+            "accepted_variants": list(variants),
+            "near_miss_boundaries": list(boundaries),
+        }
+    )
+
+
+def _soft_tag_content_digest(
+    scope: str,
+    tag: str,
+    criteria_digest: str,
+) -> str:
+    return canonical_digest(
+        {
+            "scope": scope,
+            "normalized_affirmative_tag": tag,
+            "criteria_digest": criteria_digest,
+        }
+    )
+
+
+def _dropped_soft_tag_content_digest(scope: str, tag: str) -> str:
     return canonical_digest(
         {"scope": scope, "normalized_affirmative_tag": tag}
     )
+
+
+def _operational_card_policy() -> dict[str, object]:
+    return {
+        "required_witness_count": [
+            OBJECT_SCENE_MIN_REQUIRED_WITNESSES,
+            OBJECT_SCENE_MAX_REQUIRED_WITNESSES,
+        ],
+        "required_witness_kinds": list(
+            OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS
+        ),
+        "accepted_variant_count": [0, OBJECT_SCENE_MAX_ACCEPTED_VARIANTS],
+        "near_miss_boundary_count": [
+            0,
+            OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES,
+        ],
+        "criterion_character_count": [
+            OBJECT_SCENE_MIN_CRITERION_CHARACTERS,
+            OBJECT_SCENE_MAX_CRITERION_CHARACTERS,
+        ],
+        "required_witness_order": (
+            "unique-canonical-kind-statement-then-local-witness-id"
+        ),
+        "accepted_variant_semantics": (
+            "affirmative-inclusion-equivalence-guidance-never-votes"
+        ),
+        "near_miss_boundary_semantics": (
+            "explicit-exclusion-guidance-never-votes"
+        ),
+        "scope_binding": {
+            "panel": "whole-panel",
+            "entity": "one-frozen-proposal",
+        },
+        "disposition_rule": (
+            "error-dominant;else-absent-if-any-witness-absent;"
+            "else-present-if-all-witnesses-present;else-indeterminate"
+        ),
+        "model_returns_macro_state": False,
+    }
 
 
 def _bounded_prose(value: object, label: str, maximum: int) -> str:
@@ -1310,11 +1633,217 @@ class ObjectSceneDroppedOpenTag:
         return result
 
 
-def _registered_cell_content(value: "ObjectSceneRegisteredTagCell") -> dict[str, object]:
+def _registered_state_from_disposition(value: Disposition) -> str:
+    if value is Disposition.ERROR:
+        return "error"
+    return _state_from_disposition(value)
+
+
+def _registered_disposition_from_state(value: object) -> Disposition:
+    if value == "error":
+        return Disposition.ERROR
+    return _disposition_from_state(value)
+
+
+def _registered_support_from_disposition(
+    value: Disposition,
+) -> UnitSupportInterval | None:
+    if value is Disposition.ERROR:
+        return None
+    return UnitSupportInterval.from_state(_registered_state_from_disposition(value))
+
+
+def _registered_witness_cell_content(
+    value: "ObjectSceneRegisteredWitnessCell",
+) -> dict[str, object]:
+    return {
+        "witness_id": value.witness_id,
+        "witness_digest": value.witness_digest,
+        "state": _registered_state_from_disposition(value.disposition),
+        "support": None if value.support is None else value.support.to_data(),
+        "evidence": value.evidence,
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSceneRegisteredWitnessCell:
+    witness_id: str
+    witness_digest: str
+    disposition: Disposition
+    support: UnitSupportInterval | None
+    evidence: str
+    cell_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.witness_id, str)
+            or _WITNESS_ID.fullmatch(self.witness_id) is None
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness ID differs"
+            )
+        _digest(self.witness_digest, "registered witness definition digest")
+        if not isinstance(self.disposition, Disposition):
+            raise TypeError("registered witness disposition differs")
+        if self.support != _registered_support_from_disposition(
+            self.disposition
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness support differs"
+            )
+        _bounded_prose(self.evidence, "registered witness evidence", 240)
+        _digest(self.cell_digest, "registered witness cell digest")
+        if self.cell_digest != canonical_digest(
+            _registered_witness_cell_content(self)
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cell digest differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        witness: ObjectSceneOperationalWitness,
+        state: object,
+        evidence: object,
+    ) -> "ObjectSceneRegisteredWitnessCell":
+        if not isinstance(witness, ObjectSceneOperationalWitness):
+            raise TypeError("registered witness definition differs")
+        disposition = _disposition_from_state(state)
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "registered witness evidence", 240
+        )
+        values = {
+            "witness_id": witness.witness_id,
+            "witness_digest": witness.witness_digest,
+            "disposition": disposition,
+            "support": _registered_support_from_disposition(disposition),
+            "evidence": normalized_evidence,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            cell_digest=canonical_digest(
+                _registered_witness_cell_content(provisional)
+            ),
+        )
+
+    @classmethod
+    def error(
+        cls,
+        witness: ObjectSceneOperationalWitness,
+        evidence: object,
+    ) -> "ObjectSceneRegisteredWitnessCell":
+        if not isinstance(witness, ObjectSceneOperationalWitness):
+            raise TypeError("registered witness definition differs")
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "registered witness evidence", 240
+        )
+        values = {
+            "witness_id": witness.witness_id,
+            "witness_digest": witness.witness_digest,
+            "disposition": Disposition.ERROR,
+            "support": None,
+            "evidence": normalized_evidence,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            cell_digest=canonical_digest(
+                _registered_witness_cell_content(provisional)
+            ),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_registered_witness_cell_content(self),
+            "cell_digest": self.cell_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "ObjectSceneRegisteredWitnessCell":
+        raw = _fields(
+            value,
+            {
+                "witness_id",
+                "witness_digest",
+                "state",
+                "support",
+                "evidence",
+                "cell_digest",
+            },
+            "registered witness cell",
+        )
+        support = (
+            None
+            if raw["support"] is None
+            else UnitSupportInterval.from_data(raw["support"])
+        )
+        result = cls(
+            raw["witness_id"],
+            raw["witness_digest"],
+            _registered_disposition_from_state(raw["state"]),
+            support,
+            raw["evidence"],
+            raw["cell_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cell is not canonical"
+            )
+        return result
+
+
+def compile_object_scene_registered_witness_dispositions(
+    values: object,
+) -> Disposition:
+    """Compile a conjunction without allowing uncertainty to become absence."""
+
+    if isinstance(values, (str, bytes)) or not isinstance(values, Sequence):
+        raise ObjectSceneVisualFrontendError(
+            "registered witness dispositions must be a finite sequence"
+        )
+    dispositions = tuple(values)
+    if (
+        not OBJECT_SCENE_MIN_REQUIRED_WITNESSES
+        <= len(dispositions)
+        <= OBJECT_SCENE_MAX_REQUIRED_WITNESSES
+        or any(not isinstance(item, Disposition) for item in dispositions)
+    ):
+        raise ObjectSceneVisualFrontendError(
+            "registered witness dispositions differ"
+        )
+    if Disposition.ERROR in dispositions:
+        return Disposition.ERROR
+    if Disposition.CERTIFIED_ABSENT in dispositions:
+        return Disposition.CERTIFIED_ABSENT
+    if all(item is Disposition.PRESENT for item in dispositions):
+        return Disposition.PRESENT
+    return Disposition.INDETERMINATE
+
+
+def _compiled_registered_evidence(
+    values: Sequence[ObjectSceneRegisteredWitnessCell],
+) -> str:
+    return "compiled required witness states " + "; ".join(
+        f"{item.witness_id} {_registered_state_from_disposition(item.disposition)}"
+        for item in values
+    )
+
+
+def _registered_cell_content(
+    value: "ObjectSceneRegisteredTagCell",
+) -> dict[str, object]:
     return {
         "tag_id": value.tag_id,
-        "state": _state_from_disposition(value.disposition),
-        "support": value.support.to_data(),
+        "tag_digest": value.tag_digest,
+        "witness_cells": [item.to_data() for item in value.witness_cells],
+        "state": _registered_state_from_disposition(value.disposition),
+        "support": None if value.support is None else value.support.to_data(),
         "evidence": value.evidence,
     }
 
@@ -1322,41 +1851,171 @@ def _registered_cell_content(value: "ObjectSceneRegisteredTagCell") -> dict[str,
 @dataclass(frozen=True, slots=True)
 class ObjectSceneRegisteredTagCell:
     tag_id: str
+    tag_digest: str
+    witness_cells: tuple[ObjectSceneRegisteredWitnessCell, ...]
     disposition: Disposition
-    support: UnitSupportInterval
+    support: UnitSupportInterval | None
     evidence: str
     cell_digest: str
 
     def __post_init__(self) -> None:
         if not isinstance(self.tag_id, str) or _TAG_ID.fullmatch(self.tag_id) is None:
             raise ObjectSceneVisualFrontendError("registered tag ID differs")
-        state = _state_from_disposition(self.disposition)
-        if self.support != UnitSupportInterval.from_state(state):
+        _digest(self.tag_digest, "registered tag definition digest")
+        if (
+            not isinstance(self.witness_cells, tuple)
+            or not OBJECT_SCENE_MIN_REQUIRED_WITNESSES
+            <= len(self.witness_cells)
+            <= OBJECT_SCENE_MAX_REQUIRED_WITNESSES
+            or tuple(item.witness_id for item in self.witness_cells)
+            != tuple(
+                f"witness_{index:02d}"
+                for index in range(len(self.witness_cells))
+            )
+            or len({item.witness_digest for item in self.witness_cells})
+            != len(self.witness_cells)
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cells differ from frozen order"
+            )
+        disposition = compile_object_scene_registered_witness_dispositions(
+            tuple(item.disposition for item in self.witness_cells)
+        )
+        if self.disposition is not disposition:
+            raise ObjectSceneVisualFrontendError(
+                "registered tag macro disposition differs"
+            )
+        if self.support != _registered_support_from_disposition(disposition):
             raise ObjectSceneVisualFrontendError("registered support differs")
+        if self.evidence != _compiled_registered_evidence(self.witness_cells):
+            raise ObjectSceneVisualFrontendError(
+                "registered tag compiled evidence differs"
+            )
         _bounded_prose(self.evidence, "registered tag evidence", 240)
         _digest(self.cell_digest, "registered tag cell digest")
         if self.cell_digest != canonical_digest(_registered_cell_content(self)):
             raise ObjectSceneVisualFrontendError("registered tag cell digest differs")
 
     @classmethod
-    def create(cls, tag_id: object, state: object, evidence: object) -> "ObjectSceneRegisteredTagCell":
-        disposition = _disposition_from_state(state)
-        support = UnitSupportInterval.from_state(state)
-        normalized_evidence = _normalized_bounded_prose(
-            evidence, "registered tag evidence", 240
+    def from_witness_cells(
+        cls,
+        tag: "ObjectSceneSoftTag",
+        witness_cells: object,
+    ) -> "ObjectSceneRegisteredTagCell":
+        if not isinstance(tag, ObjectSceneSoftTag):
+            raise TypeError("registered tag definition differs")
+        if isinstance(witness_cells, (str, bytes)) or not isinstance(
+            witness_cells, Sequence
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cell array differs"
+            )
+        cells = tuple(witness_cells)
+        if any(
+            not isinstance(item, ObjectSceneRegisteredWitnessCell)
+            for item in cells
+        ) or tuple(
+            (item.witness_id, item.witness_digest) for item in cells
+        ) != tuple(
+            (item.witness_id, item.witness_digest)
+            for item in tag.required_witnesses
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cells do not exhaust frozen card"
+            )
+        disposition = compile_object_scene_registered_witness_dispositions(
+            tuple(item.disposition for item in cells)
         )
+        evidence = _compiled_registered_evidence(cells)
+        values = {
+            "tag_id": tag.tag_id,
+            "tag_digest": tag.tag_digest,
+            "witness_cells": cells,
+            "disposition": disposition,
+            "support": _registered_support_from_disposition(disposition),
+            "evidence": evidence,
+        }
         provisional = object.__new__(cls)
-        for name, item in (("tag_id", tag_id), ("disposition", disposition), ("support", support), ("evidence", normalized_evidence)):
+        for name, item in values.items():
             object.__setattr__(provisional, name, item)
-        return cls(tag_id, disposition, support, normalized_evidence, canonical_digest(_registered_cell_content(provisional)))  # type: ignore[arg-type]
+        return cls(
+            **values,
+            cell_digest=canonical_digest(_registered_cell_content(provisional)),
+        )
+
+    @classmethod
+    def create(
+        cls,
+        tag: "ObjectSceneSoftTag",
+        witness_values: object,
+    ) -> "ObjectSceneRegisteredTagCell":
+        if not isinstance(tag, ObjectSceneSoftTag):
+            raise TypeError("registered tag definition differs")
+        if not isinstance(witness_values, list) or len(witness_values) != len(
+            tag.required_witnesses
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness payload bounds differ"
+            )
+        cells: list[ObjectSceneRegisteredWitnessCell] = []
+        for witness, value in zip(
+            tag.required_witnesses, witness_values, strict=True
+        ):
+            raw = _fields(
+                value,
+                {"witness_id", "state", "evidence"},
+                "registered witness payload",
+            )
+            if raw["witness_id"] != witness.witness_id:
+                raise ObjectSceneVisualFrontendError(
+                    "registered witness payload order differs"
+                )
+            cells.append(
+                ObjectSceneRegisteredWitnessCell.create(
+                    witness, raw["state"], raw["evidence"]
+                )
+            )
+        return cls.from_witness_cells(tag, cells)
 
     def to_data(self) -> dict[str, object]:
         return {**_registered_cell_content(self), "cell_digest": self.cell_digest}
 
     @classmethod
     def from_data(cls, value: object) -> "ObjectSceneRegisteredTagCell":
-        raw = _fields(value, {"tag_id", "state", "support", "evidence", "cell_digest"}, "registered tag cell")
-        result = cls(raw["tag_id"], _disposition_from_state(raw["state"]), UnitSupportInterval.from_data(raw["support"]), raw["evidence"], raw["cell_digest"])
+        raw = _fields(
+            value,
+            {
+                "tag_id",
+                "tag_digest",
+                "witness_cells",
+                "state",
+                "support",
+                "evidence",
+                "cell_digest",
+            },
+            "registered tag cell",
+        )
+        if not isinstance(raw["witness_cells"], list):
+            raise ObjectSceneVisualFrontendError(
+                "registered witness cell array differs"
+            )
+        support = (
+            None
+            if raw["support"] is None
+            else UnitSupportInterval.from_data(raw["support"])
+        )
+        result = cls(
+            raw["tag_id"],
+            raw["tag_digest"],
+            tuple(
+                ObjectSceneRegisteredWitnessCell.from_data(item)
+                for item in raw["witness_cells"]
+            ),
+            _registered_disposition_from_state(raw["state"]),
+            support,
+            raw["evidence"],
+            raw["cell_digest"],
+        )
         if result.to_data() != dict(raw):
             raise ObjectSceneVisualFrontendError("registered tag cell is not canonical")
         return result
@@ -1643,7 +2302,7 @@ class ObjectSceneTranscript:
         return result
 
 
-OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v3"
+OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v4"
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -1652,6 +2311,10 @@ class ObjectSceneSoftTag:
     scope: str
     tag: str
     distinct_panel_count: int
+    required_witnesses: tuple[ObjectSceneOperationalWitness, ...]
+    accepted_variants: tuple[str, ...]
+    near_miss_boundaries: tuple[str, ...]
+    criteria_digest: str
     tag_digest: str
 
     def __post_init__(self) -> None:
@@ -1660,17 +2323,146 @@ class ObjectSceneSoftTag:
         _soft_tag_scope(self.scope)
         _positive_tag(self.tag)
         _integer(self.distinct_panel_count, "soft tag panel count", minimum=OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY)
+        witnesses = canonicalize_object_scene_operational_witnesses(
+            self.required_witnesses
+        )
+        variants = _canonical_operational_criteria(
+            self.accepted_variants,
+            label="accepted variants",
+            minimum=0,
+            maximum=OBJECT_SCENE_MAX_ACCEPTED_VARIANTS,
+            normalizer=normalize_object_scene_accepted_variant,
+        )
+        boundaries = _canonical_operational_criteria(
+            self.near_miss_boundaries,
+            label="near-miss boundaries",
+            minimum=0,
+            maximum=OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES,
+            normalizer=normalize_object_scene_near_miss_boundary,
+        )
+        if (
+            witnesses != self.required_witnesses
+            or variants != self.accepted_variants
+            or boundaries != self.near_miss_boundaries
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "soft tag operational criteria are not canonical"
+            )
+        _digest(self.criteria_digest, "soft tag criteria digest")
+        if self.criteria_digest != object_scene_soft_tag_criteria_digest(
+            self.required_witnesses,
+            self.accepted_variants,
+            self.near_miss_boundaries,
+        ):
+            raise ObjectSceneVisualFrontendError("soft tag criteria digest differs")
         _digest(self.tag_digest, "soft tag digest")
-        if self.tag_digest != _soft_tag_content_digest(self.scope, self.tag):
+        if self.tag_digest != _soft_tag_content_digest(
+            self.scope, self.tag, self.criteria_digest
+        ):
             raise ObjectSceneVisualFrontendError("soft tag content digest differs")
 
+    @classmethod
+    def create(
+        cls,
+        tag_id: str,
+        scope: str,
+        tag: str,
+        distinct_panel_count: int,
+        required_witnesses: object,
+        accepted_variants: object = (),
+        near_miss_boundaries: object = (),
+    ) -> "ObjectSceneSoftTag":
+        normalized_scope = _soft_tag_scope(scope)
+        normalized_tag = _normalized_positive_tag(tag)
+        witnesses = canonicalize_object_scene_operational_witnesses(
+            required_witnesses
+        )
+        variants = _canonical_operational_criteria(
+            accepted_variants,
+            label="accepted variants",
+            minimum=0,
+            maximum=OBJECT_SCENE_MAX_ACCEPTED_VARIANTS,
+            normalizer=normalize_object_scene_accepted_variant,
+        )
+        boundaries = _canonical_operational_criteria(
+            near_miss_boundaries,
+            label="near-miss boundaries",
+            minimum=0,
+            maximum=OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES,
+            normalizer=normalize_object_scene_near_miss_boundary,
+        )
+        criteria_digest = object_scene_soft_tag_criteria_digest(
+            witnesses, variants, boundaries
+        )
+        return cls(
+            tag_id,
+            normalized_scope,
+            normalized_tag,
+            distinct_panel_count,
+            witnesses,
+            variants,
+            boundaries,
+            criteria_digest,
+            _soft_tag_content_digest(
+                normalized_scope, normalized_tag, criteria_digest
+            ),
+        )
+
     def to_data(self) -> dict[str, object]:
-        return {"tag_id": self.tag_id, "scope": self.scope, "tag": self.tag, "distinct_panel_count": self.distinct_panel_count, "tag_digest": self.tag_digest}
+        return {
+            "tag_id": self.tag_id,
+            "scope": self.scope,
+            "tag": self.tag,
+            "distinct_panel_count": self.distinct_panel_count,
+            "required_witnesses": [
+                item.to_data() for item in self.required_witnesses
+            ],
+            "accepted_variants": list(self.accepted_variants),
+            "near_miss_boundaries": list(self.near_miss_boundaries),
+            "criteria_digest": self.criteria_digest,
+            "tag_digest": self.tag_digest,
+        }
 
     @classmethod
     def from_data(cls, value: object) -> "ObjectSceneSoftTag":
-        raw = _fields(value, {"tag_id", "scope", "tag", "distinct_panel_count", "tag_digest"}, "soft tag")
-        result = cls(raw["tag_id"], raw["scope"], raw["tag"], raw["distinct_panel_count"], raw["tag_digest"])
+        raw = _fields(
+            value,
+            {
+                "tag_id",
+                "scope",
+                "tag",
+                "distinct_panel_count",
+                "required_witnesses",
+                "accepted_variants",
+                "near_miss_boundaries",
+                "criteria_digest",
+                "tag_digest",
+            },
+            "soft tag",
+        )
+        if any(
+            not isinstance(raw[key], list)
+            for key in (
+                "required_witnesses",
+                "accepted_variants",
+                "near_miss_boundaries",
+            )
+        ):
+            raise ObjectSceneVisualFrontendError("soft tag criteria arrays differ")
+        result = cls(
+            raw["tag_id"],
+            raw["scope"],
+            raw["tag"],
+            raw["distinct_panel_count"],
+            tuple(
+                ObjectSceneOperationalWitness.from_data(item)
+                for item in raw["required_witnesses"]
+            ),
+            tuple(raw["accepted_variants"]),
+            tuple(raw["near_miss_boundaries"]),
+            raw["criteria_digest"],
+            raw["tag_digest"],
+        )
         if result.to_data() != dict(raw):
             raise ObjectSceneVisualFrontendError("soft tag is not canonical")
         return result
@@ -1691,7 +2483,9 @@ class ObjectSceneDroppedSoftTag:
         if self.reason not in ("seen_on_fewer_than_2_panels", "registry_capacity_exceeded"):
             raise ObjectSceneVisualFrontendError("dropped tag reason differs")
         _digest(self.tag_digest, "dropped tag digest")
-        if self.tag_digest != _soft_tag_content_digest(self.scope, self.tag):
+        if self.tag_digest != _dropped_soft_tag_content_digest(
+            self.scope, self.tag
+        ):
             raise ObjectSceneVisualFrontendError("dropped tag content digest differs")
 
     def to_data(self) -> dict[str, object]:
@@ -1714,6 +2508,7 @@ def _registry_content(value: "ObjectSceneSoftTagRegistry") -> dict[str, object]:
         "minimum_distinct_panel_frequency": OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY,
         "maximum_registered_tags": OBJECT_SCENE_MAX_REGISTERED_TAGS,
         "ordering_rule": "descending-distinct-panel-frequency-then-scope-then-phrase",
+        "operational_card_policy": _operational_card_policy(),
         "tags": [item.to_data() for item in value.tags],
         "dropped_tags": [item.to_data() for item in value.dropped_tags],
         "fixed_qualitative_observable_ids": list(OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS),
@@ -1781,13 +2576,14 @@ class ObjectSceneSoftTagRegistry:
 
     @classmethod
     def from_data(cls, value: object) -> "ObjectSceneSoftTagRegistry":
-        expected = {"schema", "source_transcript_digests", "source_panel_digests", "minimum_distinct_panel_frequency", "maximum_registered_tags", "ordering_rule", "tags", "dropped_tags", "fixed_qualitative_observable_ids", "fixed_count_observable_ids", *_authority_data(), "registry_digest"}
+        expected = {"schema", "source_transcript_digests", "source_panel_digests", "minimum_distinct_panel_frequency", "maximum_registered_tags", "ordering_rule", "operational_card_policy", "tags", "dropped_tags", "fixed_qualitative_observable_ids", "fixed_count_observable_ids", *_authority_data(), "registry_digest"}
         raw = _fields(value, expected, "soft tag registry")
         if (
             raw["schema"] != OBJECT_SCENE_TAG_REGISTRY_SCHEMA
             or raw["minimum_distinct_panel_frequency"] != OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY
             or raw["maximum_registered_tags"] != OBJECT_SCENE_MAX_REGISTERED_TAGS
             or raw["ordering_rule"] != "descending-distinct-panel-frequency-then-scope-then-phrase"
+            or raw["operational_card_policy"] != _operational_card_policy()
             or raw["fixed_qualitative_observable_ids"] != list(OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS)
             or raw["fixed_count_observable_ids"] != list(OBJECT_SCENE_COUNT_OBSERVABLE_IDS)
             or any(raw[key] != item for key, item in _authority_data().items())
@@ -1846,16 +2642,18 @@ def freeze_object_scene_soft_tag_registry(transcripts: Sequence[ObjectSceneTrans
                 tag,
                 count,
                 reason,
-                _soft_tag_content_digest(scope, tag),
+                _dropped_soft_tag_content_digest(scope, tag),
             )
         )
     tags = tuple(
-        ObjectSceneSoftTag(
+        ObjectSceneSoftTag.create(
             f"tag_{index:04d}",
             scope,
             tag,
             count,
-            _soft_tag_content_digest(scope, tag),
+            ({"kind": "shape_appearance", "statement": tag},),
+            (),
+            (),
         )
         for index, (scope, tag, count) in enumerate(admitted)
     )
@@ -1897,6 +2695,29 @@ def verify_object_scene_soft_tag_registry(
     if freeze_object_scene_soft_tag_registry(transcripts) != restored:
         raise ObjectSceneVisualFrontendError("soft tag registry differs from discovery replay")
     return restored
+
+
+def _verify_registered_cell_card_binding(
+    cell: ObjectSceneRegisteredTagCell,
+    tag: ObjectSceneSoftTag,
+) -> None:
+    if (
+        not isinstance(cell, ObjectSceneRegisteredTagCell)
+        or not isinstance(tag, ObjectSceneSoftTag)
+        or cell.tag_id != tag.tag_id
+        or cell.tag_digest != tag.tag_digest
+        or tuple(
+            (item.witness_id, item.witness_digest)
+            for item in cell.witness_cells
+        )
+        != tuple(
+            (item.witness_id, item.witness_digest)
+            for item in tag.required_witnesses
+        )
+    ):
+        raise ObjectSceneVisualFrontendError(
+            "registered cell card binding differs"
+        )
 
 
 _QUALITATIVE_MEANINGS = {
@@ -1999,13 +2820,28 @@ def object_scene_transcript_output_schema(
             "type": "object",
             "properties": {
                 "tag_id": registered_id_schema,
-                "state": {
-                    "type": "string",
-                    "enum": ["present", "absent", "indeterminate"],
+                "witness_cells": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "witness_id": {"type": "string"},
+                            "state": {
+                                "type": "string",
+                                "enum": [
+                                    "present",
+                                    "absent",
+                                    "indeterminate",
+                                ],
+                            },
+                            "evidence": {"type": "string"},
+                        },
+                        "required": ["witness_id", "state", "evidence"],
+                        "additionalProperties": False,
+                    },
                 },
-                "evidence": {"type": "string"},
             },
-            "required": ["tag_id", "state", "evidence"],
+            "required": ["tag_id", "witness_cells"],
             "additionalProperties": False,
         }
     row = {
@@ -2064,6 +2900,40 @@ def object_scene_transcript_output_schema(
     return schema
 
 
+def _registered_operational_card_block(
+    registry: ObjectSceneSoftTagRegistry,
+    scope: str,
+) -> str:
+    binding = {
+        "panel": "the whole panel",
+        "entity": "one frozen proposal",
+    }[_soft_tag_scope(scope)]
+    rows: list[str] = []
+    for item in registry.tags:
+        if item.scope != scope:
+            continue
+        witnesses = "\n".join(
+            f"    - {witness.witness_id} [{witness.kind}]: "
+            f"{witness.statement}"
+            for witness in item.required_witnesses
+        )
+        variants = "\n".join(
+            f"    - {variant}" for variant in item.accepted_variants
+        ) or "    - none declared"
+        boundaries = "\n".join(
+            f"    - {boundary}" for boundary in item.near_miss_boundaries
+        ) or "    - none declared"
+        rows.append(
+            f"- {item.tag_id}\n"
+            f"  phrase: {item.tag}\n"
+            f"  binding: {binding}\n"
+            f"  required witnesses:\n{witnesses}\n"
+            f"  accepted variants:\n{variants}\n"
+            f"  near-miss boundaries:\n{boundaries}"
+        )
+    return "\n".join(rows) or "- no registered cards"
+
+
 def object_scene_transcript_prompt(
     inventory: ObjectSceneProposalInventory,
     mode: ObjectSceneTranscriptMode,
@@ -2092,25 +2962,26 @@ def object_scene_transcript_prompt(
         )
     else:
         assert registry is not None
-        panel_tag_lines = "\n".join(
-            f"- {item.tag_id}: {item.tag}"
-            for item in registry.tags
-            if item.scope == "panel"
-        ) or "- no whole-panel registered tags"
-        entity_tag_lines = "\n".join(
-            f"- {item.tag_id}: {item.tag}"
-            for item in registry.tags
-            if item.scope == "entity"
-        ) or "- no per-proposal registered tags"
+        panel_tag_lines = _registered_operational_card_block(registry, "panel")
+        entity_tag_lines = _registered_operational_card_block(registry, "entity")
         mode_text = (
             "All open_tags arrays must be empty. The whole-panel registered_tags "
             "must contain every whole-panel registered tag, and only those "
             "tags, in the exact order below. Every proposal's registered_tags "
             "must contain every per-proposal registered tag, and only those "
             "tags, in the exact order below. "
-            "Give each one an explicit present, absent, or indeterminate state with visible evidence.\n"
-            f"Whole-panel registered tags:\n{panel_tag_lines}\n"
-            f"Per-proposal registered tags:\n{entity_tag_lines}"
+            "For each tag, return every required witness as a separate "
+            "witness_cell in the exact listed witness order. Judge each "
+            "witness only on the tag's stated binding. Return present when "
+            "that witness is visibly supported, absent only when it is "
+            "visibly contradicted, and indeterminate otherwise. Apply the "
+            "accepted variants and near-miss boundaries while interpreting "
+            "every witness, but neither guidance list is itself a witness and "
+            "neither casts a vote. Do not return a combined tag state; it is "
+            "computed later from the witness cells. Give every witness concise "
+            "visible evidence.\n"
+            f"Whole-panel registered cards:\n{panel_tag_lines}\n"
+            f"Per-proposal registered cards:\n{entity_tag_lines}"
         )
     prompt = (
         "You are a neutral empirical visual observer. Inspect panel.png for complete context and every objects_NNN.png atlas for detail. "
@@ -2166,7 +3037,7 @@ def prepare_object_scene_transcript_inputs(
     schema = object_scene_transcript_output_schema(inventory, mode, registry)
     identities = _presentation_identities(presentation)
     digest = canonical_digest({
-        "schema": "gkm.object-scene-prepared-transcript.v3",
+        "schema": "gkm.object-scene-prepared-transcript.v4",
         "inventory_digest": inventory.inventory_digest,
         "mode": mode.value,
         "registry_digest": None if registry is None else registry.registry_digest,
@@ -2182,7 +3053,7 @@ def _parse_transcript_tag_payload(
     registered_values: object,
     *,
     mode: ObjectSceneTranscriptMode,
-    registry_ids: tuple[str, ...],
+    registry_tags: tuple[ObjectSceneSoftTag, ...],
     maximum_open_tags: int,
     label: str,
     scope: str,
@@ -2265,24 +3136,24 @@ def _parse_transcript_tag_payload(
             drop(index, value, "capacity_exceeded")
         dropped.sort(key=_dropped_open_tag_sort_key)
     else:
-        if open_values or len(registered_values) != len(registry_ids):
+        if open_values or len(registered_values) != len(registry_tags):
             raise ObjectSceneVisualFrontendError(
                 f"{label} registered tag bounds differ"
             )
-        for expected_id, value in zip(
-            registry_ids, registered_values, strict=True
+        for expected_tag, value in zip(
+            registry_tags, registered_values, strict=True
         ):
             tag = _fields(
-                value, {"tag_id", "state", "evidence"},
+                value, {"tag_id", "witness_cells"},
                 f"{label} registered tag payload",
             )
-            if tag["tag_id"] != expected_id:
+            if tag["tag_id"] != expected_tag.tag_id:
                 raise ObjectSceneVisualFrontendError(
                     f"{label} registered tag payload order differs"
                 )
             registered_cells.append(
                 ObjectSceneRegisteredTagCell.create(
-                    tag["tag_id"], tag["state"], tag["evidence"]
+                    expected_tag, tag["witness_cells"]
                 )
             )
     return tuple(open_tags), tuple(registered_cells), tuple(dropped)
@@ -2299,20 +3170,22 @@ def _parse_object_scene_transcript_payload(
     if not isinstance(raw["objects"], list) or len(raw["objects"]) != len(inventory.objects):
         raise ObjectSceneVisualFrontendError("payload does not exhaust frozen proposals")
     rows: list[ObjectSceneTranscriptObject] = []
-    panel_registry_ids = (
+    panel_registry_tags = (
         ()
         if registry is None
         else tuple(
-            item.tag_id for item in registry.tags if item.scope == "panel"
+            item for item in registry.tags if item.scope == "panel"
         )
     )
-    entity_registry_ids = (
+    entity_registry_tags = (
         ()
         if registry is None
         else tuple(
-            item.tag_id for item in registry.tags if item.scope == "entity"
+            item for item in registry.tags if item.scope == "entity"
         )
     )
+    panel_registry_ids = tuple(item.tag_id for item in panel_registry_tags)
+    entity_registry_ids = tuple(item.tag_id for item in entity_registry_tags)
     panel = _fields(
         raw["panel"], {"summary", "open_tags", "registered_tags"},
         "payload panel",
@@ -2322,7 +3195,7 @@ def _parse_object_scene_transcript_payload(
             panel["open_tags"],
             panel["registered_tags"],
             mode=mode,
-            registry_ids=panel_registry_ids,
+            registry_tags=panel_registry_tags,
             maximum_open_tags=OBJECT_SCENE_MAX_TAGS_PER_PANEL,
             label="panel",
             scope="panel",
@@ -2350,7 +3223,7 @@ def _parse_object_scene_transcript_payload(
             qualities.append(ObjectSceneQualitativeCell.create(expected_id, cell["state"], cell["evidence"]))
         open_tags, registered_cells, row_dropped = _parse_transcript_tag_payload(
             row["open_tags"], row["registered_tags"], mode=mode,
-            registry_ids=entity_registry_ids,
+            registry_tags=entity_registry_tags,
             maximum_open_tags=OBJECT_SCENE_MAX_TAGS_PER_OBJECT,
             label=f"object {index}",
             scope="entity",
@@ -2395,7 +3268,7 @@ def _parse_object_scene_transcript_payload(
 
 def object_scene_transcript_protocol_digest() -> str:
     return canonical_digest({
-        "schema": "gkm.object-scene-transcript-protocol.v3",
+        "schema": "gkm.object-scene-transcript-protocol.v4",
         "frontend_id": OBJECT_SCENE_FRONTEND_ID,
         "source_digest": object_scene_visual_frontend_source_digest(),
         "inventory_protocol_digest": object_scene_inventory_protocol_digest(),
@@ -2418,6 +3291,20 @@ def object_scene_transcript_protocol_digest() -> str:
         ),
         "discovery_tag_drop_binding": (
             "scope-owner-id-item-index-exact-raw-item-digest"
+        ),
+        "registered_operational_card_policy": _operational_card_policy(),
+        "registered_operational_card_digest_chain": (
+            "criteria-digest-then-scope-phrase-criteria-tag-digest-then-registry"
+        ),
+        "registered_operational_card_model_view": (
+            "tag-id-phrase-scope-derived-binding-ordered-witness-id-kind-statement-"
+            "accepted-variants-near-miss-boundaries"
+        ),
+        "registered_model_output": (
+            "tag-id-plus-ordered-witness-id-state-evidence-no-macro-state"
+        ),
+        "registered_macro_compiler": (
+            "error-dominant-then-any-absent-then-all-present-else-indeterminate"
         ),
         "whole_panel_summary_and_tag_cells": True,
         "whole_panel_is_not_a_semantic_object": True,
@@ -2599,6 +3486,27 @@ class ObjectSceneTranscriptArtifact:
                 raise ObjectSceneVisualFrontendError(
                     "artifact transcript registry scope partition differs"
                 )
+            tags_by_id = {item.tag_id: item for item in self.registry.tags}
+            transcript_cells = (
+                *self.transcript.panel_registered_tag_cells,
+                *(
+                    cell
+                    for row in self.transcript.objects
+                    for cell in row.registered_tag_cells
+                ),
+            )
+            for cell in transcript_cells:
+                tag = tags_by_id.get(cell.tag_id)
+                if tag is None:
+                    raise ObjectSceneVisualFrontendError(
+                        "artifact registered cell card binding differs"
+                    )
+                try:
+                    _verify_registered_cell_card_binding(cell, tag)
+                except ObjectSceneVisualFrontendError as exc:
+                    raise ObjectSceneVisualFrontendError(
+                        "artifact registered cell card binding differs"
+                    ) from exc
         _digest(self.artifact_digest, "object scene artifact digest")
         if self.artifact_digest != canonical_digest(_artifact_content(self)):
             raise ObjectSceneVisualFrontendError("object scene artifact digest differs")
@@ -2927,7 +3835,12 @@ def lookup_object_scene_soft_tag(
     if registered is None:
         return ObjectSceneSoftTagLookup(phrase, None, Disposition.INDETERMINATE, UnitSupportInterval(0, 1), "affirmative phrase is outside the frozen registry")
     cells_by_id = {item.tag_id: item for item in row.registered_tag_cells}
-    cell = cells_by_id[registered.tag_id]
+    cell = cells_by_id.get(registered.tag_id)
+    if cell is None:
+        raise ObjectSceneVisualFrontendError(
+            "registered entity cell is missing from transcript"
+        )
+    _verify_registered_cell_card_binding(cell, registered)
     return ObjectSceneSoftTagLookup(phrase, registered.tag_id, cell.disposition, cell.support, cell.evidence)
 
 
@@ -2997,7 +3910,12 @@ def lookup_object_scene_panel_soft_tag(
     cells_by_id = {
         item.tag_id: item for item in transcript.panel_registered_tag_cells
     }
-    cell = cells_by_id[registered.tag_id]
+    cell = cells_by_id.get(registered.tag_id)
+    if cell is None:
+        raise ObjectSceneVisualFrontendError(
+            "registered panel cell is missing from transcript"
+        )
+    _verify_registered_cell_card_binding(cell, registered)
     return ObjectSceneSoftTagLookup(
         phrase,
         registered.tag_id,
@@ -3012,10 +3930,17 @@ __all__ = [
     "OBJECT_SCENE_COUNT_OBSERVABLE_IDS",
     "OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES",
     "OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA",
+    "OBJECT_SCENE_MAX_ACCEPTED_VARIANTS",
+    "OBJECT_SCENE_MAX_CRITERION_CHARACTERS",
+    "OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES",
     "OBJECT_SCENE_MAX_REGISTERED_TAGS",
+    "OBJECT_SCENE_MAX_REQUIRED_WITNESSES",
     "OBJECT_SCENE_MAX_TAG_CHARACTERS",
     "OBJECT_SCENE_MAX_TAGS_PER_PANEL",
     "OBJECT_SCENE_MAX_TAGS_PER_OBJECT",
+    "OBJECT_SCENE_MIN_CRITERION_CHARACTERS",
+    "OBJECT_SCENE_MIN_REQUIRED_WITNESSES",
+    "OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS",
     "OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS",
     "OBJECT_SCENE_SOFT_TAG_SCOPES",
     "ObjectSceneCountCell",
@@ -3023,10 +3948,12 @@ __all__ = [
     "ObjectSceneDroppedOpenTag",
     "ObjectSceneDroppedSoftTag",
     "ObjectSceneOpenTag",
+    "ObjectSceneOperationalWitness",
     "ObjectScenePreparedTranscriptInputs",
     "ObjectSceneProposalInventory",
     "ObjectSceneQualitativeCell",
     "ObjectSceneRegisteredTagCell",
+    "ObjectSceneRegisteredWitnessCell",
     "ObjectSceneSoftTag",
     "ObjectSceneSoftTagLookup",
     "ObjectSceneSoftTagRegistry",
@@ -3037,10 +3964,16 @@ __all__ = [
     "ObjectSceneVisualFrontendError",
     "UnitSupportInterval",
     "extract_object_scene_proposal_inventory",
+    "canonicalize_object_scene_operational_witnesses",
+    "compile_object_scene_registered_witness_dispositions",
     "freeze_object_scene_soft_tag_registry",
     "lookup_object_scene_panel_soft_tag",
     "lookup_object_scene_soft_tag",
+    "normalize_object_scene_accepted_variant",
+    "normalize_object_scene_near_miss_boundary",
+    "normalize_object_scene_witness_statement",
     "object_scene_inventory_protocol_digest",
+    "object_scene_soft_tag_criteria_digest",
     "object_scene_transcript_output_schema",
     "object_scene_transcript_prompt",
     "object_scene_transcript_protocol_digest",
