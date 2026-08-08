@@ -15,7 +15,7 @@ import json
 import math
 import os
 import stat
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 from pathlib import Path
 from statistics import median
@@ -1349,6 +1349,17 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
         non_solver = [
             turn for turn in exact_history if not _is_solver_attempt(turn)
         ]
+        non_solver_failure_classes = Counter(
+            str(turn.get("failure_class") or "unclassified")
+            for turn in non_solver
+        )
+        attempt_taint_history = [
+            turn for turn in non_solver
+            if (
+                turn.get("failure_class") == "taint"
+                or turn.get("taint_verdict") == "tainted"
+            )
+        ]
         failed_efforts = sorted({
             str(turn.get("reasoning_effort")) for turn in failures
             if turn.get("reasoning_effort")
@@ -1362,6 +1373,21 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
                 infrastructure_history
             ),
             "non_solver_turns_at_frontier": len(non_solver),
+            "attempt_taint_turns_at_frontier": len(
+                attempt_taint_history
+            ),
+            "containment_turns_at_frontier": (
+                non_solver_failure_classes["containment"]
+            ),
+            "evidence_turns_at_frontier": (
+                non_solver_failure_classes["evidence"]
+            ),
+            "unclassified_non_solver_turns_at_frontier": (
+                non_solver_failure_classes["unclassified"]
+            ),
+            "non_solver_failure_classes_at_frontier": dict(sorted(
+                non_solver_failure_classes.items()
+            )),
             "superseded_attempts_at_frontier": len(superseded_history),
             "unbound_legacy_turns_for_game_level": len(unbound_history),
             "exact_bound_turns_at_frontier": len(exact_history),

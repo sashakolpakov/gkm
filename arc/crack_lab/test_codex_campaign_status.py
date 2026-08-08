@@ -187,6 +187,10 @@ def test_infrastructure_turn_is_visible_but_not_charged_as_solver_attempt():
     ranked = S.ranked_frontiers([frontier], turns)
     assert ranked[0]["paid_attempts_at_frontier"] == 0
     assert ranked[0]["infrastructure_turns_at_frontier"] == 1
+    assert ranked[0]["attempt_taint_turns_at_frontier"] == 0
+    assert ranked[0]["non_solver_failure_classes_at_frontier"] == {
+        "infrastructure": 1,
+    }
     assert ranked[0]["failed_attempts_at_frontier"] == 0
 
 
@@ -356,6 +360,9 @@ def test_taint_correction_remains_noncounting_after_generation_cleanup(
     assert ranked["retry_complexity_n"] == 0
     assert ranked["failed_attempts_at_frontier"] == 0
     assert ranked["non_solver_turns_at_frontier"] == 1
+    assert ranked["attempt_taint_turns_at_frontier"] == 1
+    assert ranked["infrastructure_turns_at_frontier"] == 0
+    assert ranked["non_solver_failure_classes_at_frontier"] == {"taint": 1}
     assert S.Guard.local_window_totals([records[0]])["observed_tokens"] == 12345
 
 
