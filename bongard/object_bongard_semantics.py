@@ -50,6 +50,11 @@ GROUP_SIZE = 6
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TASK_ID = re.compile(r"(?:bd|ff|hd)_[A-Za-z0-9_.-]+\Z")
+_EXPLICIT_NEGATION = re.compile(
+    r"\b(?:no|not|none|neither|nor|never|without|lacks?|lacking|"
+    r"absent|absence|missing|omits?|omitted|excludes?|excluding|except)\b",
+    re.IGNORECASE,
+)
 
 
 class ObjectBongardSemanticsError(ValueError):
@@ -62,6 +67,7 @@ def _authority_data() -> dict[str, object]:
         "python_is_canonical_authority": True,
         "model_can_nominate_feature_ids_only": True,
         "model_can_choose_operator_threshold_or_polarity": False,
+        "explicit_semantic_negation_allowed": False,
         "lean_present": False,
         "lean_required": False,
         "lean_removable": True,
@@ -112,7 +118,9 @@ def object_bongard_semantics_prompt() -> str:
         "Ignore pose, scale, location, and incidental stroke variation. Return "
         "group_0 then group_1. Emit prose and feature identifiers only: do not "
         "choose an operator, threshold, number, polarity, weight, negation, "
-        "disjunction, executable text, or experimental role. Python "
+        "disjunction, executable text, or experimental role. Express only "
+        "positively visible cues; do not use constructions such as no, not, "
+        "without, lacking, absent, or missing. Python "
         "alone may later test a finite predeclared operationalization.\n\n"
         "Frozen measurement catalog:\n"
         + _catalog_lines()
@@ -168,6 +176,10 @@ def _parse_semantic_payload(
             rubric = _protocol._audit_prose(row["rubric"], "semantic rubric")
         except (TypeError, ValueError) as exc:
             raise ObjectBongardSemanticsError("semantic rubric is invalid") from exc
+        if _EXPLICIT_NEGATION.search(rubric) is not None:
+            raise ObjectBongardSemanticsError(
+                "semantic rubric contains explicit negation"
+            )
         raw_ids = row["feature_ids"]
         if (
             not isinstance(raw_ids, list)

@@ -160,6 +160,27 @@ def test_parser_and_transport_failures_are_typed_not_empty_nominations() -> None
     assert failed.failure_code == "semantic_transport_failed"
 
 
+@pytest.mark.parametrize(
+    "rubric",
+    (
+        "A figure without a curved boundary recurs.",
+        "A form lacking an enclosed region recurs.",
+        "No rounded appendage is visible.",
+    ),
+)
+def test_explicit_semantic_negation_cannot_smuggle_a_not_predicate(
+    rubric: str,
+) -> None:
+    payload = _payload()
+    payload["profiles"][0]["rubric"] = rubric  # type: ignore[index]
+    artifact, calls = _describe(payload)
+    assert calls == 1
+    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert artifact.rubrics == ()
+    assert artifact.feature_families == ()
+    assert artifact.failure_code == "semantic_payload_rejected"
+
+
 def test_semantic_replay_rejects_pixel_and_artifact_tamper() -> None:
     artifact, _calls = _describe()
     changed_images = _images()
