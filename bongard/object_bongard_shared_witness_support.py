@@ -19,17 +19,19 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 from dataclasses import dataclass
 from enum import Enum
 import re
-from typing import Any, Mapping, Sequence
+from typing import TYPE_CHECKING, Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
 from bongard.object_bongard_shared_witness import (
     ObjectBongardSharedWitnessRubricSpec,
 )
-from bongard.object_bongard_shared_witness_observer import (
-    ObjectBongardSharedWitnessPanelArtifact,
-)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
+
+if TYPE_CHECKING:
+    from bongard.object_bongard_shared_witness_observer import (
+        ObjectBongardSharedWitnessPanelArtifact,
+    )
 
 
 SHARED_WITNESS_CANDIDATE_SCHEMA = "gkm.bongard-shared-witness-candidate.v1"
@@ -132,6 +134,16 @@ def _panel_id(value: object) -> str:
     if not isinstance(value, str) or _PANEL_ID.fullmatch(value) is None:
         raise ObjectBongardSharedWitnessSupportError("panel ID is invalid")
     return value
+
+
+def _artifact_type() -> type[ObjectBongardSharedWitnessPanelArtifact]:
+    """Load the observer contract only when artifact evidence is consumed."""
+
+    from bongard.object_bongard_shared_witness_observer import (
+        ObjectBongardSharedWitnessPanelArtifact,
+    )
+
+    return ObjectBongardSharedWitnessPanelArtifact
 
 
 def object_bongard_shared_witness_support_source_digest() -> str:
@@ -249,9 +261,10 @@ class ObjectBongardSharedWitnessCandidate:
 def _canonical_artifact(
     value: ObjectBongardSharedWitnessPanelArtifact,
 ) -> ObjectBongardSharedWitnessPanelArtifact:
-    if not isinstance(value, ObjectBongardSharedWitnessPanelArtifact):
+    artifact_class = _artifact_type()
+    if not isinstance(value, artifact_class):
         raise TypeError("support evidence must be shared-witness panel artifacts")
-    restored = ObjectBongardSharedWitnessPanelArtifact.from_data(value.to_data())
+    restored = artifact_class.from_data(value.to_data())
     if restored != value:
         raise ObjectBongardSharedWitnessSupportError("observer artifact round trip differs")
     return restored
@@ -593,11 +606,12 @@ class ObjectBongardSharedWitnessSupportVersionSpace:
         ):
             raise ObjectBongardSharedWitnessSupportError("version-space policy differs")
         try:
+            artifact_class = _artifact_type()
             result = cls(
                 raw["algorithm_digest"], raw["rubric_spec_digest"], raw["observer_protocol_digest"],
                 raw["observer_runtime_identity_digest"],
                 ObjectBongardSharedWitnessCandidate.from_data(raw["candidate"]),
-                tuple(ObjectBongardSharedWitnessPanelArtifact.from_data(item) for item in raw["support_artifacts"]),
+                tuple(artifact_class.from_data(item) for item in raw["support_artifacts"]),
                 tuple(raw["support_panel_ids"]),
                 tuple(SharedWitnessSupportSide(item) for item in raw["support_sides"]),
                 tuple(Disposition(item) for item in raw["row"]),
