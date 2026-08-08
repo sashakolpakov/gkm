@@ -21,6 +21,7 @@ _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 from dataclasses import dataclass
 from enum import Enum
+from functools import lru_cache
 import hashlib
 import json
 from pathlib import Path
@@ -753,6 +754,7 @@ def _make_crop_receipt(
     )
 
 
+@lru_cache(maxsize=128)
 def _build_object_scene_inventory(
     png_bytes: bytes,
 ) -> tuple[ObjectSceneProposalInventory, tuple[tuple[str, bytes], ...]]:
