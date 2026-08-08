@@ -37,7 +37,10 @@ from bongard.object_bongard_rubric_task_runner import (
 )
 from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
 from bongard.official_panel_archive import OfficialPanelArchive
-from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
+from bongard.prototype_scene_observer import (
+    PrototypeSceneObserverStatus,
+    prototype_scene_transport_source_digest,
+)
 from bongard.release import OfficialReleaseDescriptor
 from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.tests.test_object_bongard_rubric_ranker import _text_receipt
@@ -182,6 +185,13 @@ def _fixture(tmp_path: Path):
             "max_workers": runtime.max_workers,
             "max_physical_model_calls": runtime.max_physical_model_calls,
             "headless": True,
+            "launch_authorization_digest": "sha256:" + "4" * 64,
+            "campaign_runtime_precommit_digest": "sha256:" + "5" * 64,
+            "calibration_assessment_digest": "6" * 64,
+            "calibration_replay_digest": "sha256:" + "7" * 64,
+            "calibration_observation_inventory_digest": (
+                "sha256:" + "8" * 64
+            ),
         },
         exposure_observed_at="2026-08-08T12:00:00Z",
     )
@@ -259,6 +269,24 @@ class _RankTransport:
         )
 
 
+class _FailingSemanticTransport:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, *_args: object, **_kwargs: object) -> CodexStructuredResult:
+        self.calls += 1
+        raise RuntimeError("synthetic semantic boundary failure")
+
+
+class _FailingRankTransport:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def __call__(self, *_args: object, **_kwargs: object) -> CodexStructuredResult:
+        self.calls += 1
+        raise RuntimeError("synthetic rank boundary failure")
+
+
 def test_one_task_crosses_real_release_gate_only_after_durable_freeze(
     tmp_path: Path,
 ) -> None:
@@ -307,6 +335,96 @@ def test_one_task_crosses_real_release_gate_only_after_durable_freeze(
         runtime=runtime,
         journals_root=tmp_path / "journals",
     )
+    assert replayed == execution
+    assert (visual.calls, rank.calls, budget.count) == calls_before_replay
+
+
+def test_semantic_transport_error_is_a_replayable_two_slot_abstention(
+    tmp_path: Path,
+) -> None:
+    prepared, archive, runtime, _levels = _fixture(tmp_path)
+    visual = _FailingSemanticTransport()
+    rank = _RankTransport()
+    budget = ObjectBongardPhysicalCallBudget(runtime.max_physical_model_calls)
+
+    persisted = run_object_bongard_rubric_campaign_task(
+        task=prepared.plan.tasks[0],
+        prepared=prepared,
+        archive=archive,
+        runtime=runtime,
+        journals_root=tmp_path / "journals",
+        budget=budget,
+        visual_transport=visual,
+        rank_transport=rank,
+    )
+
+    execution = persisted.execution
+    assert execution.semantic_artifact.status is (
+        PrototypeSceneObserverStatus.TRANSPORT_ERROR
+    )
+    assert execution.task_run is None
+    assert execution.support_observations == ()
+    assert execution.query_observations == ()
+    assert execution.correct_count == 0
+    assert execution.abstention_count == 2
+    assert visual.calls == 1
+    assert rank.calls == 0
+    calls_before_replay = (visual.calls, rank.calls, budget.count)
+
+    replayed = cold_replay_object_bongard_rubric_campaign_task(
+        execution,
+        expected_execution_digest=execution.record_digest,
+        execution_store_receipt=persisted.store_receipt,
+        prepared=prepared,
+        archive=archive,
+        runtime=runtime,
+        journals_root=tmp_path / "journals",
+    )
+
+    assert replayed == execution
+    assert (visual.calls, rank.calls, budget.count) == calls_before_replay
+
+
+def test_rank_transport_error_is_a_replayable_two_slot_abstention(
+    tmp_path: Path,
+) -> None:
+    prepared, archive, runtime, levels = _fixture(tmp_path)
+    visual = _VisualTransport(levels)
+    rank = _FailingRankTransport()
+    budget = ObjectBongardPhysicalCallBudget(runtime.max_physical_model_calls)
+
+    persisted = run_object_bongard_rubric_campaign_task(
+        task=prepared.plan.tasks[0],
+        prepared=prepared,
+        archive=archive,
+        runtime=runtime,
+        journals_root=tmp_path / "journals",
+        budget=budget,
+        visual_transport=visual,
+        rank_transport=rank,
+    )
+
+    execution = persisted.execution
+    assert execution.task_run is None
+    assert len(execution.support_observations) == 12
+    assert execution.query_observations == ()
+    assert execution.correct_count == 0
+    assert execution.abstention_count == 2
+    assert execution.rank_journal_summary is not None
+    assert execution.rank_journal_summary["terminal_status"] == "failure"
+    assert rank.calls == 1
+    calls_before_replay = (visual.calls, rank.calls, budget.count)
+
+    replayed = cold_replay_object_bongard_rubric_campaign_task(
+        execution,
+        expected_execution_digest=execution.record_digest,
+        execution_store_receipt=persisted.store_receipt,
+        prepared=prepared,
+        archive=archive,
+        runtime=runtime,
+        journals_root=tmp_path / "journals",
+    )
+
     assert replayed == execution
     assert (visual.calls, rank.calls, budget.count) == calls_before_replay
 

@@ -63,6 +63,8 @@ from bongard.object_bongard_rubric_observer import (
 from bongard.object_bongard_rubric_ranker import (
     ObjectBongardRubricRankResponse,
     ObjectBongardRubricRanker,
+    ObjectBongardRubricRankerError,
+    object_bongard_rubric_rank_input_digest,
     object_bongard_rubric_ranker_output_schema,
     object_bongard_rubric_ranker_prompt,
     object_bongard_rubric_ranker_protocol_digest,
@@ -80,6 +82,8 @@ from bongard.object_bongard_rubric_task_runner import (
 )
 from bongard.object_bongard_rubric_version_space import (
     ObjectBongardRubricSupportVersionSpace,
+    build_object_bongard_rubric_support_version_space,
+    cold_verify_object_bongard_rubric_support_version_space,
     object_bongard_rubric_version_space_algorithm_digest,
     object_bongard_rubric_version_space_source_digest,
 )
@@ -115,7 +119,10 @@ from bongard.prototype_object_lineages import (
     object_lineage_source_digest,
     verify_object_lineage_packet,
 )
-from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
+from bongard.prototype_scene_observer import (
+    PrototypeSceneObserverStatus,
+    prototype_scene_transport_source_digest,
+)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.release import OfficialReleaseDescriptor
 from bongard.transport import CodexStructuredResult
@@ -166,6 +173,32 @@ def _require_raw_digest(value: object, label: str) -> str:
             f"{label} must be a raw lowercase SHA-256"
         )
     return value
+
+
+def _verify_launch_gate_configuration(
+    configuration: Mapping[str, object],
+) -> None:
+    """Require the immutable calibration/launcher chain on every run path."""
+
+    values = dict(configuration)
+    address_keys = (
+        "launch_authorization_digest",
+        "campaign_runtime_precommit_digest",
+        "calibration_replay_digest",
+        "calibration_observation_inventory_digest",
+    )
+    if any(
+        not isinstance(values.get(key), str)
+        or _ADDRESS.fullmatch(values[key]) is None
+        for key in address_keys
+    ) or (
+        not isinstance(values.get("calibration_assessment_digest"), str)
+        or _RAW_DIGEST.fullmatch(values["calibration_assessment_digest"])
+        is None
+    ):
+        raise ObjectBongardRubricCampaignError(
+            "campaign execution lacks a valid calibration launch gate"
+        )
 
 
 def _strict_json_file(path: str | Path, label: str) -> dict[str, Any]:
@@ -560,6 +593,7 @@ def prepare_object_bongard_rubric_campaign(
     store: ObjectBongardReleaseStore,
     runtime: ObjectBongardRubricCampaignRuntime,
     exposure_observed_at: str,
+    launch_gate_bindings: Mapping[str, str],
 ) -> PreparedObjectBongardRelease:
     """Persist the execution precommit and exposure transition before pixels."""
 
@@ -567,6 +601,49 @@ def prepare_object_bongard_rubric_campaign(
         raise ObjectBongardRubricCampaignError(
             "official panel archive differs from campaign metadata"
         )
+    configuration: dict[str, object] = {
+        "campaign_id": CAMPAIGN_ID,
+        "preregistration_digest": metadata.preregistration_digest,
+        "runtime_binding_digest": runtime.binding_digest,
+        "max_workers": runtime.max_workers,
+        "max_physical_model_calls": runtime.max_physical_model_calls,
+        "headless": True,
+        "pure_python_predicates": True,
+        "lean_required": False,
+        "fixed_query_denominator": len(metadata.plan.tasks) * 2,
+    }
+    expected_keys = {
+        "launch_authorization_digest",
+        "campaign_runtime_precommit_digest",
+        "calibration_assessment_digest",
+        "calibration_replay_digest",
+        "calibration_observation_inventory_digest",
+    }
+    bindings = dict(launch_gate_bindings)
+    address_names = (
+        "launch_authorization_digest",
+        "campaign_runtime_precommit_digest",
+        "calibration_replay_digest",
+        "calibration_observation_inventory_digest",
+    )
+    if (
+        set(bindings) != expected_keys
+        or any(
+            not isinstance(bindings.get(name), str)
+            or _ADDRESS.fullmatch(bindings[name]) is None
+            for name in address_names
+        )
+        or not isinstance(bindings.get("calibration_assessment_digest"), str)
+        or re.fullmatch(
+            r"[0-9a-f]{64}", bindings["calibration_assessment_digest"]
+        )
+        is None
+    ):
+        raise ObjectBongardRubricCampaignError(
+            "campaign launch-gate bindings are malformed"
+        )
+    configuration.update(bindings)
+    _verify_launch_gate_configuration(configuration)
     precommit = create_object_bongard_execution_precommit(
         plan=metadata.plan,
         predecessor=metadata.predecessor,
@@ -576,17 +653,7 @@ def prepare_object_bongard_rubric_campaign(
         train_task_ids=metadata.train_task_ids,
         exact_used_task_ids=metadata.exact_used_task_ids,
         runtime_source_bindings=object_bongard_rubric_campaign_source_bindings(),
-        configuration={
-            "campaign_id": CAMPAIGN_ID,
-            "preregistration_digest": metadata.preregistration_digest,
-            "runtime_binding_digest": runtime.binding_digest,
-            "max_workers": runtime.max_workers,
-            "max_physical_model_calls": runtime.max_physical_model_calls,
-            "headless": True,
-            "pure_python_predicates": True,
-            "lean_required": False,
-            "fixed_query_denominator": len(metadata.plan.tasks) * 2,
-        },
+        configuration=configuration,
         exposure_observed_at=exposure_observed_at,
     )
     prepared = prepare_object_bongard_release(
@@ -1010,18 +1077,20 @@ class _JournaledRubricRanker:
             no_tools_attestation=self.runtime.no_tools_attestation,
             transport=journal,
         )
-        response = ranker(
-            version_space,
-            rubric_spec=rubric_spec,
-            semantic_artifact=semantic_artifact,
-            positive_support_artifacts=positive_support_artifacts,
-            negative_support_artifacts=negative_support_artifacts,
-            rank_input_digest=rank_input_digest,
-        )
-        self.budget.account_journal_reuse("rank", journal)
         self.journal = journal
         self.ranker = ranker
-        self.summary = _summary_data(journal.verify())
+        try:
+            response = ranker(
+                version_space,
+                rubric_spec=rubric_spec,
+                semantic_artifact=semantic_artifact,
+                positive_support_artifacts=positive_support_artifacts,
+                negative_support_artifacts=negative_support_artifacts,
+                rank_input_digest=rank_input_digest,
+            )
+        finally:
+            self.budget.account_journal_reuse("rank", journal)
+            self.summary = _summary_data(journal.verify())
         return response
 
     def verify_response(
@@ -1051,7 +1120,7 @@ def _task_execution_content(
         ),
         "semantic_journal_summary": dict(value.semantic_journal_summary),
         "support_observations": [item.to_data() for item in value.support_observations],
-        "task_run": value.task_run.to_data(),
+        "task_run": None if value.task_run is None else value.task_run.to_data(),
         "rank_journal_relative_directory": value.rank_journal_relative_directory,
         "rank_journal_summary": (
             None
@@ -1074,7 +1143,8 @@ def _task_execution_content(
         "abstention_count": value.abstention_count,
         "gap_counts_as_two_incorrect_abstentions": True,
         "formula_frozen_and_durably_reloaded_before_query_release": (
-            value.task_run.status is not ObjectBongardRubricTaskRunStatus.COMPLETE
+            value.task_run is None
+            or value.task_run.status is not ObjectBongardRubricTaskRunStatus.COMPLETE
             or (
                 value.task_run.freeze_reload_calls_made == 1
                 and value.task_run.query_source_calls_made == 1
@@ -1096,7 +1166,7 @@ class ObjectBongardRubricTaskExecution:
     semantic_journal_relative_directory: str
     semantic_journal_summary: Mapping[str, Any]
     support_observations: tuple[ObjectBongardRubricPanelObservation, ...]
-    task_run: ObjectBongardRubricTaskRunArchive
+    task_run: ObjectBongardRubricTaskRunArchive | None
     rank_journal_relative_directory: str | None
     rank_journal_summary: Mapping[str, Any] | None
     query_observations: tuple[ObjectBongardRubricPanelObservation, ...]
@@ -1115,6 +1185,96 @@ class ObjectBongardRubricTaskExecution:
         _require_address(self.record_digest, "task execution digest")
         if (
             not isinstance(self.task_plan, ObjectBongardTaskPlan)
+            or not isinstance(self.semantic_artifact, ObjectBongardSemanticArtifact)
+            or self.semantic_artifact.task_id != self.task_plan.task_id
+            or self.semantic_artifact.observation_context_digest
+            != self.execution_precommit_digest
+            or self.semantic_artifact.group_panel_ids
+            != (
+                self.task_plan.side_0_support_panel_ids,
+                self.task_plan.side_1_support_panel_ids,
+            )
+            or not isinstance(self.semantic_journal_relative_directory, str)
+            or Path(self.semantic_journal_relative_directory).is_absolute()
+            or ".." in Path(self.semantic_journal_relative_directory).parts
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "task execution support parents differ"
+        )
+        _validate_summary_data(self.semantic_journal_summary)
+        if self.task_run is None:
+            common_error_violation = (
+                bool(self.query_observations)
+                or self.task_freeze_store_receipt is not None
+                or self.task_commit_store_receipt is not None
+                or self.correct_count != 0
+                or self.abstention_count != 2
+            )
+            if self.semantic_artifact.status is not PrototypeSceneObserverStatus.SUCCESS:
+                if (
+                    common_error_violation
+                    or self.support_observations
+                    or self.rank_journal_relative_directory is not None
+                    or self.rank_journal_summary is not None
+                ):
+                    raise ObjectBongardRubricCampaignError(
+                        "semantic-error task crossed the rubric or query boundary"
+                    )
+            else:
+                spec = ObjectBongardRubricSpec.from_semantic_artifact(
+                    self.semantic_artifact,
+                    expected_artifact_digest=self.semantic_artifact.artifact_digest,
+                )
+                support_ids = (
+                    *self.task_plan.side_0_support_panel_ids,
+                    *self.task_plan.side_1_support_panel_ids,
+                )
+                if (
+                    common_error_violation
+                    or len(self.support_observations) != 12
+                    or tuple(
+                        item.released_panel.panel_id
+                        for item in self.support_observations
+                    )
+                    != support_ids
+                    or any(
+                        item.artifact.rubric_spec != spec
+                        for item in self.support_observations
+                    )
+                    or not isinstance(self.rank_journal_relative_directory, str)
+                    or Path(self.rank_journal_relative_directory).is_absolute()
+                    or ".." in Path(self.rank_journal_relative_directory).parts
+                    or self.rank_journal_summary is None
+                ):
+                    raise ObjectBongardRubricCampaignError(
+                        "rank-error task support or phase bindings differ"
+                    )
+                summary = _validate_summary_data(self.rank_journal_summary)
+                if summary["terminal_status"] not in {"success", "failure"}:
+                    raise ObjectBongardRubricCampaignError(
+                        "rank-error task lacks a terminal rank journal"
+                    )
+                version = build_object_bongard_rubric_support_version_space(
+                    spec,
+                    tuple(
+                        item.artifact for item in self.support_observations[:6]
+                    ),
+                    tuple(
+                        item.artifact for item in self.support_observations[6:]
+                    ),
+                )
+                if not version.survivor_candidate_digests:
+                    raise ObjectBongardRubricCampaignError(
+                        "rank-error task did not require a rank turn"
+                    )
+            if self.record_digest != _address(_task_execution_content(self)):
+                raise ObjectBongardRubricCampaignError(
+                    "task execution content digest differs"
+                )
+            return
+        if (
+            self.semantic_artifact.status
+            is not PrototypeSceneObserverStatus.SUCCESS
             or self.task_run.task_plan != self.task_plan
             or self.task_run.execution_precommit_digest
             != self.execution_precommit_digest
@@ -1129,14 +1289,10 @@ class ObjectBongardRubricTaskExecution:
                 *self.task_plan.side_0_support_panel_ids,
                 *self.task_plan.side_1_support_panel_ids,
             )
-            or not isinstance(self.semantic_journal_relative_directory, str)
-            or Path(self.semantic_journal_relative_directory).is_absolute()
-            or ".." in Path(self.semantic_journal_relative_directory).parts
         ):
             raise ObjectBongardRubricCampaignError(
-                "task execution support parents differ"
+                "successful semantic task support parents differ"
             )
-        _validate_summary_data(self.semantic_journal_summary)
         complete = self.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
         if complete:
             if (
@@ -1232,7 +1388,10 @@ class ObjectBongardRubricTaskExecution:
             or not isinstance(value["semantic_artifact"], Mapping)
             or not isinstance(value["semantic_journal_summary"], Mapping)
             or not isinstance(value["support_observations"], list)
-            or not isinstance(value["task_run"], Mapping)
+            or (
+                value["task_run"] is not None
+                and not isinstance(value["task_run"], Mapping)
+            )
             or not isinstance(value["query_observations"], list)
         ):
             raise ObjectBongardRubricCampaignError(
@@ -1257,7 +1416,13 @@ class ObjectBongardRubricTaskExecution:
                 ObjectBongardRubricPanelObservation.from_data(item)
                 for item in value["support_observations"]
             ),
-            task_run=ObjectBongardRubricTaskRunArchive.from_data(value["task_run"]),
+            task_run=(
+                None
+                if value["task_run"] is None
+                else ObjectBongardRubricTaskRunArchive.from_data(
+                    value["task_run"]
+                )
+            ),
             rank_journal_relative_directory=value[
                 "rank_journal_relative_directory"
             ],
@@ -1312,6 +1477,19 @@ class PersistedObjectBongardRubricTaskExecution:
             )
 
 
+def _persist_rubric_task_execution(
+    prepared: PreparedObjectBongardRelease,
+    execution: ObjectBongardRubricTaskExecution,
+) -> PersistedObjectBongardRubricTaskExecution:
+    receipt = prepared.store.persist(
+        object_kind="rubric-task-execution",
+        object_digest=execution.record_digest,
+        data=execution.to_data(),
+    )
+    prepared.store.verify(receipt, expected_data=execution.to_data())
+    return PersistedObjectBongardRubricTaskExecution(execution, receipt)
+
+
 def run_object_bongard_rubric_campaign_task(
     *,
     task: ObjectBongardTaskPlan,
@@ -1326,6 +1504,7 @@ def run_object_bongard_rubric_campaign_task(
     """Execute one task through the real durable support/freeze/query gate."""
 
     verify_prepared_object_bongard_release(prepared)
+    _verify_launch_gate_configuration(prepared.precommit.configuration)
     if (
         not isinstance(task, ObjectBongardTaskPlan)
         or task not in prepared.plan.tasks
@@ -1373,6 +1552,27 @@ def run_object_bongard_rubric_campaign_task(
         budget=budget,
         visual_transport=visual_transport,
     )
+    if semantic.status is not PrototypeSceneObserverStatus.SUCCESS:
+        execution = ObjectBongardRubricTaskExecution.seal(
+            campaign_source_digest=object_bongard_rubric_campaign_source_digest(),
+            task_plan=task,
+            execution_precommit_digest=prepared.precommit.record_digest,
+            release_authorization_digest=prepared.authorization.record_digest,
+            runtime_binding_digest=runtime.binding_digest,
+            semantic_artifact=semantic,
+            semantic_journal_relative_directory=semantic_relative,
+            semantic_journal_summary=semantic_summary,
+            support_observations=(),
+            task_run=None,
+            rank_journal_relative_directory=None,
+            rank_journal_summary=None,
+            query_observations=(),
+            task_freeze_store_receipt=None,
+            task_commit_store_receipt=None,
+            correct_count=0,
+            abstention_count=2,
+        )
+        return _persist_rubric_task_execution(prepared, execution)
     spec = ObjectBongardRubricSpec.from_semantic_artifact(
         semantic, expected_artifact_digest=semantic.artifact_digest
     )
@@ -1523,17 +1723,45 @@ def run_object_bongard_rubric_campaign_task(
             result[side] = observation.artifact
         return result
 
-    task_run = run_object_bongard_rubric_task(
-        task,
-        semantic,
-        tuple(item.artifact for item in support_observations[:6]),
-        tuple(item.artifact for item in support_observations[6:]),
-        execution_precommit_digest=prepared.precommit.record_digest,
-        ranker=journaled_ranker,
-        freeze_committer=commit_freeze,
-        freeze_reloader=reload_freeze,
-        query_source=release_and_observe_queries,
-    )
+    try:
+        task_run = run_object_bongard_rubric_task(
+            task,
+            semantic,
+            tuple(item.artifact for item in support_observations[:6]),
+            tuple(item.artifact for item in support_observations[6:]),
+            execution_precommit_digest=prepared.precommit.record_digest,
+            ranker=journaled_ranker,
+            freeze_committer=commit_freeze,
+            freeze_reloader=reload_freeze,
+            query_source=release_and_observe_queries,
+        )
+    except ObjectBongardRubricRankerError:
+        if (
+            journaled_ranker.summary is None
+            or freeze_state
+            or query_observations
+        ):
+            raise
+        execution = ObjectBongardRubricTaskExecution.seal(
+            campaign_source_digest=object_bongard_rubric_campaign_source_digest(),
+            task_plan=task,
+            execution_precommit_digest=prepared.precommit.record_digest,
+            release_authorization_digest=prepared.authorization.record_digest,
+            runtime_binding_digest=runtime.binding_digest,
+            semantic_artifact=semantic,
+            semantic_journal_relative_directory=semantic_relative,
+            semantic_journal_summary=semantic_summary,
+            support_observations=tuple(support_observations),
+            task_run=None,
+            rank_journal_relative_directory=rank_relative,
+            rank_journal_summary=journaled_ranker.summary,
+            query_observations=(),
+            task_freeze_store_receipt=None,
+            task_commit_store_receipt=None,
+            correct_count=0,
+            abstention_count=2,
+        )
+        return _persist_rubric_task_execution(prepared, execution)
     cold_replay_object_bongard_rubric_task(
         task_run, expected_archive_digest=task_run.record_digest
     )
@@ -1571,13 +1799,7 @@ def run_object_bongard_rubric_campaign_task(
         correct_count=task_run.correct_count if complete else 0,
         abstention_count=task_run.abstention_count if complete else 2,
     )
-    receipt = prepared.store.persist(
-        object_kind="rubric-task-execution",
-        object_digest=execution.record_digest,
-        data=execution.to_data(),
-    )
-    prepared.store.verify(receipt, expected_data=execution.to_data())
-    return PersistedObjectBongardRubricTaskExecution(execution, receipt)
+    return _persist_rubric_task_execution(prepared, execution)
 
 
 def _forbidden_model_transport(*_args: object, **_kwargs: object) -> CodexStructuredResult:
@@ -1696,10 +1918,34 @@ def cold_replay_object_bongard_rubric_campaign_task(
     )
     root = Path(journals_root).absolute()
     support = restored.support_observations
-    support_png = {
-        item.released_panel.panel_id: item.released_panel.exact_png_bytes
-        for item in support
-    }
+    semantic_failed = (
+        restored.task_run is None
+        and restored.semantic_artifact.status
+        is not PrototypeSceneObserverStatus.SUCCESS
+    )
+    if semantic_failed:
+        support_ids = (
+            *restored.task_plan.side_0_support_panel_ids,
+            *restored.task_plan.side_1_support_panel_ids,
+        )
+        released_support = tuple(
+            release_object_bongard_support_panel(
+                prepared=prepared, archive=archive, panel_id=panel_id
+            )[0]
+            for panel_id in support_ids
+        )
+        support_png = {
+            item.panel_id: item.exact_png_bytes for item in released_support
+        }
+        semantic_pngs = tuple(item.exact_png_bytes for item in released_support)
+    else:
+        support_png = {
+            item.released_panel.panel_id: item.released_panel.exact_png_bytes
+            for item in support
+        }
+        semantic_pngs = tuple(
+            item.released_panel.exact_png_bytes for item in support
+        )
     verify_object_bongard_semantic_artifact(
         restored.semantic_artifact,
         support_png_by_panel_id=support_png,
@@ -1712,8 +1958,8 @@ def cold_replay_object_bongard_rubric_campaign_task(
         + [f"group_1_ref_{index:02d}.png" for index in range(6)]
     )
     semantic_images = tuple(
-        (name, item.released_panel.exact_png_bytes)
-        for name, item in zip(semantic_names, support, strict=True)
+        (name, png)
+        for name, png in zip(semantic_names, semantic_pngs, strict=True)
     )
     semantic_journal = ObjectBongardNamedImageTurnJournalTransport(
         root / restored.semantic_journal_relative_directory,
@@ -1730,6 +1976,8 @@ def cold_replay_object_bongard_rubric_campaign_task(
     _verify_journal_summary(
         semantic_journal.verify(), restored.semantic_journal_summary
     )
+    if semantic_failed:
+        return restored
     for index, observation in enumerate(support):
         _cold_replay_panel_observation(
             observation,
@@ -1741,6 +1989,108 @@ def cold_replay_object_bongard_rubric_campaign_task(
             runtime=runtime.visual,
             journals_root=root,
         )
+
+    if restored.task_run is None:
+        if (
+            restored.rank_journal_relative_directory is None
+            or restored.rank_journal_summary is None
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "rank-error cold replay lacks its terminal journal"
+            )
+        spec = ObjectBongardRubricSpec.from_semantic_artifact(
+            restored.semantic_artifact,
+            expected_artifact_digest=restored.semantic_artifact.artifact_digest,
+        )
+        positives = tuple(item.artifact for item in support[:6])
+        negatives = tuple(item.artifact for item in support[6:])
+        version = build_object_bongard_rubric_support_version_space(
+            spec, positives, negatives
+        )
+        version = cold_verify_object_bongard_rubric_support_version_space(
+            version, spec, positives, negatives
+        )
+        rank_input = object_bongard_rubric_rank_input_digest(
+            version_space=version,
+            rubric_spec=spec,
+            semantic_artifact=restored.semantic_artifact,
+            positive_support_artifacts=positives,
+            negative_support_artifacts=negatives,
+        )
+        prompt = object_bongard_rubric_ranker_prompt(
+            version_space=version,
+            rubric_spec=spec,
+            semantic_artifact=restored.semantic_artifact,
+            positive_support_artifacts=positives,
+            negative_support_artifacts=negatives,
+            rank_input_digest=rank_input,
+        )
+        journal = ObjectBongardTextTurnJournalTransport(
+            root / restored.rank_journal_relative_directory,
+            authorization_digest=prepared.authorization.record_digest,
+            execution_precommit_digest=prepared.precommit.record_digest,
+            task_id=restored.task_plan.task_id,
+            turn_kind="rank",
+            expected_prompt=prompt,
+            expected_output_schema=object_bongard_rubric_ranker_output_schema(),
+            runtime=runtime.rank,
+            underlying_transport=_forbidden_model_transport,
+        )
+        snapshot = runtime.rank.cloud_policy_cache_snapshot
+        if snapshot is None:
+            raise ObjectBongardRubricCampaignError(
+                "rank-error cold replay lacks policy-cache snapshot"
+            )
+        ranker = ObjectBongardRubricRanker(
+            model=runtime.rank.model,
+            reasoning_effort=runtime.rank.reasoning_effort,
+            minutes=runtime.rank.minutes,
+            verbose=runtime.rank.verbose,
+            executable=runtime.rank.executable,
+            expected_launcher_digest=runtime.rank.expected_launcher_digest,
+            cloud_policy_cache_snapshot=snapshot,
+            expected_cloud_policy_cache_binding=runtime.rank.policy_cache_binding,
+            expected_transport_source_digest=runtime.rank.transport_source_digest,
+            model_catalog_snapshot=runtime.rank.model_catalog_snapshot,
+            no_tools_attestation=runtime.rank.no_tools_attestation,
+            transport=journal,
+        )
+        try:
+            response = ranker(
+                version,
+                rubric_spec=spec,
+                semantic_artifact=restored.semantic_artifact,
+                positive_support_artifacts=positives,
+                negative_support_artifacts=negatives,
+                rank_input_digest=rank_input,
+            )
+            ranker.verify_response(
+                response,
+                version_space=version,
+                rubric_spec=spec,
+                semantic_artifact=restored.semantic_artifact,
+                positive_support_artifacts=positives,
+                negative_support_artifacts=negatives,
+                rank_input_digest=rank_input,
+                expected_response_digest=response.response_digest,
+            )
+            response.assert_matches(
+                survivor_candidate_digests=version.survivor_candidate_digests,
+                rubric_spec_digest=spec.spec_digest,
+                semantic_artifact_digest=restored.semantic_artifact.artifact_digest,
+                version_space_digest=version.version_space_digest,
+                rank_input_digest=rank_input,
+            )
+        except ObjectBongardRubricRankerError:
+            pass
+        else:
+            raise ObjectBongardRubricCampaignError(
+                "rank-error journal now yields a valid rank response"
+            )
+        _verify_journal_summary(
+            journal.verify(), restored.rank_journal_summary
+        )
+        return restored
 
     task_run = cold_replay_object_bongard_rubric_task(
         restored.task_run,
@@ -1906,6 +2256,9 @@ class ObjectBongardRubricCampaignArchive:
             raise ObjectBongardRubricCampaignError(
                 "campaign archive source differs"
             )
+        _verify_launch_gate_configuration(
+            self.execution_precommit.configuration
+        )
         for name in ("runtime_binding_digest", "record_digest"):
             _require_address(getattr(self, name), name)
         if (
@@ -1973,7 +2326,8 @@ class ObjectBongardRubricCampaignArchive:
             )
         count = len(self.task_executions)
         complete = sum(
-            item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
+            item.task_run is not None
+            and item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
             for item in self.task_executions
         )
         correct = sum(item.correct_count for item in self.task_executions)
@@ -2183,7 +2537,8 @@ def run_object_bongard_rubric_campaign(
     executions = tuple(item.execution for item in ordered)
     receipts = tuple(item.store_receipt for item in ordered)
     complete = sum(
-        item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
+        item.task_run is not None
+        and item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
         for item in executions
     )
     correct = sum(item.correct_count for item in executions)
