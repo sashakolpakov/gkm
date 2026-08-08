@@ -58,7 +58,7 @@ SHARED_WITNESS_ENTITY_EVIDENCE_SCHEMA = (
     "gkm.bongard-shared-witness-entity-evidence.v1"
 )
 SHARED_WITNESS_PANEL_PROTOCOL_ID = (
-    "bongard.shared-witness-panel/all-entities-neutral-endpoints-v1"
+    "bongard.shared-witness-panel/individual-entities-neutral-endpoints-v2"
 )
 SHARED_WITNESS_MAX_ENTITIES = 8
 
@@ -84,6 +84,10 @@ def _authority_data() -> dict[str, object]:
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
         "model_inventories_all_top_level_entities": True,
+        "anchor_scope": "individual_figure",
+        "full_panel_scope_allowed": False,
+        "model_can_self_authorize_anchor_scope": False,
+        "overflow_requires_uncertain_inventory": True,
         "model_sees_neutral_content_sorted_endpoint_cues": True,
         "endpoint_group_mapping_model_visible": False,
         "projection_occurs_after_payload_freeze": True,
@@ -303,18 +307,19 @@ def object_bongard_shared_witness_panel_prompt(
     return (
         "Inspect panel.png as one complete drawing. Inventory every top-level "
         "spatially coherent figure, including figures that do not match the named "
-        "anchor, up to eight total. Use reading order, top-to-bottom then left-to-right, "
-        "and assign consecutive IDs e00, e01, and so on with no gaps. For each figure "
+        "anchor. Use reading order, top-to-bottom then left-to-right, "
+        "and assign consecutive IDs e00, e01, and so on with no gaps. Return at most "
+        "the first eight figures; if more than eight exist, return those first eight "
+        "and set inventory_status to uncertain. For each figure "
         "return its tight normalized Q16 bounding box, a short visible locator, an "
         "independent judgment of whether it is one individual "
         f"{contrast.shared_anchor}, and an independent judgment for each neutral cue "
         f"on that same individual's {contrast.visual_axis}. Judge clear, ambiguous, "
         "or none. Include short visible evidence for the anchor and for each cue. "
         "Never pool parts from separate figures. Never assign different cues to "
-        "different figures as though they described one individual. If the named "
-        "anchor is inherently the complete-panel arrangement, return exactly e00 with "
-        "scope full_panel and bbox x0=0,y0=0,x1=65535,y1=65535; otherwise use scope "
-        "top_level_figure. Set inventory_status to uncertain if overlap, cropping, or "
+        "different figures as though they described one individual. "
+        "Every entity has scope top_level_figure; never combine separate figures into "
+        "one full-panel entity. Set inventory_status to uncertain if overlap, cropping, or "
         "visual ambiguity prevents a confident complete inventory. Endpoint meanings "
         "are intentionally neutral; do not infer hidden roles.\n\nNeutral endpoint cues, "
         "ordered by content digest:\n"
@@ -353,7 +358,7 @@ def object_bongard_shared_witness_panel_output_schema(
             "entity_id": {"type": "string"},
             "scope": {
                 "type": "string",
-                "enum": ["top_level_figure", "full_panel"],
+                "enum": ["top_level_figure"],
             },
             "bbox_q16": bbox,
             "locator": {"type": "string"},
@@ -534,12 +539,10 @@ class ObjectBongardSharedWitnessEntityEvidence:
     def __post_init__(self) -> None:
         if not isinstance(self.entity_id, str) or _ENTITY_ID.fullmatch(self.entity_id) is None:
             raise ObjectBongardSharedWitnessObserverError("entity ID differs")
-        if self.scope not in ("top_level_figure", "full_panel"):
+        if self.scope != "top_level_figure":
             raise ObjectBongardSharedWitnessObserverError("entity scope differs")
         if not isinstance(self.bbox_q16, Q16BBox):
             raise TypeError("entity bbox must be Q16BBox")
-        if self.scope == "full_panel" and self.bbox_q16 != Q16BBox(0, 0, 65535, 65535):
-            raise ObjectBongardSharedWitnessObserverError("full-panel bbox differs")
         _bounded_prose(self.locator, "entity locator", 120)
         _bounded_prose(self.anchor_evidence, "anchor evidence", 180)
         if self.anchor_interval != BinarySupportInterval.from_judgment(
@@ -752,12 +755,6 @@ class ObjectBongardSharedWitnessPanelObservation:
             ):
                 raise ObjectBongardSharedWitnessObserverError("scored observation differs")
             _digest(self.payload_freeze_digest, "payload freeze digest")
-            if any(item.scope == "full_panel" for item in self.entities) and (
-                len(self.entities) != 1 or self.entities[0].scope != "full_panel"
-            ):
-                raise ObjectBongardSharedWitnessObserverError(
-                    "full-panel scope must be the sole entity"
-                )
             for entity in self.entities:
                 by_id = {item.cue_id: item.interval for item in entity.cue_judgments}
                 if (
@@ -985,6 +982,9 @@ def object_bongard_shared_witness_panel_protocol_digest() -> str:
             "physical_calls_per_panel": 1,
             "whole_panel_only": True,
             "maximum_entities": SHARED_WITNESS_MAX_ENTITIES,
+            "anchor_scope": "individual_figure",
+            "full_panel_scope_allowed": False,
+            "overflow_policy": "first-eight-and-uncertain",
             "entity_ids": [f"e{index:02d}" for index in range(SHARED_WITNESS_MAX_ENTITIES)],
             "support_map": {
                 "clear": [1, 1],
@@ -1198,7 +1198,7 @@ class ObjectBongardSharedWitnessPanelArtifact:
                 )
             )
             if (
-                self.model_payload is None or self.receipt is None
+                self.model_payload is None or not isinstance(self.receipt, CodexReceipt)
                 or self.failure_code is not None or self.failure_type is not None
                 or self.observation.target_cue_id != target_cue_id
                 or self.observation.foil_cue_id != foil_cue_id
@@ -1220,6 +1220,40 @@ class ObjectBongardSharedWitnessPanelArtifact:
                 raise ObjectBongardSharedWitnessObserverError("parser failure lacks payload receipt")
             if self.status is PrototypeSceneObserverStatus.TRANSPORT_ERROR and (self.model_payload is not None or self.receipt is not None):
                 raise ObjectBongardSharedWitnessObserverError("transport failure contains payload")
+            if self.status is PrototypeSceneObserverStatus.PARSER_ERROR:
+                if (
+                    self.failure_code != "observer_payload_rejected"
+                    or not isinstance(self.receipt, CodexReceipt)
+                ):
+                    raise ObjectBongardSharedWitnessObserverError(
+                        "parser failure identity differs"
+                    )
+                assert self.model_payload is not None
+                try:
+                    failed_freeze_digest = _payload_freeze_digest(
+                        self.model_payload,
+                        self.receipt,
+                        expected_cues,
+                    )
+                    _project_frozen_payload(
+                        self.model_payload,
+                        rubric_spec=self.rubric_spec,
+                        endpoint_cues=expected_cues,
+                        payload_freeze_digest=failed_freeze_digest,
+                    )
+                except Exception as exc:
+                    if self.failure_type != _scene_runtime._exception_type(exc):
+                        raise ObjectBongardSharedWitnessObserverError(
+                            "parser failure type differs from deterministic replay"
+                        ) from exc
+                else:
+                    raise ObjectBongardSharedWitnessObserverError(
+                        "parser failure payload projects successfully"
+                    )
+            elif self.failure_code != "observer_transport_failed":
+                raise ObjectBongardSharedWitnessObserverError(
+                    "transport failure identity differs"
+                )
         else:
             raise ObjectBongardSharedWitnessObserverError("artifact status differs")
         if self.receipt is not None:
