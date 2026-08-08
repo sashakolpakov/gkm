@@ -80,6 +80,7 @@ INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
             "scheduler_sandbox_isolated_generation_abandoned_v1",
             "scheduler_sandbox_isolated_generation_abandoned_v2",
             "scheduler_sandbox_isolated_generation_abandoned_v3",
+            "scheduler_sandbox_isolated_generation_abandoned_v4",
         }),
 }
 
@@ -1620,9 +1621,9 @@ def infrastructure_noncounting_events(
 ) -> list[dict[str, Any]]:
     """Return scheduler failures that deliberately are not solver turns."""
 
-    return [
-        row for row in records
-        if (
+    result: list[dict[str, Any]] = []
+    for index, row in enumerate(records):
+        if not (
             row.get("event") in INFRASTRUCTURE_NONCOUNTING_SCHEMAS
             and row.get("schema")
             in INFRASTRUCTURE_NONCOUNTING_SCHEMAS[row["event"]]
@@ -1632,10 +1633,45 @@ def infrastructure_noncounting_events(
                 row.get("schema") in {
                     "scheduler_sandbox_isolated_generation_abandoned_v2",
                     "scheduler_sandbox_isolated_generation_abandoned_v3",
+                    "scheduler_sandbox_isolated_generation_abandoned_v4",
                 }
             )
-        )
-    ]
+        ):
+            continue
+        if row.get("schema") == (
+            "scheduler_sandbox_isolated_generation_abandoned_v4"
+        ):
+            valid_transition = (
+                row.get("canonical_digest_transition_schema")
+                == "scheduler_audited_canonical_digest_transition_v1"
+                and _is_sha256(row.get("canonical_digest"))
+                and _is_sha256(row.get("observed_canonical_digest"))
+                and row.get("observed_canonical_digest")
+                != row.get("canonical_digest")
+                and isinstance(
+                    row.get("canonical_digest_transition_id"), str
+                )
+                and bool(row.get("canonical_digest_transition_id"))
+            )
+            authority = (
+                records[index + 1] if index + 1 < len(records) else None
+            )
+            sealed_transition = (
+                isinstance(authority, dict)
+                and authority.get("event")
+                == "codex_dispatch_release_authorized"
+                and authority.get("dispatch_id") == row.get("dispatch_id")
+                and authority.get("projected_item_sha256")
+                == row.get("projected_item_sha256")
+                and authority.get("terminal_kind")
+                == "interrupted_sandbox_isolated_operator_terminal_v1"
+                and authority.get("terminal_record_sha256")
+                == _sha256_json(row)
+            )
+            if not valid_transition or not sealed_transition:
+                continue
+        result.append(row)
+    return result
 
 
 def _joined_window_turns(

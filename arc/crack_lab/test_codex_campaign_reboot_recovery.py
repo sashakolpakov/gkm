@@ -4423,6 +4423,46 @@ def _interrupted_generation_fixture(
     return fixture
 
 
+def _install_fixture_canonical_transition(fixture, monkeypatch):
+    """Pin one synthetic metadata-only drift to exercise the migration lane."""
+
+    armed = _canonical_rows(fixture["marker"])[0]
+    target = fixture["artifact"] / "solver.py"
+    metadata = target.stat(follow_symlinks=False)
+    os.utime(
+        target,
+        ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1),
+    )
+    observed = R._capture_canonical_rollback(fixture["item"]).digest
+    historical = armed["historical_runner"]
+    frontier = armed["frontier_binding"]
+    pin = Recovery.AuditedCanonicalDigestTransition(
+        transition_id="synthetic-metadata-refresh-v1",
+        dispatch_id=fixture["dispatch_id"],
+        game=armed["game"],
+        target_level=armed["target_level"],
+        reached=frontier["reached"],
+        parent_action_count=frontier["parent_action_count"],
+        retry_complexity_n=armed["retry_complexity_n"],
+        projected_item_sha256=armed["projected_item_sha256"],
+        runner_source_sha256=historical["source_sha256"],
+        runner_head_commit=historical["head_commit"],
+        canonical_root_identity=tuple(armed["canonical_root_identity"]),
+        canonical_digest=armed["canonical_digest"],
+        observed_canonical_digest=observed,
+        frontier_binding_schema=frontier["frontier_binding_schema"],
+        parent_checkpoint_sha256=frontier["parent_checkpoint_sha256"],
+        parent_source_tree_sha256=frontier["parent_source_tree_sha256"],
+        frontier_sha256=frontier["frontier_sha256"],
+    )
+    monkeypatch.setattr(
+        Recovery,
+        "AUDITED_CANONICAL_DIGEST_TRANSITIONS",
+        {fixture["dispatch_id"]: pin},
+    )
+    return pin
+
+
 def _arm_interrupted_generation(fixture, monkeypatch):
     def absent(_parsed):
         observed = datetime.now(timezone.utc).isoformat()
@@ -4451,10 +4491,12 @@ def _recover_interrupted_generation(fixture, armed):
 
 
 def _armed_one_exec_crash_fixture(
-    tmp_path, monkeypatch, interrupted_exec
+    tmp_path, monkeypatch, interrupted_exec, *, canonical_transition=False
 ):
     if interrupted_exec:
         fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+        if canonical_transition:
+            _install_fixture_canonical_transition(fixture, monkeypatch)
         armed = _arm_interrupted_generation(fixture, monkeypatch)
         recover = lambda: _recover_interrupted_generation(fixture, armed)
     else:
@@ -4669,13 +4711,153 @@ def test_interrupted_generation_arm_requires_full_taint_pass(
     assert len(_canonical_rows(fixture["marker"])) == 2
 
 
-def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
+@pytest.mark.parametrize(
+    "drift", ("payload", "inventory", "mode", "mtime", "xattr")
+)
+def test_interrupted_canonical_transition_rejects_every_post_pin_drift(
+    tmp_path, monkeypatch, drift
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    _install_fixture_canonical_transition(fixture, monkeypatch)
+    target = fixture["artifact"] / "solver.py"
+    if drift == "payload":
+        target.write_bytes(b"changed after audited observation\n")
+    elif drift == "inventory":
+        (fixture["artifact"] / "unexpected.txt").write_bytes(b"drift\n")
+    elif drift == "mode":
+        os.chmod(target, stat.S_IMODE(target.stat().st_mode) ^ stat.S_IXUSR)
+    elif drift == "mtime":
+        metadata = target.stat(follow_symlinks=False)
+        os.utime(
+            target,
+            ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1),
+        )
+    else:
+        attribute = (
+            "com.gkm.scheduler-test"
+            if sys.platform == "darwin"
+            else "user.gkm_scheduler_test"
+        )
+        try:
+            os.setxattr(
+                target,
+                attribute,
+                b"changed after audited observation",
+                follow_symlinks=False,
+            )
+        except (AttributeError, OSError):
+            pytest.skip("extended attributes are unavailable")
+
+    marker_before = fixture["marker"].read_bytes()
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="canonical/frontier baseline changed",
+    ):
+        _arm_interrupted_generation(fixture, monkeypatch)
+    assert fixture["marker"].read_bytes() == marker_before
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_interrupted_generation_has_no_generic_canonical_transition(
     tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    target = fixture["artifact"] / "solver.py"
+    metadata = target.stat(follow_symlinks=False)
+    os.utime(
+        target,
+        ns=(metadata.st_atime_ns, metadata.st_mtime_ns + 1),
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="canonical/frontier baseline changed",
+    ):
+        _arm_interrupted_generation(fixture, monkeypatch)
+    assert len(_canonical_rows(fixture["marker"])) == 2
+
+
+def test_interrupted_canonical_transition_parser_rejects_arm_neighbours(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    pin = _install_fixture_canonical_transition(fixture, monkeypatch)
+    _arm_interrupted_generation(fixture, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    mutations = (
+        ("observed_canonical_digest", "f" * 64),
+        ("canonical_digest", "e" * 64),
+        ("canonical_digest_transition_schema", "nearby-transition-v1"),
+        ("canonical_digest_transition_id", "nearby-transition-v1"),
+        ("projected_item_sha256", "d" * 64),
+    )
+    for field, value in mutations:
+        changed = copy.deepcopy(rows)
+        changed[2][field] = value
+        raw = b"".join(
+            Recovery.canonical_json_line(row) for row in changed
+        )
+        with pytest.raises(Recovery.RecoveryEvidenceError):
+            Recovery.parse_interrupted_generation_marker(
+                raw, require_recovery_arm=True
+            )
+    assert rows[2]["canonical_digest"] == pin.canonical_digest
+
+
+def test_interrupted_canonical_transition_pin_binds_every_incident_coordinate(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    pin = _install_fixture_canonical_transition(fixture, monkeypatch)
+    armed = _canonical_rows(fixture["marker"])[0]
+    assert Recovery.audited_canonical_digest_transition(
+        armed, pin.observed_canonical_digest
+    ) == pin
+
+    mutations = (
+        (("dispatch_id",), "0" * 32),
+        (("game",), "nearby"),
+        (("target_level",), armed["target_level"] + 1),
+        (("retry_complexity_n",), armed["retry_complexity_n"] + 1),
+        (("projected_item_sha256",), "1" * 64),
+        (("canonical_root_identity",), [1, 2]),
+        (("canonical_digest",), "2" * 64),
+        (("historical_runner", "source_sha256"), "3" * 64),
+        (("historical_runner", "head_commit"), "4" * 40),
+        (("frontier_binding", "game"), "nearby"),
+        (("frontier_binding", "target_level"), 2),
+        (("frontier_binding", "reached"), 1),
+        (("frontier_binding", "parent_action_count"), 1),
+        (("frontier_binding", "frontier_binding_schema"), 2),
+        (("frontier_binding", "parent_checkpoint_sha256"), "5" * 64),
+        (("frontier_binding", "parent_source_tree_sha256"), "6" * 64),
+        (("frontier_binding", "frontier_sha256"), "7" * 64),
+    )
+    for path, value in mutations:
+        changed = copy.deepcopy(armed)
+        target = changed
+        for component in path[:-1]:
+            target = target[component]
+        target[path[-1]] = value
+        assert Recovery.audited_canonical_digest_transition(
+            changed, pin.observed_canonical_digest
+        ) is None
+    assert Recovery.audited_canonical_digest_transition(
+        armed, "8" * 64
+    ) is None
+
+
+@pytest.mark.parametrize("canonical_transition", (False, True))
+def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
+    tmp_path, monkeypatch, canonical_transition
 ):
     fixture = _interrupted_generation_fixture(
         tmp_path,
         monkeypatch,
         boundary_finding_counts={"dynamic_execution": 1},
+    )
+    pin = (
+        _install_fixture_canonical_transition(fixture, monkeypatch)
+        if canonical_transition else None
     )
     baseline_latest = (fixture["wip"] / "latest.json").read_bytes()
     (fixture["wip"] / "latest.json").write_bytes(
@@ -4686,6 +4868,19 @@ def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
     old_scratch = _sandbox_tree_snapshot(fixture["scratch"])
     armed = _arm_interrupted_generation(fixture, monkeypatch)
     nonce = armed["recovery_nonce"]
+    installed_arm = _canonical_rows(fixture["marker"])[2]
+    if pin is not None:
+        assert installed_arm["recovery_arm_schema"] == (
+            Recovery.INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA
+        )
+        assert installed_arm["canonical_digest"] == pin.canonical_digest
+        assert installed_arm["observed_canonical_digest"] == (
+            pin.observed_canonical_digest
+        )
+    else:
+        assert installed_arm["recovery_arm_schema"] == (
+            Recovery.INTERRUPTED_GENERATION_ARM_SCHEMA
+        )
 
     result = R._recover_interrupted_generation_release(
         fixture["item"],
@@ -4710,7 +4905,21 @@ def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
     correction, event = rows[1:3]
     assert correction["boundary_finding_counts"] == {"dynamic_execution": 1}
     assert event["boundary_finding_counts"] == {"dynamic_execution": 1}
-    assert event["schema"] == R.INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+    assert event["schema"] == (
+        R.INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+        if canonical_transition
+        else R.INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+    )
+    if pin is not None:
+        assert event["canonical_digest"] == pin.canonical_digest
+        assert (
+            event["observed_canonical_digest"]
+            == pin.observed_canonical_digest
+        )
+        assert event["canonical_digest_transition_id"] == pin.transition_id
+        assert event["canonical_digest_transition_schema"] == (
+            Recovery.CANONICAL_DIGEST_TRANSITION_SCHEMA
+        )
     assert event["retry_increment"] == 0
     assert event["codex_exec_appended"] is True
     assert event["taint_verdict"] == "quarantined"
@@ -4739,6 +4948,33 @@ def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
                 fixture["item"], changed_absence
             )
     assert R.Status.infrastructure_noncounting_events(rows) == [event]
+    if pin is not None:
+        sealed_rows = copy.deepcopy(rows)
+        sealed_ledger = fixture["ledger"].read_bytes()
+        for field, value in (
+            ("canonical_digest", "9" * 64),
+            ("observed_canonical_digest", "f" * 64),
+            ("canonical_root_identity", [1, 2]),
+            ("projected_item_sha256", "e" * 64),
+            ("historical_runner_source_sha256", "d" * 64),
+            ("historical_runner_head_commit", "c" * 40),
+            ("canonical_digest_transition_schema", "nearby-v1"),
+            ("canonical_digest_transition_id", "nearby-v1"),
+        ):
+            changed_rows = copy.deepcopy(sealed_rows)
+            changed_rows[2][field] = value
+            _write_canonical_rows(fixture["ledger"], changed_rows)
+            assert R.Status.infrastructure_noncounting_events(
+                changed_rows
+            ) == []
+            with pytest.raises(R.CampaignPlanError):
+                R._completed_sandbox_isolation_result(
+                    fixture["item"],
+                    confirm_dispatch_id=fixture["dispatch_id"],
+                    confirm_recovery_nonce=nonce,
+                    interrupted_exec=True,
+                )
+            fixture["ledger"].write_bytes(sealed_ledger)
     with pytest.raises(
         R.CampaignPlanError, match="abandoned sandbox namespace"
     ):
@@ -4746,6 +4982,10 @@ def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
             fixture["scratch"], fixture["ledger"]
         )
 
+    if pin is not None:
+        monkeypatch.setattr(
+            Recovery, "AUDITED_CANONICAL_DIGEST_TRANSITIONS", {}
+        )
     sealed = fixture["ledger"].read_bytes()
     repeated = R._recover_interrupted_generation_release(
         fixture["item"],
@@ -4760,10 +5000,13 @@ def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
 
 
 @pytest.mark.parametrize("crash_after", ("capsule", "marker"))
+@pytest.mark.parametrize("canonical_transition", (False, True))
 def test_interrupted_release_replays_half_retired_namespace(
-    tmp_path, monkeypatch, crash_after
+    tmp_path, monkeypatch, crash_after, canonical_transition
 ):
     fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    if canonical_transition:
+        _install_fixture_canonical_transition(fixture, monkeypatch)
     armed = _arm_interrupted_generation(fixture, monkeypatch)
     real_release = R._release_dispatch_quarantine
     real_ensure = R._ensure_dispatch_release_authority_row
@@ -5468,12 +5711,18 @@ def test_sandboxed_recovery_rechecks_canonical_after_final_tree_hash(
     ]
 
 
-@pytest.mark.parametrize("interrupted_exec", (False, True))
+@pytest.mark.parametrize(
+    "profile", ("sandboxed", "interrupted", "interrupted_transition")
+)
 def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
-    tmp_path, monkeypatch, interrupted_exec
+    tmp_path, monkeypatch, profile
 ):
+    interrupted_exec = profile != "sandboxed"
     fixture, _armed, recover = _armed_one_exec_crash_fixture(
-        tmp_path, monkeypatch, interrupted_exec
+        tmp_path,
+        monkeypatch,
+        interrupted_exec,
+        canonical_transition=profile == "interrupted_transition",
     )
     real_append = R._append_recovery_phase_cas
     crashed = False
@@ -5502,20 +5751,31 @@ def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
     monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
     result = recover()
     assert result["result"] == "sandbox_isolated_noncounting"
-    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
         "codex_exec",
         "codex_exec_classification_correction",
         R.SANDBOX_ABANDON_EVENT,
         "codex_dispatch_release_authorized",
     ]
+    if profile == "interrupted_transition":
+        assert rows[2]["schema"] == (
+            R.INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+        )
 
 
-@pytest.mark.parametrize("interrupted_exec", (False, True))
+@pytest.mark.parametrize(
+    "profile", ("sandboxed", "interrupted", "interrupted_transition")
+)
 def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
-    tmp_path, monkeypatch, interrupted_exec
+    tmp_path, monkeypatch, profile
 ):
+    interrupted_exec = profile != "sandboxed"
     fixture, _armed, recover = _armed_one_exec_crash_fixture(
-        tmp_path, monkeypatch, interrupted_exec
+        tmp_path,
+        monkeypatch,
+        interrupted_exec,
+        canonical_transition=profile == "interrupted_transition",
     )
     ledger_identity = (
         fixture["ledger"].stat().st_dev,
@@ -5561,6 +5821,10 @@ def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
     )
     expected_terminal = dict(pending["record"])
     assert expected_terminal["event"] == R.SANDBOX_ABANDON_EVENT
+    if profile == "interrupted_transition":
+        assert expected_terminal["schema"] == (
+            R.INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+        )
     assert fixture["marker"].is_file()
     assert fixture["capsule"].is_file()
 
@@ -5757,15 +6021,20 @@ def test_sandboxed_one_exec_rechecks_authority_after_wip_restore(
     assert fixture["capsule"].is_file()
 
 
-@pytest.mark.parametrize("interrupted_exec", (False, True))
+@pytest.mark.parametrize(
+    "profile", ("sandboxed", "interrupted", "interrupted_transition")
+)
 def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
-    tmp_path, monkeypatch, interrupted_exec
+    tmp_path, monkeypatch, profile
 ):
+    interrupted_exec = profile != "sandboxed"
     fixture = (
         _interrupted_generation_fixture(tmp_path, monkeypatch)
         if interrupted_exec
         else _sandboxed_generation_fixture(tmp_path, monkeypatch)
     )
+    if profile == "interrupted_transition":
+        _install_fixture_canonical_transition(fixture, monkeypatch)
     baseline_latest = (fixture["wip"] / "latest.json").read_bytes()
     (fixture["wip"] / "latest.json").write_bytes(
         b'{"attempt":"isolated-unpublished"}\n'
@@ -5814,6 +6083,10 @@ def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
     assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
         *expected_prefix, R.SANDBOX_ABANDON_EVENT
     ]
+    if profile == "interrupted_transition":
+        assert R.Guard.read_ledger(fixture["ledger"])[-1]["schema"] == (
+            R.INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+        )
 
     monkeypatch.setattr(R, "_restore_wip_from_rollback_capsule", real_restore)
     result = recover()
@@ -5883,11 +6156,13 @@ def test_sandboxed_recovery_checks_canonical_before_any_wal_reconciliation(
 
 
 @pytest.mark.parametrize("wal_crash", ("partial_authority", "authorized"))
-@pytest.mark.parametrize("profile", ("zero", "one", "interrupted"))
+@pytest.mark.parametrize(
+    "profile", ("zero", "one", "interrupted", "interrupted_transition")
+)
 def test_sandboxed_release_wal_reconciles_before_marker_replay(
     tmp_path, monkeypatch, wal_crash, profile
 ):
-    interrupted_exec = profile == "interrupted"
+    interrupted_exec = profile in {"interrupted", "interrupted_transition"}
     fixture = (
         _interrupted_generation_fixture(tmp_path, monkeypatch)
         if interrupted_exec
@@ -5895,6 +6170,8 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
     )
     if profile == "one":
         _append_sandbox_exec(fixture)
+    if profile == "interrupted_transition":
+        _install_fixture_canonical_transition(fixture, monkeypatch)
     armed = (
         _arm_interrupted_generation(fixture, monkeypatch)
         if interrupted_exec
@@ -5993,9 +6270,12 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
         ["codex_exec", "codex_exec_classification_correction"]
         if profile != "zero" else []
     ) + [R.SANDBOX_ABANDON_EVENT, "codex_dispatch_release_authorized"]
-    assert [
-        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
-    ] == expected_events
+    final_rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in final_rows] == expected_events
+    if profile == "interrupted_transition":
+        assert final_rows[-2]["schema"] == (
+            R.INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+        )
 
 
 @pytest.mark.parametrize("authorization", ("missing", "wrong_terminal_hash"))

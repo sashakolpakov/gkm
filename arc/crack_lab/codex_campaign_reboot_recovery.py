@@ -17,6 +17,7 @@ import sys
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from types import MappingProxyType
 from typing import Callable
 
 
@@ -44,8 +45,14 @@ SANDBOXED_GENERATION_ARM_EVENT = (
 INTERRUPTED_GENERATION_ARM_SCHEMA = (
     "scheduler_interrupted_generation_release_arm_v1"
 )
+INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA = (
+    "scheduler_interrupted_generation_release_arm_v2"
+)
 INTERRUPTED_GENERATION_ARM_EVENT = (
     "interrupted_generation_release_armed"
+)
+CANONICAL_DIGEST_TRANSITION_SCHEMA = (
+    "scheduler_audited_canonical_digest_transition_v1"
 )
 MAX_MARKER_BYTES = 1024 * 1024
 SHA256_RE = re.compile(r"[0-9a-f]{64}")
@@ -106,6 +113,90 @@ class ParsedMarker:
     armed: dict[str, object]
     unquiesced: dict[str, object]
     recovery_arm: dict[str, object] | None
+
+
+@dataclass(frozen=True)
+class AuditedCanonicalDigestTransition:
+    """One removable, incident-bound legacy canonical migration authority."""
+
+    transition_id: str
+    dispatch_id: str
+    game: str
+    target_level: int
+    reached: int
+    parent_action_count: int
+    retry_complexity_n: int
+    projected_item_sha256: str
+    runner_source_sha256: str
+    runner_head_commit: str
+    canonical_root_identity: tuple[int, int]
+    canonical_digest: str
+    observed_canonical_digest: str
+    frontier_binding_schema: int
+    parent_checkpoint_sha256: str
+    parent_source_tree_sha256: str
+    frontier_sha256: str
+
+
+# Incident pins are local migration authority, never permanent scheduler
+# policy.  Tests inject synthetic pins to exercise the fail-closed machinery;
+# production ships with none after the audited migrations are retired.
+AUDITED_CANONICAL_DIGEST_TRANSITIONS = MappingProxyType({})
+
+
+def audited_canonical_digest_transition(
+    armed: dict[str, object], observed_canonical_digest: object
+) -> AuditedCanonicalDigestTransition | None:
+    """Match every immutable coordinate of one approved legacy transition."""
+
+    dispatch_id = armed.get("dispatch_id")
+    if not isinstance(dispatch_id, str):
+        return None
+    pin = AUDITED_CANONICAL_DIGEST_TRANSITIONS.get(dispatch_id)
+    historical = armed.get("historical_runner")
+    frontier = armed.get("frontier_binding")
+    if (
+        pin is None
+        or not isinstance(historical, dict)
+        or not isinstance(frontier, dict)
+        or observed_canonical_digest != pin.observed_canonical_digest
+    ):
+        return None
+    expected_armed = {
+        "dispatch_id": pin.dispatch_id,
+        "game": pin.game,
+        "target_level": pin.target_level,
+        "retry_complexity_n": pin.retry_complexity_n,
+        "projected_item_sha256": pin.projected_item_sha256,
+        "canonical_root_identity": list(pin.canonical_root_identity),
+        "canonical_digest": pin.canonical_digest,
+    }
+    expected_runner = {
+        "source_sha256": pin.runner_source_sha256,
+        "head_commit": pin.runner_head_commit,
+    }
+    expected_frontier = {
+        "game": pin.game,
+        "target_level": pin.target_level,
+        "reached": pin.reached,
+        "parent_action_count": pin.parent_action_count,
+        "frontier_binding_schema": pin.frontier_binding_schema,
+        "parent_checkpoint_sha256": pin.parent_checkpoint_sha256,
+        "parent_source_tree_sha256": pin.parent_source_tree_sha256,
+        "frontier_sha256": pin.frontier_sha256,
+    }
+    if any(
+        armed.get(field) != expected
+        for field, expected in expected_armed.items()
+    ) or any(
+        historical.get(field) != expected
+        for field, expected in expected_runner.items()
+    ) or any(
+        frontier.get(field) != expected
+        for field, expected in expected_frontier.items()
+    ):
+        return None
+    return pin
 
 
 ARMED_V1_KEYS = frozenset({
@@ -313,6 +404,13 @@ SANDBOXED_GENERATION_EXEC_ARM_KEYS = (
 INTERRUPTED_GENERATION_ARM_KEYS = (
     SANDBOXED_GENERATION_EXEC_ARM_KEYS
     - frozenset({"child_pid", "child_pgid"})
+)
+INTERRUPTED_GENERATION_TRANSITION_ARM_KEYS = (
+    INTERRUPTED_GENERATION_ARM_KEYS | frozenset({
+        "observed_canonical_digest",
+        "canonical_digest_transition_schema",
+        "canonical_digest_transition_id",
+    })
 )
 
 
@@ -1126,8 +1224,15 @@ def _parse_isolated_generation_marker(
     if arm is None:
         return ParsedMarker(validated.dispatch_id, armed, failed, None)
     arm_keys = set(arm)
+    transition_arm = (
+        interrupted_exec
+        and arm_keys == INTERRUPTED_GENERATION_TRANSITION_ARM_KEYS
+    )
     one_exec_arm = (
-        arm_keys == INTERRUPTED_GENERATION_ARM_KEYS
+        arm_keys in (
+            INTERRUPTED_GENERATION_ARM_KEYS,
+            INTERRUPTED_GENERATION_TRANSITION_ARM_KEYS,
+        )
         if interrupted_exec
         else arm_keys == SANDBOXED_GENERATION_EXEC_ARM_KEYS
     )
@@ -1137,7 +1242,9 @@ def _parse_isolated_generation_marker(
         else arm_keys == SANDBOXED_GENERATION_ARM_KEYS
     )
     expected_arm_schema = (
-        INTERRUPTED_GENERATION_ARM_SCHEMA
+        INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA
+        if transition_arm
+        else INTERRUPTED_GENERATION_ARM_SCHEMA
         if interrupted_exec
         else SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
         if one_exec_arm
@@ -1244,6 +1351,8 @@ def _parse_isolated_generation_marker(
     ]
     if one_exec_arm:
         hash_fields.append("exec_record_sha256")
+    if transition_arm:
+        hash_fields.append("observed_canonical_digest")
     for field in hash_fields:
         value = arm.get(field)
         if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
@@ -1303,6 +1412,21 @@ def _parse_isolated_generation_marker(
         any(arm.get(field) != value for field, value in mirrored.items()),
     )):
         raise RecoveryEvidenceError(f"{label} recovery arm binding changed")
+    if transition_arm:
+        pin = audited_canonical_digest_transition(
+            armed, arm.get("observed_canonical_digest")
+        )
+        if (
+            pin is None
+            or arm.get("canonical_digest_transition_schema")
+            != CANONICAL_DIGEST_TRANSITION_SCHEMA
+            or arm.get("canonical_digest_transition_id")
+            != pin.transition_id
+        ):
+            raise RecoveryEvidenceError(
+                "interrupted-generation canonical transition is not the "
+                "exact audited incident"
+            )
     return ParsedMarker(validated.dispatch_id, armed, failed, arm)
 
 

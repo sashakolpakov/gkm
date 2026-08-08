@@ -138,6 +138,13 @@ SANDBOX_EXEC_ABANDON_EVENT_SCHEMA = (
 INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA = (
     "scheduler_sandbox_isolated_generation_abandoned_v3"
 )
+INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA = (
+    "scheduler_sandbox_isolated_generation_abandoned_v4"
+)
+INTERRUPTED_EXEC_TERMINAL_SCHEMAS = frozenset({
+    INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA,
+    INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA,
+})
 SANDBOX_EXEC_CLASSIFICATION_SCHEMA = (
     "scheduler_sandbox_isolated_generation_classification_v1"
 )
@@ -187,6 +194,14 @@ INTERRUPTED_EXEC_ABANDON_EVENT_KEYS = (
         "workspace_tree_observation_sha256", "protected_tree_sha256",
         "workspace_lock_schema", "workspace_lock_path",
         "workspace_lock_identity", "wip_restore_logical_state_schema",
+    })
+)
+INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_KEYS = (
+    INTERRUPTED_EXEC_ABANDON_EVENT_KEYS | frozenset({
+        "canonical_root_identity", "projected_item_sha256",
+        "historical_runner_source_sha256", "historical_runner_head_commit",
+        "observed_canonical_digest", "canonical_digest_transition_schema",
+        "canonical_digest_transition_id",
     })
 )
 SANDBOX_EXEC_CLASSIFICATION_KEYS = frozenset({
@@ -613,7 +628,7 @@ def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
             or record.get("schema") not in {
                 SANDBOX_ABANDON_EVENT_SCHEMA,
                 SANDBOX_EXEC_ABANDON_EVENT_SCHEMA,
-                INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA,
+                *INTERRUPTED_EXEC_TERMINAL_SCHEMAS,
             }
         ):
             continue
@@ -6391,10 +6406,10 @@ def _validate_dispatch_release_terminal_prefix(
             "codex_exec",
             "codex_exec_classification_correction",
             SANDBOX_ABANDON_EVENT,
-        ] and suffix[-1].get("schema") == (
-            INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+        ] and (
+            suffix[-1].get("schema") in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
             if kind == INTERRUPTED_RELEASE_AUTHORITY_KIND
-            else SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
+            else suffix[-1].get("schema") == SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
         ):
             execution, classification, terminal = suffix
             _validate_release_exec_coordinate(execution, authority)
@@ -6432,10 +6447,19 @@ def _validate_dispatch_release_terminal_prefix(
         if (
             kind == INTERRUPTED_RELEASE_AUTHORITY_KIND
             and terminal.get("schema")
-            != INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+            not in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
         ):
             raise CampaignPlanError(
                 "interrupted release lacks its exact terminal schema"
+            )
+        if (
+            terminal.get("schema")
+            == INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+            and terminal.get("projected_item_sha256")
+            != authority.get("projected_item_sha256")
+        ):
+            raise CampaignPlanError(
+                "interrupted transition release item binding changed"
             )
         _validate_sandbox_abandon_event(
             _release_coordinate_item(authority), terminal
@@ -9613,6 +9637,7 @@ def _sandbox_exec_record_sha256(
         schema not in {
             RebootRecovery.SANDBOXED_GENERATION_EXEC_ARM_SCHEMA,
             RebootRecovery.INTERRUPTED_GENERATION_ARM_SCHEMA,
+            RebootRecovery.INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA,
         }
         or not isinstance(value, str)
         or SHA256_RE.fullmatch(value) is None
@@ -9630,10 +9655,46 @@ def _is_interrupted_generation(
         and parsed.unquiesced.get("child_returncode") == -signal.SIGINT
         and (
             arm is None
-            or arm.get("recovery_arm_schema")
-            == RebootRecovery.INTERRUPTED_GENERATION_ARM_SCHEMA
+            or arm.get("recovery_arm_schema") in {
+                RebootRecovery.INTERRUPTED_GENERATION_ARM_SCHEMA,
+                RebootRecovery.INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA,
+            }
         )
     )
+
+
+def _canonical_transition_arm(
+    parsed: RebootRecovery.ParsedMarker,
+) -> dict[str, Any] | None:
+    arm = parsed.recovery_arm
+    if (
+        arm is not None
+        and arm.get("recovery_arm_schema")
+        == RebootRecovery.INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA
+    ):
+        return arm
+    return None
+
+
+def _sandbox_expected_canonical_digest(
+    parsed: RebootRecovery.ParsedMarker,
+) -> object:
+    transition = _canonical_transition_arm(parsed)
+    if transition is not None:
+        return transition.get("observed_canonical_digest")
+    if parsed.recovery_arm is not None:
+        return parsed.recovery_arm.get("canonical_digest")
+    return parsed.armed.get("canonical_digest")
+
+
+def _sandbox_terminal_expected_canonical_digest(
+    terminal: dict[str, Any],
+) -> object:
+    if terminal.get("schema") == (
+        INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+    ):
+        return terminal.get("observed_canonical_digest")
+    return terminal.get("canonical_digest")
 
 
 def _sandbox_failure_detail(
@@ -9709,7 +9770,7 @@ def _validate_interrupted_exec_terminal(
     """Validate the markerless projection of the exact interrupted exec."""
 
     if any((
-        terminal.get("schema") != INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA,
+        terminal.get("schema") not in INTERRUPTED_EXEC_TERMINAL_SCHEMAS,
         terminal.get("child_returncode") != -signal.SIGINT,
         terminal.get("failure_detail_class") != INTERRUPTED_FAILURE_DETAIL,
     )):
@@ -9848,7 +9909,7 @@ def _validate_sandbox_exec_classification(
             "failure_detail_class": (
                 INTERRUPTED_FAILURE_DETAIL
                 if terminal.get("schema")
-                == INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+                in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
                 else "sandbox_isolated_nonquiescent"
             ),
             "terminal_errors": [reason] if reason is not None else None,
@@ -9879,7 +9940,7 @@ def _validate_sandbox_exec_classification(
             or SHA256_RE.fullmatch(protected_tree) is None
             or (
                 terminal.get("schema")
-                == INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+                in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
                 and protected_tree
                 != terminal.get("protected_tree_sha256")
             )
@@ -9920,10 +9981,13 @@ def _build_sandbox_abandon_event(
         raise CampaignPlanError(
             "sandbox terminal classification phase is incomplete"
         )
+    transition_arm = _canonical_transition_arm(parsed)
     event = {
         "event": SANDBOX_ABANDON_EVENT,
         "schema": (
-            INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+            INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+            if transition_arm is not None
+            else INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
             if _is_interrupted_generation(parsed)
             else SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
             if exec_sha256 is not None
@@ -10004,6 +10068,30 @@ def _build_sandbox_abandon_event(
         event["wip_restore_logical_state_schema"] = parsed.armed[
             "wip_restore_logical_state_schema"
         ]
+    if transition_arm is not None:
+        historical = parsed.armed.get("historical_runner")
+        assert isinstance(historical, dict)
+        event.update({
+            "canonical_root_identity": parsed.armed[
+                "canonical_root_identity"
+            ],
+            "projected_item_sha256": parsed.armed[
+                "projected_item_sha256"
+            ],
+            "historical_runner_source_sha256": historical[
+                "source_sha256"
+            ],
+            "historical_runner_head_commit": historical["head_commit"],
+            "observed_canonical_digest": transition_arm[
+                "observed_canonical_digest"
+            ],
+            "canonical_digest_transition_schema": transition_arm[
+                "canonical_digest_transition_schema"
+            ],
+            "canonical_digest_transition_id": transition_arm[
+                "canonical_digest_transition_id"
+            ],
+        })
     return event
 
 
@@ -10022,15 +10110,18 @@ def _validate_sandbox_abandon_event(
         observed = parsed_or_record
         if not isinstance(observed, dict):
             raise CampaignPlanError("sandbox isolation event is malformed")
-        interrupted = observed.get("schema") == (
-            INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+        transition_terminal = observed.get("schema") == (
+            INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
         )
+        interrupted = observed.get("schema") in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
         one_exec = observed.get("schema") in {
             SANDBOX_EXEC_ABANDON_EVENT_SCHEMA,
-            INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA,
+            *INTERRUPTED_EXEC_TERMINAL_SCHEMAS,
         }
         expected_keys = (
-            INTERRUPTED_EXEC_ABANDON_EVENT_KEYS
+            INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_KEYS
+            if transition_terminal
+            else INTERRUPTED_EXEC_ABANDON_EVENT_KEYS
             if interrupted
             else SANDBOX_EXEC_ABANDON_EVENT_KEYS
             if one_exec
@@ -10052,7 +10143,9 @@ def _validate_sandbox_abandon_event(
         fixed = {
             "event": SANDBOX_ABANDON_EVENT,
             "schema": (
-                INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+                INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA
+                if transition_terminal
+                else INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
                 if interrupted
                 else SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
                 if one_exec else SANDBOX_ABANDON_EVENT_SCHEMA
@@ -10211,6 +10304,57 @@ def _validate_sandbox_abandon_event(
                 raise CampaignPlanError(
                     "interrupted isolation absence timestamps are reversed"
                 )
+        if transition_terminal:
+            historical_source = observed.get(
+                "historical_runner_source_sha256"
+            )
+            historical_head = observed.get("historical_runner_head_commit")
+            projected_sha = observed.get("projected_item_sha256")
+            observed_digest = observed.get("observed_canonical_digest")
+            transition_id = observed.get("canonical_digest_transition_id")
+            if any((
+                observed.get("canonical_digest_transition_schema")
+                != RebootRecovery.CANONICAL_DIGEST_TRANSITION_SCHEMA,
+                not isinstance(observed_digest, str),
+                isinstance(observed_digest, str)
+                and SHA256_RE.fullmatch(observed_digest) is None,
+                observed_digest == observed.get("canonical_digest"),
+                not isinstance(projected_sha, str),
+                isinstance(projected_sha, str)
+                and SHA256_RE.fullmatch(projected_sha) is None,
+                not isinstance(historical_source, str),
+                isinstance(historical_source, str)
+                and SHA256_RE.fullmatch(historical_source) is None,
+                not isinstance(historical_head, str),
+                isinstance(historical_head, str)
+                and GIT_COMMIT_RE.fullmatch(historical_head) is None,
+                not isinstance(transition_id, str),
+                isinstance(transition_id, str)
+                and SAFE_COMPONENT_RE.fullmatch(transition_id) is None,
+            )):
+                raise CampaignPlanError(
+                    "interrupted canonical transition receipt is malformed"
+                )
+            _marker_identity(
+                observed.get("canonical_root_identity"),
+                "transition canonical root",
+            )
+            if isinstance(historical, dict) and any((
+                historical.get("source_sha256") != historical_source,
+                historical.get("head_commit") != historical_head,
+            )):
+                raise CampaignPlanError(
+                    "interrupted canonical transition runner changed"
+                )
+            if "argv" in item and hashlib.sha256(json.dumps(
+                item,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ).encode("utf-8")).hexdigest() != projected_sha:
+                raise CampaignPlanError(
+                    "interrupted canonical transition item changed"
+                )
         _normalized_absolute_path(
             observed.get("scratch_root"), "sandbox event scratch_root"
         )
@@ -10246,7 +10390,9 @@ def _validate_sandbox_abandon_event(
     if not isinstance(parsed, RebootRecovery.ParsedMarker):
         raise CampaignPlanError("sandbox isolation marker is malformed")
     expected_keys = (
-        INTERRUPTED_EXEC_ABANDON_EVENT_KEYS
+        INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_KEYS
+        if _canonical_transition_arm(parsed) is not None
+        else INTERRUPTED_EXEC_ABANDON_EVENT_KEYS
         if _is_interrupted_generation(parsed)
         else SANDBOX_EXEC_ABANDON_EVENT_KEYS
         if _sandbox_exec_record_sha256(parsed) is not None
@@ -14124,6 +14270,19 @@ def _validate_sandboxed_generation_canonical_frontier(
         )
 
 
+def _audited_interrupted_canonical_transition(
+    parsed: RebootRecovery.ParsedMarker,
+    canonical: CanonicalRollbackState,
+) -> RebootRecovery.AuditedCanonicalDigestTransition | None:
+    """Return only a complete immutable match for one legacy v2 incident."""
+
+    if not _is_interrupted_generation(parsed):
+        return None
+    return RebootRecovery.audited_canonical_digest_transition(
+        parsed.armed, canonical.digest
+    )
+
+
 def _validate_sandboxed_generation_baseline(
     item: dict[str, Any],
     marker: DispatchQuarantine,
@@ -14142,11 +14301,18 @@ def _validate_sandboxed_generation_baseline(
             "sandboxed-generation release requires its full WIP capsule"
         )
     canonical = _capture_canonical_rollback(item)
-    expected_digest = (
-        parsed.recovery_arm.get("canonical_digest")
-        if parsed.recovery_arm is not None
-        else parsed.armed.get("canonical_digest")
-    )
+    expected_digest = _sandbox_expected_canonical_digest(parsed)
+    transition = None
+    if (
+        interrupted_exec
+        and parsed.recovery_arm is None
+        and canonical.digest != expected_digest
+    ):
+        transition = _audited_interrupted_canonical_transition(
+            parsed, canonical
+        )
+        if transition is not None:
+            expected_digest = transition.observed_canonical_digest
     _validate_sandboxed_generation_canonical_frontier(
         item,
         parsed,
@@ -14261,8 +14427,16 @@ def _arm_sandboxed_generation_release_locked(
             _recovery_record_sha256(execution)
             if execution is not None else None
         )
+        canonical_transition = (
+            _audited_interrupted_canonical_transition(parsed, canonical)
+            if interrupted_exec
+            and canonical.digest != parsed.armed.get("canonical_digest")
+            else None
+        )
         recovery_arm_schema = (
-            RebootRecovery.INTERRUPTED_GENERATION_ARM_SCHEMA
+            RebootRecovery.INTERRUPTED_GENERATION_TRANSITION_ARM_SCHEMA
+            if canonical_transition is not None
+            else RebootRecovery.INTERRUPTED_GENERATION_ARM_SCHEMA
             if interrupted_exec
             else
             RebootRecovery.SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
@@ -14385,7 +14559,9 @@ def _arm_sandboxed_generation_release_locked(
             "workspace_lock_schema": lock_schema,
             "workspace_lock_path": os.fspath(lock_path),
             "workspace_lock_identity": list(lock_identity),
-            "canonical_digest": canonical.digest,
+            # Preserve the dispatch-time seal.  The separately named observed
+            # digest exists only for one exact audited legacy transition.
+            "canonical_digest": parsed.armed["canonical_digest"],
             "ledger_prefix_bytes": len(baseline.raw_prefix),
             "ledger_prefix_sha256": hashlib.sha256(baseline.raw_prefix).hexdigest(),
             "wip_state_sha256": _wip_recovery_state_sha256(current_wip),
@@ -14412,6 +14588,18 @@ def _arm_sandboxed_generation_release_locked(
             })
         if exec_record_sha256 is not None:
             arm_record["exec_record_sha256"] = exec_record_sha256
+        if canonical_transition is not None:
+            arm_record.update({
+                "observed_canonical_digest": (
+                    canonical_transition.observed_canonical_digest
+                ),
+                "canonical_digest_transition_schema": (
+                    RebootRecovery.CANONICAL_DIGEST_TRANSITION_SCHEMA
+                ),
+                "canonical_digest_transition_id": (
+                    canonical_transition.transition_id
+                ),
+            })
         # Rebind every sealed surface immediately before the one arm
         # installation while retaining the inode-bound workspace flock.
         (
@@ -14653,7 +14841,7 @@ def _recover_sandboxed_generation_release_locked(
             item,
             parsed,
             pre_recovery_canonical,
-            expected_digest=arm.get("canonical_digest"),
+            expected_digest=_sandbox_expected_canonical_digest(parsed),
         )
         # Reconcile runs before marker recovery.  If it found a validated WAL
         # whose authorization row was empty or only a canonical prefix, this
@@ -14746,7 +14934,7 @@ def _recover_sandboxed_generation_release_locked(
             item,
             parsed,
             canonical,
-            expected_digest=arm.get("canonical_digest"),
+            expected_digest=_sandbox_expected_canonical_digest(parsed),
         )
         current_wip = _capture_wip_rollback(item)
         restored = _sandbox_wip_is_restored(current_wip, marker, parsed)
@@ -14928,7 +15116,7 @@ def _recover_sandboxed_generation_release_locked(
             item,
             parsed,
             final_canonical,
-            expected_digest=arm.get("canonical_digest"),
+            expected_digest=_sandbox_expected_canonical_digest(parsed),
         )
         if not _canonical_matches(canonical):
             raise CampaignPlanError(
@@ -14956,7 +15144,7 @@ def _recover_sandboxed_generation_release_locked(
                     item,
                     parsed,
                     rebound_canonical,
-                    expected_digest=arm.get("canonical_digest"),
+                    expected_digest=_sandbox_expected_canonical_digest(parsed),
                 )
                 if not _sandbox_wip_is_restored(
                     _capture_wip_rollback(item), marker, parsed
@@ -15028,7 +15216,7 @@ def _completed_sandbox_isolation_result(
         if (
             record.get("event") == SANDBOX_ABANDON_EVENT
             and record.get("schema") in (
-                {INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA}
+                INTERRUPTED_EXEC_TERMINAL_SCHEMAS
                 if interrupted_exec
                 else {
                     SANDBOX_ABANDON_EVENT_SCHEMA,
@@ -15049,11 +15237,23 @@ def _completed_sandbox_isolation_result(
         )
     event_index, event = matches[0]
     _validate_sandbox_abandon_event(item, event)
+    if event.get("schema") == INTERRUPTED_EXEC_TRANSITION_ABANDON_EVENT_SCHEMA:
+        canonical = _capture_canonical_rollback(item)
+        if any((
+            canonical.digest != _sandbox_terminal_expected_canonical_digest(
+                event
+            ),
+            list(canonical.root_identity)
+            != event.get("canonical_root_identity"),
+        )):
+            raise CampaignPlanError(
+                "completed interrupted transition canonical authority changed"
+            )
     execution: dict[str, Any] | None = None
     classification: dict[str, Any] | None = None
     if event.get("schema") in {
         SANDBOX_EXEC_ABANDON_EVENT_SCHEMA,
-        INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA,
+        *INTERRUPTED_EXEC_TERMINAL_SCHEMAS,
     }:
         if event_index < 2 or [
             records[event_index - 2].get("event"),
@@ -15083,7 +15283,7 @@ def _completed_sandbox_isolation_result(
         _validate_sandbox_exec_classification(
             item, execution, classification, terminal=event
         )
-        if event.get("schema") == INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA:
+        if event.get("schema") in INTERRUPTED_EXEC_TERMINAL_SCHEMAS:
             _validate_interrupted_exec_terminal(execution, event)
     if event_index + 1 >= len(records):
         raise CampaignPlanError(
@@ -15117,7 +15317,7 @@ def _completed_sandbox_isolation_result(
         "parent_action_count": item["parent_action_count"],
         "terminal_kind": (
             INTERRUPTED_RELEASE_AUTHORITY_KIND
-            if event.get("schema") == INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+            if event.get("schema") in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
             else SANDBOX_RELEASE_AUTHORITY_KIND
         ),
         "terminal_event": SANDBOX_ABANDON_EVENT,
@@ -15145,7 +15345,7 @@ def _completed_sandbox_isolation_result(
             and row.get("terminal_kind") == (
                 INTERRUPTED_RELEASE_AUTHORITY_KIND
                 if event.get("schema")
-                == INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+                in INTERRUPTED_EXEC_TERMINAL_SCHEMAS
                 else SANDBOX_RELEASE_AUTHORITY_KIND
             )
             and row.get("terminal_event") == SANDBOX_ABANDON_EVENT
@@ -15268,7 +15468,8 @@ def _validate_authorized_interrupted_release_replay(
         canonical = _capture_canonical_rollback(item)
         logical_schema = event.get("wip_restore_logical_state_schema")
         if any((
-            canonical.digest != event.get("canonical_digest"),
+            canonical.digest
+            != _sandbox_terminal_expected_canonical_digest(event),
             _checkpoint_reached(item["game"]) != item["reached"],
             _canonical_frontier_binding(item)
             != Status.validate_frontier_binding({
@@ -15345,7 +15546,7 @@ def _validate_authorized_interrupted_release_replay(
             item,
             parsed,
             canonical,
-            expected_digest=arm.get("canonical_digest"),
+            expected_digest=_sandbox_expected_canonical_digest(parsed),
         )
         if marker.capsule_missing:
             if _wip_logical_restore_state_sha256(
