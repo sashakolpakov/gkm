@@ -165,7 +165,7 @@ def object_bongard_panel_rubric_prompt(rubric_spec: ObjectBongardRubricSpec) -> 
     return (
         "Inspect panel.png as one complete drawing; the single supplied image is "
         "the entire visual evidence. Honor each description's grammatical scope. "
-        "When a description refers to one or a figure or object, all claimed parts, "
+        "When a description refers to a single figure or object, all claimed parts, "
         "counts, and relations must belong to one spatially coherent figure, including "
         "decorations that trace or attach to its outline. Never pool evidence across "
         "spatially separate figures to manufacture one described figure. When both "
