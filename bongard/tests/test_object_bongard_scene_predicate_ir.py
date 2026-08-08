@@ -16,6 +16,7 @@ from bongard.object_bongard_scene_predicate_ir import (
     SceneComparison,
     SceneEntityObservation,
     SceneFormulaNode,
+    SceneLanguageSourceMode,
     SceneMergedCell,
     SceneNumericInterval,
     SceneNumericUnit,
@@ -23,6 +24,7 @@ from bongard.object_bongard_scene_predicate_ir import (
     ScenePanelObservation,
     SceneQuantifier,
     SceneScope,
+    SceneSingleObservationPurpose,
     adapt_object_scene_registered_pair,
     adapt_object_scene_registered_single,
     build_object_bongard_scene_predicate_calibration_bundle,
@@ -93,11 +95,11 @@ def _panel(
     panel_id: str,
     bird: Disposition,
     *,
-    mode: str = "repeated_registered_merge",
+    mode: str = SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value,
     empty: bool = False,
 ) -> ScenePanelObservation:
-    sources = (_raw_digest(panel_id + "-a"),) if mode == "single_registered" else tuple(
-        sorted((_raw_digest(panel_id + "-a"), _raw_digest(panel_id + "-b")))
+    sources = tuple(sorted((_raw_digest(panel_id + "-a"), _raw_digest(panel_id + "-b")))) if mode == "repeated_registered_merge" else (
+        _raw_digest(panel_id + "-a"),
     )
     values = {
         "panel_id": panel_id,
@@ -141,7 +143,7 @@ def _blank_scene() -> bytes:
     return output.getvalue()
 
 
-def _artifact_fixture(*, flip_group0_b: bool = False):
+def _artifact_fixture(*, flip_group0_b: bool = False, b_only_numeric_threshold: bool = False):
     raws = (_scene(0), _scene(2))
     inventories = tuple(extract_object_scene_proposal_inventory(raw) for raw in raws)
     discovery = tuple(
@@ -156,10 +158,18 @@ def _artifact_fixture(*, flip_group0_b: bool = False):
     )
     registry = freeze_object_scene_soft_tag_registry(tuple(item.transcript for item in discovery))
 
-    def registered_payload(index: int, *, flip: bool):
+    def registered_payload(index: int, *, flip: bool, pass_b: bool):
         payload = _payload(inventories[index], registry=registry)
         state = "present" if index == 0 and not flip else "absent"
         for row in payload["objects"]:
+            for cell in row["counts"]:
+                if cell["observable_id"] == "straight_segment_count" and b_only_numeric_threshold:
+                    if index == 0:
+                        cell["lower_count"] = 6 if pass_b else 5
+                        cell["upper_count"] = 8
+                    else:
+                        cell["lower_count"] = 0
+                        cell["upper_count"] = 4
             for cell in row["observables"]:
                 if cell["observable_id"] == "bird_like":
                     cell["state"] = state
@@ -170,11 +180,11 @@ def _artifact_fixture(*, flip_group0_b: bool = False):
         return payload
 
     pass_a = tuple(
-        _observe(raw, registered_payload(index, flip=False), scene_id=f"calibration_panel_{index:02d}", context=f"pass-a-{index}", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+        _observe(raw, registered_payload(index, flip=False, pass_b=False), scene_id=f"calibration_panel_{index:02d}", context=f"pass-a-{index}", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
         for index, raw in enumerate(raws)
     )
     pass_b = tuple(
-        _observe(raw, registered_payload(index, flip=flip_group0_b and index == 0), scene_id=f"calibration_panel_{index:02d}", context=f"pass-b-{index}", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+        _observe(raw, registered_payload(index, flip=flip_group0_b and index == 0, pass_b=True), scene_id=f"calibration_panel_{index:02d}", context=f"pass-b-{index}", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
         for index, raw in enumerate(raws)
     )
     roles = tuple(
@@ -220,7 +230,11 @@ def test_four_state_merge_interval_and_error_dominance():
 def test_positive_closed_language_both_orientations_registry_binding_and_empty_all():
     registry = freeze_object_scene_soft_tag_registry(())
     group0, group1 = _panel("group0", Disposition.PRESENT), _panel("group1", Disposition.CERTIFIED_ABSENT)
-    language = freeze_object_scene_predicate_language(registry, (group0, group1))
+    language = freeze_object_scene_predicate_language(
+        registry,
+        (group0, group1),
+        source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+    )
     candidates = enumerate_object_scene_candidates(language)
     bird0 = _bird_candidate(language)
     assert evaluate_object_scene_candidate(bird0, language, group0) is Disposition.PRESENT
@@ -255,8 +269,12 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
     with pytest.raises(ObjectBongardScenePredicateIRError, match="different soft-tag registry"):
         wrong = deepcopy(group0.to_data()); wrong["registry_digest"] = _raw_digest("wrong-registry"); wrong["observation_digest"] = canonical_digest({key: value for key, value in wrong.items() if key != "observation_digest"})
         evaluate_object_scene_candidate(bird0, language, ScenePanelObservation.from_data(wrong))
-    with pytest.raises(ObjectBongardScenePredicateIRError, match="repeated observations"):
-        freeze_object_scene_predicate_language(registry, (_panel("single", Disposition.PRESENT, mode="single_registered"), group1))
+    with pytest.raises(ObjectBongardScenePredicateIRError, match="pass-A support-training"):
+        freeze_object_scene_predicate_language(
+            registry,
+            (_panel("query", Disposition.PRESENT, mode=SceneSingleObservationPurpose.QUERY_EVALUATION.value), group1),
+            source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+        )
 
 
 def test_distinct_calls_required_and_real_pass_b_disagreement_fails_repeatability():
@@ -272,6 +290,62 @@ def test_distinct_calls_required_and_real_pass_b_disagreement_fails_repeatabilit
     assert bundle.version_space["orientation_spaces"][0]["pass_b_evaluations"]
 
 
+def test_pass_b_cannot_add_a_numeric_separator_or_refit_the_language():
+    registry, discovery, pass_a, pass_b, roles = _artifact_fixture(
+        b_only_numeric_threshold=True
+    )
+    bundle = build_object_bongard_scene_predicate_calibration_bundle(
+        registry, discovery, pass_a, pass_b, roles
+    )
+    language = ir.ScenePredicateLanguage.from_data(bundle.version_space["language"])
+    pass_a_observations = tuple(
+        ScenePanelObservation.from_data(item)
+        for item in bundle.version_space["pass_a_observations"]
+    )
+    pass_b_observations = tuple(
+        ScenePanelObservation.from_data(item)
+        for item in bundle.version_space["pass_b_observations"]
+    )
+    merged_observations = tuple(
+        ScenePanelObservation.from_data(item)
+        for item in bundle.version_space["support_observations"]
+    )
+
+    assert language.source_mode is SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A
+    assert language.support_observation_digests == tuple(
+        sorted(item.observation_digest for item in pass_a_observations)
+    )
+    assert bundle.version_space["language_source_mode"] == "support_training_pass_a"
+    assert bundle.version_space["language_source_observation_digests"] == list(
+        language.support_observation_digests
+    )
+
+    # Pass B tightens the positive interval from [5, 8] to [6, 8].  The old
+    # merged-source freezer therefore admitted >=6, which cleanly separates
+    # the B and merged rows.  It is intentionally absent from the pass-A-only
+    # language even though B makes it look attractive.
+    b_only = ir.SceneNumericBoundary.create(
+        "boundary_99999",
+        "straight_segment_count",
+        SceneNumericUnit.COUNT,
+        SceneComparison.AT_LEAST,
+        6,
+        tuple(item.observation_digest for item in pass_b_observations),
+    )
+    assert [
+        ir._compare_interval(item.entities[0].count_cells[0].interval, b_only)
+        for item in pass_b_observations
+    ] == [Disposition.PRESENT, Disposition.CERTIFIED_ABSENT]
+    assert [item.entities[0].count_cells[0].interval.lower for item in merged_observations] == [6, 0]
+    assert not any(
+        item.observable_id == "straight_segment_count" and item.value == 6
+        for item in language.boundaries
+    )
+    assert cold_replay_object_bongard_scene_predicate_calibration_bundle(
+        bundle, registry
+    ) == bundle
+
+
 def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_nonvacuous():
     raw = _blank_scene(); inventory = extract_object_scene_proposal_inventory(raw)
     assert inventory.objects == ()
@@ -281,7 +355,12 @@ def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_n
     merged = adapt_object_scene_registered_pair("blank_panel", first, second)
     single = adapt_object_scene_registered_single("blank_panel", first)
     assert merged.disposition is single.disposition is Disposition.ERROR
-    language = freeze_object_scene_predicate_language(registry, (_panel("group0z", Disposition.PRESENT), _panel("group1z", Disposition.CERTIFIED_ABSENT)))
+    assert single.observation_mode == SceneSingleObservationPurpose.QUERY_EVALUATION.value
+    language = freeze_object_scene_predicate_language(
+        registry,
+        (_panel("group0z", Disposition.PRESENT), _panel("group1z", Disposition.CERTIFIED_ABSENT)),
+        source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+    )
     assert evaluate_object_scene_candidate(_bird_candidate(language), language, merged) is Disposition.ERROR
     pair_exists = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.EXISTS)
     pair_all = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.ALL)

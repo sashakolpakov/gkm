@@ -141,6 +141,16 @@ class SceneOrientation(str, Enum):
     GROUP1_POSITIVE = "group1_positive"
 
 
+class SceneSingleObservationPurpose(str, Enum):
+    SUPPORT_TRAINING_PASS_A = "support_training_pass_a"
+    REPEATABILITY_PASS_B = "repeatability_pass_b"
+    QUERY_EVALUATION = "query_evaluation"
+
+
+class SceneLanguageSourceMode(str, Enum):
+    SUPPORT_TRAINING_PASS_A = "support_training_pass_a"
+
+
 class SceneGapKind(str, Enum):
     LANGUAGE_GAP = "language_gap"
     WITNESS_GAP = "witness_gap"
@@ -333,6 +343,12 @@ class SceneEntityObservation:
 
 
 def _observation_content(value: "ScenePanelObservation") -> dict[str, object]:
+    merge_policies = {
+        "repeated_registered_merge": "two-registered-calls-exact-agreement-or-indeterminate",
+        SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value: "one-registered-call-support-training-pass-a",
+        SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value: "one-registered-call-held-repeatability-pass-b",
+        SceneSingleObservationPurpose.QUERY_EVALUATION.value: "one-registered-call-post-freeze-query-evaluation",
+    }
     return {
         "schema": SCENE_OBSERVATION_SCHEMA,
         "panel_id": value.panel_id,
@@ -344,7 +360,7 @@ def _observation_content(value: "ScenePanelObservation") -> dict[str, object]:
         "source_transcript_digests": list(value.source_transcript_digests),
         "disposition": value.disposition.value,
         "entities": [item.to_data() for item in value.entities],
-        "merge_policy": "two-registered-calls-exact-agreement-or-indeterminate" if value.observation_mode == "repeated_registered_merge" else "one-registered-call-query-or-repeatability-leg",
+        "merge_policy": merge_policies[value.observation_mode],
         "geometry_binding": "stable-object-ids-crop-receipts-q16-overlap-graph",
         **_authority_data(),
     }
@@ -367,7 +383,12 @@ class ScenePanelObservation:
         _identifier(self.panel_id, "panel ID")
         for value, label in ((self.panel_digest, "panel digest"), (self.inventory_digest, "inventory digest"), (self.registry_digest, "registry digest"), (self.observation_digest, "observation digest")):
             _digest(value, label)
-        expected_artifacts = {"single_registered": 1, "repeated_registered_merge": 2}.get(self.observation_mode)
+        expected_artifacts = {
+            SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value: 1,
+            SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value: 1,
+            SceneSingleObservationPurpose.QUERY_EVALUATION.value: 1,
+            "repeated_registered_merge": 2,
+        }.get(self.observation_mode)
         if expected_artifacts is None or len(self.source_artifact_digests) != expected_artifacts or len(set(self.source_artifact_digests)) != expected_artifacts or self.source_artifact_digests != tuple(sorted(self.source_artifact_digests)):
             raise ObjectBongardScenePredicateIRError("panel registered-call commitments differ")
         if self.source_transcript_digests != tuple(sorted(self.source_transcript_digests)):
@@ -397,7 +418,13 @@ class ScenePanelObservation:
     def from_data(cls, value: object) -> "ScenePanelObservation":
         expected = {"schema", "panel_id", "panel_digest", "inventory_digest", "registry_digest", "observation_mode", "source_artifact_digests", "source_transcript_digests", "disposition", "entities", "merge_policy", "geometry_binding", *_authority_data(), "observation_digest"}
         raw = _fields(value, expected, "scene panel observation")
-        merge_policy = "two-registered-calls-exact-agreement-or-indeterminate" if raw.get("observation_mode") == "repeated_registered_merge" else "one-registered-call-query-or-repeatability-leg"
+        merge_policies = {
+            "repeated_registered_merge": "two-registered-calls-exact-agreement-or-indeterminate",
+            SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value: "one-registered-call-support-training-pass-a",
+            SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value: "one-registered-call-held-repeatability-pass-b",
+            SceneSingleObservationPurpose.QUERY_EVALUATION.value: "one-registered-call-post-freeze-query-evaluation",
+        }
+        merge_policy = merge_policies.get(raw.get("observation_mode"))
         if raw["schema"] != SCENE_OBSERVATION_SCHEMA or raw["merge_policy"] != merge_policy or raw["geometry_binding"] != "stable-object-ids-crop-receipts-q16-overlap-graph" or any(raw[key] != val for key, val in _authority_data().items()) or any(not isinstance(raw[key], list) for key in ("source_artifact_digests", "source_transcript_digests", "entities")):
             raise ObjectBongardScenePredicateIRError("scene panel observation policy differs")
         result = cls(raw["panel_id"], raw["panel_digest"], raw["inventory_digest"], raw["registry_digest"], raw["observation_mode"], tuple(raw["source_artifact_digests"]), tuple(raw["source_transcript_digests"]), Disposition(raw["disposition"]), tuple(SceneEntityObservation.from_data(item) for item in raw["entities"]), raw["observation_digest"])
@@ -501,9 +528,19 @@ def _single_visual_cell(value: object | None, *, observable_id: str, numeric: bo
     return SceneMergedCell(observable_id, disposition, None, sources)
 
 
-def adapt_object_scene_registered_single(panel_id: str, artifact: ObjectSceneTranscriptArtifact) -> ScenePanelObservation:
-    """Adapt one registered query/repeatability call without faking a repeat."""
+def adapt_object_scene_registered_single(
+    panel_id: str,
+    artifact: ObjectSceneTranscriptArtifact,
+    *,
+    purpose: SceneSingleObservationPurpose = SceneSingleObservationPurpose.QUERY_EVALUATION,
+) -> ScenePanelObservation:
+    """Adapt one registered call with an explicit non-interchangeable purpose.
+
+    The safe default is query evaluation.  Callers that construct a support
+    language or test repeatability must opt into their distinct typed purpose.
+    """
     if not isinstance(artifact, ObjectSceneTranscriptArtifact): raise TypeError("registered single must be a transcript artifact")
+    if not isinstance(purpose, SceneSingleObservationPurpose): raise TypeError("single observation purpose differs")
     artifact.assert_untampered()
     if artifact.mode is not ObjectSceneTranscriptMode.REGISTERED_EVALUATION or not isinstance(artifact.registry, ObjectSceneSoftTagRegistry): raise ObjectBongardScenePredicateIRError("single decisive call must be registered evaluation")
     inventory, registry = artifact.inventory, artifact.registry
@@ -528,7 +565,7 @@ def adapt_object_scene_registered_single(panel_id: str, artifact: ObjectSceneTra
         disposition = Disposition.ERROR if any(cell.disposition is Disposition.ERROR for entity in entities for cells in (entity.qualitative_cells, entity.count_cells, entity.registered_tag_cells) for cell in cells) else Disposition.PRESENT
         if disposition is Disposition.ERROR: entities = [_error_entity(item, tag_ids) for item in inventory.objects]
         transcript_digests = (artifact.transcript.transcript_digest,)
-    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": registry.registry_digest, "observation_mode": "single_registered", "source_artifact_digests": (artifact.artifact_digest,), "source_transcript_digests": transcript_digests, "disposition": disposition, "entities": tuple(entities)}
+    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": registry.registry_digest, "observation_mode": purpose.value, "source_artifact_digests": (artifact.artifact_digest,), "source_transcript_digests": transcript_digests, "disposition": disposition, "entities": tuple(entities)}
     provisional = object.__new__(ScenePanelObservation)
     for key, item in values.items(): object.__setattr__(provisional, key, item)
     return ScenePanelObservation(**values, observation_digest=canonical_digest(_observation_content(provisional)))
@@ -646,6 +683,7 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
         "algorithm_id": SCENE_ALGORITHM_ID,
         "registry_digest": value.registry_digest,
         "registered_tag_ids": list(value.registered_tag_ids),
+        "source_mode": value.source_mode.value,
         "support_observation_digests": list(value.support_observation_digests),
         "boundaries": [item.to_data() for item in value.boundaries],
         "grammar": {
@@ -675,6 +713,7 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
 class ScenePredicateLanguage:
     registry_digest: str
     registered_tag_ids: tuple[str, ...]
+    source_mode: SceneLanguageSourceMode
     support_observation_digests: tuple[str, ...]
     boundaries: tuple[SceneNumericBoundary, ...]
     language_digest: str
@@ -682,6 +721,7 @@ class ScenePredicateLanguage:
     def __post_init__(self) -> None:
         _digest(self.registry_digest, "language registry digest")
         if self.registered_tag_ids != tuple(f"tag_{index:04d}" for index in range(len(self.registered_tag_ids))): raise ObjectBongardScenePredicateIRError("language tag catalog differs")
+        if self.source_mode is not SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A: raise ObjectBongardScenePredicateIRError("language source mode differs")
         if self.support_observation_digests != tuple(sorted(set(self.support_observation_digests))) or not self.support_observation_digests: raise ObjectBongardScenePredicateIRError("language support commitments differ")
         for item in self.support_observation_digests: _digest(item, "language support digest")
         if tuple(item.boundary_id for item in self.boundaries) != tuple(f"boundary_{index:05d}" for index in range(len(self.boundaries))): raise ObjectBongardScenePredicateIRError("language boundary IDs differ")
@@ -694,11 +734,11 @@ class ScenePredicateLanguage:
 
     @classmethod
     def from_data(cls, value: object) -> "ScenePredicateLanguage":
-        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
+        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "source_mode", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
         raw = _fields(value, expected, "scene predicate language")
         if raw["schema"] != SCENE_LANGUAGE_SCHEMA or raw["algorithm_id"] != SCENE_ALGORITHM_ID or raw["candidate_order"] != "complexity-then-canonical-formula-digest-then-orientation" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("registered_tag_ids", "support_observation_digests", "boundaries")):
             raise ObjectBongardScenePredicateIRError("scene predicate language policy differs")
-        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
+        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), SceneLanguageSourceMode(raw["source_mode"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene predicate language is not canonical")
         return result
 
@@ -710,10 +750,21 @@ class ScenePredicateLanguage:
         return result
 
 
-def freeze_object_scene_predicate_language(registry: ObjectSceneSoftTagRegistry, observations: Sequence[ScenePanelObservation]) -> ScenePredicateLanguage:
+def freeze_object_scene_predicate_language(
+    registry: ObjectSceneSoftTagRegistry,
+    observations: Sequence[ScenePanelObservation],
+    *,
+    source_mode: SceneLanguageSourceMode,
+) -> ScenePredicateLanguage:
+    """Freeze candidates and numeric thresholds from pass-A support only.
+
+    Repeatability and query observations carry different typed modes and are
+    rejected here, so they cannot extend or refit the language.
+    """
     if not isinstance(registry, ObjectSceneSoftTagRegistry): raise TypeError("registry must be ObjectSceneSoftTagRegistry")
+    if source_mode is not SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A: raise ObjectBongardScenePredicateIRError("language source must be support-training pass A")
     panels = tuple(sorted((ScenePanelObservation.from_data(item.to_data()) for item in observations), key=lambda item: item.panel_id))
-    if not panels or len({item.panel_id for item in panels}) != len(panels) or any(item.registry_digest != registry.registry_digest or item.observation_mode != "repeated_registered_merge" for item in panels): raise ObjectBongardScenePredicateIRError("language requires unique repeated observations under one registry")
+    if not panels or len({item.panel_id for item in panels}) != len(panels) or any(item.registry_digest != registry.registry_digest or item.observation_mode != SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value for item in panels): raise ObjectBongardScenePredicateIRError("language requires unique pass-A support-training observations under one registry")
     sources = tuple(item.observation_digest for item in panels)
     values_by_key: dict[tuple[str, SceneNumericUnit, int], set[str]] = {}
     for panel in panels:
@@ -730,7 +781,7 @@ def freeze_object_scene_predicate_language(registry: ObjectSceneSoftTagRegistry,
                     for value in (cell.interval.lower, cell.interval.upper): values_by_key.setdefault((cell.observable_id, cell.interval.unit, value), set()).add(panel.observation_digest)
     rows = sorted((observable, unit, comparison, value, tuple(sorted(found))) for (observable, unit, value), found in values_by_key.items() for comparison in SceneComparison)
     boundaries = tuple(SceneNumericBoundary.create(f"boundary_{index:05d}", observable, unit, comparison, value, found) for index, (observable, unit, comparison, value, found) in enumerate(rows))
-    values = {"registry_digest": registry.registry_digest, "registered_tag_ids": tuple(item.tag_id for item in registry.tags), "support_observation_digests": tuple(sorted(sources)), "boundaries": boundaries}
+    values = {"registry_digest": registry.registry_digest, "registered_tag_ids": tuple(item.tag_id for item in registry.tags), "source_mode": source_mode, "support_observation_digests": tuple(sorted(sources)), "boundaries": boundaries}
     provisional = object.__new__(ScenePredicateLanguage)
     for key, item in values.items(): object.__setattr__(provisional, key, item)
     return ScenePredicateLanguage(**values, language_digest=canonical_digest(_language_content(provisional)))
@@ -1201,12 +1252,12 @@ class SceneVersionSpace:
 
 
 def object_bongard_scene_predicate_algorithm_digest(language: ScenePredicateLanguage) -> str:
-    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v1", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "two_orientations_predeclared_before_roles": True, "post_hoc_complement_after_failure": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
+    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v1", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "pass_b_can_extend_or_refit_language": False, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "two_orientations_predeclared_before_roles": True, "post_hoc_complement_after_failure": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
 
 
 def _build_orientation_space(language: ScenePredicateLanguage, algorithm_digest: str, candidates: Sequence[ScenePredicateCandidate], panels: Sequence[ScenePanelObservation], pass_a_panels: Sequence[ScenePanelObservation], pass_b_panels: Sequence[ScenePanelObservation], group0_count: int, orientation: SceneOrientation) -> SceneVersionSpace:
     panels, pass_a_panels, pass_b_panels = tuple(panels), tuple(pass_a_panels), tuple(pass_b_panels)
-    if any(len(item) != len(panels) for item in (pass_a_panels, pass_b_panels)) or tuple(item.panel_id for item in pass_a_panels) != tuple(item.panel_id for item in panels) or tuple(item.panel_id for item in pass_b_panels) != tuple(item.panel_id for item in panels) or any(item.observation_mode != "repeated_registered_merge" for item in panels) or any(item.observation_mode != "single_registered" for item in (*pass_a_panels, *pass_b_panels)):
+    if any(len(item) != len(panels) for item in (pass_a_panels, pass_b_panels)) or tuple(item.panel_id for item in pass_a_panels) != tuple(item.panel_id for item in panels) or tuple(item.panel_id for item in pass_b_panels) != tuple(item.panel_id for item in panels) or any(item.observation_mode != "repeated_registered_merge" for item in panels) or any(item.observation_mode != SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value for item in pass_a_panels) or any(item.observation_mode != SceneSingleObservationPurpose.REPEATABILITY_PASS_B.value for item in pass_b_panels):
         raise ObjectBongardScenePredicateIRError("orientation support pass alignment differs")
     selected = tuple(item for item in candidates if item.orientation is orientation)
     evaluations = tuple(SceneCandidateEvaluation.create(item, language, panels) for item in selected)
@@ -1346,11 +1397,14 @@ class ScenePredicateCalibrationBundle:
         raw = _fields(value, expected, "scene calibration bundle")
         if raw["schema"] != SCENE_CALIBRATION_BUNDLE_SCHEMA or not isinstance(raw["version_space"], Mapping) or any(not isinstance(raw[key], list) for key in ("candidates", "complete_survivor_digests", "ranker_slate", "omitted_survivors")):
             raise ObjectBongardScenePredicateIRError("scene calibration bundle policy differs")
-        version = _fields(raw["version_space"], {"schema", "algorithm_digest", "language", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "bundle embedded version space")
-        if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or not isinstance(version["orientation_spaces"], list): raise ObjectBongardScenePredicateIRError("bundle embedded version-space policy differs")
+        version = _fields(raw["version_space"], {"schema", "algorithm_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "bundle embedded version space")
+        if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or any(not isinstance(version[key], list) for key in ("language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "orientation_spaces")): raise ObjectBongardScenePredicateIRError("bundle embedded version-space policy differs")
         language = ScenePredicateLanguage.from_data(version["language"])
-        if language.registry_digest != raw["registry_digest"] or version["algorithm_digest"] != raw["algorithm_digest"]:
+        if language.registry_digest != raw["registry_digest"] or version["algorithm_digest"] != raw["algorithm_digest"] or version["language_source_mode"] != language.source_mode.value or version["language_source_observation_digests"] != list(language.support_observation_digests):
             raise ObjectBongardScenePredicateIRError("bundle language parent binding differs")
+        pass_a = tuple(ScenePanelObservation.from_data(item) for item in version["pass_a_observations"])
+        if language.support_observation_digests != tuple(sorted(item.observation_digest for item in pass_a)) or any(item.observation_mode != SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value for item in pass_a):
+            raise ObjectBongardScenePredicateIRError("bundle language source escapes pass-A support training")
         candidates = tuple(ScenePredicateCandidate.from_data(item, language=language) for item in raw["candidates"])
         try:
             complete = enumerate_object_scene_candidates(language)
@@ -1402,8 +1456,8 @@ def build_object_bongard_scene_predicate_calibration_bundle(
         if discover.panel_digest != first.panel_digest or discover.panel_digest != second.panel_digest or discover.inventory_digest != first.inventory_digest or discover.inventory != first.inventory or first.inventory != second.inventory: raise ObjectBongardScenePredicateIRError("discovery/A/B panel inventory binding differs")
         if first.registry != registry or second.registry != registry: raise ObjectBongardScenePredicateIRError("registered artifact uses another frozen registry")
         merged_rows.append((raw["historical_role"], adapt_object_scene_registered_pair(raw["blind_panel_id"], first, second)))
-        pass_a_rows.append((raw["historical_role"], adapt_object_scene_registered_single(raw["blind_panel_id"], first)))
-        pass_b_rows.append((raw["historical_role"], adapt_object_scene_registered_single(raw["blind_panel_id"], second)))
+        pass_a_rows.append((raw["historical_role"], adapt_object_scene_registered_single(raw["blind_panel_id"], first, purpose=SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A)))
+        pass_b_rows.append((raw["historical_role"], adapt_object_scene_registered_single(raw["blind_panel_id"], second, purpose=SceneSingleObservationPurpose.REPEATABILITY_PASS_B)))
         discovery_digests.append(discover.artifact_digest); pass_a_digests.append(first.artifact_digest); pass_b_digests.append(second.artifact_digest)
     if any(len({row[key] for row in roles}) != len(roles) for key in ("ordinal", "neutral_panel_digest", "blind_panel_id")):
         raise ObjectBongardScenePredicateIRError("role reveal identities are not unique")
@@ -1419,7 +1473,11 @@ def build_object_bongard_scene_predicate_calibration_bundle(
     panels = group0 + group1
     pass_a_panels = pass_a_group0 + pass_a_group1
     pass_b_panels = pass_b_group0 + pass_b_group1
-    language = freeze_object_scene_predicate_language(registry, panels)
+    language = freeze_object_scene_predicate_language(
+        registry,
+        pass_a_panels,
+        source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+    )
     algorithm_digest = object_bongard_scene_predicate_algorithm_digest(language)
     resource_gap: dict[str, object] | None = None
     try:
@@ -1436,7 +1494,7 @@ def build_object_bongard_scene_predicate_calibration_bundle(
     slate = tuple(_ranker_view(item, language, registry, evaluations[item.candidate_digest], coverage=True, selectivity=True, repeatability=True) for item in admitted)
     admitted_set = {item.candidate_digest for item in admitted}
     omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "semantic_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
-    version_space = {"schema": SCENE_VERSION_SPACES_SCHEMA, "algorithm_digest": algorithm_digest, "language": language.to_data(), "support_observations": [item.to_data() for item in panels], "pass_a_observations": [item.to_data() for item in pass_a_panels], "pass_b_observations": [item.to_data() for item in pass_b_panels], "group0_count": len(group0), "discovery_artifact_digests": sorted(discovery_digests), "registered_a_artifact_digests": sorted(pass_a_digests), "registered_b_artifact_digests": sorted(pass_b_digests), "orientation_spaces": [item.to_data() for item in spaces], "resource_gap": resource_gap, "model_calls_during_build": 0, "full_candidate_space_persisted": resource_gap is None, "complete_space_accounted_by_typed_capacity_gap": resource_gap is not None, "candidate_enumeration_was_truncated": False, **_authority_data()}
+    version_space = {"schema": SCENE_VERSION_SPACES_SCHEMA, "algorithm_digest": algorithm_digest, "language": language.to_data(), "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "support_observations": [item.to_data() for item in panels], "pass_a_observations": [item.to_data() for item in pass_a_panels], "pass_b_observations": [item.to_data() for item in pass_b_panels], "group0_count": len(group0), "discovery_artifact_digests": sorted(discovery_digests), "registered_a_artifact_digests": sorted(pass_a_digests), "registered_b_artifact_digests": sorted(pass_b_digests), "orientation_spaces": [item.to_data() for item in spaces], "resource_gap": resource_gap, "model_calls_during_build": 0, "full_candidate_space_persisted": resource_gap is None, "complete_space_accounted_by_typed_capacity_gap": resource_gap is not None, "candidate_enumeration_was_truncated": False, **_authority_data()}
     provisional = object.__new__(ScenePredicateCalibrationBundle)
     values = {"ir_source_digest": object_bongard_scene_predicate_ir_source_digest(), "algorithm_digest": algorithm_digest, "registry_digest": registry.registry_digest, "coverage_gate": coverage, "selectivity_gate": selectivity, "repeatability_gate": repeatability, "version_space": version_space, "candidates": tuple(candidates), "complete_survivor_digests": survivors, "ranker_slate": slate, "omitted_survivors": omitted}
     for key, item in values.items(): object.__setattr__(provisional, key, item)
@@ -1451,14 +1509,14 @@ def cold_replay_object_bongard_scene_predicate_calibration_bundle(
     bundle = ScenePredicateCalibrationBundle.from_data(value.to_data() if isinstance(value, ScenePredicateCalibrationBundle) else value)
     if not isinstance(registry, ObjectSceneSoftTagRegistry) or bundle.registry_digest != registry.registry_digest:
         raise ObjectBongardScenePredicateIRError("cold replay registry differs")
-    version = _fields(bundle.version_space, {"schema", "algorithm_digest", "language", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "combined version space")
-    if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or version["model_calls_during_build"] != 0 or version["candidate_enumeration_was_truncated"] is not False or any(version[key] != item for key, item in _authority_data().items()) or any(not isinstance(version[key], list) for key in ("support_observations", "pass_a_observations", "pass_b_observations", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces")):
+    version = _fields(bundle.version_space, {"schema", "algorithm_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "combined version space")
+    if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or version["model_calls_during_build"] != 0 or version["candidate_enumeration_was_truncated"] is not False or any(version[key] != item for key, item in _authority_data().items()) or any(not isinstance(version[key], list) for key in ("language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces")):
         raise ObjectBongardScenePredicateIRError("combined version-space policy differs")
     panels = tuple(ScenePanelObservation.from_data(item) for item in version["support_observations"])
     pass_a = tuple(ScenePanelObservation.from_data(item) for item in version["pass_a_observations"])
     pass_b = tuple(ScenePanelObservation.from_data(item) for item in version["pass_b_observations"])
     language = ScenePredicateLanguage.from_data(version["language"])
-    if language != freeze_object_scene_predicate_language(registry, panels) or bundle.ir_source_digest != object_bongard_scene_predicate_ir_source_digest() or bundle.algorithm_digest != object_bongard_scene_predicate_algorithm_digest(language) or version["algorithm_digest"] != bundle.algorithm_digest:
+    if language != freeze_object_scene_predicate_language(registry, pass_a, source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A) or version["language_source_mode"] != language.source_mode.value or version["language_source_observation_digests"] != list(language.support_observation_digests) or bundle.ir_source_digest != object_bongard_scene_predicate_ir_source_digest() or bundle.algorithm_digest != object_bongard_scene_predicate_algorithm_digest(language) or version["algorithm_digest"] != bundle.algorithm_digest:
         raise ObjectBongardScenePredicateIRError("cold replay language/algorithm differs")
     group0_count = version["group0_count"]
     if type(group0_count) is not int or not 0 < group0_count < len(panels): raise ObjectBongardScenePredicateIRError("cold replay support grouping differs")
