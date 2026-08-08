@@ -10,7 +10,7 @@ disjunction, arbitrary code, or model-selected threshold.
 
 from __future__ import annotations
 
-from bongard.runtime_source_snapshot import capture_loaded_source
+from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
 
 
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
@@ -141,6 +141,14 @@ def _threshold(value: object) -> int:
     return value
 
 
+def object_bongard_rubric_version_space_source_digest() -> str:
+    """Return the digest only while the loaded evaluator source is unchanged."""
+
+    return verify_loaded_source(
+        __name__, expected_source_sha256=_LOADED_SOURCE_SHA256
+    )
+
+
 def object_bongard_rubric_version_space_algorithm_digest() -> str:
     """Digest the exact loaded Python evaluator and its closed language."""
 
@@ -148,7 +156,9 @@ def object_bongard_rubric_version_space_algorithm_digest() -> str:
         {
             "schema": "gkm.bongard-object-rubric-version-space-algorithm.v1",
             "algorithm_id": RUBRIC_VERSION_SPACE_ALGORITHM_ID,
-            "implementation_source_sha256": _LOADED_SOURCE_SHA256,
+            "implementation_source_sha256": (
+                object_bongard_rubric_version_space_source_digest()
+            ),
             "language": _language_data(),
             "positive_accept": Disposition.PRESENT.value,
             "negative_accept": Disposition.CERTIFIED_ABSENT.value,
@@ -1169,4 +1179,5 @@ __all__ = (
     "enumerate_object_bongard_rubric_candidates",
     "evaluate_object_bongard_rubric_candidate",
     "object_bongard_rubric_version_space_algorithm_digest",
+    "object_bongard_rubric_version_space_source_digest",
 )
