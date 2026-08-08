@@ -710,6 +710,9 @@ def test_registry_uses_distinct_panel_frequency_and_persists_every_drop():
 
     registry = freeze_object_scene_soft_tag_registry((discovery_a.transcript, discovery_b.transcript))
     assert tuple((item.tag_id, item.scope, item.tag, item.distinct_panel_count) for item in registry.tags) == (("tag_0000", "entity", "bird-like object", 2),)
+    assert tuple(item.orientation_constraint for item in registry.tags) == (
+        "bidirectional",
+    )
     assert tuple((item.scope, item.tag, item.reason) for item in registry.dropped_tags) == (
         ("entity", "pointed form", "seen_on_fewer_than_2_panels"),
         ("entity", "sector form", "seen_on_fewer_than_2_panels"),
@@ -753,6 +756,7 @@ def test_operational_card_is_canonical_hashed_and_rendered_per_witness():
         ),
         ("rounded outer tips also qualify",),
         ("a single rounded lobe does not qualify",),
+        orientation_constraint="group0_positive",
     )
     registry = _registry_with_tags(base, (tag,))
 
@@ -779,6 +783,32 @@ def test_operational_card_is_canonical_hashed_and_rendered_per_witness():
     assert frontend.ObjectSceneSoftTag.from_data(tag.to_data()) == tag
     assert ObjectSceneSoftTagRegistry.from_data(registry.to_data()) == registry
     assert tag.tag_digest != original.tag_digest
+    assert tag.orientation_constraint == "group0_positive"
+    opposite_orientation = frontend.ObjectSceneSoftTag.create(
+        tag.tag_id,
+        tag.scope,
+        tag.tag,
+        tag.distinct_panel_count,
+        tag.required_witnesses,
+        tag.accepted_variants,
+        tag.near_miss_boundaries,
+        orientation_constraint="group1_positive",
+    )
+    assert opposite_orientation.criteria_digest == tag.criteria_digest
+    assert opposite_orientation.tag_digest != tag.tag_digest
+    assert (
+        frontend.ObjectSceneSoftTag.from_data(opposite_orientation.to_data())
+        == opposite_orientation
+    )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.ObjectSceneSoftTag.create(
+            tag.tag_id,
+            tag.scope,
+            tag.tag,
+            tag.distinct_panel_count,
+            tag.required_witnesses,
+            orientation_constraint="side0_positive",
+        )
 
     prompt = object_scene_transcript_prompt(
         inventory_a,
@@ -813,6 +843,20 @@ def test_operational_card_is_canonical_hashed_and_rendered_per_witness():
         "state",
         "evidence",
     }
+    registered_model_view = prompt + json.dumps(schema, sort_keys=True)
+    for orientation_constraint in (
+        "group0_positive",
+        "group1_positive",
+        "bidirectional",
+        "side0_positive",
+        "side1_positive",
+    ):
+        assert orientation_constraint not in registered_model_view
+    assert re.search(
+        r"\b(?:orientation|role)s?\b",
+        registered_model_view,
+        re.IGNORECASE,
+    ) is None
 
     tampered = deepcopy(tag.to_data())
     tampered["required_witnesses"][0]["statement"] = (

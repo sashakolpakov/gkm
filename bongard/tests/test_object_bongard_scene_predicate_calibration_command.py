@@ -68,6 +68,36 @@ def _neutral_panel(index: int, exact_png_bytes: bytes) -> command._NeutralPanel:
     )
 
 
+def test_registered_visual_blindness_allows_visual_orientation_prose_only() -> None:
+    legitimate = SimpleNamespace(
+        prompt=(
+            "Compare the visible orientation of the oblique strokes; each lobe "
+            "plays a different visual role in the bidirectional silhouette."
+        ),
+        output_schema={"type": "object", "properties": {}},
+        presentation=(("panel.png", b"png"),),
+    )
+    command._assert_registered_visual_observer_blind(legitimate, "legitimate")
+
+    for leaked in (
+        "orientation_constraint=group0_positive",
+        "historical role: 0",
+        "support_role=1",
+        "evaluate side 1 positive",
+        "this belongs to group 0",
+    ):
+        prepared = SimpleNamespace(
+            prompt=leaked,
+            output_schema={"type": "object", "properties": {}},
+            presentation=(("panel.png", b"png"),),
+        )
+        with pytest.raises(
+            command.ObjectBongardScenePredicateCalibrationCommandError,
+            match="leaks role or orientation-constraint metadata",
+        ):
+            command._assert_registered_visual_observer_blind(prepared, "leaked")
+
+
 @pytest.fixture(scope="module")
 def calibration_inputs() -> command._CalibrationInputs:
     # Build the expensive geometry once, then give that fixed synthetic
@@ -652,6 +682,18 @@ def _run(
         for panel in calibration_inputs.panels:
             assert panel.task_id not in envelope
             assert panel.panel_id not in envelope
+        if registered:
+            for forbidden in (
+                "group0_positive",
+                "group1_positive",
+                "side0_positive",
+                "side1_positive",
+                "bidirectional",
+                "orientation_constraint",
+                "historical_role",
+                "support_role",
+            ):
+                assert forbidden not in envelope
         with lock:
             call_ordinal = visual_calls.count(stage)
             visual_calls.append(stage)
@@ -813,7 +855,7 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
         command.REPLAY_FILENAME: command.REPLAY_SCHEMA,
         command.RESULT_FILENAME: command.RESULT_SCHEMA,
     }
-    assert command.COMMAND_ID.endswith("-v7")
+    assert command.COMMAND_ID.endswith("-v8")
     for filename, schema in expected_schemas.items():
         assert json.loads((root / filename).read_text("utf-8"))["schema"] == schema
     for filename in (
@@ -854,6 +896,32 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     ]
     semantic_result = json.loads(
         (root / command.SEMANTIC_PROPOSAL_RESULT_FILENAME).read_text("utf-8")
+    )
+    registry_record = json.loads(
+        (root / command.REGISTRY_FREEZE_FILENAME).read_text("utf-8")
+    )
+    registry_tags = registry_record["registry"]["tags"]
+    manifest = registry_record["registry_orientation_manifest"]
+    assert manifest == [
+        {
+            "tag_id": item["tag_id"],
+            "tag_digest": item["tag_digest"],
+            "orientation_constraint": item["orientation_constraint"],
+        }
+        for item in registry_tags
+    ]
+    assert [item["orientation_constraint"] for item in manifest] == [
+        "group0_positive",
+        "group1_positive",
+    ]
+    assert registry_record["registry_orientation_manifest_digest"] == canonical_digest(
+        {
+            "schema": (
+                "gkm.bongard-scene-predicate-registry-orientation-manifest.v1"
+            ),
+            "rows": manifest,
+            "orientation_is_part_of_tag_digest": True,
+        }
     )
     concepts = [
         *semantic_result["semantic_proposal"]["side0_positive"],
@@ -1238,7 +1306,19 @@ def test_command_is_python_canonical_and_has_no_lean_or_legacy_observer_import()
     assert not any("object_bongard_observer" in value for value in imports)
     authority = command._authority_data()
     assert authority["python_is_canonical_authority"] is True
+    assert authority["frozen_python_predicate_is_normative"] is True
+    assert authority["python_replay_is_normative"] is True
+    assert authority["semantic_proposal_orientation_is_part_of_tag_identity"] is True
+    assert authority["same_semantic_tag_tried_in_both_orientations"] is False
+    assert authority[
+        "registered_evaluator_receives_orientation_constraint_metadata"
+    ] is False
+    assert authority[
+        "opposite_orientation_registered_tag_candidate_copies_forbidden"
+    ] is True
     assert authority["lean_present"] is False
     assert authority["lean_required"] is False
     assert authority["lean_removable"] is True
+    assert authority["lean_if_present_is_optional_checker_or_export_only"] is True
+    assert authority["lean_affects_acceptance_or_runtime_semantics"] is False
     assert command.IR_BUNDLE_SCHEMA == SCENE_CALIBRATION_BUNDLE_SCHEMA

@@ -3,9 +3,11 @@
 This module is the decision authority between the neutral visual frontend and
 query evaluation.  It merges two registered-evaluation transcripts without
 turning disagreement or failure into absence, enumerates a finite typed
-affirmative language in both orientations before roles are used, and never
-repairs a failed candidate with a post-hoc Not or polarity flip.  Natural
-affirmative categories may be logical complements.  Lean is absent.
+affirmative language, derives each formula's authorized orientation from the
+frozen soft-tag cards, and never repairs a failed
+candidate with a post-hoc Not or polarity flip.  Tag-free formulas remain
+available in both orientations.  Natural affirmative categories may be
+logical complements.  Lean is absent.
 """
 
 from __future__ import annotations
@@ -40,15 +42,15 @@ from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v3"
-SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v3"
-SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v3"
-SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v3"
-SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v3"
-SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v3"
-SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v3"
-SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v3"
-SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-witness-macro-version-space-v3"
+SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v4"
+SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v4"
+SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v4"
+SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v4"
+SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v4"
+SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v4"
+SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v4"
+SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v4"
+SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-tag-oriented-version-space-v4"
 SCENE_MAX_RANK_SLATE = 64
 SCENE_MAX_ENUMERATED_FORMULAS = 250_000
 EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE = "exact_open_tag_frequency"
@@ -148,6 +150,14 @@ class SceneOrientation(str, Enum):
     GROUP1_POSITIVE = "group1_positive"
 
 
+_BIDIRECTIONAL_TAG_ORIENTATION = "bidirectional"
+_TAG_ORIENTATION_CONSTRAINTS = (
+    SceneOrientation.GROUP0_POSITIVE.value,
+    SceneOrientation.GROUP1_POSITIVE.value,
+    _BIDIRECTIONAL_TAG_ORIENTATION,
+)
+
+
 class SceneSingleObservationPurpose(str, Enum):
     SUPPORT_TRAINING_PASS_A = "support_training_pass_a"
     REPEATABILITY_PASS_B = "repeatability_pass_b"
@@ -186,8 +196,8 @@ def _authority_data() -> dict[str, object]:
         "post_hoc_negation_repair": False,
         "post_hoc_polarity_flip": False,
         "natural_affirmative_complement_equivalents_predeclared": True,
-        "both_orientations_share_one_frozen_formula_inventory": True,
-        "both_orientations_enumerated_before_candidate_scoring": True,
+        "formula_inventory_frozen_before_tag_orientation_authorization": True,
+        "authorized_orientations_enumerated_before_candidate_scoring": True,
         "registered_soft_tags_are_python_compiled_witness_macros": True,
         "repeated_registered_macros_merge_witnesses_before_compilation": True,
         "ranker_sees_frozen_operational_cards": True,
@@ -573,6 +583,25 @@ def _registry_tags(
     )
 
 
+def _registry_orientation_tag_ids(
+    registry: ObjectSceneSoftTagRegistry, constraint: str
+) -> tuple[str, ...]:
+    if constraint not in _TAG_ORIENTATION_CONSTRAINTS:
+        raise ObjectBongardScenePredicateIRError(
+            "registry tag orientation constraint differs"
+        )
+    result: list[str] = []
+    for item in registry.tags:
+        orientation_constraint = getattr(item, "orientation_constraint", None)
+        if orientation_constraint not in _TAG_ORIENTATION_CONSTRAINTS:
+            raise ObjectBongardScenePredicateIRError(
+                "registry tag orientation constraint differs"
+            )
+        if orientation_constraint == constraint:
+            result.append(item.tag_id)
+    return tuple(result)
+
+
 def _error_cells(tag_ids: tuple[str, ...]) -> tuple[SceneMergedCell, ...]:
     return tuple(SceneMergedCell(item, Disposition.ERROR, None, ()) for item in tag_ids)
 
@@ -867,6 +896,9 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
         "registered_tag_ids": list(value.registered_tag_ids),
         "entity_registered_tag_ids": list(value.entity_registered_tag_ids),
         "panel_registered_tag_ids": list(value.panel_registered_tag_ids),
+        "group0_positive_tag_ids": list(value.group0_positive_tag_ids),
+        "group1_positive_tag_ids": list(value.group1_positive_tag_ids),
+        "bidirectional_tag_ids": list(value.bidirectional_tag_ids),
         "source_mode": value.source_mode.value,
         "support_observation_digests": list(value.support_observation_digests),
         "boundaries": [item.to_data() for item in value.boundaries],
@@ -888,8 +920,16 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
             "or_is_only_exists_aggregation": True,
             "syntactic_not_operator": False,
             "post_hoc_polarity_flip": False,
-            "both_orientations_share_one_frozen_formula_inventory": True,
-            "both_orientations_enumerated_before_candidate_scoring": True,
+            "formula_inventory_frozen_before_tag_orientation_authorization": True,
+            "registered_tag_orientation_authorization": (
+                "recursive-intersection-of-frozen-tag-constraints"
+            ),
+            "tag_free_formula_authorized_orientations": [
+                SceneOrientation.GROUP0_POSITIVE.value,
+                SceneOrientation.GROUP1_POSITIVE.value,
+            ],
+            "opposite_constrained_tag_conjunction": "no-authorized-candidate",
+            "authorized_orientations_enumerated_before_candidate_scoring": True,
             "natural_affirmative_complement_equivalents_may_coexist": True,
             "literal_thresholds": False,
             "candidate_numeric_comparisons": ["at_least_positive", "equal_positive"],
@@ -907,6 +947,9 @@ class ScenePredicateLanguage:
     registered_tag_ids: tuple[str, ...]
     entity_registered_tag_ids: tuple[str, ...]
     panel_registered_tag_ids: tuple[str, ...]
+    group0_positive_tag_ids: tuple[str, ...]
+    group1_positive_tag_ids: tuple[str, ...]
+    bidirectional_tag_ids: tuple[str, ...]
     source_mode: SceneLanguageSourceMode
     support_observation_digests: tuple[str, ...]
     boundaries: tuple[SceneNumericBoundary, ...]
@@ -927,6 +970,24 @@ class ScenePredicateLanguage:
             != set(self.registered_tag_ids)
         ):
             raise ObjectBongardScenePredicateIRError("language scoped tag catalogs differ")
+        orientation_partitions = (
+            self.group0_positive_tag_ids,
+            self.group1_positive_tag_ids,
+            self.bidirectional_tag_ids,
+        )
+        if (
+            any(part != tuple(sorted(set(part))) for part in orientation_partitions)
+            or any(
+                set(first) & set(second)
+                for index, first in enumerate(orientation_partitions)
+                for second in orientation_partitions[index + 1 :]
+            )
+            or set().union(*(set(part) for part in orientation_partitions))
+            != set(self.registered_tag_ids)
+        ):
+            raise ObjectBongardScenePredicateIRError(
+                "language tag orientation partitions differ"
+            )
         if self.source_mode is not SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A: raise ObjectBongardScenePredicateIRError("language source mode differs")
         if self.support_observation_digests != tuple(sorted(set(self.support_observation_digests))) or not self.support_observation_digests: raise ObjectBongardScenePredicateIRError("language support commitments differ")
         for item in self.support_observation_digests: _digest(item, "language support digest")
@@ -940,11 +1001,11 @@ class ScenePredicateLanguage:
 
     @classmethod
     def from_data(cls, value: object) -> "ScenePredicateLanguage":
-        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "source_mode", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
+        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "group0_positive_tag_ids", "group1_positive_tag_ids", "bidirectional_tag_ids", "source_mode", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
         raw = _fields(value, expected, "scene predicate language")
-        if raw["schema"] != SCENE_LANGUAGE_SCHEMA or raw["algorithm_id"] != SCENE_ALGORITHM_ID or raw["candidate_order"] != "complexity-then-canonical-formula-digest-then-orientation" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "support_observation_digests", "boundaries")):
+        if raw["schema"] != SCENE_LANGUAGE_SCHEMA or raw["algorithm_id"] != SCENE_ALGORITHM_ID or raw["candidate_order"] != "complexity-then-canonical-formula-digest-then-orientation" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "group0_positive_tag_ids", "group1_positive_tag_ids", "bidirectional_tag_ids", "support_observation_digests", "boundaries")):
             raise ObjectBongardScenePredicateIRError("scene predicate language policy differs")
-        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), tuple(raw["entity_registered_tag_ids"]), tuple(raw["panel_registered_tag_ids"]), SceneLanguageSourceMode(raw["source_mode"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
+        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), tuple(raw["entity_registered_tag_ids"]), tuple(raw["panel_registered_tag_ids"]), tuple(raw["group0_positive_tag_ids"]), tuple(raw["group1_positive_tag_ids"]), tuple(raw["bidirectional_tag_ids"]), SceneLanguageSourceMode(raw["source_mode"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene predicate language is not canonical")
         return result
 
@@ -1007,6 +1068,15 @@ def freeze_object_scene_predicate_language(
         "registered_tag_ids": tuple(item.tag_id for item in registry.tags),
         "entity_registered_tag_ids": _registry_tag_ids(registry, "entity"),
         "panel_registered_tag_ids": _registry_tag_ids(registry, "panel"),
+        "group0_positive_tag_ids": _registry_orientation_tag_ids(
+            registry, SceneOrientation.GROUP0_POSITIVE.value
+        ),
+        "group1_positive_tag_ids": _registry_orientation_tag_ids(
+            registry, SceneOrientation.GROUP1_POSITIVE.value
+        ),
+        "bidirectional_tag_ids": _registry_orientation_tag_ids(
+            registry, _BIDIRECTIONAL_TAG_ORIENTATION
+        ),
         "source_mode": source_mode,
         "support_observation_digests": tuple(sorted(sources)),
         "boundaries": boundaries,
@@ -1114,14 +1184,56 @@ def validate_scene_formula(language: ScenePredicateLanguage, formula: SceneFormu
     return formula
 
 
+def authorized_scene_formula_orientations(
+    language: ScenePredicateLanguage, formula: SceneFormula
+) -> tuple[SceneOrientation, ...]:
+    """Return the exact frozen-tag authorization for one valid formula.
+
+    Each registered tag contributes its preregistered orientation constraint;
+    compound formulas intersect those constraints recursively.  Atoms without
+    registered tags contribute both orientations, so geometry, counts, and
+    relations cannot silently acquire a semantic polarity.
+    """
+
+    validate_scene_formula(language, formula)
+    both = frozenset(SceneOrientation)
+
+    def visit(node: SceneFormula) -> frozenset[SceneOrientation]:
+        if node.node is SceneFormulaNode.ATOM:
+            assert node.atom is not None
+            if node.atom.kind not in (
+                SceneAtomKind.REGISTERED_TAG,
+                SceneAtomKind.PANEL_REGISTERED_TAG,
+            ):
+                return both
+            tag_id = node.atom.observable_id
+            if tag_id in language.group0_positive_tag_ids:
+                return frozenset((SceneOrientation.GROUP0_POSITIVE,))
+            if tag_id in language.group1_positive_tag_ids:
+                return frozenset((SceneOrientation.GROUP1_POSITIVE,))
+            if tag_id in language.bidirectional_tag_ids:
+                return both
+            raise ObjectBongardScenePredicateIRError(
+                "formula tag has no frozen orientation constraint"
+            )
+        authorized = both
+        for child in node.children:
+            authorized = authorized.intersection(visit(child))
+        return authorized
+
+    authorized = visit(formula)
+    return tuple(item for item in SceneOrientation if item in authorized)
+
+
 def _candidate_content(value: "ScenePredicateCandidate") -> dict[str, object]:
-    return {"schema": SCENE_CANDIDATE_SCHEMA, "language_digest": value.language_digest, "orientation": value.orientation.value, "formula": value.formula.to_data(), "complexity": value.complexity, "affirmative_atoms_only": True, "same_language_both_orientations": True, "post_hoc_complement_synthesized": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()}
+    return {"schema": SCENE_CANDIDATE_SCHEMA, "language_digest": value.language_digest, "orientation": value.orientation.value, "formula_authorized_orientations": [item.value for item in value.formula_authorized_orientations], "formula": value.formula.to_data(), "complexity": value.complexity, "affirmative_atoms_only": True, "orientation_authorization": "exact-recursive-intersection-of-frozen-registered-tag-orientation-constraints", "orientation_is_formula_authorized": True, "post_hoc_orientation_flip": False, "post_hoc_complement_synthesized": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()}
 
 
 @dataclass(frozen=True, slots=True)
 class ScenePredicateCandidate:
     language_digest: str
     orientation: SceneOrientation
+    formula_authorized_orientations: tuple[SceneOrientation, ...]
     formula: SceneFormula
     complexity: int
     candidate_digest: str
@@ -1129,29 +1241,58 @@ class ScenePredicateCandidate:
     def __post_init__(self) -> None:
         _digest(self.language_digest, "candidate language digest")
         if not isinstance(self.orientation, SceneOrientation) or not isinstance(self.formula, SceneFormula): raise TypeError("candidate type differs")
+        if (
+            any(
+                not isinstance(item, SceneOrientation)
+                for item in self.formula_authorized_orientations
+            )
+            or self.formula_authorized_orientations
+            != tuple(
+                item
+                for item in SceneOrientation
+                if item in self.formula_authorized_orientations
+            )
+            or not self.formula_authorized_orientations
+            or self.orientation not in self.formula_authorized_orientations
+        ):
+            raise ObjectBongardScenePredicateIRError(
+                "candidate orientation authorization differs"
+            )
         if type(self.complexity) is not int or self.complexity != self.formula.complexity: raise ObjectBongardScenePredicateIRError("candidate complexity differs")
         _digest(self.candidate_digest, "candidate digest")
         if self.candidate_digest != canonical_digest(_candidate_content(self)): raise ObjectBongardScenePredicateIRError("candidate digest differs")
 
     @classmethod
     def create(cls, language: ScenePredicateLanguage, orientation: SceneOrientation, formula: SceneFormula) -> "ScenePredicateCandidate":
+        if not isinstance(orientation, SceneOrientation):
+            raise TypeError("candidate orientation differs")
         validate_scene_formula(language, formula, candidate_root=True)
+        authorized = authorized_scene_formula_orientations(language, formula)
+        if orientation not in authorized:
+            raise ObjectBongardScenePredicateIRError(
+                "candidate orientation is not authorized by its frozen tags"
+            )
         provisional = object.__new__(cls)
-        values = {"language_digest": language.language_digest, "orientation": orientation, "formula": formula, "complexity": formula.complexity}
+        values = {"language_digest": language.language_digest, "orientation": orientation, "formula_authorized_orientations": authorized, "formula": formula, "complexity": formula.complexity}
         for key, item in values.items(): object.__setattr__(provisional, key, item)
         return cls(**values, candidate_digest=canonical_digest(_candidate_content(provisional)))
 
     def to_data(self) -> dict[str, object]: return {**_candidate_content(self), "candidate_digest": self.candidate_digest}
 
     @classmethod
-    def from_data(cls, value: object, *, language: ScenePredicateLanguage | None = None) -> "ScenePredicateCandidate":
-        expected = {"schema", "language_digest", "orientation", "formula", "complexity", "affirmative_atoms_only", "same_language_both_orientations", "post_hoc_complement_synthesized", "natural_affirmative_complement_equivalents_may_coexist", *_authority_data(), "candidate_digest"}
+    def from_data(cls, value: object, *, language: ScenePredicateLanguage) -> "ScenePredicateCandidate":
+        if not isinstance(language, ScenePredicateLanguage):
+            raise TypeError("candidate decoding requires its frozen language")
+        expected = {"schema", "language_digest", "orientation", "formula_authorized_orientations", "formula", "complexity", "affirmative_atoms_only", "orientation_authorization", "orientation_is_formula_authorized", "post_hoc_orientation_flip", "post_hoc_complement_synthesized", "natural_affirmative_complement_equivalents_may_coexist", *_authority_data(), "candidate_digest"}
         raw = _fields(value, expected, "scene predicate candidate")
-        if raw["schema"] != SCENE_CANDIDATE_SCHEMA or raw["affirmative_atoms_only"] is not True or raw["same_language_both_orientations"] is not True or raw["post_hoc_complement_synthesized"] is not False or raw["natural_affirmative_complement_equivalents_may_coexist"] is not True or any(raw[k] != v for k, v in _authority_data().items()): raise ObjectBongardScenePredicateIRError("scene candidate policy differs")
-        result = cls(raw["language_digest"], SceneOrientation(raw["orientation"]), SceneFormula.from_data(raw["formula"]), raw["complexity"], raw["candidate_digest"])
-        if language is not None:
-            if result.language_digest != language.language_digest: raise ObjectBongardScenePredicateIRError("candidate belongs to another language")
-            validate_scene_formula(language, result.formula, candidate_root=True)
+        if raw["schema"] != SCENE_CANDIDATE_SCHEMA or raw["affirmative_atoms_only"] is not True or raw["orientation_authorization"] != "exact-recursive-intersection-of-frozen-registered-tag-orientation-constraints" or raw["orientation_is_formula_authorized"] is not True or raw["post_hoc_orientation_flip"] is not False or raw["post_hoc_complement_synthesized"] is not False or raw["natural_affirmative_complement_equivalents_may_coexist"] is not True or not isinstance(raw["formula_authorized_orientations"], list) or any(raw[k] != v for k, v in _authority_data().items()): raise ObjectBongardScenePredicateIRError("scene candidate policy differs")
+        result = cls(raw["language_digest"], SceneOrientation(raw["orientation"]), tuple(SceneOrientation(item) for item in raw["formula_authorized_orientations"]), SceneFormula.from_data(raw["formula"]), raw["complexity"], raw["candidate_digest"])
+        if result.language_digest != language.language_digest: raise ObjectBongardScenePredicateIRError("candidate belongs to another language")
+        validate_scene_formula(language, result.formula, candidate_root=True)
+        if result.formula_authorized_orientations != authorized_scene_formula_orientations(language, result.formula):
+            raise ObjectBongardScenePredicateIRError(
+                "candidate serialized orientation authorization differs"
+            )
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene candidate is not canonical")
         return result
 
@@ -1163,7 +1304,7 @@ def _boundary_groups(language: ScenePredicateLanguage) -> dict[str, tuple[SceneN
 
 
 def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[SceneFormula, ...]:
-    """Enumerate the complete label-blind finite grammar before orientation."""
+    """Enumerate the complete frozen finite grammar before orientation filtering."""
     if not isinstance(language, ScenePredicateLanguage): raise TypeError("language must be ScenePredicateLanguage")
     boundaries = {key: tuple(item for item in values if item.value >= 1 and item.comparison is not SceneComparison.AT_MOST) for key, values in _boundary_groups(language).items()}
     entity_atoms: list[SceneAtom] = [
@@ -1217,7 +1358,7 @@ def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[S
 
 def enumerate_object_scene_candidates(language: ScenePredicateLanguage) -> tuple[ScenePredicateCandidate, ...]:
     formulas = enumerate_object_scene_formulas(language)
-    candidates = tuple(ScenePredicateCandidate.create(language, orientation, formula) for formula in formulas for orientation in SceneOrientation)
+    candidates = tuple(ScenePredicateCandidate.create(language, orientation, formula) for formula in formulas for orientation in authorized_scene_formula_orientations(language, formula))
     return tuple(sorted(candidates, key=lambda item: (item.complexity, item.formula.formula_digest, item.orientation.value)))
 
 
@@ -1312,6 +1453,9 @@ def evaluate_object_scene_formula(formula: SceneFormula, language: ScenePredicat
 
 def evaluate_object_scene_candidate(candidate: ScenePredicateCandidate, language: ScenePredicateLanguage, panel: ScenePanelObservation) -> Disposition:
     if candidate.language_digest != language.language_digest: raise ObjectBongardScenePredicateIRError("candidate/language binding differs")
+    authorized = authorized_scene_formula_orientations(language, candidate.formula)
+    if candidate.formula_authorized_orientations != authorized or candidate.orientation not in authorized:
+        raise ObjectBongardScenePredicateIRError("candidate orientation authorization differs")
     return evaluate_object_scene_formula(candidate.formula, language, panel)
 
 
@@ -1441,7 +1585,7 @@ def _row_metrics(row: Sequence[Disposition], expected: Sequence[Disposition]) ->
 
 
 def _version_content(value: "SceneVersionSpace") -> dict[str, object]:
-    return {"schema": SCENE_VERSION_SPACE_SCHEMA, "algorithm_digest": value.algorithm_digest, "language_digest": value.language_digest, "orientation": value.orientation.value, "group0_count": value.group0_count, "support_panel_ids": list(value.support_panel_ids), "support_observation_digests": list(value.support_observation_digests), "pass_a_observation_digests": list(value.pass_a_observation_digests), "pass_b_observation_digests": list(value.pass_b_observation_digests), "candidate_digests": [item.candidate_digest for item in value.candidates], "evaluations": [_compact_evaluation_data(item) for item in value.evaluations], "pass_a_evaluations": [_compact_evaluation_data(item) for item in value.pass_a_evaluations], "pass_b_evaluations": [_compact_evaluation_data(item) for item in value.pass_b_evaluations], "survivor_candidate_digests": list(value.survivor_candidate_digests), "gap": None if value.gap is None else value.gap.to_data(), "coverage_gate": value.coverage_gate.to_data(), "selectivity_gate": value.selectivity_gate.to_data(), "repeatability_gate": value.repeatability_gate.to_data(), "candidate_records_inherited_from_bundle_top": True, "evaluation_panel_bindings_inherited_from_space": True, "complete_enumeration": True, "orientation_filters_same_label_blind_formula_inventory": True, "repeatability_rule": "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge", **_authority_data()}
+    return {"schema": SCENE_VERSION_SPACE_SCHEMA, "algorithm_digest": value.algorithm_digest, "language_digest": value.language_digest, "orientation": value.orientation.value, "group0_count": value.group0_count, "support_panel_ids": list(value.support_panel_ids), "support_observation_digests": list(value.support_observation_digests), "pass_a_observation_digests": list(value.pass_a_observation_digests), "pass_b_observation_digests": list(value.pass_b_observation_digests), "candidate_digests": [item.candidate_digest for item in value.candidates], "evaluations": [_compact_evaluation_data(item) for item in value.evaluations], "pass_a_evaluations": [_compact_evaluation_data(item) for item in value.pass_a_evaluations], "pass_b_evaluations": [_compact_evaluation_data(item) for item in value.pass_b_evaluations], "survivor_candidate_digests": list(value.survivor_candidate_digests), "gap": None if value.gap is None else value.gap.to_data(), "coverage_gate": value.coverage_gate.to_data(), "selectivity_gate": value.selectivity_gate.to_data(), "repeatability_gate": value.repeatability_gate.to_data(), "candidate_records_inherited_from_bundle_top": True, "evaluation_panel_bindings_inherited_from_space": True, "complete_enumeration": True, "orientation_filters_formula_inventory_by_frozen_tag_constraints": True, "repeatability_rule": "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge", **_authority_data()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1493,9 +1637,9 @@ class SceneVersionSpace:
     @classmethod
     def from_data(cls, value: object, *, language: ScenePredicateLanguage) -> "SceneVersionSpace":
         if not isinstance(language, ScenePredicateLanguage): raise TypeError("version-space decoding requires its frozen language")
-        expected = {"schema", "algorithm_digest", "language_digest", "orientation", "group0_count", "support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests", "gap", "coverage_gate", "selectivity_gate", "repeatability_gate", "candidate_records_inherited_from_bundle_top", "evaluation_panel_bindings_inherited_from_space", "complete_enumeration", "orientation_filters_same_label_blind_formula_inventory", "repeatability_rule", *_authority_data(), "version_space_digest"}
+        expected = {"schema", "algorithm_digest", "language_digest", "orientation", "group0_count", "support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests", "gap", "coverage_gate", "selectivity_gate", "repeatability_gate", "candidate_records_inherited_from_bundle_top", "evaluation_panel_bindings_inherited_from_space", "complete_enumeration", "orientation_filters_formula_inventory_by_frozen_tag_constraints", "repeatability_rule", *_authority_data(), "version_space_digest"}
         raw = _fields(value, expected, "scene version space")
-        if raw["schema"] != SCENE_VERSION_SPACE_SCHEMA or raw["candidate_records_inherited_from_bundle_top"] is not True or raw["evaluation_panel_bindings_inherited_from_space"] is not True or raw["complete_enumeration"] is not True or raw["orientation_filters_same_label_blind_formula_inventory"] is not True or raw["repeatability_rule"] != "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests")): raise ObjectBongardScenePredicateIRError("scene version policy differs")
+        if raw["schema"] != SCENE_VERSION_SPACE_SCHEMA or raw["candidate_records_inherited_from_bundle_top"] is not True or raw["evaluation_panel_bindings_inherited_from_space"] is not True or raw["complete_enumeration"] is not True or raw["orientation_filters_formula_inventory_by_frozen_tag_constraints"] is not True or raw["repeatability_rule"] != "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests")): raise ObjectBongardScenePredicateIRError("scene version policy differs")
         try:
             complete_for_orientation = tuple(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation(raw["orientation"]))
         except SceneLanguageCapacityGap as exc:
@@ -1509,7 +1653,7 @@ class SceneVersionSpace:
 
 
 def object_bongard_scene_predicate_algorithm_digest(language: ScenePredicateLanguage) -> str:
-    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v2", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "pass_b_can_extend_or_refit_language": False, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "registered_tag_semantics": "transparent-witness-macro-compiled-by-python", "fixed_qualitative_semantics": "diagnostic-only-never-enumerated", "two_orientations_predeclared_before_roles": True, "post_hoc_complement_after_failure": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
+    return canonical_digest({"schema": "gkm.object-bongard-scene-predicate-algorithm.v3", "algorithm_id": SCENE_ALGORITHM_ID, "implementation_source_sha256": object_bongard_scene_predicate_ir_source_digest(), "language_digest": language.language_digest, "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "pass_b_can_extend_or_refit_language": False, "repeat_merge": "P/P=P;A/A=A;flip-or-I=I;missing-or-artifact-failure=E", "numeric_merge": "typed-interval-intersection-else-I", "logic": "error-dominant-strong-kleene-affirmative-and", "quantifiers": ["exists", "all", "count"], "numeric_candidate_boundaries": "at-least-k-or-equal-k-with-k>=1;never-at-most;never-zero", "empty_all": "indeterminate", "registered_tag_semantics": "transparent-witness-macro-compiled-by-python", "fixed_qualitative_semantics": "diagnostic-only-never-enumerated", "formula_orientation_authorization": "recursive-intersection-of-frozen-registered-tag-orientation-constraints", "tag_free_formula_orientations": [item.value for item in SceneOrientation], "opposite_constrained_tag_conjunction_candidate_count": 0, "post_hoc_complement_after_failure": False, "post_hoc_orientation_flip": False, "absence_count_aliases": False, "natural_affirmative_complement_equivalents_may_coexist": True, **_authority_data()})
 
 
 def _build_orientation_space(language: ScenePredicateLanguage, algorithm_digest: str, candidates: Sequence[ScenePredicateCandidate], panels: Sequence[ScenePanelObservation], pass_a_panels: Sequence[ScenePanelObservation], pass_b_panels: Sequence[ScenePanelObservation], group0_count: int, orientation: SceneOrientation) -> SceneVersionSpace:

@@ -210,6 +210,10 @@ def test_prepare_is_order_invariant_opaque_multimodal_and_strict(discovery_input
     assert "visible paths, and visible sides are affirmative and allowed" in (
         prepared.prompt
     )
+    assert "preserve each card's bucket as its frozen orientation constraint" in (
+        prepared.prompt
+    )
+    assert "discard bucket membership" not in prepared.prompt
     assert "the configuration before that exclusion must itself be affirmative" in (
         prepared.prompt.lower()
     )
@@ -290,6 +294,16 @@ def test_valid_both_bucket_union_requires_complete_positive_bindings(
     assert all(item.required_witnesses[0].witness_id == "witness_00" for item in registry.tags)
     assert all(len(item.criteria_digest) == 64 for item in registry.tags)
     assert all(len(item.tag_digest) == 64 for item in registry.tags)
+    constraints_by_phrase = {
+        item.tag: item.orientation_constraint for item in registry.tags
+    }
+    assert constraints_by_phrase == {
+        "paired visible forms": "group0_positive",
+        "mismatched parts": "group0_positive",
+        "unequal edge lengths": "group1_positive",
+        "balanced spacing": "group1_positive",
+    }
+    assert ObjectSceneSoftTagRegistry.from_data(registry.to_data()) == registry
     for concept in (*proposal.side0_positive, *proposal.side1_positive):
         assert len(concept.support_bindings) == 6
         assert concept.support_bindings == tuple(
@@ -705,7 +719,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
     )
 
 
-def test_orientation_is_audit_only_and_union_registry_is_role_blind(
+def test_orientation_constraint_is_preserved_and_changes_registry_identity(
     discovery_inputs,
 ):
     artifacts, roles = discovery_inputs
@@ -726,7 +740,33 @@ def test_orientation_is_audit_only_and_union_registry_is_role_blind(
     _, swapped_registry = build_object_scene_semantic_registry_proposal(
         swapped_prepared, swapped_payload
     )
-    assert swapped_registry == registry
+    assert swapped_registry != registry
+    assert swapped_registry.registry_digest != registry.registry_digest
+    constraints = {
+        item.tag: item.orientation_constraint for item in registry.tags
+    }
+    swapped_constraints = {
+        item.tag: item.orientation_constraint for item in swapped_registry.tags
+    }
+    assert constraints == {
+        "paired visible forms": "group0_positive",
+        "mismatched parts": "group0_positive",
+        "unequal edge lengths": "group1_positive",
+        "balanced spacing": "group1_positive",
+    }
+    assert swapped_constraints == {
+        phrase: (
+            "group1_positive"
+            if constraint == "group0_positive"
+            else "group0_positive"
+        )
+        for phrase, constraint in constraints.items()
+    }
+    assert ObjectSceneSoftTagRegistry.from_data(registry.to_data()) == registry
+    assert (
+        ObjectSceneSoftTagRegistry.from_data(swapped_registry.to_data())
+        == swapped_registry
+    )
     evaluator_view = str(registry.to_data())
     assert "side0_positive" not in evaluator_view
     assert "side1_positive" not in evaluator_view

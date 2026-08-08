@@ -68,9 +68,9 @@ from bongard.visual_witnesses import Q16BBox
 OBJECT_SCENE_INVENTORY_SCHEMA = "gkm.object-scene-proposal-inventory.v1"
 OBJECT_SCENE_CROP_RECEIPT_SCHEMA = "gkm.object-scene-crop-receipt.v1"
 OBJECT_SCENE_ATLAS_SHEET_SCHEMA = "gkm.object-scene-atlas-sheet.v1"
-OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v5"
-OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v5"
-OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v5"
+OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v6"
+OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v6"
+OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v6"
 OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA = "gkm.object-scene-dropped-open-tag.v1"
 OBJECT_SCENE_CANONICAL_SCENARIO_ID = "threshold064.close-cross-1"
 OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS = (
@@ -127,6 +127,11 @@ OBJECT_SCENE_MAX_CRITERION_CHARACTERS = 160
 OBJECT_SCENE_MAX_REGISTERED_TAGS = 32
 OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY = 2
 OBJECT_SCENE_SOFT_TAG_SCOPES = ("entity", "panel")
+OBJECT_SCENE_SOFT_TAG_ORIENTATION_CONSTRAINTS = (
+    "group0_positive",
+    "group1_positive",
+    "bidirectional",
+)
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -305,6 +310,21 @@ def _soft_tag_scope(value: object, label: str = "soft tag scope") -> str:
     ):
         raise ObjectSceneVisualFrontendError(
             f"{label} must be one of {OBJECT_SCENE_SOFT_TAG_SCOPES}"
+        )
+    return value
+
+
+def _soft_tag_orientation_constraint(
+    value: object,
+    label: str = "soft tag orientation constraint",
+) -> str:
+    if (
+        not isinstance(value, str)
+        or value not in OBJECT_SCENE_SOFT_TAG_ORIENTATION_CONSTRAINTS
+    ):
+        raise ObjectSceneVisualFrontendError(
+            f"{label} must be one of "
+            f"{OBJECT_SCENE_SOFT_TAG_ORIENTATION_CONSTRAINTS}"
         )
     return value
 
@@ -575,12 +595,14 @@ def _soft_tag_content_digest(
     scope: str,
     tag: str,
     criteria_digest: str,
+    orientation_constraint: str,
 ) -> str:
     return canonical_digest(
         {
             "scope": scope,
             "normalized_affirmative_tag": tag,
             "criteria_digest": criteria_digest,
+            "orientation_constraint": orientation_constraint,
         }
     )
 
@@ -2342,7 +2364,7 @@ class ObjectSceneTranscript:
         return result
 
 
-OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v5"
+OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v6"
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -2351,6 +2373,7 @@ class ObjectSceneSoftTag:
     scope: str
     tag: str
     distinct_panel_count: int
+    orientation_constraint: str
     required_witnesses: tuple[ObjectSceneOperationalWitness, ...]
     accepted_variants: tuple[str, ...]
     near_miss_boundaries: tuple[str, ...]
@@ -2363,6 +2386,7 @@ class ObjectSceneSoftTag:
         _soft_tag_scope(self.scope)
         _positive_tag(self.tag)
         _integer(self.distinct_panel_count, "soft tag panel count", minimum=OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY)
+        _soft_tag_orientation_constraint(self.orientation_constraint)
         witnesses = canonicalize_object_scene_operational_witnesses(
             self.required_witnesses
         )
@@ -2397,7 +2421,10 @@ class ObjectSceneSoftTag:
             raise ObjectSceneVisualFrontendError("soft tag criteria digest differs")
         _digest(self.tag_digest, "soft tag digest")
         if self.tag_digest != _soft_tag_content_digest(
-            self.scope, self.tag, self.criteria_digest
+            self.scope,
+            self.tag,
+            self.criteria_digest,
+            self.orientation_constraint,
         ):
             raise ObjectSceneVisualFrontendError("soft tag content digest differs")
 
@@ -2411,9 +2438,14 @@ class ObjectSceneSoftTag:
         required_witnesses: object,
         accepted_variants: object = (),
         near_miss_boundaries: object = (),
+        *,
+        orientation_constraint: str = "bidirectional",
     ) -> "ObjectSceneSoftTag":
         normalized_scope = _soft_tag_scope(scope)
         normalized_tag = _normalized_positive_tag(tag)
+        normalized_orientation_constraint = _soft_tag_orientation_constraint(
+            orientation_constraint
+        )
         witnesses = canonicalize_object_scene_operational_witnesses(
             required_witnesses
         )
@@ -2439,12 +2471,16 @@ class ObjectSceneSoftTag:
             normalized_scope,
             normalized_tag,
             distinct_panel_count,
+            normalized_orientation_constraint,
             witnesses,
             variants,
             boundaries,
             criteria_digest,
             _soft_tag_content_digest(
-                normalized_scope, normalized_tag, criteria_digest
+                normalized_scope,
+                normalized_tag,
+                criteria_digest,
+                normalized_orientation_constraint,
             ),
         )
 
@@ -2454,6 +2490,7 @@ class ObjectSceneSoftTag:
             "scope": self.scope,
             "tag": self.tag,
             "distinct_panel_count": self.distinct_panel_count,
+            "orientation_constraint": self.orientation_constraint,
             "required_witnesses": [
                 item.to_data() for item in self.required_witnesses
             ],
@@ -2472,6 +2509,7 @@ class ObjectSceneSoftTag:
                 "scope",
                 "tag",
                 "distinct_panel_count",
+                "orientation_constraint",
                 "required_witnesses",
                 "accepted_variants",
                 "near_miss_boundaries",
@@ -2494,6 +2532,7 @@ class ObjectSceneSoftTag:
             raw["scope"],
             raw["tag"],
             raw["distinct_panel_count"],
+            raw["orientation_constraint"],
             tuple(
                 ObjectSceneOperationalWitness.from_data(item)
                 for item in raw["required_witnesses"]
@@ -2694,6 +2733,7 @@ def freeze_object_scene_soft_tag_registry(transcripts: Sequence[ObjectSceneTrans
             ({"kind": "shape_appearance", "statement": tag},),
             (),
             (),
+            orientation_constraint="bidirectional",
         )
         for index, (scope, tag, count) in enumerate(admitted)
     )
@@ -3078,7 +3118,7 @@ def prepare_object_scene_transcript_inputs(
     schema = object_scene_transcript_output_schema(inventory, mode, registry)
     identities = _presentation_identities(presentation)
     digest = canonical_digest({
-        "schema": "gkm.object-scene-prepared-transcript.v5",
+        "schema": "gkm.object-scene-prepared-transcript.v6",
         "inventory_digest": inventory.inventory_digest,
         "mode": mode.value,
         "registry_digest": None if registry is None else registry.registry_digest,
@@ -3309,7 +3349,7 @@ def _parse_object_scene_transcript_payload(
 
 def object_scene_transcript_protocol_digest() -> str:
     return canonical_digest({
-        "schema": "gkm.object-scene-transcript-protocol.v5",
+        "schema": "gkm.object-scene-transcript-protocol.v6",
         "frontend_id": OBJECT_SCENE_FRONTEND_ID,
         "source_digest": object_scene_visual_frontend_source_digest(),
         "inventory_protocol_digest": object_scene_inventory_protocol_digest(),
@@ -3335,7 +3375,8 @@ def object_scene_transcript_protocol_digest() -> str:
         ),
         "registered_operational_card_policy": _operational_card_policy(),
         "registered_operational_card_digest_chain": (
-            "criteria-digest-then-scope-phrase-criteria-tag-digest-then-registry"
+            "criteria-digest-then-scope-phrase-orientation-criteria-tag-digest-"
+            "then-registry"
         ),
         "registered_operational_card_model_view": (
             "tag-id-phrase-scope-derived-binding-ordered-witness-id-kind-statement-"
@@ -3358,7 +3399,10 @@ def object_scene_transcript_protocol_digest() -> str:
         "registry_minimum_distinct_panel_frequency": OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY,
         "registry_capacity": OBJECT_SCENE_MAX_REGISTERED_TAGS,
         "registry_tag_scopes": list(OBJECT_SCENE_SOFT_TAG_SCOPES),
-        "registry_identity": "scope-plus-normalized-affirmative-phrase",
+        "registry_identity": (
+            "scope-plus-normalized-affirmative-phrase-plus-criteria-digest-"
+            "plus-orientation-constraint"
+        ),
         "registry_ordering": (
             "descending-distinct-panel-frequency-then-scope-then-phrase"
         ),
@@ -3971,6 +4015,7 @@ __all__ = [
     "OBJECT_SCENE_COUNT_OBSERVABLE_IDS",
     "OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES",
     "OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA",
+    "OBJECT_SCENE_SOFT_TAG_ORIENTATION_CONSTRAINTS",
     "OBJECT_SCENE_MAX_ACCEPTED_VARIANTS",
     "OBJECT_SCENE_MAX_CRITERION_CHARACTERS",
     "OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES",

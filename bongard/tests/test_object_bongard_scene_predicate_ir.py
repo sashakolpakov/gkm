@@ -11,6 +11,7 @@ from PIL import Image
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.evidence import Disposition
 import bongard.object_bongard_scene_predicate_ir as ir
+import bongard.object_scene_visual_frontend as visual_frontend
 from bongard.object_bongard_scene_predicate_ir import (
     ObjectBongardScenePredicateIRError,
     SceneAtomKind,
@@ -43,6 +44,7 @@ from bongard.object_scene_visual_frontend import (
     OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS,
     ObjectSceneRegisteredTagCell,
     ObjectSceneSoftTag,
+    ObjectSceneSoftTagRegistry,
     ObjectSceneTranscriptMode,
     extract_object_scene_proposal_inventory,
     freeze_object_scene_soft_tag_registry,
@@ -128,6 +130,126 @@ def _panel(
         **values,
         observation_digest=canonical_digest(ir._observation_content(provisional)),
     )
+
+
+def _orientation_registry() -> ObjectSceneSoftTagRegistry:
+    specs = (
+        ("entity", "alpha left-sign object", "group0_positive"),
+        ("entity", "beta right-sign object", "group1_positive"),
+        ("entity", "gamma neutral object", "bidirectional"),
+        ("panel", "delta whole-panel sign", "group0_positive"),
+    )
+    tags = tuple(
+        ObjectSceneSoftTag.create(
+            f"tag_{index:04d}",
+            scope,
+            phrase,
+            2,
+            (
+                {
+                    "kind": "shape_appearance",
+                    "statement": f"the image visibly has the {phrase}",
+                },
+            ),
+            orientation_constraint=orientation,
+        )
+        for index, (scope, phrase, orientation) in enumerate(specs)
+    )
+    values = {
+        "source_transcript_digests": (),
+        "source_panel_digests": (),
+        "tags": tags,
+        "dropped_tags": (),
+    }
+    provisional = object.__new__(ObjectSceneSoftTagRegistry)
+    for key, value in values.items():
+        object.__setattr__(provisional, key, value)
+    return ObjectSceneSoftTagRegistry(
+        **values,
+        registry_digest=canonical_digest(
+            visual_frontend._registry_content(provisional)
+        ),
+    )
+
+
+def _orientation_panel(
+    registry: ObjectSceneSoftTagRegistry, panel_id: str
+) -> ScenePanelObservation:
+    base = _entity(Disposition.PRESENT)
+    entity_tag_ids = tuple(
+        item.tag_id for item in registry.tags if item.scope == "entity"
+    )
+    panel_tag_ids = tuple(
+        item.tag_id for item in registry.tags if item.scope == "panel"
+    )
+    entity = SceneEntityObservation(
+        base.object_id,
+        base.crop_receipt_digest,
+        base.bbox_q16,
+        base.area_pixels,
+        base.component_count,
+        base.emergence_gap_pixels,
+        base.overlap_object_ids,
+        base.qualitative_cells,
+        base.count_cells,
+        tuple(
+            SceneMergedCell(item, Disposition.PRESENT, None, ())
+            for item in entity_tag_ids
+        ),
+    )
+    values = {
+        "panel_id": panel_id,
+        "panel_digest": _raw_digest(panel_id + "-png"),
+        "inventory_digest": _raw_digest(panel_id + "-inventory"),
+        "registry_digest": registry.registry_digest,
+        "observation_mode": SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value,
+        "source_artifact_digests": (_raw_digest(panel_id + "-artifact"),),
+        "source_transcript_digests": (),
+        "disposition": Disposition.PRESENT,
+        "panel_registered_tag_cells": tuple(
+            SceneMergedCell(item, Disposition.PRESENT, None, ())
+            for item in panel_tag_ids
+        ),
+        "entities": (entity,),
+    }
+    provisional = object.__new__(ScenePanelObservation)
+    for key, value in values.items():
+        object.__setattr__(provisional, key, value)
+    return ScenePanelObservation(
+        **values,
+        observation_digest=canonical_digest(ir._observation_content(provisional)),
+    )
+
+
+@pytest.fixture(scope="module")
+def orientation_language():
+    registry = _orientation_registry()
+    return freeze_object_scene_predicate_language(
+        registry,
+        (
+            _orientation_panel(registry, "orientation_panel_00"),
+            _orientation_panel(registry, "orientation_panel_01"),
+        ),
+        source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+    )
+
+
+def _exists_entity_atom(kind: SceneAtomKind, observable_id: str):
+    return ir.SceneFormula.quantified(
+        SceneScope.ENTITY,
+        SceneQuantifier.EXISTS,
+        ir.SceneFormula.atom_formula(
+            ir.SceneAtom.create(SceneScope.ENTITY, kind, observable_id)
+        ),
+    )
+
+
+def _candidate_orientations(language, formula):
+    return {
+        item.orientation
+        for item in enumerate_object_scene_candidates(language)
+        if item.formula.formula_digest == formula.formula_digest
+    }
 
 
 def _observe(raw, payload, *, scene_id: str, context: str, mode, registry=None):
@@ -366,6 +488,145 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
         )
 
 
+def test_tag_orientation_partitions_authorize_only_declared_candidates(
+    orientation_language,
+):
+    language = orientation_language
+    assert language.group0_positive_tag_ids == ("tag_0000", "tag_0003")
+    assert language.group1_positive_tag_ids == ("tag_0001",)
+    assert language.bidirectional_tag_ids == ("tag_0002",)
+    assert ir.ScenePredicateLanguage.from_data(language.to_data()) == language
+    overlapping = deepcopy(language.to_data())
+    overlapping["bidirectional_tag_ids"].append("tag_0000")
+    overlapping["bidirectional_tag_ids"].sort()
+    overlapping["language_digest"] = canonical_digest(
+        {
+            key: value
+            for key, value in overlapping.items()
+            if key != "language_digest"
+        }
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateIRError,
+        match="orientation partitions differ",
+    ):
+        ir.ScenePredicateLanguage.from_data(overlapping)
+
+    group0 = _exists_entity_atom(SceneAtomKind.REGISTERED_TAG, "tag_0000")
+    group1 = _exists_entity_atom(SceneAtomKind.REGISTERED_TAG, "tag_0001")
+    bidirectional = _exists_entity_atom(
+        SceneAtomKind.REGISTERED_TAG, "tag_0002"
+    )
+    assert _candidate_orientations(language, group0) == {
+        SceneOrientation.GROUP0_POSITIVE
+    }
+    assert _candidate_orientations(language, group1) == {
+        SceneOrientation.GROUP1_POSITIVE
+    }
+    assert _candidate_orientations(language, bidirectional) == set(
+        SceneOrientation
+    )
+
+    panel_group0 = ir.SceneFormula.atom_formula(
+        ir.SceneAtom.create(
+            SceneScope.PANEL,
+            SceneAtomKind.PANEL_REGISTERED_TAG,
+            "tag_0003",
+        )
+    )
+    assert _candidate_orientations(language, panel_group0) == {
+        SceneOrientation.GROUP0_POSITIVE
+    }
+
+
+def test_recursive_tag_orientation_intersection_and_tag_free_default(
+    orientation_language,
+):
+    language = orientation_language
+    group0_atom = ir.SceneFormula.atom_formula(
+        ir.SceneAtom.create(
+            SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, "tag_0000"
+        )
+    )
+    group1_atom = ir.SceneFormula.atom_formula(
+        ir.SceneAtom.create(
+            SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, "tag_0001"
+        )
+    )
+    geometry_atom = ir.SceneFormula.atom_formula(
+        ir.SceneAtom.create(
+            SceneScope.ENTITY, SceneAtomKind.GEOMETRY, "single_component"
+        )
+    )
+    tag_and_geometry = ir.SceneFormula.quantified(
+        SceneScope.ENTITY,
+        SceneQuantifier.EXISTS,
+        ir.SceneFormula.conjunction(group0_atom, geometry_atom),
+    )
+    assert _candidate_orientations(language, tag_and_geometry) == {
+        SceneOrientation.GROUP0_POSITIVE
+    }
+
+    opposite_tags = ir.SceneFormula.quantified(
+        SceneScope.ENTITY,
+        SceneQuantifier.EXISTS,
+        ir.SceneFormula.conjunction(group0_atom, group1_atom),
+    )
+    assert ir.authorized_scene_formula_orientations(language, opposite_tags) == ()
+    assert opposite_tags.formula_digest in {
+        item.formula_digest for item in ir.enumerate_object_scene_formulas(language)
+    }
+    assert _candidate_orientations(language, opposite_tags) == set()
+
+    geometry_only = _exists_entity_atom(
+        SceneAtomKind.GEOMETRY, "single_component"
+    )
+    assert ir.authorized_scene_formula_orientations(
+        language, geometry_only
+    ) == tuple(SceneOrientation)
+    assert _candidate_orientations(language, geometry_only) == set(
+        SceneOrientation
+    )
+
+
+def test_candidate_create_and_decode_reject_forged_opposite_orientation(
+    orientation_language,
+):
+    language = orientation_language
+    formula = _exists_entity_atom(SceneAtomKind.REGISTERED_TAG, "tag_0000")
+    valid = ir.ScenePredicateCandidate.create(
+        language, SceneOrientation.GROUP0_POSITIVE, formula
+    )
+    serialized = valid.to_data()
+    assert "same_language_both_orientations" not in serialized
+    assert serialized["formula_authorized_orientations"] == ["group0_positive"]
+    assert serialized["post_hoc_orientation_flip"] is False
+    assert ir.ScenePredicateCandidate.from_data(
+        serialized, language=language
+    ) == valid
+
+    with pytest.raises(
+        ObjectBongardScenePredicateIRError, match="not authorized"
+    ):
+        ir.ScenePredicateCandidate.create(
+            language, SceneOrientation.GROUP1_POSITIVE, formula
+        )
+
+    forged = deepcopy(serialized)
+    forged["orientation"] = SceneOrientation.GROUP1_POSITIVE.value
+    forged["formula_authorized_orientations"] = [
+        SceneOrientation.GROUP1_POSITIVE.value
+    ]
+    forged["candidate_digest"] = canonical_digest(
+        {key: value for key, value in forged.items() if key != "candidate_digest"}
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateIRError,
+        match="serialized orientation authorization differs",
+    ):
+        ir.ScenePredicateCandidate.from_data(forged, language=language)
+
+
 def test_distinct_calls_required_and_real_pass_b_disagreement_fails_repeatability():
     registry, discovery, pass_a, pass_b, roles = _artifact_fixture(flip_group0_b=True)
     with pytest.raises(ObjectBongardScenePredicateIRError, match="two distinct"):
@@ -568,7 +829,7 @@ def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratifi
         )
     )
     formula = ir.SceneFormula.quantified(SceneScope.ENTITY, SceneQuantifier.COUNT, body, forbidden_boundary.boundary_id)
-    values = {"language_digest": language.language_digest, "orientation": SceneOrientation.GROUP0_POSITIVE, "formula": formula, "complexity": formula.complexity}
+    values = {"language_digest": language.language_digest, "orientation": SceneOrientation.GROUP0_POSITIVE, "formula_authorized_orientations": tuple(SceneOrientation), "formula": formula, "complexity": formula.complexity}
     provisional = object.__new__(ir.ScenePredicateCandidate)
     for key, value in values.items(): object.__setattr__(provisional, key, value)
     forbidden = ir.ScenePredicateCandidate(**values, candidate_digest=canonical_digest(ir._candidate_content(provisional)))

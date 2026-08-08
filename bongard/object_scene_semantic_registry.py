@@ -4,8 +4,9 @@ The proposer sees the prose frozen by the blind visual discovery pass plus the
 same twelve already-exposed panels and proposal atlases under opaque aliases.
 Only after the discovery freeze does it receive the committed support roles.
 It proposes affirmative concepts for both orientations in one response.
-Python then freezes the union as a scoped soft-tag registry; fresh role-blind
-visual passes decide every resulting tag with the frontend's four dispositions.
+Python then freezes one orientation-preserving scoped soft-tag registry; fresh
+role-blind visual passes decide every resulting tag with the frontend's four
+dispositions.
 
 This is an operational observation contract, not a theorem-proving layer.
 Python owns preparation, parsing, identity, verification, and replay.  Lean is
@@ -48,10 +49,10 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v6"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v6"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v7"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v7"
 DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v2"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v6"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v7"
 MAX_CONCEPTS_PER_ORIENTATION = 16
 MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
 SUPPORT_PANEL_COUNT = 12
@@ -114,6 +115,8 @@ def _authority_data() -> dict[str, object]:
         "every_card_binds_one_target_per_positive_support_panel": True,
         "both_orientations_in_one_call": True,
         "registered_evaluator_receives_roles": False,
+        "registry_preserves_proposal_orientation_constraint": True,
+        "registered_observer_receives_orientation_constraint": False,
         "semantic_proposal_is_not_a_truth_assignment": True,
         "soft_predicates_are_transparent_witness_macros": True,
         "registered_observer_authors_macro_disposition": False,
@@ -132,7 +135,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v6",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v7",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
@@ -141,7 +144,7 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             "proposal_schema": PROPOSAL_SCHEMA,
             "maximum_concepts_per_orientation": MAX_CONCEPTS_PER_ORIENTATION,
             "maximum_concept_phrase_characters": MAX_CONCEPT_PHRASE_CHARACTERS,
-            "maximum_union_concepts": OBJECT_SCENE_MAX_REGISTERED_TAGS,
+            "maximum_registered_concepts": OBJECT_SCENE_MAX_REGISTERED_TAGS,
             "operational_witness_kinds": list(
                 OBJECT_SCENE_OPERATIONAL_WITNESS_KINDS
             ),
@@ -172,7 +175,16 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             ),
             "operational_card_identity_rule": (
                 "criteria-digest-binds-cues-and-variants;"
-                "tag-digest-binds-scope-phrase-and-criteria-digest"
+                "tag-digest-binds-scope-phrase-criteria-digest-and-"
+                "orientation-constraint"
+            ),
+            "proposal_orientation_constraint_map": {
+                "side0_positive": "group0_positive",
+                "side1_positive": "group1_positive",
+            },
+            "orientation_constraint_visibility": (
+                "serialized-and-replay-bound-but-absent-from-registered-"
+                "observer-prompt-and-output-schema"
             ),
             **_authority_data(),
         }
@@ -756,9 +768,11 @@ def prepare_object_scene_semantic_registry_proposal(
         "near-miss boundaries use only lowercase ASCII letters, spaces, "
         "apostrophes, and hyphens. Accepted variants may additionally use "
         "canonical comma-space separators. Supply at most 16 concepts "
-        "per bucket. Python will discard bucket membership, freeze one union of "
-        "transparent witness macros, and two fresh role-blind visual passes will "
-        "judge their witnesses. Return only the required JSON object.\n\nFrozen descriptions:\n"
+        "per bucket. Python will preserve each card's bucket as its frozen "
+        "orientation constraint, freeze one scoped registry of transparent "
+        "witness macros, and two fresh role-blind visual passes will judge their "
+        "witnesses without receiving that constraint. Return only the required "
+        "JSON object.\n\nFrozen descriptions:\n"
         + canonical_json(model_view).decode("utf-8")
     )
     hidden = {
@@ -1247,7 +1261,7 @@ def _proposal_content(value: "ObjectSceneSemanticRegistryProposal") -> dict[str,
         "dropped_concepts": [item.to_data() for item in value.dropped_concepts],
         "gap_code": value.gap_code,
         "registry_digest": value.registry_digest,
-        "union_discards_orientation_membership_before_visual_evaluation": True,
+        "registry_preserves_orientation_constraint_before_visual_evaluation": True,
         **_authority_data(),
     }
 
@@ -1382,7 +1396,7 @@ class ObjectSceneSemanticRegistryProposal:
             "source_artifact_digests", "source_transcript_digests",
             "source_panel_digests", "model_payload", "model_payload_digest",
             "side0_positive", "side1_positive", "dropped_concepts", "gap_code", "registry_digest",
-            "union_discards_orientation_membership_before_visual_evaluation",
+            "registry_preserves_orientation_constraint_before_visual_evaluation",
             *_authority_data(), "proposal_digest",
         }
         raw = _fields(value, expected, "semantic registry proposal")
@@ -1390,7 +1404,7 @@ class ObjectSceneSemanticRegistryProposal:
             raw["schema"] != PROPOSAL_SCHEMA
             or raw["derivation_mode"]
             != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
-            or raw["union_discards_orientation_membership_before_visual_evaluation"]
+            or raw["registry_preserves_orientation_constraint_before_visual_evaluation"]
             is not True
             or any(raw[key] != item for key, item in _authority_data().items())
             or any(
@@ -1449,6 +1463,10 @@ def _semantic_registry(
             item.required_witnesses,
             item.accepted_variants,
             item.near_miss_boundaries,
+            orientation_constraint={
+                "side0_positive": "group0_positive",
+                "side1_positive": "group1_positive",
+            }[item.orientation],
         )
         for index, item in enumerate(ranked)
     )
@@ -1778,7 +1796,7 @@ def parse_object_scene_semantic_registry_proposal(
     prepared: ObjectScenePreparedSemanticRegistryProposal,
     payload: Mapping[str, Any],
 ) -> tuple[ObjectSceneSemanticRegistryProposal, ObjectSceneSoftTagRegistry]:
-    """Compatibility name: parsing always returns the sealed proposal and union."""
+    """Compatibility name for the sealed proposal and oriented registry."""
 
     return build_object_scene_semantic_registry_proposal(prepared, payload)
 
@@ -1866,7 +1884,7 @@ def verify_object_scene_semantic_registry_proposal(
         or restored.registry_digest != restored_registry.registry_digest
     ):
         raise ObjectSceneSemanticRegistryError(
-            "semantic proposal or union registry differs on replay"
+            "semantic proposal or oriented registry differs on replay"
         )
     return restored
 

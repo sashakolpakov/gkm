@@ -8,9 +8,11 @@ panel bytes, or call a model.  The official release gate durably appends one
 For every task, twelve support panels receive one blind discovery observation.
 After that batch is durable, one multimodal proposer sees the frozen prose and
 all twelve already-released support panels and atlases under opaque aliases in
-both revealed support buckets.  It proposes an affirmative soft-tag union. Two
-independent role-blind registered-evaluation observations ground those tags,
-then Python constructs a closed, conservative predicate version space.  A
+the two revealed support buckets.  It proposes separately oriented affirmative
+soft tags whose proposal orientation remains part of their frozen identity.
+Two independent role-blind registered-evaluation observations ground those
+tags, then Python constructs only the authorized formula/orientation pairs in
+a closed, conservative predicate version space.  A
 typed gap makes no ranker or query calls; otherwise one zero-image ranker may
 select one frozen survivor.  The exact formula is durably frozen and committed
 before exactly two sealed query panels are released.  Lean is absent and
@@ -52,7 +54,7 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 COMMAND_ID = (
     "bongard.scene-predicate-campaign/"
-    "exact-unused-train-semantic-drill-12-v6"
+    "exact-unused-train-semantic-drill-12-v7"
 )
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
@@ -79,28 +81,28 @@ DEFAULT_PARALLEL_WORKERS = 4
 MAX_PARALLEL_WORKERS = 4
 DEFAULT_CAMPAIGN_MINUTES = 480
 
-TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v3"
-TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v4"
-TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
+TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v4"
+TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v5"
+TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v2"
 TASK_SEMANTIC_PREPARED_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-prepared.v6"
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v7"
 )
 TASK_SEMANTIC_PROPOSAL_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-proposal.v6"
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v7"
 )
-TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v4"
-TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v4"
-TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v4"
-TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v4"
-CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
+TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v5"
+TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v5"
+TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v5"
+TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v5"
+CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v2"
 CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
-    "gkm.bongard-scene-predicate-campaign-runtime-custody.v1"
+    "gkm.bongard-scene-predicate-campaign-runtime-custody.v2"
 )
 QUERY_RELEASE_CUSTODY_SCHEMA = (
-    "gkm.bongard-scene-predicate-query-release-custody.v1"
+    "gkm.bongard-scene-predicate-query-release-custody.v2"
 )
-CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v4"
-CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v4"
+CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v5"
+CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v5"
 RESULT_FILENAME = "campaign_result.json"
 JOURNAL_DIRECTORY = "journals"
 
@@ -171,10 +173,21 @@ def _authority_data() -> dict[str, object]:
     return {
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
+        "frozen_python_predicate_is_normative": True,
+        "python_replay_is_normative": True,
         "prose_grounded_closed_predicate_ir": True,
+        "semantic_proposal_orientation_is_part_of_tag_identity": True,
+        "same_semantic_tag_tried_in_both_orientations": False,
+        "registered_visual_observer_receives_support_roles": False,
+        "registered_visual_observer_receives_orientation_constraint_metadata": False,
+        "candidate_orientation_derived_from_frozen_formula_tags": True,
+        "opposite_orientation_registered_tag_candidate_copies_forbidden": True,
+        "tag_free_formula_candidates_may_exist_in_both_orientations": True,
         "lean_present": False,
         "lean_required": False,
         "lean_removable": True,
+        "lean_if_present_is_optional_checker_or_export_only": True,
+        "lean_affects_acceptance_or_runtime_semantics": False,
         "lean_affects_identity_selection_decision_scoring_or_replay": False,
         "lean_removal_changes_decision": False,
     }
@@ -409,7 +422,7 @@ def _address(value: object, label: str) -> str:
 
 def _freeze_content(value: "ObjectBongardScenePredicateTaskFreeze") -> dict[str, Any]:
     return {
-        "schema": "gkm.bongard-scene-predicate-task-formula-freeze.v1",
+        "schema": "gkm.bongard-scene-predicate-task-formula-freeze.v2",
         "task_id": value.task_id,
         "task_plan_digest": value.task_plan_digest,
         "execution_precommit_digest": value.execution_precommit_digest,
@@ -523,7 +536,7 @@ class ObjectBongardScenePredicateTaskFreeze:
             "selected_predicate", "formula_frozen_before_query_release",
             "query_panel_ids_or_pixels_serialized", *_authority_data(), "record_digest",
         }
-        if set(raw) != expected or raw["schema"] != "gkm.bongard-scene-predicate-task-formula-freeze.v1":
+        if set(raw) != expected or raw["schema"] != "gkm.bongard-scene-predicate-task-formula-freeze.v2":
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "task formula freeze fields differ"
             )
@@ -548,7 +561,7 @@ class ObjectBongardScenePredicateTaskFreeze:
 
 def _commit_content(value: "ObjectBongardScenePredicateTaskCommit") -> dict[str, Any]:
     return {
-        "schema": "gkm.bongard-scene-predicate-task-decision-commit.v1",
+        "schema": "gkm.bongard-scene-predicate-task-decision-commit.v2",
         "task_id": value.task_id,
         "task_plan_digest": value.task_plan_digest,
         "execution_precommit_digest": value.execution_precommit_digest,
@@ -658,7 +671,7 @@ class ObjectBongardScenePredicateTaskCommit:
         if (
             set(raw) != expected
             or raw["schema"]
-            != "gkm.bongard-scene-predicate-task-decision-commit.v1"
+            != "gkm.bongard-scene-predicate-task-decision-commit.v2"
             or raw["exact_durable_formula_bytes_committed_before_query_release"]
             is not True
         ):
@@ -1596,6 +1609,7 @@ def _execute_task_visual_batch(
     budget: _CallBudget,
 ) -> tuple[tuple[object, ...], dict[str, Any], object]:
     from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_registered_visual_observer_blind,
         _frontend_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
@@ -1636,6 +1650,10 @@ def _execute_task_visual_batch(
         model_inputs = prepare_object_scene_transcript_inputs(
             panel.exact_png_bytes, panel.inventory, mode, registry
         )
+        if mode is ObjectSceneTranscriptMode.REGISTERED_EVALUATION:
+            _assert_registered_visual_observer_blind(
+                model_inputs, f"campaign {stage} panel {index:02d}"
+            )
         relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
         def counted_transport(*args: object, **kwargs: object) -> object:
             budget.count(stage, _stage_limit(stage))
@@ -1847,6 +1865,7 @@ def _cold_replay_task_visual_batch(
     batch: Mapping[str, Any],
 ) -> tuple[str, ...]:
     from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_registered_visual_observer_blind,
         _frontend_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
@@ -1879,6 +1898,11 @@ def _cold_replay_task_visual_batch(
         model_inputs = prepare_object_scene_transcript_inputs(
             panel.exact_png_bytes, panel.inventory, mode, registry
         )
+        if mode is ObjectSceneTranscriptMode.REGISTERED_EVALUATION:
+            _assert_registered_visual_observer_blind(
+                model_inputs,
+                f"campaign cold replay {stage} panel {index:02d}",
+            )
         relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
         journal = ObjectBongardNamedImageTurnJournalTransport(
             task_root / relative,
@@ -1960,6 +1984,7 @@ def _freeze_task_role_reveal(
                 REGISTERED_A_CALLS_PER_TASK + REGISTERED_B_CALLS_PER_TASK
             ),
             "registered_visual_evaluators_receive_roles": False,
+            "registered_visual_evaluators_receive_orientation_constraint_metadata": False,
             **_authority_data(),
         },
         "role_reveal_digest",
@@ -2444,6 +2469,9 @@ def _freeze_task_registry(
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
 ) -> tuple[object, dict[str, Any], object]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _registry_orientation_manifest,
+    )
     from bongard.object_scene_semantic_registry import (
         ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
         verify_object_scene_semantic_registry_proposal,
@@ -2455,6 +2483,9 @@ def _freeze_task_registry(
         registry,
         tuple(discovery_artifacts),
         tuple(role_rows),
+    )
+    orientation_manifest, orientation_manifest_digest = (
+        _registry_orientation_manifest(semantic_proposal, registry)
     )
     record = _record(
         {
@@ -2475,11 +2506,16 @@ def _freeze_task_registry(
             "semantic_proposal_status": getattr(semantic_proposal, "status"),
             "registry": registry.to_data(),
             "registry_digest": registry.registry_digest,
+            "registry_orientation_manifest": orientation_manifest,
+            "registry_orientation_manifest_digest": (
+                orientation_manifest_digest
+            ),
             "registry_derivation_mode": (
                 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
             ),
-            "orientation_membership_discarded_before_registered_visual_calls": True,
+            "proposal_orientation_preserved_in_registered_tag_identity": True,
             "registered_visual_evaluators_receive_roles": False,
+            "registered_visual_evaluators_receive_orientation_constraint_metadata": False,
             "persisted_and_reloaded_before_registered_pass_a": True,
             **_authority_data(),
         },
@@ -2498,7 +2534,24 @@ def _freeze_task_registry(
         tuple(discovery_artifacts),
         tuple(role_rows),
     )
-    if restored != registry:
+    restored_orientation_manifest, restored_orientation_manifest_digest = (
+        _registry_orientation_manifest(semantic_proposal, restored)
+    )
+    if (
+        restored != registry
+        or raw.get("registry_orientation_manifest")
+        != restored_orientation_manifest
+        or raw.get("registry_orientation_manifest_digest")
+        != restored_orientation_manifest_digest
+        or raw.get(
+            "proposal_orientation_preserved_in_registered_tag_identity"
+        )
+        is not True
+        or raw.get(
+            "registered_visual_evaluators_receive_orientation_constraint_metadata"
+        )
+        is not False
+    ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task soft-tag registry durable replay differs"
         )
@@ -2544,6 +2597,9 @@ def _freeze_task_ir(
     registered_a_batch: Mapping[str, Any],
     registered_b_batch: Mapping[str, Any],
 ) -> tuple[object, dict[str, Any], object]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_ir_orientation_authorization,
+    )
     from bongard.object_bongard_scene_predicate_ir import (
         SCENE_CALIBRATION_BUNDLE_SCHEMA,
         ScenePredicateCalibrationBundle,
@@ -2568,6 +2624,7 @@ def _freeze_task_ir(
         tuple(role_rows),
         semantic_registry_proposal=semantic_proposal,
     )
+    _assert_ir_orientation_authorization(bundle)
     data = bundle.to_data()
     if (
         data.get("schema") != SCENE_CALIBRATION_BUNDLE_SCHEMA
@@ -2610,6 +2667,8 @@ def _freeze_task_ir(
             "role_rows": [dict(item) for item in role_rows],
             "roles_revealed_after_discovery_before_semantic_proposer": True,
             "registered_visual_passes_were_role_blind": True,
+            "registered_visual_passes_received_orientation_constraint_metadata": False,
+            "candidate_orientations_authorized_by_frozen_tag_constraints": True,
             "bundle": data,
             "bundle_digest": bundle.bundle_digest,
             "model_calls_during_python_build_or_replay": 0,
@@ -2629,7 +2688,18 @@ def _freeze_task_ir(
         digest_field="ir_freeze_digest",
     )
     durable_bundle = ScenePredicateCalibrationBundle.from_data(raw["bundle"])
-    if durable_bundle != bundle:
+    _assert_ir_orientation_authorization(durable_bundle)
+    if (
+        durable_bundle != bundle
+        or raw.get(
+            "registered_visual_passes_received_orientation_constraint_metadata"
+        )
+        is not False
+        or raw.get(
+            "candidate_orientations_authorized_by_frozen_tag_constraints"
+        )
+        is not True
+    ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task IR durable reload differs"
         )
@@ -3053,6 +3123,7 @@ def _observe_task_query(
     budget: _CallBudget,
 ) -> object:
     from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_registered_visual_observer_blind,
         _frontend_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
@@ -3092,6 +3163,9 @@ def _observe_task_query(
     mode = ObjectSceneTranscriptMode.REGISTERED_EVALUATION
     model_inputs = prepare_object_scene_transcript_inputs(
         png, inventory, mode, registry
+    )
+    _assert_registered_visual_observer_blind(
+        model_inputs, f"campaign {stage}"
     )
     relative = Path(JOURNAL_DIRECTORY) / "query" / side
 
@@ -3146,6 +3220,7 @@ def _cold_replay_task_query(
     runtime: object,
 ) -> str:
     from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_registered_visual_observer_blind,
         _frontend_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
@@ -3181,6 +3256,9 @@ def _cold_replay_task_query(
     mode = ObjectSceneTranscriptMode.REGISTERED_EVALUATION
     model_inputs = prepare_object_scene_transcript_inputs(
         png, inventory, mode, registry
+    )
+    _assert_registered_visual_observer_blind(
+        model_inputs, f"campaign cold replay {stage}"
     )
     relative = Path(JOURNAL_DIRECTORY) / "query" / side
     journal = ObjectBongardNamedImageTurnJournalTransport(
@@ -4395,6 +4473,10 @@ def _verify_task_from_store(
     runtime: object,
     task_result: Mapping[str, Any],
 ) -> tuple[int, bool]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _assert_ir_orientation_authorization,
+        _registry_orientation_manifest,
+    )
     from bongard.object_bongard_scene_predicate_ir import (
         SCENE_CALIBRATION_BUNDLE_SCHEMA,
         ScenePredicateCalibrationBundle,
@@ -4570,6 +4652,7 @@ def _verify_task_from_store(
         "semantic_proposer_calls_after_reveal",
         "registered_visual_calls_after_reveal",
         "registered_visual_evaluators_receive_roles",
+        "registered_visual_evaluators_receive_orientation_constraint_metadata",
         *_authority_data(),
         "role_reveal_digest",
     }
@@ -4634,9 +4717,12 @@ def _verify_task_from_store(
         "semantic_proposal_status",
         "registry",
         "registry_digest",
+        "registry_orientation_manifest",
+        "registry_orientation_manifest_digest",
         "registry_derivation_mode",
-        "orientation_membership_discarded_before_registered_visual_calls",
+        "proposal_orientation_preserved_in_registered_tag_identity",
         "registered_visual_evaluators_receive_roles",
+        "registered_visual_evaluators_receive_orientation_constraint_metadata",
         "persisted_and_reloaded_before_registered_pass_a",
         *_authority_data(),
         "registry_freeze_digest",
@@ -4655,6 +4741,8 @@ def _verify_task_from_store(
         "role_rows",
         "roles_revealed_after_discovery_before_semantic_proposer",
         "registered_visual_passes_were_role_blind",
+        "registered_visual_passes_received_orientation_constraint_metadata",
+        "candidate_orientations_authorized_by_frozen_tag_constraints",
         "bundle",
         "bundle_digest",
         "model_calls_during_python_build_or_replay",
@@ -4730,6 +4818,10 @@ def _verify_task_from_store(
         or role_reveal.get("registered_visual_calls_after_reveal")
         != REGISTERED_A_CALLS_PER_TASK + REGISTERED_B_CALLS_PER_TASK
         or role_reveal.get("registered_visual_evaluators_receive_roles") is not False
+        or role_reveal.get(
+            "registered_visual_evaluators_receive_orientation_constraint_metadata"
+        )
+        is not False
         or semantic_prepared_record.get(
             "prepared_input_persisted_before_named_image_proposer_call"
         )
@@ -4789,12 +4881,16 @@ def _verify_task_from_store(
         or semantic_proposal_record.get("quarantined_concept_digests")
         != nested_drop_digests
         or registry_record.get(
-            "orientation_membership_discarded_before_registered_visual_calls"
+            "proposal_orientation_preserved_in_registered_tag_identity"
         )
         is not True
         or registry_record.get("registry_derivation_mode")
         != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
         or registry_record.get("registered_visual_evaluators_receive_roles") is not False
+        or registry_record.get(
+            "registered_visual_evaluators_receive_orientation_constraint_metadata"
+        )
+        is not False
         or registry_record.get(
             "persisted_and_reloaded_before_registered_pass_a"
         )
@@ -4802,6 +4898,14 @@ def _verify_task_from_store(
         or ir_record.get("roles_revealed_after_discovery_before_semantic_proposer")
         is not True
         or ir_record.get("registered_visual_passes_were_role_blind") is not True
+        or ir_record.get(
+            "registered_visual_passes_received_orientation_constraint_metadata"
+        )
+        is not False
+        or ir_record.get(
+            "candidate_orientations_authorized_by_frozen_tag_constraints"
+        )
+        is not True
         or ir_record.get("model_calls_during_python_build_or_replay") != 0
         or rank_input.get("ranker_input_frozen_before_call") is not True
         or any(
@@ -4859,6 +4963,9 @@ def _verify_task_from_store(
         role_rows=expected_roles,
     )
     registry = ObjectSceneSoftTagRegistry.from_data(registry_record["registry"])
+    expected_orientation_manifest, expected_orientation_manifest_digest = (
+        _registry_orientation_manifest(semantic_proposal, registry)
+    )
     artifacts = (
         discovery_artifacts,
         _restore_task_visual_batch(
@@ -4902,6 +5009,10 @@ def _verify_task_from_store(
         != semantic_proposal.proposal_digest
         or registry_record["semantic_proposal_status"] != semantic_proposal.status
         or registry_record["registry_digest"] != registry.registry_digest
+        or registry_record["registry_orientation_manifest"]
+        != expected_orientation_manifest
+        or registry_record["registry_orientation_manifest_digest"]
+        != expected_orientation_manifest_digest
         or ir_record["task_plan_digest"] != getattr(task, "record_digest")
         or ir_record["discovery_batch_digest"] != discovery["batch_digest"]
         or ir_record["registered_a_batch_digest"] != pass_a["batch_digest"]
@@ -4995,6 +5106,7 @@ def _verify_task_from_store(
         )
 
     bundle = ScenePredicateCalibrationBundle.from_data(ir_record["bundle"])
+    _assert_ir_orientation_authorization(bundle)
     replayed_bundle = cold_replay_object_bongard_scene_predicate_calibration_bundle(
         bundle,
         registry,

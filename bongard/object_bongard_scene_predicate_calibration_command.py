@@ -5,12 +5,13 @@ predicate-independent object inventory and makes one group-blind discovery
 call per panel.  After that blind batch is durable, it reveals the committed
 support roles to one multimodal semantic proposer.  That single proposer sees
 all twelve already-exposed panels and atlases under the frozen neutral aliases
-and must supply affirmative scoped concepts for both support orientations in
-one turn.  Their union is frozen before two independent, role-blind
-registered-evaluation passes.
+and may supply separately oriented affirmative scoped concepts in one turn.
+Each accepted concept keeps that proposal orientation in its frozen tag
+identity before two independent, role-blind registered-evaluation passes.
 
-Python constructs and verifies both support orientations.  An empty survivor
-set is a typed gap and makes no ranker call.  Otherwise one mandatory
+Python constructs and verifies only formula/orientation pairs authorized by
+the frozen tags (while tag-free formulas remain bidirectional).  An empty
+survivor set is a typed gap and makes no ranker call.  Otherwise one mandatory
 zero-image Codex turn may name exactly one frozen survivor digest; it cannot
 invent or edit a formula.  The selected formula is durably frozen and every
 visual and text journal is cold-replayed with physical transport forbidden.
@@ -76,27 +77,27 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v7"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v7"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v7"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v7"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v7"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v7"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v7"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v7"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v7"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v8"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v8"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v8"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v8"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v8"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v8"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v8"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v8"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v8"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v6"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v7"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v6"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v7"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v7"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v7"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v7"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v7"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v7"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v7"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v8"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v8"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v8"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v8"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v8"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v8"
 IR_BUNDLE_SCHEMA = SCENE_CALIBRATION_BUNDLE_SCHEMA
 
 AUTHORIZATION_FILENAME = "authorization.json"
@@ -167,6 +168,8 @@ def _authority_data() -> dict[str, object]:
     return {
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
+        "frozen_python_predicate_is_normative": True,
+        "python_replay_is_normative": True,
         "discovery_then_two_independent_registered_evaluations": True,
         "historical_already_exposed_panel_count": PANEL_COUNT,
         "visual_observation_call_count": VISUAL_CALL_COUNT,
@@ -201,13 +204,18 @@ def _authority_data() -> dict[str, object]:
         "support_roles_revealed_before_semantic_synthesis": True,
         "benchmark_acceptance_requires_role_aware_semantic_registry": True,
         "exact_frequency_registry_acceptance_authorized": False,
-        "affirmative_concepts_for_both_orientations_proposed_in_one_call": True,
+        "separately_oriented_affirmative_concepts_proposed_in_one_call": True,
         "semantic_invalid_optional_rows_are_quarantined_with_provenance": True,
         "semantic_structural_or_zero_orientation_payload_is_typed_gap_not_absence": True,
-        "one_scoped_union_registry_frozen_before_registered_evaluation": True,
+        "one_scoped_orientation_preserving_registry_frozen_before_registered_evaluation": True,
+        "semantic_proposal_orientation_is_part_of_tag_identity": True,
+        "same_semantic_tag_tried_in_both_orientations": False,
         "registered_evaluator_receives_support_roles": False,
+        "registered_evaluator_receives_orientation_constraint_metadata": False,
         "concept_or_formula_added_after_registered_evaluation": False,
-        "both_support_orientations_built_by_python": True,
+        "candidate_orientation_derived_from_frozen_formula_tags": True,
+        "opposite_orientation_registered_tag_candidate_copies_forbidden": True,
+        "tag_free_formula_candidates_may_exist_in_both_orientations": True,
         "empty_survivor_set_is_typed_gap": True,
         "ranker_called_on_empty_survivor_set": False,
         "codex_may_name_one_frozen_survivor_only": True,
@@ -220,6 +228,8 @@ def _authority_data() -> dict[str, object]:
         "lean_present": False,
         "lean_required": False,
         "lean_removable": True,
+        "lean_if_present_is_optional_checker_or_export_only": True,
+        "lean_affects_acceptance_or_runtime_semantics": False,
         "lean_affects_artifact_identity_selection_decision_or_replay": False,
         "lean_required_for_replay": False,
     }
@@ -465,6 +475,128 @@ def _assert_role_blind(value: object, label: str) -> None:
         )
 
 
+def _assert_registered_visual_observer_blind(
+    prepared: object,
+    label: str,
+) -> None:
+    """Fail before transport if a registered observer sees role/polarity text."""
+
+    prompt = getattr(prepared, "prompt", None)
+    output_schema = getattr(prepared, "output_schema", None)
+    presentation = getattr(prepared, "presentation", None)
+    if (
+        not isinstance(prompt, str)
+        or not isinstance(output_schema, Mapping)
+        or not isinstance(presentation, tuple)
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            f"{label} registered model envelope differs"
+        )
+    visible = "\n".join(
+        (
+            prompt,
+            canonical_json(dict(output_schema)).decode("utf-8"),
+            *(str(name) for name, _ in presentation),
+        )
+    )
+    forbidden_exact = (
+        "group0_positive",
+        "group1_positive",
+        "side0_positive",
+        "side1_positive",
+        "orientation_constraint",
+        "historical_role",
+        "support_role",
+    )
+    forbidden_patterns = (
+        r"\b(?:group|side)\s*[_-]?\s*[01](?:\s*[_-]?\s*positive)?\b",
+        r"\b(?:historical|support)\s*[_ -]\s*roles?\b",
+        r"\b(?:class|support)\s*[_ -]\s*labels?\b",
+        r"\brole\s*[:=]\s*[01]\b",
+    )
+    folded = visible.casefold()
+    if (
+        any(item in folded for item in forbidden_exact)
+        or any(
+            re.search(pattern, visible, re.IGNORECASE) is not None
+            for pattern in forbidden_patterns
+        )
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            f"{label} leaks role or orientation-constraint metadata to a visual observer"
+        )
+
+
+def _registry_orientation_manifest(
+    semantic_registry_proposal: object,
+    registry: object,
+) -> tuple[list[dict[str, str]], str]:
+    """Return the replay-bound tag polarity manifest after exact checks."""
+
+    side0 = getattr(semantic_registry_proposal, "side0_positive", None)
+    side1 = getattr(semantic_registry_proposal, "side1_positive", None)
+    tags = getattr(registry, "tags", None)
+    if (
+        not isinstance(side0, tuple)
+        or not isinstance(side1, tuple)
+        or not isinstance(tags, tuple)
+        or getattr(semantic_registry_proposal, "registry_digest", None)
+        != getattr(registry, "registry_digest", None)
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal/registry orientation binding differs"
+        )
+    expected_constraints = sorted(
+        ("group0_positive",) * len(side0)
+        + ("group1_positive",) * len(side1)
+    )
+    raw_constraints = tuple(
+        getattr(item, "orientation_constraint", None) for item in tags
+    )
+    if any(not isinstance(item, str) for item in raw_constraints):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic registry tag orientation is missing"
+        )
+    actual_constraints = sorted(raw_constraints)
+    if actual_constraints != expected_constraints:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal orientation was not preserved in tag identity"
+        )
+    rows = [
+        {
+            "tag_id": str(getattr(item, "tag_id", "")),
+            "tag_digest": _raw_digest(
+                getattr(item, "tag_digest", None),
+                "orientation manifest tag digest",
+            ),
+            "orientation_constraint": str(
+                getattr(item, "orientation_constraint", "")
+            ),
+        }
+        for item in tags
+    ]
+    if (
+        [item["tag_id"] for item in rows]
+        != sorted({item["tag_id"] for item in rows})
+        or any(
+            item["orientation_constraint"]
+            not in ("group0_positive", "group1_positive")
+            for item in rows
+        )
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic registry orientation manifest differs"
+        )
+    manifest_digest = canonical_digest(
+        {
+            "schema": "gkm.bongard-scene-predicate-registry-orientation-manifest.v1",
+            "rows": rows,
+            "orientation_is_part_of_tag_digest": True,
+        }
+    )
+    return rows, manifest_digest
+
+
 def _load_inputs(
     source_root: str | os.PathLike[str],
 ) -> _CalibrationInputs:
@@ -629,7 +761,7 @@ def _authorization(
                 "discovery_freeze",
                 "support_role_reveal",
                 "semantic_registry_proposer_1",
-                "scoped_union_registry_freeze",
+                "scoped_orientation_preserving_registry_freeze",
                 "registered_evaluation_a_12",
                 "registered_evaluation_b_12",
                 "joint_registered_evaluation_freeze",
@@ -1523,6 +1655,10 @@ def _execute_visual_batch(
         prepared = prepare_object_scene_transcript_inputs(
             panel.exact_png_bytes, inventory, mode, registry
         )
+        if mode is ObjectSceneTranscriptMode.REGISTERED_EVALUATION:
+            _assert_registered_visual_observer_blind(
+                prepared, f"{stage} panel {index:02d}"
+            )
         relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
         journal = ObjectBongardNamedImageTurnJournalTransport(
             root / relative,
@@ -1690,6 +1826,9 @@ def _registry_freeze_record(
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "registry freeze is not role-aware semantic synthesis"
         )
+    orientation_manifest, orientation_manifest_digest = (
+        _registry_orientation_manifest(semantic_registry_proposal, registry)
+    )
     record = _durable._record(
         {
             "schema": REGISTRY_FREEZE_SCHEMA,
@@ -1712,6 +1851,10 @@ def _registry_freeze_record(
             ),
             "registry": registry.to_data(),
             "registry_digest": registry.registry_digest,
+            "registry_orientation_manifest": orientation_manifest,
+            "registry_orientation_manifest_digest": (
+                orientation_manifest_digest
+            ),
             "registry_built_from_revealed_roles_and_frozen_discovery": True,
             "benchmark_acceptance_authorized_registry": (
                 semantic_registry_proposal.status == "proposed"
@@ -1815,6 +1958,10 @@ def _cold_replay_visual_batch(
         prepared = prepare_object_scene_transcript_inputs(
             panel.exact_png_bytes, inventory, mode, registry
         )
+        if mode is ObjectSceneTranscriptMode.REGISTERED_EVALUATION:
+            _assert_registered_visual_observer_blind(
+                prepared, f"cold replay {stage} panel {index:02d}"
+            )
         relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
         journal = ObjectBongardNamedImageTurnJournalTransport(
             root / relative,
@@ -2450,6 +2597,35 @@ def _typed_calibration_gap_status(
     )
 
 
+def _assert_ir_orientation_authorization(bundle: object) -> None:
+    """Check the typed IR did not clone a constrained tag across polarity."""
+
+    from bongard.object_bongard_scene_predicate_ir import (
+        ScenePredicateLanguage,
+        authorized_scene_formula_orientations,
+    )
+
+    version_space = getattr(bundle, "version_space", None)
+    candidates = getattr(bundle, "candidates", None)
+    if not isinstance(version_space, Mapping) or not isinstance(candidates, tuple):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "typed IR orientation authorization inventory differs"
+        )
+    language = ScenePredicateLanguage.from_data(version_space.get("language"))
+    for candidate in candidates:
+        authorized = authorized_scene_formula_orientations(
+            language, getattr(candidate, "formula", None)
+        )
+        if (
+            getattr(candidate, "formula_authorized_orientations", None)
+            != authorized
+            or getattr(candidate, "orientation", None) not in authorized
+        ):
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "opposite-orientation registered-tag candidate copy escaped"
+            )
+
+
 def _derive_ir_bundle(
     *,
     registry: object,
@@ -2471,6 +2647,7 @@ def _derive_ir_bundle(
         tuple(dict(item) for item in role_rows),
         semantic_registry_proposal=semantic_registry_proposal,
     )
+    _assert_ir_orientation_authorization(result)
     value = result.to_data() if hasattr(result, "to_data") else result
     return _validate_ir_bundle(value)
 

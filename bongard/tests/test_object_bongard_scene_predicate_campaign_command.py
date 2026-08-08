@@ -120,24 +120,21 @@ def _semantic_support_bindings(
     ]
 
 
-def test_campaign_v6_binds_drill_cohort_and_multimodal_semantic_wrappers() -> None:
-    assert COMMAND_ID.endswith("-v6")
-    assert TASK_BATCH_SCHEMA.endswith(".v3")
-    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v6")
-    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v6")
-    assert TASK_REGISTRY_SCHEMA.endswith(".v4")
-    assert TASK_IR_SCHEMA.endswith(".v4")
-    assert TASK_RANK_INPUT_SCHEMA.endswith(".v4")
-    assert TASK_RANK_RESULT_SCHEMA.endswith(".v4")
-    assert TASK_RESULT_SCHEMA.endswith(".v4")
-    assert CAMPAIGN_RESULT_SCHEMA.endswith(".v4")
-    assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v4")
-
-    # These non-semantic wrappers did not change shape or meaning. The command
-    # ID and parent digests bind them transitively to this campaign generation.
-    assert TASK_ROLE_REVEAL_SCHEMA.endswith(".v1")
-    assert CAMPAIGN_RUNTIME_SCHEMA.endswith(".v1")
-    assert CAMPAIGN_RUNTIME_CUSTODY_SCHEMA.endswith(".v1")
+def test_campaign_v7_binds_tag_orientation_through_every_wrapper() -> None:
+    assert COMMAND_ID.endswith("-v7")
+    assert TASK_BATCH_SCHEMA.endswith(".v4")
+    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v7")
+    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v7")
+    assert TASK_REGISTRY_SCHEMA.endswith(".v5")
+    assert TASK_IR_SCHEMA.endswith(".v5")
+    assert TASK_RANK_INPUT_SCHEMA.endswith(".v5")
+    assert TASK_RANK_RESULT_SCHEMA.endswith(".v5")
+    assert TASK_RESULT_SCHEMA.endswith(".v5")
+    assert CAMPAIGN_RESULT_SCHEMA.endswith(".v5")
+    assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v5")
+    assert TASK_ROLE_REVEAL_SCHEMA.endswith(".v2")
+    assert CAMPAIGN_RUNTIME_SCHEMA.endswith(".v2")
+    assert CAMPAIGN_RUNTIME_CUSTODY_SCHEMA.endswith(".v2")
 
 
 def test_ranker_prompt_keeps_frozen_operational_witness_card() -> None:
@@ -469,9 +466,21 @@ def test_stage_budgets_denominator_and_python_authority_are_closed() -> None:
 
     authority = _authority_data()
     assert authority["python_is_canonical_authority"] is True
+    assert authority["frozen_python_predicate_is_normative"] is True
+    assert authority["python_replay_is_normative"] is True
+    assert authority["semantic_proposal_orientation_is_part_of_tag_identity"] is True
+    assert authority["same_semantic_tag_tried_in_both_orientations"] is False
+    assert authority[
+        "registered_visual_observer_receives_orientation_constraint_metadata"
+    ] is False
+    assert authority[
+        "opposite_orientation_registered_tag_candidate_copies_forbidden"
+    ] is True
     assert authority["lean_present"] is False
     assert authority["lean_required"] is False
     assert authority["lean_removable"] is True
+    assert authority["lean_if_present_is_optional_checker_or_export_only"] is True
+    assert authority["lean_affects_acceptance_or_runtime_semantics"] is False
     automatic = _automatic_release_source_bindings()
     assert set(automatic) == {"batch_source", "release_gate_source"}
     assert all(
@@ -1171,6 +1180,12 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         "paired visible forms",
         "unequal edge lengths",
     }
+    assert {
+        item.tag: item.orientation_constraint for item in registry.tags
+    } == {
+        "paired visible forms": "group0_positive",
+        "unequal edge lengths": "group1_positive",
+    }
     assert len(proposal.dropped_concepts) == 1
     assert proposal.dropped_concepts[0].reason_code == "phrase_policy"
     assert record["semantic_proposal_status"] == "proposed"
@@ -1181,6 +1196,38 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
     ]
     assert record["semantic_registry"]["tags"]
     assert dict(store.verify(receipt, expected_data=record)) == record
+    restored_registry, registry_record, registry_receipt = (
+        campaign._freeze_task_registry(
+            prepared=prepared,
+            task=task,
+            discovery_batch={"batch_digest": ADDRESS_4},
+            role_reveal={"role_reveal_digest": ADDRESS_1},
+            semantic_prepared_record=semantic_prepared_record,
+            semantic_proposal_record=record,
+            semantic_proposal=proposal,
+            registry=registry,
+            discovery_artifacts=discovery_artifacts,
+            role_rows=role_rows,
+        )
+    )
+    assert restored_registry == registry
+    assert registry_record[
+        "proposal_orientation_preserved_in_registered_tag_identity"
+    ] is True
+    assert registry_record[
+        "registered_visual_evaluators_receive_orientation_constraint_metadata"
+    ] is False
+    assert registry_record["registry_orientation_manifest"] == [
+        {
+            "tag_id": item.tag_id,
+            "tag_digest": item.tag_digest,
+            "orientation_constraint": item.orientation_constraint,
+        }
+        for item in registry.tags
+    ]
+    assert dict(
+        store.verify(registry_receipt, expected_data=registry_record)
+    ) == registry_record
     journal_root = tmp_path / "journals" / "semantic_registry_proposer"
     assert {path.name for path in journal_root.iterdir()} == {
         "manifest.json",
