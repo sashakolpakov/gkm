@@ -34,6 +34,9 @@ RECOVERY_ARM_SCHEMA_V2 = "scheduler_post_reboot_recovery_arm_v2"
 SANDBOXED_GENERATION_ARM_SCHEMA = (
     "scheduler_sandboxed_generation_release_arm_v1"
 )
+SANDBOXED_GENERATION_EXEC_ARM_SCHEMA = (
+    "scheduler_sandboxed_generation_release_arm_v2"
+)
 SANDBOXED_GENERATION_ARM_EVENT = (
     "sandboxed_generation_release_armed"
 )
@@ -238,6 +241,9 @@ SANDBOXED_GENERATION_ARM_KEYS = frozenset({
     "wip_restore_logical_state_sha256",
     "operator_artifact_scanner_assumption",
 })
+SANDBOXED_GENERATION_EXEC_ARM_KEYS = (
+    SANDBOXED_GENERATION_ARM_KEYS | frozenset({"exec_record_sha256"})
+)
 
 
 def _reject_constant(value: str) -> None:
@@ -758,12 +764,18 @@ def parse_sandboxed_generation_marker(
     arm = rows[2] if len(rows) == 3 else None
     if arm is None:
         return ParsedMarker(validated.dispatch_id, armed, failed, None)
+    arm_keys = set(arm)
+    zero_exec_arm = arm_keys == SANDBOXED_GENERATION_ARM_KEYS
+    one_exec_arm = arm_keys == SANDBOXED_GENERATION_EXEC_ARM_KEYS
     if (
-        set(arm) != SANDBOXED_GENERATION_ARM_KEYS
+        not (zero_exec_arm or one_exec_arm)
         or arm.get("schema") != armed.get("schema")
         or arm.get("dispatch_id") != validated.dispatch_id
         or arm.get("event") != SANDBOXED_GENERATION_ARM_EVENT
-        or arm.get("recovery_arm_schema") != SANDBOXED_GENERATION_ARM_SCHEMA
+        or arm.get("recovery_arm_schema") != (
+            SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
+            if one_exec_arm else SANDBOXED_GENERATION_ARM_SCHEMA
+        )
         or arm.get("authority_kind")
         != "explicit_operator_assumed_artifact_isolation_v1"
         or arm.get("operator_provenance_assumption")
@@ -832,6 +844,15 @@ def parse_sandboxed_generation_marker(
         if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
             raise RecoveryEvidenceError(
                 f"sandboxed-generation {field} is malformed"
+            )
+    if one_exec_arm:
+        exec_record_sha256 = arm.get("exec_record_sha256")
+        if (
+            not isinstance(exec_record_sha256, str)
+            or SHA256_RE.fullmatch(exec_record_sha256) is None
+        ):
+            raise RecoveryEvidenceError(
+                "sandboxed-generation exec record hash is malformed"
             )
     for field in ("scratch_root", "workspace_lock_path"):
         _normalized_absolute(arm.get(field), field)

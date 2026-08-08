@@ -4588,6 +4588,7 @@ class ScopedProcessTreeResult:
     captured_descendant_count: int
     captured_descendants_absent: bool
     detached_processes_proven_absent: bool
+    normal_exit_left_captured_descendants: bool
 
 
 def _limit_control_suite_child() -> None:
@@ -6149,16 +6150,40 @@ class ScopedProcessTree:
                     time.sleep(0.05)
 
             _accumulate_custody(self._custody)
+            descendants_absent_before_final_seal = (
+                _custody_descendants_absent(self._custody)
+            )
+            residual_after_normal_exit = (
+                residual_after_normal_exit
+                or (
+                    direct_exited
+                    and not stop_requested
+                    and not descendants_absent_before_final_seal
+                )
+            )
             forced_kill = (
                 not direct_exited
-                or not _custody_descendants_absent(self._custody)
+                or not descendants_absent_before_final_seal
             )
 
             # Keep the unreaped direct child as the group anchor until all
             # terminal signals have been issued.  Reaping is deliberately the
             # last mutation; post-reap work is observation-only.
             _seal_anchored_process_group(self._custody)
+            descendants_before_fixed_point = frozenset(
+                self._custody.descendants.items()
+            )
             _seal_descendants_before_root_reap(self._custody)
+            descendants_discovered_at_fixed_point = (
+                frozenset(self._custody.descendants.items())
+                - descendants_before_fixed_point
+            )
+            if descendants_discovered_at_fixed_point:
+                forced_kill = True
+                residual_after_normal_exit = (
+                    residual_after_normal_exit
+                    or (direct_exited and not stop_requested)
+                )
             try:
                 returncode = self._custody.process.wait(timeout=10)
             except subprocess.TimeoutExpired as exc:
@@ -6179,10 +6204,6 @@ class ScopedProcessTree:
                 raise SupervisorContractError(
                     "scoped process root survived containment"
                 )
-            if residual_after_normal_exit and not stop_requested:
-                raise SupervisorContractError(
-                    "normally exited scoped process left a descendant"
-                )
             detached_proof = self._custody.detached_tracking_complete
             _release_custody_kernel_state(self._custody)
             self._custody.sealed = True
@@ -6195,6 +6216,9 @@ class ScopedProcessTree:
                 ),
                 captured_descendants_absent=True,
                 detached_processes_proven_absent=detached_proof,
+                normal_exit_left_captured_descendants=(
+                    residual_after_normal_exit and not stop_requested
+                ),
             )
         except BaseException as failure:
             if not self._custody.sealed:

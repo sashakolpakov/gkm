@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import stat
+import subprocess
 import sys
 from dataclasses import replace
 from datetime import datetime, timezone
@@ -3440,6 +3441,8 @@ def _sandboxed_generation_fixture(tmp_path, monkeypatch):
         "scratch": scratch,
         "workspace": workspace,
         "protected": protected,
+        "workspace_name": workspace_name,
+        "transcript_name": transcript_name,
         "exact_lock": exact_lock,
         "ledger": ledger,
         "marker": marker_path,
@@ -3450,6 +3453,83 @@ def _sandboxed_generation_fixture(tmp_path, monkeypatch):
             "11111111-1111-4111-8111-111111111111",
         ),
     }
+
+
+def _append_sandbox_exec(fixture):
+    item = fixture["item"]
+    record = {
+        "event": "codex_exec",
+        "started_at": "2026-08-07T23:00:00+00:00",
+        "thread_id": "sandbox-exec-thread",
+        "transcript": fixture["transcript_name"],
+        "workspace": fixture["workspace_name"],
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "run_label": f"{item['game']}:L{item['target_level']}:propose",
+        "model": "gpt-5.6-sol",
+        "reasoning_effort": item["effort"],
+        "minutes_limit": item["minutes"],
+        "allocation_policy": "drain",
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        **{
+            field: item[field]
+            for field in R.Status.FRONTIER_BINDING_FIELDS
+        },
+        "returncode": 0,
+        "failure_class": None,
+        "timed_out": False,
+        "interrupted": False,
+    }
+    R.Guard.append_ledger(record, fixture["ledger"])
+    return record
+
+
+def _sandbox_generation_content_path(fixture, tree_kind):
+    if tree_kind == "workspace":
+        return fixture["workspace"] / "attempt.txt"
+    assert tree_kind == "protected"
+    return fixture["protected"] / fixture["transcript_name"]
+
+
+@pytest.mark.parametrize("mutation", ("add", "remove", "content"))
+def test_generation_tree_observation_rejects_nested_concurrent_mutation(
+    tmp_path, monkeypatch, mutation
+):
+    root = tmp_path / "opaque_generation"
+    nested = root / "nested"
+    nested.mkdir(parents=True)
+    trigger = nested / "a_trigger.txt"
+    target = nested / "z_target.txt"
+    trigger.write_bytes(b"opaque trigger\n")
+    target.write_bytes(b"opaque baseline\n")
+    real_read = R.Legs._read_single_link_regular
+    injected = False
+
+    def read_then_mutate(selected):
+        nonlocal injected
+        payload = real_read(selected)
+        if Path(selected) == trigger and not injected:
+            injected = True
+            if mutation == "add":
+                (nested / "m_added.txt").write_bytes(b"concurrent add\n")
+            elif mutation == "remove":
+                target.unlink()
+            else:
+                target.write_bytes(b"concurrent content change\n")
+        return payload
+
+    monkeypatch.setattr(
+        R.Legs, "_read_single_link_regular", read_then_mutate
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="opaque generation.*(changed|unstable)",
+    ):
+        R._generation_tree_observation_sha256(
+            root, label="opaque generation"
+        )
+    assert injected is True
 
 
 def _arm_sandboxed_generation(fixture, monkeypatch):
@@ -3563,12 +3643,83 @@ def test_sandboxed_generation_arm_refuses_ledger_or_canonical_drift(
     fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
     if drift == "ledger":
         R.Guard.append_ledger({"event": "synthetic_unbound_row"}, fixture["ledger"])
-        pattern = "exact zero ledger suffix"
+        pattern = "zero or one exact bound exec suffix"
     else:
         (fixture["artifact"] / "late.py").write_bytes(b"canonical drift\n")
         pattern = "canonical/frontier baseline changed"
     with pytest.raises(R.CampaignPlanError, match=pattern):
         _arm_sandboxed_generation(fixture, monkeypatch)
+
+
+def test_sandboxed_generation_arm_checks_canonical_before_ledger_reconciliation(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    (fixture["artifact"] / "late.py").write_bytes(b"canonical drift\n")
+    ledger_before = fixture["ledger"].read_bytes()
+    marker_before = fixture["marker"].read_bytes()
+    ledger_read = False
+
+    def forbidden_ledger_read(*_args, **_kwargs):
+        nonlocal ledger_read
+        ledger_read = True
+        raise AssertionError("ledger reconciliation ran before canonical gate")
+
+    monkeypatch.setattr(
+        R, "_read_post_reboot_ledger_surface", forbidden_ledger_read
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="canonical/frontier baseline changed",
+    ):
+        _arm_sandboxed_generation(fixture, monkeypatch)
+
+    assert ledger_read is False
+    assert fixture["ledger"].read_bytes() == ledger_before
+    assert fixture["marker"].read_bytes() == marker_before
+
+
+@pytest.mark.parametrize("tree_kind", ("workspace", "protected"))
+def test_sandboxed_generation_arm_rejects_same_inode_tree_mutation_before_install(
+    tmp_path, monkeypatch, tree_kind
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    target = _sandbox_generation_content_path(fixture, tree_kind)
+    identity = (target.stat().st_dev, target.stat().st_ino)
+    observations = 0
+
+    def mutate_during_rebound_absence(**_kwargs):
+        nonlocal observations
+        observations += 1
+        if observations == 2:
+            target.write_bytes(b"same inode changed before arm install\n")
+        observed = datetime.now(timezone.utc).isoformat()
+        return {
+            "absence_sample_count": R.SANDBOX_ABSENCE_SAMPLES,
+            "absence_window_ns": 1,
+            "absence_first_at": observed,
+            "absence_last_at": observed,
+        }
+
+    monkeypatch.setattr(
+        R, "_observe_named_root_group_absence", mutate_during_rebound_absence
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="tree content changed before arm installation",
+    ):
+        R._arm_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert observations == 2
+    assert (target.stat().st_dev, target.stat().st_ino) == identity
+    parsed = Recovery.parse_sandboxed_generation_marker(
+        fixture["marker"].read_bytes(), require_recovery_arm=False
+    )
+    assert parsed.recovery_arm is None
 
 
 def test_sandboxed_generation_arm_refuses_active_workspace_lock(
@@ -3675,6 +3826,502 @@ def test_sandboxed_generation_recovery_restores_only_artifacts_and_abandons_scra
         "sandbox_isolated_noncounting_already_completed"
     )
     assert fixture["ledger"].read_bytes() == sealed
+
+
+def test_sandboxed_one_exec_recovery_classifies_noncounting_and_restores_capsule(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    baseline_latest = (fixture["wip"] / "latest.json").read_bytes()
+    (fixture["wip"] / "latest.json").write_bytes(
+        b'{"attempt":"isolated-one-exec"}\n'
+    )
+    disposable = fixture["wip"] / "isolated-one-exec.txt"
+    disposable.write_bytes(b"restore from capsule\n")
+    execution = _append_sandbox_exec(fixture)
+    old_scratch = _sandbox_tree_snapshot(fixture["scratch"])
+
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    parsed = Recovery.parse_sandboxed_generation_marker(
+        fixture["marker"].read_bytes(), require_recovery_arm=True
+    )
+    assert parsed.recovery_arm is not None
+    assert parsed.recovery_arm["recovery_arm_schema"] == (
+        Recovery.SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
+    )
+    assert parsed.recovery_arm["exec_record_sha256"] == (
+        R._recovery_record_sha256(execution)
+    )
+
+    result = R._recover_sandboxed_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+    assert result["result"] == "sandbox_isolated_noncounting"
+    assert (fixture["wip"] / "latest.json").read_bytes() == baseline_latest
+    assert not disposable.exists()
+    assert _sandbox_tree_snapshot(fixture["scratch"]) == old_scratch
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert fixture["exact_lock"].is_file()
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    correction, event = rows[1:3]
+    assert correction["schema"] == R.SANDBOX_EXEC_CLASSIFICATION_SCHEMA
+    assert correction["failure_class"] == "infrastructure"
+    assert correction["retry_increment"] == 0
+    assert correction["exec_record_sha256"] == R._recovery_record_sha256(
+        rows[0]
+    )
+    assert event["schema"] == R.SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
+    assert event["codex_exec_appended"] is True
+    assert event["retry_increment"] == 0
+    assert event["exec_record_sha256"] == R._recovery_record_sha256(rows[0])
+    assert event["classification_record_sha256"] == (
+        R._recovery_record_sha256(correction)
+    )
+
+    sealed = fixture["ledger"].read_bytes()
+    repeated = R._recover_sandboxed_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+    assert repeated["result"] == (
+        "sandbox_isolated_noncounting_already_completed"
+    )
+    assert fixture["ledger"].read_bytes() == sealed
+
+
+def test_sandboxed_one_exec_recovery_rejects_exec_bytes_changed_after_arm(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    rows[0]["returncode"] = 17
+    _write_canonical_rows(fixture["ledger"], rows)
+
+    with pytest.raises(
+        R.CampaignPlanError, match="exec suffix changed after arming"
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
+def test_sandbox_lane_preserves_foreign_contained_residual_correction_intent(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    execution = _append_sandbox_exec(fixture)
+    transcript = fixture["protected"] / fixture["transcript_name"]
+    execution["protected_transcript_sha256"] = hashlib.sha256(
+        transcript.read_bytes()
+    ).hexdigest()
+    _write_canonical_rows(fixture["ledger"], [execution])
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+
+    marker, parsed = R._read_existing_dispatch_quarantine(
+        fixture["item"],
+        require_recovery_arm=True,
+        marker_parser=Recovery.parse_sandboxed_generation_marker,
+    )
+    try:
+        ledger, baseline, suffix = R._read_post_reboot_ledger_surface(
+            fixture["item"], parsed.armed
+        )
+        assert suffix == [execution]
+        foreign = R._build_contained_normal_exit_residual_correction(
+            fixture["item"],
+            execution,
+            dispatch_id=fixture["dispatch_id"],
+        )
+        state = R.PostRebootLedgerState(
+            dispatch_id=fixture["dispatch_id"],
+            intent_root=marker.root,
+            intent_root_identity=marker.root_identity,
+            ledger=ledger,
+            baseline=baseline,
+            record=execution,
+            correction=None,
+            cleanup=None,
+            operator=None,
+        )
+        expected_raw = baseline.raw_prefix + Recovery.canonical_json_line(
+            execution
+        )
+        intent_name, selected = R._prepare_recovery_phase_intent_locked(
+            state, foreign, expected_raw
+        )
+        assert selected["record"] == foreign
+        intent_path = marker.root / intent_name
+        before_intent = intent_path.read_bytes()
+        intent_identity = (
+            intent_path.stat().st_dev,
+            intent_path.stat().st_ino,
+        )
+        before_ledger = fixture["ledger"].read_bytes()
+    finally:
+        R._close_dispatch_quarantine(marker)
+
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="sandbox exec classification has an invalid exact schema",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert fixture["ledger"].read_bytes() == before_ledger
+    assert intent_path.read_bytes() == before_intent
+    assert (intent_path.stat().st_dev, intent_path.stat().st_ino) == (
+        intent_identity
+    )
+    assert stat.S_IMODE(intent_path.stat().st_mode) == 0o600
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
+@pytest.mark.parametrize("tree_kind", ("workspace", "protected"))
+@pytest.mark.parametrize(
+    ("one_exec", "phase", "expected_events"),
+    (
+        (False, "terminal", []),
+        (True, "classification", ["codex_exec"]),
+    ),
+)
+def test_sandboxed_recovery_rejects_same_inode_tree_mutation_after_arm(
+    tmp_path, monkeypatch, tree_kind, one_exec, phase, expected_events
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    if one_exec:
+        _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    target = _sandbox_generation_content_path(fixture, tree_kind)
+    identity = (target.stat().st_dev, target.stat().st_ino)
+    target.write_bytes(b"same inode changed after arm\n")
+
+    with pytest.raises(
+        R.CampaignPlanError,
+        match=f"tree content changed before {phase} append",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert (target.stat().st_dev, target.stat().st_ino) == identity
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == expected_events
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
+@pytest.mark.parametrize("tree_kind", ("workspace", "protected"))
+@pytest.mark.parametrize(
+    "mutation", ("same_bytes_new_inode", "mode", "xattr")
+)
+def test_sandboxed_recovery_rejects_generation_metadata_drift_after_arm(
+    tmp_path, monkeypatch, tree_kind, mutation
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    target = _sandbox_generation_content_path(fixture, tree_kind)
+    before = target.stat(follow_symlinks=False)
+    if mutation == "same_bytes_new_inode":
+        replacement = target.with_name(f"{target.name}.replacement")
+        replacement.write_bytes(target.read_bytes())
+        os.chmod(replacement, stat.S_IMODE(before.st_mode))
+        os.utime(
+            replacement,
+            ns=(before.st_atime_ns, before.st_mtime_ns),
+        )
+        os.replace(replacement, target)
+        assert target.stat(follow_symlinks=False).st_ino != before.st_ino
+    elif mutation == "mode":
+        os.chmod(target, stat.S_IMODE(before.st_mode) ^ stat.S_IXUSR)
+    else:
+        attribute = (
+            "com.gkm.scheduler-test"
+            if sys.platform == "darwin"
+            else "user.gkm_scheduler_test"
+        )
+        try:
+            if hasattr(os, "setxattr"):
+                os.setxattr(
+                    target,
+                    attribute,
+                    b"changed after arm",
+                    follow_symlinks=False,
+                )
+            elif sys.platform == "darwin":
+                subprocess.run(
+                    [
+                        "/usr/bin/xattr",
+                        "-w",
+                        attribute,
+                        "changed after arm",
+                        os.fspath(target),
+                    ],
+                    check=True,
+                    capture_output=True,
+                )
+            else:
+                pytest.skip("extended attributes are unavailable")
+        except (AttributeError, OSError, subprocess.CalledProcessError):
+            pytest.skip("extended attributes are unavailable")
+
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="tree content changed before terminal append",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert fixture["ledger"].read_bytes() == b""
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
+@pytest.mark.parametrize("tree_kind", ("workspace", "protected"))
+def test_sandboxed_recovery_rechecks_same_inode_tree_immediately_before_release(
+    tmp_path, monkeypatch, tree_kind
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    target = _sandbox_generation_content_path(fixture, tree_kind)
+    identity = (target.stat().st_dev, target.stat().st_ino)
+    real_build = R._build_dispatch_release_authority
+
+    def build_then_mutate(*args, **kwargs):
+        authority = real_build(*args, **kwargs)
+        target.write_bytes(b"same inode changed before release\n")
+        return authority
+
+    monkeypatch.setattr(
+        R, "_build_dispatch_release_authority", build_then_mutate
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="tree content changed before release",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert (target.stat().st_dev, target.stat().st_ino) == identity
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+    ]
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
+def test_sandboxed_recovery_rechecks_canonical_after_final_tree_hash(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    real_revalidate = R._revalidate_sandboxed_generation_tree_hashes
+
+    def revalidate_then_mutate(*args, **kwargs):
+        result = real_revalidate(*args, **kwargs)
+        if kwargs.get("phase") == "before release":
+            (fixture["artifact"] / "post-tree-hash-drift.py").write_bytes(
+                b"unauthorized canonical drift\n"
+            )
+        return result
+
+    monkeypatch.setattr(
+        R,
+        "_revalidate_sandboxed_generation_tree_hashes",
+        revalidate_then_mutate,
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="canonical/frontier baseline changed",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+    ]
+
+
+def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    real_append = R._append_recovery_phase_cas
+    crashed = False
+
+    def append_then_crash(state, record, **kwargs):
+        nonlocal crashed
+        committed = real_append(state, record, **kwargs)
+        if (
+            not crashed
+            and record.get("event")
+            == "codex_exec_classification_correction"
+        ):
+            crashed = True
+            raise RuntimeError("synthetic crash after sandbox classification")
+        return committed
+
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", append_then_crash)
+    with pytest.raises(RuntimeError, match="sandbox classification"):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        "codex_exec", "codex_exec_classification_correction",
+    ]
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
+    result = R._recover_sandboxed_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+    assert result["result"] == "sandbox_isolated_noncounting"
+    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+
+
+def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
+    tmp_path, monkeypatch
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    ledger_identity = (
+        fixture["ledger"].stat().st_dev,
+        fixture["ledger"].stat().st_ino,
+    )
+    real_append = R._append_recovery_phase_cas
+    real_write = R.os.write
+    active = False
+    partial_written = False
+
+    def target_terminal(state, record, **kwargs):
+        nonlocal active
+        if record.get("event") != R.SANDBOX_ABANDON_EVENT:
+            return real_append(state, record, **kwargs)
+        active = True
+        try:
+            return real_append(state, record, **kwargs)
+        finally:
+            active = False
+
+    def partial_terminal_write(descriptor, payload):
+        nonlocal partial_written
+        metadata = os.fstat(descriptor)
+        if active and (metadata.st_dev, metadata.st_ino) == ledger_identity:
+            if not partial_written:
+                partial_written = True
+                return real_write(descriptor, payload[:23])
+            raise OSError(errno.ENOSPC, "synthetic sandbox terminal ENOSPC")
+        return real_write(descriptor, payload)
+
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", target_terminal)
+    monkeypatch.setattr(R.os, "write", partial_terminal_write)
+    with pytest.raises(R.CampaignPlanError, match="phase append failed"):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+    assert partial_written
+    intents = list(
+        fixture["marker"].parent.glob(".codex_recovery_*.intent")
+    )
+    assert len(intents) == 1
+    assert stat.S_IMODE(intents[0].stat().st_mode) == 0o600
+    pending = R._parse_recovery_phase_intent(
+        intents[0].read_bytes(), label="sandbox terminal recovery phase intent"
+    )
+    expected_terminal = dict(pending["record"])
+    assert expected_terminal["event"] == R.SANDBOX_ABANDON_EVENT
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
+    monkeypatch.setattr(R.os, "write", real_write)
+    result = R._recover_sandboxed_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+    assert result["result"] == "sandbox_isolated_noncounting"
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    assert rows[2] == expected_terminal
+    assert not intents[0].exists()
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
 
 
 def test_abandoned_scratch_rejects_an_ancestor_retry_root(tmp_path, monkeypatch):
@@ -3812,6 +4459,46 @@ def test_sandboxed_recovery_lock_acquisition_preserves_lock_metadata(
     ) == expected
 
 
+@pytest.mark.parametrize("drift", ("canonical", "workspace_lock"))
+def test_sandboxed_one_exec_rechecks_authority_after_wip_restore(
+    tmp_path, monkeypatch, drift
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    (fixture["wip"] / "latest.json").write_bytes(
+        b'{"attempt":"force-capsule-restore"}\n'
+    )
+    _append_sandbox_exec(fixture)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    real_restore = R._restore_wip_from_rollback_capsule
+
+    def restore_then_drift(*args, **kwargs):
+        restored = real_restore(*args, **kwargs)
+        if drift == "canonical":
+            (fixture["artifact"] / "post-restore-drift.py").write_bytes(
+                b"unauthorized canonical drift\n"
+            )
+        else:
+            os.chmod(fixture["exact_lock"], 0o640)
+        return restored
+
+    monkeypatch.setattr(
+        R, "_restore_wip_from_rollback_capsule", restore_then_drift
+    )
+    pattern = (
+        "canonical artifact changed"
+        if drift == "canonical" else "authority changed before release"
+    )
+    with pytest.raises(R.CampaignPlanError, match=pattern):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+    assert fixture["marker"].is_file()
+    assert fixture["capsule"].is_file()
+
+
 def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
     tmp_path, monkeypatch
 ):
@@ -3869,11 +4556,69 @@ def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
     ]
 
 
-@pytest.mark.parametrize("wal_crash", ("partial_authority", "authorized"))
-def test_sandboxed_release_wal_reconciles_before_marker_replay(
-    tmp_path, monkeypatch, wal_crash
+def test_sandboxed_recovery_checks_canonical_before_any_wal_reconciliation(
+    tmp_path, monkeypatch
 ):
     fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    (fixture["artifact"] / "late.py").write_bytes(b"canonical drift\n")
+
+    def state(path):
+        metadata = path.stat(follow_symlinks=False)
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_size,
+            path.read_bytes(),
+        )
+
+    before = {
+        name: state(fixture[name])
+        for name in ("marker", "capsule", "ledger")
+    }
+    called = []
+
+    def forbidden_retire(*_args, **_kwargs):
+        called.append("release_wal")
+        raise AssertionError("release WAL ran before canonical gate")
+
+    def forbidden_ledger_read(*_args, **_kwargs):
+        called.append("phase_wal")
+        raise AssertionError("phase WAL ran before canonical gate")
+
+    monkeypatch.setattr(
+        R, "_retire_incomplete_release_for_operator", forbidden_retire
+    )
+    monkeypatch.setattr(
+        R, "_read_post_reboot_ledger_surface", forbidden_ledger_read
+    )
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="canonical/frontier baseline changed",
+    ):
+        R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    assert called == []
+    assert {
+        name: state(fixture[name])
+        for name in ("marker", "capsule", "ledger")
+    } == before
+
+
+@pytest.mark.parametrize("wal_crash", ("partial_authority", "authorized"))
+@pytest.mark.parametrize("one_exec", (False, True))
+def test_sandboxed_release_wal_reconciles_before_marker_replay(
+    tmp_path, monkeypatch, wal_crash, one_exec
+):
+    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    if one_exec:
+        _append_sandbox_exec(fixture)
     armed = _arm_sandboxed_generation(fixture, monkeypatch)
     real_ensure = R._ensure_dispatch_release_authority_row
     real_finish = R._finish_dispatch_release_intent
@@ -3954,10 +4699,13 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
     assert result["result"] == expected
     assert not fixture["marker"].exists()
     assert not fixture["capsule"].exists()
-    assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
-        R.SANDBOX_ABANDON_EVENT,
-        "codex_dispatch_release_authorized",
-    ]
+    expected_events = (
+        ["codex_exec", "codex_exec_classification_correction"]
+        if one_exec else []
+    ) + [R.SANDBOX_ABANDON_EVENT, "codex_dispatch_release_authorized"]
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == expected_events
 
 
 @pytest.mark.parametrize("authorization", ("missing", "wrong_terminal_hash"))

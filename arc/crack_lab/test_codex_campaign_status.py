@@ -203,6 +203,78 @@ def test_sandbox_isolation_receipt_is_infrastructure_noncounting():
     assert S.infrastructure_noncounting_events([record]) == [record]
 
 
+def test_sandbox_one_exec_correction_keeps_retry_coordinate_at_nine():
+    frontier = _frontier(
+        "lf52", 8, incumbent_kind="promoted", priority_score=1.0
+    )
+    binding = {
+        field: frontier[field]
+        for field in (
+            *S.FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    }
+    prior = [
+        _turn_on(binding, **{
+            "thread_id": f"prior-{index}",
+            "reasoning_effort": "max",
+            "failure_class": None,
+            "solved_target": False,
+            "clean_no_progress": True,
+        })
+        for index in range(9)
+    ]
+    execution = {
+        **binding,
+        "event": "codex_exec",
+        "thread_id": "retry12-isolated",
+        "transcript": "retry12.jsonl",
+        "workspace": "retry12-workspace",
+        "run_label": "lf52:L9:propose",
+        "reasoning_effort": "max",
+        "failure_class": None,
+        "timed_out": False,
+        "interrupted": False,
+    }
+    correction = {
+        **binding,
+        "event": "codex_exec_classification_correction",
+        "schema": "scheduler_sandbox_isolated_generation_classification_v1",
+        "classification_authority": (
+            "scheduler_sandbox_isolated_generation_v1"
+        ),
+        "thread_id": execution["thread_id"],
+        "transcript": execution["transcript"],
+        "workspace": execution["workspace"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": "sandbox_isolated_nonquiescent",
+        "terminal_errors": ["descendant terminal unavailable"],
+        "solved_target": None,
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+    }
+    terminal = {
+        "event": S.SANDBOX_ISOLATION_NONCOUNTING_EVENT,
+        "schema": "scheduler_sandbox_isolated_generation_abandoned_v2",
+        "failure_class": "infrastructure",
+        "retry_increment": 0,
+        "codex_exec_appended": True,
+    }
+
+    current = S.joined_turns([execution, correction])
+    assert len(current) == 1
+    assert current[0]["failure_class"] == "infrastructure"
+    assert current[0]["retry_increment"] == 0
+    ranked = S.ranked_frontiers([frontier], [*prior, *current])[0]
+    assert ranked["paid_attempts_at_frontier"] == 9
+    assert ranked["infrastructure_turns_at_frontier"] == 1
+    assert ranked["retry_complexity_n"] == 9
+    assert S.infrastructure_noncounting_events([terminal]) == [terminal]
+
+
 def test_append_only_failure_classification_correction_updates_old_turn():
     records = [
         {

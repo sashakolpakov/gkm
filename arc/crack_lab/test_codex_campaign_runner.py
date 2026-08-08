@@ -8,6 +8,7 @@ import os
 import signal
 import stat
 import sys
+from datetime import datetime, timezone
 from pathlib import Path
 from types import SimpleNamespace
 import fcntl
@@ -648,6 +649,7 @@ def _append_clean_dispatch_ledger(fixture, *, reached_after=0):
         "model": record["model"],
         "reasoning_effort": item["effort"],
         "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
         "reached_before": item["reached"],
         "reached_after": reached_after,
         "solved_target": reached_after >= item["target_level"],
@@ -676,6 +678,1314 @@ def _zero_ledger_child_result(fixture):
         process_tree_quiesced=True,
         detached_processes_proven_absent=True,
     )
+
+
+def _normal_exit_residual_child_result(fixture, *, detached_proof):
+    return R.GuardedChildResult(
+        returncode=0,
+        workspace=fixture["workspace"].name,
+        transcript=fixture["record"]["transcript"],
+        workspace_identity=(
+            fixture["workspace"].stat().st_dev,
+            fixture["workspace"].stat().st_ino,
+        ),
+        protected_identity=(
+            fixture["protected"].stat().st_dev,
+            fixture["protected"].stat().st_ino,
+        ),
+        process_tree_quiesced=True,
+        detached_processes_proven_absent=detached_proof,
+        normal_exit_left_captured_descendants=True,
+    )
+
+
+def _crash_contained_residual_after_marker(fixture, monkeypatch):
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_append = R._append_recovery_phase_cas
+    injected = False
+
+    def crash_after_marker(state, record, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("synthetic contained marker crash")
+        return real_append(state, record, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", crash_after_marker)
+    with pytest.raises(RuntimeError, match="contained marker crash"):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
+    return (
+        Path(R.HERE)
+        / "agent_solutions"
+        / ".campaign_quarantine"
+        / "ar25.jsonl"
+    )
+
+
+def test_contained_normal_exit_residual_is_durably_noncounting_not_accepted(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+
+    result = R._run_item(
+        fixture["plan"],
+        fixture["item"],
+        allowance=fixture["allowance"],
+    )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert result["result"] == "contained_residual_noncounting"
+    assert result["retry_increment"] == 0
+    assert result["solver_result_accepted"] is False
+    assert result["release_authorized"] is True
+    assert result["cleanup_authorized"] is True
+    assert not marker.exists()
+    assert not any(
+        path.name.endswith(".wip_rollback_capsule")
+        for path in marker.parent.iterdir()
+    )
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert fixture["exact_lock"].exists()
+    ledger_rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in ledger_rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+    turns = R.Status.joined_turns(ledger_rows)
+    assert len(turns) == 1
+    assert turns[0]["failure_class"] == "infrastructure"
+    assert turns[0]["retry_increment"] == 0
+    assert turns[0]["solved_target"] is None
+    frontier = {
+        **{
+            field: fixture["item"][field]
+            for field in R.Status.FRONTIER_BINDING_FIELDS
+        },
+        "game": fixture["item"]["game"],
+        "next_level": fixture["item"]["target_level"],
+        "target_level": fixture["item"]["target_level"],
+        "reached": fixture["item"]["reached"],
+        "parent_action_count": fixture["item"]["parent_action_count"],
+        "priority_score": 0.0,
+    }
+    ranked = R.Status.ranked_frontiers([frontier], turns)
+    assert ranked[0]["retry_complexity_n"] == (
+        fixture["item"]["retry_complexity_n"]
+    )
+    assert ledger_rows[-1]["event"] == "codex_dispatch_release_authorized"
+
+
+def test_normal_exit_residual_without_detached_proof_stays_unquiesced(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def darwin_residual(*_args, **_kwargs):
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=False
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", darwin_residual)
+
+    with pytest.raises(
+        R.NormalExitResidualUnquiescedError,
+        match="detached-process absence is unproven",
+    ):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    parsed = R.RebootRecovery.parse_dispatch_marker(
+        marker.read_bytes(), require_recovery_arm=False
+    )
+    assert parsed.unquiesced["event"] == "dispatch_unquiesced"
+    assert parsed.unquiesced["exception_type"] == "UnquiescedChildError"
+    assert "detached-process absence is unproven" in (
+        parsed.unquiesced["reason"]
+    )
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert fixture["exact_lock"].exists()
+    assert all(
+        row.get("event") != "codex_dispatch_release_authorized"
+        for row in R.Guard.read_ledger(fixture["ledger"])
+    )
+
+
+def test_contained_residual_rejects_clean_outcome_suffix_as_ambiguous(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def ambiguous_residual(*_args, **_kwargs):
+        _append_clean_dispatch_ledger(fixture, reached_after=1)
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", ambiguous_residual)
+
+    with pytest.raises(
+        R.CampaignPlanError, match="ambiguous ledger suffix"
+    ):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    rows = [
+        json.loads(line)
+        for line in marker.read_text(encoding="utf-8").splitlines()
+    ]
+    assert rows[-1]["event"] == "dispatch_failed"
+    assert rows[-1]["normal_exit_left_captured_descendants"] is True
+    assert all(
+        row.get("event") != R.CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT
+        for row in rows
+    )
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+
+
+def test_contained_zero_ledger_residual_uses_existing_recovery_lane(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_run_guarded_child",
+        lambda *_args, **_kwargs: _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        ),
+    )
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "infrastructure_noncounting"
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert rows[0]["event"] == R.ZERO_LEDGER_EVENT
+    assert all(
+        row.get("event") != R.CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT
+        for row in rows
+    )
+
+
+def test_contained_residual_classification_resumes_after_marker_crash(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def contained_residual(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_append = R._append_recovery_phase_cas
+    injected = False
+
+    def crash_before_phase(state, record, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("injected crash after contained marker")
+        return real_append(state, record, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", crash_before_phase)
+
+    with pytest.raises(RuntimeError, match="after contained marker"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    marker_path = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    marker_rows = [
+        json.loads(line)
+        for line in marker_path.read_text(encoding="utf-8").splitlines()
+    ]
+    terminal = marker_rows[-1]
+    assert terminal["release_authorized"] is False
+    assert terminal["cleanup_authorized"] is True
+    assert terminal["cleanup_recovery_consumer_available"] is True
+    assert terminal["cleanup_authority_schema"] == (
+        "dispatch_full_wip_rollback_capsule_v1"
+    )
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec"]
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "contained_residual_noncounting"
+    assert result["classification_replayed"] is True
+    assert result["release_authorized"] is True
+    assert child_calls == 1
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+    assert R.Status.joined_turns(rows)[0]["retry_increment"] == 0
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert not marker_path.exists()
+    assert R._resume_existing_contained_residual_classification(
+        fixture["item"]
+    ) is None
+
+
+def test_contained_residual_partial_cas_reconciles_exactly_once(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def contained_residual(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_append = R._append_recovery_phase_cas
+    injected = False
+
+    def crash_after_intent(state, record, **_kwargs):
+        nonlocal injected
+        if injected:
+            return real_append(state, record)
+        injected = True
+
+        def stop_after_intent():
+            raise RuntimeError("injected crash after classification intent")
+
+        return real_append(state, record, after_intent=stop_after_intent)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", crash_after_intent)
+
+    with pytest.raises(RuntimeError, match="after classification intent"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    marker_path = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    marker_rows = [
+        json.loads(line)
+        for line in marker_path.read_text(encoding="utf-8").splitlines()
+    ]
+    dispatch_id = marker_rows[0]["dispatch_id"]
+    intent_name = R._recovery_phase_intent_names(
+        fixture["ledger"], dispatch_id
+    )["codex_exec_classification_correction"]
+    assert (marker_path.parent / intent_name).is_file()
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "contained_residual_noncounting"
+    assert child_calls == 1
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+    assert not (marker_path.parent / intent_name).exists()
+    assert not marker_path.exists()
+
+
+@pytest.mark.parametrize(
+    "boundary",
+    ("preparing", "installed", "partial_authority", "authorized"),
+)
+def test_contained_residual_release_wal_recovers_every_boundary(
+    tmp_path, monkeypatch, boundary
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def contained_residual(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    injected = False
+    if boundary == "preparing":
+        real_replace = R.os.replace
+
+        def crash_before_release_wal_replace(source, target, *args, **kwargs):
+            nonlocal injected
+            if not injected and str(source).endswith(".release_preparing"):
+                injected = True
+                raise RuntimeError("crash with preparing release WAL")
+            return real_replace(source, target, *args, **kwargs)
+
+        monkeypatch.setattr(R.os, "replace", crash_before_release_wal_replace)
+    elif boundary in {"installed", "partial_authority"}:
+        real_ensure = R._ensure_dispatch_release_authority_row
+
+        def crash_during_release_authority(
+            item, root_fd, record, intent_identity, **kwargs
+        ):
+            nonlocal injected
+            if not injected and kwargs.get("allow_new_authority_append"):
+                injected = True
+                if boundary == "partial_authority":
+                    authority = record["release_authority"]
+                    line = R.RebootRecovery.canonical_json_line(
+                        authority["authority_record"]
+                    )
+                    descriptor = os.open(
+                        fixture["ledger"], os.O_WRONLY | os.O_APPEND
+                    )
+                    try:
+                        assert os.write(descriptor, line[: len(line) // 2]) > 0
+                        os.fsync(descriptor)
+                    finally:
+                        os.close(descriptor)
+                    raise RuntimeError("crash with partial release authority")
+                raise RuntimeError("crash with installed release WAL")
+            return real_ensure(
+                item, root_fd, record, intent_identity, **kwargs
+            )
+
+        monkeypatch.setattr(
+            R,
+            "_ensure_dispatch_release_authority_row",
+            crash_during_release_authority,
+        )
+    else:
+        real_finish = R._finish_dispatch_release_intent
+
+        def crash_after_release_authority(
+            item, root_fd, record, intent_identity
+        ):
+            nonlocal injected
+            if not injected:
+                injected = True
+                raise RuntimeError("crash with authorized release WAL")
+            return real_finish(item, root_fd, record, intent_identity)
+
+        monkeypatch.setattr(
+            R, "_finish_dispatch_release_intent", crash_after_release_authority
+        )
+
+    with pytest.raises(RuntimeError, match="crash with"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert injected is True
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert marker.is_file()
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "contained_residual_noncounting"
+    assert result["retry_increment"] == 0
+    assert child_calls == 1
+    assert not marker.exists()
+    assert not any(
+        path.name.endswith((
+            ".release_intent",
+            ".release_preparing",
+            ".wip_rollback_capsule",
+        ))
+        for path in marker.parent.iterdir()
+    )
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+
+
+def test_contained_residual_replay_validates_before_authority_append(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_ensure = R._ensure_dispatch_release_authority_row
+    crashed = False
+
+    def leave_installed_wal(item, root_fd, record, identity, **kwargs):
+        nonlocal crashed
+        if not crashed and kwargs.get("allow_new_authority_append"):
+            crashed = True
+            raise RuntimeError("leave installed release WAL")
+        return real_ensure(item, root_fd, record, identity, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(
+        R, "_ensure_dispatch_release_authority_row", leave_installed_wal
+    )
+    with pytest.raises(RuntimeError, match="leave installed"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    mutated = False
+
+    def mutate_before_replay_append(item, root_fd, record, identity, **kwargs):
+        nonlocal mutated
+        if not mutated and kwargs.get("allow_existing_partial_authority"):
+            mutated = True
+            (tmp_path / "agent_solutions" / "ar25_legs" / "drift.txt").write_text(
+                "canonical drift", encoding="utf-8"
+            )
+        return real_ensure(item, root_fd, record, identity, **kwargs)
+
+    monkeypatch.setattr(
+        R,
+        "_ensure_dispatch_release_authority_row",
+        mutate_before_replay_append,
+    )
+    with pytest.raises(
+        R.CampaignPlanError, match="published artifact changed"
+    ):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert mutated is True
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec", "codex_exec_classification_correction"]
+
+
+def test_contained_release_wal_rejects_valid_foreign_phase_intent(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_ensure = R._ensure_dispatch_release_authority_row
+    crashed = False
+
+    def leave_installed_wal(item, root_fd, record, identity, **kwargs):
+        nonlocal crashed
+        if not crashed and kwargs.get("allow_new_authority_append"):
+            crashed = True
+            raise RuntimeError("leave WAL for cross-lane test")
+        return real_ensure(item, root_fd, record, identity, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(
+        R, "_ensure_dispatch_release_authority_row", leave_installed_wal
+    )
+    with pytest.raises(RuntimeError, match="cross-lane"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    dispatch_id = json.loads(
+        marker.read_text(encoding="utf-8").splitlines()[0]
+    )["dispatch_id"]
+    baseline = R._capture_ledger_prefix(fixture["ledger"])
+    state = R.PostRebootLedgerState(
+        dispatch_id=dispatch_id,
+        intent_root=marker.parent,
+        intent_root_identity=(marker.parent.stat().st_dev, marker.parent.stat().st_ino),
+        ledger=fixture["ledger"],
+        baseline=baseline,
+        record=fixture["record"],
+        correction=None,
+        cleanup=None,
+        operator=None,
+    )
+    foreign = {
+        "event": R.SANDBOX_ABANDON_EVENT,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "schema": "synthetic_valid_foreign_phase_v1",
+    }
+    envelope = R._phase_intent_envelope(
+        state, foreign, baseline.raw_prefix
+    )
+    intent_name = R._recovery_phase_intent_names(
+        fixture["ledger"], dispatch_id
+    )[R.SANDBOX_ABANDON_EVENT]
+    intent_path = marker.parent / intent_name
+    intent_payload = R.RebootRecovery.canonical_json_line(envelope)
+    intent_path.write_bytes(intent_payload)
+    intent_path.chmod(0o600)
+    assert R._parse_recovery_phase_intent(
+        intent_payload, label="synthetic valid foreign phase"
+    ) == envelope
+    before_ledger = fixture["ledger"].read_bytes()
+
+    with pytest.raises(
+        R.CampaignPlanError, match="release or staging residue"
+    ):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert fixture["ledger"].read_bytes() == before_ledger
+    assert marker.is_file()
+    assert intent_path.is_file()
+
+
+def test_contained_residual_rechecks_canonical_immediately_before_release(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_release = R._release_dispatch_quarantine
+
+    def mutate_before_final_revalidation(
+        marker, item, release_authority, **kwargs
+    ):
+        callback = kwargs["before_authority_append"]
+
+        def mutate_then_revalidate(*args):
+            (tmp_path / "agent_solutions" / "ar25_legs" / "drift.txt").write_text(
+                "canonical drift", encoding="utf-8"
+            )
+            callback(*args)
+
+        return real_release(
+            marker,
+            item,
+            release_authority,
+            before_authority_append=mutate_then_revalidate,
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(
+        R, "_release_dispatch_quarantine", mutate_before_final_revalidation
+    )
+    with pytest.raises(
+        R.CampaignPlanError, match="published artifact changed"
+    ):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert marker.is_file()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec", "codex_exec_classification_correction"]
+
+
+def test_contained_lane_preserves_foreign_sandbox_correction_intent(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    marker_path = _crash_contained_residual_after_marker(
+        fixture, monkeypatch
+    )
+    marker, parsed = R._read_existing_dispatch_quarantine(
+        fixture["item"],
+        require_recovery_arm=False,
+        marker_parser=R._parse_contained_normal_exit_residual_marker,
+    )
+    try:
+        ledger, baseline, suffix = R._read_post_reboot_ledger_surface(
+            fixture["item"], parsed.armed
+        )
+        assert suffix == [fixture["record"]]
+        execution = suffix[0]
+        foreign = {
+            "event": "codex_exec_classification_correction",
+            "schema": R.SANDBOX_EXEC_CLASSIFICATION_SCHEMA,
+            "recorded_at": "2026-08-08T00:00:00+00:00",
+            "classification_authority": (
+                R.SANDBOX_EXEC_CLASSIFICATION_AUTHORITY
+            ),
+            "dispatch_id": marker.dispatch_id,
+            "recovery_nonce": "3" * 32,
+            "exec_record_sha256": R._recovery_record_sha256(execution),
+            "sandbox_contract_sha256": "4" * 64,
+            "protected_tree_sha256": "5" * 64,
+            "thread_id": execution["thread_id"],
+            "transcript": execution["transcript"],
+            "workspace": execution["workspace"],
+            "game": fixture["item"]["game"],
+            "target_level": fixture["item"]["target_level"],
+            "reached": fixture["item"]["reached"],
+            "parent_action_count": fixture["item"]["parent_action_count"],
+            "retry_complexity_n": fixture["item"]["retry_complexity_n"],
+            "failure_class": "infrastructure",
+            "failure_detail_class": "sandbox_isolated_nonquiescent",
+            "terminal_errors": ["foreign sandbox classification"],
+            "solved_target": None,
+            "taint_verdict": "quarantined",
+            "retry_increment": 0,
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+            **{
+                field: fixture["item"][field]
+                for field in R.Status.FRONTIER_BINDING_FIELDS
+            },
+        }
+        assert set(foreign) == R.SANDBOX_EXEC_CLASSIFICATION_KEYS
+        state = R.PostRebootLedgerState(
+            dispatch_id=marker.dispatch_id,
+            intent_root=marker.root,
+            intent_root_identity=marker.root_identity,
+            ledger=ledger,
+            baseline=baseline,
+            record=execution,
+            correction=None,
+            cleanup=None,
+            operator=None,
+        )
+        expected_raw = baseline.raw_prefix + (
+            R.RebootRecovery.canonical_json_line(execution)
+        )
+        intent_name, selected = R._prepare_recovery_phase_intent_locked(
+            state, foreign, expected_raw
+        )
+        assert selected["record"] == foreign
+        intent_path = marker.root / intent_name
+        before_intent = intent_path.read_bytes()
+        intent_identity = (
+            intent_path.stat().st_dev,
+            intent_path.stat().st_ino,
+        )
+        before_ledger = fixture["ledger"].read_bytes()
+    finally:
+        R._close_dispatch_quarantine(marker)
+
+    with pytest.raises(
+        R.CampaignPlanError,
+        match="contained-residual lane rejects a foreign",
+    ):
+        R._run_item(
+            fixture["plan"],
+            fixture["item"],
+            allowance=fixture["allowance"],
+        )
+
+    assert fixture["ledger"].read_bytes() == before_ledger
+    assert intent_path.read_bytes() == before_intent
+    assert (intent_path.stat().st_dev, intent_path.stat().st_ino) == (
+        intent_identity
+    )
+    assert stat.S_IMODE(intent_path.stat().st_mode) == 0o600
+    assert marker_path.is_file()
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+
+
+def test_contained_residual_staged_marker_promotes_after_replace_crash(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    child_calls = 0
+
+    def contained_residual(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_install = R._install_contained_residual_marker
+    injected = False
+
+    def crash_before_replace(marker, record, **_kwargs):
+        nonlocal injected
+        if injected:
+            return real_install(marker, record)
+        injected = True
+
+        def stop_before_replace():
+            raise RuntimeError("injected crash before marker replace")
+
+        return real_install(
+            marker, record, before_replace=stop_before_replace
+        )
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(
+        R, "_install_contained_residual_marker", crash_before_replace
+    )
+
+    with pytest.raises(RuntimeError, match="before marker replace"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    marker_path = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    assert len(marker_path.read_text(encoding="utf-8").splitlines()) == 1
+    sidecar = marker_path.parent / R._contained_residual_sidecar_name(
+        marker_path.name
+    )
+    assert sidecar.is_file()
+
+    result = R._run_item(
+        fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "contained_residual_noncounting"
+    assert result["classification_replayed"] is True
+    assert child_calls == 1
+    assert not marker_path.exists()
+    assert not sidecar.exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+
+
+def test_contained_residual_n9_resume_tolerates_volatile_wip_plan_drift(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    item = fixture["item"]
+    item.update({
+        "effort": "max",
+        "minutes": 300,
+        "retry_complexity_n": 9,
+        "dispatch_mode": "long_coherence_reset",
+        "recommended_auxiliary_parallelism": 2,
+    })
+    item["argv"] = [
+        "--minutes=300" if value == "--minutes=15"
+        else "--codex-effort=max" if value == "--codex-effort=medium"
+        else value
+        for value in item["argv"]
+    ]
+    fixture["record"].update({
+        "reasoning_effort": "max",
+        "minutes_limit": 300,
+    })
+    monkeypatch.setattr(
+        R.Status,
+        "_transcript_counts",
+        lambda _record: {
+            "command_executions": 0,
+            "file_changes": 0,
+            "turn_completed_events": 1,
+        },
+    )
+    for index in range(9):
+        prior = {
+            **fixture["record"],
+            "thread_id": f"prior-clean-{index}",
+            "transcript": f"prior-clean-{index}.jsonl",
+        }
+        R.Guard.append_ledger(prior, fixture["ledger"])
+        R.Guard.append_ledger({
+            "event": "codex_level_outcome",
+            "codex_exec_transcript": prior["transcript"],
+            "thread_id": prior["thread_id"],
+            "game": item["game"],
+            "target_level": item["target_level"],
+            "run_label": prior["run_label"],
+            "model": prior["model"],
+            "reasoning_effort": item["effort"],
+            "reached": item["reached"],
+            "parent_action_count": item["parent_action_count"],
+            "reached_before": item["reached"],
+            "reached_after": item["reached"],
+            "solved_target": False,
+            "taint_verdict": "clean",
+            **{
+                field: item[field]
+                for field in R.Status.FRONTIER_BINDING_FIELDS
+            },
+        }, fixture["ledger"])
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_append = R._append_recovery_phase_cas
+    injected = False
+
+    def crash_after_marker(state, record, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("n9 marker crash")
+        return real_append(state, record, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", crash_after_marker)
+    with pytest.raises(RuntimeError, match="n9 marker crash"):
+        R._run_item(
+            fixture["plan"], item, allowance=fixture["allowance"]
+        )
+
+    regenerated = copy.deepcopy(item)
+    regenerated.update({
+        "warm_wip_validation": "rejected:filesystem_boundary_policy_binding",
+        "warm_wip_phase": "not_reached",
+        "warm_wip_recovery_required": False,
+        "expected_wip_attempt": None,
+    })
+    assert R._recovery_record_sha256(regenerated) != (
+        R._recovery_record_sha256(item)
+    )
+
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
+    real_ensure = R._ensure_dispatch_release_authority_row
+    release_injected = False
+
+    def crash_before_n9_release_authority(
+        selected, root_fd, record, intent_identity, **kwargs
+    ):
+        nonlocal release_injected
+        if not release_injected and kwargs.get("allow_new_authority_append"):
+            release_injected = True
+            raise RuntimeError("n9 release crash")
+        return real_ensure(
+            selected, root_fd, record, intent_identity, **kwargs
+        )
+
+    monkeypatch.setattr(
+        R,
+        "_ensure_dispatch_release_authority_row",
+        crash_before_n9_release_authority,
+    )
+    with pytest.raises(RuntimeError, match="n9 release crash"):
+        R._run_item(
+            fixture["plan"], regenerated, allowance=fixture["allowance"]
+        )
+    assert release_injected is True
+
+    result = R._run_item(
+        fixture["plan"], regenerated, allowance=fixture["allowance"]
+    )
+
+    assert result["result"] == "contained_residual_noncounting"
+    assert result["retry_complexity_n"] == 9
+    turns = R.Status.joined_turns(
+        R.Guard.read_ledger(fixture["ledger"])
+    )
+    contained = [
+        turn for turn in turns
+        if turn.get("thread_id") == fixture["record"]["thread_id"]
+    ]
+    assert len(contained) == 1
+    assert contained[0]["retry_increment"] == 0
+    frontier = {
+        **{
+            field: regenerated[field]
+            for field in R.Status.FRONTIER_BINDING_FIELDS
+        },
+        "game": regenerated["game"],
+        "next_level": regenerated["target_level"],
+        "target_level": regenerated["target_level"],
+        "reached": regenerated["reached"],
+        "parent_action_count": regenerated["parent_action_count"],
+        "priority_score": 0.0,
+    }
+    assert R.Status.ranked_frontiers(
+        [frontier], turns
+    )[0]["retry_complexity_n"] == 9
+
+
+def test_main_replays_contained_residual_from_sealed_old_scratch_receipt(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    fixture["ledger"].touch(exist_ok=True)
+    old_scratch = Path(R.Legs.SCRATCH)
+    new_scratch = tmp_path / "fresh_scratch"
+    (new_scratch / ".proposer_transcripts").mkdir(parents=True)
+    (new_scratch / ".workspace_locks").mkdir()
+    worktree = tmp_path / "sealed_runner"
+    worktree.mkdir()
+    source_sha256 = "1" * 64
+    head_commit = "2" * 40
+    monkeypatch.setattr(R, "PINNED_HISTORICAL_RUNNERS", {
+        source_sha256: {
+            "head_commit": head_commit,
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+    })
+    monkeypatch.setattr(R.Guard, "DEFAULT_LEDGER", fixture["ledger"])
+
+    def receipt(scratch):
+        return {
+            "schema": R.RUNNER_RECEIPT_SCHEMA,
+            "worktree": os.fspath(worktree),
+            "cwd": os.fspath(worktree),
+            "interpreter": os.fspath(Path(sys.executable).resolve()),
+            "head_commit": head_commit,
+            "source_sha256": source_sha256,
+            "artifacts_root": os.fspath(tmp_path / "agent_solutions"),
+            "scratch_root": os.fspath(scratch),
+            "ledger": os.fspath(fixture["ledger"]),
+            "evidence_schema": "sealed_transcript_only_v1",
+            "lock_schema": "in_workspace_v1",
+        }
+
+    old_plan = {
+        **fixture["plan"],
+        "runner_receipt": receipt(old_scratch),
+    }
+    monkeypatch.setattr(
+        R,
+        "validate_item",
+        lambda selected, _plan=None, **_kwargs: selected["argv"],
+    )
+    child_calls = 0
+
+    def contained_residual(*_args, **_kwargs):
+        nonlocal child_calls
+        child_calls += 1
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    real_append = R._append_recovery_phase_cas
+    injected = False
+
+    def crash_after_old_marker(state, record, **kwargs):
+        nonlocal injected
+        if not injected:
+            injected = True
+            raise RuntimeError("old scratch marker crash")
+        return real_append(state, record, **kwargs)
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", crash_after_old_marker)
+    with pytest.raises(RuntimeError, match="old scratch marker crash"):
+        R._run_item(
+            old_plan, fixture["item"], allowance=fixture["allowance"]
+        )
+    monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
+
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(new_scratch))
+    current_plan = {
+        **fixture["plan"],
+        "runner_receipt": receipt(new_scratch),
+        "initial_queue": [fixture["item"]],
+    }
+    plan_path = tmp_path / "fresh_plan.json"
+    plan_path.write_text(json.dumps(current_plan), encoding="utf-8")
+    monkeypatch.setattr(R.Guard, "query_rate_limits", lambda: {})
+    monkeypatch.setattr(
+        R.Guard, "weekly_allowance", lambda _snapshot: fixture["allowance"]
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "codex_campaign_runner.py",
+            "--plan",
+            os.fspath(plan_path),
+            "--execute",
+            "--max-items=1",
+        ],
+    )
+
+    assert R.main() == 0
+    assert child_calls == 1
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+    assert not any(
+        path.name.startswith("gkm_legs_ws_ar25_")
+        for path in new_scratch.iterdir()
+    )
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
+
+
+@pytest.mark.parametrize(
+    "drift",
+    (
+        "artifact_root_identity",
+        "canonical_root_identity",
+        "canonical_digest",
+        "checkpoint",
+        "frontier",
+    ),
+)
+def test_contained_residual_replay_rejects_published_artifact_drift(
+    tmp_path, monkeypatch, drift
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    _crash_contained_residual_after_marker(fixture, monkeypatch)
+    artifact_root = tmp_path / "agent_solutions"
+    canonical = artifact_root / "ar25_legs"
+    if drift == "artifact_root_identity":
+        old_root = tmp_path / "old_agent_solutions"
+        artifact_root.rename(old_root)
+        artifact_root.mkdir()
+        (old_root / ".campaign_quarantine").rename(
+            artifact_root / ".campaign_quarantine"
+        )
+        (old_root / "ar25_legs").rename(canonical)
+    elif drift == "canonical_root_identity":
+        canonical.rename(tmp_path / "old_ar25_legs")
+        canonical.mkdir()
+    elif drift == "canonical_digest":
+        (canonical / "unexpected.txt").write_text("drift", encoding="utf-8")
+    elif drift == "checkpoint":
+        monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: 1)
+    else:
+        changed = {
+            field: fixture["item"][field]
+            for field in (
+                *R.Status.FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        }
+        changed["parent_action_count"] = 1
+        monkeypatch.setattr(
+            R.Status,
+            "exact_frontier_binding",
+            lambda *args, **kwargs: changed,
+        )
+
+    with pytest.raises(
+        R.CampaignPlanError, match="published artifact changed"
+    ):
+        R._resume_existing_contained_residual_classification(
+            fixture["item"]
+        )
+
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec"]
+    assert fixture["workspace"].is_dir()
+    assert fixture["protected"].is_dir()
+
+
+@pytest.mark.parametrize(
+    "residue",
+    ("intent", "preparing", "arm", "arm_preparing", "receipt", "receipt_preparing"),
+)
+def test_contained_residual_replay_rejects_release_authority_residue(
+    tmp_path, monkeypatch, residue
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    marker = _crash_contained_residual_after_marker(fixture, monkeypatch)
+    marker_rows = [
+        json.loads(line)
+        for line in marker.read_text(encoding="utf-8").splitlines()
+    ]
+    dispatch_id = marker_rows[0]["dispatch_id"]
+    intent, preparing = R._dispatch_release_intent_names(marker.name)
+    arm = R._safe_release_recovery_arm_name(marker.name)
+    receipt = R._safe_release_recovery_receipt_name(
+        marker.name, dispatch_id
+    )
+    names = {
+        "intent": intent,
+        "preparing": preparing,
+        "arm": arm,
+        "arm_preparing": R._durable_recovery_record_preparing_name(arm),
+        "receipt": receipt,
+        "receipt_preparing": R._durable_recovery_record_preparing_name(
+            receipt
+        ),
+    }
+    residue_path = marker.parent / names[residue]
+    residue_path.write_text("sealed residue", encoding="utf-8")
+
+    expected_error = (
+        "unsafe custody"
+        if residue in {"intent", "preparing"}
+        else "release or staging residue"
+    )
+    with pytest.raises(R.CampaignPlanError, match=expected_error):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    assert residue_path.exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec"]
+
+
+def test_contained_residual_incomplete_sidecar_remains_fail_closed(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+
+    def contained_residual(*_args, **_kwargs):
+        R.Guard.append_ledger(fixture["record"], fixture["ledger"])
+        return _normal_exit_residual_child_result(
+            fixture, detached_proof=True
+        )
+
+    def partial_sidecar(marker, _record, **_kwargs):
+        sidecar = marker.root / R._contained_residual_sidecar_name(marker.name)
+        sidecar.write_bytes(marker.path.read_bytes() + b"{")
+        sidecar.chmod(0o600)
+        raise RuntimeError("synthetic partial contained sidecar")
+
+    monkeypatch.setattr(R, "_run_guarded_child", contained_residual)
+    monkeypatch.setattr(R, "_install_contained_residual_marker", partial_sidecar)
+    with pytest.raises(RuntimeError, match="partial contained sidecar"):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+
+    with pytest.raises(
+        R.CampaignPlanError, match="incomplete contained-residual sidecar"
+    ):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    marker = (
+        tmp_path / "agent_solutions" / ".campaign_quarantine" / "ar25.jsonl"
+    )
+    sidecar = marker.parent / R._contained_residual_sidecar_name(marker.name)
+    assert len(marker.read_text(encoding="utf-8").splitlines()) == 1
+    assert sidecar.exists()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec"]
+
+
+def test_contained_residual_replay_rejects_active_generation_lock(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    _crash_contained_residual_after_marker(fixture, monkeypatch)
+    held = fixture["exact_lock"].open("r+")
+    fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(R.CampaignPlanError, match="generation lock is active"):
+            R._run_item(
+                fixture["plan"],
+                fixture["item"],
+                allowance=fixture["allowance"],
+            )
+    finally:
+        fcntl.flock(held.fileno(), fcntl.LOCK_UN)
+        held.close()
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == ["codex_exec"]
+
+
+def test_contained_residual_replay_rejects_post_cas_ledger_append(
+    tmp_path, monkeypatch
+):
+    fixture = _taint_dispatch_fixture(tmp_path, monkeypatch)
+    _crash_contained_residual_after_marker(fixture, monkeypatch)
+    real_append = R._append_recovery_phase_cas
+
+    def append_conflicting_authority(state, record, **kwargs):
+        committed = real_append(state, record, **kwargs)
+        R.Guard.append_ledger({
+            "event": "codex_dispatch_release_authorized",
+            "dispatch_id": state.dispatch_id,
+        }, fixture["ledger"])
+        return committed
+
+    monkeypatch.setattr(
+        R, "_append_recovery_phase_cas", append_conflicting_authority
+    )
+    with pytest.raises(
+        R.CampaignPlanError, match="final ledger authority changed"
+    ):
+        R._run_item(
+            fixture["plan"], fixture["item"], allowance=fixture["allowance"]
+        )
+    assert [
+        row["event"] for row in R.Guard.read_ledger(fixture["ledger"])
+    ] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_dispatch_release_authorized",
+    ]
 
 
 def test_quiesced_zero_exec_is_infrastructure_noncounting_and_exactly_cleaned(
@@ -2546,7 +3856,9 @@ def test_safe_release_recovery_crash_boundaries_are_idempotent(
             fault.setattr(R, "_build_dispatch_release_authority", crash_after_old_wal)
             pattern = "after old WAL retirement"
         elif boundary == "after_receipt":
-            def crash_after_receipt(*_args, **_kwargs):
+            def crash_after_receipt(*args, **kwargs):
+                callback = kwargs["before_authority_append"]
+                callback(args[2], args[3])
                 assert (root / receipt_name).is_file()
                 raise R.CampaignPlanError("synthetic crash after receipt")
 
@@ -4307,6 +5619,54 @@ def test_guarded_child_accepts_legacy_banner_and_split_clean_json_growth(
     assert phase["sleeps"] == 2
     assert len(spawned) == 1
     assert spawned[0].seal_calls == [(False, 0)]
+
+
+@pytest.mark.parametrize("detached_proof", (True, False))
+def test_guarded_child_propagates_contained_normal_exit_residual(
+    tmp_path, monkeypatch, detached_proof
+):
+    item, workspace, protected, transcript = _historical_watchdog_fixture(
+        tmp_path, monkeypatch
+    )
+
+    class FakeScopedTree:
+        pid = 12350
+
+        def __init__(self):
+            self.sealed = False
+            workspace.mkdir()
+            protected.mkdir()
+            transcript.write_bytes(
+                R.Boundary.HISTORICAL_STDIN_DIAGNOSTIC
+                + b'{"type":"thread.started","thread_id":"clean-thread"}\n'
+                + b'{"type":"turn.completed","usage":{}}\n'
+            )
+
+        def observe_exit(self):
+            return True
+
+        def seal(self, *, stop_requested, grace_seconds):
+            assert stop_requested is False
+            assert grace_seconds == 0
+            self.sealed = True
+            return SimpleNamespace(
+                returncode=0,
+                detached_processes_proven_absent=detached_proof,
+                normal_exit_left_captured_descendants=True,
+            )
+
+    monkeypatch.setattr(
+        R, "_launch_exact_child", lambda *_args, **_kwargs: FakeScopedTree()
+    )
+
+    result = R._run_guarded_child(
+        item, ["exact-legacy-child"], cwd=tmp_path, env={}
+    )
+
+    assert result.returncode == 0
+    assert result.process_tree_quiesced is True
+    assert result.normal_exit_left_captured_descendants is True
+    assert result.detached_processes_proven_absent is detached_proof
 
 
 def test_guarded_child_terminates_exact_child_on_current_policy_taint_even_rc0(

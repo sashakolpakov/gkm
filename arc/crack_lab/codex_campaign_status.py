@@ -71,9 +71,12 @@ SANDBOX_ISOLATION_NONCOUNTING_EVENT = (
 )
 INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
     INFRASTRUCTURE_NONCOUNTING_EVENT:
-        "scheduler_zero_ledger_generation_quarantine_v1",
+        frozenset({"scheduler_zero_ledger_generation_quarantine_v1"}),
     SANDBOX_ISOLATION_NONCOUNTING_EVENT:
-        "scheduler_sandbox_isolated_generation_abandoned_v1",
+        frozenset({
+            "scheduler_sandbox_isolated_generation_abandoned_v1",
+            "scheduler_sandbox_isolated_generation_abandoned_v2",
+        }),
 }
 
 
@@ -1618,10 +1621,13 @@ def infrastructure_noncounting_events(
         if (
             row.get("event") in INFRASTRUCTURE_NONCOUNTING_SCHEMAS
             and row.get("schema")
-            == INFRASTRUCTURE_NONCOUNTING_SCHEMAS[row["event"]]
+            in INFRASTRUCTURE_NONCOUNTING_SCHEMAS[row["event"]]
             and row.get("failure_class") == "infrastructure"
             and row.get("retry_increment") == 0
-            and row.get("codex_exec_appended") is False
+            and row.get("codex_exec_appended") is (
+                row.get("schema")
+                == "scheduler_sandbox_isolated_generation_abandoned_v2"
+            )
         )
     ]
 

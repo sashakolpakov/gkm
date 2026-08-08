@@ -84,9 +84,55 @@ RECOVERY_PHASE_EVENTS = {
 }
 ZERO_LEDGER_EVENT = "codex_infrastructure_generation_quarantined"
 ZERO_LEDGER_EVENT_SCHEMA = "scheduler_zero_ledger_generation_quarantine_v1"
+CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT = (
+    "dispatch_contained_normal_exit_residual"
+)
+CONTAINED_NORMAL_EXIT_RESIDUAL_AUTHORITY = (
+    "scheduler_contained_normal_exit_residual_v1"
+)
+CONTAINED_NORMAL_EXIT_RESIDUAL_REASON = (
+    "normal direct-child exit left captured descendants; all captured and "
+    "detached process identities are absent, but the generation cannot be "
+    "accepted as a clean solver result"
+)
+CONTAINED_NORMAL_EXIT_RESIDUAL_MARKER_KEYS = frozenset({
+    "schema", "dispatch_id", "event", "recorded_at", "exception_type",
+    "reason", "child_returncode", "workspace", "protected", "transcript",
+    "workspace_identity", "protected_identity", "failure_class",
+    "failure_detail_class", "taint_verdict", "retry_increment",
+    "codex_exec_appended", "ledger_suffix_rows", "ledger_suffix_bytes",
+    "ledger_suffix_sha256", "exec_record_sha256", "classification_record",
+    "classification_record_sha256", "classification_authority",
+    "classification_authorized", "classification_append_protocol",
+    "process_tree_quiesced", "descendant_quiescence_unproven",
+    "captured_process_identities_absent",
+    "detached_processes_proven_absent",
+    "normal_exit_left_captured_descendants", "automatic_detection",
+    "solver_result_accepted", "promotion_authorized", "release_authorized",
+    "cleanup_authorized", "cleanup_recovery_consumer_available",
+    "cleanup_authority_schema",
+})
+CONTAINED_RESIDUAL_RESULT_KEYS = frozenset({
+    "game", "target_level", "reached", "result", "reason",
+    "dispatch_id", "retry_complexity_n", "retry_increment",
+    "classification_replayed", "process_tree_quiesced",
+    "detached_processes_proven_absent",
+    "normal_exit_left_captured_descendants", "solver_result_accepted",
+    "release_authorized", "cleanup_authorized", "seed_mode", "wip_mode",
+    "lineage_input_mode",
+})
 SANDBOX_ABANDON_EVENT = "codex_sandbox_isolated_generation_abandoned"
 SANDBOX_ABANDON_EVENT_SCHEMA = (
     "scheduler_sandbox_isolated_generation_abandoned_v1"
+)
+SANDBOX_EXEC_ABANDON_EVENT_SCHEMA = (
+    "scheduler_sandbox_isolated_generation_abandoned_v2"
+)
+SANDBOX_EXEC_CLASSIFICATION_SCHEMA = (
+    "scheduler_sandbox_isolated_generation_classification_v1"
+)
+SANDBOX_EXEC_CLASSIFICATION_AUTHORITY = (
+    "scheduler_sandbox_isolated_generation_v1"
 )
 SANDBOX_RELEASE_AUTHORITY_KIND = "sandbox_isolated_operator_terminal_v1"
 SANDBOX_ABSENCE_SAMPLES = 3
@@ -111,6 +157,19 @@ SANDBOX_ABANDON_EVENT_KEYS = frozenset({
     "process_tree_quiesced", "detached_processes_proven_absent",
     "wip_restore_logical_state_sha256", "canonical_digest",
     *Status.FRONTIER_BINDING_FIELDS,
+})
+SANDBOX_EXEC_ABANDON_EVENT_KEYS = SANDBOX_ABANDON_EVENT_KEYS | frozenset({
+    "exec_record_sha256", "classification_record_sha256",
+})
+SANDBOX_EXEC_CLASSIFICATION_KEYS = frozenset({
+    "event", "schema", "recorded_at", "classification_authority",
+    "dispatch_id", "recovery_nonce", "exec_record_sha256",
+    "sandbox_contract_sha256", "protected_tree_sha256", "thread_id",
+    "transcript", "workspace", "game", "target_level", "reached",
+    "parent_action_count", "retry_complexity_n", "failure_class",
+    "failure_detail_class", "terminal_errors", "solved_target",
+    "taint_verdict", "retry_increment", "process_tree_quiesced",
+    "detached_processes_proven_absent", *Status.FRONTIER_BINDING_FIELDS,
 })
 SANDBOX_ISOLATION_RESULT_KEYS = frozenset({
     "game", "target_level", "reached", "result", "reason",
@@ -190,6 +249,14 @@ class UnquiescedChildError(CampaignPlanError):
         self.details = dict(details or {})
 
 
+class NormalExitResidualUnquiescedError(UnquiescedChildError):
+    """A normal root exit left descendants without detached-absence proof."""
+
+
+class ContainedNormalExitResidualError(CampaignPlanError):
+    """A residual was contained, but is forbidden from clean acceptance."""
+
+
 class ConfirmedGenerationTaint(CampaignPlanError):
     """Terminal authentication independently confirmed current-policy taint."""
 
@@ -217,6 +284,7 @@ class GuardedChildResult:
     descendant_quiescence_unproven: bool = False
     process_tree_quiesced: bool = False
     detached_processes_proven_absent: bool = False
+    normal_exit_left_captured_descendants: bool = False
 
 
 @dataclass(frozen=True)
@@ -479,7 +547,10 @@ def _reject_abandoned_scratch_root(scratch_root: Path, ledger: Path) -> None:
     for record in records:
         if (
             record.get("event") != SANDBOX_ABANDON_EVENT
-            or record.get("schema") != SANDBOX_ABANDON_EVENT_SCHEMA
+            or record.get("schema") not in {
+                SANDBOX_ABANDON_EVENT_SCHEMA,
+                SANDBOX_EXEC_ABANDON_EVENT_SCHEMA,
+            }
         ):
             continue
         abandoned = _normalized_absolute_path(
@@ -4989,18 +5060,41 @@ def _validate_safe_release_arm_context(
     item_sha = hashlib.sha256(json.dumps(
         item, sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")).hexdigest()
+    intent = arm["release_intent"]
+    assert isinstance(intent, dict)
+    authority = intent["release_authority"]
+    assert isinstance(authority, dict)
+    terminal_result = authority.get("terminal_result")
+    contained_material_match = (
+        isinstance(terminal_result, dict)
+        and terminal_result.get("result")
+        == "contained_residual_noncounting"
+        and authority.get("kind") == "ordinary_safe_terminal_v1"
+        and all(
+            authority.get(field) == item.get(field)
+            for field in (
+                "game",
+                "target_level",
+                "retry_complexity_n",
+                *Status.FRONTIER_BINDING_FIELDS,
+                "reached",
+                "parent_action_count",
+            )
+        )
+        and all(
+            terminal_result.get(field) == item.get(field)
+            for field in ("seed_mode", "wip_mode", "lineage_input_mode")
+        )
+    )
     if any((
-        arm.get("projected_item_sha256") != item_sha,
+        arm.get("projected_item_sha256") != item_sha
+        and not contained_material_match,
         arm.get("marker_root")
         != os.fspath(_artifact_root(item) / ".campaign_quarantine"),
         _marker_identity(arm.get("marker_root_identity"), "safe-release root")
         != root_identity,
     )):
         raise CampaignPlanError("safe-release arm belongs to another plan item")
-    intent = arm["release_intent"]
-    assert isinstance(intent, dict)
-    authority = intent["release_authority"]
-    assert isinstance(authority, dict)
     _dispatch_release_item_ledger(item, authority)
     _read_dispatch_release_marker_phase(
         root_fd, intent, authority, allow_absent=False
@@ -5093,6 +5187,15 @@ def _build_dispatch_release_authority(
     armed = marker_rows[0]
     dispatch_prefix_bytes = armed.get("ledger_prefix_bytes")
     dispatch_prefix_sha256 = armed.get("ledger_prefix_sha256")
+    current_item_sha256 = hashlib.sha256(json.dumps(
+        item, sort_keys=True, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")).hexdigest()
+    sealed_item_sha256 = armed.get("projected_item_sha256")
+    contained_residual_terminal = (
+        kind == "ordinary_safe_terminal_v1"
+        and terminal_result.get("result")
+        == "contained_residual_noncounting"
+    )
     if (
         not isinstance(dispatch_prefix_bytes, int)
         or isinstance(dispatch_prefix_bytes, bool)
@@ -5103,10 +5206,12 @@ def _build_dispatch_release_authority(
         or hashlib.sha256(
             prefix.raw_prefix[:dispatch_prefix_bytes]
         ).hexdigest() != dispatch_prefix_sha256
-        or armed.get("projected_item_sha256")
-        != hashlib.sha256(json.dumps(
-            item, sort_keys=True, separators=(",", ":"), allow_nan=False
-        ).encode("utf-8")).hexdigest()
+        or not isinstance(sealed_item_sha256, str)
+        or SHA256_RE.fullmatch(sealed_item_sha256) is None
+        or (
+            not contained_residual_terminal
+            and sealed_item_sha256 != current_item_sha256
+        )
     ):
         raise CampaignPlanError(
             "dispatch release marker ledger baseline changed"
@@ -5117,6 +5222,10 @@ def _build_dispatch_release_authority(
             expected_events = {"codex_taint_cleanup_completed"}
         elif terminal_result.get("result") == "infrastructure_noncounting":
             expected_events = {ZERO_LEDGER_EVENT}
+        elif terminal_result.get("result") == (
+            "contained_residual_noncounting"
+        ):
+            expected_events = {"codex_exec_classification_correction"}
         else:
             expected_events = {"codex_level_outcome"}
     elif kind == SANDBOX_RELEASE_AUTHORITY_KIND:
@@ -5168,6 +5277,32 @@ def _build_dispatch_release_authority(
         _validate_zero_ledger_result(
             item, parsed_zero, terminal, terminal_result
         )
+    if (
+        kind == "ordinary_safe_terminal_v1"
+        and terminal_result.get("result")
+        == "contained_residual_noncounting"
+    ):
+        try:
+            parsed_contained = _parse_contained_normal_exit_residual_marker(
+                marker_payload, require_recovery_arm=False
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if any((
+            len(marker_rows) != 2,
+            parsed_contained.dispatch_id != marker.dispatch_id,
+            parsed_contained.unquiesced.get("classification_record")
+            != terminal,
+            parsed_contained.unquiesced.get(
+                "classification_record_sha256"
+            ) != _recovery_record_sha256(terminal),
+        )):
+            raise CampaignPlanError(
+                "contained-residual release lacks its exact durable marker"
+            )
+        _validate_contained_residual_result(
+            item, parsed_contained, terminal_result
+        )
     result_payload = json.dumps(
         terminal_result,
         sort_keys=True,
@@ -5180,7 +5315,11 @@ def _build_dispatch_release_authority(
     authority = {
         "schema": "scheduler_dispatch_release_authority_v1",
         "kind": kind,
-        "projected_item_sha256": hashlib.sha256(item_payload).hexdigest(),
+        "projected_item_sha256": (
+            sealed_item_sha256
+            if contained_residual_terminal
+            else hashlib.sha256(item_payload).hexdigest()
+        ),
         "game": item["game"],
         "target_level": item["target_level"],
         "retry_complexity_n": item["retry_complexity_n"],
@@ -5465,6 +5604,12 @@ def _read_dispatch_release_marker_phase(
             and result.get("result") == "infrastructure_noncounting"
             and isinstance(result.get("zero_ledger_replayed"), bool)
         )
+        contained_residual_terminal = (
+            isinstance(result, dict)
+            and result.get("result")
+            == "contained_residual_noncounting"
+            and isinstance(result.get("classification_replayed"), bool)
+        )
         if zero_ledger_terminal:
             if len(rows) != 2:
                 raise CampaignPlanError(
@@ -5483,6 +5628,23 @@ def _read_dispatch_release_marker_phase(
             ):
                 raise CampaignPlanError(
                     "zero-ledger release marker authority changed"
+                )
+            armed = dict(parsed.armed)
+        elif contained_residual_terminal:
+            if len(rows) != 2:
+                raise CampaignPlanError(
+                    "contained-residual release requires its exact two-row "
+                    "marker"
+                )
+            try:
+                parsed = _parse_contained_normal_exit_residual_marker(
+                    payload, require_recovery_arm=False
+                )
+            except RebootRecovery.RecoveryEvidenceError as exc:
+                raise CampaignPlanError(str(exc)) from exc
+            if parsed.dispatch_id != record.get("dispatch_id"):
+                raise CampaignPlanError(
+                    "contained-residual release marker authority changed"
                 )
             armed = dict(parsed.armed)
         elif len(rows) == 1:
@@ -5804,6 +5966,55 @@ def _validate_dispatch_release_terminal_prefix(
                 raise CampaignPlanError(
                     "zero-ledger infrastructure release binding changed"
                 )
+        elif result.get("result") == "contained_residual_noncounting":
+            if [row.get("event") for row in suffix] != [
+                "codex_exec", "codex_exec_classification_correction"
+            ]:
+                raise CampaignPlanError(
+                    "contained-residual release lacks its exact terminal chain"
+                )
+            execution, correction = suffix
+            _validate_release_exec_coordinate(execution, authority)
+            _validate_contained_residual_correction(
+                _release_coordinate_item(authority),
+                execution,
+                correction,
+                dispatch_id=dispatch_id,
+            )
+            expected_result = {
+                "game": authority["game"],
+                "target_level": authority["target_level"],
+                "reached": authority["reached"],
+                "result": "contained_residual_noncounting",
+                "reason": CONTAINED_NORMAL_EXIT_RESIDUAL_REASON,
+                "dispatch_id": dispatch_id,
+                "retry_complexity_n": authority["retry_complexity_n"],
+                "retry_increment": 0,
+                "process_tree_quiesced": True,
+                "detached_processes_proven_absent": True,
+                "normal_exit_left_captured_descendants": True,
+                "solver_result_accepted": False,
+                "release_authorized": True,
+                "cleanup_authorized": True,
+            }
+            if any((
+                set(result) != CONTAINED_RESIDUAL_RESULT_KEYS,
+                not isinstance(result.get("classification_replayed"), bool),
+                any(
+                    result.get(field) != value
+                    for field, value in expected_result.items()
+                ),
+                any(
+                    not isinstance(result.get(field), str)
+                    or not result[field]
+                    for field in (
+                        "seed_mode", "wip_mode", "lineage_input_mode"
+                    )
+                ),
+            )):
+                raise CampaignPlanError(
+                    "contained-residual release result changed"
+                )
         elif result.get("result") == "tainted_noncounting":
             events = [row.get("event") for row in suffix]
             if events not in (
@@ -5891,9 +6102,7 @@ def _validate_dispatch_release_terminal_prefix(
             )
     elif kind == SANDBOX_RELEASE_AUTHORITY_KIND:
         if (
-            len(suffix) != 1
-            or suffix[0].get("event") != SANDBOX_ABANDON_EVENT
-            or result.get("result") != "sandbox_isolated_noncounting"
+            result.get("result") != "sandbox_isolated_noncounting"
             or result.get("dispatch_id") != dispatch_id
             or result.get("process_tree_quiesced") is not False
             or result.get("detached_processes_proven_absent") is not False
@@ -5901,11 +6110,54 @@ def _validate_dispatch_release_terminal_prefix(
             raise CampaignPlanError(
                 "sandbox-isolated release lacks its exact nonquiescent event"
             )
+        execution: dict[str, Any] | None = None
+        classification: dict[str, Any] | None = None
+        if len(suffix) == 1 and (
+            suffix[0].get("event") == SANDBOX_ABANDON_EVENT
+            and suffix[0].get("schema") == SANDBOX_ABANDON_EVENT_SCHEMA
+        ):
+            terminal = suffix[0]
+        elif [row.get("event") for row in suffix] == [
+            "codex_exec",
+            "codex_exec_classification_correction",
+            SANDBOX_ABANDON_EVENT,
+        ] and suffix[-1].get("schema") == SANDBOX_EXEC_ABANDON_EVENT_SCHEMA:
+            execution, classification, terminal = suffix
+            _validate_release_exec_coordinate(execution, authority)
+            if any((
+                execution.get("workspace") != terminal.get("workspace"),
+                execution.get("transcript") != terminal.get("transcript"),
+                terminal.get("exec_record_sha256")
+                != _recovery_record_sha256(execution),
+                terminal.get("classification_record_sha256")
+                != _recovery_record_sha256(classification),
+            )):
+                raise CampaignPlanError(
+                    "sandbox-isolated release exec chain changed"
+                )
+            _validate_sandbox_exec_classification(
+                _release_coordinate_item(authority),
+                execution,
+                classification,
+                terminal=terminal,
+            )
+            if _recovery_recorded_at(
+                classification, "sandbox exec classification"
+            ) > _recovery_recorded_at(
+                terminal, "sandbox isolation event"
+            ):
+                raise CampaignPlanError(
+                    "sandbox-isolated release timestamps are reversed"
+                )
+        else:
+            raise CampaignPlanError(
+                "sandbox-isolated release lacks its exact terminal chain"
+            )
         _validate_sandbox_abandon_event(
-            _release_coordinate_item(authority), suffix[0]
+            _release_coordinate_item(authority), terminal
         )
         _validate_sandbox_isolation_result(
-            _release_coordinate_item(authority), suffix[0], result
+            _release_coordinate_item(authority), terminal, result
         )
     elif kind == "post_reboot_operator_terminal_v1":
         if [row.get("event") for row in suffix] != [
@@ -6145,6 +6397,9 @@ def _assert_no_dispatch_quarantine(item: dict[str, Any]) -> None:
         )
         intent_name, preparing_name = _dispatch_release_intent_names(name)
         safe_release_arm_name = _safe_release_recovery_arm_name(name)
+        contained_residual_sidecar_name = (
+            _contained_residual_sidecar_name(name)
+        )
 
         def residue() -> list[str]:
             names = set(os.listdir(descriptor))
@@ -6155,6 +6410,7 @@ def _assert_no_dispatch_quarantine(item: dict[str, Any]) -> None:
                     intent_name,
                     preparing_name,
                     safe_release_arm_name,
+                    contained_residual_sidecar_name,
                 )
                 if candidate in names
             }
@@ -6270,6 +6526,178 @@ def _write_dispatch_quarantine_record(
         raise CampaignPlanError(
             "could not seal the dispatch quarantine receipt"
         ) from exc
+
+
+def _contained_residual_sidecar_name(marker_name: str) -> str:
+    name = f".{marker_name}.contained_residual"
+    if Path(name).name != name or SAFE_COMPONENT_RE.fullmatch(name) is None:
+        raise CampaignPlanError(
+            "contained-residual marker sidecar name is unsafe"
+        )
+    return name
+
+
+def _install_contained_residual_marker(
+    marker: DispatchQuarantine,
+    record: dict[str, Any],
+    *,
+    before_replace: Any | None = None,
+) -> None:
+    """Atomically install the detection row; never expose a torn marker."""
+
+    _validate_dispatch_quarantine(marker)
+    prefix = _read_bound_release_file_at(
+        marker.root_fd,
+        marker.name,
+        marker.marker_identity,
+        label="armed dispatch quarantine marker",
+        maximum_bytes=RebootRecovery.MAX_MARKER_BYTES,
+    )
+    try:
+        prefix_rows = RebootRecovery.parse_canonical_jsonl(
+            prefix, label="armed dispatch quarantine marker"
+        )
+    except RebootRecovery.RecoveryEvidenceError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    if (
+        len(prefix_rows) != 1
+        or prefix_rows[0].get("event") != "dispatch_armed"
+        or prefix_rows[0].get("dispatch_id") != marker.dispatch_id
+        or prefix_rows[0].get("schema") != marker.schema
+    ):
+        raise CampaignPlanError(
+            "contained-residual install lacks one exact armed prefix"
+        )
+    terminal = {
+        **record,
+        "schema": marker.schema,
+        "dispatch_id": marker.dispatch_id,
+    }
+    desired = prefix + RebootRecovery.canonical_json_line(terminal)
+    if len(desired) > RebootRecovery.MAX_MARKER_BYTES:
+        raise CampaignPlanError(
+            "contained-residual marker exceeds its hard byte bound"
+        )
+    sidecar = _contained_residual_sidecar_name(marker.name)
+    descriptor: int | None = None
+    try:
+        descriptor = os.open(
+            sidecar,
+            os.O_WRONLY | os.O_CREAT | os.O_EXCL
+            | getattr(os, "O_NOFOLLOW", 0),
+            0o600,
+            dir_fd=marker.root_fd,
+        )
+        os.fchmod(descriptor, 0o600)
+        metadata = os.fstat(descriptor)
+        sidecar_identity = (metadata.st_dev, metadata.st_ino)
+        offset = 0
+        while offset < len(desired):
+            written = os.write(descriptor, desired[offset:])
+            if written <= 0:
+                raise OSError("short contained-residual sidecar write")
+            offset += written
+        os.fsync(descriptor)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "could not durably stage contained-residual marker"
+        ) from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
+    # Persist the staging directory entry before treating the fully sealed
+    # inode as a replaceable authority.  A crash may leave this sidecar, but
+    # startup will promote only the exact two-row authority below; malformed
+    # or partial staging remains visible and fails closed.
+    os.fsync(marker.root_fd)
+    _validate_dispatch_quarantine(marker)
+    staged_fd, staged, staged_identity = _read_unaliased_small_file_at(
+        marker.root_fd,
+        sidecar,
+        label="contained-residual marker sidecar",
+    )
+    os.close(staged_fd)
+    if staged != desired or staged_identity != sidecar_identity:
+        raise CampaignPlanError(
+            "contained-residual marker sidecar changed"
+        )
+    try:
+        parsed = _parse_contained_normal_exit_residual_marker(
+            staged, require_recovery_arm=False
+        )
+    except RebootRecovery.RecoveryEvidenceError as exc:
+        raise CampaignPlanError(str(exc)) from exc
+    if parsed.dispatch_id != marker.dispatch_id:
+        raise CampaignPlanError(
+            "contained-residual sidecar dispatch binding changed"
+        )
+    sidecar_now = os.stat(
+        sidecar, dir_fd=marker.root_fd, follow_symlinks=False
+    )
+    if (sidecar_now.st_dev, sidecar_now.st_ino) != staged_identity:
+        raise CampaignPlanError(
+            "contained-residual marker sidecar identity changed"
+        )
+    os.fsync(marker.root_fd)
+    _validate_dispatch_quarantine(marker)
+    if before_replace is not None:
+        before_replace()
+    _validate_dispatch_quarantine(marker)
+    _durably_reseal_staged_file_at(
+        marker.root_fd,
+        sidecar,
+        expected_payload=desired,
+        expected_identity=staged_identity,
+        label="contained-residual marker sidecar",
+    )
+    os.fsync(marker.root_fd)
+    _validate_dispatch_quarantine(marker)
+    try:
+        os.replace(
+            sidecar,
+            marker.name,
+            src_dir_fd=marker.root_fd,
+            dst_dir_fd=marker.root_fd,
+        )
+        os.fsync(marker.root_fd)
+        installed_fd = os.open(
+            marker.name,
+            os.O_RDWR | os.O_APPEND | getattr(os, "O_NOFOLLOW", 0),
+            dir_fd=marker.root_fd,
+        )
+    except OSError as exc:
+        raise CampaignPlanError(
+            "could not atomically install contained-residual marker"
+        ) from exc
+    installed = os.fstat(installed_fd)
+    if (
+        not stat.S_ISREG(installed.st_mode)
+        or installed.st_nlink != 1
+        or installed.st_uid != os.geteuid()
+        or stat.S_IMODE(installed.st_mode) != 0o600
+        or (installed.st_dev, installed.st_ino) != staged_identity
+    ):
+        os.close(installed_fd)
+        raise CampaignPlanError(
+            "installed contained-residual marker identity changed"
+        )
+    os.close(marker.marker_fd)
+    marker.marker_fd = installed_fd
+    marker.marker_identity = staged_identity
+    marker.recovery_sealed_size = len(desired)
+    marker.recovery_sealed_sha256 = hashlib.sha256(desired).hexdigest()
+    _validate_dispatch_quarantine(marker)
+    installed_payload = _read_bound_release_file_at(
+        marker.root_fd,
+        marker.name,
+        marker.marker_identity,
+        label="contained-residual marker",
+        maximum_bytes=RebootRecovery.MAX_MARKER_BYTES,
+    )
+    if installed_payload != desired:
+        raise CampaignPlanError(
+            "installed contained-residual marker bytes changed"
+        )
 
 
 def _remove_failed_dispatch_quarantine(
@@ -7092,6 +7520,8 @@ def _ensure_dispatch_release_authority_row(
     intent_identity: tuple[int, int],
     *,
     allow_new_authority_append: bool = False,
+    allow_existing_partial_authority: bool = False,
+    before_authority_append: Any | None = None,
 ) -> None:
     """Append or repair the exact host release authorization using CAS."""
 
@@ -7129,11 +7559,39 @@ def _ensure_dispatch_release_authority_row(
                 "installed dispatch release intent lacks its complete host "
                 "authorization row"
             )
-        if tail and tail != line and allow_new_authority_append:
+        if (
+            tail
+            and tail != line
+            and allow_new_authority_append
+            and not allow_existing_partial_authority
+        ):
             raise IncompleteDispatchReleaseAuthority(
                 "live release encountered a preexisting partial authority row"
             )
         if tail != line:
+            if before_authority_append is not None:
+                before_authority_append(record, intent_identity)
+                rechecked_raw, rechecked_parent, rechecked_file = (
+                    _read_dispatch_release_ledger_locked(ledger, authority)
+                )
+                rechecked_prefix, rechecked_line, rechecked_tail = (
+                    _dispatch_release_authority_tail(
+                        rechecked_raw,
+                        authority,
+                        dispatch_id=str(record["dispatch_id"]),
+                    )
+                )
+                if any((
+                    rechecked_parent != _parent_identity,
+                    rechecked_file != file_identity,
+                    rechecked_prefix != prefix,
+                    rechecked_line != line,
+                    rechecked_tail != tail,
+                )):
+                    raise CampaignPlanError(
+                        "dispatch release ledger changed during final "
+                        "authorization validation"
+                    )
             descriptor: int | None = None
             try:
                 descriptor = os.open(
@@ -7735,14 +8193,19 @@ def _release_dispatch_quarantine(
         record, intent_identity = _install_dispatch_release_intent(
             marker, release_authority
         )
+        ensure_options: dict[str, Any] = {
+            "allow_new_authority_append": True,
+        }
         if before_authority_append is not None:
-            before_authority_append(record, intent_identity)
+            ensure_options["before_authority_append"] = (
+                before_authority_append
+            )
         _ensure_dispatch_release_authority_row(
             item,
             marker.root_fd,
             record,
             intent_identity,
-            allow_new_authority_append=True,
+            **ensure_options,
         )
         _finish_dispatch_release_intent(
             item, marker.root_fd, record, intent_identity
@@ -8471,8 +8934,200 @@ def _validate_zero_ledger_event(
     _recovery_recorded_at(record, "zero-ledger infrastructure event")
 
 
+def _validate_zero_ledger_phase_intent(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+    phase_rows: list[dict[str, Any]],
+) -> None:
+    if phase_rows or record.get("event") != ZERO_LEDGER_EVENT:
+        raise CampaignPlanError(
+            "zero-ledger lane rejects a foreign recovery phase intent"
+        )
+    _validate_zero_ledger_event(item, parsed, record)
+
+
+def _sandbox_exec_record_sha256(
+    parsed: RebootRecovery.ParsedMarker,
+) -> str | None:
+    """Return the arm's one-exec seal, or prove this is the zero-exec arm."""
+
+    arm = parsed.recovery_arm
+    if arm is None:
+        raise CampaignPlanError(
+            "sandbox-isolated generation lacks its operator arm"
+        )
+    schema = arm.get("recovery_arm_schema")
+    value = arm.get("exec_record_sha256")
+    if schema == RebootRecovery.SANDBOXED_GENERATION_ARM_SCHEMA:
+        if value is not None:
+            raise CampaignPlanError(
+                "zero-exec sandbox arm unexpectedly seals an exec record"
+            )
+        return None
+    if (
+        schema != RebootRecovery.SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
+        or not isinstance(value, str)
+        or SHA256_RE.fullmatch(value) is None
+    ):
+        raise CampaignPlanError("sandbox exec arm schema is invalid")
+    return value
+
+
+def _build_sandbox_exec_classification(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    execution: dict[str, Any],
+) -> dict[str, Any]:
+    """Classify one authenticated exec as infrastructure/noncounting."""
+
+    arm = parsed.recovery_arm
+    exec_sha256 = _sandbox_exec_record_sha256(parsed)
+    if arm is None or exec_sha256 is None:
+        raise CampaignPlanError(
+            "sandbox exec classification requires its one-exec arm"
+        )
+    if _recovery_record_sha256(execution) != exec_sha256:
+        raise CampaignPlanError("sandbox exec record changed after arming")
+    return {
+        "event": "codex_exec_classification_correction",
+        "schema": SANDBOX_EXEC_CLASSIFICATION_SCHEMA,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "classification_authority": SANDBOX_EXEC_CLASSIFICATION_AUTHORITY,
+        "dispatch_id": parsed.dispatch_id,
+        "recovery_nonce": arm["recovery_nonce"],
+        "exec_record_sha256": exec_sha256,
+        "sandbox_contract_sha256": arm["sandbox_contract_sha256"],
+        "protected_tree_sha256": arm["protected_tree_sha256"],
+        "thread_id": execution.get("thread_id"),
+        "transcript": execution["transcript"],
+        "workspace": execution["workspace"],
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": "sandbox_isolated_nonquiescent",
+        "terminal_errors": [parsed.unquiesced["reason"]],
+        "solved_target": None,
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "process_tree_quiesced": False,
+        "detached_processes_proven_absent": False,
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+
+
+def _validate_sandbox_exec_classification(
+    item: dict[str, Any],
+    execution: dict[str, Any],
+    correction: dict[str, Any],
+    *,
+    parsed: RebootRecovery.ParsedMarker | None = None,
+    terminal: dict[str, Any] | None = None,
+) -> None:
+    """Validate the append-only retry-accounting correction exactly."""
+
+    if set(correction) != SANDBOX_EXEC_CLASSIFICATION_KEYS:
+        raise CampaignPlanError(
+            "sandbox exec classification has an invalid exact schema"
+        )
+    if parsed is not None:
+        expected = _build_sandbox_exec_classification(
+            item, parsed, execution
+        )
+        expected.pop("recorded_at")
+        observed = dict(correction)
+        observed.pop("recorded_at", None)
+        if observed != expected:
+            raise CampaignPlanError(
+                "sandbox exec classification binding changed"
+            )
+    else:
+        if terminal is None:
+            raise CampaignPlanError(
+                "sandbox exec classification lacks its terminal binding"
+            )
+        terminal_errors = terminal.get("terminal_errors")
+        reason = (
+            terminal_errors[0]
+            if isinstance(terminal_errors, list)
+            and len(terminal_errors) == 1
+            else None
+        )
+        expected = {
+            "event": "codex_exec_classification_correction",
+            "schema": SANDBOX_EXEC_CLASSIFICATION_SCHEMA,
+            "classification_authority": (
+                SANDBOX_EXEC_CLASSIFICATION_AUTHORITY
+            ),
+            "dispatch_id": terminal.get("dispatch_id"),
+            "recovery_nonce": terminal.get("recovery_nonce"),
+            "exec_record_sha256": _recovery_record_sha256(execution),
+            "sandbox_contract_sha256": terminal.get(
+                "sandbox_contract_sha256"
+            ),
+            "thread_id": execution.get("thread_id"),
+            "transcript": execution.get("transcript"),
+            "workspace": execution.get("workspace"),
+            "game": item.get("game"),
+            "target_level": item.get("target_level"),
+            "reached": item.get("reached"),
+            "parent_action_count": item.get("parent_action_count"),
+            "retry_complexity_n": item.get("retry_complexity_n"),
+            "failure_class": "infrastructure",
+            "failure_detail_class": "sandbox_isolated_nonquiescent",
+            "terminal_errors": [reason] if reason is not None else None,
+            "solved_target": None,
+            "taint_verdict": "quarantined",
+            "retry_increment": 0,
+            "process_tree_quiesced": False,
+            "detached_processes_proven_absent": False,
+            **{
+                field: item.get(field)
+                for field in Status.FRONTIER_BINDING_FIELDS
+            },
+        }
+        if any(
+            correction.get(field) != value
+            for field, value in expected.items()
+        ):
+            raise CampaignPlanError(
+                "sandbox exec classification binding changed"
+            )
+        protected_tree = correction.get("protected_tree_sha256")
+        if (
+            not isinstance(protected_tree, str)
+            or SHA256_RE.fullmatch(protected_tree) is None
+        ):
+            raise CampaignPlanError(
+                "sandbox exec classification evidence seal is malformed"
+            )
+    _safe_component(correction.get("thread_id"), "sandbox exec thread id")
+    _safe_component(correction.get("transcript"), "sandbox exec transcript")
+    _safe_component(correction.get("workspace"), "sandbox exec workspace")
+    recorded_at = _recovery_recorded_at(
+        correction, "sandbox exec classification"
+    )
+    if parsed is not None:
+        arm = parsed.recovery_arm
+        assert arm is not None
+        if recorded_at < _recovery_recorded_at(
+            arm, "sandboxed-generation arm"
+        ):
+            raise CampaignPlanError(
+                "sandbox exec classification predates its arm"
+            )
+
+
 def _build_sandbox_abandon_event(
-    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    classification: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     arm = parsed.recovery_arm
     if arm is None:
@@ -8480,9 +9135,17 @@ def _build_sandbox_abandon_event(
             "sandbox-isolated generation lacks its operator arm"
         )
     failed = parsed.unquiesced
-    return {
+    exec_sha256 = _sandbox_exec_record_sha256(parsed)
+    if (exec_sha256 is None) != (classification is None):
+        raise CampaignPlanError(
+            "sandbox terminal classification phase is incomplete"
+        )
+    event = {
         "event": SANDBOX_ABANDON_EVENT,
-        "schema": SANDBOX_ABANDON_EVENT_SCHEMA,
+        "schema": (
+            SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
+            if exec_sha256 is not None else SANDBOX_ABANDON_EVENT_SCHEMA
+        ),
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "isolation_authority": (
             "explicit_operator_assumed_artifact_isolation_v1"
@@ -8514,7 +9177,7 @@ def _build_sandbox_abandon_event(
         "terminal_errors": [failed["reason"]],
         "taint_verdict": "quarantined",
         "retry_increment": 0,
-        "codex_exec_appended": False,
+        "codex_exec_appended": exec_sha256 is not None,
         "process_tree_quiesced": False,
         "detached_processes_proven_absent": False,
         "wip_restore_logical_state_sha256": parsed.armed[
@@ -8526,12 +9189,23 @@ def _build_sandbox_abandon_event(
             for field in Status.FRONTIER_BINDING_FIELDS
         },
     }
+    if exec_sha256 is not None:
+        assert classification is not None
+        event.update({
+            "exec_record_sha256": exec_sha256,
+            "classification_record_sha256": _recovery_record_sha256(
+                classification
+            ),
+        })
+    return event
 
 
 def _validate_sandbox_abandon_event(
     item: dict[str, Any],
     parsed_or_record: RebootRecovery.ParsedMarker | dict[str, Any],
     record: dict[str, Any] | None = None,
+    *,
+    classification: dict[str, Any] | None = None,
 ) -> None:
     """Validate the exact nonquiescent, noncounting isolation receipt."""
 
@@ -8541,6 +9215,11 @@ def _validate_sandbox_abandon_event(
         observed = parsed_or_record
         if not isinstance(observed, dict):
             raise CampaignPlanError("sandbox isolation event is malformed")
+        one_exec = observed.get("schema") == SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
+        expected_keys = (
+            SANDBOX_EXEC_ABANDON_EVENT_KEYS
+            if one_exec else SANDBOX_ABANDON_EVENT_KEYS
+        )
         expected_coordinate = {
             field: item.get(field)
             for field in (
@@ -8554,7 +9233,10 @@ def _validate_sandbox_abandon_event(
         }
         fixed = {
             "event": SANDBOX_ABANDON_EVENT,
-            "schema": SANDBOX_ABANDON_EVENT_SCHEMA,
+            "schema": (
+                SANDBOX_EXEC_ABANDON_EVENT_SCHEMA
+                if one_exec else SANDBOX_ABANDON_EVENT_SCHEMA
+            ),
             "isolation_authority": (
                 "explicit_operator_assumed_artifact_isolation_v1"
             ),
@@ -8570,7 +9252,7 @@ def _validate_sandbox_abandon_event(
             "failure_detail_class": "sandbox_isolated_nonquiescent",
             "taint_verdict": "quarantined",
             "retry_increment": 0,
-            "codex_exec_appended": False,
+            "codex_exec_appended": one_exec,
             "process_tree_quiesced": False,
             "detached_processes_proven_absent": False,
         }
@@ -8589,7 +9271,7 @@ def _validate_sandbox_abandon_event(
             if isinstance(source_sha256, str):
                 expected_contract = SANDBOX_CONTRACTS.get(source_sha256)
         terminal_errors = observed.get("terminal_errors")
-        if set(observed) != SANDBOX_ABANDON_EVENT_KEYS or any((
+        if set(observed) != expected_keys or any((
             any(
                 observed.get(field) != value
                 for field, value in expected_coordinate.items()
@@ -8630,6 +9312,18 @@ def _validate_sandbox_abandon_event(
             not isinstance(observed.get("canonical_digest"), str),
             isinstance(observed.get("canonical_digest"), str)
             and SHA256_RE.fullmatch(observed["canonical_digest"]) is None,
+            one_exec and (
+                not isinstance(observed.get("exec_record_sha256"), str)
+                or SHA256_RE.fullmatch(
+                    str(observed.get("exec_record_sha256"))
+                ) is None
+                or not isinstance(
+                    observed.get("classification_record_sha256"), str
+                )
+                or SHA256_RE.fullmatch(
+                    str(observed.get("classification_record_sha256"))
+                ) is None
+            ),
         )):
             raise CampaignPlanError(
                 "sandbox-isolated infrastructure event binding changed"
@@ -8668,11 +9362,18 @@ def _validate_sandbox_abandon_event(
     parsed = parsed_or_record
     if not isinstance(parsed, RebootRecovery.ParsedMarker):
         raise CampaignPlanError("sandbox isolation marker is malformed")
-    if set(record) != SANDBOX_ABANDON_EVENT_KEYS:
+    expected_keys = (
+        SANDBOX_EXEC_ABANDON_EVENT_KEYS
+        if _sandbox_exec_record_sha256(parsed) is not None
+        else SANDBOX_ABANDON_EVENT_KEYS
+    )
+    if set(record) != expected_keys:
         raise CampaignPlanError(
             "sandbox-isolated infrastructure event has an invalid schema"
         )
-    expected = _build_sandbox_abandon_event(item, parsed)
+    expected = _build_sandbox_abandon_event(
+        item, parsed, classification
+    )
     expected.pop("recorded_at")
     observed = dict(record)
     observed.pop("recorded_at", None)
@@ -8680,7 +9381,71 @@ def _validate_sandbox_abandon_event(
         raise CampaignPlanError(
             "sandbox-isolated infrastructure event binding changed"
         )
-    _recovery_recorded_at(record, "sandbox isolation event")
+    event_at = _recovery_recorded_at(record, "sandbox isolation event")
+    if classification is not None and event_at < _recovery_recorded_at(
+        classification, "sandbox exec classification"
+    ):
+        raise CampaignPlanError(
+            "sandbox isolation event predates its classification"
+        )
+
+
+def _validate_sandbox_recovery_phase_intent(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+    phase_rows: list[dict[str, Any]],
+) -> None:
+    """Authenticate one pending WAL row to the sandbox lane pre-mutation."""
+
+    exec_sha256 = _sandbox_exec_record_sha256(parsed)
+    if exec_sha256 is None:
+        if phase_rows or record.get("event") != SANDBOX_ABANDON_EVENT:
+            raise CampaignPlanError(
+                "sandbox lane rejects a foreign recovery phase intent"
+            )
+        _validate_sandbox_abandon_event(item, parsed, record)
+        return
+    if (
+        not phase_rows
+        or phase_rows[0].get("event") != "codex_exec"
+        or _recovery_record_sha256(phase_rows[0]) != exec_sha256
+        or phase_rows[0].get("workspace")
+        != parsed.unquiesced.get("workspace")
+        or phase_rows[0].get("transcript")
+        != parsed.unquiesced.get("transcript")
+    ):
+        raise CampaignPlanError(
+            "sandbox lane recovery intent lost its sealed exec"
+        )
+    execution = phase_rows[0]
+    if len(phase_rows) == 1 and record.get("event") == (
+        "codex_exec_classification_correction"
+    ):
+        _validate_sandbox_exec_classification(
+            item, execution, record, parsed=parsed
+        )
+        return
+    if (
+        len(phase_rows) == 2
+        and phase_rows[1].get("event")
+        == "codex_exec_classification_correction"
+        and record.get("event") == SANDBOX_ABANDON_EVENT
+    ):
+        classification = phase_rows[1]
+        _validate_sandbox_exec_classification(
+            item, execution, classification, parsed=parsed
+        )
+        _validate_sandbox_abandon_event(
+            item,
+            parsed,
+            record,
+            classification=classification,
+        )
+        return
+    raise CampaignPlanError(
+        "sandbox lane rejects a foreign recovery phase intent"
+    )
 
 
 def _sandbox_isolation_result(
@@ -8828,6 +9593,8 @@ def _validate_recovery_correction(
         raise CampaignPlanError(
             "post-reboot correction does not bind the exact generation"
         )
+    # Recovery can cross a reboot whose wall clock moves backwards.  Durable
+    # ledger phase order, not timestamp monotonicity, is the authority chain.
     _recovery_recorded_at(correction, "post-reboot correction")
 
 
@@ -9350,6 +10117,7 @@ def _reconcile_recovery_phase_intent_locked(
     parent_identity: tuple[int, int],
     file_identity: tuple[int, int],
     raw: bytes,
+    intent_record_validator: Any | None,
 ) -> bytes:
     dispatch_id = binding.get("dispatch_id")
     if not isinstance(dispatch_id, str):
@@ -9391,13 +10159,6 @@ def _reconcile_recovery_phase_intent_locked(
             for field, value in expected_binding.items()
         ) or names.get(intent["event"]) != intent_name:
             raise CampaignPlanError("recovery phase intent binding changed")
-        _fsync_and_revalidate_installed_intent(
-            parent_fd,
-            intent_name,
-            payload=payload,
-            identity=intent_identity,
-            label="recovery phase intent",
-        )
         expected_bytes = int(intent["expected_prefix_bytes"])
         if expected_bytes > len(raw):
             raise CampaignPlanError("recovery phase ledger prefix was truncated")
@@ -9420,21 +10181,32 @@ def _reconcile_recovery_phase_intent_locked(
             )
         except RebootRecovery.RecoveryEvidenceError as exc:
             raise CampaignPlanError(str(exc)) from exc
-        expected_events = [
-            "codex_exec",
-            "codex_exec_classification_correction",
-            "codex_taint_cleanup_completed",
-            "codex_post_reboot_operator_recovery_completed",
-        ]
         zero_ledger_phase = (
             intent.get("event") in {ZERO_LEDGER_EVENT, SANDBOX_ABANDON_EVENT}
             and not phase_rows
         )
-        ordinary_phase = (
-            1 <= len(phase_rows) < len(expected_events)
-            and [row.get("event") for row in phase_rows]
-            == expected_events[:len(phase_rows)]
-            and intent.get("event") == expected_events[len(phase_rows)]
+        phase_events = [row.get("event") for row in phase_rows]
+        next_events = {
+            ("codex_exec",): {
+                "codex_exec_classification_correction",
+            },
+            (
+                "codex_exec",
+                "codex_exec_classification_correction",
+            ): {
+                "codex_taint_cleanup_completed",
+                SANDBOX_ABANDON_EVENT,
+            },
+            (
+                "codex_exec",
+                "codex_exec_classification_correction",
+                "codex_taint_cleanup_completed",
+            ): {
+                "codex_post_reboot_operator_recovery_completed",
+            },
+        }
+        ordinary_phase = intent.get("event") in next_events.get(
+            tuple(phase_events), set()
         )
         if not (zero_ledger_phase or ordinary_phase):
             raise CampaignPlanError(
@@ -9446,6 +10218,22 @@ def _reconcile_recovery_phase_intent_locked(
             raise CampaignPlanError(
                 "recovery ledger tail is not the intended phase prefix"
             )
+        if intent_record_validator is None:
+            raise CampaignPlanError(
+                "recovery phase intent lacks lane-specific authorization"
+            )
+        intent_record_validator(
+            dict(intent["record"]), [dict(row) for row in phase_rows]
+        )
+        # Only a record authenticated by the selected recovery lane may make
+        # its namespace observation durable or authorize ledger repair.
+        _fsync_and_revalidate_installed_intent(
+            parent_fd,
+            intent_name,
+            payload=payload,
+            identity=intent_identity,
+            label="recovery phase intent",
+        )
         ledger_fd: int | None = None
         try:
             ledger_fd = os.open(
@@ -9500,6 +10288,7 @@ def _read_post_reboot_ledger_surface(
     *,
     intent_root: Path | None = None,
     intent_root_identity: tuple[int, int] | None = None,
+    intent_record_validator: Any | None = None,
 ) -> tuple[Path, LedgerPrefixState, list[dict[str, Any]]]:
     ledger = _ledger_path(item["argv"], cwd=_runner_cwd(item))
     if binding.get("ledger") != os.fspath(ledger):
@@ -9567,6 +10356,7 @@ def _read_post_reboot_ledger_surface(
                 parent_identity=parent_identity,
                 file_identity=(metadata.st_dev, metadata.st_ino),
                 raw=raw,
+                intent_record_validator=intent_record_validator,
             )
         prefix = raw[:prefix_bytes]
         before_records = _strict_ledger_records(
@@ -9925,6 +10715,96 @@ def _exec_record_binds_unquiesced_marker(
     ))
 
 
+def _validate_post_reboot_recovery_phase_intent(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    marker: DispatchQuarantine,
+    current_boot: RebootRecovery.BootIdentity,
+    record: dict[str, Any],
+    phase_rows: list[dict[str, Any]],
+) -> None:
+    """Authenticate the ordinary recovery lane before WAL reconciliation."""
+
+    expected_events = [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        "codex_taint_cleanup_completed",
+    ]
+    if (
+        not 1 <= len(phase_rows) <= len(expected_events)
+        or [row.get("event") for row in phase_rows]
+        != expected_events[:len(phase_rows)]
+    ):
+        raise CampaignPlanError(
+            "post-reboot lane rejects a foreign recovery phase intent"
+        )
+    execution = phase_rows[0]
+    if any((
+        execution.get("workspace") != parsed.unquiesced.get("workspace"),
+        execution.get("transcript") != parsed.unquiesced.get("transcript"),
+        not _exec_record_binds_unquiesced_marker(execution, parsed),
+        parsed.unquiesced.get("exception_type") != "UnquiescedChildError",
+    )):
+        raise CampaignPlanError(
+            "post-reboot recovery intent lost its exact exec"
+        )
+    marker_time = _recovery_recorded_at(
+        parsed.unquiesced, "dispatch unquiesced"
+    )
+    if (
+        len(phase_rows) == 1
+        and record.get("event")
+        == "codex_exec_classification_correction"
+    ):
+        _validate_recovery_correction(
+            item, execution, record, not_before=marker_time
+        )
+        return
+    correction = phase_rows[1] if len(phase_rows) >= 2 else None
+    if correction is None:
+        raise CampaignPlanError(
+            "post-reboot lane rejects a foreign recovery phase intent"
+        )
+    _validate_recovery_correction(
+        item, execution, correction, not_before=marker_time
+    )
+    correction_time = _recovery_recorded_at(
+        correction, "post-reboot correction"
+    )
+    if (
+        len(phase_rows) == 2
+        and record.get("event") == "codex_taint_cleanup_completed"
+    ):
+        _validate_recovery_cleanup(
+            item, execution, record, not_before=correction_time
+        )
+        return
+    cleanup = phase_rows[2] if len(phase_rows) >= 3 else None
+    if (
+        cleanup is None
+        or record.get("event")
+        != "codex_post_reboot_operator_recovery_completed"
+    ):
+        raise CampaignPlanError(
+            "post-reboot lane rejects a foreign recovery phase intent"
+        )
+    _validate_recovery_cleanup(
+        item, execution, cleanup, not_before=correction_time
+    )
+    _validate_post_reboot_operator_receipt(
+        item=item,
+        marker=marker,
+        parsed=parsed,
+        current_boot=current_boot,
+        record=execution,
+        correction=correction,
+        cleanup=cleanup,
+        receipt=record,
+        canonical=_capture_canonical_rollback(item),
+        wip=_capture_wip_rollback(item),
+    )
+
+
 def _rebind_post_reboot_ledger(
     item: dict[str, Any],
     parsed: RebootRecovery.ParsedMarker,
@@ -9939,6 +10819,19 @@ def _rebind_post_reboot_ledger(
         intent_root=(marker.root if reconcile_intent else None),
         intent_root_identity=(
             marker.root_identity if reconcile_intent else None
+        ),
+        intent_record_validator=(
+            lambda record, phase_rows: (
+                _validate_post_reboot_recovery_phase_intent(
+                    item,
+                    parsed,
+                    marker,
+                    current_boot,
+                    record,
+                    phase_rows,
+                )
+            )
+            if reconcile_intent else None
         ),
     )
     expected_events = [
@@ -11752,54 +12645,358 @@ def _open_held_recovery_workspace_lock(
 
 
 def _generation_tree_observation_sha256(path: Path, *, label: str) -> str:
-    """Hash one generation for audit only; this is never mutation authority."""
+    """Hash one stable, exact generation manifest twice before accepting it."""
 
-    root_identity = _host_directory_identity(path, label)
-    entries: list[dict[str, Any]] = [{
-        "path": ".", "kind": "directory", "identity": list(root_identity),
-    }]
-    total_bytes = 0
-    try:
-        for current, directories, files in os.walk(path, followlinks=False):
-            base = Path(current)
-            for name in sorted(directories):
-                selected = base / name
+    def stat_receipt(metadata: os.stat_result) -> tuple[int, ...]:
+        return (
+            metadata.st_dev,
+            metadata.st_ino,
+            metadata.st_mode,
+            metadata.st_nlink,
+            metadata.st_uid,
+            metadata.st_gid,
+            metadata.st_size,
+            metadata.st_mtime_ns,
+            metadata.st_ctime_ns,
+        )
+
+    def xattr_receipt(selected: Path) -> tuple[tuple[str, int, str], ...]:
+        def read_once() -> tuple[tuple[str, int, str], ...]:
+            try:
+                if hasattr(os, "listxattr") and hasattr(os, "getxattr"):
+                    values = {
+                        name: os.getxattr(
+                            selected, name, follow_symlinks=False
+                        )
+                        for name in sorted(os.listxattr(
+                            selected, follow_symlinks=False
+                        ))
+                    }
+                elif sys.platform == "darwin":
+                    libc = ctypes.CDLL(None, use_errno=True)
+                    listxattr = libc.listxattr
+                    listxattr.argtypes = (
+                        ctypes.c_char_p,
+                        ctypes.c_void_p,
+                        ctypes.c_size_t,
+                        ctypes.c_int,
+                    )
+                    listxattr.restype = ctypes.c_ssize_t
+                    getxattr = libc.getxattr
+                    getxattr.argtypes = (
+                        ctypes.c_char_p,
+                        ctypes.c_char_p,
+                        ctypes.c_void_p,
+                        ctypes.c_size_t,
+                        ctypes.c_uint32,
+                        ctypes.c_int,
+                    )
+                    getxattr.restype = ctypes.c_ssize_t
+                    encoded_path = os.fsencode(selected)
+                    nofollow = 0x0001
+                    names_size = listxattr(
+                        encoded_path, None, 0, nofollow
+                    )
+                    if names_size < 0:
+                        raise OSError(ctypes.get_errno(), "listxattr failed")
+                    names_buffer = ctypes.create_string_buffer(
+                        max(1, names_size)
+                    )
+                    observed_names_size = listxattr(
+                        encoded_path,
+                        names_buffer,
+                        names_size,
+                        nofollow,
+                    )
+                    if observed_names_size != names_size:
+                        raise OSError(errno.EAGAIN, "listxattr changed")
+                    encoded_names = sorted(
+                        name
+                        for name in bytes(
+                            names_buffer.raw[:observed_names_size]
+                        ).split(b"\0")
+                        if name
+                    )
+                    values: dict[str, bytes] = {}
+                    for encoded_name in encoded_names:
+                        value_size = getxattr(
+                            encoded_path,
+                            encoded_name,
+                            None,
+                            0,
+                            0,
+                            nofollow,
+                        )
+                        if value_size < 0:
+                            raise OSError(
+                                ctypes.get_errno(), "getxattr failed"
+                            )
+                        value_buffer = ctypes.create_string_buffer(
+                            max(1, value_size)
+                        )
+                        observed_value_size = getxattr(
+                            encoded_path,
+                            encoded_name,
+                            value_buffer,
+                            value_size,
+                            0,
+                            nofollow,
+                        )
+                        if observed_value_size != value_size:
+                            raise OSError(errno.EAGAIN, "getxattr changed")
+                        values[os.fsdecode(encoded_name)] = bytes(
+                            value_buffer.raw[:observed_value_size]
+                        )
+                else:
+                    values = {}
+                return tuple(
+                    (
+                        name,
+                        len(value),
+                        hashlib.sha256(value).hexdigest(),
+                    )
+                    for name, value in sorted(values.items())
+                )
+            except OSError as exc:
+                raise CampaignPlanError(
+                    f"{label} extended attributes are unstable"
+                ) from exc
+
+        first = read_once()
+        second = read_once()
+        if first != second:
+            raise CampaignPlanError(
+                f"{label} extended attributes changed during observation"
+            )
+        return first
+
+    def metadata_receipt(
+        selected: Path,
+        metadata: os.stat_result | None = None,
+    ) -> tuple[Any, ...]:
+        before = metadata or selected.stat(follow_symlinks=False)
+        basic = stat_receipt(before)
+        xattrs = xattr_receipt(selected)
+        after = selected.stat(follow_symlinks=False)
+        if stat_receipt(after) != basic:
+            raise CampaignPlanError(
+                f"{label} metadata changed during observation"
+            )
+        return (*basic, xattrs)
+
+    def scan_once() -> tuple[
+        list[dict[str, Any]],
+        dict[str, tuple[Any, ...]],
+        dict[str, tuple[Any, ...]],
+    ]:
+        root_identity = _host_directory_identity(path, label)
+        root_metadata = path.stat(follow_symlinks=False)
+        root_receipt = metadata_receipt(path, root_metadata)
+        if tuple(root_receipt[:2]) != root_identity:
+            raise CampaignPlanError(f"{label} root identity is unstable")
+        entries: list[dict[str, Any]] = [{
+            "path": ".",
+            "kind": "directory",
+            "metadata": list(root_receipt),
+        }]
+        directory_receipts: dict[str, tuple[Any, ...]] = {}
+        file_receipts: dict[str, tuple[Any, ...]] = {}
+        total_bytes = 0
+        try:
+            for current, directories, files in os.walk(
+                path, topdown=True, followlinks=False
+            ):
+                # Preserve the established manifest encoding: children are
+                # emitted in sorted order, while ``os.walk`` retains its
+                # original directory traversal order.
+                ordered_directories = sorted(directories)
+                ordered_files = sorted(files)
+                base = Path(current)
+                base_relative = (
+                    "." if base == path else base.relative_to(path).as_posix()
+                )
+                base_metadata = base.stat(follow_symlinks=False)
+                base_receipt = metadata_receipt(base, base_metadata)
+                if base.is_symlink() or not stat.S_ISDIR(base_metadata.st_mode):
+                    raise CampaignPlanError(
+                        f"{label} contains an unsafe directory"
+                    )
+                prior_base = directory_receipts.get(base_relative)
+                if prior_base is not None and prior_base != base_receipt:
+                    raise CampaignPlanError(
+                        f"{label} directory changed before traversal"
+                    )
+                directory_receipts[base_relative] = base_receipt
+
+                # Bind every child before reading any child payload.  A sibling
+                # write therefore cannot become the unnoticed baseline merely
+                # because it happened before that sibling's turn in the loop.
+                child_directories: list[
+                    tuple[Path, str, tuple[Any, ...]]
+                ] = []
+                child_files: list[tuple[Path, str, tuple[Any, ...]]] = []
+                for name in ordered_directories:
+                    selected = base / name
+                    relative = selected.relative_to(path).as_posix()
+                    metadata = selected.stat(follow_symlinks=False)
+                    receipt = metadata_receipt(selected, metadata)
+                    if selected.is_symlink() or not stat.S_ISDIR(
+                        metadata.st_mode
+                    ):
+                        raise CampaignPlanError(
+                            f"{label} contains an unsafe directory"
+                        )
+                    if relative in directory_receipts:
+                        raise CampaignPlanError(
+                            f"{label} repeats a directory in its manifest"
+                        )
+                    directory_receipts[relative] = receipt
+                    child_directories.append((selected, relative, receipt))
+                for name in ordered_files:
+                    selected = base / name
+                    relative = selected.relative_to(path).as_posix()
+                    metadata = selected.stat(follow_symlinks=False)
+                    receipt = metadata_receipt(selected, metadata)
+                    if (
+                        selected.is_symlink()
+                        or not stat.S_ISREG(metadata.st_mode)
+                        or metadata.st_nlink != 1
+                    ):
+                        raise CampaignPlanError(
+                            f"{label} contains an unsafe file"
+                        )
+                    if relative in file_receipts:
+                        raise CampaignPlanError(
+                            f"{label} repeats a file in its manifest"
+                        )
+                    file_receipts[relative] = receipt
+                    child_files.append((selected, relative, receipt))
+
+                for _selected, relative, receipt in child_directories:
+                    entries.append({
+                        "path": relative,
+                        "kind": "directory",
+                        "metadata": list(receipt),
+                    })
+                for selected, relative, receipt in child_files:
+                    before_read = selected.stat(follow_symlinks=False)
+                    if metadata_receipt(selected, before_read) != receipt:
+                        raise CampaignPlanError(
+                            f"{label} file changed before payload read"
+                        )
+                    payload = Legs._read_single_link_regular(
+                        os.fspath(selected)
+                    )
+                    after_read = selected.stat(follow_symlinks=False)
+                    if metadata_receipt(selected, after_read) != receipt:
+                        raise CampaignPlanError(
+                            f"{label} file changed during payload read"
+                        )
+                    total_bytes += len(payload)
+                    entries.append({
+                        "path": relative,
+                        "kind": "file",
+                        "metadata": list(receipt),
+                        "bytes": len(payload),
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                    })
+                    if total_bytes > MAX_WIP_SNAPSHOT_BYTES:
+                        raise CampaignPlanError(
+                            f"{label} exceeds its byte bound"
+                        )
+                if metadata_receipt(
+                    base, base.stat(follow_symlinks=False)
+                ) != base_receipt:
+                    raise CampaignPlanError(
+                        f"{label} directory changed during traversal"
+                    )
+                if len(entries) > MAX_WIP_SNAPSHOT_ENTRIES:
+                    raise CampaignPlanError(
+                        f"{label} exceeds its entry bound"
+                    )
+
+            # Recheck every visited inode after the complete traversal.  This
+            # catches a later sibling changing a directory already walked.
+            for relative, receipt in directory_receipts.items():
+                selected = path if relative == "." else path / relative
                 metadata = selected.stat(follow_symlinks=False)
-                if selected.is_symlink() or not stat.S_ISDIR(metadata.st_mode):
-                    raise CampaignPlanError(f"{label} contains an unsafe directory")
-                entries.append({
-                    "path": selected.relative_to(path).as_posix(),
-                    "kind": "directory",
-                    "identity": [metadata.st_dev, metadata.st_ino],
-                })
-            for name in sorted(files):
-                selected = base / name
+                if (
+                    selected.is_symlink()
+                    or not stat.S_ISDIR(metadata.st_mode)
+                    or metadata_receipt(selected, metadata) != receipt
+                ):
+                    raise CampaignPlanError(
+                        f"{label} directory changed after traversal"
+                    )
+            for relative, receipt in file_receipts.items():
+                selected = path / relative
                 metadata = selected.stat(follow_symlinks=False)
                 if (
                     selected.is_symlink()
                     or not stat.S_ISREG(metadata.st_mode)
                     or metadata.st_nlink != 1
+                    or metadata_receipt(selected, metadata) != receipt
                 ):
-                    raise CampaignPlanError(f"{label} contains an unsafe file")
-                payload = Legs._read_single_link_regular(os.fspath(selected))
-                total_bytes += len(payload)
-                entries.append({
-                    "path": selected.relative_to(path).as_posix(),
-                    "kind": "file",
-                    "bytes": len(payload),
-                    "sha256": hashlib.sha256(payload).hexdigest(),
-                })
-                if total_bytes > MAX_WIP_SNAPSHOT_BYTES:
-                    raise CampaignPlanError(f"{label} exceeds its byte bound")
-            if len(entries) > MAX_WIP_SNAPSHOT_ENTRIES:
-                raise CampaignPlanError(f"{label} exceeds its entry bound")
-    except (OSError, Legs.WorkspaceTainted) as exc:
-        raise CampaignPlanError(f"{label} observation is unstable") from exc
-    if _host_directory_identity(path, label) != root_identity:
-        raise CampaignPlanError(f"{label} root identity changed during observation")
+                    raise CampaignPlanError(
+                        f"{label} file changed after traversal"
+                    )
+        except (OSError, Legs.WorkspaceTainted) as exc:
+            raise CampaignPlanError(f"{label} observation is unstable") from exc
+        if _host_directory_identity(path, label) != root_identity:
+            raise CampaignPlanError(
+                f"{label} root identity changed during observation"
+            )
+        return entries, directory_receipts, file_receipts
+
+    first = scan_once()
+    second = scan_once()
+    if first != second:
+        raise CampaignPlanError(
+            f"{label} changed between exact manifest observations"
+        )
     return hashlib.sha256(json.dumps(
-        entries, sort_keys=True, separators=(",", ":"), allow_nan=False
+        first[0], sort_keys=True, separators=(",", ":"), allow_nan=False
     ).encode("utf-8")).hexdigest()
+
+
+def _sandboxed_generation_tree_hashes(
+    workspace: Path,
+    protected: Path,
+) -> dict[str, str]:
+    """Seal both abandoned generation trees with their established encoding."""
+
+    return {
+        "workspace_tree_observation_sha256": (
+            _generation_tree_observation_sha256(
+                workspace, label="workspace audit observation"
+            )
+        ),
+        "protected_tree_sha256": _generation_tree_observation_sha256(
+            protected, label="protected generation"
+        ),
+    }
+
+
+def _revalidate_sandboxed_generation_tree_hashes(
+    workspace: Path,
+    protected: Path,
+    authority: dict[str, Any],
+    *,
+    phase: str,
+) -> None:
+    """Reject same-inode content drift across an arm or recovery boundary."""
+
+    expected = {
+        field: _safe_sha256(authority.get(field), field)
+        for field in (
+            "workspace_tree_observation_sha256",
+            "protected_tree_sha256",
+        )
+    }
+    if _sandboxed_generation_tree_hashes(workspace, protected) != expected:
+        raise CampaignPlanError(
+            f"sandboxed-generation tree content changed {phase}"
+        )
 
 
 def _observe_named_root_group_absence(
@@ -11858,39 +13055,99 @@ def _sandboxed_generation_paths(
     return scratch, scratch_identity, workspace, protected
 
 
+def _validate_sandboxed_generation_canonical_frontier(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    canonical: CanonicalRollbackState,
+    *,
+    expected_digest: object,
+) -> None:
+    digest_valid = canonical.digest == expected_digest
+    if any((
+        list(canonical.root_identity)
+        != parsed.armed.get("canonical_root_identity"),
+        not digest_valid,
+        _checkpoint_reached(item["game"]) != item["reached"],
+        _canonical_frontier_binding(item)
+        != Status.validate_frontier_binding(
+            dict(parsed.armed["frontier_binding"])
+        ),
+    )):
+        raise CampaignPlanError(
+            "sandboxed-generation canonical/frontier baseline changed"
+        )
+
+
 def _validate_sandboxed_generation_baseline(
     item: dict[str, Any],
     marker: DispatchQuarantine,
     parsed: RebootRecovery.ParsedMarker,
-) -> tuple[LedgerPrefixState, CanonicalRollbackState, WipRollbackState]:
+) -> tuple[
+    LedgerPrefixState,
+    CanonicalRollbackState,
+    WipRollbackState,
+    dict[str, Any] | None,
+]:
     _validate_post_reboot_dispatch_binding(item, parsed)
     if marker.capsule_state is None or marker.capsule_record is None:
         raise CampaignPlanError(
             "sandboxed-generation release requires its full WIP capsule"
         )
+    canonical = _capture_canonical_rollback(item)
+    expected_digest = (
+        parsed.recovery_arm.get("canonical_digest")
+        if parsed.recovery_arm is not None
+        else parsed.armed.get("canonical_digest")
+    )
+    _validate_sandboxed_generation_canonical_frontier(
+        item,
+        parsed,
+        canonical,
+        expected_digest=expected_digest,
+    )
     ledger, baseline, suffix = _read_post_reboot_ledger_surface(
         item,
         parsed.armed,
         intent_root=marker.root,
         intent_root_identity=marker.root_identity,
+        intent_record_validator=lambda record, phase_rows: (
+            _validate_sandbox_recovery_phase_intent(
+                item, parsed, record, phase_rows
+            )
+        ),
     )
+    execution: dict[str, Any] | None = None
     if suffix:
-        raise CampaignPlanError(
-            "sandboxed-generation release requires an exact zero ledger suffix"
+        if len(suffix) != 1 or suffix[0].get("event") != "codex_exec":
+            raise CampaignPlanError(
+                "sandboxed-generation release requires zero or one exact "
+                "bound exec suffix"
+            )
+        execution = _expected_exec_record(
+            item,
+            baseline.records,
+            [*baseline.records, suffix[0]],
+            clean_terminal=False,
         )
-    canonical = _capture_canonical_rollback(item)
-    if any((
-        list(canonical.root_identity)
-        != parsed.armed.get("canonical_root_identity"),
-        canonical.digest != parsed.armed.get("canonical_digest"),
-        _checkpoint_reached(item["game"]) != item["reached"],
-        _canonical_frontier_binding(item)
-        != Status.validate_frontier_binding(dict(parsed.armed["frontier_binding"])),
-    )):
-        raise CampaignPlanError(
-            "sandboxed-generation canonical/frontier baseline changed"
+        if any((
+            execution.get("workspace")
+            != parsed.unquiesced.get("workspace"),
+            execution.get("transcript")
+            != parsed.unquiesced.get("transcript"),
+        )):
+            raise CampaignPlanError(
+                "sandboxed-generation marker does not bind its exec suffix"
+            )
+        _safe_component(
+            execution.get("thread_id"), "sandboxed-generation thread id"
         )
-    return baseline, canonical, _capture_wip_rollback(item)
+        _safe_component(
+            execution.get("workspace"), "sandboxed-generation workspace"
+        )
+        _safe_component(
+            execution.get("transcript"), "sandboxed-generation transcript"
+        )
+    return baseline, canonical, _capture_wip_rollback(item), execution
 
 
 def _arm_sandboxed_generation_release_locked(
@@ -11914,8 +13171,20 @@ def _arm_sandboxed_generation_release_locked(
                 "operator confirmation does not match the sandboxed dispatch"
             )
         boot = RebootRecovery.validate_boot_identity(boot_identity_provider())
-        baseline, canonical, current_wip = _validate_sandboxed_generation_baseline(
-            item, marker, parsed
+        (
+            baseline,
+            canonical,
+            current_wip,
+            execution,
+        ) = _validate_sandboxed_generation_baseline(item, marker, parsed)
+        exec_record_sha256 = (
+            _recovery_record_sha256(execution)
+            if execution is not None else None
+        )
+        recovery_arm_schema = (
+            RebootRecovery.SANDBOXED_GENERATION_EXEC_ARM_SCHEMA
+            if execution is not None
+            else RebootRecovery.SANDBOXED_GENERATION_ARM_SCHEMA
         )
         scratch, scratch_identity, workspace, protected = (
             _sandboxed_generation_paths(item, parsed)
@@ -11937,10 +13206,18 @@ def _arm_sandboxed_generation_release_locked(
                 arm.get("workspace_lock_identity") != list(lock_identity),
                 arm.get("wip_state_sha256")
                 != _wip_recovery_state_sha256(current_wip),
+                arm.get("recovery_arm_schema") != recovery_arm_schema,
+                arm.get("exec_record_sha256") != exec_record_sha256,
             )):
                 raise CampaignPlanError(
                     "installed sandboxed-generation arm context changed"
                 )
+            _revalidate_sandboxed_generation_tree_hashes(
+                workspace,
+                protected,
+                arm,
+                phase="after arm installation",
+            )
             return {
                 "game": item["game"], "target_level": item["target_level"],
                 "result": "sandboxed_generation_release_already_armed",
@@ -11954,10 +13231,13 @@ def _arm_sandboxed_generation_release_locked(
             raise CampaignPlanError("sandboxed-generation marker seal is unavailable")
         historical = parsed.armed["historical_runner"]
         assert isinstance(historical, dict)
+        generation_tree_hashes = _sandboxed_generation_tree_hashes(
+            workspace, protected
+        )
         arm_record = {
             "event": RebootRecovery.SANDBOXED_GENERATION_ARM_EVENT,
             "recorded_at": datetime.now(timezone.utc).isoformat(),
-            "recovery_arm_schema": RebootRecovery.SANDBOXED_GENERATION_ARM_SCHEMA,
+            "recovery_arm_schema": recovery_arm_schema,
             "recovery_nonce": os.urandom(16).hex(),
             "boot_identity_source": boot.source,
             "boot_identity": boot.value,
@@ -11992,16 +13272,9 @@ def _arm_sandboxed_generation_release_locked(
             "required_retry_scratch_relation": "outside_abandoned_path_and_inode",
             "workspace": parsed.unquiesced["workspace"],
             "workspace_identity": parsed.unquiesced["workspace_identity"],
-            "workspace_tree_observation_sha256": (
-                _generation_tree_observation_sha256(
-                    workspace, label="workspace audit observation"
-                )
-            ),
             "protected": parsed.unquiesced["protected"],
             "protected_identity": parsed.unquiesced["protected_identity"],
-            "protected_tree_sha256": _generation_tree_observation_sha256(
-                protected, label="protected generation"
-            ),
+            **generation_tree_hashes,
             "workspace_lock_schema": lock_schema,
             "workspace_lock_path": os.fspath(lock_path),
             "workspace_lock_identity": list(lock_identity),
@@ -12025,10 +13298,16 @@ def _arm_sandboxed_generation_release_locked(
                 "current_full_artifact_scanner_reported_pass"
             ),
         }
-        # The scanner/tree observations above are deliberately not mutation
-        # authority.  Rebind every authoritative surface immediately before
-        # the one arm installation while retaining the inode-bound flock.
-        rebound_baseline, rebound_canonical, rebound_wip = (
+        if exec_record_sha256 is not None:
+            arm_record["exec_record_sha256"] = exec_record_sha256
+        # Rebind every sealed surface immediately before the one arm
+        # installation while retaining the inode-bound workspace flock.
+        (
+            rebound_baseline,
+            rebound_canonical,
+            rebound_wip,
+            rebound_execution,
+        ) = (
             _validate_sandboxed_generation_baseline(item, marker, parsed)
         )
         (
@@ -12049,6 +13328,10 @@ def _arm_sandboxed_generation_release_locked(
             rebound_canonical.digest != canonical.digest,
             _wip_recovery_state_sha256(rebound_wip)
             != arm_record["wip_state_sha256"],
+            (
+                _recovery_record_sha256(rebound_execution)
+                if rebound_execution is not None else None
+            ) != exec_record_sha256,
             rebound_scratch != scratch,
             rebound_scratch_identity != scratch_identity,
             rebound_workspace != workspace,
@@ -12061,6 +13344,12 @@ def _arm_sandboxed_generation_release_locked(
             raise CampaignPlanError(
                 "sandboxed-generation authority changed before arm install"
             )
+        _revalidate_sandboxed_generation_tree_hashes(
+            workspace,
+            protected,
+            arm_record,
+            phase="before arm installation",
+        )
         installed = _atomic_recovery_arm_replace(
             marker,
             arm_record,
@@ -12186,6 +13475,15 @@ def _recover_sandboxed_generation_release_locked(
             scheduler_pid=int(arm["scheduler_pid"]),
             child_pid=int(arm["child_pid"]),
         )
+        # Canonical/frontier authority must fail closed before WAL retirement
+        # or reconciliation can mutate the ledger/release namespace.
+        pre_recovery_canonical = _capture_canonical_rollback(item)
+        _validate_sandboxed_generation_canonical_frontier(
+            item,
+            parsed,
+            pre_recovery_canonical,
+            expected_digest=arm.get("canonical_digest"),
+        )
         # Reconcile runs before marker recovery.  If it found a validated WAL
         # whose authorization row was empty or only a canonical prefix, this
         # authenticated operator path can now roll back exactly that suffix
@@ -12196,35 +13494,84 @@ def _recover_sandboxed_generation_release_locked(
             parsed.armed,
             intent_root=marker.root,
             intent_root_identity=marker.root_identity,
-        )
-        if not (
-            not suffix
-            or (
-                len(suffix) == 1
-                and suffix[0].get("event") == SANDBOX_ABANDON_EVENT
-            )
-        ):
-            raise CampaignPlanError(
-                "sandbox isolation has an ambiguous ledger suffix"
-            )
-        canonical = _capture_canonical_rollback(item)
-        if any((
-            list(canonical.root_identity)
-            != parsed.armed.get("canonical_root_identity"),
-            canonical.digest != arm.get("canonical_digest"),
-            _checkpoint_reached(item["game"]) != item["reached"],
-            _canonical_frontier_binding(item)
-            != Status.validate_frontier_binding(
-                dict(parsed.armed["frontier_binding"])
+            intent_record_validator=lambda record, phase_rows: (
+                _validate_sandbox_recovery_phase_intent(
+                    item, parsed, record, phase_rows
+                )
             ),
-        )):
-            raise CampaignPlanError(
-                "sandbox isolation canonical/frontier baseline changed"
+        )
+        exec_record_sha256 = _sandbox_exec_record_sha256(parsed)
+        execution: dict[str, Any] | None = None
+        classification: dict[str, Any] | None = None
+        event: dict[str, Any] | None = None
+        if exec_record_sha256 is None:
+            if not (
+                not suffix
+                or (
+                    len(suffix) == 1
+                    and suffix[0].get("event") == SANDBOX_ABANDON_EVENT
+                )
+            ):
+                raise CampaignPlanError(
+                    "sandbox isolation has an ambiguous zero-exec suffix"
+                )
+            if suffix:
+                event = suffix[0]
+                _validate_sandbox_abandon_event(item, parsed, event)
+        else:
+            events = [row.get("event") for row in suffix]
+            expected_events = [
+                "codex_exec",
+                "codex_exec_classification_correction",
+                SANDBOX_ABANDON_EVENT,
+            ]
+            if not 1 <= len(suffix) <= len(expected_events) or (
+                events != expected_events[:len(suffix)]
+            ):
+                raise CampaignPlanError(
+                    "sandbox isolation has an ambiguous one-exec suffix"
+                )
+            execution = _expected_exec_record(
+                item,
+                baseline.records,
+                [*baseline.records, suffix[0]],
+                clean_terminal=False,
             )
+            if any((
+                execution.get("workspace")
+                != parsed.unquiesced.get("workspace"),
+                execution.get("transcript")
+                != parsed.unquiesced.get("transcript"),
+                _recovery_record_sha256(execution)
+                != exec_record_sha256,
+            )):
+                raise CampaignPlanError(
+                    "sandbox isolation exec suffix changed after arming"
+                )
+            if len(suffix) >= 2:
+                classification = suffix[1]
+                _validate_sandbox_exec_classification(
+                    item, execution, classification, parsed=parsed
+                )
+            if len(suffix) >= 3:
+                event = suffix[2]
+                _validate_sandbox_abandon_event(
+                    item,
+                    parsed,
+                    event,
+                    classification=classification,
+                )
+        canonical = _capture_canonical_rollback(item)
+        _validate_sandboxed_generation_canonical_frontier(
+            item,
+            parsed,
+            canonical,
+            expected_digest=arm.get("canonical_digest"),
+        )
         current_wip = _capture_wip_rollback(item)
         restored = _sandbox_wip_is_restored(current_wip, marker, parsed)
         if (
-            not suffix
+            event is None
             and not restored
             and _wip_recovery_state_sha256(current_wip)
             != arm.get("wip_state_sha256")
@@ -12232,16 +13579,73 @@ def _recover_sandboxed_generation_release_locked(
             raise CampaignPlanError(
                 "sandbox isolation disposable WIP state changed"
             )
-        if not suffix:
-            event = _build_sandbox_abandon_event(item, parsed)
-            _validate_sandbox_abandon_event(item, parsed, event)
-            committed = _append_zero_ledger_event_cas(
-                marker=marker, baseline=baseline, record=event
+        if execution is not None and classification is None:
+            _revalidate_sandboxed_generation_tree_hashes(
+                workspace,
+                protected,
+                arm,
+                phase="before classification append",
             )
-            _validate_sandbox_abandon_event(item, parsed, committed)
-            suffix = [committed]
-        else:
-            _validate_sandbox_abandon_event(item, parsed, suffix[0])
+            pending_classification = _build_sandbox_exec_classification(
+                item, parsed, execution
+            )
+            phase = PostRebootLedgerState(
+                dispatch_id=marker.dispatch_id,
+                intent_root=marker.root,
+                intent_root_identity=marker.root_identity,
+                ledger=ledger,
+                baseline=baseline,
+                record=execution,
+                correction=None,
+                cleanup=None,
+                operator=None,
+            )
+            classification = _append_recovery_phase_cas(
+                phase, pending_classification
+            )
+            _validate_sandbox_exec_classification(
+                item, execution, classification, parsed=parsed
+            )
+        if event is None:
+            _revalidate_sandboxed_generation_tree_hashes(
+                workspace,
+                protected,
+                arm,
+                phase="before terminal append",
+            )
+            pending_event = _build_sandbox_abandon_event(
+                item, parsed, classification
+            )
+            _validate_sandbox_abandon_event(
+                item,
+                parsed,
+                pending_event,
+                classification=classification,
+            )
+            if execution is None:
+                event = _append_zero_ledger_event_cas(
+                    marker=marker, baseline=baseline, record=pending_event
+                )
+            else:
+                assert classification is not None
+                phase = PostRebootLedgerState(
+                    dispatch_id=marker.dispatch_id,
+                    intent_root=marker.root,
+                    intent_root_identity=marker.root_identity,
+                    ledger=ledger,
+                    baseline=baseline,
+                    record=execution,
+                    correction=classification,
+                    cleanup=None,
+                    operator=None,
+                )
+                event = _append_recovery_phase_cas(phase, pending_event)
+            _validate_sandbox_abandon_event(
+                item,
+                parsed,
+                event,
+                classification=classification,
+            )
 
         # The durable abandonment row is the mutation authority for an
         # idempotent capsule restore.  A crash at any later point can resume
@@ -12270,10 +13674,7 @@ def _recover_sandboxed_generation_release_locked(
             raise CampaignPlanError(
                 "sandbox isolation failed to restore sealed WIP"
             )
-        if (
-            _capture_canonical_rollback(item).digest
-            != arm.get("canonical_digest")
-        ):
+        if not _canonical_matches(canonical):
             raise CampaignPlanError(
                 "canonical artifact changed during WIP restore"
             )
@@ -12294,6 +13695,29 @@ def _recover_sandboxed_generation_release_locked(
             raise CampaignPlanError(
                 "abandoned sandbox namespace changed during artifact restore"
             )
+        final_lock = os.fstat(held_lock.fileno())
+        final_lock_path = lock_path.stat(follow_symlinks=False)
+        if any((
+            not stat.S_ISREG(final_lock.st_mode),
+            not stat.S_ISREG(final_lock_path.st_mode),
+            final_lock.st_nlink != 1,
+            final_lock_path.st_nlink != 1,
+            (final_lock.st_dev, final_lock.st_ino) != lock_identity,
+            (final_lock_path.st_dev, final_lock_path.st_ino)
+            != lock_identity,
+            final_lock.st_uid != os.geteuid(),
+            final_lock_path.st_uid != os.geteuid(),
+            stat.S_IMODE(final_lock.st_mode) != 0o600,
+            stat.S_IMODE(final_lock_path.st_mode) != 0o600,
+            _checkpoint_reached(item["game"]) != item["reached"],
+            _canonical_frontier_binding(item)
+            != Status.validate_frontier_binding(
+                dict(parsed.armed["frontier_binding"])
+            ),
+        )):
+            raise CampaignPlanError(
+                "sandbox isolation authority changed before release"
+            )
         result = _sandbox_isolation_result(item, parsed)
         if set(result) != SANDBOX_ISOLATION_RESULT_KEYS:
             raise CampaignPlanError(
@@ -12306,6 +13730,23 @@ def _recover_sandboxed_generation_release_locked(
             result,
             kind=SANDBOX_RELEASE_AUTHORITY_KIND,
         )
+        _revalidate_sandboxed_generation_tree_hashes(
+            workspace,
+            protected,
+            arm,
+            phase="before release",
+        )
+        final_canonical = _capture_canonical_rollback(item)
+        _validate_sandboxed_generation_canonical_frontier(
+            item,
+            parsed,
+            final_canonical,
+            expected_digest=arm.get("canonical_digest"),
+        )
+        if not _canonical_matches(canonical):
+            raise CampaignPlanError(
+                "canonical artifact changed immediately before release"
+            )
         _release_dispatch_quarantine(marker, item, release_authority)
         released = True
         return result
@@ -12337,7 +13778,10 @@ def _completed_sandbox_isolation_result(
         (index, record) for index, record in enumerate(records)
         if (
             record.get("event") == SANDBOX_ABANDON_EVENT
-            and record.get("schema") == SANDBOX_ABANDON_EVENT_SCHEMA
+            and record.get("schema") in {
+                SANDBOX_ABANDON_EVENT_SCHEMA,
+                SANDBOX_EXEC_ABANDON_EVENT_SCHEMA,
+            }
             and record.get("dispatch_id") == confirm_dispatch_id
             and record.get("recovery_nonce") == confirm_recovery_nonce
             and record.get("game") == item.get("game")
@@ -12352,6 +13796,37 @@ def _completed_sandbox_isolation_result(
         )
     event_index, event = matches[0]
     _validate_sandbox_abandon_event(item, event)
+    execution: dict[str, Any] | None = None
+    classification: dict[str, Any] | None = None
+    if event.get("schema") == SANDBOX_EXEC_ABANDON_EVENT_SCHEMA:
+        if event_index < 2 or [
+            records[event_index - 2].get("event"),
+            records[event_index - 1].get("event"),
+        ] != ["codex_exec", "codex_exec_classification_correction"]:
+            raise CampaignPlanError(
+                "sandbox isolation completion lacks its exec classification"
+            )
+        execution = _expected_exec_record(
+            item,
+            records[:event_index - 2],
+            records[:event_index - 1],
+            clean_terminal=False,
+        )
+        classification = records[event_index - 1]
+        if any((
+            execution.get("workspace") != event.get("workspace"),
+            execution.get("transcript") != event.get("transcript"),
+            event.get("exec_record_sha256")
+            != _recovery_record_sha256(execution),
+            event.get("classification_record_sha256")
+            != _recovery_record_sha256(classification),
+        )):
+            raise CampaignPlanError(
+                "sandbox isolation completed exec chain changed"
+            )
+        _validate_sandbox_exec_classification(
+            item, execution, classification, terminal=event
+        )
     if event_index + 1 >= len(records):
         raise CampaignPlanError(
             "sandbox isolation completion lacks release authorization"
@@ -12438,6 +13913,25 @@ def _completed_sandbox_isolation_result(
         raise CampaignPlanError(
             "sandbox release authorization predates its terminal event"
         )
+    if classification is not None and event_at < _recovery_recorded_at(
+        classification, "sandbox exec classification"
+    ):
+        raise CampaignPlanError(
+            "sandbox isolation completion timestamps are reversed"
+        )
+    for later in records[event_index + 2:]:
+        same_dispatch = later.get("dispatch_id") == confirm_dispatch_id
+        same_generation = (
+            execution is not None
+            and (
+                later.get("thread_id") == execution.get("thread_id")
+                or later.get("transcript") == execution.get("transcript")
+            )
+        )
+        if same_dispatch or same_generation:
+            raise CampaignPlanError(
+                "sandbox isolation completion has a conflicting later row"
+            )
     return {
         "game": item["game"],
         "target_level": item["target_level"],
@@ -13889,6 +15383,11 @@ def _complete_zero_ledger_recovery(
         parsed.armed,
         intent_root=marker.root,
         intent_root_identity=marker.root_identity,
+        intent_record_validator=lambda record, phase_rows: (
+            _validate_zero_ledger_phase_intent(
+                item, parsed, record, phase_rows
+            )
+        ),
     )
     if (
         baseline.raw_prefix != ledger_before.raw_prefix
@@ -14030,6 +15529,11 @@ def _resume_existing_zero_ledger_quarantine(
             parsed.armed,
             intent_root=marker.root,
             intent_root_identity=marker.root_identity,
+            intent_record_validator=lambda record, phase_rows: (
+                _validate_zero_ledger_phase_intent(
+                    item, parsed, record, phase_rows
+                )
+            ),
         )
         result = _complete_zero_ledger_recovery(
             item,
@@ -15994,9 +17498,11 @@ def _run_guarded_child(
     process_tree: Contiguous.ScopedProcessTree | None = None
     terminal_returncode: int | None = None
     detached_processes_proven_absent = False
+    normal_exit_left_captured_descendants = False
 
     def stop_for_quarantine() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
+        nonlocal normal_exit_left_captured_descendants
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before quarantine"
@@ -16030,10 +17536,14 @@ def _run_guarded_child(
                 terminal, "detached_processes_proven_absent", False
             )
         )
+        normal_exit_left_captured_descendants = bool(getattr(
+            terminal, "normal_exit_left_captured_descendants", False
+        ))
         return terminal_returncode
 
     def finish_normal_exit() -> int:
         nonlocal terminal_returncode, detached_processes_proven_absent
+        nonlocal normal_exit_left_captured_descendants
         if process_tree is None:
             raise CampaignPlanError(
                 "exact child custody handoff was lost before finalization"
@@ -16067,6 +17577,9 @@ def _run_guarded_child(
                 terminal, "detached_processes_proven_absent", False
             )
         )
+        normal_exit_left_captured_descendants = bool(getattr(
+            terminal, "normal_exit_left_captured_descendants", False
+        ))
         return terminal_returncode
 
     workspace: Path | None = None
@@ -16264,6 +17777,7 @@ def _run_guarded_child(
                     ),
                     True,
                     detached_processes_proven_absent,
+                    normal_exit_left_captured_descendants,
                 )
             if final:
                 returncode = finish_normal_exit()
@@ -16296,6 +17810,7 @@ def _run_guarded_child(
                     ),
                     True,
                     detached_processes_proven_absent,
+                    normal_exit_left_captured_descendants,
                 )
             time.sleep(LIVE_BOUNDARY_POLL_SECONDS)
     except BaseException as failure:
@@ -16510,9 +18025,1207 @@ def _refresh_solver_audits() -> None:
             )
 
 
+def _normal_exit_residual_identity_details(
+    child: GuardedChildResult,
+) -> dict[str, Any]:
+    """Bind a residual verdict to one completely observed generation."""
+
+    if any((
+        not isinstance(child.returncode, int),
+        isinstance(child.returncode, bool),
+        not isinstance(child.workspace, str),
+        not child.workspace,
+        not isinstance(child.transcript, str),
+        not child.transcript,
+        not isinstance(child.workspace_identity, tuple),
+        not isinstance(child.protected_identity, tuple),
+    )):
+        raise CampaignPlanError(
+            "normal-exit residual lacks one complete generation identity"
+        )
+    assert child.workspace_identity is not None
+    assert child.protected_identity is not None
+    if any(
+        len(identity) != 2
+        or any(
+            not isinstance(value, int) or isinstance(value, bool)
+            for value in identity
+        )
+        for identity in (
+            child.workspace_identity, child.protected_identity
+        )
+    ):
+        raise CampaignPlanError(
+            "normal-exit residual generation identity is malformed"
+        )
+    return {
+        "child_returncode": child.returncode,
+        "workspace": child.workspace,
+        "protected": child.workspace,
+        "transcript": child.transcript,
+        "workspace_identity": child.workspace_identity,
+        "protected_identity": child.protected_identity,
+    }
+
+
+def _build_contained_normal_exit_residual_correction(
+    item: dict[str, Any],
+    execution: dict[str, Any],
+    *,
+    dispatch_id: str,
+) -> dict[str, Any]:
+    """Build the authoritative noncounting classification for one exec."""
+
+    transcript_sha = _safe_sha256(
+        execution.get("protected_transcript_sha256"),
+        "protected transcript",
+    )
+    correction: dict[str, Any] = {
+        "event": "codex_exec_classification_correction",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "classification_authority": (
+            CONTAINED_NORMAL_EXIT_RESIDUAL_AUTHORITY
+        ),
+        "dispatch_id": dispatch_id,
+        "exec_record_sha256": _recovery_record_sha256(execution),
+        "thread_id": execution.get("thread_id"),
+        "transcript": execution["transcript"],
+        "workspace": execution["workspace"],
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": (
+            "normal_exit_left_captured_descendants"
+        ),
+        "terminal_errors": [CONTAINED_NORMAL_EXIT_RESIDUAL_REASON],
+        "solved_target": None,
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": True,
+        "process_tree_quiesced": True,
+        "detached_processes_proven_absent": True,
+        "normal_exit_left_captured_descendants": True,
+        "protected_transcript_sha256": transcript_sha,
+        **{
+            field: item[field]
+            for field in (
+                *Status.FRONTIER_BINDING_FIELDS,
+                "reached",
+                "parent_action_count",
+            )
+        },
+    }
+    diagnostics = execution.get("diagnostics")
+    if diagnostics is not None:
+        correction.update({
+            "diagnostics": diagnostics,
+            "protected_diagnostics_sha256": _safe_sha256(
+                execution.get("protected_diagnostics_sha256"),
+                "protected diagnostics",
+            ),
+        })
+    return correction
+
+
+def _assert_contained_residual_is_noncounting(
+    ledger: Path,
+    item: dict[str, Any],
+    execution: dict[str, Any],
+) -> None:
+    """Prove the authoritative correction leaves the retry coordinate fixed."""
+
+    turns = Status.joined_turns(_read_ledger_locked(ledger))
+    matching = [
+        turn for turn in turns
+        if turn.get("thread_id") == execution.get("thread_id")
+        and turn.get("transcript") == execution.get("transcript")
+    ]
+    if len(matching) != 1 or any((
+        matching[0].get("failure_class") != "infrastructure",
+        matching[0].get("failure_detail_class")
+        != "normal_exit_left_captured_descendants",
+        matching[0].get("taint_verdict") != "quarantined",
+        matching[0].get("solved_target") is not None,
+        matching[0].get("retry_increment") != 0,
+    )):
+        raise CampaignPlanError(
+            "contained-residual correction is not infrastructure-noncounting"
+        )
+    frontier = {
+        "game": item["game"],
+        "next_level": item["target_level"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "priority_score": 0.0,
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+    ranked = Status.ranked_frontiers([frontier], turns)
+    if (
+        len(ranked) != 1
+        or ranked[0].get("retry_complexity_n")
+        != item.get("retry_complexity_n")
+    ):
+        raise CampaignPlanError(
+            "contained residual changed the exact-frontier retry coordinate"
+        )
+
+
+def _contained_residual_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    replayed: bool,
+) -> dict[str, Any]:
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "contained_residual_noncounting",
+        "reason": CONTAINED_NORMAL_EXIT_RESIDUAL_REASON,
+        "dispatch_id": parsed.dispatch_id,
+        "retry_complexity_n": item["retry_complexity_n"],
+        "retry_increment": 0,
+        "classification_replayed": replayed,
+        "process_tree_quiesced": True,
+        "detached_processes_proven_absent": True,
+        "normal_exit_left_captured_descendants": True,
+        "solver_result_accepted": False,
+        "release_authorized": True,
+        "cleanup_authorized": True,
+        "seed_mode": item["seed_mode"],
+        "wip_mode": item["wip_mode"],
+        "lineage_input_mode": item["lineage_input_mode"],
+    }
+
+
+def _validate_contained_residual_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    result: dict[str, Any],
+) -> None:
+    if (
+        set(result) != CONTAINED_RESIDUAL_RESULT_KEYS
+        or not isinstance(result.get("classification_replayed"), bool)
+        or result != _contained_residual_result(
+            item,
+            parsed,
+            replayed=bool(result.get("classification_replayed")),
+        )
+    ):
+        raise CampaignPlanError(
+            "contained-residual terminal result binding changed"
+        )
+
+
+def _validate_contained_residual_correction(
+    item: dict[str, Any],
+    execution: dict[str, Any],
+    correction: dict[str, Any],
+    *,
+    dispatch_id: str,
+) -> None:
+    recorded_at = correction.get("recorded_at")
+    expected = _build_contained_normal_exit_residual_correction(
+        item, execution, dispatch_id=dispatch_id
+    )
+    expected["recorded_at"] = recorded_at
+    if correction != expected:
+        raise CampaignPlanError(
+            "contained-residual correction does not bind the exact exec"
+        )
+    _recovery_recorded_at(
+        correction, "contained-residual classification correction"
+    )
+
+
+def _parse_contained_normal_exit_residual_marker(
+    raw: bytes,
+    *,
+    require_recovery_arm: bool | None = None,
+) -> RebootRecovery.ParsedMarker:
+    """Parse the exact marker granting only sealed-capsule WIP rollback."""
+
+    if require_recovery_arm is True:
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual marker has no cleanup recovery arm"
+        )
+    rows = RebootRecovery.parse_canonical_jsonl(
+        raw, label="contained-residual marker"
+    )
+    if len(rows) != 2:
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual marker must have exactly two rows"
+        )
+    armed, terminal = rows
+    if (
+        set(terminal) != CONTAINED_NORMAL_EXIT_RESIDUAL_MARKER_KEYS
+        or terminal.get("event") != CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT
+    ):
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual terminal row has an invalid exact schema"
+        )
+    # Reuse the canonical parser for the complete armed-row and common
+    # dispatch/generation binding.  The synthetic projection removes only the
+    # new proof fields; it does not weaken or reconstruct the armed authority.
+    common = {
+        key: terminal[key]
+        for key in RebootRecovery.UNQUIESCED_REQUIRED_KEYS
+    }
+    common["event"] = "dispatch_unquiesced"
+    base = RebootRecovery.parse_dispatch_marker(
+        RebootRecovery.canonical_json_line(armed)
+        + RebootRecovery.canonical_json_line(common),
+        require_recovery_arm=False,
+    )
+    correction = terminal.get("classification_record")
+    hashes = (
+        terminal.get("ledger_suffix_sha256"),
+        terminal.get("exec_record_sha256"),
+        terminal.get("classification_record_sha256"),
+    )
+    if any((
+        base.dispatch_id != terminal.get("dispatch_id"),
+        terminal.get("reason") != CONTAINED_NORMAL_EXIT_RESIDUAL_REASON,
+        terminal.get("exception_type")
+        != "ContainedNormalExitResidualError",
+        terminal.get("failure_class") != "infrastructure",
+        terminal.get("failure_detail_class")
+        != "normal_exit_left_captured_descendants",
+        terminal.get("taint_verdict") != "quarantined",
+        terminal.get("retry_increment") != 0,
+        terminal.get("codex_exec_appended") is not True,
+        terminal.get("ledger_suffix_rows") != 1,
+        not isinstance(terminal.get("ledger_suffix_bytes"), int),
+        isinstance(terminal.get("ledger_suffix_bytes"), bool),
+        int(terminal.get("ledger_suffix_bytes", -1)) <= 0,
+        any(
+            not isinstance(value, str)
+            or SHA256_RE.fullmatch(value) is None
+            for value in hashes
+        ),
+        not isinstance(correction, dict),
+        terminal.get("classification_authority")
+        != CONTAINED_NORMAL_EXIT_RESIDUAL_AUTHORITY,
+        terminal.get("classification_authorized") is not True,
+        terminal.get("classification_append_protocol")
+        != "recovery_phase_cas_wal_v1",
+        terminal.get("process_tree_quiesced") is not True,
+        terminal.get("descendant_quiescence_unproven") is not False,
+        terminal.get("captured_process_identities_absent") is not True,
+        terminal.get("detached_processes_proven_absent") is not True,
+        terminal.get("normal_exit_left_captured_descendants") is not True,
+        terminal.get("automatic_detection") is not True,
+        terminal.get("solver_result_accepted") is not False,
+        terminal.get("promotion_authorized") is not False,
+        terminal.get("release_authorized") is not False,
+        terminal.get("cleanup_authorized") is not True,
+        terminal.get("cleanup_recovery_consumer_available") is not True,
+        terminal.get("cleanup_authority_schema")
+        != "dispatch_full_wip_rollback_capsule_v1",
+    )):
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual proof fields are malformed"
+        )
+    assert isinstance(correction, dict)
+    if (
+        _recovery_record_sha256(correction)
+        != terminal["classification_record_sha256"]
+        or correction.get("classification_authority")
+        != CONTAINED_NORMAL_EXIT_RESIDUAL_AUTHORITY
+        or correction.get("dispatch_id") != base.dispatch_id
+        or correction.get("exec_record_sha256")
+        != terminal.get("exec_record_sha256")
+    ):
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual classification seal is malformed"
+        )
+    marker_at = _recovery_recorded_at(
+        terminal, "contained-residual marker"
+    )
+    correction_at = _recovery_recorded_at(
+        correction, "contained-residual correction"
+    )
+    if correction_at < marker_at:
+        raise RebootRecovery.RecoveryEvidenceError(
+            "contained-residual correction predates its marker authority"
+        )
+    return RebootRecovery.ParsedMarker(
+        base.dispatch_id, dict(base.armed), dict(terminal), None
+    )
+
+
+def _validate_contained_residual_dispatch_binding(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+) -> None:
+    """Bind material launch coordinates while tolerating later WIP metadata."""
+
+    armed = parsed.armed
+    terminal = parsed.unquiesced
+    artifact_root = _artifact_root(item)
+    canonical_root = artifact_root / f"{item['game']}_legs"
+    ledger = _ledger_path(item["argv"], cwd=_runner_cwd(item))
+    frontier = {
+        field: item[field]
+        for field in (
+            *Status.FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    }
+    target_wip = armed.get("target_wip_snapshot")
+    expected = {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "tag": _single_cli_value(item["argv"], "--tag"),
+        "run_label": f"{item['game']}:L{item['target_level']}:propose",
+        "retry_complexity_n": item["retry_complexity_n"],
+        "artifact_root": os.fspath(artifact_root),
+        "canonical_root": os.fspath(canonical_root),
+        "frontier_binding": frontier,
+        "ledger": os.fspath(ledger),
+        "historical_runner": item.get("historical_runner"),
+    }
+    if any(armed.get(field) != value for field, value in expected.items()):
+        raise CampaignPlanError(
+            "contained-residual marker material launch coordinate changed"
+        )
+    if (
+        not isinstance(target_wip, list)
+        or len(target_wip) != 2
+        or target_wip[0] != os.fspath(_target_wip_level(item))
+        or (
+            target_wip[1] is not None
+            and (
+                not isinstance(target_wip[1], str)
+                or SHA256_RE.fullmatch(target_wip[1]) is None
+            )
+        )
+    ):
+        raise CampaignPlanError(
+            "contained-residual historical WIP coordinate changed"
+        )
+    workspace = _safe_component(terminal.get("workspace"), "workspace")
+    protected = _safe_component(
+        terminal.get("protected"), "protected workspace"
+    )
+    transcript = _safe_component(terminal.get("transcript"), "transcript")
+    prefix = _dispatch_workspace_prefix(item)
+    if any((
+        not workspace.startswith(prefix),
+        workspace == prefix,
+        protected != workspace,
+        not transcript.startswith("codex_turn_"),
+        not transcript.endswith(".jsonl"),
+    )):
+        raise CampaignPlanError(
+            "contained-residual generation names changed"
+        )
+
+
+def _reconstruct_contained_residual_recovery_item(
+    selected_item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+) -> dict[str, Any]:
+    """Use the marker's runner/scratch receipt, not a regenerated one."""
+
+    historical = parsed.armed.get("historical_runner")
+    existing = selected_item.get("historical_runner")
+    if historical is None:
+        if existing is not None:
+            raise CampaignPlanError(
+                "contained-residual selected item already carries a different "
+                "runner projection"
+            )
+        return selected_item
+    if existing is not None:
+        if existing != historical:
+            raise CampaignPlanError(
+                "contained-residual selected item runner receipt changed"
+            )
+        return selected_item
+    if (
+        not isinstance(historical, dict)
+        or set(historical) != RUNNER_RECEIPT_KEYS
+        or historical.get("schema") != RUNNER_RECEIPT_SCHEMA
+    ):
+        raise CampaignPlanError(
+            "contained-residual historical runner receipt is malformed"
+        )
+    worktree = _normalized_absolute_path(
+        historical.get("worktree"), "worktree"
+    )
+    cwd = _normalized_absolute_path(historical.get("cwd"), "cwd")
+    interpreter = _normalized_absolute_path(
+        historical.get("interpreter"), "interpreter"
+    )
+    artifacts = _normalized_absolute_path(
+        historical.get("artifacts_root"), "artifacts_root"
+    )
+    _normalized_absolute_path(historical.get("scratch_root"), "scratch_root")
+    receipt_ledger = _normalized_absolute_path(
+        historical.get("ledger"), "ledger"
+    )
+    marker_ledger = _normalized_absolute_path(
+        parsed.armed.get("ledger"), "dispatch ledger"
+    )
+    source_sha256 = historical.get("source_sha256")
+    head_commit = historical.get("head_commit")
+    pinned = (
+        PINNED_HISTORICAL_RUNNERS.get(source_sha256)
+        if isinstance(source_sha256, str) else None
+    )
+    try:
+        interpreter_matches = (
+            interpreter.resolve(strict=True)
+            == Path(sys.executable).resolve(strict=True)
+        )
+    except OSError as exc:
+        raise CampaignPlanError(
+            "contained-residual historical interpreter is unavailable"
+        ) from exc
+    if any((
+        worktree != cwd,
+        artifacts != _artifact_root(selected_item),
+        receipt_ledger != marker_ledger,
+        historical.get("evidence_schema") not in EVIDENCE_SCHEMAS,
+        historical.get("lock_schema") not in LOCK_SCHEMAS,
+        not interpreter_matches,
+        not isinstance(head_commit, str)
+        or GIT_COMMIT_RE.fullmatch(head_commit) is None,
+        not isinstance(source_sha256, str)
+        or SHA256_RE.fullmatch(source_sha256) is None,
+        pinned is None,
+        pinned is not None and any(
+            historical.get(field) != expected
+            for field, expected in pinned.items()
+        ),
+    )):
+        raise CampaignPlanError(
+            "contained-residual historical runner receipt changed"
+        )
+    argv = selected_item.get("argv")
+    if not isinstance(argv, list) or not all(isinstance(x, str) for x in argv):
+        raise CampaignPlanError(
+            "contained-residual selected item argv is malformed"
+        )
+    historical_prefix = [
+        os.fspath(interpreter),
+        "-u",
+        os.fspath(worktree / "arc" / "crack_lab" / "gkm_legs.py"),
+    ]
+    if argv[:3] != ["python3", "-u", "arc/crack_lab/gkm_legs.py"]:
+        raise CampaignPlanError(
+            "contained-residual raw selected item has an unrelated runner"
+        )
+    projected_argv = [*historical_prefix, *argv[3:]]
+    for option, value in (
+        ("--artifacts-root", os.fspath(artifacts)),
+        ("--codex-ledger", os.fspath(receipt_ledger)),
+    ):
+        observed = _single_cli_value(projected_argv, option)
+        if observed is not None and observed != value:
+            raise CampaignPlanError(
+                f"contained-residual selected item {option} changed"
+            )
+        if observed is None:
+            projected_argv.append(f"{option}={value}")
+    projected = dict(selected_item)
+    projected["historical_runner"] = dict(historical)
+    projected["argv"] = projected_argv
+    projected["command"] = shlex.join(projected_argv)
+    return projected
+
+
+def _contained_residual_generation_paths(
+    item: dict[str, Any], record: dict[str, Any]
+) -> tuple[Path, Path]:
+    """Resolve old evidence from its sealed scratch receipt only."""
+
+    workspace_name = _safe_component(record.get("workspace"), "workspace")
+    authority = item.get("historical_runner")
+    scratch = (
+        _normalized_absolute_path(authority.get("scratch_root"), "scratch_root")
+        if isinstance(authority, dict)
+        else Path(Legs.SCRATCH).absolute()
+    )
+    _host_directory_identity(scratch, "contained-residual scratch root")
+    protected_root = scratch / ".proposer_transcripts"
+    _host_directory_identity(
+        protected_root, "contained-residual protected transcript root"
+    )
+    workspace = scratch / workspace_name
+    protected = protected_root / workspace_name
+    if workspace.parent != scratch or protected.parent != protected_root:
+        raise CampaignPlanError(
+            "contained-residual generation path escaped scratch"
+        )
+    return workspace, protected
+
+
+def _validate_contained_residual_canonical_baseline(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+) -> None:
+    """Prove classification cannot bless any published-artifact drift."""
+
+    expected_frontier = Status.validate_frontier_binding(
+        dict(parsed.armed["frontier_binding"])
+    )
+    reached = expected_frontier["reached"]
+    canonical = _capture_canonical_rollback(item)
+    if any((
+        list(_host_directory_identity(
+            _artifact_root(item), "canonical artifact root"
+        )) != parsed.armed.get("artifact_root_identity"),
+        list(canonical.root_identity)
+        != parsed.armed.get("canonical_root_identity"),
+        canonical.digest != parsed.armed.get("canonical_digest"),
+        _checkpoint_reached(item["game"]) != reached,
+        _canonical_frontier_binding(item) != expected_frontier,
+    )):
+        raise CampaignPlanError(
+            "contained-residual published artifact changed from its armed "
+            "baseline"
+        )
+
+
+def _contained_residual_release_wal_inventory(
+    marker: DispatchQuarantine,
+    ledger: Path,
+    *,
+    allow_release_wal: bool,
+) -> tuple[str, str] | None:
+    """Bind one resumable release WAL and reject every foreign residue."""
+
+    _validate_dispatch_quarantine(marker)
+    arm_name = _safe_release_recovery_arm_name(marker.name)
+    receipt_name = _safe_release_recovery_receipt_name(
+        marker.name, marker.dispatch_id
+    )
+    names = (
+        arm_name,
+        _durable_recovery_record_preparing_name(arm_name),
+        receipt_name,
+        _durable_recovery_record_preparing_name(receipt_name),
+        _contained_residual_sidecar_name(marker.name),
+    )
+    phase_names = tuple(
+        candidate
+        for intent_name in _recovery_phase_intent_names(
+            ledger, marker.dispatch_id
+        ).values()
+        for candidate in (intent_name, f"{intent_name}.preparing")
+    )
+
+    def present(selected_names: tuple[str, ...]) -> list[str]:
+        found: list[str] = []
+        for name in selected_names:
+            try:
+                os.stat(name, dir_fd=marker.root_fd, follow_symlinks=False)
+            except FileNotFoundError:
+                continue
+            found.append(name)
+        return found
+
+    observed_residue = present(names)
+    observed_wal = _safe_release_wal_inventory(
+        marker.root_fd, marker.name
+    )
+    observed_phase_residue = present(phase_names)
+    if (
+        observed_residue
+        or (observed_wal is not None and not allow_release_wal)
+        or (observed_wal is not None and observed_phase_residue)
+    ):
+        raise CampaignPlanError(
+            "contained-residual classification has release or staging residue"
+        )
+    os.fsync(marker.root_fd)
+    _validate_dispatch_quarantine(marker)
+    rechecked_residue = present(names)
+    rechecked_wal = _safe_release_wal_inventory(
+        marker.root_fd, marker.name
+    )
+    rechecked_phase_residue = present(phase_names)
+    if (
+        rechecked_residue
+        or rechecked_wal != observed_wal
+        or rechecked_phase_residue != observed_phase_residue
+        or (rechecked_wal is not None and rechecked_phase_residue)
+        or (rechecked_wal is not None and not allow_release_wal)
+    ):
+        raise CampaignPlanError(
+            "contained-residual release or staging residue reappeared"
+        )
+    return rechecked_wal
+
+
+def _resume_contained_residual_release_wal(
+    item: dict[str, Any],
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+    inventory: tuple[str, str],
+    workspace: Path,
+    protected: Path,
+) -> dict[str, Any]:
+    """Complete one exact contained-residual release after a scheduler crash."""
+
+    role, actual_name = inventory
+    intent_name, preparing_name = _dispatch_release_intent_names(marker.name)
+    expected_name = intent_name if role == "intent" else preparing_name
+    if actual_name != expected_name:
+        raise CampaignPlanError(
+            "contained-residual release WAL inventory changed"
+        )
+    record, intent_identity = _read_dispatch_release_intent_at(
+        marker.root_fd,
+        actual_name,
+        marker_name=marker.name,
+    )
+    authority = record.get("release_authority")
+    if not isinstance(authority, dict):
+        raise CampaignPlanError(
+            "contained-residual release WAL lacks its authority"
+        )
+    terminal_result = authority.get("terminal_result")
+    if any((
+        authority.get("kind") != "ordinary_safe_terminal_v1",
+        authority.get("projected_item_sha256")
+        != parsed.armed.get("projected_item_sha256"),
+        not isinstance(terminal_result, dict),
+        isinstance(terminal_result, dict)
+        and terminal_result.get("result")
+        != "contained_residual_noncounting",
+    )):
+        raise CampaignPlanError(
+            "contained-residual release WAL belongs to another terminal lane"
+        )
+    assert isinstance(terminal_result, dict)
+    _validate_contained_residual_result(item, parsed, terminal_result)
+    authority_state = _prevalidate_dispatch_release_preparing(
+        item,
+        marker.root_fd,
+        record,
+        intent_identity,
+    )
+    ledger = _dispatch_release_item_ledger(item, authority)
+    if _contained_residual_release_wal_inventory(
+        marker, ledger, allow_release_wal=True
+    ) != inventory:
+        raise CampaignPlanError(
+            "contained-residual release WAL changed before rollback"
+        )
+    if marker.capsule_state is None or marker.capsule_record is None:
+        raise CampaignPlanError(
+            "contained-residual release lost its WIP rollback capsule"
+        )
+    current_wip = _capture_wip_rollback(item)
+    try:
+        _validate_capsule_restored_wip_state(
+            current_wip,
+            marker.capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+    except CampaignPlanError:
+        current_wip = _restore_wip_from_rollback_capsule(
+            item,
+            marker.capsule_state,
+            marker.capsule_record,
+        )
+        _validate_capsule_restored_wip_state(
+            current_wip,
+            marker.capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+    if role == "preparing":
+        os.replace(
+            preparing_name,
+            intent_name,
+            src_dir_fd=marker.root_fd,
+            dst_dir_fd=marker.root_fd,
+        )
+        os.fsync(marker.root_fd)
+        installed, installed_identity = _read_dispatch_release_intent_at(
+            marker.root_fd,
+            intent_name,
+            marker_name=marker.name,
+        )
+        if installed != record or installed_identity != intent_identity:
+            raise CampaignPlanError(
+                "contained-residual release WAL changed during promotion"
+            )
+    installed_inventory = ("intent", intent_name)
+
+    def revalidate_release_state(*_args: Any) -> None:
+        _validate_recovery_marker_seal(marker)
+        if _contained_residual_release_wal_inventory(
+            marker, ledger, allow_release_wal=True
+        ) != installed_inventory:
+            raise CampaignPlanError(
+                "contained-residual release WAL changed before authorization"
+            )
+        _validate_contained_residual_generation_inactive(
+            item, parsed, workspace, protected
+        )
+        if marker.capsule_state is None:
+            raise CampaignPlanError(
+                "contained-residual release lost its WIP capsule state"
+            )
+        _validate_capsule_restored_wip_state(
+            _capture_wip_rollback(item),
+            marker.capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+        _validate_contained_residual_canonical_baseline(item, parsed)
+
+    if authority_state != "authorized":
+        _ensure_dispatch_release_authority_row(
+            item,
+            marker.root_fd,
+            record,
+            intent_identity,
+            allow_new_authority_append=True,
+            allow_existing_partial_authority=True,
+            before_authority_append=revalidate_release_state,
+        )
+    revalidate_release_state()
+    _finish_dispatch_release_intent(
+        item,
+        marker.root_fd,
+        record,
+        intent_identity,
+    )
+    return dict(terminal_result)
+
+
+def _validate_contained_residual_generation_inactive(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    workspace: Path,
+    protected: Path,
+) -> None:
+    _validate_post_reboot_generation_identities(
+        parsed, workspace, protected, require_both=True
+    )
+    if _workspace_lock_is_active(workspace):
+        raise CampaignPlanError(
+            "contained-residual generation lock is active"
+        )
+
+
+def _promote_staged_contained_residual_marker(
+    item: dict[str, Any],
+    *,
+    selected_item: dict[str, Any] | None = None,
+) -> bool:
+    """Finish a complete atomic sidecar; preserve an incomplete one closed."""
+
+    opened = _open_dispatch_quarantine_root(item, create=False)
+    if opened is None:
+        return False
+    _root, root_fd, _root_identity = opened
+    marker_name = _dispatch_quarantine_name(item)
+    sidecar = _contained_residual_sidecar_name(marker_name)
+    try:
+        try:
+            staged_fd, staged, staged_identity = (
+                _read_unaliased_small_file_at(
+                    root_fd,
+                    sidecar,
+                    label="contained-residual marker sidecar",
+                )
+            )
+        except FileNotFoundError:
+            return False
+        try:
+            os.fsync(staged_fd)
+        finally:
+            os.close(staged_fd)
+        os.fsync(root_fd)
+        try:
+            parsed = _parse_contained_normal_exit_residual_marker(
+                staged, require_recovery_arm=False
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(
+                "incomplete contained-residual sidecar remains quarantined"
+            ) from exc
+        marker_fd, prefix, marker_identity = _read_unaliased_small_file_at(
+            root_fd,
+            marker_name,
+            label="armed dispatch quarantine marker",
+        )
+        os.close(marker_fd)
+        try:
+            prefix_rows = RebootRecovery.parse_canonical_jsonl(
+                prefix, label="armed dispatch quarantine marker"
+            )
+        except RebootRecovery.RecoveryEvidenceError as exc:
+            raise CampaignPlanError(str(exc)) from exc
+        if any((
+            len(prefix_rows) != 1,
+            not staged.startswith(prefix),
+            parsed.armed != (prefix_rows[0] if prefix_rows else None),
+        )):
+            raise CampaignPlanError(
+                "contained-residual sidecar does not extend the armed marker"
+            )
+        recovery_item = _reconstruct_contained_residual_recovery_item(
+            selected_item if selected_item is not None else item,
+            parsed,
+        )
+        _validate_contained_residual_dispatch_binding(recovery_item, parsed)
+        recheck_fd, recheck, recheck_identity = _read_unaliased_small_file_at(
+            root_fd,
+            sidecar,
+            label="contained-residual marker sidecar",
+        )
+        try:
+            os.fsync(recheck_fd)
+        finally:
+            os.close(recheck_fd)
+        marker_now = os.stat(
+            marker_name, dir_fd=root_fd, follow_symlinks=False
+        )
+        sidecar_now = os.stat(
+            sidecar, dir_fd=root_fd, follow_symlinks=False
+        )
+        if any((
+            (marker_now.st_dev, marker_now.st_ino) != marker_identity,
+            (sidecar_now.st_dev, sidecar_now.st_ino) != staged_identity,
+            recheck != staged,
+            recheck_identity != staged_identity,
+        )):
+            raise CampaignPlanError(
+                "contained-residual marker staging identity changed"
+            )
+        _durably_reseal_staged_file_at(
+            root_fd,
+            sidecar,
+            expected_payload=staged,
+            expected_identity=staged_identity,
+            label="contained-residual marker sidecar",
+        )
+        os.fsync(root_fd)
+        try:
+            os.replace(
+                sidecar,
+                marker_name,
+                src_dir_fd=root_fd,
+                dst_dir_fd=root_fd,
+            )
+            os.fsync(root_fd)
+        except OSError as exc:
+            raise CampaignPlanError(
+                "could not finish contained-residual marker installation"
+            ) from exc
+        installed = os.stat(
+            marker_name, dir_fd=root_fd, follow_symlinks=False
+        )
+        if (installed.st_dev, installed.st_ino) != staged_identity:
+            raise CampaignPlanError(
+                "promoted contained-residual marker identity changed"
+            )
+        installed_payload = _read_bound_release_file_at(
+            root_fd,
+            marker_name,
+            staged_identity,
+            label="promoted contained-residual marker",
+            maximum_bytes=RebootRecovery.MAX_MARKER_BYTES,
+        )
+        if installed_payload != staged:
+            raise CampaignPlanError(
+                "promoted contained-residual marker bytes changed"
+            )
+        return True
+    finally:
+        os.close(root_fd)
+
+
+def _resume_existing_contained_residual_classification(
+    item: dict[str, Any],
+    *,
+    selected_item: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """Finish, roll back, and release one proven-contained residual."""
+
+    _promote_staged_contained_residual_marker(
+        item, selected_item=selected_item
+    )
+    try:
+        marker, parsed = _read_existing_dispatch_quarantine(
+            item,
+            require_recovery_arm=False,
+            marker_parser=_parse_contained_normal_exit_residual_marker,
+        )
+    except (NoDispatchQuarantine, CampaignPlanError, OSError):
+        return None
+    released = False
+    try:
+        recovery_item = _reconstruct_contained_residual_recovery_item(
+            selected_item if selected_item is not None else item,
+            parsed,
+        )
+        _validate_contained_residual_dispatch_binding(recovery_item, parsed)
+        lineage_lock = _acquire_scheduler_lineage_lock(recovery_item)
+        try:
+            _validate_contained_residual_canonical_baseline(
+                recovery_item, parsed
+            )
+            if marker.capsule_state is None or marker.capsule_record is None:
+                raise CampaignPlanError(
+                    "contained-residual recovery requires its full WIP capsule"
+                )
+            terminal = parsed.unquiesced
+            correction = dict(terminal["classification_record"])
+            workspace, protected = _contained_residual_generation_paths(
+                recovery_item, terminal
+            )
+            _validate_contained_residual_generation_inactive(
+                recovery_item, parsed, workspace, protected
+            )
+            release_wal = _contained_residual_release_wal_inventory(
+                marker,
+                _ledger_path(
+                    recovery_item["argv"], cwd=_runner_cwd(recovery_item)
+                ),
+                allow_release_wal=True,
+            )
+            if release_wal is not None:
+                result = _resume_contained_residual_release_wal(
+                    recovery_item,
+                    marker,
+                    parsed,
+                    release_wal,
+                    workspace,
+                    protected,
+                )
+                _close_dispatch_quarantine(marker)
+                released = True
+                return result
+            current_wip = _capture_wip_rollback(recovery_item)
+            try:
+                _validate_capsule_restored_wip_state(
+                    current_wip,
+                    marker.capsule_state,
+                    parsed.armed.get("wip_restore_logical_state_sha256"),
+                    logical_schema=str(parsed.armed.get(
+                        "wip_restore_logical_state_schema"
+                    )),
+                )
+            except CampaignPlanError:
+                current_wip = _restore_wip_from_rollback_capsule(
+                    recovery_item,
+                    marker.capsule_state,
+                    marker.capsule_record,
+                )
+                _validate_capsule_restored_wip_state(
+                    current_wip,
+                    marker.capsule_state,
+                    parsed.armed.get("wip_restore_logical_state_sha256"),
+                    logical_schema=str(parsed.armed.get(
+                        "wip_restore_logical_state_schema"
+                    )),
+                )
+            _validate_contained_residual_generation_inactive(
+                recovery_item, parsed, workspace, protected
+            )
+            _validate_contained_residual_canonical_baseline(
+                recovery_item, parsed
+            )
+
+            def validate_intent(
+                record: dict[str, Any],
+                phase_rows: list[dict[str, Any]],
+            ) -> None:
+                if len(phase_rows) != 1 or record != correction:
+                    raise CampaignPlanError(
+                        "contained-residual lane rejects a foreign recovery "
+                        "phase intent"
+                    )
+                execution = phase_rows[0]
+                execution_line = RebootRecovery.canonical_json_line(execution)
+                if any((
+                    execution.get("event") != "codex_exec",
+                    len(execution_line)
+                    != terminal.get("ledger_suffix_bytes"),
+                    hashlib.sha256(execution_line).hexdigest()
+                    != terminal.get("ledger_suffix_sha256"),
+                    _recovery_record_sha256(execution)
+                    != terminal.get("exec_record_sha256"),
+                    execution.get("workspace")
+                    != terminal.get("workspace"),
+                    execution.get("transcript")
+                    != terminal.get("transcript"),
+                    execution.get("returncode")
+                    != terminal.get("child_returncode"),
+                )):
+                    raise CampaignPlanError(
+                        "contained-residual recovery intent lost its sealed exec"
+                    )
+                _validate_contained_residual_correction(
+                    recovery_item,
+                    execution,
+                    record,
+                    dispatch_id=marker.dispatch_id,
+                )
+
+            ledger, baseline, suffix = _read_post_reboot_ledger_surface(
+                recovery_item,
+                parsed.armed,
+                intent_root=marker.root,
+                intent_root_identity=marker.root_identity,
+                intent_record_validator=validate_intent,
+            )
+            if len(suffix) not in {1, 2}:
+                raise CampaignPlanError(
+                    "contained-residual classification has an ambiguous suffix"
+                )
+            execution = suffix[0]
+            _expected_exec_record(
+                recovery_item,
+                baseline.records,
+                [*baseline.records, execution],
+                clean_terminal=False,
+            )
+            execution_line = RebootRecovery.canonical_json_line(execution)
+            if any((
+                len(execution_line) != terminal.get("ledger_suffix_bytes"),
+                hashlib.sha256(execution_line).hexdigest()
+                != terminal.get("ledger_suffix_sha256"),
+                _recovery_record_sha256(execution)
+                != terminal.get("exec_record_sha256"),
+                execution.get("workspace") != terminal.get("workspace"),
+                execution.get("transcript") != terminal.get("transcript"),
+                execution.get("returncode")
+                != terminal.get("child_returncode"),
+            )):
+                raise CampaignPlanError(
+                    "contained-residual exec seal changed"
+                )
+            _validate_contained_residual_correction(
+                recovery_item,
+                execution,
+                correction,
+                dispatch_id=marker.dispatch_id,
+            )
+            replayed = len(suffix) == 1
+            if replayed:
+                state = PostRebootLedgerState(
+                    dispatch_id=marker.dispatch_id,
+                    intent_root=marker.root,
+                    intent_root_identity=marker.root_identity,
+                    ledger=ledger,
+                    baseline=baseline,
+                    record=execution,
+                    correction=None,
+                    cleanup=None,
+                    operator=None,
+                )
+                committed = _append_recovery_phase_cas(state, correction)
+                if committed != correction:
+                    raise CampaignPlanError(
+                        "contained-residual replay correction changed"
+                    )
+            elif suffix[1] != correction:
+                raise CampaignPlanError(
+                    "contained-residual correction suffix changed"
+                )
+            final_ledger, final_baseline, final_suffix = (
+                _read_post_reboot_ledger_surface(
+                    recovery_item,
+                    parsed.armed,
+                    intent_root=marker.root,
+                    intent_root_identity=marker.root_identity,
+                    intent_record_validator=validate_intent,
+                )
+            )
+            if any((
+                final_ledger != ledger,
+                final_baseline.raw_prefix != baseline.raw_prefix,
+                final_baseline.parent_identity != baseline.parent_identity,
+                final_baseline.file_identity != baseline.file_identity,
+                final_suffix != [execution, correction],
+            )):
+                raise CampaignPlanError(
+                    "contained-residual final ledger authority changed"
+                )
+            _validate_recovery_marker_seal(marker)
+            _assert_contained_residual_is_noncounting(
+                ledger, recovery_item, execution
+            )
+            _validate_contained_residual_generation_inactive(
+                recovery_item, parsed, workspace, protected
+            )
+            _validate_contained_residual_canonical_baseline(
+                recovery_item, parsed
+            )
+            _taint_gate()
+            result = _contained_residual_result(
+                recovery_item, parsed, replayed=replayed
+            )
+            _validate_contained_residual_result(
+                recovery_item, parsed, result
+            )
+            release_authority = _build_dispatch_release_authority(
+                recovery_item,
+                marker,
+                ledger,
+                result,
+                kind="ordinary_safe_terminal_v1",
+            )
+            def revalidate_before_release_authority(*_args: Any) -> None:
+                _validate_recovery_marker_seal(marker)
+                _validate_contained_residual_generation_inactive(
+                    recovery_item, parsed, workspace, protected
+                )
+                _validate_capsule_restored_wip_state(
+                    _capture_wip_rollback(recovery_item),
+                    marker.capsule_state,
+                    parsed.armed.get("wip_restore_logical_state_sha256"),
+                    logical_schema=str(parsed.armed.get(
+                        "wip_restore_logical_state_schema"
+                    )),
+                )
+                _validate_contained_residual_canonical_baseline(
+                    recovery_item, parsed
+                )
+
+            _release_dispatch_quarantine(
+                marker,
+                recovery_item,
+                release_authority,
+                before_authority_append=revalidate_before_release_authority,
+            )
+            released = True
+            return result
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        if not released:
+            _close_dispatch_quarantine(marker)
+
+
 def _run_item_locked(
     plan: dict[str, Any], item: dict[str, Any], *, allowance: Guard.WeeklyAllowance
 ) -> dict[str, Any]:
+    selected_item = item
     item = _project_runner_receipt(plan, item)
     argv = validate_item(item, plan)
     game = item.get("game")
@@ -16521,6 +19234,13 @@ def _run_item_locked(
         raise CampaignPlanError("plan item has invalid game or target_level")
     reached_before = _checkpoint_reached(game)
     validate_inventory_item(item, _authoritative_targets(), reached_before)
+    resumed_contained_residual = (
+        _resume_existing_contained_residual_classification(
+            item, selected_item=selected_item
+        )
+    )
+    if resumed_contained_residual is not None:
+        return resumed_contained_residual
     # Reconcile a previously authorized release before the solved-target
     # short-circuit.  Otherwise a crash after the checkpoint became durable
     # could strand the final target's marker forever.
@@ -16603,6 +19323,16 @@ def _run_item_locked(
                 },
             )
         if _zero_ledger_suffix_is_exact(ledger_before):
+            if (
+                child.normal_exit_left_captured_descendants
+                and child.detached_processes_proven_absent is not True
+            ):
+                raise NormalExitResidualUnquiescedError(
+                    "normal direct-child exit left captured descendants, "
+                    "but complete detached-process absence is unproven; "
+                    "preserving quarantine",
+                    details=_normal_exit_residual_identity_details(child),
+                )
             zero_marker_record, _workspace, _protected = (
                 _seal_zero_ledger_observation(item, child)
             )
@@ -16636,6 +19366,136 @@ def _run_item_locked(
             )
             safe_terminal = True
             return result
+        if child.normal_exit_left_captured_descendants:
+            residual_details = _normal_exit_residual_identity_details(child)
+            if child.detached_processes_proven_absent is not True:
+                raise NormalExitResidualUnquiescedError(
+                    "normal direct-child exit left captured descendants, "
+                    "but complete detached-process absence is unproven; "
+                    "preserving quarantine",
+                    details=residual_details,
+                )
+            current_ledger = _capture_ledger_prefix(ledger)
+            execution = _expected_exec_record(
+                item,
+                ledger_before.records,
+                current_ledger.records,
+                clean_terminal=False,
+            )
+            if any((
+                execution.get("workspace") != child.workspace,
+                execution.get("transcript") != child.transcript,
+                execution.get("returncode") != child.returncode,
+                current_ledger.parent_identity
+                != ledger_before.parent_identity,
+                current_ledger.file_identity != ledger_before.file_identity,
+                not current_ledger.raw_prefix.startswith(
+                    ledger_before.raw_prefix
+                ),
+            )):
+                raise CampaignPlanError(
+                    "contained normal-exit residual does not bind the exact "
+                    "observed generation"
+                )
+            workspace_name = _safe_component(
+                child.workspace, "contained-residual workspace"
+            )
+            scratch = Path(Legs.SCRATCH).absolute()
+            workspace_path = scratch / workspace_name
+            protected_path = scratch / ".proposer_transcripts" / workspace_name
+            if any((
+                _host_directory_identity(
+                    workspace_path, "contained-residual workspace"
+                ) != child.workspace_identity,
+                _host_directory_identity(
+                    protected_path, "contained-residual protected evidence"
+                ) != child.protected_identity,
+            )):
+                raise CampaignPlanError(
+                    "contained normal-exit residual generation identity changed"
+                )
+            ledger_suffix = current_ledger.raw_prefix[
+                len(ledger_before.raw_prefix):
+            ]
+            authority_recorded_at = datetime.now(timezone.utc).isoformat()
+            correction = _build_contained_normal_exit_residual_correction(
+                item,
+                execution,
+                dispatch_id=quarantine.dispatch_id,
+            )
+            quarantine_failure_recorded = True
+            _install_contained_residual_marker(quarantine, {
+                "event": CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT,
+                "recorded_at": authority_recorded_at,
+                "exception_type": "ContainedNormalExitResidualError",
+                "reason": CONTAINED_NORMAL_EXIT_RESIDUAL_REASON,
+                **residual_details,
+                "failure_class": "infrastructure",
+                "failure_detail_class": (
+                    "normal_exit_left_captured_descendants"
+                ),
+                "taint_verdict": "quarantined",
+                "retry_increment": 0,
+                "codex_exec_appended": True,
+                "ledger_suffix_rows": 1,
+                "ledger_suffix_bytes": len(ledger_suffix),
+                "ledger_suffix_sha256": hashlib.sha256(
+                    ledger_suffix
+                ).hexdigest(),
+                "exec_record_sha256": _recovery_record_sha256(execution),
+                "classification_record": correction,
+                "classification_record_sha256": (
+                    _recovery_record_sha256(correction)
+                ),
+                "classification_authority": (
+                    CONTAINED_NORMAL_EXIT_RESIDUAL_AUTHORITY
+                ),
+                "classification_authorized": True,
+                "classification_append_protocol": "recovery_phase_cas_wal_v1",
+                "process_tree_quiesced": True,
+                "descendant_quiescence_unproven": False,
+                "captured_process_identities_absent": True,
+                "detached_processes_proven_absent": True,
+                "normal_exit_left_captured_descendants": True,
+                "automatic_detection": True,
+                "solver_result_accepted": False,
+                "promotion_authorized": False,
+                "release_authorized": False,
+                "cleanup_authorized": True,
+                "cleanup_recovery_consumer_available": True,
+                "cleanup_authority_schema": (
+                    "dispatch_full_wip_rollback_capsule_v1"
+                ),
+            })
+            classification_state = PostRebootLedgerState(
+                dispatch_id=quarantine.dispatch_id,
+                intent_root=quarantine.root,
+                intent_root_identity=quarantine.root_identity,
+                ledger=ledger,
+                baseline=ledger_before,
+                record=execution,
+                correction=None,
+                cleanup=None,
+                operator=None,
+            )
+            committed_correction = _append_recovery_phase_cas(
+                classification_state, correction
+            )
+            if (
+                _recovery_record_sha256(committed_correction)
+                != _recovery_record_sha256(correction)
+            ):
+                raise CampaignPlanError(
+                    "contained-residual classification CAS changed"
+                )
+            _validate_dispatch_quarantine(quarantine)
+            _assert_contained_residual_is_noncounting(
+                ledger, item, execution
+            )
+            raise ContainedNormalExitResidualError(
+                "contained normal-exit residual is quarantined as an "
+                "infrastructure-noncounting generation"
+            )
         if child.returncode != 0 or child.taint_reason is not None:
             result = _recover_confirmed_taint(
                 item,
@@ -16753,6 +19613,11 @@ def _run_item_locked(
         )
         if quarantine is not None:
             try:
+                exception_type = (
+                    "UnquiescedChildError"
+                    if isinstance(exc, NormalExitResidualUnquiescedError)
+                    else type(exc).__name__
+                )
                 _write_dispatch_quarantine_record(quarantine, {
                     "event": (
                         "dispatch_unquiesced"
@@ -16760,7 +19625,7 @@ def _run_item_locked(
                         else "dispatch_failed"
                     ),
                     "recorded_at": datetime.now(timezone.utc).isoformat(),
-                    "exception_type": type(exc).__name__,
+                    "exception_type": exception_type,
                     "reason": str(exc),
                     **exc.details,
                 })
@@ -16793,6 +19658,9 @@ def _run_item_locked(
                     ),
                     "detached_processes_proven_absent": (
                         observed_child.detached_processes_proven_absent
+                    ),
+                    "normal_exit_left_captured_descendants": (
+                        observed_child.normal_exit_left_captured_descendants
                     ),
                 }
             try:
@@ -16848,7 +19716,21 @@ def _run_item(
     validate_item(projected, plan)
     dispatch_lock = _acquire_scheduler_dispatch_lock(projected)
     try:
-        return _run_item_locked(plan, projected, allowance=allowance)
+        # Preserve the unprojected policy item for recovery.  A marker may
+        # seal an older runner/scratch receipt than the one in the regenerated
+        # plan; `_run_item_locked` projects normally for a new dispatch while
+        # its classification-only resumer reconstructs the sealed receipt.
+        try:
+            return _run_item_locked(plan, item, allowance=allowance)
+        except ContainedNormalExitResidualError:
+            resumed = _resume_existing_contained_residual_classification(
+                projected, selected_item=item
+            )
+            if resumed is None:
+                raise CampaignPlanError(
+                    "contained residual disappeared before automatic release"
+                )
+            return resumed
     finally:
         _release_scheduler_artifact_lock(dispatch_lock)
 
@@ -16922,6 +19804,7 @@ def main() -> int:
         raise CampaignPlanError("plan has no initial_queue list")
     if not all(isinstance(item, dict) for item in items):
         raise CampaignPlanError("plan initial_queue contains a non-object item")
+    selected_items = list(items)
     sandbox_arm_game = args.arm_sandboxed_generation_release
     sandbox_recovery_game = args.recover_sandboxed_generation_release
     sandbox_operator = (
@@ -17046,7 +19929,7 @@ def main() -> int:
         return 0
 
     outcomes = []
-    for item in items:
+    for item in selected_items:
         if len(outcomes) >= args.max_items:
             break
         allowance = Guard.weekly_allowance(Guard.query_rate_limits())
@@ -17073,18 +19956,18 @@ def main() -> int:
                 "local_window": report["local_window"],
             })
             break
-        item = Policy.adaptive_campaign_item(
+        selected_item = Policy.adaptive_campaign_item(
             report, reserve=int(plan["reserve_percent"])
         )
-        if item is None:
+        if selected_item is None:
             outcomes.append({
                 "result": "adaptation_stop",
                 "reason": "matched evidence or remaining frontier unavailable",
             })
             break
-        item = _project_runner_receipt(plan, item)
+        item = _project_runner_receipt(plan, selected_item)
         print("ADAPT", item["game"], " ".join(validate_item(item, plan)))
-        outcome = _run_item(plan, item, allowance=allowance)
+        outcome = _run_item(plan, selected_item, allowance=allowance)
         outcomes.append(outcome)
         if outcome["result"] == "reserve_stop":
             break

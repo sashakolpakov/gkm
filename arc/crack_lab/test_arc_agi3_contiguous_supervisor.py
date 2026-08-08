@@ -1490,6 +1490,201 @@ def test_scoped_process_tree_term_policy_has_no_group_sampling_race(
         assert exact_signals == []
 
 
+@pytest.mark.parametrize(
+    ("platform_name", "detached_proof"),
+    (("Linux", True), ("Darwin", False)),
+)
+def test_scoped_process_tree_preserves_contained_normal_exit_residual(
+    monkeypatch,
+    platform_name,
+    detached_proof,
+):
+    root_pid = 92001
+    descendant_pid = 92002
+    process = SimpleNamespace(
+        pid=root_pid,
+        wait=lambda *, timeout: 0,
+    )
+    custody = B._StartedProcessCustody(
+        process=process,
+        descendants={descendant_pid: "descendant-birth"},
+        root_started="root-birth",
+        stable_handles=(
+            {descendant_pid: 201} if platform_name == "Linux" else {}
+        ),
+        linux_subreaper_active=detached_proof,
+        detached_tracking_complete=detached_proof,
+    )
+    tree = B.ScopedProcessTree(custody)
+    absence_observations = 0
+
+    def descendants_absent(_custody):
+        nonlocal absence_observations
+        absence_observations += 1
+        # The first observation is what detects the residual.  All later
+        # observations prove that containment retired the captured identity.
+        return absence_observations > 1
+
+    monkeypatch.setattr(
+        B.os,
+        "uname",
+        lambda: SimpleNamespace(sysname=platform_name),
+    )
+    monkeypatch.setattr(tree, "observe_exit", lambda: True)
+    monkeypatch.setattr(
+        B, "_custody_descendants_absent", descendants_absent
+    )
+    monkeypatch.setattr(
+        B, "_signal_owned_direct_process", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        B, "_signal_owned_process_group", lambda *_args: None
+    )
+    monkeypatch.setattr(B, "_signal_exact_processes", lambda *_args, **_kw: None)
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _custody: None)
+    monkeypatch.setattr(
+        B, "_seal_anchored_process_group", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_seal_descendants_before_root_reap", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_prove_postreap_process_absence", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_release_custody_kernel_state", lambda _custody: None
+    )
+    monkeypatch.setattr(B, "_process_identity", lambda _pid: None)
+
+    result = tree.seal(stop_requested=False, grace_seconds=0)
+
+    assert result.returncode == 0
+    assert result.stop_requested is False
+    assert result.normal_exit_left_captured_descendants is True
+    assert result.captured_descendant_count == 1
+    assert result.captured_descendants_absent is True
+    assert result.detached_processes_proven_absent is detached_proof
+    assert tree.sealed is True
+
+
+def test_scoped_process_tree_flags_residual_discovered_in_final_traversal(
+    monkeypatch,
+):
+    root_pid = 93001
+    descendant_pid = 93002
+    process = SimpleNamespace(pid=root_pid, wait=lambda *, timeout: 0)
+    custody = B._StartedProcessCustody(
+        process=process,
+        descendants={},
+        root_started="root-birth",
+        stable_handles={},
+        linux_subreaper_active=True,
+        detached_tracking_complete=True,
+    )
+    tree = B.ScopedProcessTree(custody)
+    retired = False
+
+    def discover_late(_custody):
+        custody.descendants[descendant_pid] = "late-birth"
+        custody.stable_handles[descendant_pid] = 301
+
+    def descendants_absent(_custody):
+        return not custody.descendants or retired
+
+    def retire_descendants(_custody):
+        nonlocal retired
+        retired = True
+
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(tree, "observe_exit", lambda: True)
+    monkeypatch.setattr(B, "_accumulate_custody", discover_late)
+    monkeypatch.setattr(
+        B, "_custody_descendants_absent", descendants_absent
+    )
+    monkeypatch.setattr(
+        B, "_signal_owned_direct_process", lambda *_args: None
+    )
+    monkeypatch.setattr(B, "_signal_exact_processes", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        B, "_seal_anchored_process_group", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_seal_descendants_before_root_reap", retire_descendants
+    )
+    monkeypatch.setattr(
+        B, "_prove_postreap_process_absence", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_release_custody_kernel_state", lambda _custody: None
+    )
+    monkeypatch.setattr(B, "_process_identity", lambda _pid: None)
+
+    result = tree.seal(stop_requested=False, grace_seconds=0)
+
+    assert result.normal_exit_left_captured_descendants is True
+    assert result.forced_kill is True
+    assert result.captured_descendant_count == 1
+    assert result.captured_descendants_absent is True
+
+
+def test_scoped_process_tree_flags_residual_discovered_inside_fixed_point(
+    monkeypatch,
+):
+    root_pid = 94001
+    descendant_pid = 94002
+    process = SimpleNamespace(pid=root_pid, wait=lambda *, timeout: 0)
+    custody = B._StartedProcessCustody(
+        process=process,
+        descendants={},
+        root_started="root-birth",
+        stable_handles={},
+        linux_subreaper_active=True,
+        detached_tracking_complete=True,
+    )
+    tree = B.ScopedProcessTree(custody)
+
+    def discover_inside_fixed_point(_custody):
+        custody.descendants[descendant_pid] = "fixed-point-birth"
+        custody.stable_handles[descendant_pid] = 401
+
+    monkeypatch.setattr(
+        B.os, "uname", lambda: SimpleNamespace(sysname="Linux")
+    )
+    monkeypatch.setattr(tree, "observe_exit", lambda: True)
+    monkeypatch.setattr(B, "_accumulate_custody", lambda _custody: None)
+    monkeypatch.setattr(
+        B, "_custody_descendants_absent", lambda _custody: True
+    )
+    monkeypatch.setattr(
+        B, "_signal_owned_direct_process", lambda *_args: None
+    )
+    monkeypatch.setattr(B, "_signal_exact_processes", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        B, "_seal_anchored_process_group", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B,
+        "_seal_descendants_before_root_reap",
+        discover_inside_fixed_point,
+    )
+    monkeypatch.setattr(
+        B, "_prove_postreap_process_absence", lambda _custody: None
+    )
+    monkeypatch.setattr(
+        B, "_release_custody_kernel_state", lambda _custody: None
+    )
+    monkeypatch.setattr(B, "_process_identity", lambda _pid: None)
+
+    result = tree.seal(stop_requested=False, grace_seconds=0)
+
+    assert result.normal_exit_left_captured_descendants is True
+    assert result.forced_kill is True
+    assert result.captured_descendant_count == 1
+    assert result.captured_descendants_absent is True
+
+
 @pytest.mark.skipif(not hasattr(os, "fork"), reason="requires POSIX fork")
 def test_scoped_process_tree_slow_root_cleanup_precedes_stubborn_child_kill(
     tmp_path,
@@ -1952,7 +2147,7 @@ def test_private_system_scratch_parent_rebind_cleans_by_descriptor(
         observed = real_lstat(path)
         if Path(path) == parent:
             parent_lstat_count += 1
-            if parent_lstat_count >= 2:
+            if created_roots:
                 fields = list(observed)
                 fields[1] += 1
                 return os.stat_result(fields)
