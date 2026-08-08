@@ -7,6 +7,8 @@ from copy import deepcopy
 import hashlib
 from pathlib import Path
 import re
+import subprocess
+import sys
 
 import pytest
 
@@ -22,9 +24,10 @@ from bongard.object_bongard_panel_rubric_observer import (
     observe_object_bongard_panel_rubric,
     verify_object_bongard_panel_rubric_artifact,
 )
-from bongard.object_bongard_rubric_observer import (
+from bongard.object_bongard_rubric_language import (
     ObjectBongardRubricSpec,
     OrdinalLevelInterval,
+    object_bongard_rubric_language_source_digest,
 )
 from bongard.object_bongard_soft_cues import ObjectBongardSoftCue
 from bongard.tests.test_prototype_scene_observer import (
@@ -125,8 +128,8 @@ def test_one_panel_call_round_trip_and_model_free_cold_replay() -> None:
     (
         (3, 3, PanelRubricDisposition.PRESENT),
         (3, 4, PanelRubricDisposition.PRESENT),
-        (0, 0, PanelRubricDisposition.CERTIFIED_ABSENCE),
-        (0, 1, PanelRubricDisposition.CERTIFIED_ABSENCE),
+        (0, 0, PanelRubricDisposition.CERTIFIED_ABSENT),
+        (0, 1, PanelRubricDisposition.CERTIFIED_ABSENT),
         (2, 2, PanelRubricDisposition.INDETERMINATE),
         (1, 3, PanelRubricDisposition.INDETERMINATE),
         (0, 4, PanelRubricDisposition.INDETERMINATE),
@@ -182,13 +185,46 @@ def test_prompt_is_whole_panel_only_and_has_no_experimental_role_words() -> None
         assert re.search(rf"\b{word}s?\b", lowered) is None
 
 
-def test_panel_observer_has_no_lean_import() -> None:
-    source_path = Path(__file__).parents[1] / "object_bongard_panel_rubric_observer.py"
-    tree = ast.parse(source_path.read_text(encoding="utf-8"))
-    imports: list[str] = []
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            imports.extend(alias.name for alias in node.names)
-        elif isinstance(node, ast.ImportFrom) and node.module is not None:
-            imports.append(node.module)
-    assert not any("lean" in item.lower() for item in imports)
+def test_panel_path_has_no_atlas_geometry_or_lean_import() -> None:
+    root = Path(__file__).parents[1]
+    for filename in (
+        "object_bongard_rubric_language.py",
+        "object_bongard_panel_rubric_observer.py",
+    ):
+        tree = ast.parse((root / filename).read_text(encoding="utf-8"))
+        imports: list[str] = []
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                imports.extend(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom) and node.module is not None:
+                imports.append(node.module)
+        lowered = tuple(item.lower() for item in imports)
+        assert not any("lean" in item for item in lowered)
+        assert not any("atlas" in item for item in lowered)
+        assert not any("hypoth" in item or "lineage" in item for item in lowered)
+        assert "bongard.object_bongard_rubric_observer" not in lowered
+        assert "bongard.prototype_object_scene_observer" not in lowered
+
+    artifact, _, _ = _observe()
+    assert artifact.rubric_language_source_digest == (
+        object_bongard_rubric_language_source_digest()
+    )
+
+    forbidden = (
+        "bongard.object_bongard_rubric_observer",
+        "bongard.prototype_object_scene_observer",
+        "bongard.prototype_object_hypotheses",
+        "bongard.prototype_object_lineages",
+    )
+    subprocess.run(
+        (
+            sys.executable,
+            "-c",
+            "import sys; "
+            "import bongard.object_bongard_panel_rubric_observer; "
+            f"forbidden={forbidden!r}; "
+            "assert not [name for name in forbidden if name in sys.modules]",
+        ),
+        cwd=Path(__file__).parents[2],
+        check=True,
+    )

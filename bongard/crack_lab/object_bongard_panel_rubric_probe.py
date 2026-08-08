@@ -58,9 +58,9 @@ from bongard.object_bongard_rubric_nomination_command import (
     cold_verify_object_bongard_rubric_nomination,
     object_bongard_rubric_nomination_command_source_digest,
 )
-from bongard.object_bongard_rubric_observer import (
+from bongard.object_bongard_rubric_language import (
     ObjectBongardRubricSpec,
-    object_bongard_rubric_observer_source_digest,
+    object_bongard_rubric_language_source_digest,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.transport import run_codex_named_images_structured
@@ -419,7 +419,9 @@ def _manifest(inputs: _ProbeInputs, *, parallel_workers: int) -> dict[str, Any]:
             "probe_source_sha256": object_bongard_panel_rubric_probe_source_digest(),
             "panel_observer_source_sha256": object_bongard_panel_rubric_observer_source_digest(),
             "panel_observer_protocol_sha256": object_bongard_panel_rubric_protocol_digest(),
-            "rubric_spec_authority_source_sha256": object_bongard_rubric_observer_source_digest(),
+            "rubric_spec_authority_source_sha256": (
+                object_bongard_rubric_language_source_digest()
+            ),
             "calibration_source_sha256": object_bongard_rubric_calibration_source_digest(),
             "calibration_command_source_sha256": object_bongard_rubric_calibration_command_source_digest(),
             "nomination_command_source_sha256": object_bongard_rubric_nomination_command_source_digest(),
@@ -566,10 +568,10 @@ def _result_record(
     counts = _group_counts(inputs.source, by_panel)
     exact_survivor = (
         counts["group_a"][PanelRubricDisposition.PRESENT.value] == 6
-        and counts["group_a"][PanelRubricDisposition.CERTIFIED_ABSENCE.value] == 0
+        and counts["group_a"][PanelRubricDisposition.CERTIFIED_ABSENT.value] == 0
         and counts["group_a"][PanelRubricDisposition.INDETERMINATE.value] == 0
         and counts["group_a"][PanelRubricDisposition.ERROR.value] == 0
-        and counts["group_b"][PanelRubricDisposition.CERTIFIED_ABSENCE.value] == 6
+        and counts["group_b"][PanelRubricDisposition.CERTIFIED_ABSENT.value] == 6
         and counts["group_b"][PanelRubricDisposition.PRESENT.value] == 0
         and counts["group_b"][PanelRubricDisposition.INDETERMINATE.value] == 0
         and counts["group_b"][PanelRubricDisposition.ERROR.value] == 0

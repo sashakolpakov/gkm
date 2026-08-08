@@ -14,7 +14,6 @@ from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 from dataclasses import dataclass
-from enum import Enum
 import hashlib
 import json
 from pathlib import Path
@@ -23,13 +22,16 @@ import tempfile
 from typing import Any, Mapping
 
 from bongard.canonical import canonical_digest, canonical_json
-from bongard.object_bongard_rubric_observer import (
+from bongard.evidence import Disposition
+from bongard.object_bongard_rubric_language import (
     ObjectBongardRubricSpec,
     OrdinalLevelInterval,
-    object_bongard_rubric_observer_source_digest,
+    RUBRIC_ORDINAL_LEVEL_ANCHORS,
+    classify_object_bongard_rubric_interval,
+    object_bongard_rubric_language_source_digest,
+    object_bongard_rubric_ordinal_scale_digest,
 )
-from bongard import prototype_object_scene_observer as _runtime
-from bongard import prototype_scene_observer as _legacy
+from bongard import prototype_scene_observer as _scene_runtime
 from bongard.prototype_scene_observer import (
     CloudPolicyCacheSnapshot,
     CodexModelCatalogSnapshot,
@@ -47,16 +49,10 @@ from bongard.transport import (
 )
 
 
-PANEL_RUBRIC_ARTIFACT_SCHEMA = "gkm.bongard-panel-rubric-observer-artifact.v1"
-PANEL_RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-panel-rubric-observation.v1"
-PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v1"
-PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS: tuple[tuple[int, str], ...] = (
-    (0, "The complete panel clearly matches the foil description more aptly than the target description."),
-    (1, "The complete panel matches the foil description slightly more aptly than the target description."),
-    (2, "The complete panel matches both descriptions equally, matches neither description, or the comparison is genuinely uncertain."),
-    (3, "The complete panel matches the target description slightly more aptly than the foil description."),
-    (4, "The complete panel clearly matches the target description more aptly than the foil description."),
-)
+PANEL_RUBRIC_ARTIFACT_SCHEMA = "gkm.bongard-panel-rubric-observer-artifact.v2"
+PANEL_RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-panel-rubric-observation.v2"
+PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v2"
+PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS = RUBRIC_ORDINAL_LEVEL_ANCHORS
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -68,11 +64,9 @@ class ObjectBongardPanelRubricObserverError(ValueError):
     """A panel observation, commitment, or cold replay is invalid."""
 
 
-class PanelRubricDisposition(str, Enum):
-    PRESENT = "present"
-    CERTIFIED_ABSENCE = "certified_absence"
-    INDETERMINATE = "indeterminate"
-    ERROR = "error"
+# Compatibility name for callers of the initial whole-panel probe.  There is
+# now one canonical four-state enum throughout the Python predicate path.
+PanelRubricDisposition = Disposition
 
 
 def _authority_data() -> dict[str, object]:
@@ -134,7 +128,7 @@ def _receipt_data(value: CodexReceipt | None) -> object:
 def _receipt_from_data(value: object) -> CodexReceipt | None:
     if value is None:
         return None
-    result = _legacy._receipt_from_data(value)
+    result = _scene_runtime._receipt_from_data(value)
     if not isinstance(result, CodexReceipt):
         raise ObjectBongardPanelRubricObserverError("panel rubric receipt has the wrong type")
     return result
@@ -145,17 +139,9 @@ def object_bongard_panel_rubric_observer_source_digest() -> str:
 
 
 def object_bongard_panel_rubric_ordinal_scale_digest() -> str:
-    return canonical_digest(
-        {
-            "schema": "gkm.bongard-panel-rubric-ordinal-scale.v1",
-            "anchors": [list(item) for item in PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS],
-            "interval_semantics": "inclusive-narrowest-honest-range",
-            "present_rule": "lower-greater-than-or-equal-to-three",
-            "certified_absence_rule": "upper-less-than-or-equal-to-one",
-            "indeterminate_rule": "contains-deadband-two-or-crosses-decision-regions",
-            "error_rule": "transport-or-parser-errors-are-never-absence",
-        }
-    )
+    """Compatibility wrapper for the observer-neutral scale identity."""
+
+    return object_bongard_rubric_ordinal_scale_digest()
 
 
 def object_bongard_panel_rubric_output_schema() -> dict[str, object]:
@@ -194,12 +180,18 @@ def object_bongard_panel_rubric_prompt(rubric_spec: ObjectBongardRubricSpec) -> 
 def object_bongard_panel_rubric_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-panel-rubric-observer-protocol.v1",
+            "schema": "gkm.bongard-panel-rubric-observer-protocol.v2",
             "protocol_id": PANEL_RUBRIC_PROTOCOL_ID,
             "source_digest": object_bongard_panel_rubric_observer_source_digest(),
-            "rubric_spec_authority_source_digest": object_bongard_rubric_observer_source_digest(),
-            "runtime_helper_source_digest": _runtime.prototype_scene_observer_source_digest(),
-            "transport_source_digest": _runtime.prototype_scene_transport_source_digest(),
+            "rubric_language_source_digest": (
+                object_bongard_rubric_language_source_digest()
+            ),
+            "runtime_helper_source_digest": (
+                _scene_runtime.prototype_scene_observer_source_digest()
+            ),
+            "transport_source_digest": (
+                _scene_runtime.prototype_scene_transport_source_digest()
+            ),
             "ordinal_scale_digest": object_bongard_panel_rubric_ordinal_scale_digest(),
             "output_schema": object_bongard_panel_rubric_output_schema(),
             "ordered_names": ["panel.png"],
@@ -239,20 +231,20 @@ def _runtime_identity_digest(
             "cloud_policy_cache_binding": cloud_policy_cache_binding,
             "model_catalog_digest": model_catalog_digest,
             "no_tools_attestation_digest": no_tools_attestation_digest,
-            "runtime_helper_source_digest": _runtime.prototype_scene_observer_source_digest(),
-            "transport_source_digest": _runtime.prototype_scene_transport_source_digest(),
+            "runtime_helper_source_digest": (
+                _scene_runtime.prototype_scene_observer_source_digest()
+            ),
+            "transport_source_digest": (
+                _scene_runtime.prototype_scene_transport_source_digest()
+            ),
         }
     )
 
 
 def classify_panel_rubric_interval(interval: OrdinalLevelInterval) -> PanelRubricDisposition:
-    if not isinstance(interval, OrdinalLevelInterval):
-        raise TypeError("interval must be OrdinalLevelInterval")
-    if interval.lower >= 3:
-        return PanelRubricDisposition.PRESENT
-    if interval.upper <= 1:
-        return PanelRubricDisposition.CERTIFIED_ABSENCE
-    return PanelRubricDisposition.INDETERMINATE
+    """Compatibility wrapper for the canonical Python interval projection."""
+
+    return classify_object_bongard_rubric_interval(interval)
 
 
 def _observation_content(value: "ObjectBongardPanelRubricObservation") -> dict[str, object]:
@@ -362,7 +354,7 @@ def _artifact_content(value: "ObjectBongardPanelRubricArtifact") -> dict[str, ob
         "rubric_spec": value.rubric_spec.to_data(),
         "rubric_spec_digest": value.rubric_spec_digest,
         "source_digest": value.source_digest,
-        "rubric_spec_authority_source_digest": value.rubric_spec_authority_source_digest,
+        "rubric_language_source_digest": value.rubric_language_source_digest,
         "protocol_digest": value.protocol_digest,
         "transport_source_digest": value.transport_source_digest,
         "prompt_digest": value.prompt_digest,
@@ -396,7 +388,7 @@ class ObjectBongardPanelRubricArtifact:
     rubric_spec: ObjectBongardRubricSpec
     rubric_spec_digest: str
     source_digest: str
-    rubric_spec_authority_source_digest: str
+    rubric_language_source_digest: str
     protocol_digest: str
     transport_source_digest: str
     prompt_digest: str
@@ -426,7 +418,7 @@ class ObjectBongardPanelRubricArtifact:
         if not isinstance(self.rubric_spec, ObjectBongardRubricSpec):
             raise TypeError("rubric spec has the wrong type")
         for name in (
-            "rubric_spec_digest", "source_digest", "rubric_spec_authority_source_digest",
+            "rubric_spec_digest", "source_digest", "rubric_language_source_digest",
             "protocol_digest", "transport_source_digest", "prompt_digest",
             "output_schema_digest", "model_digest", "model_catalog_digest",
             "no_tools_attestation_digest", "runtime_identity_digest", "artifact_digest",
@@ -452,9 +444,11 @@ class ObjectBongardPanelRubricArtifact:
         if (
             self.rubric_spec_digest != self.rubric_spec.spec_digest
             or self.source_digest != object_bongard_panel_rubric_observer_source_digest()
-            or self.rubric_spec_authority_source_digest != object_bongard_rubric_observer_source_digest()
+            or self.rubric_language_source_digest
+            != object_bongard_rubric_language_source_digest()
             or self.protocol_digest != object_bongard_panel_rubric_protocol_digest()
-            or self.transport_source_digest != _runtime.prototype_scene_transport_source_digest()
+            or self.transport_source_digest
+            != _scene_runtime.prototype_scene_transport_source_digest()
             or self.prompt_digest != hashlib.sha256(prompt.encode("utf-8")).hexdigest()
             or self.output_schema_digest != canonical_digest(schema)
             or self.model_digest != _model_digest(self.model, self.reasoning_effort)
@@ -528,7 +522,7 @@ class ObjectBongardPanelRubricArtifact:
         result = cls(
             raw["panel_id"], raw["panel_digest"], raw["observation_context_digest"],
             ObjectBongardRubricSpec.from_data(raw["rubric_spec"]), raw["rubric_spec_digest"],
-            raw["source_digest"], raw["rubric_spec_authority_source_digest"], raw["protocol_digest"],
+            raw["source_digest"], raw["rubric_language_source_digest"], raw["protocol_digest"],
             raw["transport_source_digest"], raw["prompt_digest"], raw["output_schema_digest"],
             raw["model"], raw["reasoning_effort"], raw["model_digest"], raw["expected_launcher_digest"],
             raw["cloud_policy_cache_binding"], raw["model_catalog_digest"], raw["no_tools_attestation_digest"],
@@ -545,7 +539,7 @@ class ObjectBongardPanelRubricArtifact:
 def _artifact_content_fields() -> tuple[str, ...]:
     return (
         "schema", "panel_id", "panel_digest", "observation_context_digest", "rubric_spec",
-        "rubric_spec_digest", "source_digest", "rubric_spec_authority_source_digest",
+        "rubric_spec_digest", "source_digest", "rubric_language_source_digest",
         "protocol_digest", "transport_source_digest", "prompt_digest", "output_schema_digest",
         "model", "reasoning_effort", "model_digest", "expected_launcher_digest",
         "cloud_policy_cache_binding", "model_catalog_digest", "no_tools_attestation_digest",
@@ -584,9 +578,13 @@ def _seal_artifact(
         "rubric_spec": rubric_spec,
         "rubric_spec_digest": rubric_spec.spec_digest,
         "source_digest": object_bongard_panel_rubric_observer_source_digest(),
-        "rubric_spec_authority_source_digest": object_bongard_rubric_observer_source_digest(),
+        "rubric_language_source_digest": (
+            object_bongard_rubric_language_source_digest()
+        ),
         "protocol_digest": object_bongard_panel_rubric_protocol_digest(),
-        "transport_source_digest": _runtime.prototype_scene_transport_source_digest(),
+        "transport_source_digest": (
+            _scene_runtime.prototype_scene_transport_source_digest()
+        ),
         "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
         "output_schema_digest": canonical_digest(schema),
         "model": model,
@@ -639,7 +637,7 @@ def observe_object_bongard_panel_rubric(
 ) -> ObjectBongardPanelRubricArtifact:
     """Observe one complete panel with exactly one no-tools vision call."""
 
-    panel = _legacy._validate_exact_png(png_bytes, "panel")
+    panel = _scene_runtime._validate_exact_png(png_bytes, "panel")
     identity = _panel_id(panel_id)
     panel_digest = hashlib.sha256(panel).hexdigest()
     if panel_digest != _digest(expected_panel_sha256, "expected panel digest"):
@@ -648,17 +646,20 @@ def observe_object_bongard_panel_rubric(
         raise ObjectBongardPanelRubricObserverError("rubric spec differs from commitment")
     if not callable(transport):
         raise TypeError("transport must be callable")
-    policy, model_catalog_digest, no_tools_digest = _runtime._runtime_identities(
-        model=model,
-        reasoning_effort=reasoning_effort,
-        expected_launcher_digest=expected_launcher_digest,
-        cloud_policy_cache_snapshot=cloud_policy_cache_snapshot,
-        model_catalog_snapshot=model_catalog_snapshot,
-        no_tools_attestation=no_tools_attestation,
+    policy = _scene_runtime._policy_cache_binding(
+        cloud_policy_cache_snapshot
+    )
+    model_catalog_digest, no_tools_digest = (
+        _scene_runtime._validate_no_tools_runtime(
+            model_catalog_snapshot=model_catalog_snapshot,
+            no_tools_attestation=no_tools_attestation,
+            expected_launcher_digest=expected_launcher_digest,
+            cloud_policy_cache_binding=policy,
+        )
     )
     context = observation_context_digest or "sha256:" + canonical_digest(
         {
-            "schema": "gkm.bongard-panel-rubric-observation-context.v1",
+            "schema": "gkm.bongard-panel-rubric-observation-context.v2",
             "panel_id": identity,
             "panel_digest": panel_digest,
             "rubric_spec_digest": rubric_spec.spec_digest,
@@ -670,15 +671,15 @@ def observe_object_bongard_panel_rubric(
     prompt = object_bongard_panel_rubric_prompt(rubric_spec)
     schema = object_bongard_panel_rubric_output_schema()
     presentation_bytes = (("panel.png", panel),)
-    presentation = _legacy._image_identities(presentation_bytes)
-    _legacy._assert_model_visible_boundary(
+    presentation = _scene_runtime._image_identities(presentation_bytes)
+    _scene_runtime._assert_model_visible_boundary(
         prompt,
         schema,
         ("panel.png",),
         hidden_values=(identity, panel_digest, rubric_spec.spec_digest, context),
     )
     try:
-        payload, receipt = _legacy._stage_and_call(
+        payload, receipt = _scene_runtime._stage_and_call(
             presentation_bytes,
             prompt=prompt,
             schema=schema,
@@ -694,7 +695,7 @@ def observe_object_bongard_panel_rubric(
             transport=transport,
         )
     except Exception as exc:
-        error_type = _legacy._exception_type(exc)
+        error_type = _scene_runtime._exception_type(exc)
         return _seal_artifact(
             panel_id=identity, panel_digest=panel_digest, context=context,
             rubric_spec=rubric_spec, model=model, reasoning_effort=reasoning_effort,
@@ -710,7 +711,7 @@ def observe_object_bongard_panel_rubric(
     try:
         observation = _parse_payload(payload, rubric_spec.spec_digest)
     except Exception as exc:
-        error_type = _legacy._exception_type(exc)
+        error_type = _scene_runtime._exception_type(exc)
         return _seal_artifact(
             panel_id=identity, panel_digest=panel_digest, context=context,
             rubric_spec=rubric_spec, model=model, reasoning_effort=reasoning_effort,
@@ -752,7 +753,7 @@ def verify_object_bongard_panel_rubric_artifact(
         raise ObjectBongardPanelRubricObserverError("artifact differs from commitment")
     if expected_runtime_identity_digest is not None and restored.runtime_identity_digest != _digest(expected_runtime_identity_digest, "expected runtime digest"):
         raise ObjectBongardPanelRubricObserverError("runtime differs from commitment")
-    panel = _legacy._validate_exact_png(png_bytes, "panel")
+    panel = _scene_runtime._validate_exact_png(png_bytes, "panel")
     if (
         restored.panel_id != _panel_id(panel_id)
         or restored.panel_digest != hashlib.sha256(panel).hexdigest()
