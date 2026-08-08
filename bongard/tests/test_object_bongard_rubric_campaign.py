@@ -214,10 +214,7 @@ class _VisualTransport:
                         "rubric": (
                             "A winged angular form with several slanted spans."
                         ),
-                        "feature_ids": [
-                            "oblique_span_support_ppm",
-                            "bird_like_support_ppm",
-                        ],
+                        "feature_ids": ["bird_like_support_ppm"],
                     },
                     {
                         "group_id": "group_1",

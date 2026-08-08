@@ -28,6 +28,7 @@ from bongard.object_bongard_batch import ObjectBongardTaskPlan
 from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
+    object_bongard_catalog_cue_rubric,
 )
 from bongard.object_bongard_rubric_ranker import (
     ObjectBongardRubricRankResponse,
@@ -166,11 +167,21 @@ def _canonical_parents(
     spec = ObjectBongardRubricSpec.from_semantic_artifact(
         semantic, expected_artifact_digest=semantic.artifact_digest
     )
-    if spec.rubric != semantic.rubrics[0] or (
-        spec.feature_nominations != semantic.feature_families[0]
+    if (
+        len(semantic.feature_families) != 2
+        or any(len(group) != 1 for group in semantic.feature_families)
+        or semantic.feature_families[0] == semantic.feature_families[1]
     ):
         raise ObjectBongardRubricTaskRunnerError(
-            "group-0 rubric spec differs from the semantic artifact"
+            "semantic artifact must nominate one distinct frozen cue per group"
+        )
+    group_0_cue = semantic.feature_families[0][0]
+    if (
+        spec.feature_nominations != (group_0_cue,)
+        or spec.rubric != object_bongard_catalog_cue_rubric(group_0_cue)
+    ):
+        raise ObjectBongardRubricTaskRunnerError(
+            "group-0 rubric spec is not the exact frozen catalog cue derivation"
         )
     return plan, semantic, spec, precommit
 
