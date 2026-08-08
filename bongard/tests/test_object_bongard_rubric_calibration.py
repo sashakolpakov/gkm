@@ -20,11 +20,13 @@ from bongard.object_bongard_rubric_calibration import (
     ObjectBongardRubricLiveObservation,
     ObjectBongardRubricObservationBatch,
     assess_object_bongard_rubric_calibration,
+    _bind_object_bongard_rubric_calibration_nomination_content,
     cold_verify_object_bongard_rubric_calibration,
     load_object_bongard_rubric_calibration_source,
     run_object_bongard_rubric_calibration_observation,
     run_object_bongard_rubric_calibration_observations,
 )
+from bongard.object_bongard_semantics import describe_object_bongard_support
 from bongard.object_bongard_rubric_observer import (
     object_bongard_catalog_contrast_rubric,
 )
@@ -174,6 +176,76 @@ def test_exact_source_recomputes_current_geometry_and_preserves_history(
     assert data["labels_consumed_while_observing"] is False
     assert data["fresh_broad_cohort_pixels_opened"] is False
     assert data["lean_required"] is False
+
+
+def test_internal_verified_nomination_content_replaces_historical_cues_exactly(
+    exact_source, runtime
+) -> None:
+    source, _ = exact_source
+    group_0 = tuple(sorted(item.panel_id for item in source.group_a_panels))
+    group_1 = tuple(sorted(item.panel_id for item in source.group_b_panels))
+    pngs = {item.panel_id: item.exact_png_bytes for item in source.panels}
+    payload = {
+        "profiles": [
+            {
+                "group_id": "group_0",
+                "rubric": "A mismatched pair of sector-like subshapes recurs.",
+                "feature_ids": ["paired_sector_mismatch_support_ppm"],
+            },
+            {
+                "group_id": "group_1",
+                "rubric": "A triangle accompanied by three line-like spans recurs.",
+                "feature_ids": ["triangle_with_three_lines_support_ppm"],
+            },
+        ]
+    }
+
+    def transport(prompt, paths, names, schema, **_kwargs):
+        return CodexStructuredResult(
+            payload, _receipt(prompt, paths, names, schema, payload)
+        )
+
+    artifact = describe_object_bongard_support(
+        task_id=source.panels[0].task_id,
+        group_0_panel_ids=group_0,
+        group_1_panel_ids=group_1,
+        support_png_by_panel_id=pngs,
+        observation_context_digest=PRECOMMIT_DIGEST,
+        model=runtime.model,
+        reasoning_effort=runtime.reasoning_effort,
+        minutes=runtime.minutes,
+        verbose=runtime.verbose,
+        executable=runtime.executable,
+        cloud_policy_cache_snapshot=runtime.cloud_policy_cache_snapshot,
+        expected_launcher_digest=runtime.expected_launcher_digest,
+        model_catalog_snapshot=runtime.model_catalog_snapshot,
+        no_tools_attestation=runtime.no_tools_attestation,
+        transport=transport,
+    )
+    nominated = _bind_object_bongard_rubric_calibration_nomination_content(
+        source,
+        artifact,
+        nomination_authorization_digest=AUTHORIZATION_DIGEST,
+        nomination_precommit_digest=PRECOMMIT_DIGEST,
+        nomination_replay_digest="sha256:" + "e" * 64,
+        nomination_result_digest="sha256:" + "f" * 64,
+    )
+    assert tuple(item.feature_nominations for item in nominated.rubric_specs) == (
+        (
+            "paired_sector_mismatch_support_ppm",
+            "triangle_with_three_lines_support_ppm",
+        ),
+        (
+            "triangle_with_three_lines_support_ppm",
+            "paired_sector_mismatch_support_ppm",
+        ),
+    )
+    assert nominated.to_data()[
+        "historical_description_used_for_rubric_derivation"
+    ] is False
+    assert nominated.to_data()["nomination_binding"]["context_task_id_policy"] == (
+        "lowest-selected-ordinal-task-id-is-transport-context-only"
+    )
 
 
 def test_one_sheet_turn_is_exactly_once_resumable_and_serializable(

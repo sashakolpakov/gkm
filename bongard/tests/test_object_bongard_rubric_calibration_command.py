@@ -10,6 +10,7 @@ from threading import Lock
 import pytest
 
 from bongard.object_bongard_rubric_calibration import (
+    DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE,
     run_object_bongard_rubric_calibration_observations,
 )
 from bongard.object_bongard_rubric_calibration_command import (
@@ -18,6 +19,7 @@ from bongard.object_bongard_rubric_calibration_command import (
     CALIBRATION_ACCEPTANCE_RULE,
     DEFAULT_CALIBRATION_CODEX_LAUNCHER_SHA256,
     INVENTORY_FILENAME,
+    NOMINATION_DIRECTORY,
     PRECOMMIT_FILENAME,
     REPLAY_FILENAME,
     ObjectBongardRubricCalibrationAuthorization,
@@ -25,6 +27,11 @@ from bongard.object_bongard_rubric_calibration_command import (
     load_object_bongard_rubric_calibration_authorization,
     load_object_bongard_rubric_calibration_execution_precommit,
     run_object_bongard_rubric_calibration_command,
+    verify_object_bongard_rubric_calibration_command_directory,
+)
+from bongard.object_bongard_rubric_nomination_command import (
+    DEFAULT_EXPECTED_LAUNCHER_SHA256,
+    run_object_bongard_rubric_nomination,
 )
 from bongard.tests.no_tools_fixture import (
     canonical_codex_receipt,
@@ -80,12 +87,59 @@ def _fake_transport(source, calls: list[tuple[str, str]]):
 def test_command_seals_before_calls_persists_everything_and_cold_replays(
     tmp_path: Path,
 ) -> None:
+    nomination_root = tmp_path / "nomination"
     output_root = tmp_path / "calibration"
     catalog, attestation = canonical_no_tools_runtime(
         DEFAULT_CALIBRATION_CODEX_LAUNCHER_SHA256
     )
     calls: list[tuple[str, str]] = []
+    nomination_calls = 0
     causal_gate_seen = False
+
+    def nomination_transport(prompt, paths, names, schema, **_kwargs):
+        nonlocal nomination_calls
+        nomination_calls += 1
+        payload = {
+            "profiles": [
+                {
+                    "group_id": "group_0",
+                    "rubric": "Mismatched joined sector-like pieces recur.",
+                    "feature_ids": ["paired_sector_mismatch_support_ppm"],
+                },
+                {
+                    "group_id": "group_1",
+                    "rubric": "A triangle accompanied by three spans recurs.",
+                    "feature_ids": ["triangle_with_three_lines_support_ppm"],
+                },
+            ]
+        }
+        return CodexStructuredResult(
+            payload,
+            canonical_codex_receipt(
+                prompt,
+                paths,
+                schema,
+                payload,
+                launcher_digest=DEFAULT_EXPECTED_LAUNCHER_SHA256,
+                reasoning_effort="medium",
+                names=names,
+            ),
+        )
+
+    nomination = run_object_bongard_rubric_nomination(
+        nomination_root,
+        source_root=DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE,
+        cache_snapshotter=lambda: CloudPolicyCacheSnapshot(None),
+        catalog_snapshotter=lambda: catalog,
+        launcher_fingerprinter=lambda _executable, **_kwargs: {
+            "version": PINNED_CODEX_CLI_VERSION,
+            "launcher_digest": DEFAULT_EXPECTED_LAUNCHER_SHA256,
+        },
+        runtime_attester=lambda **_kwargs: attestation,
+        visual_transport=nomination_transport,
+    )
+    assert nomination_calls == 1
+    assert nomination.accepted is True
 
     def runner(source, **kwargs):
         nonlocal causal_gate_seen
@@ -111,6 +165,7 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
 
     result = run_object_bongard_rubric_calibration_command(
         output_root,
+        nomination_root=nomination_root,
         cloud_policy_cache_snapshotter=lambda: CloudPolicyCacheSnapshot(None),
         model_catalog_snapshotter=lambda: catalog,
         launcher_fingerprinter=lambda _executable, **_kwargs: {
@@ -125,10 +180,18 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
     )
 
     assert causal_gate_seen is True
+    assert (output_root / NOMINATION_DIRECTORY).is_dir()
+    assert result.authorization.nomination_binding.to_data() == {
+        "artifact_digest": nomination.artifact.artifact_digest,
+        "authorization_digest": nomination.authorization_digest,
+        "execution_precommit_digest": nomination.execution_precommit_digest,
+        "cold_replay_digest": nomination.cold_replay_digest,
+        "command_result_digest": nomination.result_digest,
+    }
     assert len(calls) == 30
     assert result.inventory.fresh_model_call_count == 30
     assert result.inventory.reused_model_call_count == 0
-    assert result.replay.survivor_counts == (8, 8)
+    assert result.replay.survivor_counts == (2, 2)
     assert result.accepted is True
     assert result.replay.to_data()["acceptance_rule"] == CALIBRATION_ACCEPTANCE_RULE
     assert result.replay.to_data()["threshold_tuning_performed"] is False
@@ -144,6 +207,11 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
         REPLAY_FILENAME,
     ):
         assert (output_root / filename).is_file()
+
+    assert (
+        verify_object_bongard_rubric_calibration_command_directory(output_root)
+        == result
+    )
 
     tampered = result.authorization.to_data()
     tampered["sheet_journal_count"] = 29

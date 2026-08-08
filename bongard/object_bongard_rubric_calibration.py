@@ -43,6 +43,10 @@ from bongard.object_bongard_rubric_observer import (
     observe_object_bongard_rubric,
     verify_object_bongard_rubric_observer_artifact,
 )
+from bongard.object_bongard_semantics import (
+    ObjectBongardSemanticArtifact,
+    verify_object_bongard_semantic_artifact,
+)
 from bongard.object_bongard_rubric_version_space import (
     ObjectBongardRubricCandidate,
     ObjectBongardRubricSupportVersionSpace,
@@ -75,7 +79,7 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-source.v2"
+    "gkm.bongard-object-rubric-calibration-source.v3"
 )
 OBJECT_RUBRIC_CALIBRATION_LIVE_OBSERVATION_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-live-observation.v1"
@@ -93,7 +97,7 @@ OBJECT_RUBRIC_CALIBRATION_ASSESSMENT_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-assessment.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID = (
-    "bongard.object-rubric-calibration/exact-released-12-contrastive-v2"
+    "bongard.object-rubric-calibration/exact-released-12-contrastive-v3"
 )
 
 DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
@@ -292,7 +296,7 @@ def _authority_data() -> dict[str, object]:
 
 
 def _calibration_rubric_specs() -> tuple[ObjectBongardRubricSpec, ...]:
-    """Derive both orientations only from the two verified historical cues."""
+    """Legacy v3 source used only to authorize the replacement nomination."""
 
     return tuple(
         ObjectBongardRubricSpec.create(
@@ -302,6 +306,23 @@ def _calibration_rubric_specs() -> tuple[ObjectBongardRubricSpec, ...]:
         )
         for target, foil in _CALIBRATION_ORIENTED_CUE_PAIRS
     )
+
+
+def _nominated_rubric_specs(
+    artifact: ObjectBongardSemanticArtifact,
+) -> tuple[ObjectBongardRubricSpec, ...]:
+    """Derive both directions from one frozen two-group semantic turn."""
+
+    forward = ObjectBongardRubricSpec.from_semantic_artifact(
+        artifact, expected_artifact_digest=artifact.artifact_digest
+    )
+    target, foil = forward.feature_nominations
+    reverse = ObjectBongardRubricSpec.create(
+        artifact.artifact_digest,
+        object_bongard_catalog_contrast_rubric(foil, target),
+        (foil, target),
+    )
+    return (forward, reverse)
 
 
 def _raw_digest(value: object, label: str) -> str:
@@ -522,6 +543,7 @@ class ObjectBongardRubricCalibrationPanel:
 
 
 def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, object]:
+    nomination = value.nomination_artifact
     return {
         "schema": OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA,
         "algorithm_id": OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID,
@@ -533,8 +555,31 @@ def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, 
         "selected_ordinals": list(CALIBRATION_SELECTED_ORDINALS),
         "selection_policy": "ordinal-first-prior-geometry-success-exactly-six-per-group",
         "rubric_derivation_policy": (
-            "verify-both-historical-description-rows-then-derive-both-"
-            "ordered-target-versus-foil-orientations"
+            "verified-historical-description-cues/legacy-v3"
+            if nomination is None
+            else "one-sealed-neutral-semantic-nomination-then-both-ordered-"
+            "target-versus-foil-orientations/v1"
+        ),
+        "historical_description_used_for_rubric_derivation": nomination is None,
+        "nomination_binding": (
+            None
+            if nomination is None
+            else {
+                "artifact_digest": nomination.artifact_digest,
+                "authorization_digest": value.nomination_authorization_digest,
+                "execution_precommit_digest": value.nomination_precommit_digest,
+                "cold_replay_digest": value.nomination_replay_digest,
+                "command_result_digest": value.nomination_result_digest,
+                "context_task_id_policy": (
+                    "lowest-selected-ordinal-task-id-is-transport-context-only"
+                ),
+                "neutral_group_0_panel_ids": sorted(
+                    item.panel_id for item in value.group_a_panels
+                ),
+                "neutral_group_1_panel_ids": sorted(
+                    item.panel_id for item in value.group_b_panels
+                ),
+            }
         ),
         "vision_judgment_policy": "joint-same-turn-target-versus-foil",
         "panels": [item.commitment_data() for item in value.panels],
@@ -553,6 +598,11 @@ class ObjectBongardRubricCalibrationSource:
     historical_description_artifact_digest: str
     panels: tuple[ObjectBongardRubricCalibrationPanel, ...]
     rubric_specs: tuple[ObjectBongardRubricSpec, ...]
+    nomination_artifact: ObjectBongardSemanticArtifact | None
+    nomination_authorization_digest: str | None
+    nomination_precommit_digest: str | None
+    nomination_replay_digest: str | None
+    nomination_result_digest: str | None
     source_digest: str
 
     def __post_init__(self) -> None:
@@ -575,10 +625,75 @@ class ObjectBongardRubricCalibrationSource:
             raise ObjectBongardRubricCalibrationError(
                 "calibration source panel selection differs"
             )
-        expected_specs = _calibration_rubric_specs()
+        nomination_values = (
+            self.nomination_artifact,
+            self.nomination_authorization_digest,
+            self.nomination_precommit_digest,
+            self.nomination_replay_digest,
+            self.nomination_result_digest,
+        )
+        if self.nomination_artifact is None:
+            if any(item is not None for item in nomination_values[1:]):
+                raise ObjectBongardRubricCalibrationError(
+                    "legacy calibration source has partial nomination parents"
+                )
+            expected_specs = _calibration_rubric_specs()
+        else:
+            if any(item is None for item in nomination_values[1:]):
+                raise ObjectBongardRubricCalibrationError(
+                    "nominated calibration source lacks a nomination parent"
+                )
+            assert self.nomination_precommit_digest is not None
+            assert self.nomination_authorization_digest is not None
+            assert self.nomination_replay_digest is not None
+            assert self.nomination_result_digest is not None
+            _address(
+                self.nomination_authorization_digest,
+                "nomination authorization digest",
+            )
+            _address(
+                self.nomination_precommit_digest,
+                "nomination execution precommit digest",
+            )
+            _address(self.nomination_replay_digest, "nomination replay digest")
+            _address(self.nomination_result_digest, "nomination result digest")
+            artifact = ObjectBongardSemanticArtifact.from_data(
+                self.nomination_artifact.to_data(),
+                expected_artifact_digest=self.nomination_artifact.artifact_digest,
+            )
+            expected_group_0 = tuple(
+                sorted(item.panel_id for item in self.group_a_panels)
+            )
+            expected_group_1 = tuple(
+                sorted(item.panel_id for item in self.group_b_panels)
+            )
+            if (
+                artifact != self.nomination_artifact
+                or artifact.task_id != self.panels[0].task_id
+                or artifact.observation_context_digest
+                != self.nomination_precommit_digest
+                or artifact.group_panel_ids
+                != (expected_group_0, expected_group_1)
+            ):
+                raise ObjectBongardRubricCalibrationError(
+                    "semantic nomination context or exact neutral groups differ"
+                )
+            support_png = {
+                item.panel_id: item.exact_png_bytes for item in self.panels
+            }
+            verify_object_bongard_semantic_artifact(
+                artifact,
+                support_png_by_panel_id=support_png,
+                expected_task_id=self.panels[0].task_id,
+                expected_observation_context_digest=(
+                    self.nomination_precommit_digest
+                ),
+                expected_artifact_digest=artifact.artifact_digest,
+            )
+            expected_specs = _nominated_rubric_specs(artifact)
         if self.rubric_specs != expected_specs:
             raise ObjectBongardRubricCalibrationError(
-                "calibration rubric specs differ from both frozen cue orientations"
+                "calibration rubric specs differ from both frozen orientations"
             )
         _raw_digest(self.source_digest, "calibration source digest")
         if self.source_digest != canonical_digest(_source_content(self)):
@@ -604,6 +719,52 @@ class ObjectBongardRubricCalibrationSource:
 
     def to_data(self) -> dict[str, object]:
         return {**_source_content(self), "source_digest": self.source_digest}
+
+
+def _bind_object_bongard_rubric_calibration_nomination_content(
+    source: ObjectBongardRubricCalibrationSource,
+    artifact: ObjectBongardSemanticArtifact,
+    *,
+    nomination_authorization_digest: str,
+    nomination_precommit_digest: str,
+    nomination_replay_digest: str,
+    nomination_result_digest: str,
+) -> ObjectBongardRubricCalibrationSource:
+    """Mechanically bind content already verified by the command boundary."""
+
+    if not isinstance(source, ObjectBongardRubricCalibrationSource):
+        raise TypeError("source must be ObjectBongardRubricCalibrationSource")
+    if source.nomination_artifact is not None:
+        raise ObjectBongardRubricCalibrationError(
+            "calibration source already has a semantic nomination"
+        )
+    frozen = ObjectBongardSemanticArtifact.from_data(
+        artifact.to_data(), expected_artifact_digest=artifact.artifact_digest
+    )
+    values = {
+        "historical_plan_file_sha256": source.historical_plan_file_sha256,
+        "historical_plan_record_digest": source.historical_plan_record_digest,
+        "historical_description_file_sha256": (
+            source.historical_description_file_sha256
+        ),
+        "historical_description_artifact_digest": (
+            source.historical_description_artifact_digest
+        ),
+        "panels": source.panels,
+        "rubric_specs": _nominated_rubric_specs(frozen),
+        "nomination_artifact": frozen,
+        "nomination_authorization_digest": nomination_authorization_digest,
+        "nomination_precommit_digest": nomination_precommit_digest,
+        "nomination_replay_digest": nomination_replay_digest,
+        "nomination_result_digest": nomination_result_digest,
+    }
+    provisional = object.__new__(ObjectBongardRubricCalibrationSource)
+    for name, item in values.items():
+        object.__setattr__(provisional, name, item)
+    return ObjectBongardRubricCalibrationSource(
+        **values,
+        source_digest=canonical_digest(_source_content(provisional)),
+    )
 
 
 def _verify_plan_and_description(
@@ -806,6 +967,11 @@ def load_object_bongard_rubric_calibration_source(
         "historical_description_artifact_digest": _DESCRIPTION_ARTIFACT_DIGEST,
         "panels": tuple(panels),
         "rubric_specs": specs,
+        "nomination_artifact": None,
+        "nomination_authorization_digest": None,
+        "nomination_precommit_digest": None,
+        "nomination_replay_digest": None,
+        "nomination_result_digest": None,
     }
     provisional = object.__new__(ObjectBongardRubricCalibrationSource)
     for name, item in values.items():

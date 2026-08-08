@@ -3,15 +3,13 @@
 The calibration driver owns the visual and predicate semantics.  This module
 owns the causal filesystem boundary around it:
 
-1. authenticate the exact already-exposed twelve-panel source and freeze the
-   complete 24-job / 30-sheet call inventory;
-2. durably persist an authorization record;
-3. capture and durably persist the exact Codex runtime precommit;
-4. only then admit the journaled vision calls;
-5. persist every observer artifact, the complete observation inventory, and
-   the assessment; and
-6. reload all of those records and replay pixels, journals, predicates, and
-   the assessment without accepting any model transport.
+1. cold-verify and embed the one-turn neutral semantic nomination predecessor;
+2. bind its two distinct positive cue IDs to the exact historical 6+6 panels;
+3. freeze and persist the complete 24-job / 30-sheet calibration inventory;
+4. capture and durably persist the exact Codex runtime precommit;
+5. only then admit the journaled contrastive vision calls; and
+6. replay pixels, nomination, journals, predicates, and assessment without a
+   model transport.
 
 The implementation is Python-authoritative.  It neither imports Lean nor
 gives a proof checker any role in record identity, execution, or replay.
@@ -48,6 +46,7 @@ from bongard.object_bongard_rubric_calibration import (
     ObjectBongardRubricCalibrationSource,
     ObjectBongardRubricObservationBatch,
     assess_object_bongard_rubric_calibration,
+    _bind_object_bongard_rubric_calibration_nomination_content,
     cold_verify_object_bongard_rubric_calibration,
     load_object_bongard_rubric_calibration_source,
     object_bongard_rubric_calibration_source_digest,
@@ -65,6 +64,16 @@ from bongard.object_bongard_rubric_observer import (
 )
 from bongard.object_bongard_rubric_version_space import (
     object_bongard_rubric_version_space_algorithm_digest,
+)
+from bongard.object_bongard_rubric_nomination_command import (
+    VerifiedObjectBongardRubricNomination,
+    cold_verify_object_bongard_rubric_nomination,
+    copy_verified_object_bongard_rubric_nomination,
+    object_bongard_rubric_nomination_command_source_digest,
+)
+from bongard.object_bongard_semantics import (
+    object_bongard_semantics_protocol_digest,
+    object_bongard_semantics_source_digest,
 )
 from bongard.object_bongard_turn_journal import (
     ObjectBongardTurnRuntime,
@@ -99,19 +108,19 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_AUTHORIZATION_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-authorization.v1"
+    "gkm.bongard-object-rubric-calibration-authorization.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_PRECOMMIT_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-execution-precommit.v1"
+    "gkm.bongard-object-rubric-calibration-execution-precommit.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_INVENTORY_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-observation-inventory.v1"
+    "gkm.bongard-object-rubric-calibration-observation-inventory.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_REPLAY_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-disk-replay.v1"
+    "gkm.bongard-object-rubric-calibration-disk-replay.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_COMMAND_ID = (
-    "bongard.object-rubric-calibration-command/seal-run-reload-v1"
+    "bongard.object-rubric-calibration-command/seal-run-reload-v2"
 )
 
 CALIBRATION_MODEL = "gpt-5.6-sol"
@@ -157,6 +166,7 @@ ASSESSMENT_FILENAME = "assessment.json"
 REPLAY_FILENAME = "cold_replay.json"
 JOURNAL_DIRECTORY = "journals"
 OBSERVER_ARTIFACT_DIRECTORY = "observer_artifacts"
+NOMINATION_DIRECTORY = "semantic_nomination"
 
 _RAW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -192,6 +202,105 @@ def _authority_data() -> dict[str, object]:
         "lean_required_for_replay": False,
         "lean_removal_changes_decision": False,
     }
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectBongardRubricCalibrationNominationBinding:
+    """Immutable content addresses for the verified nomination predecessor."""
+
+    artifact_digest: str
+    authorization_digest: str
+    execution_precommit_digest: str
+    cold_replay_digest: str
+    command_result_digest: str
+
+    def __post_init__(self) -> None:
+        _raw_digest(self.artifact_digest, "nomination artifact digest")
+        for name in (
+            "authorization_digest",
+            "execution_precommit_digest",
+            "cold_replay_digest",
+            "command_result_digest",
+        ):
+            _address(getattr(self, name), f"nomination {name}")
+
+    def to_data(self) -> dict[str, str]:
+        return {
+            "artifact_digest": self.artifact_digest,
+            "authorization_digest": self.authorization_digest,
+            "execution_precommit_digest": self.execution_precommit_digest,
+            "cold_replay_digest": self.cold_replay_digest,
+            "command_result_digest": self.command_result_digest,
+        }
+
+    @classmethod
+    def from_data(
+        cls, value: object
+    ) -> "ObjectBongardRubricCalibrationNominationBinding":
+        raw = _exact_fields(
+            value,
+            {
+                "artifact_digest",
+                "authorization_digest",
+                "execution_precommit_digest",
+                "cold_replay_digest",
+                "command_result_digest",
+            },
+            "semantic nomination binding",
+        )
+        result = cls(**raw)  # type: ignore[arg-type]
+        if result.to_data() != dict(raw):
+            raise ObjectBongardRubricCalibrationCommandError(
+                "semantic nomination binding is not canonical"
+            )
+        return result
+
+
+def _nomination_binding(
+    source: ObjectBongardRubricCalibrationSource,
+) -> ObjectBongardRubricCalibrationNominationBinding:
+    artifact = source.nomination_artifact
+    if (
+        artifact is None
+        or source.nomination_authorization_digest is None
+        or source.nomination_precommit_digest is None
+        or source.nomination_replay_digest is None
+        or source.nomination_result_digest is None
+    ):
+        raise ObjectBongardRubricCalibrationCommandError(
+            "calibration command requires one sealed semantic nomination"
+        )
+    return ObjectBongardRubricCalibrationNominationBinding(
+        artifact.artifact_digest,
+        source.nomination_authorization_digest,
+        source.nomination_precommit_digest,
+        source.nomination_replay_digest,
+        source.nomination_result_digest,
+    )
+
+
+def _bind_verified_nomination(
+    source: ObjectBongardRubricCalibrationSource,
+    nomination: VerifiedObjectBongardRubricNomination,
+) -> ObjectBongardRubricCalibrationSource:
+    if not isinstance(nomination, VerifiedObjectBongardRubricNomination):
+        raise TypeError("nomination must be a cold-verified typed predecessor")
+    if not nomination.accepted:
+        raise ObjectBongardRubricCalibrationCommandError(
+            "semantic nomination predecessor was not accepted"
+        )
+    if nomination.source_digest != source.source_digest:
+        raise ObjectBongardRubricCalibrationCommandError(
+            "semantic nomination predecessor belongs to another source"
+        )
+    return _bind_object_bongard_rubric_calibration_nomination_content(
+        source,
+        nomination.artifact,
+        nomination_authorization_digest=nomination.authorization_digest,
+        nomination_precommit_digest=nomination.execution_precommit_digest,
+        nomination_replay_digest=nomination.cold_replay_digest,
+        nomination_result_digest=nomination.result_digest,
+    )
 
 
 def _raw_digest(value: object, label: str) -> str:
@@ -484,6 +593,9 @@ def _source_digest_inventory() -> tuple[tuple[str, str], ...]:
         "calibration_driver_source_sha256": (
             object_bongard_rubric_calibration_source_digest()
         ),
+        "nomination_command_source_sha256": (
+            object_bongard_rubric_nomination_command_source_digest()
+        ),
         "hypothesis_extractor_artifact_digest": (
             object_hypothesis_extractor_artifact_digest()
         ),
@@ -494,6 +606,12 @@ def _source_digest_inventory() -> tuple[tuple[str, str], ...]:
         "lineage_extractor_source_sha256": object_lineage_source_digest(),
         "prototype_object_observer_source_sha256": (
             prototype_scene_observer_source_digest()
+        ),
+        "semantic_nomination_protocol_digest": (
+            object_bongard_semantics_protocol_digest()
+        ),
+        "semantic_nomination_source_sha256": (
+            object_bongard_semantics_source_digest()
         ),
         "rubric_observer_catalog_digest": (
             object_bongard_rubric_observer_catalog_digest()
@@ -907,6 +1025,7 @@ def _authorization_content(
         "command_id": OBJECT_RUBRIC_CALIBRATION_COMMAND_ID,
         "calibration_algorithm_id": OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID,
         "source_digest": value.source_digest,
+        "nomination_binding": value.nomination_binding.to_data(),
         "source_digests": [
             {"role": role, "sha256": digest}
             for role, digest in value.source_digests
@@ -939,6 +1058,7 @@ def _authorization_content(
 @dataclass(frozen=True, slots=True)
 class ObjectBongardRubricCalibrationAuthorization:
     source_digest: str
+    nomination_binding: ObjectBongardRubricCalibrationNominationBinding
     source_digests: tuple[tuple[str, str], ...]
     historical_authority: Mapping[str, object]
     jobs: tuple[CalibrationObservationJobCommitment, ...]
@@ -951,6 +1071,11 @@ class ObjectBongardRubricCalibrationAuthorization:
 
     def __post_init__(self) -> None:
         _raw_digest(self.source_digest, "calibration source digest")
+        if not isinstance(
+            self.nomination_binding,
+            ObjectBongardRubricCalibrationNominationBinding,
+        ):
+            raise TypeError("nomination_binding has the wrong type")
         if (
             not isinstance(self.source_digests, tuple)
             or self.source_digests != tuple(sorted(self.source_digests))
@@ -1042,6 +1167,7 @@ class ObjectBongardRubricCalibrationAuthorization:
             "command_id",
             "calibration_algorithm_id",
             "source_digest",
+            "nomination_binding",
             "source_digests",
             "historical_authority",
             "jobs",
@@ -1076,6 +1202,7 @@ class ObjectBongardRubricCalibrationAuthorization:
             or raw["labels_visible_to_observer"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["source_digests"], list)
+            or not isinstance(raw["nomination_binding"], Mapping)
             or not isinstance(raw["historical_authority"], Mapping)
             or not isinstance(raw["jobs"], list)
         ):
@@ -1109,6 +1236,9 @@ class ObjectBongardRubricCalibrationAuthorization:
             source_digests.append((item["role"], item["sha256"]))
         result = cls(
             raw["source_digest"],
+            ObjectBongardRubricCalibrationNominationBinding.from_data(
+                raw["nomination_binding"]
+            ),
             tuple(source_digests),
             _canonical_clone(raw["historical_authority"], "historical authority"),
             tuple(CalibrationObservationJobCommitment.from_data(item) for item in raw["jobs"]),
@@ -1142,6 +1272,7 @@ def prepare_object_bongard_rubric_calibration_authorization(
     jobs = _build_job_inventory(source)
     values = {
         "source_digest": source.source_digest,
+        "nomination_binding": _nomination_binding(source),
         "source_digests": _source_digest_inventory(),
         "historical_authority": _historical_authority_data(
             source_directory, source
@@ -1229,6 +1360,7 @@ def _precommit_content(
         "command_id": OBJECT_RUBRIC_CALIBRATION_COMMAND_ID,
         "authorization_digest": value.authorization_digest,
         "source_digest": value.source_digest,
+        "nomination_binding": value.nomination_binding.to_data(),
         "source_digests": [
             {"role": role, "sha256": digest}
             for role, digest in value.source_digests
@@ -1262,6 +1394,7 @@ def _precommit_content(
 class ObjectBongardRubricCalibrationExecutionPrecommit:
     authorization_digest: str
     source_digest: str
+    nomination_binding: ObjectBongardRubricCalibrationNominationBinding
     source_digests: tuple[tuple[str, str], ...]
     job_inventory_digest: str
     runtime: ObjectBongardTurnRuntime
@@ -1271,6 +1404,11 @@ class ObjectBongardRubricCalibrationExecutionPrecommit:
     def __post_init__(self) -> None:
         _address(self.authorization_digest, "authorization digest")
         _raw_digest(self.source_digest, "precommit source digest")
+        if not isinstance(
+            self.nomination_binding,
+            ObjectBongardRubricCalibrationNominationBinding,
+        ):
+            raise TypeError("nomination_binding has the wrong type")
         _raw_digest(self.job_inventory_digest, "precommit job inventory digest")
         if (
             not isinstance(self.source_digests, tuple)
@@ -1331,6 +1469,7 @@ class ObjectBongardRubricCalibrationExecutionPrecommit:
             "command_id",
             "authorization_digest",
             "source_digest",
+            "nomination_binding",
             "source_digests",
             "job_inventory_digest",
             "observation_job_count",
@@ -1370,6 +1509,7 @@ class ObjectBongardRubricCalibrationExecutionPrecommit:
             is not True
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["source_digests"], list)
+            or not isinstance(raw["nomination_binding"], Mapping)
             or not isinstance(raw["runtime_binding"], Mapping)
             or not isinstance(raw["no_tools_attestation"], Mapping)
             or not isinstance(raw["launcher_fingerprint"], Mapping)
@@ -1430,6 +1570,9 @@ class ObjectBongardRubricCalibrationExecutionPrecommit:
         result = cls(
             raw["authorization_digest"],
             raw["source_digest"],
+            ObjectBongardRubricCalibrationNominationBinding.from_data(
+                raw["nomination_binding"]
+            ),
             tuple(source_digests),
             raw["job_inventory_digest"],
             runtime,
@@ -1505,6 +1648,7 @@ def prepare_object_bongard_rubric_calibration_execution_precommit(
     values = {
         "authorization_digest": authorization.authorization_digest,
         "source_digest": authorization.source_digest,
+        "nomination_binding": authorization.nomination_binding,
         "source_digests": authorization.source_digests,
         "job_inventory_digest": authorization.job_inventory_digest,
         "runtime": runtime,
@@ -1535,6 +1679,8 @@ def verify_object_bongard_rubric_calibration_execution_precommit(
     if (
         precommit.authorization_digest != authorization.authorization_digest
         or precommit.source_digest != source.source_digest
+        or precommit.nomination_binding != _nomination_binding(source)
+        or precommit.nomination_binding != authorization.nomination_binding
         or precommit.source_digests != authorization.source_digests
         or precommit.source_digests != _source_digest_inventory()
         or precommit.job_inventory_digest != authorization.job_inventory_digest
@@ -1621,6 +1767,7 @@ def _inventory_content(
         "authorization_digest": value.authorization_digest,
         "execution_precommit_digest": value.execution_precommit_digest,
         "source_digest": value.source_digest,
+        "nomination_binding": value.nomination_binding.to_data(),
         "job_inventory_digest": value.job_inventory_digest,
         "observation_job_count": CALIBRATION_JOB_COUNT,
         "sheet_journal_count": CALIBRATION_SHEET_JOURNAL_COUNT,
@@ -1642,6 +1789,7 @@ class ObjectBongardRubricCalibrationObservationInventory:
     authorization_digest: str
     execution_precommit_digest: str
     source_digest: str
+    nomination_binding: ObjectBongardRubricCalibrationNominationBinding
     job_inventory_digest: str
     artifact_files: tuple[ObserverArtifactFileCommitment, ...]
     batch: ObjectBongardRubricObservationBatch
@@ -1656,6 +1804,11 @@ class ObjectBongardRubricCalibrationObservationInventory:
             "inventory execution precommit digest",
         )
         _raw_digest(self.source_digest, "inventory source digest")
+        if not isinstance(
+            self.nomination_binding,
+            ObjectBongardRubricCalibrationNominationBinding,
+        ):
+            raise TypeError("nomination_binding has the wrong type")
         _raw_digest(self.job_inventory_digest, "inventory job digest")
         if (
             not isinstance(self.artifact_files, tuple)
@@ -1723,6 +1876,7 @@ class ObjectBongardRubricCalibrationObservationInventory:
             "authorization_digest",
             "execution_precommit_digest",
             "source_digest",
+            "nomination_binding",
             "job_inventory_digest",
             "observation_job_count",
             "sheet_journal_count",
@@ -1750,6 +1904,7 @@ class ObjectBongardRubricCalibrationObservationInventory:
             or raw["fresh_broad_cohort_pixels_used"] is not False
             or raw["historical_released_pixels_only"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
+            or not isinstance(raw["nomination_binding"], Mapping)
             or not isinstance(raw["observer_artifact_files"], list)
         ):
             raise ObjectBongardRubricCalibrationCommandError(
@@ -1759,6 +1914,9 @@ class ObjectBongardRubricCalibrationObservationInventory:
             raw["authorization_digest"],
             raw["execution_precommit_digest"],
             raw["source_digest"],
+            ObjectBongardRubricCalibrationNominationBinding.from_data(
+                raw["nomination_binding"]
+            ),
             raw["job_inventory_digest"],
             tuple(
                 ObserverArtifactFileCommitment.from_data(item)
@@ -1789,6 +1947,7 @@ def _replay_content(
         "observation_inventory_digest": value.observation_inventory_digest,
         "assessment_digest": value.assessment_digest,
         "source_digest": value.source_digest,
+        "nomination_binding": value.nomination_binding.to_data(),
         "verified_observation_job_count": CALIBRATION_JOB_COUNT,
         "verified_sheet_journal_count": CALIBRATION_SHEET_JOURNAL_COUNT,
         "survivor_counts_in_frozen_spec_order": list(value.survivor_counts),
@@ -1811,6 +1970,7 @@ class ObjectBongardRubricCalibrationDiskReplay:
     observation_inventory_digest: str
     assessment_digest: str
     source_digest: str
+    nomination_binding: ObjectBongardRubricCalibrationNominationBinding
     survivor_counts: tuple[int, int]
     accepted: bool
     replay_digest: str
@@ -1824,6 +1984,11 @@ class ObjectBongardRubricCalibrationDiskReplay:
             _address(getattr(self, name), name)
         _raw_digest(self.assessment_digest, "assessment digest")
         _raw_digest(self.source_digest, "replay source digest")
+        if not isinstance(
+            self.nomination_binding,
+            ObjectBongardRubricCalibrationNominationBinding,
+        ):
+            raise TypeError("nomination_binding has the wrong type")
         if (
             not isinstance(self.survivor_counts, tuple)
             or len(self.survivor_counts) != 2
@@ -1857,6 +2022,7 @@ class ObjectBongardRubricCalibrationDiskReplay:
             "observation_inventory_digest",
             "assessment_digest",
             "source_digest",
+            "nomination_binding",
             "verified_observation_job_count",
             "verified_sheet_journal_count",
             "survivor_counts_in_frozen_spec_order",
@@ -1886,6 +2052,7 @@ class ObjectBongardRubricCalibrationDiskReplay:
             or raw["query_pixels_used"] is not False
             or raw["fresh_broad_cohort_pixels_used"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
+            or not isinstance(raw["nomination_binding"], Mapping)
             or not isinstance(raw["survivor_counts_in_frozen_spec_order"], list)
         ):
             raise ObjectBongardRubricCalibrationCommandError(
@@ -1902,6 +2069,9 @@ class ObjectBongardRubricCalibrationDiskReplay:
             raw["observation_inventory_digest"],
             raw["assessment_digest"],
             raw["source_digest"],
+            ObjectBongardRubricCalibrationNominationBinding.from_data(
+                raw["nomination_binding"]
+            ),
             counts,  # type: ignore[arg-type]
             raw["accepted"],
             raw["replay_digest"],
@@ -1931,6 +2101,55 @@ def _existing_output_root(value: str | os.PathLike[str]) -> Path:
             "calibration output root must be one canonical directory"
         )
     return resolved
+
+
+def _bind_embedded_nomination(
+    root: Path,
+    *,
+    source_directory: str | os.PathLike[str],
+) -> ObjectBongardRubricCalibrationSource:
+    base = load_object_bongard_rubric_calibration_source(source_directory)
+    nomination_root = _existing_output_root(root / NOMINATION_DIRECTORY)
+    nomination = cold_verify_object_bongard_rubric_nomination(
+        nomination_root,
+        source_root=source_directory,
+    )
+    return _bind_verified_nomination(base, nomination)
+
+
+def _copy_and_bind_nomination(
+    root: Path,
+    nomination_root: str | os.PathLike[str],
+    *,
+    source_directory: str | os.PathLike[str],
+) -> ObjectBongardRubricCalibrationSource:
+    base = load_object_bongard_rubric_calibration_source(source_directory)
+    external_root = _existing_output_root(nomination_root)
+    destination = root / NOMINATION_DIRECTORY
+    if destination == external_root or destination.is_relative_to(external_root):
+        raise ObjectBongardRubricCalibrationCommandError(
+            "semantic nomination source cannot contain its embedded destination"
+        )
+    external = cold_verify_object_bongard_rubric_nomination(
+        external_root,
+        source_root=source_directory,
+    )
+    if destination.exists():
+        embedded = cold_verify_object_bongard_rubric_nomination(
+            _existing_output_root(destination),
+            source_root=source_directory,
+        )
+        if embedded != external:
+            raise ObjectBongardRubricCalibrationCommandError(
+                "embedded semantic nomination differs from requested predecessor"
+            )
+    else:
+        embedded = copy_verified_object_bongard_rubric_nomination(
+            external_root,
+            destination,
+            source_root=source_directory,
+        )
+    return _bind_verified_nomination(base, embedded)
 
 
 def persist_object_bongard_rubric_calibration_authorization(
@@ -1999,10 +2218,15 @@ def _new_observation_inventory(
     batch: ObjectBongardRubricObservationBatch,
     artifact_files: tuple[ObserverArtifactFileCommitment, ...],
 ) -> ObjectBongardRubricCalibrationObservationInventory:
+    if precommit.nomination_binding != authorization.nomination_binding:
+        raise ObjectBongardRubricCalibrationCommandError(
+            "observation inventory nomination differs from the active seal"
+        )
     values = {
         "authorization_digest": authorization.authorization_digest,
         "execution_precommit_digest": precommit.precommit_digest,
         "source_digest": authorization.source_digest,
+        "nomination_binding": authorization.nomination_binding,
         "job_inventory_digest": authorization.job_inventory_digest,
         "artifact_files": artifact_files,
         "batch": batch,
@@ -2032,6 +2256,7 @@ def persist_object_bongard_rubric_calibration_observation_inventory(
         raise TypeError("batch must be ObjectBongardRubricObservationBatch")
     if (
         precommit.authorization_digest != authorization.authorization_digest
+        or precommit.nomination_binding != authorization.nomination_binding
         or batch.source_digest != authorization.source_digest
     ):
         raise ObjectBongardRubricCalibrationCommandError(
@@ -2321,6 +2546,14 @@ def _new_disk_replay(
     inventory: ObjectBongardRubricCalibrationObservationInventory,
     assessment: ObjectBongardRubricCalibrationAssessment,
 ) -> ObjectBongardRubricCalibrationDiskReplay:
+    active_nomination = authorization.nomination_binding
+    if (
+        precommit.nomination_binding != active_nomination
+        or inventory.nomination_binding != active_nomination
+    ):
+        raise ObjectBongardRubricCalibrationCommandError(
+            "disk replay nomination differs across the sealed records"
+        )
     counts = tuple(
         len(item.survivor_candidate_digests)
         for item in assessment.spec_assessments
@@ -2335,6 +2568,7 @@ def _new_disk_replay(
         "observation_inventory_digest": inventory.inventory_digest,
         "assessment_digest": assessment.assessment_digest,
         "source_digest": authorization.source_digest,
+        "nomination_binding": authorization.nomination_binding,
         "survivor_counts": counts,
         "accepted": all(item >= 1 for item in counts),
     }
@@ -2360,7 +2594,10 @@ def cold_replay_object_bongard_rubric_calibration_directory(
     if not isinstance(require_replay_record, bool):
         raise TypeError("require_replay_record must be bool")
     root = _existing_output_root(output_root)
-    source = load_object_bongard_rubric_calibration_source(source_directory)
+    source = _bind_embedded_nomination(
+        root,
+        source_directory=source_directory,
+    )
     authorization = load_object_bongard_rubric_calibration_authorization(root)
     verify_object_bongard_rubric_calibration_authorization(
         authorization, source, source_directory=source_directory
@@ -2374,6 +2611,9 @@ def cold_replay_object_bongard_rubric_calibration_directory(
         inventory.authorization_digest != authorization.authorization_digest
         or inventory.execution_precommit_digest != precommit.precommit_digest
         or inventory.source_digest != source.source_digest
+        or inventory.nomination_binding != _nomination_binding(source)
+        or inventory.nomination_binding != authorization.nomination_binding
+        or inventory.nomination_binding != precommit.nomination_binding
         or inventory.job_inventory_digest != authorization.job_inventory_digest
     ):
         raise ObjectBongardRubricCalibrationCommandError(
@@ -2420,6 +2660,12 @@ class ObjectBongardRubricCalibrationCommandResult:
             != self.replay.observation_inventory_digest
             or self.assessment.assessment_digest != self.replay.assessment_digest
             or self.authorization.source_digest != self.replay.source_digest
+            or self.authorization.nomination_binding
+            != self.precommit.nomination_binding
+            or self.authorization.nomination_binding
+            != self.inventory.nomination_binding
+            or self.authorization.nomination_binding
+            != self.replay.nomination_binding
         ):
             raise ObjectBongardRubricCalibrationCommandError(
                 "calibration command result chain differs"
@@ -2431,12 +2677,13 @@ class ObjectBongardRubricCalibrationCommandResult:
 
     def summary_data(self) -> dict[str, object]:
         return {
-            "schema": "gkm.bongard-object-rubric-calibration-command-summary.v1",
+            "schema": "gkm.bongard-object-rubric-calibration-command-summary.v2",
             "authorization_digest": self.authorization.authorization_digest,
             "execution_precommit_digest": self.precommit.precommit_digest,
             "observation_inventory_digest": self.inventory.inventory_digest,
             "assessment_digest": self.assessment.assessment_digest,
             "cold_replay_digest": self.replay.replay_digest,
+            "nomination_binding": self.authorization.nomination_binding.to_data(),
             "observation_job_count": CALIBRATION_JOB_COUNT,
             "sheet_journal_count": CALIBRATION_SHEET_JOURNAL_COUNT,
             "fresh_model_call_count": self.inventory.fresh_model_call_count,
@@ -2470,6 +2717,7 @@ def _load_command_result(
 def run_object_bongard_rubric_calibration_command(
     output_root: str | os.PathLike[str],
     *,
+    nomination_root: str | os.PathLike[str],
     source_directory: str | os.PathLike[str] = (
         DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE
     ),
@@ -2496,6 +2744,8 @@ def run_object_bongard_rubric_calibration_command(
 ) -> ObjectBongardRubricCalibrationCommandResult:
     """Launch or resume the exact calibration and finish with disk replay.
 
+    The supplied nomination directory is cold-verified and embedded before
+    calibration authorization.  A resume must name the same predecessor.
     Existing canonical records are reused.  A completed observation inventory
     causes zero inference calls.  Partial work is resumed through the
     calibration driver's exclusive per-sheet journals; stranded claims remain
@@ -2507,7 +2757,11 @@ def run_object_bongard_rubric_calibration_command(
             "transport defaults differ from the frozen calibration model"
         )
     root = _ensure_output_root(output_root)
-    source = load_object_bongard_rubric_calibration_source(source_directory)
+    source = _copy_and_bind_nomination(
+        root,
+        nomination_root,
+        source_directory=source_directory,
+    )
     expected_authorization = prepare_object_bongard_rubric_calibration_authorization(
         source,
         source_directory=source_directory,
@@ -2568,6 +2822,9 @@ def run_object_bongard_rubric_calibration_command(
         inventory.authorization_digest != authorization.authorization_digest
         or inventory.execution_precommit_digest != precommit.precommit_digest
         or inventory.source_digest != source.source_digest
+        or inventory.nomination_binding != _nomination_binding(source)
+        or inventory.nomination_binding != authorization.nomination_binding
+        or inventory.nomination_binding != precommit.nomination_binding
         or inventory.job_inventory_digest != authorization.job_inventory_digest
     ):
         raise ObjectBongardRubricCalibrationCommandError(
@@ -2631,12 +2888,13 @@ def _add_common_cli_arguments(parser: argparse.ArgumentParser) -> None:
 def main(argv: Sequence[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Launch or cold-verify the exact already-exposed prose-rubric calibration"
+            "Launch or cold-verify the sealed vision-nominated rubric calibration"
         )
     )
     subparsers = parser.add_subparsers(dest="operation", required=True)
     launch = subparsers.add_parser("launch", help="launch or resume calibration")
     _add_common_cli_arguments(launch)
+    launch.add_argument("--nomination-root", required=True, type=Path)
     launch.add_argument("--minutes", type=int, default=CALIBRATION_MINUTES)
     launch.add_argument("--verbose", action="store_true")
     launch.add_argument("--executable", default=DEFAULT_CODEX_EXECUTABLE)
@@ -2651,6 +2909,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         if arguments.operation == "launch":
             result = run_object_bongard_rubric_calibration_command(
                 arguments.output_root,
+                nomination_root=arguments.nomination_root,
                 source_directory=arguments.source_directory,
                 minutes=arguments.minutes,
                 verbose=arguments.verbose,
@@ -2688,6 +2947,7 @@ __all__ = (
     "DEFAULT_CALIBRATION_CODEX_LAUNCHER_SHA256",
     "HISTORICAL_EXECUTION_PRECOMMIT_RECORD_DIGEST",
     "HISTORICAL_RELEASE_AUTHORIZATION_RECORD_DIGEST",
+    "NOMINATION_DIRECTORY",
     "CalibrationObservationJobCommitment",
     "CalibrationSheetCommitment",
     "ObjectBongardRubricCalibrationAuthorization",
@@ -2695,6 +2955,7 @@ __all__ = (
     "ObjectBongardRubricCalibrationCommandResult",
     "ObjectBongardRubricCalibrationDiskReplay",
     "ObjectBongardRubricCalibrationExecutionPrecommit",
+    "ObjectBongardRubricCalibrationNominationBinding",
     "ObjectBongardRubricCalibrationObservationInventory",
     "ObserverArtifactFileCommitment",
     "cold_replay_object_bongard_rubric_calibration_directory",
