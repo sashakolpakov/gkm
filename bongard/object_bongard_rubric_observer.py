@@ -45,8 +45,11 @@ from bongard.prototype_object_lineages import (
 )
 from bongard.prototype_object_profiles import (
     OBJECT_FEATURE_CATALOG,
-    OBJECT_FEATURE_CATALOG_DIGEST,
     OBJECT_FEATURE_IDS,
+)
+from bongard.object_bongard_soft_cues import (
+    ObjectBongardSoftCue,
+    object_bongard_soft_cue_grammar_digest,
 )
 from bongard.prototype_scene_observer import (
     CloudPolicyCacheSnapshot,
@@ -63,12 +66,12 @@ from bongard.transport import (
 )
 
 
-RUBRIC_SPEC_SCHEMA = "gkm.bongard-object-rubric-spec.v2"
+RUBRIC_SPEC_SCHEMA = "gkm.bongard-object-rubric-spec.v3"
 RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-object-rubric-observation.v1"
 RUBRIC_SHARD_SCHEMA = "gkm.bongard-object-rubric-observer-shard.v1"
 RUBRIC_OBSERVER_ARTIFACT_SCHEMA = "gkm.bongard-object-rubric-observer-artifact.v1"
 RUBRIC_OBSERVER_PROTOCOL_ID = (
-    "bongard.object-rubric-observer/contrastive-ordinal-atlas-scene-v2"
+    "bongard.object-rubric-observer/contrastive-ordinal-atlas-scene-v3"
 )
 
 # These strings are the operational meaning of every threshold in the closed
@@ -191,30 +194,53 @@ def object_bongard_catalog_contrast_rubric(
     target_feature_id: str,
     foil_feature_id: str,
 ) -> str:
-    """Derive the exact frozen ordered target-versus-foil observer prose."""
+    """Compatibility adapter from catalog IDs to typed soft cues."""
 
-    target = object_bongard_catalog_cue_rubric(target_feature_id)
-    foil = object_bongard_catalog_cue_rubric(foil_feature_id)
     if target_feature_id == foil_feature_id:
         raise ObjectBongardRubricObserverError(
             "target and foil semantic cue IDs must be distinct"
         )
+    target = ObjectBongardSoftCue.create(
+        object_bongard_catalog_cue_rubric(target_feature_id)
+    )
+    foil = ObjectBongardSoftCue.create(
+        object_bongard_catalog_cue_rubric(foil_feature_id)
+    )
+    return object_bongard_soft_contrast_rubric(target, foil)
+
+
+def object_bongard_soft_contrast_rubric(
+    target_cue: ObjectBongardSoftCue,
+    foil_cue: ObjectBongardSoftCue,
+) -> str:
+    """Derive exact model-visible prose from two content-addressed cues."""
+
+    if not isinstance(target_cue, ObjectBongardSoftCue) or not isinstance(
+        foil_cue, ObjectBongardSoftCue
+    ):
+        raise TypeError("target_cue and foil_cue must be typed soft cues")
+    target = ObjectBongardSoftCue.from_data(target_cue.to_data())
+    foil = ObjectBongardSoftCue.from_data(foil_cue.to_data())
+    if target.cue_digest == foil.cue_digest:
+        raise ObjectBongardRubricObserverError(
+            "target and foil soft cues must be distinct"
+        )
     rubric = (
         "Judge how much more strongly the visible form matches this target "
         "description than this foil description. "
-        f"Target description, {target} Foil description, {foil}"
+        f"Target description, {target.text} Foil description, {foil.text}"
     )
     try:
         checked = _object_protocol._audit_prose(
-            rubric, "catalog contrast rubric"
+            rubric, "soft contrast rubric"
         )
     except (TypeError, ValueError) as exc:  # pragma: no cover - frozen guard
         raise ObjectBongardRubricObserverError(
-            "frozen catalog contrast rubric violates the observer prose grammar"
+            "frozen soft contrast rubric violates the observer prose grammar"
         ) from exc
     if checked != rubric:
         raise ObjectBongardRubricObserverError(
-            "frozen catalog contrast rubric is not canonical"
+            "frozen soft contrast rubric is not canonical"
         )
     return rubric
 
@@ -222,13 +248,14 @@ def object_bongard_catalog_contrast_rubric(
 def object_bongard_rubric_observer_catalog_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-observer-catalog.v2",
+            "schema": "gkm.bongard-object-rubric-observer-catalog.v3",
             "protocol_id": RUBRIC_OBSERVER_PROTOCOL_ID,
             "source_digest": object_bongard_rubric_observer_source_digest(),
-            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
             "semantic_cue_rubric_derivation": (
-                "exact-ordered-target-versus-foil-operational-descriptions"
+                "exact-content-addressed-positive-soft-cue-target-versus-foil"
             ),
+            "feature_catalog_constrains_identity_or_decision": False,
             "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
             "hypothesis_extractor_digest": (
                 _object_observer.object_hypothesis_extractor_artifact_digest()
@@ -245,12 +272,16 @@ def _spec_content(value: "ObjectBongardRubricSpec") -> dict[str, object]:
     return {
         "schema": RUBRIC_SPEC_SCHEMA,
         "semantic_artifact_digest": value.semantic_artifact_digest,
+        "candidate_rank": value.candidate_rank,
+        "target_cue": value.target_cue.to_data(),
+        "foil_cue": value.foil_cue.to_data(),
         "rubric": value.rubric,
-        "feature_nominations": list(value.feature_nominations),
-        "ordered_feature_roles": ["target", "foil"],
+        "ordered_cue_roles": ["target", "foil"],
         "rubric_derivation_policy": (
-            "exact-frozen-catalog-ordered-target-versus-foil"
+            "exact-content-addressed-positive-soft-cue-target-versus-foil"
         ),
+        "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
+        "feature_catalog_constrains_identity_or_decision": False,
         "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
         "prose_is_observed_not_executable": True,
         **_authority_data(),
@@ -260,12 +291,24 @@ def _spec_content(value: "ObjectBongardRubricSpec") -> dict[str, object]:
 @dataclass(frozen=True, slots=True)
 class ObjectBongardRubricSpec:
     semantic_artifact_digest: str
+    candidate_rank: int
+    target_cue: ObjectBongardSoftCue
+    foil_cue: ObjectBongardSoftCue
     rubric: str
-    feature_nominations: tuple[str, ...]
     spec_digest: str
 
     def __post_init__(self) -> None:
         _digest(self.semantic_artifact_digest, "semantic artifact digest")
+        if type(self.candidate_rank) is not int or self.candidate_rank not in (0, 1):
+            raise ObjectBongardRubricObserverError(
+                "rubric candidate rank must be zero or one"
+            )
+        if not isinstance(self.target_cue, ObjectBongardSoftCue) or not isinstance(
+            self.foil_cue, ObjectBongardSoftCue
+        ):
+            raise TypeError("rubric cues must be typed soft cues")
+        target = ObjectBongardSoftCue.from_data(self.target_cue.to_data())
+        foil = ObjectBongardSoftCue.from_data(self.foil_cue.to_data())
         try:
             prose = _object_protocol._audit_prose(self.rubric, "rubric")
         except (TypeError, ValueError) as exc:
@@ -273,18 +316,13 @@ class ObjectBongardRubricSpec:
         if prose != self.rubric:
             raise ObjectBongardRubricObserverError("rubric prose differs")
         if (
-            not isinstance(self.feature_nominations, tuple)
-            or len(self.feature_nominations) != 2
-            or len(set(self.feature_nominations)) != 2
-            or any(item not in OBJECT_FEATURE_IDS for item in self.feature_nominations)
-        ):
-            raise ObjectBongardRubricObserverError("feature nominations are invalid")
-        target_feature_id, foil_feature_id = self.feature_nominations
-        if self.rubric != object_bongard_catalog_contrast_rubric(
-            target_feature_id, foil_feature_id
+            target != self.target_cue
+            or foil != self.foil_cue
+            or target.cue_digest == foil.cue_digest
+            or self.rubric != object_bongard_soft_contrast_rubric(target, foil)
         ):
             raise ObjectBongardRubricObserverError(
-                "rubric is not the exact ordered catalog contrast derivation"
+                "rubric is not the exact ordered soft-cue contrast derivation"
             )
         _digest(self.spec_digest, "rubric spec digest")
         if self.spec_digest != canonical_digest(_spec_content(self)):
@@ -296,11 +334,57 @@ class ObjectBongardRubricSpec:
         semantic_artifact_digest: str,
         rubric: str,
         feature_nominations: Sequence[str],
+        *,
+        candidate_rank: int = 0,
     ) -> "ObjectBongardRubricSpec":
+        """Compatibility adapter for legacy frozen-catalog callers."""
+
+        nominations = tuple(feature_nominations)
+        if (
+            len(nominations) != 2
+            or len(set(nominations)) != 2
+            or any(item not in OBJECT_FEATURE_IDS for item in nominations)
+        ):
+            raise ObjectBongardRubricObserverError("feature nominations are invalid")
+        target_id, foil_id = nominations
+        expected_rubric = object_bongard_catalog_contrast_rubric(
+            target_id, foil_id
+        )
+        if rubric != expected_rubric:
+            raise ObjectBongardRubricObserverError(
+                "legacy rubric differs from its catalog cue adapter"
+            )
+        return cls.from_soft_cues(
+            semantic_artifact_digest,
+            ObjectBongardSoftCue.create(
+                object_bongard_catalog_cue_rubric(target_id)
+            ),
+            ObjectBongardSoftCue.create(
+                object_bongard_catalog_cue_rubric(foil_id)
+            ),
+            candidate_rank,
+        )
+
+    @classmethod
+    def from_soft_cues(
+        cls,
+        semantic_artifact_digest: str,
+        target_cue: ObjectBongardSoftCue,
+        foil_cue: ObjectBongardSoftCue,
+        candidate_rank: int,
+    ) -> "ObjectBongardRubricSpec":
+        if not isinstance(target_cue, ObjectBongardSoftCue) or not isinstance(
+            foil_cue, ObjectBongardSoftCue
+        ):
+            raise TypeError("rubric cues must be typed soft cues")
+        target = ObjectBongardSoftCue.from_data(target_cue.to_data())
+        foil = ObjectBongardSoftCue.from_data(foil_cue.to_data())
         values = {
             "semantic_artifact_digest": semantic_artifact_digest,
-            "rubric": rubric,
-            "feature_nominations": tuple(feature_nominations),
+            "candidate_rank": candidate_rank,
+            "target_cue": target,
+            "foil_cue": foil,
+            "rubric": object_bongard_soft_contrast_rubric(target, foil),
         }
         provisional = object.__new__(cls)
         for name, item in values.items():
@@ -310,9 +394,26 @@ class ObjectBongardRubricSpec:
             spec_digest=canonical_digest(_spec_content(provisional)),
         )
 
+    @property
+    def feature_nominations(self) -> tuple[str, ...]:
+        """Return exact legacy catalog matches; never part of v3 identity."""
+
+        by_text = {
+            object_bongard_catalog_cue_rubric(feature_id): feature_id
+            for feature_id in OBJECT_FEATURE_IDS
+        }
+        values = (by_text.get(self.target_cue.text), by_text.get(self.foil_cue.text))
+        if any(item is None for item in values):
+            return ()
+        return values  # type: ignore[return-value]
+
     @classmethod
     def from_semantic_artifact(
-        cls, artifact: object, *, expected_artifact_digest: str
+        cls,
+        artifact: object,
+        *,
+        expected_artifact_digest: str,
+        candidate_rank: int = 0,
     ) -> "ObjectBongardRubricSpec":
         from bongard.object_bongard_semantics import ObjectBongardSemanticArtifact
 
@@ -333,21 +434,21 @@ class ObjectBongardRubricSpec:
             semantic != artifact
             or semantic.artifact_digest != expected
             or semantic.status is not PrototypeSceneObserverStatus.SUCCESS
-            or semantic.feature_catalog_digest != OBJECT_FEATURE_CATALOG_DIGEST
-            or len(semantic.rubrics) != 2
-            or len(semantic.feature_families) != 2
-            or any(len(group) != 1 for group in semantic.feature_families)
-            or semantic.feature_families[0] == semantic.feature_families[1]
+            or type(candidate_rank) is not int
+            or candidate_rank not in (0, 1)
+            or len(semantic.soft_cue_candidates) != 2
+            or tuple(
+                item.candidate_rank for item in semantic.soft_cue_candidates
+            )
+            != (0, 1)
         ):
             raise ObjectBongardRubricObserverError("semantic artifact differs")
-        target_cue_id = semantic.feature_families[0][0]
-        foil_cue_id = semantic.feature_families[1][0]
-        return cls.create(
+        pair = semantic.soft_cue_candidates[candidate_rank]
+        return cls.from_soft_cues(
             expected,
-            object_bongard_catalog_contrast_rubric(
-                target_cue_id, foil_cue_id
-            ),
-            (target_cue_id, foil_cue_id),
+            pair.group_0_cue,
+            pair.group_1_cue,
+            candidate_rank,
         )
 
     def to_data(self) -> dict[str, object]:
@@ -358,9 +459,11 @@ class ObjectBongardRubricSpec:
         raw = _fields(
             value,
             {
-                "schema", "semantic_artifact_digest", "rubric",
-                "feature_nominations", "ordered_feature_roles",
-                "rubric_derivation_policy", "ordinal_scale_digest",
+                "schema", "semantic_artifact_digest", "candidate_rank",
+                "target_cue", "foil_cue", "rubric", "ordered_cue_roles",
+                "rubric_derivation_policy", "soft_cue_grammar_digest",
+                "feature_catalog_constrains_identity_or_decision",
+                "ordinal_scale_digest",
                 "prose_is_observed_not_executable", *_authority_data(), "spec_digest",
             },
             "rubric spec",
@@ -368,17 +471,23 @@ class ObjectBongardRubricSpec:
         if (
             raw["schema"] != RUBRIC_SPEC_SCHEMA
             or raw["ordinal_scale_digest"] != object_bongard_rubric_ordinal_scale_digest()
-            or raw["ordered_feature_roles"] != ["target", "foil"]
+            or raw["ordered_cue_roles"] != ["target", "foil"]
             or raw["rubric_derivation_policy"]
-            != "exact-frozen-catalog-ordered-target-versus-foil"
+            != "exact-content-addressed-positive-soft-cue-target-versus-foil"
+            or raw["soft_cue_grammar_digest"]
+            != object_bongard_soft_cue_grammar_digest()
+            or raw["feature_catalog_constrains_identity_or_decision"] is not False
             or raw["prose_is_observed_not_executable"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
-            or not isinstance(raw["feature_nominations"], list)
         ):
             raise ObjectBongardRubricObserverError("rubric spec policy differs")
         result = cls(
-            raw["semantic_artifact_digest"], raw["rubric"],
-            tuple(raw["feature_nominations"]), raw["spec_digest"],
+            raw["semantic_artifact_digest"],
+            raw["candidate_rank"],
+            ObjectBongardSoftCue.from_data(raw["target_cue"]),
+            ObjectBongardSoftCue.from_data(raw["foil_cue"]),
+            raw["rubric"],
+            raw["spec_digest"],
         )
         if result.to_data() != dict(raw):
             raise ObjectBongardRubricObserverError("rubric spec is not canonical")
@@ -833,7 +942,7 @@ def object_bongard_rubric_observer_prompt(
 def object_bongard_rubric_observer_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-observer-protocol.v2",
+            "schema": "gkm.bongard-object-rubric-observer-protocol.v3",
             "protocol_id": RUBRIC_OBSERVER_PROTOCOL_ID,
             "source_digest": object_bongard_rubric_observer_source_digest(),
             "catalog_digest": object_bongard_rubric_observer_catalog_digest(),
@@ -1671,6 +1780,7 @@ __all__ = (
     "RubricScopeObservation",
     "object_bongard_catalog_contrast_rubric",
     "object_bongard_catalog_cue_rubric",
+    "object_bongard_soft_contrast_rubric",
     "object_bongard_rubric_observer_catalog_digest",
     "object_bongard_rubric_observer_model_digest",
     "object_bongard_rubric_observer_output_schema",

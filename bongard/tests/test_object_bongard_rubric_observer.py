@@ -17,11 +17,13 @@ from bongard.object_bongard_rubric_observer import (
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
     RubricObservationState,
     object_bongard_catalog_contrast_rubric,
+    object_bongard_soft_contrast_rubric,
     object_bongard_rubric_observer_prompt,
     object_bongard_rubric_ordinal_scale_digest,
     observe_object_bongard_rubric,
     verify_object_bongard_rubric_observer_artifact,
 )
+from bongard.object_bongard_soft_cues import ObjectBongardSoftCue
 from bongard.prototype_object_hypotheses import extract_object_hypothesis_packet
 from bongard.prototype_object_lineages import extract_object_lineage_packet
 from bongard.tests.test_prototype_scene_observer import (
@@ -134,20 +136,63 @@ def test_live_ordinal_rows_project_and_cold_replay() -> None:
     assert len(object_bongard_rubric_ordinal_scale_digest()) == 64
 
 
-def test_semantic_cues_derive_ordered_contrast_while_direct_specs_remain_usable() -> None:
+def test_semantic_cues_derive_two_ranked_content_addressed_specs() -> None:
     semantic, calls = _describe_semantic()
     assert calls == 1
-    derived = ObjectBongardRubricSpec.from_semantic_artifact(
+    first = ObjectBongardRubricSpec.from_semantic_artifact(
         semantic, expected_artifact_digest=semantic.artifact_digest
     )
-    assert derived.feature_nominations == (
-        "bird_like_support_ppm",
-        "rounded_leaf_support_ppm",
+    second = ObjectBongardRubricSpec.from_semantic_artifact(
+        semantic,
+        expected_artifact_digest=semantic.artifact_digest,
+        candidate_rank=1,
     )
-    assert derived.rubric == object_bongard_catalog_contrast_rubric(
-        "bird_like_support_ppm", "rounded_leaf_support_ppm"
+    assert (first.candidate_rank, second.candidate_rank) == (0, 1)
+    assert first.target_cue == semantic.soft_cue_candidates[0].group_0_cue
+    assert first.foil_cue == semantic.soft_cue_candidates[0].group_1_cue
+    assert second.target_cue == semantic.soft_cue_candidates[1].group_0_cue
+    assert second.foil_cue == semantic.soft_cue_candidates[1].group_1_cue
+    assert first.rubric == object_bongard_soft_contrast_rubric(
+        first.target_cue, first.foil_cue
     )
-    assert derived.rubric != semantic.rubrics[0]
+    assert first.spec_digest != second.spec_digest
+    assert first.feature_nominations == second.feature_nominations == ()
+
+
+def test_soft_spec_identity_binds_exact_cues_rank_and_not_feature_catalog() -> None:
+    target = ObjectBongardSoftCue.create(
+        "Unequal sector-like subshapes joined at a common apex."
+    )
+    foil = ObjectBongardSoftCue.create(
+        "Three line-like spans forming a triangular arrangement."
+    )
+    first = ObjectBongardRubricSpec.from_soft_cues(
+        SEMANTIC_DIGEST, target, foil, 0
+    )
+    second = ObjectBongardRubricSpec.from_soft_cues(
+        SEMANTIC_DIGEST, target, foil, 1
+    )
+    data = first.to_data()
+    assert data["target_cue"]["cue_digest"] == target.cue_digest
+    assert data["foil_cue"]["cue_digest"] == foil.cue_digest
+    assert data["candidate_rank"] == 0
+    assert data["feature_catalog_constrains_identity_or_decision"] is False
+    assert "feature_nominations" not in data
+    assert "feature_catalog_digest" not in data
+    assert ObjectBongardRubricSpec.from_data(data) == first
+    assert first.spec_digest != second.spec_digest
+
+    reversed_spec = ObjectBongardRubricSpec.from_soft_cues(
+        SEMANTIC_DIGEST, foil, target, 0
+    )
+    assert reversed_spec.spec_digest != first.spec_digest
+    with pytest.raises(ObjectBongardRubricObserverError):
+        ObjectBongardRubricSpec.from_soft_cues(
+            SEMANTIC_DIGEST, target, target, 0
+        )
+
+
+def test_legacy_catalog_adapter_remains_non_authoritative() -> None:
 
     fixed_calibration = ObjectBongardRubricSpec.create(
         SEMANTIC_DIGEST,
@@ -160,7 +205,7 @@ def test_semantic_cues_derive_ordered_contrast_while_direct_specs_remain_usable(
         "paired_sector_mismatch_support_ppm",
         "bird_like_support_ppm",
     )
-    assert fixed_calibration.to_data()["ordered_feature_roles"] == [
+    assert fixed_calibration.to_data()["ordered_cue_roles"] == [
         "target",
         "foil",
     ]
@@ -180,8 +225,8 @@ def test_semantic_cues_derive_ordered_contrast_while_direct_specs_remain_usable(
     with pytest.raises(ObjectBongardRubricObserverError):
         ObjectBongardRubricSpec.create(
             SEMANTIC_DIGEST,
-            derived.rubric,
-            tuple(reversed(derived.feature_nominations)),
+            fixed_calibration.rubric,
+            tuple(reversed(fixed_calibration.feature_nominations)),
         )
 
 
