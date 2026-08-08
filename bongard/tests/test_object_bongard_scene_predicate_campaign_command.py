@@ -19,6 +19,7 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     REGISTERED_B_CALLS_PER_TASK,
     TASK_COUNT,
     _CallBudget,
+    _automatic_release_source_bindings,
     _authority_data,
     _record,
     _restore_campaign_runtime,
@@ -235,6 +236,16 @@ def test_formula_freeze_and_commit_are_durable_before_exactly_two_queries() -> N
         events.append(f"observe:{side}")
         return {"side": side, "panel_id": released.panel_id}
 
+    def persist_query_custody(**kwargs: object) -> object:
+        panel_id = kwargs["panel_id"]
+        assert events[-1] == f"release:{panel_id}"
+        events.append(f"custody:{panel_id}")
+        return SimpleNamespace(
+            object_kind="scene-query-release-custody",
+            object_digest=ADDRESS_1,
+            record_digest=ADDRESS_2,
+        )
+
     phase = commit_and_release_object_bongard_scene_predicate_queries(
         prepared=prepared,
         archive=object(),
@@ -244,13 +255,16 @@ def test_formula_freeze_and_commit_are_durable_before_exactly_two_queries() -> N
         persist_freeze=persist_freeze,
         persist_commit=persist_commit,
         release_query=release_query,
+        persist_query_custody=persist_query_custody,
     )
     assert events == [
         "persist-freeze",
         "persist-commit",
         "release:sealed-query-a",
+        "custody:sealed-query-a",
         "observe:side_0",
         "release:sealed-query-b",
+        "custody:sealed-query-b",
         "observe:side_1",
     ]
     assert replay_object_bongard_scene_predicate_query_phase(phase) is phase
@@ -262,6 +276,7 @@ def test_formula_freeze_and_commit_are_durable_before_exactly_two_queries() -> N
         phase.commit_receipt,
         phase.query_artifacts,
         phase.query_release_receipts,
+        phase.query_custody_receipts,
     )
     with pytest.raises(
         ObjectBongardScenePredicateCampaignCommandError,
@@ -304,6 +319,12 @@ def test_stage_budgets_denominator_and_python_authority_are_closed() -> None:
     assert authority["lean_present"] is False
     assert authority["lean_required"] is False
     assert authority["lean_removable"] is True
+    automatic = _automatic_release_source_bindings()
+    assert set(automatic) == {"batch_source", "release_gate_source"}
+    assert all(
+        value.startswith("sha256:") and len(value) == 71
+        for value in automatic.values()
+    )
 
 
 def test_query_scoring_uses_certified_absence_in_both_orientations(
@@ -487,6 +508,24 @@ def test_accepted_and_gap_task_records_fail_closed_on_tamper_or_budget() -> None
         match="policy or budget differs",
     ):
         _validate_task_result_record(forged_authority)
+
+    forged_gap_metadata_body = {
+        key: value for key, value in gap.items() if key != "task_result_digest"
+    }
+    forged_gap_metadata_body["score_rows"] = [
+        {**row, "query_artifact_digest": RAW_5}
+        if index == 0
+        else dict(row)
+        for index, row in enumerate(forged_gap_metadata_body["score_rows"])
+    ]
+    forged_gap_metadata = _record(
+        forged_gap_metadata_body, "task_result_digest"
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateCampaignCommandError,
+        match="canonical no-query rows",
+    ):
+        _validate_task_result_record(forged_gap_metadata)
 
 
 def test_runtime_record_round_trip_preserves_absent_cache_snapshot_object() -> None:

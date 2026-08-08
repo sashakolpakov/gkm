@@ -37,7 +37,10 @@ from threading import Lock
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
-from bongard.object_bongard_batch import ObjectBongardBatchPlan
+from bongard.object_bongard_batch import (
+    ObjectBongardBatchPlan,
+    object_bongard_batch_source_digest,
+)
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
@@ -72,6 +75,12 @@ TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v1"
 TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v1"
 TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v1"
 CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
+CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
+    "gkm.bongard-scene-predicate-campaign-runtime-custody.v1"
+)
+QUERY_RELEASE_CUSTODY_SCHEMA = (
+    "gkm.bongard-scene-predicate-query-release-custody.v1"
+)
 CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v1"
 CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v1"
 RESULT_FILENAME = "campaign_result.json"
@@ -137,6 +146,18 @@ def _authority_data() -> dict[str, object]:
         "lean_removable": True,
         "lean_affects_identity_selection_decision_scoring_or_replay": False,
         "lean_removal_changes_decision": False,
+    }
+
+
+def _automatic_release_source_bindings() -> dict[str, str]:
+    from bongard.object_bongard_release_gate import (
+        object_bongard_release_gate_source_digest,
+    )
+
+    return {
+        "batch_source": "sha256:" + object_bongard_batch_source_digest(),
+        "release_gate_source": "sha256:"
+        + object_bongard_release_gate_source_digest(),
     }
 
 
@@ -618,6 +639,78 @@ class ObjectBongardScenePredicateTaskCommit:
         return result
 
 
+def _persist_query_release_custody(
+    *,
+    prepared: object,
+    task: object,
+    side: str,
+    panel_id: str,
+    freeze: ObjectBongardScenePredicateTaskFreeze,
+    freeze_receipt: object,
+    commit: ObjectBongardScenePredicateTaskCommit,
+    commit_receipt: object,
+    released: object,
+    release_receipt: object,
+) -> object:
+    store = getattr(prepared, "store", None)
+    release_receipt_data = _canonical_mapping(
+        getattr(release_receipt, "to_data")(), "query release store receipt"
+    )
+    record = _record(
+        {
+            "schema": QUERY_RELEASE_CUSTODY_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_id": freeze.task_id,
+            "task_plan_digest": freeze.task_plan_digest,
+            "execution_precommit_digest": freeze.execution_precommit_digest,
+            "query_side": side,
+            "sealed_query_panel_id": panel_id,
+            "formula_freeze_digest": freeze.record_digest,
+            "formula_freeze_payload_digest": _address(
+                getattr(freeze_receipt, "payload_digest", None),
+                "query custody freeze payload",
+            ),
+            "formula_freeze_receipt_digest": _address(
+                getattr(freeze_receipt, "record_digest", None),
+                "query custody freeze receipt",
+            ),
+            "decision_commit_digest": commit.record_digest,
+            "decision_commit_payload_digest": _address(
+                getattr(commit_receipt, "payload_digest", None),
+                "query custody commit payload",
+            ),
+            "decision_commit_receipt_digest": _address(
+                getattr(commit_receipt, "record_digest", None),
+                "query custody commit receipt",
+            ),
+            "released_query_panel_digest": _address(
+                getattr(released, "record_digest", None),
+                "query custody released panel",
+            ),
+            "released_query_store_receipt": release_receipt_data,
+            "release_gate_verified_exact_durable_freeze_and_commit": True,
+            "custody_witness_persisted_before_visual_observation": True,
+            **_authority_data(),
+        },
+        "custody_digest",
+    )
+    raw, receipt = _persist_record(
+        store,
+        object_kind="scene-query-release-custody",
+        record=record,
+        digest_field="custody_digest",
+    )
+    if (
+        raw["task_id"] != getattr(task, "task_id", None)
+        or getattr(release_receipt, "object_digest", None)
+        != raw["released_query_panel_digest"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query release custody binding differs"
+        )
+    return receipt
+
+
 @dataclass(frozen=True, slots=True)
 class ObjectBongardScenePredicateQueryPhase:
     freeze: ObjectBongardScenePredicateTaskFreeze
@@ -626,6 +719,7 @@ class ObjectBongardScenePredicateQueryPhase:
     commit_receipt: object
     query_artifacts: tuple[object, object]
     query_release_receipts: tuple[object, object]
+    query_custody_receipts: tuple[object, object]
 
 
 def commit_and_release_object_bongard_scene_predicate_queries(
@@ -638,6 +732,7 @@ def commit_and_release_object_bongard_scene_predicate_queries(
     persist_freeze: Callable[..., object] | None = None,
     persist_commit: Callable[..., object] | None = None,
     release_query: Callable[..., tuple[object, object]] | None = None,
+    persist_query_custody: Callable[..., object] | None = None,
 ) -> ObjectBongardScenePredicateQueryPhase:
     """Persist formula+commit, then release and observe exactly two queries."""
 
@@ -650,6 +745,7 @@ def commit_and_release_object_bongard_scene_predicate_queries(
     freeze_writer = persist_freeze or persist_object_bongard_task_freeze
     commit_writer = persist_commit or persist_object_bongard_task_commit
     query_releaser = release_query or release_object_bongard_query_panel
+    custody_writer = persist_query_custody or _persist_query_release_custody
     store = getattr(prepared, "store", None)
     precommit = getattr(prepared, "precommit", None)
     task_id = getattr(task, "task_id", None)
@@ -676,6 +772,7 @@ def commit_and_release_object_bongard_scene_predicate_queries(
         )
     artifacts: list[object] = []
     receipts: list[object] = []
+    custody_receipts: list[object] = []
     for side, panel_id in zip(("side_0", "side_1"), query_ids, strict=True):
         released, receipt = query_releaser(
             prepared=prepared,
@@ -686,9 +783,27 @@ def commit_and_release_object_bongard_scene_predicate_queries(
             task_freeze_receipt=freeze_receipt,
             task_commit_receipt=commit_receipt,
         )
+        custody_receipts.append(
+            custody_writer(
+                prepared=prepared,
+                task=task,
+                side=side,
+                panel_id=panel_id,
+                freeze=freeze,
+                freeze_receipt=freeze_receipt,
+                commit=commit,
+                commit_receipt=commit_receipt,
+                released=released,
+                release_receipt=receipt,
+            )
+        )
         artifacts.append(query_observer(side, released))
         receipts.append(receipt)
-    if len(artifacts) != QUERY_CALLS_PER_TASK or len(receipts) != QUERY_CALLS_PER_TASK:
+    if (
+        len(artifacts) != QUERY_CALLS_PER_TASK
+        or len(receipts) != QUERY_CALLS_PER_TASK
+        or len(custody_receipts) != QUERY_CALLS_PER_TASK
+    ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "query phase did not make exactly two observations"
         )
@@ -699,6 +814,7 @@ def commit_and_release_object_bongard_scene_predicate_queries(
         commit_receipt,
         (artifacts[0], artifacts[1]),
         (receipts[0], receipts[1]),
+        (custody_receipts[0], custody_receipts[1]),
     )
 
 
@@ -727,6 +843,11 @@ def replay_object_bongard_scene_predicate_query_phase(
         or getattr(phase.commit_receipt, "object_digest", None) != commit.record_digest
         or len(phase.query_artifacts) != QUERY_CALLS_PER_TASK
         or len(phase.query_release_receipts) != QUERY_CALLS_PER_TASK
+        or len(phase.query_custody_receipts) != QUERY_CALLS_PER_TASK
+        or any(
+            getattr(receipt, "object_kind", None) != "scene-query-release-custody"
+            for receipt in phase.query_custody_receipts
+        )
     ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "query phase model-free replay differs"
@@ -743,6 +864,10 @@ class PreparedObjectBongardScenePredicateCampaign:
     descriptor: object
     archive: object
     release: object
+    runtime_record: Mapping[str, Any]
+    runtime_receipt: object
+    runtime_custody_witness: Mapping[str, Any]
+    runtime_custody_receipt: object
 
 
 def _fresh_output_root(value: str | os.PathLike[str]) -> Path:
@@ -955,6 +1080,34 @@ def prepare_object_bongard_scene_predicate_campaign(
     bindings["authenticated_runtime_record"] = _address(
         runtime_record_digest, "runtime record digest"
     )
+    # Persist the exact authenticated runtime and then a custody witness before
+    # constructing the execution precommit.  The precommit binds the witness
+    # digest, so the exposure successor cannot be replayed without this exact
+    # pre-exposure receipt graph.
+    runtime_raw, runtime_receipt = _persist_record(
+        store,
+        object_kind="scene-campaign-runtime",
+        record=runtime_raw,
+        digest_field="runtime_digest",
+    )
+    runtime_custody = _runtime_custody_record(
+        runtime_record=runtime_raw,
+        runtime_receipt=runtime_receipt,
+        plan_digest=plan.record_digest,
+        predecessor_digest=predecessor.digest,
+        release_descriptor_digest=descriptor.digest,
+        archive_record_digest=archive.record_digest,
+    )
+    runtime_custody, runtime_custody_receipt = _persist_record(
+        store,
+        object_kind="scene-campaign-runtime-custody",
+        record=runtime_custody,
+        digest_field="custody_digest",
+    )
+    bindings["runtime_preexposure_custody"] = runtime_custody["custody_digest"]
+    bindings["runtime_preexposure_custody_receipt"] = getattr(
+        runtime_custody_receipt, "record_digest"
+    )
     precommit = create_object_bongard_execution_precommit(
         plan=plan,
         predecessor=predecessor,
@@ -985,14 +1138,13 @@ def prepare_object_bongard_scene_predicate_campaign(
         exposure_purpose="prose-grounded-python-predicate-support-and-sealed-query",
         exposure_source=f"{COMMAND_ID}:{plan.record_digest}",
     )
-    # The runtime object is durable before prepare_object... appends and
-    # persists the one irreversible cohort exposure event.
-    _persist_record(
-        store,
-        object_kind="scene-campaign-runtime",
-        record=runtime_raw,
-        digest_field="runtime_digest",
-    )
+    if dict(precommit.runtime_source_bindings) != {
+        **bindings,
+        **_automatic_release_source_bindings(),
+    }:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "execution precommit automatic source bindings differ"
+        )
     prepared = prepare_object_bongard_release(
         store=store,
         plan=plan,
@@ -1004,7 +1156,17 @@ def prepare_object_bongard_scene_predicate_campaign(
         predecessor=predecessor, plan=plan, prepared=prepared
     )
     return PreparedObjectBongardScenePredicateCampaign(
-        root, calibration, preregistration, plan, descriptor, archive, prepared
+        root,
+        calibration,
+        preregistration,
+        plan,
+        descriptor,
+        archive,
+        prepared,
+        runtime_raw,
+        runtime_receipt,
+        runtime_custody,
+        runtime_custody_receipt,
     )
 
 
@@ -1035,6 +1197,43 @@ def _persist_record(
             f"{object_kind} durable reload differs"
         )
     return raw, receipt
+
+
+def _runtime_custody_record(
+    *,
+    runtime_record: Mapping[str, Any],
+    runtime_receipt: object,
+    plan_digest: str,
+    predecessor_digest: str,
+    release_descriptor_digest: str,
+    archive_record_digest: str,
+) -> dict[str, Any]:
+    receipt_data = _canonical_mapping(
+        getattr(runtime_receipt, "to_data")(), "runtime store receipt"
+    )
+    return _record(
+        {
+            "schema": CAMPAIGN_RUNTIME_CUSTODY_SCHEMA,
+            "command_id": COMMAND_ID,
+            "runtime_digest": _address(
+                runtime_record.get("runtime_digest"), "custody runtime digest"
+            ),
+            "runtime_store_receipt": receipt_data,
+            "batch_plan_digest": _address(plan_digest, "custody plan digest"),
+            "exposure_predecessor_digest": _address(
+                predecessor_digest, "custody predecessor digest"
+            ),
+            "release_descriptor_digest": _address(
+                release_descriptor_digest, "custody descriptor digest"
+            ),
+            "archive_record_digest": _address(
+                archive_record_digest, "custody archive digest"
+            ),
+            "witness_persisted_and_bound_into_precommit_before_exposure": True,
+            **_authority_data(),
+        },
+        "custody_digest",
+    )
 
 
 def _runtime_record(runtime: object, fingerprint: Mapping[str, str]) -> dict[str, Any]:
@@ -2244,6 +2443,21 @@ def _query_score_rows(
     return rows[0], rows[1]
 
 
+def _typed_gap_score_rows() -> tuple[dict[str, Any], dict[str, Any]]:
+    return tuple(  # type: ignore[return-value]
+        {
+            "side": f"side_{index}",
+            "query_artifact_digest": None,
+            "query_observation_digest": None,
+            "expected_disposition": None,
+            "actual_disposition": "typed_gap_no_query",
+            "correct": False,
+            "indeterminate_or_error_scores_incorrect": True,
+        }
+        for index in range(QUERY_CALLS_PER_TASK)
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class _TaskOutcome:
     result: Mapping[str, Any]
@@ -2371,26 +2585,7 @@ def _execute_task(
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "nonempty task version space was converted to a gap"
             )
-        score_rows = (
-            {
-                "side": "side_0",
-                "query_artifact_digest": None,
-                "query_observation_digest": None,
-                "expected_disposition": None,
-                "actual_disposition": "typed_gap_no_query",
-                "correct": False,
-                "indeterminate_or_error_scores_incorrect": True,
-            },
-            {
-                "side": "side_1",
-                "query_artifact_digest": None,
-                "query_observation_digest": None,
-                "expected_disposition": None,
-                "actual_disposition": "typed_gap_no_query",
-                "correct": False,
-                "indeterminate_or_error_scores_incorrect": True,
-            },
-        )
+        score_rows = _typed_gap_score_rows()
     else:
         selected_data = candidate_by_digest.get(selected)
         if selected_data is None:
@@ -2474,6 +2669,9 @@ def _execute_task(
                 "artifacts": [item.to_data() for item in query_phase.query_artifacts],
                 "release_receipts": [
                     item.to_data() for item in query_phase.query_release_receipts
+                ],
+                "custody_witness_receipts": [
+                    item.to_data() for item in query_phase.query_custody_receipts
                 ],
                 "journal_summary_digests": list(query_journal_summaries),
                 "score_rows": [dict(item) for item in score_rows],
@@ -2749,16 +2947,19 @@ def run_object_bongard_scene_predicate_campaign_command(
         parallel_workers=parallel_workers,
         campaign_minutes=campaign_minutes,
     )
-    runtime_record, runtime_receipt = _persist_record(
-        prepared.release.store,
-        object_kind="scene-campaign-runtime",
-        record=runtime_record,
-        digest_field="runtime_digest",
-    )
+    runtime_record = dict(prepared.runtime_record)
+    runtime_receipt = prepared.runtime_receipt
     bindings = dict(prepared.release.precommit.runtime_source_bindings)
-    if bindings.get("authenticated_runtime_record") != runtime_record["runtime_digest"]:
+    if (
+        bindings.get("authenticated_runtime_record")
+        != runtime_record["runtime_digest"]
+        or bindings.get("runtime_preexposure_custody")
+        != prepared.runtime_custody_witness["custody_digest"]
+        or bindings.get("runtime_preexposure_custody_receipt")
+        != getattr(prepared.runtime_custody_receipt, "record_digest", None)
+    ):
         raise ObjectBongardScenePredicateCampaignCommandError(
-            "execution precommit does not bind the authenticated runtime"
+            "execution precommit does not bind the authenticated runtime custody"
         )
 
     budget = _CallBudget(
@@ -2824,6 +3025,9 @@ def run_object_bongard_scene_predicate_campaign_command(
             "exposure_predecessor_digest": prepared.release.predecessor.digest,
             "exposure_successor_digest": prepared.release.successor.digest,
             "runtime_record_receipt": runtime_receipt.to_data(),
+            "runtime_custody_witness_receipt": (
+                prepared.runtime_custody_receipt.to_data()
+            ),
             "release_receipts": {
                 "plan": prepared.release.plan_receipt.to_data(),
                 "precommit": prepared.release.precommit_receipt.to_data(),
@@ -2939,6 +3143,7 @@ def _load_stored_record(
             "record_digest",
             "ledger_digest",
             "runtime_digest",
+            "custody_digest",
             "batch_digest",
             "registry_freeze_digest",
             "ir_freeze_digest",
@@ -3212,11 +3417,9 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         _raw_digest(selected, "task selected survivor")
         _address(raw["task_formula_freeze_digest"], "task formula freeze")
         _address(raw["task_decision_commit_digest"], "task decision commit")
-    elif any(item["correct"] for item in rows) or any(
-        item.get("actual_disposition") != "typed_gap_no_query" for item in rows
-    ):
+    elif rows != [dict(item) for item in _typed_gap_score_rows()]:
         raise ObjectBongardScenePredicateCampaignCommandError(
-            "typed gap received query credit"
+            "typed gap score rows differ from the canonical no-query rows"
         )
     return raw
 
@@ -3650,6 +3853,7 @@ def _verify_task_from_store(
         "decision_commit_receipt",
         "artifacts",
         "release_receipts",
+        "custody_witness_receipts",
         "journal_summary_digests",
         "score_rows",
         "fresh_visual_call_count",
@@ -3700,10 +3904,13 @@ def _verify_task_from_store(
         getattr(task, "side_1_query_panel_id"),
     )
     release_receipt_data = query_batch.get("release_receipts")
+    custody_receipt_data = query_batch.get("custody_witness_receipts")
     artifact_data = query_batch.get("artifacts")
     if (
         not isinstance(release_receipt_data, list)
         or len(release_receipt_data) != QUERY_CALLS_PER_TASK
+        or not isinstance(custody_receipt_data, list)
+        or len(custody_receipt_data) != QUERY_CALLS_PER_TASK
         or not isinstance(artifact_data, list)
         or len(artifact_data) != QUERY_CALLS_PER_TASK
     ):
@@ -3712,6 +3919,7 @@ def _verify_task_from_store(
         )
     query_released: list[object] = []
     query_release_receipts: list[object] = []
+    query_custody_receipts: list[object] = []
     for index, (receipt_data, expected_panel_id) in enumerate(
         zip(release_receipt_data, expected_query_ids, strict=True)
     ):
@@ -3733,8 +3941,81 @@ def _verify_task_from_store(
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "released query panel differs from sealed task query"
             )
+        custody_raw, custody_receipt = _load_stored_record(
+            store,
+            custody_receipt_data[index],
+            f"query release custody {task_index}:{index}",
+            expected_object_kind="scene-query-release-custody",
+        )
+        _validate_self_sealed_record(
+            custody_raw,
+            schema=QUERY_RELEASE_CUSTODY_SCHEMA,
+            digest_field="custody_digest",
+            label="query release custody",
+        )
+        custody_fields = {
+            "schema",
+            "command_id",
+            "task_id",
+            "task_plan_digest",
+            "execution_precommit_digest",
+            "query_side",
+            "sealed_query_panel_id",
+            "formula_freeze_digest",
+            "formula_freeze_payload_digest",
+            "formula_freeze_receipt_digest",
+            "decision_commit_digest",
+            "decision_commit_payload_digest",
+            "decision_commit_receipt_digest",
+            "released_query_panel_digest",
+            "released_query_store_receipt",
+            "release_gate_verified_exact_durable_freeze_and_commit",
+            "custody_witness_persisted_before_visual_observation",
+            *_authority_data(),
+            "custody_digest",
+        }
+        if (
+            set(custody_raw) != custody_fields
+            or custody_raw.get("command_id") != COMMAND_ID
+            or custody_raw.get("task_id") != freeze.task_id
+            or custody_raw.get("task_plan_digest") != freeze.task_plan_digest
+            or custody_raw.get("execution_precommit_digest")
+            != freeze.execution_precommit_digest
+            or custody_raw.get("query_side") != f"side_{index}"
+            or custody_raw.get("sealed_query_panel_id") != expected_panel_id
+            or custody_raw.get("formula_freeze_digest") != freeze.record_digest
+            or custody_raw.get("formula_freeze_payload_digest")
+            != getattr(freeze_receipt, "payload_digest", None)
+            or custody_raw.get("formula_freeze_receipt_digest")
+            != getattr(freeze_receipt, "record_digest", None)
+            or custody_raw.get("decision_commit_digest") != commit.record_digest
+            or custody_raw.get("decision_commit_payload_digest")
+            != getattr(commit_receipt, "payload_digest", None)
+            or custody_raw.get("decision_commit_receipt_digest")
+            != getattr(commit_receipt, "record_digest", None)
+            or custody_raw.get("released_query_panel_digest")
+            != released.record_digest
+            or custody_raw.get("released_query_store_receipt") != receipt_data
+            or custody_raw.get(
+                "release_gate_verified_exact_durable_freeze_and_commit"
+            )
+            is not True
+            or custody_raw.get(
+                "custody_witness_persisted_before_visual_observation"
+            )
+            is not True
+            or custody_receipt.object_digest != custody_raw["custody_digest"]
+            or any(
+                custody_raw.get(key) != value
+                for key, value in _authority_data().items()
+            )
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "query release custody differs"
+            )
         query_released.append(released)
         query_release_receipts.append(released_receipt)
+        query_custody_receipts.append(custody_receipt)
     query_artifacts = tuple(
         ObjectSceneTranscriptArtifact.from_data(item) for item in artifact_data
     )
@@ -3768,6 +4049,7 @@ def _verify_task_from_store(
         commit_receipt,
         (query_artifacts[0], query_artifacts[1]),
         (query_release_receipts[0], query_release_receipts[1]),
+        (query_custody_receipts[0], query_custody_receipts[1]),
     )
     replay_object_bongard_scene_predicate_query_phase(phase)
     language = ScenePredicateLanguage.from_data(bundle.version_space["language"])
@@ -3866,6 +4148,7 @@ def verify_object_bongard_scene_predicate_campaign(
         "exposure_predecessor_digest",
         "exposure_successor_digest",
         "runtime_record_receipt",
+        "runtime_custody_witness_receipt",
         "release_receipts",
         "task_result_receipts",
         "task_result_digests",
@@ -4094,6 +4377,55 @@ def verify_object_bongard_scene_predicate_campaign(
         key: item for key, item in runtime_record.items() if key != "runtime_digest"
     }
     runtime = _restore_campaign_runtime(runtime_record)
+    runtime_custody, runtime_custody_receipt = _load_stored_record(
+        store,
+        result["runtime_custody_witness_receipt"],
+        "campaign runtime custody witness",
+        expected_object_kind="scene-campaign-runtime-custody",
+    )
+    _validate_self_sealed_record(
+        runtime_custody,
+        schema=CAMPAIGN_RUNTIME_CUSTODY_SCHEMA,
+        digest_field="custody_digest",
+        label="campaign runtime custody witness",
+    )
+    runtime_custody_fields = {
+        "schema",
+        "command_id",
+        "runtime_digest",
+        "runtime_store_receipt",
+        "batch_plan_digest",
+        "exposure_predecessor_digest",
+        "release_descriptor_digest",
+        "archive_record_digest",
+        "witness_persisted_and_bound_into_precommit_before_exposure",
+        *_authority_data(),
+        "custody_digest",
+    }
+    if (
+        set(runtime_custody) != runtime_custody_fields
+        or runtime_custody.get("command_id") != COMMAND_ID
+        or runtime_custody.get("runtime_digest") != runtime_record["runtime_digest"]
+        or runtime_custody.get("runtime_store_receipt")
+        != result["runtime_record_receipt"]
+        or runtime_custody.get("batch_plan_digest") != plan.record_digest
+        or runtime_custody.get("exposure_predecessor_digest") != predecessor.digest
+        or runtime_custody.get("release_descriptor_digest") != descriptor.digest
+        or runtime_custody.get("archive_record_digest") != archive.record_digest
+        or runtime_custody.get(
+            "witness_persisted_and_bound_into_precommit_before_exposure"
+        )
+        is not True
+        or runtime_custody_receipt.object_digest
+        != runtime_custody["custody_digest"]
+        or any(
+            runtime_custody.get(key) != value
+            for key, value in _authority_data().items()
+        )
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign pre-exposure runtime custody differs"
+        )
     configuration = dict(precommit.configuration)
     source_bindings = dict(precommit.runtime_source_bindings)
     from bongard.object_bongard_scene_predicate_calibration_command import (
@@ -4126,6 +4458,9 @@ def verify_object_bongard_scene_predicate_campaign(
         "turn_journal": "sha256:" + object_bongard_turn_journal_source_digest(),
         "transport": "sha256:" + prototype_scene_transport_source_digest(),
         "authenticated_runtime_record": runtime_record["runtime_digest"],
+        "runtime_preexposure_custody": runtime_custody["custody_digest"],
+        "runtime_preexposure_custody_receipt": runtime_custody_receipt.record_digest,
+        **_automatic_release_source_bindings(),
     }
     expected_configuration = {
         "task_count": TASK_COUNT,
@@ -4174,6 +4509,10 @@ def verify_object_bongard_scene_predicate_campaign(
         descriptor,
         archive,
         release,
+        runtime_record,
+        runtime_receipt,
+        runtime_custody,
+        runtime_custody_receipt,
     )
     correct = 0
     queried = 0
