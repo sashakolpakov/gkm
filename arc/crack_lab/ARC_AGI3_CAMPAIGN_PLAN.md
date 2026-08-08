@@ -2416,6 +2416,18 @@ closure must match the JIT evidence receipt. The already-live pre-policy LF52
 child is allowed to drain under its unchanged runtime, but that host runtime is
 not modified mid-turn and its parent remains unable to promote directly.
 
+Historical-runner admission is append-only and exact in the runner source
+SHA-256, Git HEAD, evidence schema, lock schema, and sandbox-contract digest.
+The `c1f8168f` / `bb347429` tuple remains the byte-exact submitted protocol for
+its existing evidence.  The prospective `246405c1` / `7455d304` tuple is a
+submitted-protocol-derived boundary-remediation v2 whose only source change is
+a fixed generic warning that the trusted `gkm_try.py` bootstrap does not grant
+dynamic-import or private-runner authority to proposer-authored files.  It does
+not cleanse or reinterpret prior rejected generations, and it neither aliases
+nor supersedes the submitted tuple.  Every admitted tuple must appear in the
+sandbox-contract, historical-runner, and recovery registries; no current-source
+or branch wildcard is admissible.
+
 As of 2026-08-04, the preparatory half of that obligation is implemented by
 `arc_agi3_arena_rpc_client.py` and
 `arc_agi3_compatibility_arena_closure.py`. The extracted client preserves the

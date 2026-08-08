@@ -143,6 +143,15 @@ SANDBOX_CONTRACTS = {
             b"historical-gkm-codex-exec-ephemeral-strict-config-"
             b"sandbox-workspace-write-cd-exact-workspace/v1"
         ).hexdigest(),
+    # Prospective submitted-protocol-derived boundary remediation v2.  The
+    # process, sandbox, evidence, and lock contract is byte-for-byte unchanged;
+    # only the fixed proposer instruction clarifies that host bootstrap imports
+    # are not reusable proposer authority.
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b":
+        hashlib.sha256(
+            b"historical-gkm-codex-exec-ephemeral-strict-config-"
+            b"sandbox-workspace-write-cd-exact-workspace/v1"
+        ).hexdigest(),
 }
 SANDBOX_ABANDON_EVENT_KEYS = frozenset({
     "event", "schema", "recorded_at", "isolation_authority",
@@ -218,6 +227,12 @@ PINNED_HISTORICAL_RUNNERS = {
     # Exact submitted-benchmark protocol used for the LF52 continuation.
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64": {
         "head_commit": "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
+    # Prospective boundary-remediation v2; never retroactively aliases c1f.
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b": {
+        "head_commit": "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f",
         "evidence_schema": "sealed_transcript_only_v1",
         "lock_schema": "in_workspace_v1",
     },

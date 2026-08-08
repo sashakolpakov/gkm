@@ -115,6 +115,14 @@ def test_clean_room_boundary_allows_only_exact_raw_arena_capability(tmp_path):
             "import os\nos.execvp('python', ['python', 'probe.py'])\n",
             "detached_process_escape",
         ),
+        (
+            "import importlib.util\n",
+            "dynamic_or_process_import",
+        ),
+        (
+            "import gkm_legs\n",
+            "private_harness_import",
+        ),
     ),
 )
 def test_python_boundary_rejects_host_mutation_and_exec_families(

@@ -46,6 +46,7 @@ DISPATCH_ID_RE = re.compile(r"[0-9a-f]{32}")
 SAFE_COMPONENT_RE = re.compile(r"[A-Za-z0-9_.-]+")
 APPROVED_SANDBOXED_GENERATION_SOURCES = frozenset({
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64",
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b",
 })
 BOOT_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"

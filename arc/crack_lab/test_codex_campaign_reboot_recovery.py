@@ -3341,7 +3341,80 @@ def test_completed_replay_rejects_malformed_receipt_identifier(
         _recover(fixture)
 
 
-def _sandboxed_generation_fixture(tmp_path, monkeypatch):
+LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256 = (
+    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64"
+)
+BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256 = (
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b"
+)
+BOUNDARY_V2_HISTORICAL_RUNNER_HEAD = (
+    "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f"
+)
+
+
+def test_historical_runner_registries_are_exact_and_coherent():
+    expected_heads = {
+        LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256:
+            "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
+        BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256:
+            BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
+    }
+    assert set(R.PINNED_HISTORICAL_RUNNERS) == set(expected_heads)
+    assert set(R.SANDBOX_CONTRACTS) == set(expected_heads)
+    assert Recovery.APPROVED_SANDBOXED_GENERATION_SOURCES == frozenset(
+        expected_heads
+    )
+    assert {
+        source: metadata["head_commit"]
+        for source, metadata in R.PINNED_HISTORICAL_RUNNERS.items()
+    } == expected_heads
+    assert len(set(R.SANDBOX_CONTRACTS.values())) == 1
+    for source, metadata in R.PINNED_HISTORICAL_RUNNERS.items():
+        assert R.SHA256_RE.fullmatch(source)
+        assert R.GIT_COMMIT_RE.fullmatch(metadata["head_commit"])
+        assert set(metadata) == {
+            "head_commit", "evidence_schema", "lock_schema"
+        }
+        assert metadata["evidence_schema"] in R.EVIDENCE_SCHEMAS
+        assert metadata["lock_schema"] in R.LOCK_SCHEMAS
+        assert R.SHA256_RE.fullmatch(R.SANDBOX_CONTRACTS[source])
+
+
+@pytest.mark.parametrize(
+    ("source_sha256", "head_commit"),
+    (
+        (
+            LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256,
+            "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
+        ),
+        (
+            BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256,
+            BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
+        ),
+    ),
+)
+def test_registered_historical_runner_source_matches_pinned_head(
+    source_sha256, head_commit
+):
+    repo = Path(__file__).resolve().parents[2]
+    proc = subprocess.run(
+        [
+            "git", "-C", os.fspath(repo), "show",
+            f"{head_commit}:arc/crack_lab/gkm_legs.py",
+        ],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        check=False,
+    )
+    if proc.returncode != 0:
+        pytest.skip("pinned historical runner commit is unavailable")
+    assert hashlib.sha256(proc.stdout).hexdigest() == source_sha256
+
+
+def _sandboxed_generation_fixture(
+    tmp_path, monkeypatch, *,
+    source_sha256=LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256,
+):
     monkeypatch.setattr(R, "HERE", tmp_path)
     artifact = tmp_path / "agent_solutions" / "ar25_legs"
     artifact.mkdir(parents=True)
@@ -3368,9 +3441,7 @@ def _sandboxed_generation_fixture(tmp_path, monkeypatch):
     ledger = tmp_path / "usage.jsonl"
     ledger.write_bytes(b"")
     historical = {
-        "source_sha256": next(iter(
-            Recovery.APPROVED_SANDBOXED_GENERATION_SOURCES
-        )),
+        "source_sha256": source_sha256,
         "scratch_root": os.fspath(scratch),
         "lock_schema": "hashed_external_v1",
         "evidence_schema": "sealed_transcript_only_v1",
@@ -3550,10 +3621,19 @@ def _arm_sandboxed_generation(fixture, monkeypatch):
     )
 
 
+@pytest.mark.parametrize(
+    "source_sha256",
+    (
+        LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256,
+        BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256,
+    ),
+)
 def test_sandboxed_generation_parser_accepts_only_exact_two_and_three_row_shapes(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, source_sha256
 ):
-    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    fixture = _sandboxed_generation_fixture(
+        tmp_path, monkeypatch, source_sha256=source_sha256
+    )
     parsed = Recovery.parse_sandboxed_generation_marker(
         fixture["marker"].read_bytes(), require_recovery_arm=False
     )
