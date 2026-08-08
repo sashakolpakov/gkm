@@ -8,12 +8,15 @@ import threading
 from typing import Any, Mapping, Sequence
 
 import bongard.transport as transport_module
+import bongard.object_bongard_rubric_calibration as calibration_module
 from bongard.canonical import canonical_digest
 from bongard.crack_lab.object_bongard_panel_rubric_probe import (
     DEFAULT_REJECTED_V10_CALIBRATION_ROOT,
     DEFAULT_V10_NOMINATION_ROOT,
     ObjectBongardPanelRubricProbeError,
     PROBE_STATUS,
+    REJECTED_V10_CALIBRATION_SOURCE_DIGEST,
+    V10_NOMINATION_SOURCE_DIGEST,
     _load_probe_inputs,
     _run_loaded_probe,
     _verify_loaded_probe,
@@ -120,12 +123,41 @@ def _receipt(
 
 def test_historical_only_probe_makes_twelve_blind_calls_and_cold_replays(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    def obsolete_source_reconstruction(*args, **kwargs):
+        raise AssertionError("mutable calibration geometry must not be reconstructed")
+
+    monkeypatch.setattr(
+        calibration_module,
+        "load_object_bongard_rubric_calibration_source",
+        obsolete_source_reconstruction,
+    )
     inputs = _load_probe_inputs(
         nomination_root=DEFAULT_V10_NOMINATION_ROOT,
         rejected_calibration_root=DEFAULT_REJECTED_V10_CALIBRATION_ROOT,
         source_directory=DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE,
     )
+    assert inputs.source.source_digest == V10_NOMINATION_SOURCE_DIGEST
+    assert (
+        inputs.source.rejected_calibration_source_digest
+        == REJECTED_V10_CALIBRATION_SOURCE_DIGEST
+    )
+    assert inputs.nomination.artifact.receipt is not None
+    assert inputs.nomination.artifact.model_payload == {
+        "proposal_0": {
+            "group_0_cue_text": (
+                "One decorated figure forms two closed loops touching at one vertex"
+            ),
+            "group_1_cue_text": (
+                "One decorated figure forms a closed loop with a dangling branch"
+            ),
+        },
+        "proposal_1": {
+            "group_0_cue_text": "One undecorated figure appears",
+            "group_1_cue_text": "Outlined triangular beads decorate a figure",
+        },
+    }
     group_a = {item.png_sha256 for item in inputs.source.group_a_panels}
     group_b = {item.png_sha256 for item in inputs.source.group_b_panels}
     allowed = group_a | group_b
