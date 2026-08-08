@@ -508,6 +508,23 @@ def test_generated_tester_supports_fresh_replay_without_checkpoint_mutation(
     assert "poisons and terminates the complete proposer turn" in task
 
 
+def test_clean_room_instruction_is_inherited_by_propose_and_debrief():
+    expected = (
+        "The supervisor-owned gkm_try.py bootstrap is not reusable authority: "
+        "proposer-authored files must not import private harness or runner modules "
+        "(including gkm_legs) or use dynamic import or execution facilities "
+        "(including importlib, imp, runpy, __import__, compile, eval, or exec)."
+    )
+
+    assert expected in L.CLEAN_ROOM_INSTRUCTION
+    for task in (
+        L._propose_task("ls20", 5, "", []),
+        L._debrief_task("ls20", 5),
+    ):
+        assert task.startswith(L.CLEAN_ROOM_INSTRUCTION + "\n\n")
+        assert expected in task
+
+
 def test_repository_promoted_artifacts_are_clean_and_consistent():
     artifacts = Path(__file__).with_name("agent_solutions")
     checked = 0

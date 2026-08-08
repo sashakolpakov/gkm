@@ -3733,7 +3733,12 @@ def _api_agent(ws: str, task: str, model: Optional[str], minutes: int, *,
 CLEAN_ROOM_INSTRUCTION = (
     "CLEAN-ROOM BOUNDARY: work only with files in the current workspace and the "
     "documented observation/action surface exposed by gkm_try.py and perception.py. "
-    "Those local harness and API files are legitimate to inspect. Do not read parent "
+    "Those local harness and API files are legitimate to inspect. "
+    "The supervisor-owned gkm_try.py bootstrap is not reusable authority: proposer-authored "
+    "files must not import private harness or runner modules (including gkm_legs) or use "
+    "dynamic import or execution facilities (including importlib, imp, runpy, __import__, "
+    "compile, eval, or exec). "
+    "Do not read parent "
     "directories, artifacts outside the admitted current-workspace lineage, hidden "
     "implementations, or underscore-prefixed runtime state. Same-lineage prior "
     "observations and proposer transcripts already present in this workspace are "
