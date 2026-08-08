@@ -89,3 +89,31 @@ The next admissible pipeline is:
 
 Until that replacement passes two independent historical calibration passes,
 the fixed unused benchmark cohort remains sealed.
+
+## Replacement-front-end probe
+
+The candidate-independent proposal extractor was run without model calls on
+the same twelve already-exposed historical panels.  Every panel produced
+exactly two stable proposal lineages, for 24 proposals total, and none of the
+24 overlapped another eligible proposal.  Ten panels also contained discarded
+cross-threshold hypotheses; those are now retained as nondecisional diagnostic
+codes rather than incorrectly making the complete frozen proposal catalog
+indeterminate.
+
+This does not establish semantic correctness, but it removes the concrete
+inventory instability seen above: repeated visual calls will now receive the
+same two content-addressed crops and object IDs.  The new neutral observer
+exhaustively records ten count intervals and 21 qualitative cells for every
+proposal.  Open prose may nominate additional affirmative tags, but omission
+never means absence.  A tag becomes executable only after it recurs on at
+least two distinct panels, enters a label-blind frozen registry, and receives
+explicit evidence-bearing present/absent/indeterminate cells in two
+independent registered-evaluation passes.
+
+The preregistered 12-task TRAIN cohort remains unseen under its exact
+155-event exposure predecessor, digest
+`sha256:73f4f6ad2cdb5413456b4298722cc26cd8de9e733e80e7b178d97b87d11fd276`.
+All twelve selected task IDs pass the ledger's exact unseen check.  Future
+campaign release must go through the existing durable release gate so the
+one-event 12-task exposure successor is persisted and reloaded before any
+support PNG bytes are returned.
