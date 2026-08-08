@@ -357,7 +357,7 @@ def test_model_unicode_punctuation_is_normalized_before_persistence_and_replay()
     ) == artifact
 
 
-def test_ordinary_leans_inflection_passes_but_standalone_lean_remains_forbidden():
+def test_ordinary_lean_language_is_not_confused_with_proof_assistant_language():
     raw = _scene()
     inventory = extract_object_scene_proposal_inventory(raw)
     accepted = _payload(inventory)
@@ -367,6 +367,16 @@ def test_ordinary_leans_inflection_passes_but_standalone_lean_remains_forbidden(
     assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
     assert artifact.transcript is not None
     assert artifact.transcript.objects[0].summary == "outlined form leans left"
+
+    standalone = _payload(inventory)
+    for row in standalone["objects"]:
+        row["summary"] = "lean bird-like silhouette"
+    standalone_artifact = _observe(raw, standalone)
+    assert standalone_artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert standalone_artifact.transcript is not None
+    assert standalone_artifact.transcript.objects[0].summary == (
+        "lean bird-like silhouette"
+    )
 
     forbidden = _payload(inventory)
     forbidden["objects"][0]["summary"] = "Lean proof appears here"

@@ -126,7 +126,7 @@ _PROSE = re.compile(r"[ -~]+\Z")
 _FORBIDDEN_VISIBLE = re.compile(
     r"\b(?:(?:candidate|group|class|label|target|foil|positive|negative|"
     r"predicate|formula|task|query|answer|prompt|instruction|system|assistant|"
-    r"user|tool|code|python|theorem)s?|lean)\b",
+    r"user|tool|code|python|theorem|proof)s?)\b",
     re.IGNORECASE,
 )
 _FORBIDDEN_TAG_LOGIC = re.compile(
