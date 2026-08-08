@@ -35,15 +35,15 @@ from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v1"
-SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v1"
-SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v1"
-SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v1"
-SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v1"
-SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v1"
-SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v1"
-SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v1"
-SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-version-space-v1"
+SCENE_OBSERVATION_SCHEMA = "gkm.object-bongard-scene-observation.v2"
+SCENE_ATOM_SCHEMA = "gkm.object-bongard-scene-atom.v2"
+SCENE_FORMULA_SCHEMA = "gkm.object-bongard-scene-formula.v2"
+SCENE_CANDIDATE_SCHEMA = "gkm.object-bongard-scene-candidate.v2"
+SCENE_VERSION_SPACE_SCHEMA = "gkm.object-bongard-scene-version-space.v2"
+SCENE_VERSION_SPACES_SCHEMA = "gkm.object-bongard-scene-version-spaces.v2"
+SCENE_LANGUAGE_SCHEMA = "gkm.object-bongard-scene-language.v2"
+SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v2"
+SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-version-space-v2"
 SCENE_MAX_RANK_SLATE = 64
 SCENE_MAX_ENUMERATED_FORMULAS = 250_000
 
@@ -95,6 +95,7 @@ class SceneAtomKind(str, Enum):
     GEOMETRY = "geometry"
     PAIR_RELATION = "pair_relation"
     PANEL_COUNT = "panel_count"
+    PANEL_REGISTERED_TAG = "panel_registered_tag"
 
 
 class SceneNumericUnit(str, Enum):
@@ -179,7 +180,8 @@ def _authority_data() -> dict[str, object]:
         "post_hoc_negation_repair": False,
         "post_hoc_polarity_flip": False,
         "natural_affirmative_complement_equivalents_predeclared": True,
-        "both_orientations_predeclared_before_roles": True,
+        "both_orientations_share_one_frozen_formula_inventory": True,
+        "both_orientations_enumerated_before_candidate_scoring": True,
         "arbitrary_code": False,
     }
 
@@ -328,7 +330,11 @@ class SceneEntityObservation:
         expected = (OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS, OBJECT_SCENE_COUNT_OBSERVABLE_IDS)
         if tuple(item.observable_id for item in self.qualitative_cells) != expected[0] or tuple(item.observable_id for item in self.count_cells) != expected[1]:
             raise ObjectBongardScenePredicateIRError("entity fixed cell catalog differs")
-        if tuple(item.observable_id for item in self.registered_tag_cells) != tuple(f"tag_{i:04d}" for i in range(len(self.registered_tag_cells))):
+        registered_ids = tuple(item.observable_id for item in self.registered_tag_cells)
+        if (
+            registered_ids != tuple(sorted(set(registered_ids)))
+            or any(_TAG.fullmatch(item) is None for item in registered_ids)
+        ):
             raise ObjectBongardScenePredicateIRError("entity registered tag catalog differs")
 
     def to_data(self) -> dict[str, object]:
@@ -359,6 +365,9 @@ def _observation_content(value: "ScenePanelObservation") -> dict[str, object]:
         "source_artifact_digests": list(value.source_artifact_digests),
         "source_transcript_digests": list(value.source_transcript_digests),
         "disposition": value.disposition.value,
+        "panel_registered_tag_cells": [
+            item.to_data() for item in value.panel_registered_tag_cells
+        ],
         "entities": [item.to_data() for item in value.entities],
         "merge_policy": merge_policies[value.observation_mode],
         "geometry_binding": "stable-object-ids-crop-receipts-q16-overlap-graph",
@@ -376,6 +385,7 @@ class ScenePanelObservation:
     source_artifact_digests: tuple[str, ...]
     source_transcript_digests: tuple[str, ...]
     disposition: Disposition
+    panel_registered_tag_cells: tuple[SceneMergedCell, ...]
     entities: tuple[SceneEntityObservation, ...]
     observation_digest: str
 
@@ -397,6 +407,14 @@ class ScenePanelObservation:
             _digest(value, "source digest")
         if self.disposition not in (Disposition.PRESENT, Disposition.ERROR):
             raise ObjectBongardScenePredicateIRError("panel merge disposition differs")
+        panel_ids = tuple(item.observable_id for item in self.panel_registered_tag_cells)
+        if (
+            panel_ids != tuple(sorted(set(panel_ids)))
+            or any(_TAG.fullmatch(item) is None for item in panel_ids)
+        ):
+            raise ObjectBongardScenePredicateIRError(
+                "panel registered tag catalog differs"
+            )
         if tuple(item.object_id for item in self.entities) != tuple(f"object_{index:04d}" for index in range(len(self.entities))):
             raise ObjectBongardScenePredicateIRError("stable object IDs differ")
         by_id = {item.object_id: item for item in self.entities}
@@ -405,7 +423,11 @@ class ScenePanelObservation:
                 if other not in by_id or item.object_id not in by_id[other].overlap_object_ids:
                     raise ObjectBongardScenePredicateIRError("overlap graph is not symmetric")
         if self.disposition is Disposition.ERROR:
-            cells = (cell for entity in self.entities for cells in (entity.qualitative_cells, entity.count_cells, entity.registered_tag_cells) for cell in cells)
+            cells = list(self.panel_registered_tag_cells)
+            for entity in self.entities:
+                cells.extend(entity.qualitative_cells)
+                cells.extend(entity.count_cells)
+                cells.extend(entity.registered_tag_cells)
             if any(cell.disposition is not Disposition.ERROR for cell in cells):
                 raise ObjectBongardScenePredicateIRError("failed panel contains decisive visual cells")
         if self.observation_digest != canonical_digest(_observation_content(self)):
@@ -416,7 +438,7 @@ class ScenePanelObservation:
 
     @classmethod
     def from_data(cls, value: object) -> "ScenePanelObservation":
-        expected = {"schema", "panel_id", "panel_digest", "inventory_digest", "registry_digest", "observation_mode", "source_artifact_digests", "source_transcript_digests", "disposition", "entities", "merge_policy", "geometry_binding", *_authority_data(), "observation_digest"}
+        expected = {"schema", "panel_id", "panel_digest", "inventory_digest", "registry_digest", "observation_mode", "source_artifact_digests", "source_transcript_digests", "disposition", "panel_registered_tag_cells", "entities", "merge_policy", "geometry_binding", *_authority_data(), "observation_digest"}
         raw = _fields(value, expected, "scene panel observation")
         merge_policies = {
             "repeated_registered_merge": "two-registered-calls-exact-agreement-or-indeterminate",
@@ -425,9 +447,9 @@ class ScenePanelObservation:
             SceneSingleObservationPurpose.QUERY_EVALUATION.value: "one-registered-call-post-freeze-query-evaluation",
         }
         merge_policy = merge_policies.get(raw.get("observation_mode"))
-        if raw["schema"] != SCENE_OBSERVATION_SCHEMA or raw["merge_policy"] != merge_policy or raw["geometry_binding"] != "stable-object-ids-crop-receipts-q16-overlap-graph" or any(raw[key] != val for key, val in _authority_data().items()) or any(not isinstance(raw[key], list) for key in ("source_artifact_digests", "source_transcript_digests", "entities")):
+        if raw["schema"] != SCENE_OBSERVATION_SCHEMA or raw["merge_policy"] != merge_policy or raw["geometry_binding"] != "stable-object-ids-crop-receipts-q16-overlap-graph" or any(raw[key] != val for key, val in _authority_data().items()) or any(not isinstance(raw[key], list) for key in ("source_artifact_digests", "source_transcript_digests", "panel_registered_tag_cells", "entities")):
             raise ObjectBongardScenePredicateIRError("scene panel observation policy differs")
-        result = cls(raw["panel_id"], raw["panel_digest"], raw["inventory_digest"], raw["registry_digest"], raw["observation_mode"], tuple(raw["source_artifact_digests"]), tuple(raw["source_transcript_digests"]), Disposition(raw["disposition"]), tuple(SceneEntityObservation.from_data(item) for item in raw["entities"]), raw["observation_digest"])
+        result = cls(raw["panel_id"], raw["panel_digest"], raw["inventory_digest"], raw["registry_digest"], raw["observation_mode"], tuple(raw["source_artifact_digests"]), tuple(raw["source_transcript_digests"]), Disposition(raw["disposition"]), tuple(SceneMergedCell.from_data(item) for item in raw["panel_registered_tag_cells"]), tuple(SceneEntityObservation.from_data(item) for item in raw["entities"]), raw["observation_digest"])
         if result.to_data() != dict(raw):
             raise ObjectBongardScenePredicateIRError("scene panel observation is not canonical")
         return result
@@ -447,6 +469,26 @@ def _merge_visual_cell(first: object | None, second: object | None, *, observabl
         return SceneMergedCell(observable_id, state, interval, digests)
     state = merge_repeated_disposition(getattr(first, "disposition", None), getattr(second, "disposition", None))
     return SceneMergedCell(observable_id, state, None, digests)
+
+
+def _tag_scope_value(value: object) -> str:
+    raw = getattr(value, "scope", None)
+    scope = getattr(raw, "value", raw)
+    if scope not in ("panel", "entity"):
+        raise ObjectBongardScenePredicateIRError("registry tag scope differs")
+    return scope
+
+
+def _registry_tag_ids(
+    registry: ObjectSceneSoftTagRegistry, scope: str
+) -> tuple[str, ...]:
+    return tuple(
+        item.tag_id for item in registry.tags if _tag_scope_value(item) == scope
+    )
+
+
+def _error_cells(tag_ids: tuple[str, ...]) -> tuple[SceneMergedCell, ...]:
+    return tuple(SceneMergedCell(item, Disposition.ERROR, None, ()) for item in tag_ids)
 
 
 def _error_entity(receipt: object, tag_ids: tuple[str, ...]) -> SceneEntityObservation:
@@ -475,35 +517,56 @@ def adapt_object_scene_registered_pair(
     if not isinstance(first.registry, ObjectSceneSoftTagRegistry) or first.registry != second.registry:
         raise ObjectBongardScenePredicateIRError("registered passes do not bind one frozen registry")
     inventory = first.inventory
-    tag_ids = tuple(item.tag_id for item in first.registry.tags)
+    entity_tag_ids = _registry_tag_ids(first.registry, "entity")
+    panel_tag_ids = _registry_tag_ids(first.registry, "panel")
     successful = first.status is PrototypeSceneObserverStatus.SUCCESS and second.status is PrototypeSceneObserverStatus.SUCCESS
     entities: list[SceneEntityObservation] = []
+    panel_cells: tuple[SceneMergedCell, ...]
     if not inventory.objects:
-        disposition = Disposition.ERROR
+        disposition = Disposition.PRESENT if successful else Disposition.ERROR
+        if successful:
+            assert first.transcript is not None and second.transcript is not None
+            pa = {item.tag_id: item for item in first.transcript.panel_registered_tag_cells}
+            pb = {item.tag_id: item for item in second.transcript.panel_registered_tag_cells}
+            panel_cells = tuple(
+                _merge_visual_cell(
+                    pa.get(item), pb.get(item), observable_id=item, numeric=False
+                )
+                for item in panel_tag_ids
+            )
+        else:
+            panel_cells = _error_cells(panel_tag_ids)
         transcript_digests = tuple(sorted(item.transcript.transcript_digest for item in (first, second) if item.transcript is not None))
     elif not successful:
-        entities = [_error_entity(item, tag_ids) for item in inventory.objects]
+        entities = [_error_entity(item, entity_tag_ids) for item in inventory.objects]
+        panel_cells = _error_cells(panel_tag_ids)
         disposition = Disposition.ERROR
         transcript_digests: tuple[str, ...] = tuple(sorted(item.transcript.transcript_digest for item in (first, second) if item.transcript is not None))
     else:
         assert first.transcript is not None and second.transcript is not None
         first_rows = {item.object_id: item for item in first.transcript.objects}
         second_rows = {item.object_id: item for item in second.transcript.objects}
+        pa = {item.tag_id: item for item in first.transcript.panel_registered_tag_cells}
+        pb = {item.tag_id: item for item in second.transcript.panel_registered_tag_cells}
+        panel_cells = tuple(
+            _merge_visual_cell(
+                pa.get(item), pb.get(item), observable_id=item, numeric=False
+            )
+            for item in panel_tag_ids
+        )
         for receipt in inventory.objects:
             row_a, row_b = first_rows.get(receipt.object_id), second_rows.get(receipt.object_id)
             if row_a is None or row_b is None or row_a.crop_receipt_digest != receipt.receipt_digest or row_b.crop_receipt_digest != receipt.receipt_digest:
-                entities.append(_error_entity(receipt, tag_ids))
+                entities.append(_error_entity(receipt, entity_tag_ids))
                 continue
             qa, qb = {x.observable_id: x for x in row_a.qualitative_cells}, {x.observable_id: x for x in row_b.qualitative_cells}
             ca, cb = {x.observable_id: x for x in row_a.count_cells}, {x.observable_id: x for x in row_b.count_cells}
             ta, tb = {x.tag_id: x for x in row_a.registered_tag_cells}, {x.tag_id: x for x in row_b.registered_tag_cells}
             bbox = receipt.bbox_q16
-            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_merge_visual_cell(qa.get(item), qb.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_merge_visual_cell(ca.get(item), cb.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_merge_visual_cell(ta.get(item), tb.get(item), observable_id=item, numeric=False) for item in tag_ids)))
-        disposition = Disposition.ERROR if any(cell.disposition is Disposition.ERROR for entity in entities for cells in (entity.qualitative_cells, entity.count_cells, entity.registered_tag_cells) for cell in cells) else Disposition.PRESENT
-        if disposition is Disposition.ERROR:
-            entities = [_error_entity(item, tag_ids) for item in inventory.objects]
+            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_merge_visual_cell(qa.get(item), qb.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_merge_visual_cell(ca.get(item), cb.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_merge_visual_cell(ta.get(item), tb.get(item), observable_id=item, numeric=False) for item in entity_tag_ids)))
+        disposition = Disposition.PRESENT
         transcript_digests = tuple(sorted((first.transcript.transcript_digest, second.transcript.transcript_digest)))
-    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": first.registry.registry_digest, "observation_mode": "repeated_registered_merge", "source_artifact_digests": tuple(sorted((first.artifact_digest, second.artifact_digest))), "source_transcript_digests": transcript_digests, "disposition": disposition, "entities": tuple(entities)}
+    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": first.registry.registry_digest, "observation_mode": "repeated_registered_merge", "source_artifact_digests": tuple(sorted((first.artifact_digest, second.artifact_digest))), "source_transcript_digests": transcript_digests, "disposition": disposition, "panel_registered_tag_cells": panel_cells, "entities": tuple(entities)}
     provisional = object.__new__(ScenePanelObservation)
     for key, item in values.items():
         object.__setattr__(provisional, key, item)
@@ -544,28 +607,58 @@ def adapt_object_scene_registered_single(
     artifact.assert_untampered()
     if artifact.mode is not ObjectSceneTranscriptMode.REGISTERED_EVALUATION or not isinstance(artifact.registry, ObjectSceneSoftTagRegistry): raise ObjectBongardScenePredicateIRError("single decisive call must be registered evaluation")
     inventory, registry = artifact.inventory, artifact.registry
-    tag_ids = tuple(item.tag_id for item in registry.tags)
+    entity_tag_ids = _registry_tag_ids(registry, "entity")
+    panel_tag_ids = _registry_tag_ids(registry, "panel")
     entities: list[SceneEntityObservation] = []
+    panel_cells: tuple[SceneMergedCell, ...]
     if not inventory.objects:
-        disposition = Disposition.ERROR
+        successful = (
+            artifact.status is PrototypeSceneObserverStatus.SUCCESS
+            and artifact.transcript is not None
+        )
+        disposition = Disposition.PRESENT if successful else Disposition.ERROR
+        if successful:
+            assert artifact.transcript is not None
+            panel_by_id = {
+                item.tag_id: item
+                for item in artifact.transcript.panel_registered_tag_cells
+            }
+            panel_cells = tuple(
+                _single_visual_cell(
+                    panel_by_id.get(item), observable_id=item, numeric=False
+                )
+                for item in panel_tag_ids
+            )
+        else:
+            panel_cells = _error_cells(panel_tag_ids)
         transcript_digests = () if artifact.transcript is None else (artifact.transcript.transcript_digest,)
     elif artifact.status is not PrototypeSceneObserverStatus.SUCCESS or artifact.transcript is None:
-        entities = [_error_entity(item, tag_ids) for item in inventory.objects]
+        entities = [_error_entity(item, entity_tag_ids) for item in inventory.objects]
+        panel_cells = _error_cells(panel_tag_ids)
         disposition = Disposition.ERROR
         transcript_digests: tuple[str, ...] = ()
     else:
         rows = {item.object_id: item for item in artifact.transcript.objects}
+        panel_by_id = {
+            item.tag_id: item
+            for item in artifact.transcript.panel_registered_tag_cells
+        }
+        panel_cells = tuple(
+            _single_visual_cell(
+                panel_by_id.get(item), observable_id=item, numeric=False
+            )
+            for item in panel_tag_ids
+        )
         for receipt in inventory.objects:
             row = rows.get(receipt.object_id)
             if row is None or row.crop_receipt_digest != receipt.receipt_digest:
-                entities.append(_error_entity(receipt, tag_ids)); continue
+                entities.append(_error_entity(receipt, entity_tag_ids)); continue
             q = {item.observable_id: item for item in row.qualitative_cells}; c = {item.observable_id: item for item in row.count_cells}; t = {item.tag_id: item for item in row.registered_tag_cells}
             bbox = receipt.bbox_q16
-            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_single_visual_cell(q.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_single_visual_cell(c.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_single_visual_cell(t.get(item), observable_id=item, numeric=False) for item in tag_ids)))
-        disposition = Disposition.ERROR if any(cell.disposition is Disposition.ERROR for entity in entities for cells in (entity.qualitative_cells, entity.count_cells, entity.registered_tag_cells) for cell in cells) else Disposition.PRESENT
-        if disposition is Disposition.ERROR: entities = [_error_entity(item, tag_ids) for item in inventory.objects]
+            entities.append(SceneEntityObservation(receipt.object_id, receipt.receipt_digest, (bbox.x0, bbox.y0, bbox.x1, bbox.y1), receipt.union_area_pixels, receipt.component_count, receipt.emergence_gap_pixels, receipt.overlap_object_ids, tuple(_single_visual_cell(q.get(item), observable_id=item, numeric=False) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS), tuple(_single_visual_cell(c.get(item), observable_id=item, numeric=True) for item in OBJECT_SCENE_COUNT_OBSERVABLE_IDS), tuple(_single_visual_cell(t.get(item), observable_id=item, numeric=False) for item in entity_tag_ids)))
+        disposition = Disposition.PRESENT
         transcript_digests = (artifact.transcript.transcript_digest,)
-    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": registry.registry_digest, "observation_mode": purpose.value, "source_artifact_digests": (artifact.artifact_digest,), "source_transcript_digests": transcript_digests, "disposition": disposition, "entities": tuple(entities)}
+    values = {"panel_id": _identifier(panel_id, "panel ID"), "panel_digest": inventory.panel_digest, "inventory_digest": inventory.inventory_digest, "registry_digest": registry.registry_digest, "observation_mode": purpose.value, "source_artifact_digests": (artifact.artifact_digest,), "source_transcript_digests": transcript_digests, "disposition": disposition, "panel_registered_tag_cells": panel_cells, "entities": tuple(entities)}
     provisional = object.__new__(ScenePanelObservation)
     for key, item in values.items(): object.__setattr__(provisional, key, item)
     return ScenePanelObservation(**values, observation_digest=canonical_digest(_observation_content(provisional)))
@@ -641,10 +734,11 @@ class SceneAtom:
             SceneAtomKind.GEOMETRY: SceneScope.ENTITY,
             SceneAtomKind.PAIR_RELATION: SceneScope.PAIR,
             SceneAtomKind.PANEL_COUNT: SceneScope.PANEL,
+            SceneAtomKind.PANEL_REGISTERED_TAG: SceneScope.PANEL,
         }[self.kind]
         if self.scope is not expected_scope: raise ObjectBongardScenePredicateIRError("atom scope/kind differ")
         if self.kind is SceneAtomKind.QUALITATIVE and self.observable_id not in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS: raise ObjectBongardScenePredicateIRError("qualitative atom is unregistered")
-        if self.kind is SceneAtomKind.REGISTERED_TAG and _TAG.fullmatch(self.observable_id) is None: raise ObjectBongardScenePredicateIRError("tag atom is unregistered")
+        if self.kind in (SceneAtomKind.REGISTERED_TAG, SceneAtomKind.PANEL_REGISTERED_TAG) and _TAG.fullmatch(self.observable_id) is None: raise ObjectBongardScenePredicateIRError("tag atom is unregistered")
         if self.kind is SceneAtomKind.COUNT and self.observable_id not in OBJECT_SCENE_COUNT_OBSERVABLE_IDS: raise ObjectBongardScenePredicateIRError("count atom is unregistered")
         if self.kind is SceneAtomKind.GEOMETRY:
             try: SceneGeometryPreset(self.observable_id)
@@ -683,13 +777,15 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
         "algorithm_id": SCENE_ALGORITHM_ID,
         "registry_digest": value.registry_digest,
         "registered_tag_ids": list(value.registered_tag_ids),
+        "entity_registered_tag_ids": list(value.entity_registered_tag_ids),
+        "panel_registered_tag_ids": list(value.panel_registered_tag_ids),
         "source_mode": value.source_mode.value,
         "support_observation_digests": list(value.support_observation_digests),
         "boundaries": [item.to_data() for item in value.boundaries],
         "grammar": {
             "entity_atoms": ["fixed_qualitative", "registered_soft_tag", "typed_count_boundary", "exact_geometry_preset"],
             "pair_atoms": ["exact_pair_relation_preset"],
-            "panel_atoms": ["typed_entity_count_boundary"],
+            "panel_atoms": ["typed_entity_count_boundary", "registered_panel_soft_tag"],
             "quantifiers": ["exists", "all", "count"],
             "count_quantifier_body": "one-positive-atom",
             "same_entity_conjunction": "exactly-two-distinct-qualitative-tag-or-geometry-atoms",
@@ -697,7 +793,8 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
             "or_is_only_exists_aggregation": True,
             "syntactic_not_operator": False,
             "post_hoc_polarity_flip": False,
-            "both_orientations_predeclared_before_roles": True,
+            "both_orientations_share_one_frozen_formula_inventory": True,
+            "both_orientations_enumerated_before_candidate_scoring": True,
             "natural_affirmative_complement_equivalents_may_coexist": True,
             "literal_thresholds": False,
             "candidate_numeric_comparisons": ["at_least_positive", "equal_positive"],
@@ -713,6 +810,8 @@ def _language_content(value: "ScenePredicateLanguage") -> dict[str, object]:
 class ScenePredicateLanguage:
     registry_digest: str
     registered_tag_ids: tuple[str, ...]
+    entity_registered_tag_ids: tuple[str, ...]
+    panel_registered_tag_ids: tuple[str, ...]
     source_mode: SceneLanguageSourceMode
     support_observation_digests: tuple[str, ...]
     boundaries: tuple[SceneNumericBoundary, ...]
@@ -721,6 +820,18 @@ class ScenePredicateLanguage:
     def __post_init__(self) -> None:
         _digest(self.registry_digest, "language registry digest")
         if self.registered_tag_ids != tuple(f"tag_{index:04d}" for index in range(len(self.registered_tag_ids))): raise ObjectBongardScenePredicateIRError("language tag catalog differs")
+        if (
+            self.entity_registered_tag_ids
+            != tuple(sorted(set(self.entity_registered_tag_ids)))
+            or self.panel_registered_tag_ids
+            != tuple(sorted(set(self.panel_registered_tag_ids)))
+            or set(self.entity_registered_tag_ids)
+            & set(self.panel_registered_tag_ids)
+            or set(self.entity_registered_tag_ids)
+            | set(self.panel_registered_tag_ids)
+            != set(self.registered_tag_ids)
+        ):
+            raise ObjectBongardScenePredicateIRError("language scoped tag catalogs differ")
         if self.source_mode is not SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A: raise ObjectBongardScenePredicateIRError("language source mode differs")
         if self.support_observation_digests != tuple(sorted(set(self.support_observation_digests))) or not self.support_observation_digests: raise ObjectBongardScenePredicateIRError("language support commitments differ")
         for item in self.support_observation_digests: _digest(item, "language support digest")
@@ -734,11 +845,11 @@ class ScenePredicateLanguage:
 
     @classmethod
     def from_data(cls, value: object) -> "ScenePredicateLanguage":
-        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "source_mode", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
+        expected = {"schema", "algorithm_id", "registry_digest", "registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "source_mode", "support_observation_digests", "boundaries", "grammar", "candidate_order", *_authority_data(), "language_digest"}
         raw = _fields(value, expected, "scene predicate language")
-        if raw["schema"] != SCENE_LANGUAGE_SCHEMA or raw["algorithm_id"] != SCENE_ALGORITHM_ID or raw["candidate_order"] != "complexity-then-canonical-formula-digest-then-orientation" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("registered_tag_ids", "support_observation_digests", "boundaries")):
+        if raw["schema"] != SCENE_LANGUAGE_SCHEMA or raw["algorithm_id"] != SCENE_ALGORITHM_ID or raw["candidate_order"] != "complexity-then-canonical-formula-digest-then-orientation" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("registered_tag_ids", "entity_registered_tag_ids", "panel_registered_tag_ids", "support_observation_digests", "boundaries")):
             raise ObjectBongardScenePredicateIRError("scene predicate language policy differs")
-        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), SceneLanguageSourceMode(raw["source_mode"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
+        result = cls(raw["registry_digest"], tuple(raw["registered_tag_ids"]), tuple(raw["entity_registered_tag_ids"]), tuple(raw["panel_registered_tag_ids"]), SceneLanguageSourceMode(raw["source_mode"]), tuple(raw["support_observation_digests"]), tuple(SceneNumericBoundary.from_data(item) for item in raw["boundaries"]), raw["language_digest"])
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene predicate language is not canonical")
         return result
 
@@ -765,6 +876,21 @@ def freeze_object_scene_predicate_language(
     if source_mode is not SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A: raise ObjectBongardScenePredicateIRError("language source must be support-training pass A")
     panels = tuple(sorted((ScenePanelObservation.from_data(item.to_data()) for item in observations), key=lambda item: item.panel_id))
     if not panels or len({item.panel_id for item in panels}) != len(panels) or any(item.registry_digest != registry.registry_digest or item.observation_mode != SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A.value for item in panels): raise ObjectBongardScenePredicateIRError("language requires unique pass-A support-training observations under one registry")
+    expected_entity_tags = _registry_tag_ids(registry, "entity")
+    expected_panel_tags = _registry_tag_ids(registry, "panel")
+    if any(
+        tuple(item.observable_id for item in panel.panel_registered_tag_cells)
+        != expected_panel_tags
+        or any(
+            tuple(item.observable_id for item in entity.registered_tag_cells)
+            != expected_entity_tags
+            for entity in panel.entities
+        )
+        for panel in panels
+    ):
+        raise ObjectBongardScenePredicateIRError(
+            "support observations do not exhaust scoped registry cells"
+        )
     sources = tuple(item.observation_digest for item in panels)
     values_by_key: dict[tuple[str, SceneNumericUnit, int], set[str]] = {}
     for panel in panels:
@@ -781,7 +907,15 @@ def freeze_object_scene_predicate_language(
                     for value in (cell.interval.lower, cell.interval.upper): values_by_key.setdefault((cell.observable_id, cell.interval.unit, value), set()).add(panel.observation_digest)
     rows = sorted((observable, unit, comparison, value, tuple(sorted(found))) for (observable, unit, value), found in values_by_key.items() for comparison in SceneComparison)
     boundaries = tuple(SceneNumericBoundary.create(f"boundary_{index:05d}", observable, unit, comparison, value, found) for index, (observable, unit, comparison, value, found) in enumerate(rows))
-    values = {"registry_digest": registry.registry_digest, "registered_tag_ids": tuple(item.tag_id for item in registry.tags), "source_mode": source_mode, "support_observation_digests": tuple(sorted(sources)), "boundaries": boundaries}
+    values = {
+        "registry_digest": registry.registry_digest,
+        "registered_tag_ids": tuple(item.tag_id for item in registry.tags),
+        "entity_registered_tag_ids": _registry_tag_ids(registry, "entity"),
+        "panel_registered_tag_ids": _registry_tag_ids(registry, "panel"),
+        "source_mode": source_mode,
+        "support_observation_digests": tuple(sorted(sources)),
+        "boundaries": boundaries,
+    }
     provisional = object.__new__(ScenePredicateLanguage)
     for key, item in values.items(): object.__setattr__(provisional, key, item)
     return ScenePredicateLanguage(**values, language_digest=canonical_digest(_language_content(provisional)))
@@ -856,7 +990,8 @@ def validate_scene_formula(language: ScenePredicateLanguage, formula: SceneFormu
     if formula.node is SceneFormulaNode.ATOM:
         assert formula.atom is not None
         atom = formula.atom
-        if atom.kind is SceneAtomKind.REGISTERED_TAG and atom.observable_id not in language.registered_tag_ids: raise ObjectBongardScenePredicateIRError("formula names a tag outside the frozen registry")
+        if atom.kind is SceneAtomKind.REGISTERED_TAG and atom.observable_id not in language.entity_registered_tag_ids: raise ObjectBongardScenePredicateIRError("formula names an entity tag outside the frozen registry")
+        if atom.kind is SceneAtomKind.PANEL_REGISTERED_TAG and atom.observable_id not in language.panel_registered_tag_ids: raise ObjectBongardScenePredicateIRError("formula names a panel tag outside the frozen registry")
         if atom.boundary_id is not None:
             boundary = language.boundary(atom.boundary_id)
             if boundary.value < 1 or boundary.comparison is SceneComparison.AT_MOST:
@@ -933,12 +1068,18 @@ def enumerate_object_scene_formulas(language: ScenePredicateLanguage) -> tuple[S
     if not isinstance(language, ScenePredicateLanguage): raise TypeError("language must be ScenePredicateLanguage")
     boundaries = {key: tuple(item for item in values if item.value >= 1 and item.comparison is not SceneComparison.AT_MOST) for key, values in _boundary_groups(language).items()}
     entity_atoms: list[SceneAtom] = [SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.QUALITATIVE, item) for item in OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS]
-    entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, item) for item in language.registered_tag_ids)
+    entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.REGISTERED_TAG, item) for item in language.entity_registered_tag_ids)
     entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.GEOMETRY, item.value) for item in SceneGeometryPreset)
     for observable in OBJECT_SCENE_COUNT_OBSERVABLE_IDS:
         entity_atoms.extend(SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.COUNT, observable, item.boundary_id) for item in boundaries.get(observable, ()))
     pair_atoms = [SceneAtom.create(SceneScope.PAIR, SceneAtomKind.PAIR_RELATION, item.value) for item in ScenePairRelation]
     panel_atoms = [SceneAtom.create(SceneScope.PANEL, SceneAtomKind.PANEL_COUNT, "entity_count", item.boundary_id) for item in boundaries.get("entity_count", ())]
+    panel_atoms.extend(
+        SceneAtom.create(
+            SceneScope.PANEL, SceneAtomKind.PANEL_REGISTERED_TAG, item
+        )
+        for item in language.panel_registered_tag_ids
+    )
     entity_local = [SceneFormula.atom_formula(item) for item in entity_atoms]
     pair_local = [SceneFormula.atom_formula(item) for item in pair_atoms]
     eligible_atom_count = sum(item.kind in (SceneAtomKind.QUALITATIVE, SceneAtomKind.REGISTERED_TAG, SceneAtomKind.GEOMETRY) for item in entity_atoms)
@@ -1018,6 +1159,11 @@ def _evaluate_atom(atom: SceneAtom, language: ScenePredicateLanguage, panel: Sce
         elif relation is ScenePairRelation.HORIZONTALLY_SEPARATED_BBOXES: truth = horizontal
         else: truth = vertical
         return Disposition.PRESENT if truth else Disposition.CERTIFIED_ABSENT
+    if atom.kind is SceneAtomKind.PANEL_REGISTERED_TAG:
+        cell = _find_cell(panel.panel_registered_tag_cells, atom.observable_id)
+        return Disposition.ERROR if cell is None else cell.disposition
+    if not panel.entities:
+        return Disposition.ERROR
     assert atom.boundary_id is not None
     return _compare_interval(SceneNumericInterval(SceneNumericUnit.COUNT, len(panel.entities), len(panel.entities)), language.boundary(atom.boundary_id))
 
@@ -1041,9 +1187,9 @@ def evaluate_object_scene_formula(formula: SceneFormula, language: ScenePredicat
     bindings: tuple[object, ...]
     if formula.scope is SceneScope.ENTITY: bindings = tuple(panel.entities)
     else: bindings = tuple((panel.entities[i], panel.entities[j]) for i in range(len(panel.entities)) for j in range(i + 1, len(panel.entities)))
+    if not bindings:
+        return Disposition.ERROR
     row = tuple(_evaluate_local(body, language, panel, item) for item in bindings)
-    if not row and formula.quantifier is SceneQuantifier.ALL:
-        return Disposition.INDETERMINATE
     if formula.quantifier is SceneQuantifier.EXISTS: return scene_or(row)
     if formula.quantifier is SceneQuantifier.ALL: return scene_and(row)
     if Disposition.ERROR in row: return Disposition.ERROR
@@ -1280,7 +1426,10 @@ def _build_orientation_space(language: ScenePredicateLanguage, algorithm_digest:
 
 def _semantic_atom_view(atom: SceneAtom, language: ScenePredicateLanguage, registry: ObjectSceneSoftTagRegistry) -> dict[str, object]:
     view: dict[str, object] = {"scope": atom.scope.value, "kind": atom.kind.value}
-    if atom.kind is SceneAtomKind.REGISTERED_TAG:
+    if atom.kind in (
+        SceneAtomKind.REGISTERED_TAG,
+        SceneAtomKind.PANEL_REGISTERED_TAG,
+    ):
         phrases = {item.tag_id: item.tag for item in registry.tags}
         if atom.observable_id not in phrases: raise ObjectBongardScenePredicateIRError("rank view tag is absent from registry")
         view.update({"tag_id": atom.observable_id, "affirmative_phrase": phrases[atom.observable_id]})

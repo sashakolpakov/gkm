@@ -110,6 +110,7 @@ def _panel(
         "source_artifact_digests": sources,
         "source_transcript_digests": (),
         "disposition": Disposition.PRESENT,
+        "panel_registered_tag_cells": (),
         "entities": () if empty else (_entity(bird),),
     }
     provisional = object.__new__(ScenePanelObservation)
@@ -265,7 +266,7 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
                 assert boundary.value >= 1
                 assert boundary.comparison is not SceneComparison.AT_MOST
     all_bird = next(item for item in candidates if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.quantifier is SceneQuantifier.ALL and item.formula.children[0].atom is not None and item.formula.children[0].atom.observable_id == "bird_like")
-    assert evaluate_object_scene_candidate(all_bird, language, _panel("empty", Disposition.INDETERMINATE, empty=True)) is Disposition.INDETERMINATE
+    assert evaluate_object_scene_candidate(all_bird, language, _panel("empty", Disposition.INDETERMINATE, empty=True)) is Disposition.ERROR
     with pytest.raises(ObjectBongardScenePredicateIRError, match="different soft-tag registry"):
         wrong = deepcopy(group0.to_data()); wrong["registry_digest"] = _raw_digest("wrong-registry"); wrong["observation_digest"] = canonical_digest({key: value for key, value in wrong.items() if key != "observation_digest"})
         evaluate_object_scene_candidate(bird0, language, ScenePanelObservation.from_data(wrong))
@@ -346,15 +347,15 @@ def test_pass_b_cannot_add_a_numeric_separator_or_refit_the_language():
     ) == bundle
 
 
-def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_nonvacuous():
+def test_zero_proposal_panels_remain_panel_usable_but_never_certify_entity_or_pair_absence():
     raw = _blank_scene(); inventory = extract_object_scene_proposal_inventory(raw)
     assert inventory.objects == ()
     registry = freeze_object_scene_soft_tag_registry(())
-    first = _observe(raw, {"objects": []}, scene_id="blank_panel", context="blank-a", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
-    second = _observe(raw, {"objects": []}, scene_id="blank_panel", context="blank-b", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+    first = _observe(raw, _payload(inventory, registry=registry), scene_id="blank_panel", context="blank-a", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+    second = _observe(raw, _payload(inventory, registry=registry), scene_id="blank_panel", context="blank-b", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
     merged = adapt_object_scene_registered_pair("blank_panel", first, second)
     single = adapt_object_scene_registered_single("blank_panel", first)
-    assert merged.disposition is single.disposition is Disposition.ERROR
+    assert merged.disposition is single.disposition is Disposition.PRESENT
     assert single.observation_mode == SceneSingleObservationPurpose.QUERY_EVALUATION.value
     language = freeze_object_scene_predicate_language(
         registry,
@@ -365,8 +366,74 @@ def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_n
     pair_exists = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.EXISTS)
     pair_all = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.ALL)
     one = _panel("one_entity", Disposition.PRESENT)
-    assert evaluate_object_scene_candidate(pair_exists, language, one) is Disposition.CERTIFIED_ABSENT
-    assert evaluate_object_scene_candidate(pair_all, language, one) is Disposition.INDETERMINATE
+    assert evaluate_object_scene_candidate(pair_exists, language, one) is Disposition.ERROR
+    assert evaluate_object_scene_candidate(pair_all, language, one) is Disposition.ERROR
+
+
+def test_panel_scoped_soft_tag_is_directly_decidable_with_zero_proposals():
+    blank = _blank_scene()
+    visible = _scene()
+    raws = (blank, visible)
+    inventories = tuple(extract_object_scene_proposal_inventory(item) for item in raws)
+    discovery = tuple(
+        _observe(
+            raw,
+            _payload(
+                inventory,
+                open_tags=(),
+                panel_open_tags=("balanced panel arrangement",),
+            ),
+            scene_id=f"panel_scope_discovery_{index}",
+            context=f"panel-scope-discovery-{index}",
+            mode=ObjectSceneTranscriptMode.DISCOVERY,
+        )
+        for index, (raw, inventory) in enumerate(
+            zip(raws, inventories, strict=True)
+        )
+    )
+    registry = freeze_object_scene_soft_tag_registry(
+        tuple(item.transcript for item in discovery)
+    )
+    assert [(item.scope, item.tag) for item in registry.tags] == [
+        ("panel", "balanced panel arrangement")
+    ]
+    registered = _observe(
+        blank,
+        _payload(inventories[0], registry=registry),
+        scene_id="panel_scope_blank",
+        context="panel-scope-registered",
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+    observation = adapt_object_scene_registered_single(
+        "panel_scope_blank",
+        registered,
+        purpose=SceneSingleObservationPurpose.SUPPORT_TRAINING_PASS_A,
+    )
+    assert observation.entities == ()
+    assert observation.disposition is Disposition.PRESENT
+    language = freeze_object_scene_predicate_language(
+        registry,
+        (observation,),
+        source_mode=SceneLanguageSourceMode.SUPPORT_TRAINING_PASS_A,
+    )
+    candidates = enumerate_object_scene_candidates(language)
+    panel_candidate = next(
+        item
+        for item in candidates
+        if item.orientation is SceneOrientation.GROUP0_POSITIVE
+        and item.formula.node is SceneFormulaNode.ATOM
+        and item.formula.atom is not None
+        and item.formula.atom.kind is SceneAtomKind.PANEL_REGISTERED_TAG
+    )
+    assert (
+        evaluate_object_scene_candidate(panel_candidate, language, observation)
+        is Disposition.PRESENT
+    )
+    assert (
+        evaluate_object_scene_candidate(_bird_candidate(language), language, observation)
+        is Disposition.ERROR
+    )
 
 
 def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratified_slate(monkeypatch):
