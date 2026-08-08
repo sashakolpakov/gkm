@@ -451,7 +451,10 @@ def adapt_object_scene_registered_pair(
     tag_ids = tuple(item.tag_id for item in first.registry.tags)
     successful = first.status is PrototypeSceneObserverStatus.SUCCESS and second.status is PrototypeSceneObserverStatus.SUCCESS
     entities: list[SceneEntityObservation] = []
-    if not successful:
+    if not inventory.objects:
+        disposition = Disposition.ERROR
+        transcript_digests = tuple(sorted(item.transcript.transcript_digest for item in (first, second) if item.transcript is not None))
+    elif not successful:
         entities = [_error_entity(item, tag_ids) for item in inventory.objects]
         disposition = Disposition.ERROR
         transcript_digests: tuple[str, ...] = tuple(sorted(item.transcript.transcript_digest for item in (first, second) if item.transcript is not None))
@@ -506,7 +509,10 @@ def adapt_object_scene_registered_single(panel_id: str, artifact: ObjectSceneTra
     inventory, registry = artifact.inventory, artifact.registry
     tag_ids = tuple(item.tag_id for item in registry.tags)
     entities: list[SceneEntityObservation] = []
-    if artifact.status is not PrototypeSceneObserverStatus.SUCCESS or artifact.transcript is None:
+    if not inventory.objects:
+        disposition = Disposition.ERROR
+        transcript_digests = () if artifact.transcript is None else (artifact.transcript.transcript_digest,)
+    elif artifact.status is not PrototypeSceneObserverStatus.SUCCESS or artifact.transcript is None:
         entities = [_error_entity(item, tag_ids) for item in inventory.objects]
         disposition = Disposition.ERROR
         transcript_digests: tuple[str, ...] = ()
@@ -1243,21 +1249,53 @@ def _ranker_view(candidate: ScenePredicateCandidate, language: ScenePredicateLan
     return {"candidate_digest": candidate.candidate_digest, "orientation": candidate.orientation.value, "complexity": candidate.complexity, "formula": _semantic_formula_view(candidate.formula, language, registry), "merged_support_summary": counts, "gate_summary": {"coverage": coverage, "selectivity": selectivity, "repeatability": repeatability}, "formula_is_frozen": True, "ranker_can_only_select": True}
 
 
-def _complexity_stratified_rank_selection(candidates: Sequence[ScenePredicateCandidate]) -> tuple[ScenePredicateCandidate, ...]:
-    """Round-robin frozen complexity tiers so short proxies cannot crowd out all conjunctions."""
-    tiers: dict[int, list[ScenePredicateCandidate]] = {}
-    for item in candidates: tiers.setdefault(item.complexity, []).append(item)
-    ordered_tiers = [tiers[key] for key in sorted(tiers)]
-    selected: list[ScenePredicateCandidate] = []
+def _candidate_rank_family(candidate: ScenePredicateCandidate) -> str:
+    body = candidate.formula.children[0] if candidate.formula.node is SceneFormulaNode.QUANTIFIED else candidate.formula
+    if body.node is SceneFormulaNode.AND:
+        kinds = tuple(sorted(item.atom.kind.value for item in body.children if item.atom is not None))
+        return "same_entity_conjunction:" + "+".join(kinds)
+    if body.atom is None: raise ObjectBongardScenePredicateIRError("rank candidate lacks an atomic semantic family")
+    return body.atom.kind.value
+
+
+def _candidate_rank_stratum(candidate: ScenePredicateCandidate) -> tuple[object, ...]:
+    body = candidate.formula.children[0] if candidate.formula.node is SceneFormulaNode.QUANTIFIED else candidate.formula
+    leaves = body.children if body.node is SceneFormulaNode.AND else (body,)
+    identities = tuple(sorted((item.atom.kind.value, item.atom.observable_id) for item in leaves if item.atom is not None))
+    quantifier = "panel" if candidate.formula.quantifier is None else candidate.formula.quantifier.value
+    return (candidate.complexity, quantifier, identities, candidate.orientation.value)
+
+
+def _round_robin_rank_strata(candidates: Sequence[ScenePredicateCandidate]) -> tuple[ScenePredicateCandidate, ...]:
+    strata: dict[tuple[object, ...], list[ScenePredicateCandidate]] = {}
+    for item in sorted(candidates, key=lambda value: (value.complexity, value.formula.formula_digest, value.orientation.value)):
+        strata.setdefault(_candidate_rank_stratum(item), []).append(item)
+    queues = [strata[key] for key in sorted(strata)]
+    result: list[ScenePredicateCandidate] = []
     depth = 0
+    while True:
+        added = False
+        for queue in queues:
+            if depth < len(queue): result.append(queue[depth]); added = True
+        if not added: return tuple(result)
+        depth += 1
+
+
+def _semantically_stratified_rank_selection(candidates: Sequence[ScenePredicateCandidate]) -> tuple[ScenePredicateCandidate, ...]:
+    """Round-robin semantic families, then their quantifier/identity strata."""
+    families: dict[str, list[ScenePredicateCandidate]] = {}
+    for item in candidates: families.setdefault(_candidate_rank_family(item), []).append(item)
+    queues = {key: _round_robin_rank_strata(value) for key, value in families.items()}
+    indexes = {key: 0 for key in queues}
+    selected: list[ScenePredicateCandidate] = []
     while len(selected) < SCENE_MAX_RANK_SLATE:
         added = False
-        for tier in ordered_tiers:
-            if depth < len(tier):
-                selected.append(tier[depth]); added = True
+        for family in sorted(queues):
+            index = indexes[family]
+            if index < len(queues[family]):
+                selected.append(queues[family][index]); indexes[family] = index + 1; added = True
                 if len(selected) == SCENE_MAX_RANK_SLATE: break
         if not added: break
-        depth += 1
     return tuple(selected)
 
 
@@ -1382,10 +1420,10 @@ def build_object_bongard_scene_predicate_calibration_bundle(
     coverage = _aggregate_gate("coverage", spaces, len(candidates), len(panels)); selectivity = _aggregate_gate("selectivity", spaces, len(candidates), len(panels)); repeatability = _aggregate_gate("repeatability", spaces, len(candidates), len(panels))
     by_digest = {item.candidate_digest: item for item in candidates}; evaluations = {row.candidate_digest: row for space in spaces for row in space.evaluations}
     survivor_candidates = sorted((by_digest[item] for item in survivors), key=lambda item: (item.complexity, item.formula.formula_digest, item.orientation.value))
-    admitted = _complexity_stratified_rank_selection(survivor_candidates)
+    admitted = _semantically_stratified_rank_selection(survivor_candidates)
     slate = tuple(_ranker_view(item, language, registry, evaluations[item.candidate_digest], coverage=True, selectivity=True, repeatability=True) for item in admitted)
     admitted_set = {item.candidate_digest for item in admitted}
-    omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "complexity_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
+    omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "semantic_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
     version_space = {"schema": SCENE_VERSION_SPACES_SCHEMA, "algorithm_digest": algorithm_digest, "language": language.to_data(), "support_observations": [item.to_data() for item in panels], "pass_a_observations": [item.to_data() for item in pass_a_panels], "pass_b_observations": [item.to_data() for item in pass_b_panels], "group0_count": len(group0), "discovery_artifact_digests": sorted(discovery_digests), "registered_a_artifact_digests": sorted(pass_a_digests), "registered_b_artifact_digests": sorted(pass_b_digests), "orientation_spaces": [item.to_data() for item in spaces], "resource_gap": resource_gap, "model_calls_during_build": 0, "full_candidate_space_persisted": resource_gap is None, "complete_space_accounted_by_typed_capacity_gap": resource_gap is not None, "candidate_enumeration_was_truncated": False, **_authority_data()}
     provisional = object.__new__(ScenePredicateCalibrationBundle)
     values = {"ir_source_digest": object_bongard_scene_predicate_ir_source_digest(), "algorithm_digest": algorithm_digest, "registry_digest": registry.registry_digest, "coverage_gate": coverage, "selectivity_gate": selectivity, "repeatability_gate": repeatability, "version_space": version_space, "candidates": tuple(candidates), "complete_survivor_digests": survivors, "ranker_slate": slate, "omitted_survivors": omitted}
@@ -1431,10 +1469,10 @@ def cold_replay_object_bongard_scene_predicate_calibration_bundle(
         raise ObjectBongardScenePredicateIRError("cold replay survivor/gate result differs")
     by_digest = {item.candidate_digest: item for item in candidates}; evaluations = {row.candidate_digest: row for space in spaces for row in space.evaluations}
     survivor_candidates = sorted((by_digest[item] for item in survivors), key=lambda item: (item.complexity, item.formula.formula_digest, item.orientation.value))
-    admitted = _complexity_stratified_rank_selection(survivor_candidates)
+    admitted = _semantically_stratified_rank_selection(survivor_candidates)
     slate = tuple(_ranker_view(item, language, registry, evaluations[item.candidate_digest], coverage=True, selectivity=True, repeatability=True) for item in admitted)
     admitted_set = {item.candidate_digest for item in admitted}
-    omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "complexity_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
+    omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "semantic_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
     if slate != bundle.ranker_slate or omitted != bundle.omitted_survivors:
         raise ObjectBongardScenePredicateIRError("cold replay rank slate differs")
     return bundle

@@ -2,8 +2,10 @@ from __future__ import annotations
 
 from copy import deepcopy
 import hashlib
+from io import BytesIO
 
 import pytest
+from PIL import Image
 
 from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
@@ -22,6 +24,7 @@ from bongard.object_bongard_scene_predicate_ir import (
     SceneQuantifier,
     SceneScope,
     adapt_object_scene_registered_pair,
+    adapt_object_scene_registered_single,
     build_object_bongard_scene_predicate_calibration_bundle,
     cold_replay_object_bongard_scene_predicate_calibration_bundle,
     enumerate_object_scene_candidates,
@@ -132,6 +135,12 @@ def _observe(raw, payload, *, scene_id: str, context: str, mode, registry=None):
     )
 
 
+def _blank_scene() -> bytes:
+    image = Image.new("RGB", (64, 64), "white")
+    output = BytesIO(); image.save(output, format="PNG", optimize=False)
+    return output.getvalue()
+
+
 def _artifact_fixture(*, flip_group0_b: bool = False):
     raws = (_scene(0), _scene(2))
     inventories = tuple(extract_object_scene_proposal_inventory(raw) for raw in raws)
@@ -217,6 +226,20 @@ def test_positive_closed_language_both_orientations_registry_binding_and_empty_a
     assert evaluate_object_scene_candidate(bird0, language, group0) is Disposition.PRESENT
     assert evaluate_object_scene_candidate(bird0, language, group1) is Disposition.CERTIFIED_ABSENT
     assert {item.orientation for item in candidates} == set(SceneOrientation)
+    assert len(candidates) > ir.SCENE_MAX_RANK_SLATE
+    selected = ir._semantically_stratified_rank_selection(candidates)
+    all_families = {ir._candidate_rank_family(item) for item in candidates}
+    assert {ir._candidate_rank_family(item) for item in selected} == all_families
+    assert len({ir._candidate_rank_family(item) for item in selected[: len(all_families)]}) == len(all_families)
+    for family in all_families:
+        family_selected = [item for item in selected if ir._candidate_rank_family(item) == family]
+        all_strata = {ir._candidate_rank_stratum(item) for item in candidates if ir._candidate_rank_family(item) == family}
+        seen = set()
+        for item in family_selected:
+            stratum = ir._candidate_rank_stratum(item)
+            if stratum in seen:
+                assert seen == all_strata
+            seen.add(stratum)
     assert all(item.formula.node is not getattr(SceneFormulaNode, "OR", None) for item in candidates)
     for candidate in candidates:
         stack = [candidate.formula]
@@ -247,6 +270,24 @@ def test_distinct_calls_required_and_real_pass_b_disagreement_fails_repeatabilit
     assert bundle.complete_survivor_digests == ()
     assert bundle.version_space["orientation_spaces"][0]["pass_a_evaluations"]
     assert bundle.version_space["orientation_spaces"][0]["pass_b_evaluations"]
+
+
+def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_nonvacuous():
+    raw = _blank_scene(); inventory = extract_object_scene_proposal_inventory(raw)
+    assert inventory.objects == ()
+    registry = freeze_object_scene_soft_tag_registry(())
+    first = _observe(raw, {"objects": []}, scene_id="blank_panel", context="blank-a", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+    second = _observe(raw, {"objects": []}, scene_id="blank_panel", context="blank-b", mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry=registry)
+    merged = adapt_object_scene_registered_pair("blank_panel", first, second)
+    single = adapt_object_scene_registered_single("blank_panel", first)
+    assert merged.disposition is single.disposition is Disposition.ERROR
+    language = freeze_object_scene_predicate_language(registry, (_panel("group0z", Disposition.PRESENT), _panel("group1z", Disposition.CERTIFIED_ABSENT)))
+    assert evaluate_object_scene_candidate(_bird_candidate(language), language, merged) is Disposition.ERROR
+    pair_exists = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.EXISTS)
+    pair_all = next(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation.GROUP0_POSITIVE and item.formula.scope is SceneScope.PAIR and item.formula.quantifier is SceneQuantifier.ALL)
+    one = _panel("one_entity", Disposition.PRESENT)
+    assert evaluate_object_scene_candidate(pair_exists, language, one) is Disposition.CERTIFIED_ABSENT
+    assert evaluate_object_scene_candidate(pair_all, language, one) is Disposition.INDETERMINATE
 
 
 def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratified_slate(monkeypatch):
