@@ -48,6 +48,27 @@ APPROVED_SANDBOXED_GENERATION_SOURCES = frozenset({
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64",
     "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b",
 })
+QUIESCED_INCOMPLETE_RUNNER_HEADS = {
+    "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64": (
+        "c1f8168f230732f2d745c234555b3e3dfcb8aefa"
+    ),
+    "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b": (
+        "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f"
+    ),
+}
+QUIESCED_INCOMPLETE_RUNNER_KEYS = frozenset({
+    "schema",
+    "worktree",
+    "cwd",
+    "interpreter",
+    "head_commit",
+    "source_sha256",
+    "artifacts_root",
+    "scratch_root",
+    "ledger",
+    "evidence_schema",
+    "lock_schema",
+})
 BOOT_ID_RE = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-"
     r"[89ab][0-9a-f]{3}-[0-9a-f]{12}"
@@ -148,6 +169,27 @@ ZERO_LEDGER_REQUIRED_KEYS = frozenset({
 })
 ZERO_LEDGER_DIAGNOSTICS_KEYS = frozenset({
     "diagnostics", "protected_diagnostics_sha256",
+})
+QUIESCED_INCOMPLETE_EVIDENCE_REASON = (
+    "zero-ledger recovery lacks one complete quiesced observation"
+)
+QUIESCED_INCOMPLETE_EVIDENCE_FAILED_KEYS = frozenset({
+    "schema",
+    "dispatch_id",
+    "event",
+    "recorded_at",
+    "exception_type",
+    "reason",
+    "child_returncode",
+    "workspace",
+    "protected",
+    "transcript",
+    "workspace_identity",
+    "protected_identity",
+    "process_tree_quiesced",
+    "descendant_quiescence_unproven",
+    "detached_processes_proven_absent",
+    "normal_exit_left_captured_descendants",
 })
 RECOVERY_ARM_V1_KEYS = frozenset({
     "schema",
@@ -708,6 +750,195 @@ def parse_dispatch_marker(
         )
         _identity(recovery_arm.get("workspace_lock_identity"), "workspace lock")
     return ParsedMarker(dispatch_id, armed, unquiesced, recovery_arm)
+
+
+def parse_quiesced_incomplete_evidence_marker(
+    raw: bytes, *, require_recovery_arm: bool | None = None
+) -> ParsedMarker:
+    """Parse only the exact v2 quiesced/incomplete-evidence incident.
+
+    This is deliberately separate from both ordinary zero-ledger recovery and
+    sandboxed nonquiescent release.  The failed row proves that the guarded
+    child's captured process tree was quiesced, but it carries no protected
+    transcript authority and must never be upgraded into one.
+    """
+
+    if require_recovery_arm is True:
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence recovery has no arm phase"
+        )
+    if not raw or len(raw) > MAX_MARKER_BYTES or not raw.endswith(b"\n"):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence marker framing is malformed"
+        )
+    rows = parse_canonical_jsonl(
+        raw, label="quiesced incomplete-evidence marker"
+    )
+    if len(rows) != 2:
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence marker must have exactly two rows"
+        )
+    armed, failed = rows
+    if (
+        set(armed) != ARMED_V2_KEYS
+        or armed.get("schema") != DISPATCH_QUARANTINE_SCHEMA_V2
+        or armed.get("armed_schema") != DISPATCH_ARMED_SCHEMA_V2
+        or armed.get("event") != "dispatch_armed"
+    ):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence armed row is not exact v2"
+        )
+    dispatch_id = armed.get("dispatch_id")
+    if (
+        not isinstance(dispatch_id, str)
+        or DISPATCH_ID_RE.fullmatch(dispatch_id) is None
+        or failed.get("dispatch_id") != dispatch_id
+        or failed.get("schema") != armed.get("schema")
+    ):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence marker binding is malformed"
+        )
+
+    capsule_name = armed.get("wip_rollback_capsule_name")
+    if (
+        not isinstance(capsule_name, str)
+        or not capsule_name
+        or Path(capsule_name).name != capsule_name
+    ):
+        raise RecoveryEvidenceError("dispatch WIP capsule name is malformed")
+    _identity(armed.get("wip_rollback_capsule_identity"), "WIP capsule")
+    _nonnegative_integer(
+        armed.get("wip_rollback_capsule_bytes"), "WIP capsule bytes"
+    )
+    for field in (
+        "wip_rollback_capsule_sha256",
+        "wip_rollback_capsule_state_sha256",
+        "wip_restore_logical_state_sha256",
+    ):
+        value = armed.get(field)
+        if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+            raise RecoveryEvidenceError(f"dispatch armed {field} is malformed")
+    if armed.get("wip_restore_logical_state_schema") not in (
+        WIP_LOGICAL_RESTORE_SCHEMAS
+    ):
+        raise RecoveryEvidenceError(
+            "dispatch WIP logical restore schema is malformed"
+        )
+    armed_at = _utc_timestamp(armed.get("recorded_at"), "dispatch armed")
+    failed_at = _utc_timestamp(
+        failed.get("recorded_at"), "quiesced incomplete-evidence failure"
+    )
+    if failed_at < armed_at:
+        raise RecoveryEvidenceError("dispatch marker timestamps are reversed")
+    for field in ("pid", "target_level", "retry_complexity_n"):
+        _nonnegative_integer(armed.get(field), field)
+    if armed["pid"] <= 1 or armed["target_level"] == 0:
+        raise RecoveryEvidenceError(
+            "dispatch armed row has an invalid process/level"
+        )
+    for field in ("game", "tag", "run_label"):
+        if not isinstance(armed.get(field), str) or not armed[field]:
+            raise RecoveryEvidenceError(f"dispatch armed {field} is malformed")
+    _normalized_absolute(armed.get("artifact_root"), "artifact root")
+    _normalized_absolute(armed.get("canonical_root"), "canonical root")
+    _normalized_absolute(armed.get("ledger"), "ledger")
+    for field in (
+        "artifact_root_identity",
+        "canonical_root_identity",
+        "ledger_parent_identity",
+    ):
+        _identity(armed.get(field), field)
+    ledger_identity = armed.get("ledger_file_identity")
+    if ledger_identity is not None:
+        _identity(ledger_identity, "ledger file")
+    for field in (
+        "canonical_digest",
+        "ledger_prefix_sha256",
+        "projected_item_sha256",
+    ):
+        value = armed.get(field)
+        if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+            raise RecoveryEvidenceError(f"dispatch armed {field} is malformed")
+    prefix_bytes = _nonnegative_integer(
+        armed.get("ledger_prefix_bytes"), "ledger prefix bytes"
+    )
+    if ledger_identity is None and prefix_bytes != 0:
+        raise RecoveryEvidenceError("absent ledger has a nonempty prefix")
+    if not isinstance(armed.get("frontier_binding"), dict):
+        raise RecoveryEvidenceError("dispatch frontier binding is malformed")
+    wip = armed.get("target_wip_snapshot")
+    if (
+        not isinstance(wip, list)
+        or len(wip) != 2
+        or not isinstance(wip[0], str)
+        or not Path(wip[0]).is_absolute()
+        or (
+            wip[1] is not None
+            and (
+                not isinstance(wip[1], str)
+                or SHA256_RE.fullmatch(wip[1]) is None
+            )
+        )
+    ):
+        raise RecoveryEvidenceError("dispatch WIP snapshot is malformed")
+    historical = armed.get("historical_runner")
+    source_sha256 = (
+        historical.get("source_sha256")
+        if isinstance(historical, dict)
+        else None
+    )
+    if (
+        not isinstance(historical, dict)
+        or set(historical) != QUIESCED_INCOMPLETE_RUNNER_KEYS
+        or source_sha256 not in QUIESCED_INCOMPLETE_RUNNER_HEADS
+        or historical.get("schema") != 1
+        or historical.get("head_commit")
+        != QUIESCED_INCOMPLETE_RUNNER_HEADS.get(source_sha256)
+        or historical.get("evidence_schema") != "sealed_transcript_only_v1"
+        or historical.get("lock_schema") != "in_workspace_v1"
+    ):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence runner receipt is not approved"
+        )
+    for field in (
+        "worktree",
+        "cwd",
+        "interpreter",
+        "artifacts_root",
+        "scratch_root",
+        "ledger",
+    ):
+        _normalized_absolute(historical.get(field), f"runner {field}")
+
+    if (
+        set(failed) != QUIESCED_INCOMPLETE_EVIDENCE_FAILED_KEYS
+        or failed.get("event") != "dispatch_failed"
+        or failed.get("exception_type") != "CampaignPlanError"
+        or failed.get("reason") != QUIESCED_INCOMPLETE_EVIDENCE_REASON
+        or failed.get("child_returncode") != 1
+        or failed.get("transcript") is not None
+        or failed.get("protected_identity") is not None
+        or failed.get("process_tree_quiesced") is not True
+        or failed.get("descendant_quiescence_unproven") is not False
+        or failed.get("normal_exit_left_captured_descendants") is not False
+        or failed.get("detached_processes_proven_absent") is not False
+    ):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence failure row is not the exact incident"
+        )
+    workspace = failed.get("workspace")
+    protected = failed.get("protected")
+    if (
+        not isinstance(workspace, str)
+        or not workspace
+        or SAFE_COMPONENT_RE.fullmatch(workspace) is None
+        or protected != workspace
+    ):
+        raise RecoveryEvidenceError(
+            "quiesced incomplete-evidence workspace name is malformed"
+        )
+    _identity(failed.get("workspace_identity"), "workspace")
+    return ParsedMarker(dispatch_id, armed, failed, None)
 
 
 def parse_sandboxed_generation_marker(

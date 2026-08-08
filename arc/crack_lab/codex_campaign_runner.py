@@ -84,6 +84,12 @@ RECOVERY_PHASE_EVENTS = {
 }
 ZERO_LEDGER_EVENT = "codex_infrastructure_generation_quarantined"
 ZERO_LEDGER_EVENT_SCHEMA = "scheduler_zero_ledger_generation_quarantine_v1"
+QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA = (
+    "scheduler_quiesced_incomplete_evidence_recovery_v1"
+)
+QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY = (
+    "scheduler_quiesced_incomplete_evidence_zero_ledger_v1"
+)
 CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT = (
     "dispatch_contained_normal_exit_residual"
 )
@@ -204,6 +210,31 @@ ZERO_LEDGER_RESULT_KEYS = frozenset({
     "game", "target_level", "reached", "result", "reason",
     "child_returncode", "retry_complexity_n", "seed_mode", "wip_mode",
     "lineage_input_mode", "zero_ledger_replayed",
+})
+QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS = frozenset({
+    "event", "schema", "recorded_at", "infrastructure_authority",
+    "dispatch_id", "game", "target_level", "reached",
+    "parent_action_count", "retry_complexity_n", "workspace",
+    "workspace_identity", "workspace_tree_observation_sha256",
+    "workspace_lock_schema", "workspace_lock_path",
+    "workspace_lock_identity", "protected",
+    "protected_generation_absent", "scheduler_pid",
+    "scheduler_pid_absence_sample_count", "scheduler_pid_absence_window_ns",
+    "scheduler_pid_absence_first_at", "scheduler_pid_absence_last_at",
+    "child_returncode", "failure_class", "failure_detail_class",
+    "terminal_errors", "taint_verdict", "retry_increment",
+    "codex_exec_appended", "process_tree_quiesced",
+    "descendant_quiescence_unproven", "detached_processes_proven_absent",
+    "normal_exit_left_captured_descendants",
+    "wip_restore_logical_state_schema",
+    "wip_restore_logical_state_sha256", "canonical_digest",
+    *Status.FRONTIER_BINDING_FIELDS,
+})
+QUIESCED_INCOMPLETE_EVIDENCE_RESULT_KEYS = frozenset({
+    "game", "target_level", "reached", "result", "reason",
+    "dispatch_id", "child_returncode", "retry_complexity_n", "seed_mode",
+    "wip_mode", "lineage_input_mode",
+    "quiesced_incomplete_evidence_replayed",
 })
 RUNNER_RECEIPT_KEYS = frozenset({
     "schema",
@@ -2670,7 +2701,7 @@ def _seal_zero_ledger_observation(
         or observed.protected_identity is None
     ):
         raise CampaignPlanError(
-            "zero-ledger recovery lacks one complete quiesced observation"
+            RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
         )
     workspace_name = _safe_component(observed.workspace, "workspace")
     transcript_name = _safe_component(observed.transcript, "transcript")
@@ -5273,25 +5304,48 @@ def _build_dispatch_release_authority(
         kind == "ordinary_safe_terminal_v1"
         and terminal_result.get("result") == "infrastructure_noncounting"
     ):
+        quiesced_incomplete = isinstance(
+            terminal_result.get(
+                "quiesced_incomplete_evidence_replayed"
+            ),
+            bool,
+        )
         try:
-            parsed_zero = RebootRecovery.parse_dispatch_marker(
-                marker_payload, require_recovery_arm=False
+            parsed_zero = (
+                RebootRecovery.parse_quiesced_incomplete_evidence_marker(
+                    marker_payload, require_recovery_arm=False
+                )
+                if quiesced_incomplete
+                else RebootRecovery.parse_dispatch_marker(
+                    marker_payload, require_recovery_arm=False
+                )
             )
         except RebootRecovery.RecoveryEvidenceError as exc:
             raise CampaignPlanError(str(exc)) from exc
         if (
             len(marker_rows) != 2
             or parsed_zero.dispatch_id != marker.dispatch_id
-            or parsed_zero.unquiesced.get("event")
-            != "dispatch_zero_ledger_quarantined"
+            or (
+                not quiesced_incomplete
+                and parsed_zero.unquiesced.get("event")
+                != "dispatch_zero_ledger_quarantined"
+            )
         ):
             raise CampaignPlanError(
                 "zero-ledger release lacks its exact durable marker"
             )
-        _validate_zero_ledger_event(item, parsed_zero, terminal)
-        _validate_zero_ledger_result(
-            item, parsed_zero, terminal, terminal_result
-        )
+        if quiesced_incomplete:
+            _validate_quiesced_incomplete_evidence_event(
+                item, parsed_zero, terminal
+            )
+            _validate_quiesced_incomplete_evidence_result(
+                item, parsed_zero, terminal, terminal_result
+            )
+        else:
+            _validate_zero_ledger_event(item, parsed_zero, terminal)
+            _validate_zero_ledger_result(
+                item, parsed_zero, terminal, terminal_result
+            )
     if (
         kind == "ordinary_safe_terminal_v1"
         and terminal_result.get("result")
@@ -5619,27 +5673,43 @@ def _read_dispatch_release_marker_phase(
             and result.get("result") == "infrastructure_noncounting"
             and isinstance(result.get("zero_ledger_replayed"), bool)
         )
+        quiesced_incomplete_terminal = (
+            isinstance(result, dict)
+            and result.get("result") == "infrastructure_noncounting"
+            and isinstance(
+                result.get("quiesced_incomplete_evidence_replayed"), bool
+            )
+        )
         contained_residual_terminal = (
             isinstance(result, dict)
             and result.get("result")
             == "contained_residual_noncounting"
             and isinstance(result.get("classification_replayed"), bool)
         )
-        if zero_ledger_terminal:
+        if zero_ledger_terminal or quiesced_incomplete_terminal:
             if len(rows) != 2:
                 raise CampaignPlanError(
                     "zero-ledger release requires its exact two-row marker"
                 )
             try:
-                parsed = RebootRecovery.parse_dispatch_marker(
-                    payload, require_recovery_arm=False
+                parsed = (
+                    RebootRecovery.parse_quiesced_incomplete_evidence_marker(
+                        payload, require_recovery_arm=False
+                    )
+                    if quiesced_incomplete_terminal
+                    else RebootRecovery.parse_dispatch_marker(
+                        payload, require_recovery_arm=False
+                    )
                 )
             except RebootRecovery.RecoveryEvidenceError as exc:
                 raise CampaignPlanError(str(exc)) from exc
             if (
                 parsed.dispatch_id != record.get("dispatch_id")
-                or parsed.unquiesced.get("event")
-                != "dispatch_zero_ledger_quarantined"
+                or (
+                    not quiesced_incomplete_terminal
+                    and parsed.unquiesced.get("event")
+                    != "dispatch_zero_ledger_quarantined"
+                )
             ):
                 raise CampaignPlanError(
                     "zero-ledger release marker authority changed"
@@ -5925,62 +5995,198 @@ def _validate_dispatch_release_terminal_prefix(
                     "zero-ledger release lacks its exact infrastructure event"
                 )
             infrastructure = suffix[0]
-            event_keys = ZERO_LEDGER_EVENT_BASE_KEYS | (
-                ZERO_LEDGER_EVENT_DIAGNOSTICS_KEYS
-                if "diagnostics" in infrastructure
-                else frozenset()
-            )
-            expected = {
-                "event": ZERO_LEDGER_EVENT,
-                "schema": ZERO_LEDGER_EVENT_SCHEMA,
-                "infrastructure_authority": (
-                    "scheduler_quiesced_zero_ledger_suffix_v1"
-                ),
-                "dispatch_id": dispatch_id,
-                "game": authority["game"],
-                "target_level": authority["target_level"],
-                "reached": authority["reached"],
-                "parent_action_count": authority["parent_action_count"],
-                "retry_complexity_n": authority["retry_complexity_n"],
-                "failure_class": "infrastructure",
-                "failure_detail_class": (
-                    "interrupted_before_codex_exec_append"
-                ),
-                "taint_verdict": "quarantined",
-                "retry_increment": 0,
-                "codex_exec_appended": False,
-                "process_tree_quiesced": True,
-                **{
-                    field: authority[field]
-                    for field in Status.FRONTIER_BINDING_FIELDS
-                },
-            }
-            if (
-                set(infrastructure) != event_keys
-                or set(result) != ZERO_LEDGER_RESULT_KEYS
-                or not isinstance(result.get("zero_ledger_replayed"), bool)
-                or any(
-                    infrastructure.get(field) != value
-                    for field, value in expected.items()
-                )
-                or result.get("reached") != authority.get("reached")
-                or result.get("retry_complexity_n")
-                != authority.get("retry_complexity_n")
-                or infrastructure.get("terminal_errors")
-                != [result.get("reason")]
-                or infrastructure.get("child_returncode")
-                != result.get("child_returncode")
-                or any(
-                    not isinstance(result.get(field), str)
-                    or not result[field]
-                    for field in (
-                        "seed_mode", "wip_mode", "lineage_input_mode"
-                    )
-                )
+            if infrastructure.get("schema") == (
+                QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
             ):
-                raise CampaignPlanError(
-                    "zero-ledger infrastructure release binding changed"
+                expected = {
+                    "event": ZERO_LEDGER_EVENT,
+                    "schema": QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+                    "infrastructure_authority": (
+                        QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
+                    ),
+                    "dispatch_id": dispatch_id,
+                    "game": authority["game"],
+                    "target_level": authority["target_level"],
+                    "reached": authority["reached"],
+                    "parent_action_count": authority["parent_action_count"],
+                    "retry_complexity_n": authority["retry_complexity_n"],
+                    "protected_generation_absent": True,
+                    "child_returncode": 1,
+                    "failure_class": "infrastructure",
+                    "failure_detail_class": (
+                        "quiesced_incomplete_evidence_before_codex_exec_append"
+                    ),
+                    "terminal_errors": [
+                        RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
+                    ],
+                    "taint_verdict": "quarantined",
+                    "retry_increment": 0,
+                    "codex_exec_appended": False,
+                    "process_tree_quiesced": True,
+                    "descendant_quiescence_unproven": False,
+                    "detached_processes_proven_absent": False,
+                    "normal_exit_left_captured_descendants": False,
+                    **{
+                        field: authority[field]
+                        for field in Status.FRONTIER_BINDING_FIELDS
+                    },
+                }
+                workspace = infrastructure.get("workspace")
+                lock_path = infrastructure.get("workspace_lock_path")
+                result_expected = {
+                    "game": authority["game"],
+                    "target_level": authority["target_level"],
+                    "reached": authority["reached"],
+                    "result": "infrastructure_noncounting",
+                    "reason": (
+                        RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
+                    ),
+                    "dispatch_id": dispatch_id,
+                    "child_returncode": 1,
+                    "retry_complexity_n": authority["retry_complexity_n"],
+                }
+                if any((
+                    set(infrastructure)
+                    != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS,
+                    set(result)
+                    != QUIESCED_INCOMPLETE_EVIDENCE_RESULT_KEYS,
+                    any(
+                        infrastructure.get(field) != value
+                        for field, value in expected.items()
+                    ),
+                    any(
+                        result.get(field) != value
+                        for field, value in result_expected.items()
+                    ),
+                    not isinstance(
+                        result.get(
+                            "quiesced_incomplete_evidence_replayed"
+                        ),
+                        bool,
+                    ),
+                    not isinstance(workspace, str),
+                    not bool(workspace),
+                    infrastructure.get("protected") != workspace,
+                    infrastructure.get("workspace_lock_schema")
+                    != "in_workspace_v1",
+                    not isinstance(lock_path, str),
+                    not isinstance(
+                        infrastructure.get(
+                            "workspace_tree_observation_sha256"
+                        ),
+                        str,
+                    ),
+                    not isinstance(
+                        infrastructure.get(
+                            "wip_restore_logical_state_schema"
+                        ),
+                        str,
+                    ),
+                    infrastructure.get("wip_restore_logical_state_schema")
+                    not in {
+                        WIP_LOGICAL_RESTORE_SCHEMA_V1,
+                        WIP_LOGICAL_RESTORE_SCHEMA,
+                    },
+                    not isinstance(
+                        infrastructure.get(
+                            "wip_restore_logical_state_sha256"
+                        ),
+                        str,
+                    ),
+                    not isinstance(
+                        infrastructure.get("canonical_digest"), str
+                    ),
+                    infrastructure.get("terminal_errors")
+                    != [result.get("reason")],
+                    infrastructure.get("workspace_lock_identity") is None,
+                    any(
+                        not isinstance(result.get(field), str)
+                        or not result[field]
+                        for field in (
+                            "seed_mode", "wip_mode", "lineage_input_mode"
+                        )
+                    ),
+                )):
+                    raise CampaignPlanError(
+                        "quiesced incomplete-evidence release binding changed"
+                    )
+                for field in (
+                    "workspace_tree_observation_sha256",
+                    "wip_restore_logical_state_sha256",
+                    "canonical_digest",
+                ):
+                    if SHA256_RE.fullmatch(str(infrastructure[field])) is None:
+                        raise CampaignPlanError(
+                            "quiesced incomplete-evidence release hash changed"
+                        )
+                _marker_identity(
+                    infrastructure.get("workspace_identity"), "workspace"
                 )
+                _marker_identity(
+                    infrastructure.get("workspace_lock_identity"),
+                    "workspace lock",
+                )
+                _recovery_recorded_at(
+                    infrastructure,
+                    "quiesced incomplete-evidence infrastructure event",
+                )
+            else:
+                event_keys = ZERO_LEDGER_EVENT_BASE_KEYS | (
+                    ZERO_LEDGER_EVENT_DIAGNOSTICS_KEYS
+                    if "diagnostics" in infrastructure
+                    else frozenset()
+                )
+                expected = {
+                    "event": ZERO_LEDGER_EVENT,
+                    "schema": ZERO_LEDGER_EVENT_SCHEMA,
+                    "infrastructure_authority": (
+                        "scheduler_quiesced_zero_ledger_suffix_v1"
+                    ),
+                    "dispatch_id": dispatch_id,
+                    "game": authority["game"],
+                    "target_level": authority["target_level"],
+                    "reached": authority["reached"],
+                    "parent_action_count": authority["parent_action_count"],
+                    "retry_complexity_n": authority["retry_complexity_n"],
+                    "failure_class": "infrastructure",
+                    "failure_detail_class": (
+                        "interrupted_before_codex_exec_append"
+                    ),
+                    "taint_verdict": "quarantined",
+                    "retry_increment": 0,
+                    "codex_exec_appended": False,
+                    "process_tree_quiesced": True,
+                    **{
+                        field: authority[field]
+                        for field in Status.FRONTIER_BINDING_FIELDS
+                    },
+                }
+                if (
+                    set(infrastructure) != event_keys
+                    or set(result) != ZERO_LEDGER_RESULT_KEYS
+                    or not isinstance(result.get("zero_ledger_replayed"), bool)
+                    or any(
+                        infrastructure.get(field) != value
+                        for field, value in expected.items()
+                    )
+                    or result.get("reached") != authority.get("reached")
+                    or result.get("retry_complexity_n")
+                    != authority.get("retry_complexity_n")
+                    or infrastructure.get("terminal_errors")
+                    != [result.get("reason")]
+                    or infrastructure.get("child_returncode")
+                    != result.get("child_returncode")
+                    or any(
+                        not isinstance(result.get(field), str)
+                        or not result[field]
+                        for field in (
+                            "seed_mode", "wip_mode", "lineage_input_mode"
+                        )
+                    )
+                ):
+                    raise CampaignPlanError(
+                        "zero-ledger infrastructure release binding changed"
+                    )
         elif result.get("result") == "contained_residual_noncounting":
             if [row.get("event") for row in suffix] != [
                 "codex_exec", "codex_exec_classification_correction"
@@ -7669,6 +7875,8 @@ def _finish_dispatch_release_intent(
     root_fd: int,
     record: dict[str, Any],
     intent_identity: tuple[int, int],
+    *,
+    before_retirement: Any | None = None,
 ) -> None:
     marker_name = str(record["marker_name"])
     intent_name = str(record["intent_name"])
@@ -7679,6 +7887,14 @@ def _finish_dispatch_release_intent(
     _ensure_dispatch_release_authority_row(
         item, root_fd, record, intent_identity
     )
+    if before_retirement is not None:
+        before_retirement(record, intent_identity)
+        # The state validator is deliberately outside the ledger lock.  Seal
+        # the complete authority again after it returns and immediately before
+        # the namespace-retirement path can unlink capsule or marker evidence.
+        _ensure_dispatch_release_authority_row(
+            item, root_fd, record, intent_identity
+        )
 
     def revalidate_intent() -> None:
         root_metadata = os.fstat(root_fd)
@@ -7780,6 +7996,7 @@ def _reconcile_dispatch_release_intent_at(
     root_fd: int,
     *,
     marker_name: str,
+    before_authorized_finish: Any | None = None,
 ) -> bool:
     intent_name, preparing_name = _dispatch_release_intent_names(marker_name)
     present: list[str] = []
@@ -7836,14 +8053,39 @@ def _reconcile_dispatch_release_intent_at(
             raise CampaignPlanError(
                 "promoted dispatch release intent changed"
             )
-    _finish_dispatch_release_intent(
-        item, root_fd, record, intent_identity
-    )
+    if before_authorized_finish is not None:
+        authority_state = _prevalidate_dispatch_release_preparing(
+            item, root_fd, record, intent_identity
+        )
+        if authority_state != "authorized":
+            raise IncompleteDispatchReleaseAuthority(
+                "release WAL lacks complete authority before final-state "
+                "revalidation"
+            )
+        before_authorized_finish(record, intent_identity)
+        if _prevalidate_dispatch_release_preparing(
+            item, root_fd, record, intent_identity
+        ) != "authorized":
+            raise CampaignPlanError(
+                "release authority changed during final-state revalidation"
+            )
+    if before_authorized_finish is None:
+        _finish_dispatch_release_intent(
+            item, root_fd, record, intent_identity
+        )
+    else:
+        _finish_dispatch_release_intent(
+            item,
+            root_fd,
+            record,
+            intent_identity,
+            before_retirement=before_authorized_finish,
+        )
     return True
 
 
 def _preflight_post_reboot_release_reconciliation(
-    item: dict[str, Any],
+    item: dict[str, Any], *, before_authorized_finish: Any | None = None,
 ) -> bool:
     """Finish an already-installed release before replaying recovery phases."""
 
@@ -7857,6 +8099,7 @@ def _preflight_post_reboot_release_reconciliation(
                 item,
                 root_fd,
                 marker_name=_dispatch_quarantine_name(item),
+                before_authorized_finish=before_authorized_finish,
             )
         except IncompleteDispatchReleaseAuthority:
             return False
@@ -8203,6 +8446,7 @@ def _release_dispatch_quarantine(
     release_authority: dict[str, Any],
     *,
     before_authority_append: Any | None = None,
+    before_retirement: Any | None = None,
 ) -> None:
     try:
         record, intent_identity = _install_dispatch_release_intent(
@@ -8222,9 +8466,18 @@ def _release_dispatch_quarantine(
             intent_identity,
             **ensure_options,
         )
-        _finish_dispatch_release_intent(
-            item, marker.root_fd, record, intent_identity
-        )
+        if before_retirement is None:
+            _finish_dispatch_release_intent(
+                item, marker.root_fd, record, intent_identity
+            )
+        else:
+            _finish_dispatch_release_intent(
+                item,
+                marker.root_fd,
+                record,
+                intent_identity,
+                before_retirement=before_retirement,
+            )
     except OSError as exc:
         raise CampaignPlanError(
             "could not durably release the dispatch quarantine"
@@ -8812,6 +9065,84 @@ def _validate_post_reboot_dispatch_binding(
         )
 
 
+def _validate_quiesced_incomplete_evidence_binding(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> None:
+    """Bind the transcript-absent failure without inventing evidence."""
+
+    armed = parsed.armed
+    failed = parsed.unquiesced
+    item_payload = json.dumps(
+        item, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    artifact_root = _artifact_root(item)
+    canonical_root = artifact_root / f"{item['game']}_legs"
+    ledger = _ledger_path(item["argv"], cwd=_runner_cwd(item))
+    marker_wip = armed.get("target_wip_snapshot")
+    historical_wip = [
+        os.fspath(_target_wip_level(item)),
+        marker_wip[1]
+        if isinstance(marker_wip, list) and len(marker_wip) == 2
+        else None,
+    ]
+    expected = {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "tag": _single_cli_value(item["argv"], "--tag"),
+        "run_label": f"{item['game']}:L{item['target_level']}:propose",
+        "retry_complexity_n": item["retry_complexity_n"],
+        "artifact_root": os.fspath(artifact_root),
+        "canonical_root": os.fspath(canonical_root),
+        "frontier_binding": {
+            field: item[field]
+            for field in (
+                *Status.FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        },
+        "target_wip_snapshot": historical_wip,
+        "ledger": os.fspath(ledger),
+        "projected_item_sha256": hashlib.sha256(item_payload).hexdigest(),
+        "historical_runner": item.get("historical_runner"),
+    }
+    mismatched = sorted(
+        field for field, value in expected.items() if armed.get(field) != value
+    )
+    if mismatched:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence marker does not bind the projected "
+            f"plan item: {mismatched}"
+        )
+    workspace = _safe_component(failed.get("workspace"), "workspace")
+    protected = _safe_component(
+        failed.get("protected"), "protected workspace"
+    )
+    expected_prefix = _dispatch_workspace_prefix(item)
+    if any((
+        not workspace.startswith(expected_prefix),
+        workspace == expected_prefix,
+        protected != workspace,
+        failed.get("transcript") is not None,
+        failed.get("protected_identity") is not None,
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence generation does not bind the dispatch"
+        )
+    historical = armed.get("historical_runner")
+    if not isinstance(historical, dict) or any((
+        historical.get("source_sha256") not in SANDBOX_CONTRACTS,
+        historical.get("evidence_schema") != "sealed_transcript_only_v1",
+        historical.get("lock_schema") != "in_workspace_v1",
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence historical runner is not approved"
+        )
+    _revalidate_historical_control(item, allow_abandoned_scratch=True)
+
+
 def _reconstruct_historical_recovery_item(
     item: dict[str, Any], authority: dict[str, Any], *,
     allow_abandoned_scratch: bool = False,
@@ -8960,6 +9291,224 @@ def _validate_zero_ledger_phase_intent(
             "zero-ledger lane rejects a foreign recovery phase intent"
         )
     _validate_zero_ledger_event(item, parsed, record)
+
+
+def _build_quiesced_incomplete_evidence_event(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    workspace_tree_sha256: str,
+    lock_schema: str,
+    lock_path: Path,
+    lock_identity: tuple[int, int],
+    absence: dict[str, Any],
+) -> dict[str, Any]:
+    failed = parsed.unquiesced
+    return {
+        "event": ZERO_LEDGER_EVENT,
+        "schema": QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "infrastructure_authority": (
+            QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
+        ),
+        "dispatch_id": parsed.dispatch_id,
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "workspace": failed["workspace"],
+        "workspace_identity": failed["workspace_identity"],
+        "workspace_tree_observation_sha256": workspace_tree_sha256,
+        "workspace_lock_schema": lock_schema,
+        "workspace_lock_path": os.fspath(lock_path),
+        "workspace_lock_identity": list(lock_identity),
+        "protected": failed["protected"],
+        "protected_generation_absent": True,
+        **absence,
+        "child_returncode": failed["child_returncode"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": (
+            "quiesced_incomplete_evidence_before_codex_exec_append"
+        ),
+        "terminal_errors": [failed["reason"]],
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": True,
+        "descendant_quiescence_unproven": False,
+        "detached_processes_proven_absent": False,
+        "normal_exit_left_captured_descendants": False,
+        "wip_restore_logical_state_schema": parsed.armed[
+            "wip_restore_logical_state_schema"
+        ],
+        "wip_restore_logical_state_sha256": parsed.armed[
+            "wip_restore_logical_state_sha256"
+        ],
+        "canonical_digest": parsed.armed["canonical_digest"],
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+
+
+def _validate_quiesced_incomplete_evidence_event(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+) -> None:
+    if set(record) != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence event has an invalid exact schema"
+        )
+    tree_sha = record.get("workspace_tree_observation_sha256")
+    lock_schema = record.get("workspace_lock_schema")
+    lock_path_value = record.get("workspace_lock_path")
+    if (
+        not isinstance(tree_sha, str)
+        or SHA256_RE.fullmatch(tree_sha) is None
+        or lock_schema != "in_workspace_v1"
+        or not isinstance(lock_path_value, str)
+    ):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace custody is malformed"
+        )
+    lock_identity = _marker_identity(
+        record.get("workspace_lock_identity"), "workspace lock"
+    )
+    absence = {
+        field: record.get(field)
+        for field in (
+            "scheduler_pid",
+            "scheduler_pid_absence_sample_count",
+            "scheduler_pid_absence_window_ns",
+            "scheduler_pid_absence_first_at",
+            "scheduler_pid_absence_last_at",
+        )
+    }
+    absence_window = absence["scheduler_pid_absence_window_ns"]
+    if any((
+        absence["scheduler_pid"] != parsed.armed.get("pid"),
+        absence["scheduler_pid_absence_sample_count"]
+        != SANDBOX_ABSENCE_SAMPLES,
+        not isinstance(absence_window, int),
+        isinstance(absence_window, bool),
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence process absence is malformed"
+        )
+    assert isinstance(absence_window, int) and not isinstance(
+        absence_window, bool
+    )
+    if absence_window <= 0:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence process absence is malformed"
+        )
+    first_at = _recovery_recorded_at({
+        "recorded_at": absence["scheduler_pid_absence_first_at"]
+    }, "scheduler PID absence first sample")
+    last_at = _recovery_recorded_at({
+        "recorded_at": absence["scheduler_pid_absence_last_at"]
+    }, "scheduler PID absence last sample")
+    event_at = _recovery_recorded_at(
+        record, "quiesced incomplete-evidence event"
+    )
+    failure_at = _recovery_recorded_at(
+        parsed.unquiesced, "quiesced incomplete-evidence failure"
+    )
+    if not failure_at <= first_at <= last_at <= event_at:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence observation timestamps are reversed"
+        )
+    expected_lock_path = Path(Legs.SCRATCH).absolute() / str(
+        parsed.unquiesced["workspace"]
+    ) / ".orchestrate.lock"
+    if Path(lock_path_value) != expected_lock_path:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence lock path changed"
+        )
+    expected = _build_quiesced_incomplete_evidence_event(
+        item,
+        parsed,
+        workspace_tree_sha256=tree_sha,
+        lock_schema=str(lock_schema),
+        lock_path=Path(lock_path_value),
+        lock_identity=lock_identity,
+        absence=absence,
+    )
+    expected.pop("recorded_at")
+    observed = dict(record)
+    observed.pop("recorded_at")
+    if observed != expected:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence event binding changed"
+        )
+
+
+def _validate_quiesced_incomplete_evidence_phase_intent(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+    phase_rows: list[dict[str, Any]],
+) -> None:
+    if phase_rows or record.get("event") != ZERO_LEDGER_EVENT:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence lane rejects a foreign phase intent"
+        )
+    _validate_quiesced_incomplete_evidence_event(item, parsed, record)
+
+
+def _quiesced_incomplete_evidence_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    replayed: bool,
+) -> dict[str, Any]:
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "infrastructure_noncounting",
+        "reason": parsed.unquiesced["reason"],
+        "dispatch_id": parsed.dispatch_id,
+        "child_returncode": parsed.unquiesced["child_returncode"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "seed_mode": item["seed_mode"],
+        "wip_mode": item["wip_mode"],
+        "lineage_input_mode": item["lineage_input_mode"],
+        "quiesced_incomplete_evidence_replayed": replayed,
+    }
+
+
+def _validate_quiesced_incomplete_evidence_result(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    event: dict[str, Any],
+    result: dict[str, Any],
+) -> None:
+    if (
+        set(result) != QUIESCED_INCOMPLETE_EVIDENCE_RESULT_KEYS
+        or not isinstance(
+            result.get("quiesced_incomplete_evidence_replayed"), bool
+        )
+    ):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence result has an invalid exact schema"
+        )
+    expected = _quiesced_incomplete_evidence_result(
+        item,
+        parsed,
+        replayed=bool(result["quiesced_incomplete_evidence_replayed"]),
+    )
+    if result != expected or any((
+        event.get("child_returncode") != result["child_returncode"],
+        event.get("retry_complexity_n") != result["retry_complexity_n"],
+        event.get("terminal_errors") != [result["reason"]],
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence result binding changed"
+        )
 
 
 def _sandbox_exec_record_sha256(
@@ -12659,7 +13208,9 @@ def _open_held_recovery_workspace_lock(
         raise
 
 
-def _generation_tree_observation_sha256(path: Path, *, label: str) -> str:
+def _generation_tree_observation_sha256(
+    path: Path, *, label: str, normalize_root_ctime: bool = False
+) -> str:
     """Hash one stable, exact generation manifest twice before accepting it."""
 
     def stat_receipt(metadata: os.stat_result) -> tuple[int, ...]:
@@ -12809,10 +13360,19 @@ def _generation_tree_observation_sha256(path: Path, *, label: str) -> str:
         root_receipt = metadata_receipt(path, root_metadata)
         if tuple(root_receipt[:2]) != root_identity:
             raise CampaignPlanError(f"{label} root identity is unstable")
+        sealed_root_receipt = root_receipt
+        if normalize_root_ctime:
+            # Renaming an authenticated directory into its exact cleanup
+            # tombstone changes only the root inode's ctime.  Excluding that
+            # one namespace-transition field lets crash recovery revalidate
+            # every other inode, byte, xattr, and timestamp before deletion.
+            sealed_root_receipt = (
+                *root_receipt[:8], 0, *root_receipt[9:]
+            )
         entries: list[dict[str, Any]] = [{
             "path": ".",
             "kind": "directory",
-            "metadata": list(root_receipt),
+            "metadata": list(sealed_root_receipt),
         }]
         directory_receipts: dict[str, tuple[Any, ...]] = {}
         file_receipts: dict[str, tuple[Any, ...]] = {}
@@ -13044,6 +13604,104 @@ def _observe_named_root_group_absence(
         "absence_window_ns": max(1, time.monotonic_ns() - started_ns),
         "absence_first_at": first_at.isoformat(),
         "absence_last_at": last_at.isoformat(),
+    }
+
+
+def _current_boot_started_at() -> datetime:
+    """Return the host's current boot wall-clock boundary, fail closed."""
+
+    platform_name = os.uname().sysname
+    if platform_name == "Linux":
+        try:
+            fields = {
+                line.split()[0]: line.split()[1]
+                for line in Path("/proc/stat").read_text(
+                    encoding="ascii"
+                ).splitlines()
+                if line.startswith("btime ") and len(line.split()) == 2
+            }
+            seconds = int(fields["btime"])
+        except (OSError, UnicodeError, KeyError, ValueError) as exc:
+            raise CampaignPlanError(
+                "could not authenticate the current Linux boot boundary"
+            ) from exc
+    elif platform_name == "Darwin":
+        observed = subprocess.run(
+            ["sysctl", "-n", "kern.boottime"],
+            text=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            check=False,
+        )
+        matched = re.fullmatch(
+            r"\{ sec = ([0-9]+), usec = ([0-9]+) \}.*",
+            observed.stdout.strip(),
+        )
+        if observed.returncode != 0 or matched is None:
+            raise CampaignPlanError(
+                "could not authenticate the current Darwin boot boundary"
+            )
+        seconds = int(matched.group(1))
+        microseconds = int(matched.group(2))
+        if not 0 <= microseconds < 1_000_000:
+            raise CampaignPlanError("Darwin boot boundary is malformed")
+        return datetime.fromtimestamp(
+            seconds + microseconds / 1_000_000, tz=timezone.utc
+        )
+    else:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence recovery is unsupported here"
+        )
+    return datetime.fromtimestamp(seconds, tz=timezone.utc)
+
+
+def _observe_quiesced_incomplete_evidence_absence(
+    parsed: RebootRecovery.ParsedMarker,
+) -> dict[str, Any]:
+    """Recheck the one persisted PID after the captured tree quiesced."""
+
+    failed_at = _recovery_recorded_at(
+        parsed.unquiesced, "quiesced incomplete-evidence failure"
+    )
+    now = datetime.now(timezone.utc)
+    boot_started = _current_boot_started_at()
+    if failed_at < boot_started or failed_at > now:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence marker is not from this boot"
+        )
+    scheduler_pid = parsed.armed.get("pid")
+    if (
+        not isinstance(scheduler_pid, int)
+        or isinstance(scheduler_pid, bool)
+        or scheduler_pid <= 1
+    ):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence scheduler PID is malformed"
+        )
+    first_at = datetime.now(timezone.utc)
+    started_ns = time.monotonic_ns()
+    for index in range(SANDBOX_ABSENCE_SAMPLES):
+        try:
+            identity = Contiguous._process_identity(scheduler_pid)
+        except Contiguous.SupervisorContractError as exc:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence PID observation failed"
+            ) from exc
+        if identity is not None and not identity[3].startswith("Z"):
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence scheduler PID remains live"
+            )
+        if index + 1 < SANDBOX_ABSENCE_SAMPLES:
+            time.sleep(SANDBOX_ABSENCE_INTERVAL_SECONDS)
+    last_at = datetime.now(timezone.utc)
+    return {
+        "scheduler_pid": scheduler_pid,
+        "scheduler_pid_absence_sample_count": SANDBOX_ABSENCE_SAMPLES,
+        "scheduler_pid_absence_window_ns": max(
+            1, time.monotonic_ns() - started_ns
+        ),
+        "scheduler_pid_absence_first_at": first_at.isoformat(),
+        "scheduler_pid_absence_last_at": last_at.isoformat(),
     }
 
 
@@ -15505,6 +16163,7 @@ def _complete_zero_ledger_recovery(
             result,
             kind="ordinary_safe_terminal_v1",
         )
+
         _release_dispatch_quarantine(marker, item, release_authority)
     return result
 
@@ -15566,6 +16225,1002 @@ def _resume_existing_zero_ledger_quarantine(
     finally:
         if not released:
             _close_dispatch_quarantine(marker)
+
+
+def _quiesced_incomplete_evidence_paths(
+    item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
+) -> tuple[Path, Path, Path, Path]:
+    workspace, protected = _post_reboot_generation_paths(
+        item, parsed.unquiesced
+    )
+    if parsed.unquiesced.get("protected") != workspace.name:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence protected name changed"
+        )
+    workspace_tombstone, protected_tombstone = _post_reboot_tombstones(
+        parsed.dispatch_id, workspace, protected
+    )
+    return workspace, protected, workspace_tombstone, protected_tombstone
+
+
+def _validate_quiesced_incomplete_evidence_baseline(
+    item: dict[str, Any],
+    marker: DispatchQuarantine,
+    parsed: RebootRecovery.ParsedMarker,
+) -> tuple[Path, LedgerPrefixState, list[dict[str, Any]]]:
+    _validate_quiesced_incomplete_evidence_binding(item, parsed)
+    if any((
+        parsed.armed.get("schema")
+        != RebootRecovery.DISPATCH_QUARANTINE_SCHEMA_V2,
+        marker.capsule_state is None,
+        marker.capsule_record is None,
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence recovery requires the full v2 "
+            "WIP capsule"
+        )
+    artifact_root = _artifact_root(item)
+    if _host_directory_identity(
+        artifact_root, "canonical artifact root"
+    ) != _marker_identity(
+        parsed.armed.get("artifact_root_identity"), "artifact root"
+    ):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence artifact root identity changed"
+        )
+    _validate_zero_ledger_baseline(
+        item, parsed, reached_before=item["reached"]
+    )
+    ledger, baseline, suffix = _read_post_reboot_ledger_surface(
+        item,
+        parsed.armed,
+        intent_root=marker.root,
+        intent_root_identity=marker.root_identity,
+        intent_record_validator=lambda record, phase_rows: (
+            _validate_quiesced_incomplete_evidence_phase_intent(
+                item, parsed, record, phase_rows
+            )
+        ),
+    )
+    if suffix:
+        if len(suffix) != 1 or suffix[0].get("schema") != (
+            QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+        ):
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence ledger suffix is ambiguous"
+            )
+        _validate_quiesced_incomplete_evidence_event(
+            item, parsed, suffix[0]
+        )
+    return ledger, baseline, suffix
+
+
+def _quiesced_incomplete_evidence_workspace_inventory(
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    workspace: Path,
+    protected: Path,
+    workspace_tombstone: Path,
+    protected_tombstone: Path,
+) -> frozenset[str]:
+    present = frozenset(
+        label
+        for label, path in (
+            ("W", workspace),
+            ("P", protected),
+            ("Wt", workspace_tombstone),
+            ("Pt", protected_tombstone),
+        )
+        if os.path.lexists(path)
+    )
+    if "P" in present or "Pt" in present:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence protected namespace appeared"
+        )
+    if present not in {frozenset({"W"}), frozenset({"Wt"}), frozenset()}:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace cleanup is ambiguous"
+        )
+    expected = _marker_identity(
+        parsed.unquiesced.get("workspace_identity"), "workspace"
+    )
+    selected = (
+        workspace if "W" in present
+        else workspace_tombstone if "Wt" in present
+        else None
+    )
+    if selected is not None and _host_directory_identity(
+        selected, "quiesced incomplete-evidence workspace"
+    ) != expected:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace identity changed"
+        )
+    return present
+
+
+def _open_quiesced_incomplete_evidence_lock(
+    event: dict[str, Any],
+    *,
+    workspace: Path,
+    workspace_tombstone: Path,
+    inventory: frozenset[str],
+) -> tuple[Any | None, Path, tuple[int, int]]:
+    if event.get("workspace_lock_schema") != "in_workspace_v1":
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence lock schema changed"
+        )
+    original = workspace / ".orchestrate.lock"
+    tombstone = workspace_tombstone / ".orchestrate.lock"
+    if event.get("workspace_lock_path") != os.fspath(original):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence lock path changed"
+        )
+    expected_identity = _marker_identity(
+        event.get("workspace_lock_identity"), "workspace lock"
+    )
+    existing = [path for path in (original, tombstone) if os.path.lexists(path)]
+    if len(existing) > 1:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence lock paths are ambiguous"
+        )
+    if not inventory:
+        if existing:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence lock outlived its workspace"
+            )
+        return None, original, expected_identity
+    expected_path = original if "W" in inventory else tombstone
+    if existing != [expected_path]:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace lost its exact lock"
+        )
+    lock: Any | None = None
+    descriptor_fd: int | None = None
+    try:
+        descriptor_fd = os.open(
+            expected_path,
+            os.O_RDONLY
+            | getattr(os, "O_NOFOLLOW", 0)
+            | getattr(os, "O_CLOEXEC", 0),
+        )
+        lock = os.fdopen(descriptor_fd, "rb")
+        descriptor_fd = None
+        fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except (OSError, RuntimeError, BlockingIOError) as exc:
+        if descriptor_fd is not None:
+            os.close(descriptor_fd)
+        if lock is not None:
+            lock.close()
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace lock remains active"
+        ) from exc
+    descriptor = os.fstat(lock.fileno())
+    path_metadata = expected_path.stat(follow_symlinks=False)
+    if any((
+        expected_path.is_symlink(),
+        not stat.S_ISREG(descriptor.st_mode),
+        not stat.S_ISREG(path_metadata.st_mode),
+        descriptor.st_nlink != 1,
+        path_metadata.st_nlink != 1,
+        (descriptor.st_dev, descriptor.st_ino) != expected_identity,
+        (path_metadata.st_dev, path_metadata.st_ino) != expected_identity,
+        descriptor.st_uid != os.geteuid(),
+        path_metadata.st_uid != os.geteuid(),
+        stat.S_IMODE(descriptor.st_mode) != 0o600,
+        stat.S_IMODE(path_metadata.st_mode) != 0o600,
+    )):
+        lock.close()
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace lock identity changed"
+        )
+    return lock, expected_path, expected_identity
+
+
+def _resume_quiesced_incomplete_evidence_workspace_cleanup(
+    *,
+    parsed: RebootRecovery.ParsedMarker,
+    event: dict[str, Any],
+    workspace: Path,
+    protected: Path,
+    workspace_tombstone: Path,
+    protected_tombstone: Path,
+    held_lock: Any | None = None,
+) -> None:
+    """Delete only the one workspace sealed by the durable event."""
+
+    inventory = _quiesced_incomplete_evidence_workspace_inventory(
+        parsed,
+        workspace=workspace,
+        protected=protected,
+        workspace_tombstone=workspace_tombstone,
+        protected_tombstone=protected_tombstone,
+    )
+    cleanup_lock = held_lock
+    lock_path: Path | None = None
+    lock_identity: tuple[int, int] | None = None
+    if cleanup_lock is None:
+        cleanup_lock, lock_path, lock_identity = (
+            _open_quiesced_incomplete_evidence_lock(
+                event,
+                workspace=workspace,
+                workspace_tombstone=workspace_tombstone,
+                inventory=inventory,
+            )
+        )
+    else:
+        lock_identity = _marker_identity(
+            event.get("workspace_lock_identity"), "workspace lock"
+        )
+        locked = os.fstat(cleanup_lock.fileno())
+        if (locked.st_dev, locked.st_ino) != lock_identity:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence held lock identity changed"
+            )
+    try:
+        selected = (
+            workspace if "W" in inventory
+            else workspace_tombstone if "Wt" in inventory
+            else None
+        )
+        if selected is not None:
+            observed_tree = _generation_tree_observation_sha256(
+                selected,
+                label="quiesced incomplete-evidence workspace",
+                normalize_root_ctime=True,
+            )
+            if observed_tree != event.get(
+                "workspace_tree_observation_sha256"
+            ):
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence workspace content changed"
+                )
+        if "W" in inventory:
+            _rename_recovery_tombstone(
+                workspace,
+                workspace_tombstone,
+                _marker_identity(
+                    parsed.unquiesced.get("workspace_identity"), "workspace"
+                ),
+            )
+            inventory = frozenset({"Wt"})
+        if not getattr(shutil.rmtree, "avoids_symlink_attacks", False):
+            raise CampaignPlanError(
+                "platform lacks symlink-safe recursive deletion"
+            )
+        if "Wt" in inventory:
+            if _host_directory_identity(
+                workspace_tombstone,
+                "quiesced incomplete-evidence workspace tombstone",
+            ) != _marker_identity(
+                parsed.unquiesced.get("workspace_identity"), "workspace"
+            ):
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence tombstone identity changed"
+                )
+            shutil.rmtree(workspace_tombstone)
+            _fsync_directory(workspace_tombstone.parent)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence workspace cleanup failed"
+        ) from exc
+    finally:
+        if cleanup_lock is not None and cleanup_lock is not held_lock:
+            cleanup_lock.close()
+    if any(os.path.lexists(path) for path in (
+        workspace,
+        protected,
+        workspace_tombstone,
+        protected_tombstone,
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence cleanup was incomplete"
+        )
+
+
+def _recover_quiesced_incomplete_evidence_locked(
+    item: dict[str, Any], *, confirm_dispatch_id: str
+) -> dict[str, Any]:
+    marker, parsed = _read_existing_dispatch_quarantine(
+        item,
+        require_recovery_arm=False,
+        marker_parser=(
+            RebootRecovery.parse_quiesced_incomplete_evidence_marker
+        ),
+    )
+    held_lock: Any | None = None
+    released = False
+    try:
+        item = _reconstruct_historical_recovery_item(
+            item, parsed.armed, allow_abandoned_scratch=True
+        )
+        if (
+            not isinstance(confirm_dispatch_id, str)
+            or RebootRecovery.DISPATCH_ID_RE.fullmatch(confirm_dispatch_id)
+            is None
+            or confirm_dispatch_id != marker.dispatch_id
+        ):
+            raise CampaignPlanError(
+                "operator confirmation does not match the quiesced "
+                "incomplete-evidence dispatch"
+            )
+        _validate_recovery_marker_seal(marker)
+        _validate_quiesced_incomplete_evidence_binding(item, parsed)
+        capsule_state = marker.capsule_state
+        capsule_record = marker.capsule_record
+        if capsule_state is None or capsule_record is None:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence release recovery lost its "
+                "WIP capsule"
+            )
+        (
+            workspace,
+            protected,
+            workspace_tombstone,
+            protected_tombstone,
+        ) = _quiesced_incomplete_evidence_paths(item, parsed)
+        inventory = _quiesced_incomplete_evidence_workspace_inventory(
+            parsed,
+            workspace=workspace,
+            protected=protected,
+            workspace_tombstone=workspace_tombstone,
+            protected_tombstone=protected_tombstone,
+        )
+        release_wal = _safe_release_wal_inventory(
+            marker.root_fd, marker.name
+        )
+        if release_wal is not None:
+            # A release WAL can only have been installed after the durable
+            # infrastructure event authorized the complete WIP restore and
+            # workspace-only cleanup.  Reauthenticate that exact terminal
+            # state before rolling back a partial authority suffix or
+            # retiring an unauthorised WAL inode.
+            artifact_root = _artifact_root(item)
+            if _host_directory_identity(
+                artifact_root, "canonical artifact root"
+            ) != _marker_identity(
+                parsed.armed.get("artifact_root_identity"), "artifact root"
+            ):
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence artifact root changed "
+                    "before WAL recovery"
+                )
+            _validate_zero_ledger_baseline(
+                item, parsed, reached_before=item["reached"]
+            )
+            if inventory:
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence release WAL predates "
+                    "workspace cleanup"
+                )
+            _validate_capsule_restored_wip_state(
+                _capture_wip_rollback(item),
+                capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+            _validate_recovery_marker_seal(marker)
+            _retire_incomplete_release_for_operator(item, marker)
+        ledger, baseline, suffix = (
+            _validate_quiesced_incomplete_evidence_baseline(
+                item, marker, parsed
+            )
+        )
+        current_wip = _capture_wip_rollback(item)
+        try:
+            _validate_capsule_restored_wip_state(
+                current_wip,
+                capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+        except CampaignPlanError:
+            _validate_capsule_restore_progress(current_wip, capsule_state)
+        event: dict[str, Any]
+        replayed = bool(suffix)
+        if not suffix:
+            if inventory != frozenset({"W"}):
+                raise CampaignPlanError(
+                    "uncommitted quiesced incomplete-evidence workspace "
+                    "is not in its original phase"
+                )
+            held_lock, lock_schema, lock_path, lock_identity = (
+                _open_held_recovery_workspace_lock(item, workspace)
+            )
+            tree_sha = _generation_tree_observation_sha256(
+                workspace,
+                label="quiesced incomplete-evidence workspace",
+                normalize_root_ctime=True,
+            )
+            absence = _observe_quiesced_incomplete_evidence_absence(parsed)
+            event = _build_quiesced_incomplete_evidence_event(
+                item,
+                parsed,
+                workspace_tree_sha256=tree_sha,
+                lock_schema=lock_schema,
+                lock_path=lock_path,
+                lock_identity=lock_identity,
+                absence=absence,
+            )
+            _validate_quiesced_incomplete_evidence_event(
+                item, parsed, event
+            )
+            # Rebind every non-ledger authority immediately before the CAS.
+            _validate_recovery_marker_seal(marker)
+            _validate_quiesced_incomplete_evidence_baseline(
+                item, marker, parsed
+            )
+            if _generation_tree_observation_sha256(
+                workspace,
+                label="quiesced incomplete-evidence workspace",
+                normalize_root_ctime=True,
+            ) != tree_sha:
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence workspace changed before "
+                    "classification"
+                )
+            rebound_wip = _capture_wip_rollback(item)
+            if _wip_recovery_state_sha256(rebound_wip) != (
+                _wip_recovery_state_sha256(current_wip)
+            ):
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence WIP changed before "
+                    "classification"
+                )
+            event = _append_zero_ledger_event_cas(
+                marker=marker, baseline=baseline, record=event
+            )
+            _validate_quiesced_incomplete_evidence_event(
+                item, parsed, event
+            )
+        else:
+            event = suffix[0]
+            _validate_quiesced_incomplete_evidence_event(
+                item, parsed, event
+            )
+
+        # Only the durable infrastructure row authorizes these mutations.
+        current_wip = _capture_wip_rollback(item)
+        try:
+            _validate_capsule_restored_wip_state(
+                current_wip,
+                capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+        except CampaignPlanError:
+            _validate_capsule_restore_progress(current_wip, capsule_state)
+            current_wip = _restore_wip_from_rollback_capsule(
+                item, capsule_state, capsule_record
+            )
+            _validate_capsule_restored_wip_state(
+                current_wip,
+                capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+        _resume_quiesced_incomplete_evidence_workspace_cleanup(
+            parsed=parsed,
+            event=event,
+            workspace=workspace,
+            protected=protected,
+            workspace_tombstone=workspace_tombstone,
+            protected_tombstone=protected_tombstone,
+            held_lock=held_lock,
+        )
+        _validate_zero_ledger_baseline(
+            item, parsed, reached_before=item["reached"]
+        )
+        _validate_capsule_restored_wip_state(
+            _capture_wip_rollback(item),
+            capsule_state,
+            parsed.armed.get("wip_restore_logical_state_sha256"),
+            logical_schema=str(parsed.armed.get(
+                "wip_restore_logical_state_schema"
+            )),
+        )
+        _validate_recovery_marker_seal(marker)
+        _taint_gate()
+        result = _quiesced_incomplete_evidence_result(
+            item, parsed, replayed=replayed
+        )
+        _validate_quiesced_incomplete_evidence_result(
+            item, parsed, event, result
+        )
+        release_authority = _build_dispatch_release_authority(
+            item,
+            marker,
+            ledger,
+            result,
+            kind="ordinary_safe_terminal_v1",
+        )
+
+        def revalidate_incomplete_evidence_release(
+            _intent: dict[str, Any], _identity: tuple[int, int]
+        ) -> None:
+            _validate_recovery_marker_seal(marker)
+            _validate_zero_ledger_baseline(
+                item, parsed, reached_before=item["reached"]
+            )
+            _validate_capsule_restored_wip_state(
+                _capture_wip_rollback(item),
+                capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+            if _quiesced_incomplete_evidence_workspace_inventory(
+                parsed,
+                workspace=workspace,
+                protected=protected,
+                workspace_tombstone=workspace_tombstone,
+                protected_tombstone=protected_tombstone,
+            ):
+                raise CampaignPlanError(
+                    "quiesced incomplete-evidence generation reappeared "
+                    "before release authorization"
+                )
+            _validate_quiesced_incomplete_evidence_event(
+                item, parsed, event
+            )
+            _taint_gate()
+
+        _release_dispatch_quarantine(
+            marker,
+            item,
+            release_authority,
+            before_authority_append=(
+                revalidate_incomplete_evidence_release
+            ),
+            before_retirement=revalidate_incomplete_evidence_release,
+        )
+        released = True
+        return result
+    finally:
+        if held_lock is not None:
+            held_lock.close()
+        if not released:
+            _close_dispatch_quarantine(marker)
+
+
+def _validate_markerless_quiesced_incomplete_evidence_event(
+    item: dict[str, Any],
+    event: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+) -> None:
+    """Validate the terminal row after its marker/capsule were retired."""
+
+    expected = {
+        "event": ZERO_LEDGER_EVENT,
+        "schema": QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+        "infrastructure_authority": (
+            QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
+        ),
+        "dispatch_id": confirm_dispatch_id,
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "protected_generation_absent": True,
+        "child_returncode": 1,
+        "failure_class": "infrastructure",
+        "failure_detail_class": (
+            "quiesced_incomplete_evidence_before_codex_exec_append"
+        ),
+        "terminal_errors": [
+            RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
+        ],
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": True,
+        "descendant_quiescence_unproven": False,
+        "detached_processes_proven_absent": False,
+        "normal_exit_left_captured_descendants": False,
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+    if (
+        set(event) != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS
+        or any(event.get(field) != value for field, value in expected.items())
+    ):
+        raise CampaignPlanError(
+            "markerless quiesced incomplete-evidence event binding changed"
+        )
+    workspace_name = _safe_component(
+        event.get("workspace"), "completed incomplete-evidence workspace"
+    )
+    if any((
+        not workspace_name.startswith(_dispatch_workspace_prefix(item)),
+        workspace_name == _dispatch_workspace_prefix(item),
+        event.get("protected") != workspace_name,
+        event.get("workspace_lock_schema") != "in_workspace_v1",
+    )):
+        raise CampaignPlanError(
+            "markerless quiesced incomplete-evidence workspace changed"
+        )
+    _marker_identity(event.get("workspace_identity"), "workspace")
+    _marker_identity(event.get("workspace_lock_identity"), "workspace lock")
+    for field in (
+        "workspace_tree_observation_sha256",
+        "wip_restore_logical_state_sha256",
+        "canonical_digest",
+    ):
+        value = event.get(field)
+        if not isinstance(value, str) or SHA256_RE.fullmatch(value) is None:
+            raise CampaignPlanError(
+                "markerless quiesced incomplete-evidence hash changed"
+            )
+    logical_schema = event.get("wip_restore_logical_state_schema")
+    if logical_schema not in {
+        WIP_LOGICAL_RESTORE_SCHEMA_V1,
+        WIP_LOGICAL_RESTORE_SCHEMA,
+    }:
+        raise CampaignPlanError(
+            "markerless quiesced incomplete-evidence WIP schema changed"
+        )
+    historical = item.get("historical_runner")
+    if not isinstance(historical, dict):
+        raise CampaignPlanError(
+            "markerless incomplete-evidence result lost its runner receipt"
+        )
+    scratch = _normalized_absolute_path(
+        historical.get("scratch_root"), "scratch_root"
+    )
+    workspace = scratch / workspace_name
+    protected = scratch / ".proposer_transcripts" / workspace_name
+    workspace_tombstone, protected_tombstone = _post_reboot_tombstones(
+        confirm_dispatch_id, workspace, protected
+    )
+    if event.get("workspace_lock_path") != os.fspath(
+        workspace / ".orchestrate.lock"
+    ):
+        raise CampaignPlanError(
+            "markerless quiesced incomplete-evidence lock path changed"
+        )
+    if any(os.path.lexists(path) for path in (
+        workspace,
+        protected,
+        workspace_tombstone,
+        protected_tombstone,
+    )):
+        raise CampaignPlanError(
+            "markerless incomplete-evidence generation reappeared"
+        )
+    scheduler_pid = event.get("scheduler_pid")
+    absence_window = event.get("scheduler_pid_absence_window_ns")
+    if any((
+        not isinstance(scheduler_pid, int),
+        isinstance(scheduler_pid, bool),
+        isinstance(scheduler_pid, int) and scheduler_pid <= 1,
+        event.get("scheduler_pid_absence_sample_count")
+        != SANDBOX_ABSENCE_SAMPLES,
+        not isinstance(absence_window, int),
+        isinstance(absence_window, bool),
+        isinstance(absence_window, int) and absence_window <= 0,
+    )):
+        raise CampaignPlanError(
+            "markerless incomplete-evidence PID observation changed"
+        )
+    first_at = _recovery_recorded_at({
+        "recorded_at": event.get("scheduler_pid_absence_first_at")
+    }, "completed scheduler PID absence first sample")
+    last_at = _recovery_recorded_at({
+        "recorded_at": event.get("scheduler_pid_absence_last_at")
+    }, "completed scheduler PID absence last sample")
+    event_at = _recovery_recorded_at(
+        event, "completed quiesced incomplete-evidence event"
+    )
+    if not first_at <= last_at <= event_at:
+        raise CampaignPlanError(
+            "markerless incomplete-evidence timestamps are reversed"
+        )
+    canonical = _capture_canonical_rollback(item)
+    if any((
+        canonical.digest != event.get("canonical_digest"),
+        _checkpoint_reached(item["game"]) != item["reached"],
+        _canonical_frontier_binding(item)
+        != Status.validate_frontier_binding({
+            field: item[field]
+            for field in (
+                *Status.FRONTIER_BINDING_FIELDS,
+                "game",
+                "reached",
+                "target_level",
+                "parent_action_count",
+            )
+        }),
+        _wip_logical_restore_state_sha256(
+            _capture_wip_rollback(item), schema=str(logical_schema)
+        ) != event.get("wip_restore_logical_state_sha256"),
+    )):
+        raise CampaignPlanError(
+            "markerless incomplete-evidence restored baseline changed"
+        )
+
+
+def _completed_quiesced_incomplete_evidence_result(
+    item: dict[str, Any], *, confirm_dispatch_id: str
+) -> dict[str, Any] | None:
+    historical = item.get("historical_runner")
+    cwd = (
+        Path(str(historical["cwd"]))
+        if isinstance(historical, dict) and historical.get("cwd") is not None
+        else REPO
+    )
+    ledger = _ledger_path(item["argv"], cwd=cwd)
+    captured = _capture_ledger_prefix(ledger)
+    records = captured.records
+    matches = [
+        (index, record)
+        for index, record in enumerate(records)
+        if (
+            record.get("event") == ZERO_LEDGER_EVENT
+            and record.get("schema")
+            == QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+            and record.get("dispatch_id") == confirm_dispatch_id
+            and record.get("game") == item.get("game")
+            and record.get("target_level") == item.get("target_level")
+        )
+    ]
+    if not matches:
+        return None
+    if len(matches) != 1:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence completion is ambiguous"
+        )
+    event_index, event = matches[0]
+    _validate_markerless_quiesced_incomplete_evidence_event(
+        item, event, confirm_dispatch_id=confirm_dispatch_id
+    )
+    if event_index + 1 >= len(records):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence completion lacks release authority"
+        )
+    authority = records[event_index + 1]
+    raw_lines = captured.raw_prefix.splitlines(keepends=True)
+    if len(raw_lines) != len(records):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence ledger framing changed"
+        )
+    event_line = RebootRecovery.canonical_json_line(event)
+    authority_line = RebootRecovery.canonical_json_line(authority)
+    prefix_through_event = b"".join(raw_lines[:event_index + 1])
+    marker_name = _dispatch_quarantine_name(item)
+    intent_name, _preparing_name = _dispatch_release_intent_names(
+        marker_name
+    )
+    expected_authority = {
+        "event": "codex_dispatch_release_authorized",
+        "schema": "scheduler_dispatch_release_authorized_v1",
+        "dispatch_id": confirm_dispatch_id,
+        "intent_name": intent_name,
+        "projected_item_sha256": hashlib.sha256(json.dumps(
+            item, sort_keys=True, separators=(",", ":"), allow_nan=False
+        ).encode("utf-8")).hexdigest(),
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "terminal_kind": "ordinary_safe_terminal_v1",
+        "terminal_event": ZERO_LEDGER_EVENT,
+        "terminal_record_sha256": _recovery_record_sha256(event),
+        "ledger": os.fspath(ledger),
+        "ledger_parent_identity": list(captured.parent_identity),
+        "ledger_file_identity": (
+            list(captured.file_identity)
+            if captured.file_identity is not None else None
+        ),
+        "ledger_prefix_bytes": len(prefix_through_event),
+        "ledger_prefix_sha256": hashlib.sha256(
+            prefix_through_event
+        ).hexdigest(),
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+    matching_authorities = [
+        row
+        for row in records
+        if (
+            row.get("event") == "codex_dispatch_release_authorized"
+            and row.get("dispatch_id") == confirm_dispatch_id
+            and row.get("terminal_kind") == "ordinary_safe_terminal_v1"
+            and row.get("terminal_event") == ZERO_LEDGER_EVENT
+        )
+    ]
+    if any((
+        len(matching_authorities) != 1,
+        authority is not (
+            matching_authorities[0] if matching_authorities else None
+        ),
+        set(authority) != _DISPATCH_RELEASE_AUTHORITY_RECORD_KEYS,
+        raw_lines[event_index] != event_line,
+        raw_lines[event_index + 1] != authority_line,
+        any(
+            authority.get(field) != value
+            for field, value in expected_authority.items()
+        ),
+        not isinstance(authority.get("release_nonce"), str),
+        not isinstance(authority.get("intent_core_sha256"), str),
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence release authority is invalid"
+        )
+    for field in ("release_nonce", "intent_core_sha256"):
+        if SHA256_RE.fullmatch(str(authority[field])) is None:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence release seal is invalid"
+            )
+    _marker_identity(
+        authority.get("intent_identity"), "completed release intent"
+    )
+    if _recovery_recorded_at(
+        authority, "completed incomplete-evidence release authority"
+    ) < _recovery_recorded_at(
+        event, "completed incomplete-evidence event"
+    ):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence release predates its event"
+        )
+    for later in records[event_index + 2:]:
+        if later.get("dispatch_id") == confirm_dispatch_id:
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence completion has a later conflict"
+            )
+    return {
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "result": "infrastructure_noncounting_already_completed",
+        "reason": RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON,
+        "dispatch_id": confirm_dispatch_id,
+        "retry_complexity_n": item["retry_complexity_n"],
+    }
+
+
+def _validate_authorized_quiesced_incomplete_release_replay(
+    item: dict[str, Any],
+    *,
+    confirm_dispatch_id: str,
+    intent: dict[str, Any],
+    intent_identity: tuple[int, int],
+) -> None:
+    """Revalidate live state before an authorized WAL deletes evidence."""
+
+    if any((
+        intent.get("dispatch_id") != confirm_dispatch_id,
+        _marker_identity(intent.get("intent_identity"), "release intent")
+        != intent_identity,
+    )):
+        raise CampaignPlanError(
+            "authorized incomplete-evidence release intent changed"
+        )
+    completed = _completed_quiesced_incomplete_evidence_result(
+        item, confirm_dispatch_id=confirm_dispatch_id
+    )
+    if completed is None:
+        raise CampaignPlanError(
+            "authorized incomplete-evidence WAL lacks its completion pair"
+        )
+    try:
+        marker, parsed = _read_existing_dispatch_quarantine(
+            item,
+            require_recovery_arm=False,
+            allow_missing_capsule=True,
+            marker_parser=(
+                RebootRecovery.parse_quiesced_incomplete_evidence_marker
+            ),
+        )
+    except NoDispatchQuarantine:
+        _taint_gate()
+        return
+    try:
+        projected = _reconstruct_historical_recovery_item(
+            item, parsed.armed, allow_abandoned_scratch=True
+        )
+        if projected != item or parsed.dispatch_id != confirm_dispatch_id:
+            raise CampaignPlanError(
+                "authorized incomplete-evidence marker binding changed"
+            )
+        _validate_recovery_marker_seal(marker)
+        _validate_quiesced_incomplete_evidence_binding(item, parsed)
+        _validate_zero_ledger_baseline(
+            item, parsed, reached_before=item["reached"]
+        )
+        workspace, protected, workspace_tombstone, protected_tombstone = (
+            _quiesced_incomplete_evidence_paths(item, parsed)
+        )
+        if _quiesced_incomplete_evidence_workspace_inventory(
+            parsed,
+            workspace=workspace,
+            protected=protected,
+            workspace_tombstone=workspace_tombstone,
+            protected_tombstone=protected_tombstone,
+        ):
+            raise CampaignPlanError(
+                "authorized incomplete-evidence generation reappeared"
+            )
+        if not marker.capsule_missing:
+            if marker.capsule_state is None:
+                raise CampaignPlanError(
+                    "authorized incomplete-evidence WAL lost capsule state"
+                )
+            _validate_capsule_restored_wip_state(
+                _capture_wip_rollback(item),
+                marker.capsule_state,
+                parsed.armed.get("wip_restore_logical_state_sha256"),
+                logical_schema=str(parsed.armed.get(
+                    "wip_restore_logical_state_schema"
+                )),
+            )
+        _taint_gate()
+    finally:
+        _close_dispatch_quarantine(marker)
+
+
+def _recover_quiesced_incomplete_evidence(
+    item: dict[str, Any], *, confirm_dispatch_id: str
+) -> dict[str, Any]:
+    """Explicitly retire one exact quiesced transcript-absent generation."""
+
+    dispatch_lock = _acquire_scheduler_dispatch_lock(item)
+    try:
+        lineage_lock = _acquire_scheduler_lineage_lock(item)
+        try:
+            def validate_authorized_replay(
+                intent: dict[str, Any], identity: tuple[int, int]
+            ) -> None:
+                _validate_authorized_quiesced_incomplete_release_replay(
+                    item,
+                    confirm_dispatch_id=confirm_dispatch_id,
+                    intent=intent,
+                    intent_identity=identity,
+                )
+
+            reconciled = _preflight_post_reboot_release_reconciliation(
+                item,
+                before_authorized_finish=validate_authorized_replay,
+            )
+            if reconciled:
+                completed = _completed_quiesced_incomplete_evidence_result(
+                    item, confirm_dispatch_id=confirm_dispatch_id
+                )
+                if completed is None:
+                    raise CampaignPlanError(
+                        "reconciled incomplete-evidence release lacks its "
+                        "completion pair"
+                    )
+                return completed
+            try:
+                return _recover_quiesced_incomplete_evidence_locked(
+                    item, confirm_dispatch_id=confirm_dispatch_id
+                )
+            except NoDispatchQuarantine:
+                completed = _completed_quiesced_incomplete_evidence_result(
+                    item, confirm_dispatch_id=confirm_dispatch_id
+                )
+                if completed is None:
+                    raise
+                return completed
+        finally:
+            _release_scheduler_artifact_lock(lineage_lock)
+    finally:
+        _release_scheduler_artifact_lock(dispatch_lock)
 
 
 def _validate_post_reboot_clean_state(
@@ -17572,7 +19227,7 @@ def _run_guarded_child(
         try:
             terminal = process_tree.seal(
                 stop_requested=False,
-                grace_seconds=0,
+                grace_seconds=EXACT_CHILD_TERMINATE_SECONDS,
             )
         except Contiguous.ScopedProcessContainmentError as exc:
             raise UnquiescedChildError(
@@ -17628,6 +19283,12 @@ def _run_guarded_child(
                 raise CampaignPlanError(
                     f"live exact child observation failed: {exc}"
                 ) from exc
+            if final:
+                # Direct-child exit is not transcript finality: a captured
+                # descendant may still hold and append to the JSONL stream.
+                # Seal the complete process tree before any terminal boundary
+                # scan so ``final=True`` means that no writer can remain.
+                finish_normal_exit()
             current_workspaces = _physical_directory_names(scratch, prefix)
             new_workspaces = set(current_workspaces) - set(workspaces_before)
             if len(new_workspaces) > 1:
@@ -19787,6 +21448,14 @@ def main() -> int:
             "generation without claiming process quiescence"
         ),
     )
+    actions.add_argument(
+        "--recover-quiesced-incomplete-evidence",
+        metavar="GAME",
+        help=(
+            "explicitly classify and retire one exact same-boot quiesced "
+            "generation that failed before protected evidence was sealed"
+        ),
+    )
     parser.add_argument("--max-items", type=int, default=Policy.DEFAULT_MAX_RUNS)
     parser.add_argument("--calibration-only", action="store_true")
     parser.add_argument(
@@ -19822,8 +21491,11 @@ def main() -> int:
     selected_items = list(items)
     sandbox_arm_game = args.arm_sandboxed_generation_release
     sandbox_recovery_game = args.recover_sandboxed_generation_release
+    incomplete_evidence_game = args.recover_quiesced_incomplete_evidence
     sandbox_operator = (
-        sandbox_arm_game is not None or sandbox_recovery_game is not None
+        sandbox_arm_game is not None
+        or sandbox_recovery_game is not None
+        or incomplete_evidence_game is not None
     )
     items = [
         _project_runner_receipt(
@@ -19835,7 +21507,11 @@ def main() -> int:
     recovery_game = args.recover_post_reboot_quarantine
     operator_game = next((
         selected for selected in (
-            arm_game, recovery_game, sandbox_arm_game, sandbox_recovery_game
+            arm_game,
+            recovery_game,
+            sandbox_arm_game,
+            sandbox_recovery_game,
+            incomplete_evidence_game,
         )
         if selected is not None
     ), None)
@@ -19851,13 +21527,19 @@ def main() -> int:
                 "--confirm-dispatch-id"
             )
         if (
-            arm_game is not None or sandbox_arm_game is not None
+            arm_game is not None
+            or sandbox_arm_game is not None
+            or incomplete_evidence_game is not None
         ) and args.confirm_recovery_nonce is not None:
             raise CampaignPlanError(
                 "recovery arm does not accept a recovery nonce"
             )
         if (
-            (recovery_game is not None or sandbox_recovery_game is not None)
+            (
+                recovery_game is not None
+                or sandbox_recovery_game is not None
+                or incomplete_evidence_game is not None
+            )
             and args.confirm_current_wip_state_sha256 is not None
         ):
             raise CampaignPlanError(
@@ -19906,6 +21588,11 @@ def main() -> int:
                 item,
                 confirm_dispatch_id=args.confirm_dispatch_id,
                 confirm_recovery_nonce=args.confirm_recovery_nonce,
+            )
+        elif incomplete_evidence_game is not None:
+            outcome = _recover_quiesced_incomplete_evidence(
+                item,
+                confirm_dispatch_id=args.confirm_dispatch_id,
             )
         elif arm_game is not None:
             outcome = _arm_post_reboot_recovery(

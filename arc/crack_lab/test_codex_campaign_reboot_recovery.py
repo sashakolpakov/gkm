@@ -3526,6 +3526,669 @@ def _sandboxed_generation_fixture(
     }
 
 
+def _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch):
+    monkeypatch.setattr(R, "HERE", tmp_path)
+    artifact = tmp_path / "agent_solutions" / "ar25_legs"
+    artifact.mkdir(parents=True)
+    canonical = artifact / "solver.py"
+    canonical.write_bytes(b"sealed canonical baseline\n")
+    wip = artifact / "wip_context" / "level_01"
+    wip.mkdir(parents=True)
+    baseline_latest = b'{"attempt":"baseline"}\n'
+    (wip / "latest.json").write_bytes(baseline_latest)
+
+    scratch = tmp_path / "historical_scratch"
+    protected_root = scratch / ".proposer_transcripts"
+    protected_root.mkdir(parents=True)
+    item = copy.deepcopy(_item())
+    tag = "arc_agi3_n0_fresh_frontier"
+    workspace_name = f"gkm_legs_ws_ar25_{tag}_incomplete"
+    workspace = scratch / workspace_name
+    protected = protected_root / workspace_name
+    workspace.mkdir()
+    (workspace / "host_seed.txt").write_bytes(b"opaque host seed\n")
+    exact_lock = workspace / ".orchestrate.lock"
+    exact_lock.write_bytes(b"")
+    os.chmod(exact_lock, 0o600)
+    ledger = tmp_path / "usage.jsonl"
+    ledger.write_bytes(b"")
+    historical = {
+        "schema": 1,
+        "worktree": os.fspath(tmp_path),
+        "cwd": os.fspath(tmp_path),
+        "interpreter": os.fspath(Path(sys.executable).absolute()),
+        "head_commit": BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
+        "source_sha256": BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256,
+        "artifacts_root": os.fspath(tmp_path / "agent_solutions"),
+        "scratch_root": os.fspath(scratch),
+        "ledger": os.fspath(ledger),
+        "lock_schema": "in_workspace_v1",
+        "evidence_schema": "sealed_transcript_only_v1",
+    }
+    item["historical_runner"] = historical
+    item["argv"].extend([f"--tag={tag}", f"--codex-ledger={ledger}"])
+
+    monkeypatch.setattr(R.Legs, "SCRATCH", os.fspath(scratch))
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: 0)
+    expected_binding = R.Status.validate_frontier_binding({
+        field: item[field]
+        for field in (
+            *R.Status.FRONTIER_BINDING_FIELDS,
+            "game",
+            "reached",
+            "target_level",
+            "parent_action_count",
+        )
+    })
+    monkeypatch.setattr(
+        R.Status,
+        "exact_frontier_binding",
+        lambda *_args, **_kwargs: expected_binding,
+    )
+    monkeypatch.setattr(R, "_taint_gate", lambda: None)
+    monkeypatch.setattr(
+        R,
+        "_reconstruct_historical_recovery_item",
+        lambda selected, _authority, **_kwargs: selected,
+    )
+    monkeypatch.setattr(
+        R, "_revalidate_historical_control", lambda _item, **_kwargs: None
+    )
+
+    marker = R._arm_dispatch_quarantine(
+        item,
+        ledger_before=R._capture_ledger_prefix(ledger),
+        wip_before=R._capture_wip_rollback(item),
+        canonical_before=R._capture_canonical_rollback(item),
+        durable_wip_capsule=True,
+    )
+    # Simulate disposable child-side WIP written before the environment
+    # failure.  The durable capsule remains the only restore authority.
+    attempt = wip / "incomplete_attempt"
+    attempt.mkdir()
+    (attempt / "note.txt").write_bytes(b"unpublished\n")
+    (wip / "latest.json").write_bytes(
+        b'{"attempt":"incomplete_attempt"}\n'
+    )
+    observed = R.GuardedChildResult(
+        returncode=1,
+        workspace=workspace_name,
+        transcript=None,
+        workspace_identity=(workspace.stat().st_dev, workspace.stat().st_ino),
+        protected_identity=None,
+        process_tree_quiesced=True,
+        descendant_quiescence_unproven=False,
+        detached_processes_proven_absent=False,
+        normal_exit_left_captured_descendants=False,
+    )
+    with pytest.raises(R.CampaignPlanError) as producer_failure:
+        R._seal_zero_ledger_observation(item, observed)
+    assert str(producer_failure.value) == (
+        Recovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
+    )
+    R._write_dispatch_quarantine_record(marker, {
+        "event": "dispatch_failed",
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "exception_type": "CampaignPlanError",
+        "reason": str(producer_failure.value),
+        "child_returncode": 1,
+        "workspace": workspace_name,
+        "protected": workspace_name,
+        "transcript": None,
+        "workspace_identity": [
+            workspace.stat().st_dev,
+            workspace.stat().st_ino,
+        ],
+        "protected_identity": None,
+        "process_tree_quiesced": True,
+        "descendant_quiescence_unproven": False,
+        "detached_processes_proven_absent": False,
+        "normal_exit_left_captured_descendants": False,
+    })
+    marker_path = marker.path
+    dispatch_id = marker.dispatch_id
+    scheduler_pid = os.getpid()
+    R._close_dispatch_quarantine(marker)
+    rows = _canonical_rows(marker_path)
+    capsule = marker_path.parent / rows[0]["wip_rollback_capsule_name"]
+
+    def absent(parsed):
+        observed = datetime.now(timezone.utc).isoformat()
+        return {
+            "scheduler_pid": parsed.armed["pid"],
+            "scheduler_pid_absence_sample_count": R.SANDBOX_ABSENCE_SAMPLES,
+            "scheduler_pid_absence_window_ns": 1,
+            "scheduler_pid_absence_first_at": observed,
+            "scheduler_pid_absence_last_at": observed,
+        }
+
+    monkeypatch.setattr(
+        R, "_observe_quiesced_incomplete_evidence_absence", absent
+    )
+    return {
+        "item": item,
+        "artifact": artifact,
+        "canonical": canonical,
+        "wip": wip,
+        "baseline_latest": baseline_latest,
+        "attempt": attempt,
+        "scratch": scratch,
+        "workspace": workspace,
+        "protected": protected,
+        "exact_lock": exact_lock,
+        "ledger": ledger,
+        "marker": marker_path,
+        "capsule": capsule,
+        "dispatch_id": dispatch_id,
+        "scheduler_pid": scheduler_pid,
+    }
+
+
+def test_quiesced_incomplete_evidence_parser_is_exact(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    raw = fixture["marker"].read_bytes()
+    parsed = Recovery.parse_quiesced_incomplete_evidence_marker(
+        raw, require_recovery_arm=False
+    )
+    assert parsed.dispatch_id == fixture["dispatch_id"]
+    assert parsed.unquiesced["transcript"] is None
+    assert parsed.unquiesced["protected_identity"] is None
+    assert parsed.recovery_arm is None
+
+    rows = _canonical_rows(fixture["marker"])
+    mutations = (
+        (1, "child_returncode", 0),
+        (1, "transcript", "invented.jsonl"),
+        (1, "protected_identity", [1, 2]),
+        (1, "process_tree_quiesced", False),
+        (1, "detached_processes_proven_absent", True),
+        (0, "armed_schema", "scheduler_dispatch_armed_v1"),
+    )
+    for row_index, field, value in mutations:
+        changed = copy.deepcopy(rows)
+        changed[row_index][field] = value
+        with pytest.raises(Recovery.RecoveryEvidenceError):
+            Recovery.parse_quiesced_incomplete_evidence_marker(
+                b"".join(
+                    Recovery.canonical_json_line(row) for row in changed
+                ),
+                require_recovery_arm=False,
+            )
+    for mutate_runner in (
+        lambda runner: runner.update({"unexpected": True}),
+        lambda runner: runner.update({"head_commit": "0" * 40}),
+        lambda runner: runner.pop("ledger"),
+    ):
+        changed = copy.deepcopy(rows)
+        mutate_runner(changed[0]["historical_runner"])
+        with pytest.raises(
+            Recovery.RecoveryEvidenceError, match="runner receipt"
+        ):
+            Recovery.parse_quiesced_incomplete_evidence_marker(
+                b"".join(
+                    Recovery.canonical_json_line(row) for row in changed
+                ),
+                require_recovery_arm=False,
+            )
+    with pytest.raises(Recovery.RecoveryEvidenceError, match="exactly two"):
+        Recovery.parse_quiesced_incomplete_evidence_marker(
+            raw + Recovery.canonical_json_line({"event": "extra"})
+        )
+
+
+def test_quiesced_incomplete_evidence_recovery_is_noncounting_and_minimal(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    result = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert result["result"] == "infrastructure_noncounting"
+    assert result["quiesced_incomplete_evidence_replayed"] is False
+    assert not fixture["workspace"].exists()
+    assert not fixture["protected"].exists()
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    assert not fixture["attempt"].exists()
+    assert (
+        fixture["wip"] / "latest.json"
+    ).read_bytes() == fixture["baseline_latest"]
+    assert fixture["canonical"].read_bytes() == b"sealed canonical baseline\n"
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        R.ZERO_LEDGER_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    assert rows[0]["schema"] == (
+        R.QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+    )
+    assert "transcript" not in rows[0]
+    assert "protected_identity" not in rows[0]
+    assert R.Status.infrastructure_noncounting_events(rows) == [rows[0]]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "pattern"),
+    (
+        ("ledger", "ledger suffix is ambiguous"),
+        ("protected", "protected namespace appeared"),
+        ("workspace_identity", "workspace identity changed"),
+        ("canonical", "sealed baseline"),
+        ("capsule", "capsule"),
+    ),
+)
+def test_quiesced_incomplete_evidence_recovery_rejects_mutated_authority(
+    tmp_path, monkeypatch, mutation, pattern
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    if mutation == "ledger":
+        R.Guard.append_ledger({"event": "unrelated"}, fixture["ledger"])
+    elif mutation == "protected":
+        fixture["protected"].mkdir()
+    elif mutation == "workspace_identity":
+        original = fixture["workspace"].with_name("original-workspace")
+        fixture["workspace"].rename(original)
+        fixture["workspace"].mkdir()
+        lock = fixture["workspace"] / ".orchestrate.lock"
+        lock.write_bytes(b"")
+        os.chmod(lock, 0o600)
+    elif mutation == "canonical":
+        fixture["canonical"].write_bytes(b"mutated canonical\n")
+    else:
+        with fixture["capsule"].open("ab") as handle:
+            handle.write(b"x")
+    with pytest.raises(R.CampaignPlanError, match=pattern):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert fixture["marker"].exists()
+    assert all(
+        row.get("schema")
+        != R.QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+        for row in R.Guard.read_ledger(fixture["ledger"])
+    )
+
+
+def test_quiesced_incomplete_evidence_recovery_rejects_active_lock(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    held = fixture["exact_lock"].open("rb")
+    fcntl.flock(held.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(R.CampaignPlanError, match="lock remains active"):
+            R._recover_quiesced_incomplete_evidence(
+                fixture["item"],
+                confirm_dispatch_id=fixture["dispatch_id"],
+            )
+    finally:
+        fcntl.flock(held.fileno(), fcntl.LOCK_UN)
+        held.close()
+
+
+def test_quiesced_incomplete_evidence_recovery_rejects_live_scheduler_pid(
+    tmp_path, monkeypatch
+):
+    real_observe = R._observe_quiesced_incomplete_evidence_absence
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    failure_at = datetime.fromisoformat(rows[1]["recorded_at"])
+    monkeypatch.setattr(
+        R, "_current_boot_started_at", lambda: failure_at.replace(
+            year=failure_at.year - 1
+        )
+    )
+    monkeypatch.setattr(
+        R.Contiguous,
+        "_process_identity",
+        lambda _pid: (1, 1, 1, "R"),
+    )
+    monkeypatch.setattr(
+        R, "_observe_quiesced_incomplete_evidence_absence", real_observe
+    )
+    with pytest.raises(R.CampaignPlanError, match="scheduler PID remains live"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+
+
+def test_quiesced_incomplete_evidence_recovery_resumes_after_event_append(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_restore = R._restore_wip_from_rollback_capsule
+
+    def crash_before_restore(*_args, **_kwargs):
+        raise RuntimeError("synthetic crash after infrastructure append")
+
+    monkeypatch.setattr(
+        R, "_restore_wip_from_rollback_capsule", crash_before_restore
+    )
+    with pytest.raises(RuntimeError, match="after infrastructure append"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["schema"] for row in rows] == [
+        R.QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+    ]
+    assert fixture["workspace"].exists()
+    monkeypatch.setattr(
+        R, "_restore_wip_from_rollback_capsule", real_restore
+    )
+    result = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert result["quiesced_incomplete_evidence_replayed"] is True
+    assert not fixture["workspace"].exists()
+
+
+def test_quiesced_incomplete_evidence_recovery_resumes_workspace_tombstone(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_rmtree = R.shutil.rmtree
+    crashed = False
+
+    def crash_after_rename(path, *args, **kwargs):
+        nonlocal crashed
+        if not crashed and Path(path).name.startswith(
+            ".post_reboot_cleanup_"
+        ):
+            crashed = True
+            raise OSError("synthetic tombstone crash")
+        return real_rmtree(path, *args, **kwargs)
+
+    crash_after_rename.avoids_symlink_attacks = getattr(
+        real_rmtree, "avoids_symlink_attacks", False
+    )
+    monkeypatch.setattr(R.shutil, "rmtree", crash_after_rename)
+    with pytest.raises(R.CampaignPlanError, match="workspace cleanup failed"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    tombstones = list(fixture["scratch"].glob(".post_reboot_cleanup_*"))
+    assert len(tombstones) == 1
+    monkeypatch.setattr(R.shutil, "rmtree", real_rmtree)
+    result = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert result["quiesced_incomplete_evidence_replayed"] is True
+    assert not tombstones[0].exists()
+
+
+@pytest.mark.parametrize(
+    "wal_crash", ("preparing", "pre_authority", "partial_authority")
+)
+def test_quiesced_incomplete_evidence_retires_unauthorized_release_wal(
+    tmp_path, monkeypatch, wal_crash
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_replace = R.os.replace
+    real_ensure = R._ensure_dispatch_release_authority_row
+
+    if wal_crash == "preparing":
+        def crash_before_intent_install(source, target, *args, **kwargs):
+            if str(source).endswith(".release_preparing") and str(
+                target
+            ).endswith(".release_intent"):
+                raise OSError(errno.EIO, "synthetic preparing WAL crash")
+            return real_replace(source, target, *args, **kwargs)
+
+        monkeypatch.setattr(R.os, "replace", crash_before_intent_install)
+    elif wal_crash == "pre_authority":
+        def crash_before_authority(
+            item,
+            root_fd,
+            record,
+            intent_identity,
+            *,
+            allow_new_authority_append=False,
+            **kwargs,
+        ):
+            if allow_new_authority_append:
+                raise RuntimeError("synthetic pre-authority WAL crash")
+            return real_ensure(
+                item,
+                root_fd,
+                record,
+                intent_identity,
+                allow_new_authority_append=False,
+                **kwargs,
+            )
+
+        monkeypatch.setattr(
+            R, "_ensure_dispatch_release_authority_row", crash_before_authority
+        )
+    else:
+        def crash_during_authority(
+            item,
+            root_fd,
+            record,
+            intent_identity,
+            *,
+            allow_new_authority_append=False,
+            **kwargs,
+        ):
+            if not allow_new_authority_append:
+                return real_ensure(
+                    item,
+                    root_fd,
+                    record,
+                    intent_identity,
+                    allow_new_authority_append=False,
+                    **kwargs,
+                )
+            authority = record["release_authority"]
+            line = Recovery.canonical_json_line(
+                authority["authority_record"]
+            )
+            descriptor = os.open(
+                authority["ledger"], os.O_WRONLY | os.O_APPEND
+            )
+            try:
+                os.write(descriptor, line[:len(line) // 2])
+                os.fsync(descriptor)
+            finally:
+                os.close(descriptor)
+            raise RuntimeError("synthetic partial-authority WAL crash")
+
+        monkeypatch.setattr(
+            R, "_ensure_dispatch_release_authority_row", crash_during_authority
+        )
+
+    with pytest.raises((RuntimeError, R.CampaignPlanError)):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert fixture["marker"].exists()
+    assert fixture["capsule"].exists()
+    assert not fixture["workspace"].exists()
+
+    monkeypatch.setattr(R.os, "replace", real_replace)
+    monkeypatch.setattr(
+        R, "_ensure_dispatch_release_authority_row", real_ensure
+    )
+    result = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert result["result"] == "infrastructure_noncounting"
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    assert [row["event"] for row in R.Guard.read_ledger(
+        fixture["ledger"]
+    )] == [R.ZERO_LEDGER_EVENT, "codex_dispatch_release_authorized"]
+
+
+def test_quiesced_incomplete_evidence_reconciles_authorized_release_wal(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_finish = R._finish_dispatch_release_intent
+
+    def crash_after_authority(*_args, **_kwargs):
+        raise RuntimeError("synthetic crash after release authority")
+
+    monkeypatch.setattr(
+        R, "_finish_dispatch_release_intent", crash_after_authority
+    )
+    with pytest.raises(RuntimeError, match="after release authority"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        R.ZERO_LEDGER_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    assert fixture["marker"].exists()
+    monkeypatch.setattr(R, "_finish_dispatch_release_intent", real_finish)
+    result = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert result["result"] == "infrastructure_noncounting_already_completed"
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+
+
+def test_quiesced_incomplete_authorized_replay_checks_state_before_deletion(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_finish = R._finish_dispatch_release_intent
+
+    def crash_after_authority(*_args, **_kwargs):
+        raise RuntimeError("synthetic authorized WAL crash")
+
+    monkeypatch.setattr(
+        R, "_finish_dispatch_release_intent", crash_after_authority
+    )
+    with pytest.raises(RuntimeError, match="authorized WAL crash"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    fixture["canonical"].write_bytes(b"mutation after authority\n")
+    monkeypatch.setattr(R, "_finish_dispatch_release_intent", real_finish)
+    with pytest.raises(
+        R.CampaignPlanError, match="restored baseline changed"
+    ):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert fixture["marker"].exists()
+    assert fixture["capsule"].exists()
+
+
+def test_quiesced_incomplete_evidence_markerless_completion_is_idempotent(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    first = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert first["result"] == "infrastructure_noncounting"
+    sealed = fixture["ledger"].read_bytes()
+    second = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert second["result"] == "infrastructure_noncounting_already_completed"
+    assert fixture["ledger"].read_bytes() == sealed
+
+
+def test_quiesced_incomplete_evidence_final_cas_rejects_mutated_baseline(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_ensure = R._ensure_dispatch_release_authority_row
+    mutated = False
+
+    def mutate_before_final_cas(
+        item,
+        root_fd,
+        record,
+        intent_identity,
+        *,
+        allow_new_authority_append=False,
+        **kwargs,
+    ):
+        nonlocal mutated
+        if allow_new_authority_append and not mutated:
+            mutated = True
+            fixture["canonical"].write_bytes(b"late canonical mutation\n")
+        return real_ensure(
+            item,
+            root_fd,
+            record,
+            intent_identity,
+            allow_new_authority_append=allow_new_authority_append,
+            **kwargs,
+        )
+
+    monkeypatch.setattr(
+        R, "_ensure_dispatch_release_authority_row", mutate_before_final_cas
+    )
+    with pytest.raises(R.CampaignPlanError, match="sealed baseline"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert mutated is True
+    assert all(
+        row.get("event") != "codex_dispatch_release_authorized"
+        for row in R.Guard.read_ledger(fixture["ledger"])
+    )
+    assert fixture["marker"].exists()
+
+
+def test_quiesced_incomplete_post_authority_gate_preserves_evidence_on_mutation(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    real_finish = R._finish_dispatch_release_intent
+    mutated = False
+
+    def mutate_after_authority(
+        item, root_fd, record, intent_identity, **kwargs
+    ):
+        nonlocal mutated
+        if not mutated:
+            mutated = True
+            fixture["canonical"].write_bytes(
+                b"mutation after authority append\n"
+            )
+        return real_finish(
+            item, root_fd, record, intent_identity, **kwargs
+        )
+
+    monkeypatch.setattr(
+        R, "_finish_dispatch_release_intent", mutate_after_authority
+    )
+    with pytest.raises(R.CampaignPlanError, match="sealed baseline"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert mutated is True
+    assert fixture["marker"].exists()
+    assert fixture["capsule"].exists()
+    assert [row["event"] for row in R.Guard.read_ledger(
+        fixture["ledger"]
+    )] == [R.ZERO_LEDGER_EVENT, "codex_dispatch_release_authorized"]
+
+
+def test_quiesced_incomplete_evidence_wrong_dispatch_keeps_quarantine(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    with pytest.raises(R.CampaignPlanError, match="operator confirmation"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id="0" * 32
+        )
+    assert fixture["marker"].exists()
+    assert fixture["workspace"].exists()
+    assert R.Guard.read_ledger(fixture["ledger"]) == []
+
+
 def _append_sandbox_exec(fixture):
     item = fixture["item"]
     record = {

@@ -5618,7 +5618,127 @@ def test_guarded_child_accepts_legacy_banner_and_split_clean_json_growth(
     )
     assert phase["sleeps"] == 2
     assert len(spawned) == 1
-    assert spawned[0].seal_calls == [(False, 0)]
+    assert spawned[0].seal_calls == [
+        (False, R.EXACT_CHILD_TERMINATE_SECONDS)
+    ]
+
+
+def _open_historical_router_diagnostic(workspace):
+    return (
+        R.Boundary.HISTORICAL_STDIN_DIAGNOSTIC
+        + b'{"type":"thread.started","thread_id":"clean-thread"}\n'
+        + b"2026-08-05T18:14:09.542808Z ERROR "
+        + b"codex_core::tools::router: error=apply_patch verification failed: "
+        + b"Failed to find expected lines in "
+        + str(workspace / "probe.py").encode("utf-8")
+        + b":\n"
+        + b"        expected_source_line()\n"
+    )
+
+
+def test_guarded_child_seals_descendant_writer_before_terminal_transcript_scan(
+    tmp_path, monkeypatch
+):
+    item, workspace, protected, transcript = _historical_watchdog_fixture(
+        tmp_path, monkeypatch
+    )
+    spawned = []
+
+    class FakeScopedTree:
+        pid = 12351
+
+        def __init__(self):
+            self.sealed = False
+            self.seal_calls = []
+            workspace.mkdir()
+            protected.mkdir()
+            transcript.write_bytes(
+                _open_historical_router_diagnostic(workspace)
+            )
+            spawned.append(self)
+
+        def observe_exit(self):
+            return True
+
+        def seal(self, *, stop_requested, grace_seconds):
+            self.seal_calls.append((stop_requested, grace_seconds))
+            assert stop_requested is False
+            assert grace_seconds == R.EXACT_CHILD_TERMINATE_SECONDS
+            with transcript.open("ab") as stream:
+                stream.write(b'{"type":"turn.completed","usage":{}}\n')
+            self.sealed = True
+            return SimpleNamespace(
+                returncode=0,
+                detached_processes_proven_absent=True,
+                normal_exit_left_captured_descendants=True,
+            )
+
+    monkeypatch.setattr(
+        R, "_launch_exact_child", lambda *_args, **_kwargs: FakeScopedTree()
+    )
+
+    result = R._run_guarded_child(
+        item, ["exact-legacy-child"], cwd=tmp_path, env={}
+    )
+
+    assert result.taint_reason is None
+    assert result.returncode == 0
+    assert result.normal_exit_left_captured_descendants is True
+    assert result.detached_processes_proven_absent is True
+    assert len(spawned) == 1
+    assert spawned[0].seal_calls == [
+        (False, R.EXACT_CHILD_TERMINATE_SECONDS)
+    ]
+
+
+def test_guarded_child_rejects_unclosed_router_diagnostic_after_tree_seal(
+    tmp_path, monkeypatch
+):
+    item, workspace, protected, transcript = _historical_watchdog_fixture(
+        tmp_path, monkeypatch
+    )
+    spawned = []
+
+    class FakeScopedTree:
+        pid = 12352
+
+        def __init__(self):
+            self.sealed = False
+            self.seal_calls = []
+            workspace.mkdir()
+            protected.mkdir()
+            transcript.write_bytes(
+                _open_historical_router_diagnostic(workspace)
+            )
+            spawned.append(self)
+
+        def observe_exit(self):
+            return True
+
+        def seal(self, *, stop_requested, grace_seconds):
+            self.seal_calls.append((stop_requested, grace_seconds))
+            assert stop_requested is False
+            assert grace_seconds == R.EXACT_CHILD_TERMINATE_SECONDS
+            self.sealed = True
+            return SimpleNamespace(returncode=0)
+
+    monkeypatch.setattr(
+        R, "_launch_exact_child", lambda *_args, **_kwargs: FakeScopedTree()
+    )
+
+    result = R._run_guarded_child(
+        item, ["exact-legacy-child"], cwd=tmp_path, env={}
+    )
+
+    assert result.taint_reason == (
+        f"malformed_transcript in {transcript.name}:4: historical router "
+        "diagnostic block lacks a closing JSON record"
+    )
+    assert result.returncode == 0
+    assert len(spawned) == 1
+    assert spawned[0].seal_calls == [
+        (False, R.EXACT_CHILD_TERMINATE_SECONDS)
+    ]
 
 
 @pytest.mark.parametrize("detached_proof", (True, False))
@@ -5647,7 +5767,7 @@ def test_guarded_child_propagates_contained_normal_exit_residual(
 
         def seal(self, *, stop_requested, grace_seconds):
             assert stop_requested is False
-            assert grace_seconds == 0
+            assert grace_seconds == R.EXACT_CHILD_TERMINATE_SECONDS
             self.sealed = True
             return SimpleNamespace(
                 returncode=0,
