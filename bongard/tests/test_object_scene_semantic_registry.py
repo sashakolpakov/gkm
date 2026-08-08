@@ -123,17 +123,17 @@ def _valid_payload(prepared):
     side1 = _aliases(prepared, 1)
     return {
         "side0_positive": [
-            _concept("panel", "paired visible forms", side0[:3]),
-            _concept("entity", "mismatched parts", side0[:2]),
+            _concept("panel", "paired visible forms", side0),
+            _concept("entity", "mismatched parts", side0),
         ],
         "side1_positive": [
-            _concept("entity", "unequal edge lengths", side1[:4]),
-            _concept("panel", "balanced spacing", side1[:2]),
+            _concept("entity", "unequal edge lengths", side1),
+            _concept("panel", "balanced spacing", side1),
         ],
     }
 
 
-def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs):
+def test_prepare_is_order_invariant_opaque_multimodal_and_strict(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     reversed_prepared = prepare_object_scene_semantic_registry_proposal(
@@ -150,6 +150,11 @@ def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs
     )
     assert "outlined visible form" in prepared.prompt
     assert "bird-like object" in prepared.prompt
+    assert "inspect every attached panel and proposal-atlas image" in (
+        prepared.prompt.lower()
+    )
+    assert prepared.to_data()["pixels_or_images_in_proposer_input"] is True
+    assert prepared.to_data()["all_support_presentations_in_proposer_input"] is True
     assert prepared.output_schema["additionalProperties"] is False
     assert set(prepared.output_schema["required"]) == {
         "side0_positive", "side1_positive"
@@ -194,7 +199,7 @@ def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs
 
     lowered = prepared.prompt.lower()
     for forbidden in (
-        "pixel", "image", "formula", "candidate_digest", "object_0000",
+        "formula", "candidate_digest", "object_0000",
         "secret-task-panel", "neutral_panel_digest", "artifact_digest",
         "panel_digest", "transcript_digest",
     ):
@@ -230,7 +235,7 @@ def test_digest_shuffle_is_not_input_order_and_role_swap_swaps_buckets(
     assert _aliases(swapped, 1) == _aliases(prepared, 0)
 
 
-def test_valid_both_bucket_union_uses_citations_for_counts_and_order(
+def test_valid_both_bucket_union_requires_complete_positive_bindings(
     discovery_inputs,
 ):
     artifacts, roles = discovery_inputs
@@ -246,10 +251,10 @@ def test_valid_both_bucket_union_uses_citations_for_counts_and_order(
         (item.tag_id, item.scope, item.tag, item.distinct_panel_count)
         for item in registry.tags
     ) == (
-        ("tag_0000", "entity", "unequal edge lengths", 4),
-        ("tag_0001", "panel", "paired visible forms", 3),
-        ("tag_0002", "entity", "mismatched parts", 2),
-        ("tag_0003", "panel", "balanced spacing", 2),
+        ("tag_0000", "entity", "mismatched parts", 6),
+        ("tag_0001", "entity", "unequal edge lengths", 6),
+        ("tag_0002", "panel", "balanced spacing", 6),
+        ("tag_0003", "panel", "paired visible forms", 6),
     )
     assert {item.scope for item in registry.tags} == {"panel", "entity"}
     assert all(len(item.required_witnesses) == 1 for item in registry.tags)
@@ -266,10 +271,10 @@ def test_same_phrase_may_exist_at_panel_and_entity_scope(discovery_inputs):
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     payload = {
         "side0_positive": [
-            _concept("panel", "pointed form", _aliases(prepared, 0)[:2])
+            _concept("panel", "pointed form", _aliases(prepared, 0))
         ],
         "side1_positive": [
-            _concept("entity", "pointed form", _aliases(prepared, 1)[:2])
+            _concept("entity", "pointed form", _aliases(prepared, 1))
         ],
     }
     _, registry = build_object_scene_semantic_registry_proposal(prepared, payload)
@@ -287,7 +292,7 @@ def test_transparent_witness_macro_is_canonical_and_digest_bound(
     payload["side0_positive"][1] = _concept(
         "entity",
         "mismatched upper and lower portions",
-        _aliases(prepared, 0)[:2],
+        _aliases(prepared, 0),
         required_witnesses=(
             {
                 "kind": "shape_appearance",
@@ -494,7 +499,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "solid dots and solid blocks fall outside the hollow-loop count",
                     "loops scattered through the interior rather than tracing paths are excluded",
                 ],
-                "citations": list(side0[:4]),
+                "citations": list(side0),
             },
             {
                 "scope": "panel",
@@ -562,7 +567,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "two opposing lobes joined through a waist do not qualify",
                     "three chains forming a closed triangular frame are excluded",
                 ],
-                "citations": list(side1[:3]),
+                "citations": list(side1),
             },
             {
                 "scope": "entity",
@@ -595,7 +600,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a single open arc without repeated closed symbols falls outside this concept",
                     "separate open and looped figures do not qualify as one entity",
                 ],
-                "citations": list(side1[:4]),
+                "citations": list(side1),
             },
             {
                 "scope": "panel",
@@ -628,7 +633,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a panel with repeated units on only one figure is excluded",
                     "two plain continuous outlines fall outside this concept",
                 ],
-                "citations": list(side1[:3]),
+                "citations": list(side1),
             },
         ],
     }
@@ -754,15 +759,26 @@ def test_quarantines_duplicate_scoped_phrase_and_duplicate_citation(discovery_in
     assert proposal.dropped_concepts[0].reason_code == "citation_policy"
     assert "paired visible forms" not in {item.tag for item in registry.tags}
 
+    payload = _valid_payload(prepared)
+    payload["side0_positive"][0]["citations"] = list(
+        _aliases(prepared, 0)[:-1]
+    )
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert len(proposal.dropped_concepts) == 1
+    assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+    assert "paired visible forms" not in {item.tag for item in registry.tags}
+
 
 def test_quarantines_foreign_and_cross_side_citations(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     for citation in ("panel_999", _aliases(prepared, 1)[0]):
         payload = _valid_payload(prepared)
-        payload["side0_positive"][0]["citations"] = [
-            _aliases(prepared, 0)[0], citation
-        ]
+        citations = list(_aliases(prepared, 0))
+        citations[-1] = citation
+        payload["side0_positive"][0]["citations"] = citations
         proposal, registry = build_object_scene_semantic_registry_proposal(
             prepared, payload
         )
@@ -813,22 +829,22 @@ def test_long_spatial_and_compound_visual_phrases_survive(
             _concept(
                 "entity",
                 "a jagged region paired with chains of outlined motifs",
-                side0[:2],
+                side0,
             ),
             _concept(
                 "panel",
                 "a larger intricate figure in the lower-left region",
-                side0[1:3],
+                side0,
             ),
         ],
         "side1_positive": [
             _concept(
-                "entity", "serrated edging along decorated bands", side1[:2]
+                "entity", "serrated edging along decorated bands", side1
             ),
             _concept(
                 "entity",
                 "mixed circular and triangular marks",
-                side1[1:3],
+                side1,
             ),
         ],
     }
@@ -867,12 +883,12 @@ def test_rejects_empty_and_capacity_excess(discovery_inputs):
             prepared,
             {
                 "side0_positive": [],
-                "side1_positive": [_concept("panel", "balanced spacing", side1[:2])],
+                "side1_positive": [_concept("panel", "balanced spacing", side1)],
             },
         )
 
     seventeen = [
-        _concept("panel", f"shape phrase {chr(97 + index)}", side0[:2])
+        _concept("panel", f"shape phrase {chr(97 + index)}", side0)
         for index in range(MAX_CONCEPTS_PER_ORIENTATION + 1)
     ]
     with pytest.raises(ObjectSceneSemanticRegistryError, match="capacity"):
@@ -880,7 +896,7 @@ def test_rejects_empty_and_capacity_excess(discovery_inputs):
             prepared,
             {
                 "side0_positive": seventeen,
-                "side1_positive": [_concept("entity", "mismatched parts", side1[:2])],
+                "side1_positive": [_concept("entity", "mismatched parts", side1)],
             },
         )
 
@@ -1001,12 +1017,12 @@ def test_orientation_coverage_gap_binds_valid_rows_and_quarantines_invalid_rows(
     payload = {
         "side0_positive": [
             _concept(
-                "entity", "a birdlike angular silhouette", _aliases(prepared, 0)[:2]
+                "entity", "a birdlike angular silhouette", _aliases(prepared, 0)
             )
         ],
         "side1_positive": [
             _concept(
-                "entity", "circular or triangular outlines", _aliases(prepared, 1)[:2]
+                "entity", "circular or triangular outlines", _aliases(prepared, 1)
             )
         ],
     }

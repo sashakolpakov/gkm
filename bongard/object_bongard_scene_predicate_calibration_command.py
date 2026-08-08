@@ -3,10 +3,11 @@
 The command uses only twelve already-exposed historical panels.  It freezes a
 predicate-independent object inventory and makes one group-blind discovery
 call per panel.  After that blind batch is durable, it reveals the committed
-support roles to one zero-image semantic proposer.  The proposer must supply
-affirmative scoped concepts for both support orientations in one turn.  Their
-union is frozen before two independent, role-blind registered-evaluation
-passes.
+support roles to one multimodal semantic proposer.  That single proposer sees
+all twelve already-exposed panels and atlases under the frozen neutral aliases
+and must supply affirmative scoped concepts for both support orientations in
+one turn.  Their union is frozen before two independent, role-blind
+registered-evaluation passes.
 
 Python constructs and verifies both support orientations.  An empty survivor
 set is a typed gap and makes no ranker call.  Otherwise one mandatory
@@ -33,6 +34,7 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 from typing import Any, Callable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
@@ -74,27 +76,27 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v5"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v5"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v5"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v5"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v5"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v5"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v5"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v5"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v5"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v6"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v6"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v6"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v6"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v6"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v6"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v6"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v6"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v6"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v4"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v5"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v4"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v5"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v5"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v5"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v5"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v5"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v5"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v5"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v6"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v6"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v6"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v6"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v6"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v6"
 IR_BUNDLE_SCHEMA = SCENE_CALIBRATION_BUNDLE_SCHEMA
 
 AUTHORIZATION_FILENAME = "authorization.json"
@@ -171,6 +173,11 @@ def _authority_data() -> dict[str, object]:
         "semantic_registry_proposer_call_count": (
             SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT
         ),
+        "semantic_registry_proposer_modality": "named_image_structured",
+        "semantic_registry_proposer_support_panel_count": PANEL_COUNT,
+        "semantic_registry_proposer_receives_all_support_atlases": True,
+        "semantic_registry_proposer_receives_query_pixels": False,
+        "every_semantic_card_cites_all_positive_support_panels": True,
         "accepted_ranker_call_count": ACCEPTED_RANKER_CALL_COUNT,
         "discovery_omission_means_absence": False,
         "registered_soft_tag_requires_explicit_cells_in_passes_a_and_b": True,
@@ -1014,9 +1021,70 @@ def _role_reveal_record(
     )
 
 
+def _semantic_proposer_presentation(
+    inputs: _CalibrationInputs,
+    prepared: object,
+) -> tuple[tuple[str, bytes], ...]:
+    """Rebind every support panel/atlas byte snapshot to its opaque alias."""
+
+    by_scene = {panel.blind_panel_id: panel for panel in inputs.panels}
+    rows = {
+        item.get("panel_alias"): item
+        for key in (
+            "side0_support_descriptions",
+            "side1_support_descriptions",
+        )
+        for item in getattr(prepared, "model_view").get(key, ())
+        if isinstance(item, Mapping)
+    }
+    presentation: list[tuple[str, bytes]] = []
+    for binding in getattr(prepared, "alias_bindings"):
+        alias = binding.get("alias")
+        panel = by_scene.get(binding.get("scene_id"))
+        if (
+            not isinstance(alias, str)
+            or panel is None
+            or panel.png_sha256 != binding.get("panel_digest")
+        ):
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "semantic proposer panel binding differs"
+            )
+        images = [(f"{alias}.png", panel.exact_png_bytes)]
+        images.extend(
+            (f"{alias}_{source_name}", payload)
+            for source_name, payload in inputs.atlas_png_by_panel_digest[
+                panel.neutral_panel_digest
+            ]
+        )
+        visible_row = rows.get(alias)
+        if (
+            visible_row is None
+            or visible_row.get("panel_image") != images[0][0]
+            or visible_row.get("attached_images")
+            != [name for name, _ in images]
+        ):
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "semantic proposer visible image manifest differs"
+            )
+        presentation.extend(images)
+    names = tuple(name for name, _ in presentation)
+    if (
+        len(presentation) < PANEL_COUNT * 2
+        or len(presentation) > 64
+        or len(names) != len(set(names))
+        or set(rows)
+        != {item.get("alias") for item in getattr(prepared, "alias_bindings")}
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposer presentation inventory differs"
+        )
+    return tuple(presentation)
+
+
 def _semantic_proposal_input_record(
     *,
     prepared: object,
+    presentation: Sequence[tuple[str, bytes]],
     discovery_freeze: Mapping[str, Any],
     role_reveal: Mapping[str, Any],
 ) -> dict[str, Any]:
@@ -1036,7 +1104,17 @@ def _semantic_proposal_input_record(
             ),
             "prepared_input": prepared.to_data(),
             "preparation_digest": prepared.preparation_digest,
+            "named_image_commitments": [
+                {
+                    "name": name,
+                    "byte_count": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+                for name, payload in presentation
+            ],
+            "named_image_count": len(presentation),
             "prepared_input_fsynced_before_semantic_proposer_call": True,
+            "all_named_image_bytes_committed_before_semantic_proposer_call": True,
             **_authority_data(),
         },
         "semantic_proposal_input_digest",
@@ -1050,6 +1128,7 @@ def _restore_semantic_proposal_input(
     role_reveal: Mapping[str, Any],
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
+    inputs: _CalibrationInputs,
 ) -> object:
     from bongard.object_scene_semantic_registry import (
         ObjectScenePreparedSemanticRegistryProposal,
@@ -1068,8 +1147,10 @@ def _restore_semantic_proposal_input(
     expected_prepared = prepare_object_scene_semantic_registry_proposal(
         discovery_artifacts, role_rows
     )
+    presentation = _semantic_proposer_presentation(inputs, expected_prepared)
     expected = _semantic_proposal_input_record(
         prepared=expected_prepared,
+        presentation=presentation,
         discovery_freeze=discovery_freeze,
         role_reveal=role_reveal,
     )
@@ -1143,7 +1224,8 @@ def _execute_semantic_proposal(
     runtime: ObjectBongardTurnRuntime,
     semantic_proposal_input: Mapping[str, Any],
     prepared: object,
-    text_transport: TextTransport,
+    presentation: Sequence[tuple[str, bytes]],
+    named_image_transport: NamedImageTransport,
 ) -> tuple[object, object, dict[str, Any]]:
     from bongard.object_scene_semantic_registry import (
         ObjectSceneSemanticRegistryPayloadError,
@@ -1152,42 +1234,41 @@ def _execute_semantic_proposal(
     )
 
     relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
-    journal = ObjectBongardTextTurnJournalTransport(
+    journal = ObjectBongardNamedImageTurnJournalTransport(
         root / relative,
         authorization_digest=authorization["authorization_digest"],
         execution_precommit_digest=precommit["precommit_digest"],
         task_id="bd_scene_calibration_semantic_registry_proposer",
         turn_kind="semantic_registry_proposal",
         expected_prompt=prepared.prompt,
+        expected_images=presentation,
         expected_output_schema=prepared.output_schema,
         runtime=runtime,
-        underlying_transport=text_transport,
+        underlying_transport=named_image_transport,
     )
-    result = journal(
-        prepared.prompt,
-        prepared.output_schema,
-        **_journal_runtime_kwargs(runtime),
-    )
+    with tempfile.TemporaryDirectory(prefix="bongard-semantic-proposer-") as raw:
+        image_paths: list[str] = []
+        image_names: list[str] = []
+        for name, payload in presentation:
+            path = Path(raw) / name
+            path.write_bytes(payload)
+            image_paths.append(str(path.resolve()))
+            image_names.append(name)
+        result = journal(
+            prepared.prompt,
+            image_paths,
+            image_names,
+            prepared.output_schema,
+            **_journal_runtime_kwargs(runtime),
+        )
     payload = _canonical_mapping(result.payload, "semantic proposer payload")
     try:
         proposal, registry = build_object_scene_semantic_registry_proposal(
             prepared, payload
         )
     except ObjectSceneSemanticRegistryPayloadError:
-        usable_by_role = {
-            role: sum(
-                item["usable"] is True and item["historical_role"] == role
-                for item in prepared.alias_bindings
-            )
-            for role in (0, 1)
-        }
-        gap_code = (
-            "insufficient_discovery_evidence"
-            if any(count < 2 for count in usable_by_role.values())
-            else "payload_rejected"
-        )
         proposal, registry = build_object_scene_semantic_registry_gap(
-            prepared, gap_code, payload
+            prepared, "payload_rejected", payload
         )
     if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
         raise ObjectBongardScenePredicateCalibrationCommandError(
@@ -1290,26 +1371,38 @@ def _cold_replay_semantic_proposal(
     semantic_proposal_input: Mapping[str, Any],
     semantic_proposal_result: Mapping[str, Any],
     prepared: object,
+    presentation: Sequence[tuple[str, bytes]],
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
 ) -> tuple[object, object, str]:
     relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
-    journal = ObjectBongardTextTurnJournalTransport(
+    journal = ObjectBongardNamedImageTurnJournalTransport(
         root / relative,
         authorization_digest=authorization["authorization_digest"],
         execution_precommit_digest=precommit["precommit_digest"],
         task_id="bd_scene_calibration_semantic_registry_proposer",
         turn_kind="semantic_registry_proposal",
         expected_prompt=prepared.prompt,
+        expected_images=presentation,
         expected_output_schema=prepared.output_schema,
         runtime=runtime,
-        underlying_transport=_forbidden_text_transport,
+        underlying_transport=_forbidden_named_transport,
     )
-    replayed = journal(
-        prepared.prompt,
-        prepared.output_schema,
-        **_journal_runtime_kwargs(runtime),
-    )
+    with tempfile.TemporaryDirectory(prefix="bongard-semantic-replay-") as raw:
+        image_paths: list[str] = []
+        image_names: list[str] = []
+        for name, payload in presentation:
+            path = Path(raw) / name
+            path.write_bytes(payload)
+            image_paths.append(str(path.resolve()))
+            image_names.append(name)
+        replayed = journal(
+            prepared.prompt,
+            image_paths,
+            image_names,
+            prepared.output_schema,
+            **_journal_runtime_kwargs(runtime),
+        )
     summary = verify_object_bongard_turn_journal(journal)
     proposal, registry = _restore_semantic_proposal_result(
         semantic_proposal_result,
@@ -2666,7 +2759,7 @@ def _result_record(
                 ACCEPTED_PHYSICAL_CALL_COUNT
             ),
             "roles_hidden_through_blind_discovery_freeze": True,
-            "roles_revealed_only_to_zero_image_semantic_proposer": True,
+            "roles_revealed_only_to_multimodal_semantic_proposer": True,
             "registered_visual_evaluators_received_roles": False,
             "full_survivor_version_space_persisted": True,
             "formula_frozen_before_any_future_query": True,
@@ -2829,10 +2922,14 @@ def run_object_bongard_scene_predicate_calibration(
     prepared_semantic_proposal = prepare_object_scene_semantic_registry_proposal(
         discovery_artifacts, inputs.role_reveal_rows
     )
+    semantic_presentation = _semantic_proposer_presentation(
+        inputs, prepared_semantic_proposal
+    )
     semantic_proposal_input = _write_and_reload(
         root / SEMANTIC_PROPOSAL_INPUT_FILENAME,
         _semantic_proposal_input_record(
             prepared=prepared_semantic_proposal,
+            presentation=semantic_presentation,
             discovery_freeze=discovery_freeze,
             role_reveal=role_reveal,
         ),
@@ -2844,6 +2941,7 @@ def run_object_bongard_scene_predicate_calibration(
         role_reveal=role_reveal,
         discovery_artifacts=discovery_artifacts,
         role_rows=inputs.role_reveal_rows,
+        inputs=inputs,
     )
     semantic_registry_proposal, semantic_registry, semantic_proposal_result = (
         _execute_semantic_proposal(
@@ -2853,7 +2951,8 @@ def run_object_bongard_scene_predicate_calibration(
             runtime=runtime,
             semantic_proposal_input=semantic_proposal_input,
             prepared=prepared_semantic_proposal,
-            text_transport=text_transport,
+            presentation=semantic_presentation,
+            named_image_transport=named_image_transport,
         )
     )
     semantic_proposal_result = _write_and_reload(
@@ -3043,6 +3142,10 @@ def run_object_bongard_scene_predicate_calibration(
         role_reveal=role_reveal,
         discovery_artifacts=replay_discovery,
         role_rows=inputs.role_reveal_rows,
+        inputs=inputs,
+    )
+    replay_semantic_presentation = _semantic_proposer_presentation(
+        inputs, replay_prepared_semantic_proposal
     )
     replay_semantic_proposal, replay_semantic_registry, semantic_summary = (
         _cold_replay_semantic_proposal(
@@ -3053,6 +3156,7 @@ def run_object_bongard_scene_predicate_calibration(
             semantic_proposal_input=semantic_proposal_input,
             semantic_proposal_result=semantic_proposal_result,
             prepared=replay_prepared_semantic_proposal,
+            presentation=replay_semantic_presentation,
             discovery_artifacts=replay_discovery,
             role_rows=inputs.role_reveal_rows,
         )
@@ -3290,6 +3394,7 @@ def verify_object_bongard_scene_predicate_calibration(
         role_reveal=role_reveal,
         discovery_artifacts=discovery_artifacts,
         role_rows=inputs.role_reveal_rows,
+        inputs=inputs,
     )
     semantic_proposal_result = _durable._read_record(
         root / SEMANTIC_PROPOSAL_RESULT_FILENAME,
@@ -3379,6 +3484,10 @@ def verify_object_bongard_scene_predicate_calibration(
         role_reveal=role_reveal,
         discovery_artifacts=replay_discovery,
         role_rows=inputs.role_reveal_rows,
+        inputs=inputs,
+    )
+    replay_semantic_presentation = _semantic_proposer_presentation(
+        inputs, replay_prepared_semantic_proposal
     )
     replay_semantic_proposal, replay_semantic_registry, semantic_summary = (
         _cold_replay_semantic_proposal(
@@ -3389,6 +3498,7 @@ def verify_object_bongard_scene_predicate_calibration(
             semantic_proposal_input=semantic_proposal_input,
             semantic_proposal_result=semantic_proposal_result,
             prepared=replay_prepared_semantic_proposal,
+            presentation=replay_semantic_presentation,
             discovery_artifacts=replay_discovery,
             role_rows=inputs.role_reveal_rows,
         )

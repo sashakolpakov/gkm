@@ -1,10 +1,11 @@
-"""Role-aware semantic concept proposal over frozen scene descriptions.
+"""Role-aware multimodal concept proposal over frozen support evidence.
 
-The proposer in this module is deliberately text-only.  It sees prose already
-frozen by the blind visual discovery pass plus the committed support roles.  It
-proposes affirmative concepts for both orientations in one response.  Python
-then freezes the union as a scoped soft-tag registry; fresh role-blind visual
-passes decide every resulting tag with the frontend's four dispositions.
+The proposer sees the prose frozen by the blind visual discovery pass plus the
+same twelve already-exposed panels and proposal atlases under opaque aliases.
+Only after the discovery freeze does it receive the committed support roles.
+It proposes affirmative concepts for both orientations in one response.
+Python then freezes the union as a scoped soft-tag registry; fresh role-blind
+visual passes decide every resulting tag with the frontend's four dispositions.
 
 This is an operational observation contract, not a theorem-proving layer.
 Python owns preparation, parsing, identity, verification, and replay.  Lean is
@@ -47,16 +48,16 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v4"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v4"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v5"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v5"
 DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v2"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v4"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v5"
 MAX_CONCEPTS_PER_ORIENTATION = 16
 MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
-MIN_CITATIONS_PER_CONCEPT = 2
-MAX_CITATIONS_PER_CONCEPT = 16
 SUPPORT_PANEL_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_ROLE = 6
+MIN_CITATIONS_PER_CONCEPT = SUPPORT_PANEL_COUNT_PER_ROLE
+MAX_CITATIONS_PER_CONCEPT = SUPPORT_PANEL_COUNT_PER_ROLE
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ALIAS = re.compile(r"panel_[0-9]{3}\Z")
@@ -106,7 +107,10 @@ def _authority_data() -> dict[str, object]:
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
         "derivation_mode": ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
-        "zero_image_proposer": True,
+        "zero_image_proposer": False,
+        "named_image_multimodal_proposer": True,
+        "all_support_panels_and_atlases_attached": True,
+        "every_card_claims_all_positive_support_panels": True,
         "both_orientations_in_one_call": True,
         "registered_evaluator_receives_roles": False,
         "semantic_proposal_is_not_a_truth_assignment": True,
@@ -127,7 +131,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v4",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v5",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
@@ -146,7 +150,9 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             "maximum_near_miss_boundaries": (
                 OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES
             ),
-            "minimum_distinct_same_orientation_citations": MIN_CITATIONS_PER_CONCEPT,
+            "exact_distinct_same_orientation_citations": (
+                SUPPORT_PANEL_COUNT_PER_ROLE
+            ),
             "support_panel_count": SUPPORT_PANEL_COUNT,
             "support_panel_count_per_role": SUPPORT_PANEL_COUNT_PER_ROLE,
             "alias_order": "sha256-artifact-digest-then-opaque-sequential-alias",
@@ -225,10 +231,41 @@ def _semantic_cell_view(value: object) -> dict[str, object]:
     return raw
 
 
-def _transcript_view(alias: str, transcript: object | None) -> dict[str, object]:
+def _semantic_image_name(alias: str, source_name: str) -> str:
+    if _ALIAS.fullmatch(alias) is None:
+        raise ObjectSceneSemanticRegistryError("semantic image alias differs")
+    if source_name == "panel.png":
+        return f"{alias}.png"
+    if re.fullmatch(r"objects_[0-9]{3}\.png", source_name) is None:
+        raise ObjectSceneSemanticRegistryError(
+            "semantic source presentation name differs"
+        )
+    return f"{alias}_{source_name}"
+
+
+def _transcript_view(
+    alias: str,
+    artifact: ObjectSceneTranscriptArtifact,
+) -> dict[str, object]:
+    transcript = artifact.transcript
+    attached_images = [
+        _semantic_image_name(alias, item.name) for item in artifact.presentation
+    ]
+    proposal_map = [
+        {
+            "entity_alias": f"entity_{index:03d}",
+            "atlas_image": _semantic_image_name(alias, item.atlas_name),
+            "atlas_row": item.row_index,
+            "atlas_column": item.column_index,
+        }
+        for index, item in enumerate(artifact.inventory.objects)
+    ]
     if transcript is None:
         return {
             "panel_alias": alias,
+            "panel_image": _semantic_image_name(alias, "panel.png"),
+            "attached_images": attached_images,
+            "proposal_atlas_map": proposal_map,
             "observation_status": "unavailable",
             "panel_summary": None,
             "panel_open_tags": [],
@@ -236,6 +273,9 @@ def _transcript_view(alias: str, transcript: object | None) -> dict[str, object]
         }
     return {
         "panel_alias": alias,
+        "panel_image": _semantic_image_name(alias, "panel.png"),
+        "attached_images": attached_images,
+        "proposal_atlas_map": proposal_map,
         "observation_status": "available",
         "panel_summary": getattr(transcript, "panel_summary"),
         "panel_open_tags": [
@@ -328,9 +368,9 @@ def _proposal_output_schema(
                     "type": "array",
                     "items": {"type": "string", "enum": list(aliases)},
                     "description": (
-                        f"Between {MIN_CITATIONS_PER_CONCEPT} and "
-                        f"{MAX_CITATIONS_PER_CONCEPT} distinct aliases from this "
-                        "same bucket."
+                        "Exactly all six distinct aliases from this same "
+                        "orientation. This explicitly binds the affirmative "
+                        "card to every claimed positive support panel."
                     ),
                 },
             },
@@ -388,7 +428,8 @@ def _prepared_content(value: "ObjectScenePreparedSemanticRegistryProposal") -> d
         "prompt_digest": value.prompt_digest,
         "output_schema": dict(value.output_schema),
         "output_schema_digest": value.output_schema_digest,
-        "pixels_or_images_in_proposer_input": False,
+        "pixels_or_images_in_proposer_input": True,
+        "all_support_presentations_in_proposer_input": True,
         "task_lineage_ids_in_model_visible_input": False,
         "formula_candidates_in_model_visible_input": False,
         **_authority_data(),
@@ -473,6 +514,7 @@ class ObjectScenePreparedSemanticRegistryProposal:
             "model_view", "model_view_digest", "prompt", "prompt_digest",
             "output_schema", "output_schema_digest",
             "pixels_or_images_in_proposer_input",
+            "all_support_presentations_in_proposer_input",
             "task_lineage_ids_in_model_visible_input",
             "formula_candidates_in_model_visible_input", *_authority_data(),
             "preparation_digest",
@@ -480,7 +522,8 @@ class ObjectScenePreparedSemanticRegistryProposal:
         raw = _fields(value, expected, "prepared semantic registry proposal")
         if (
             raw["schema"] != PREPARED_SCHEMA
-            or raw["pixels_or_images_in_proposer_input"] is not False
+            or raw["pixels_or_images_in_proposer_input"] is not True
+            or raw["all_support_presentations_in_proposer_input"] is not True
             or raw["task_lineage_ids_in_model_visible_input"] is not False
             or raw["formula_candidates_in_model_visible_input"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
@@ -598,7 +641,7 @@ def prepare_object_scene_semantic_registry_proposal(
             }
         )
         model_rows[role["historical_role"]].append(
-            _transcript_view(alias, transcript)
+            _transcript_view(alias, artifact)
         )
     all_role_aliases = {
         side: tuple(
@@ -608,24 +651,28 @@ def prepare_object_scene_semantic_registry_proposal(
         )
         for side in (0, 1)
     }
-    role_aliases = {
-        side: tuple(
-            item["alias"]
-            for item in bindings
-            if item["historical_role"] == side and item["usable"] is True
-        ) or all_role_aliases[side][:1]
-        for side in (0, 1)
-    }
+    role_aliases = all_role_aliases
     model_view: dict[str, object] = {
         "side0_support_descriptions": model_rows[0],
         "side1_support_descriptions": model_rows[1],
+        "required_positive_bindings": {
+            "side0_positive": list(role_aliases[0]),
+            "side1_positive": list(role_aliases[1]),
+        },
     }
     output_schema = _proposal_output_schema(
         role_aliases[0], role_aliases[1]
     )
     prompt = (
-        "From the frozen visual descriptions below, propose candidate visual "
-        "concepts for BOTH support orientations in one response. Each concept "
+        "Inspect every attached panel and proposal-atlas image together with "
+        "the frozen blind descriptions below. Image filenames are opaque and "
+        "are bound to panel_alias and entity atlas locations in the supplied "
+        "view. The two support orientations were revealed only after blind "
+        "discovery was durably frozen. Propose candidate visual concepts for "
+        "BOTH support orientations in one response. Prefer the strongest "
+        "concepts visibly shared by every panel in their claimed orientation "
+        "and useful for distinguishing that orientation from the other one. "
+        "Each concept "
         "must be a single lowercase affirmative visual phrase, scoped either "
         "to the whole panel or to one visible entity. For every phrase, freeze "
         "an operational card rather than merely restating its label: provide "
@@ -649,9 +696,12 @@ def prepare_object_scene_semantic_registry_proposal(
         "for the card's final state. Resolve meaningful visual tolerances and "
         "category boundaries such as wedge/fan/sector in the card. Do not use "
         "a citation, support frequency, or bucket identity "
-        "as a visual cue. Cite at least two distinct panel aliases from the "
-        "concept's own support bucket; a citation says where the prose suggests "
-        "the concept and is not a truth assignment. In concept phrases, required "
+        "as a visual cue. Every card must cite exactly all six panel aliases "
+        "from its own support orientation. Those citations explicitly bind the "
+        "affirmative hypothesis to every claimed positive support panel; for "
+        "entity scope the card claims that at least one visible entity satisfies "
+        "the same witnesses in every cited panel. A citation is still a proposal "
+        "binding, not a verified truth assignment. In concept phrases, required "
         "witnesses, and accepted variants, do not compare buckets, mention "
         "experimental roles or labels, use negation, or say something is "
         "missing. Near-miss boundaries are the sole exception: phrase each as "
@@ -701,11 +751,7 @@ def prepare_object_scene_semantic_registry_proposal(
             )
         ),
         "source_panel_digests": tuple(
-            sorted(
-                artifact.panel_digest
-                for artifact in artifacts
-                if artifact.transcript is not None
-            )
+            sorted(artifact.panel_digest for artifact in artifacts)
         ),
         "role_rows_digest": _role_rows_digest(roles),
         "alias_bindings": tuple(bindings),
@@ -1360,7 +1406,7 @@ def _project_semantic_payload(
         side: {
             item["alias"]
             for item in prepared.alias_bindings
-            if item["historical_role"] == side and item["usable"] is True
+            if item["historical_role"] == side
         }
         for side in (0, 1)
     }
@@ -1452,6 +1498,13 @@ def _project_semantic_payload(
                 dropped.append(
                     ObjectSceneDroppedSemanticRegistryConcept.create(
                         key, input_index, item, "foreign_citation"
+                    )
+                )
+                continue
+            if set(concept.citations) != allowed[side]:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "citation_policy"
                     )
                 )
                 continue

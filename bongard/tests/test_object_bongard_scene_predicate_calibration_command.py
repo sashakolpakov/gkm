@@ -500,9 +500,105 @@ def _run(
     }
     lock = Lock()
 
+    def semantic_payload(schema):
+        properties = schema["properties"]
+        side0_aliases = properties["side0_positive"]["items"][
+            "properties"
+        ]["citations"]["items"]["enum"]
+        side1_aliases = properties["side1_positive"]["items"][
+            "properties"
+        ]["citations"]["items"]["enum"]
+        payload = {
+            "side0_positive": [
+                {
+                    "scope": "panel",
+                    "phrase": "bird-like object",
+                    "required_witnesses": [
+                        {
+                            "kind": "shape_appearance",
+                            "statement": (
+                                "a compact body has two wing-like extensions"
+                            ),
+                        }
+                    ],
+                    "accepted_variants": [
+                        "rounded wing tips count as equivalent extensions"
+                    ],
+                    "near_miss_boundaries": [
+                        "a plain circular blob does not qualify"
+                    ],
+                    "citations": side0_aliases,
+                }
+            ],
+            "side1_positive": [
+                {
+                    "scope": "panel",
+                    "phrase": (
+                        "three-sided frame with distinct edge markers"
+                        if semantic_valid
+                        else "not a valid affirmative concept"
+                    ),
+                    "required_witnesses": [
+                        {
+                            "kind": "shape_appearance",
+                            "statement": (
+                                "the outer form has three long boundary segments"
+                            ),
+                        },
+                        {
+                            "kind": "marking_pattern",
+                            "statement": (
+                                "distinct small markers appear along the outer boundary"
+                            ),
+                        },
+                    ],
+                    "accepted_variants": [],
+                    "near_miss_boundaries": [
+                        "an open two-segment angle does not qualify"
+                    ],
+                    "citations": side1_aliases,
+                }
+            ],
+        }
+        if semantic_extra_invalid:
+            payload["side0_positive"].append(
+                {
+                    "scope": "entity",
+                    "phrase": "pointed or curved",
+                    "required_witnesses": [
+                        {
+                            "kind": "shape_appearance",
+                            "statement": "the visible outline has one pointed end",
+                        }
+                    ],
+                    "accepted_variants": [],
+                    "near_miss_boundaries": [],
+                    "citations": side0_aliases,
+                }
+            )
+        return payload
+
     def named_transport(prompt, paths, names, schema, **_kwargs):
         assert (root / command.AUTHORIZATION_FILENAME).is_file()
         assert (root / command.PRECOMMIT_FILENAME).is_file()
+        properties = schema["properties"]
+        if {"side0_positive", "side1_positive"}.issubset(properties):
+            assert (root / command.DISCOVERY_FREEZE_FILENAME).is_file()
+            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
+            assert not (root / command.REGISTRY_FREEZE_FILENAME).exists()
+            assert tuple(names) == tuple(
+                name
+                for index in range(command.PANEL_COUNT)
+                for name in (
+                    f"panel_{index:03d}.png",
+                    f"panel_{index:03d}_objects_000.png",
+                )
+            )
+            proposer_calls.append(prompt)
+            payload = semantic_payload(schema)
+            return CodexStructuredResult(
+                payload, _receipt(prompt, paths, names, schema, payload)
+            )
         panel_digest = hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
         index, inventory = by_panel_digest[panel_digest]
         registered = "All open_tags arrays must be empty" in prompt
@@ -581,92 +677,12 @@ def _run(
 
     def text_transport(prompt, schema, **_kwargs):
         properties = schema["properties"]
-        if {"side0_positive", "side1_positive"}.issubset(properties):
-            assert (root / command.DISCOVERY_FREEZE_FILENAME).is_file()
-            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
-            assert not (root / command.REGISTRY_FREEZE_FILENAME).exists()
-            proposer_calls.append(prompt)
-            side0_aliases = properties["side0_positive"]["items"][
-                "properties"
-            ]["citations"]["items"]["enum"]
-            side1_aliases = properties["side1_positive"]["items"][
-                "properties"
-            ]["citations"]["items"]["enum"]
-            payload = {
-                "side0_positive": [
-                    {
-                        "scope": "panel",
-                        "phrase": "bird-like object",
-                        "required_witnesses": [
-                            {
-                                "kind": "shape_appearance",
-                                "statement": (
-                                    "a compact body has two wing-like extensions"
-                                ),
-                            }
-                        ],
-                        "accepted_variants": [
-                            "rounded wing tips count as equivalent extensions"
-                        ],
-                        "near_miss_boundaries": [
-                            "a plain circular blob does not qualify"
-                        ],
-                        "citations": side0_aliases[:2],
-                    }
-                ],
-                "side1_positive": [
-                    {
-                        "scope": "panel",
-                        "phrase": (
-                            "three-sided frame with distinct edge markers"
-                            if semantic_valid
-                            else "not a valid affirmative concept"
-                        ),
-                        "required_witnesses": [
-                            {
-                                "kind": "shape_appearance",
-                                "statement": (
-                                    "the outer form has three long boundary segments"
-                                ),
-                            },
-                            {
-                                "kind": "marking_pattern",
-                                "statement": (
-                                    "distinct small markers appear along the outer boundary"
-                                ),
-                            },
-                        ],
-                        "accepted_variants": [],
-                        "near_miss_boundaries": [
-                            "an open two-segment angle does not qualify"
-                        ],
-                        "citations": side1_aliases[:2],
-                    }
-                ],
-            }
-            if semantic_extra_invalid:
-                payload["side0_positive"].append(
-                    {
-                        "scope": "entity",
-                        "phrase": "pointed or curved",
-                        "required_witnesses": [
-                            {
-                                "kind": "shape_appearance",
-                                "statement": "the visible outline has one pointed end",
-                            }
-                        ],
-                        "accepted_variants": [],
-                        "near_miss_boundaries": [],
-                        "citations": side0_aliases[1:3],
-                    }
-                )
-        else:
-            assert set(properties) == {"selected_survivor_digest"}
-            assert (root / command.RANK_INPUT_FREEZE_FILENAME).is_file()
-            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
-            enum = properties["selected_survivor_digest"]["enum"]
-            payload = {"selected_survivor_digest": enum[0]}
-            ranker_calls.append(prompt)
+        assert set(properties) == {"selected_survivor_digest"}
+        assert (root / command.RANK_INPUT_FREEZE_FILENAME).is_file()
+        assert (root / command.ROLE_REVEAL_FILENAME).is_file()
+        enum = properties["selected_survivor_digest"]["enum"]
+        payload = {"selected_survivor_digest": enum[0]}
+        ranker_calls.append(prompt)
         return CodexStructuredResult(payload, _text_receipt(prompt, schema, payload))
 
     verified = command.run_object_bongard_scene_predicate_calibration(
@@ -731,6 +747,11 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     assert result["registry_derivation_mode"] == (
         "role_aware_semantic_concept_proposal"
     )
+    assert result["roles_hidden_through_blind_discovery_freeze"] is True
+    assert (
+        result["roles_revealed_only_to_multimodal_semantic_proposer"] is True
+    )
+    assert "roles_revealed_only_to_zero_image_semantic_proposer" not in result
     assert result["benchmark_acceptance_authorized_registry"] is True
     assert result["exact_frequency_fallback_acceptance_authorized"] is False
     expected_schemas = {
@@ -756,7 +777,7 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
         command.REPLAY_FILENAME: command.REPLAY_SCHEMA,
         command.RESULT_FILENAME: command.RESULT_SCHEMA,
     }
-    assert command.COMMAND_ID.endswith("-v5")
+    assert command.COMMAND_ID.endswith("-v6")
     for filename, schema in expected_schemas.items():
         assert json.loads((root / filename).read_text("utf-8"))["schema"] == schema
     for filename in (
@@ -768,6 +789,33 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
         assert json.loads((root / filename).read_text("utf-8"))[
             "typed_gap_status"
         ] is None
+    semantic_input = json.loads(
+        (root / command.SEMANTIC_PROPOSAL_INPUT_FILENAME).read_text("utf-8")
+    )
+    assert semantic_input["named_image_count"] == 24
+    assert [item["name"] for item in semantic_input["named_image_commitments"]] == [
+        name
+        for index in range(command.PANEL_COUNT)
+        for name in (
+            f"panel_{index:03d}.png",
+            f"panel_{index:03d}_objects_000.png",
+        )
+    ]
+    assert semantic_input["prepared_input"][
+        "pixels_or_images_in_proposer_input"
+    ] is True
+    semantic_manifest = json.loads(
+        (
+            root
+            / command.JOURNAL_DIRECTORY
+            / "semantic_registry_proposer"
+            / "manifest.json"
+        ).read_text("utf-8")
+    )
+    assert semantic_manifest["modality"] == "named_image_structured"
+    assert semantic_manifest["named_images"] == semantic_input[
+        "named_image_commitments"
+    ]
     semantic_result = json.loads(
         (root / command.SEMANTIC_PROPOSAL_RESULT_FILENAME).read_text("utf-8")
     )
@@ -778,6 +826,14 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     assert all(concept["required_witnesses"] for concept in concepts)
     assert all("accepted_variants" in concept for concept in concepts)
     assert all("near_miss_boundaries" in concept for concept in concepts)
+    bindings = semantic_input["prepared_input"]["model_view"][
+        "required_positive_bindings"
+    ]
+    for orientation in ("side0_positive", "side1_positive"):
+        assert all(
+            set(concept["citations"]) == set(bindings[orientation])
+            for concept in semantic_result["semantic_proposal"][orientation]
+        )
     assert len(ranker_calls) == 1
     assert len(proposer_calls) == 1
     prompt = ranker_calls[0]
