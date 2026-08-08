@@ -79,13 +79,13 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-source.v3"
+    "gkm.bongard-object-rubric-calibration-source.v4"
 )
 OBJECT_RUBRIC_CALIBRATION_LIVE_OBSERVATION_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-live-observation.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_OBSERVATION_BATCH_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-observation-batch.v1"
+    "gkm.bongard-object-rubric-calibration-observation-batch.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_COUNTS_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-candidate-counts.v1"
@@ -94,10 +94,10 @@ OBJECT_RUBRIC_CALIBRATION_SPEC_ASSESSMENT_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-spec-assessment.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_ASSESSMENT_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-assessment.v1"
+    "gkm.bongard-object-rubric-calibration-assessment.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID = (
-    "bongard.object-rubric-calibration/exact-released-12-contrastive-v3"
+    "bongard.object-rubric-calibration/exact-released-12-single-signed-v4"
 )
 
 DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
@@ -135,10 +135,7 @@ _RUBRIC_ROWS = (
     ),
 )
 
-_CALIBRATION_ORIENTED_CUE_PAIRS = (
-    (_RUBRIC_ROWS[0][1], _RUBRIC_ROWS[1][1]),
-    (_RUBRIC_ROWS[1][1], _RUBRIC_ROWS[0][1]),
-)
+_CALIBRATION_SIGNED_CUE_PAIR = (_RUBRIC_ROWS[0][1], _RUBRIC_ROWS[1][1])
 
 # ordinal -> (task_id, panel_id, released file SHA-256, released record digest,
 # PNG SHA-256, old observer file SHA-256, old observer artifact digest,
@@ -296,33 +293,27 @@ def _authority_data() -> dict[str, object]:
 
 
 def _calibration_rubric_specs() -> tuple[ObjectBongardRubricSpec, ...]:
-    """Legacy v3 source used only to authorize the replacement nomination."""
+    """Legacy source's single canonical group-A-over-group-B orientation."""
 
-    return tuple(
+    target, foil = _CALIBRATION_SIGNED_CUE_PAIR
+    return (
         ObjectBongardRubricSpec.create(
             _DESCRIPTION_ARTIFACT_DIGEST,
             object_bongard_catalog_contrast_rubric(target, foil),
             (target, foil),
-        )
-        for target, foil in _CALIBRATION_ORIENTED_CUE_PAIRS
+        ),
     )
 
 
 def _nominated_rubric_specs(
     artifact: ObjectBongardSemanticArtifact,
 ) -> tuple[ObjectBongardRubricSpec, ...]:
-    """Derive both directions from one frozen two-group semantic turn."""
+    """Derive one canonical group-0-over-group-1 signed comparison."""
 
     forward = ObjectBongardRubricSpec.from_semantic_artifact(
         artifact, expected_artifact_digest=artifact.artifact_digest
     )
-    target, foil = forward.feature_nominations
-    reverse = ObjectBongardRubricSpec.create(
-        artifact.artifact_digest,
-        object_bongard_catalog_contrast_rubric(foil, target),
-        (foil, target),
-    )
-    return (forward, reverse)
+    return (forward,)
 
 
 def _raw_digest(value: object, label: str) -> str:
@@ -555,10 +546,10 @@ def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, 
         "selected_ordinals": list(CALIBRATION_SELECTED_ORDINALS),
         "selection_policy": "ordinal-first-prior-geometry-success-exactly-six-per-group",
         "rubric_derivation_policy": (
-            "verified-historical-description-cues/legacy-v3"
+            "verified-historical-description-cues/canonical-group-a-over-group-b/v4"
             if nomination is None
-            else "one-sealed-neutral-semantic-nomination-then-both-ordered-"
-            "target-versus-foil-orientations/v1"
+            else "one-sealed-joint-contrastive-semantic-nomination-then-one-"
+            "canonical-group-0-over-group-1-signed-orientation/v2"
         ),
         "historical_description_used_for_rubric_derivation": nomination is None,
         "nomination_binding": (
@@ -693,7 +684,7 @@ class ObjectBongardRubricCalibrationSource:
             expected_specs = _nominated_rubric_specs(artifact)
         if self.rubric_specs != expected_specs:
             raise ObjectBongardRubricCalibrationError(
-                "calibration rubric specs differ from both frozen orientations"
+                "calibration rubric spec differs from the canonical frozen orientation"
             )
         _raw_digest(self.source_digest, "calibration source digest")
         if self.source_digest != canonical_digest(_source_content(self)):
@@ -1436,7 +1427,7 @@ class ObjectBongardRubricObservationBatch:
             or not isinstance(self.parallel_workers, int)
             or not 1 <= self.parallel_workers <= 32
             or not isinstance(self.runs, tuple)
-            or len(self.runs) != 24
+            or len(self.runs) != 12
             or any(
                 not isinstance(item, ObjectBongardRubricLiveObservation)
                 for item in self.runs
@@ -1448,14 +1439,9 @@ class ObjectBongardRubricObservationBatch:
                 }
             )
             != len(self.runs)
-            or tuple(item.rubric_spec_digest for item in self.runs[:12])
+            or tuple(item.rubric_spec_digest for item in self.runs)
             != (self.runs[0].rubric_spec_digest,) * 12
-            or tuple(item.rubric_spec_digest for item in self.runs[12:])
-            != (self.runs[12].rubric_spec_digest,) * 12
-            or self.runs[0].rubric_spec_digest == self.runs[12].rubric_spec_digest
-            or tuple(item.panel_binding_digest for item in self.runs[:12])
-            != tuple(item.panel_binding_digest for item in self.runs[12:])
-            or len({item.panel_binding_digest for item in self.runs[:12]}) != 12
+            or len({item.panel_binding_digest for item in self.runs}) != 12
             or self.batch_digest != canonical_digest(_batch_content(self))
         ):
             raise ObjectBongardRubricCalibrationError(
@@ -1533,7 +1519,7 @@ def run_object_bongard_rubric_calibration_observations(
         create_object_bongard_rubric_journal_dispatcher
     ),
 ) -> ObjectBongardRubricObservationBatch:
-    """Observe both frozen rubrics on all twelve panels, four turns at a time.
+    """Observe the frozen signed rubric on all twelve panels, four at a time.
 
     Jobs are created in rubric-spec order and source-ordinal order.  Their
     journal paths include task ID, full spec digest, and sheet index, so the
@@ -1928,7 +1914,7 @@ def _assessment_content(
         "implementation_source_sha256": object_bongard_rubric_calibration_source_digest(),
         "source_digest": value.source_digest,
         "spec_assessments": [item.to_data() for item in value.spec_assessments],
-        "spec_count": 2,
+        "spec_count": 1,
         "support_panels_per_side": RUBRIC_SUPPORT_PANELS_PER_SIDE,
         "labels_visible_to_observer": False,
         "cold_replay_calls_model": False,
@@ -1948,7 +1934,7 @@ class ObjectBongardRubricCalibrationAssessment:
         _raw_digest(self.source_digest, "assessment source digest")
         if (
             not isinstance(self.spec_assessments, tuple)
-            or len(self.spec_assessments) != 2
+            or len(self.spec_assessments) != 1
             or any(
                 not isinstance(item, ObjectBongardRubricCalibrationSpecAssessment)
                 for item in self.spec_assessments
@@ -1956,10 +1942,10 @@ class ObjectBongardRubricCalibrationAssessment:
             or len(
                 {item.rubric_spec.spec_digest for item in self.spec_assessments}
             )
-            != 2
+            != 1
         ):
             raise ObjectBongardRubricCalibrationError(
-                "assessment must contain two distinct frozen rubric specs"
+                "assessment must contain the single frozen signed rubric spec"
             )
         _raw_digest(self.assessment_digest, "calibration assessment digest")
         if self.assessment_digest != canonical_digest(_assessment_content(self)):
@@ -2001,7 +1987,7 @@ class ObjectBongardRubricCalibrationAssessment:
             or raw["algorithm_id"] != OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID
             or raw["implementation_source_sha256"]
             != object_bongard_rubric_calibration_source_digest()
-            or raw["spec_count"] != 2
+            or raw["spec_count"] != 1
             or raw["support_panels_per_side"]
             != RUBRIC_SUPPORT_PANELS_PER_SIDE
             or raw["labels_visible_to_observer"] is not False
@@ -2051,12 +2037,12 @@ def _canonical_observations(
     spec_digests = tuple(item.spec_digest for item in source.rubric_specs)
     if set(values) != set(spec_digests):
         raise ObjectBongardRubricCalibrationError(
-            "observations do not exhaust the two exact rubric specs"
+            "observations do not exhaust the single exact rubric spec"
         )
     expected_panel_ids = tuple(item.panel_id for item in source.panels)
     result: dict[str, tuple[ObjectBongardRubricObserverArtifact, ...]] = {}
-    # Complete and cold-verify both label-free observation inventories first.
-    # Support directions are deliberately not selected until this loop ends.
+    # Complete and cold-verify the label-free observation inventory before
+    # selecting its preregistered group-0/group-A support direction.
     for spec in source.rubric_specs:
         by_panel: dict[str, ObjectBongardRubricObserverArtifact] = {}
         for artifact in values[spec.spec_digest]:
@@ -2106,25 +2092,19 @@ def assess_object_bongard_rubric_calibration(
         | ObjectBongardRubricObservationBatch
     ),
 ) -> ObjectBongardRubricCalibrationAssessment:
-    """Build both exact 6+6 version spaces after all vision is frozen."""
+    """Build the canonical exact 6+6 version space after vision is frozen."""
 
     if not isinstance(source, ObjectBongardRubricCalibrationSource):
         raise TypeError("source must be ObjectBongardRubricCalibrationSource")
     frozen = _canonical_observations(source, observations)
     assessments: list[ObjectBongardRubricCalibrationSpecAssessment] = []
-    for index, spec in enumerate(source.rubric_specs):
+    for spec in source.rubric_specs:
         artifacts = frozen[spec.spec_digest]
         by_panel = {item.panel_id: item for item in artifacts}
-        positive_panels = (
-            source.group_a_panels if index == 0 else source.group_b_panels
-        )
-        negative_panels = (
-            source.group_b_panels if index == 0 else source.group_a_panels
-        )
         version_space = build_object_bongard_rubric_support_version_space(
             spec,
-            tuple(by_panel[item.panel_id] for item in positive_panels),
-            tuple(by_panel[item.panel_id] for item in negative_panels),
+            tuple(by_panel[item.panel_id] for item in source.group_a_panels),
+            tuple(by_panel[item.panel_id] for item in source.group_b_panels),
         )
         assessments.append(_make_spec_assessment(spec, version_space))
     values = {

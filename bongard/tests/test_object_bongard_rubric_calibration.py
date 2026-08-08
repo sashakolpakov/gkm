@@ -131,15 +131,11 @@ def test_exact_source_recomputes_current_geometry_and_preserves_history(
     assert recomputation_count == 12
     assert tuple(item.ordinal for item in source.panels) == CALIBRATION_SELECTED_ORDINALS
     assert len(source.group_a_panels) == len(source.group_b_panels) == 6
-    assert len(source.rubric_specs) == 2
+    assert len(source.rubric_specs) == 1
     assert tuple(item.feature_nominations for item in source.rubric_specs) == (
         (
             "paired_sector_mismatch_support_ppm",
             "bird_like_support_ppm",
-        ),
-        (
-            "bird_like_support_ppm",
-            "paired_sector_mismatch_support_ppm",
         ),
     )
     assert tuple(item.rubric for item in source.rubric_specs) == tuple(
@@ -176,6 +172,43 @@ def test_exact_source_recomputes_current_geometry_and_preserves_history(
     assert data["labels_consumed_while_observing"] is False
     assert data["fresh_broad_cohort_pixels_opened"] is False
     assert data["lean_required"] is False
+
+
+def test_source_rejects_an_independently_queried_reverse_orientation(
+    exact_source,
+) -> None:
+    source, _ = exact_source
+    forward = source.rubric_specs[0]
+    target, foil = forward.feature_nominations
+    reverse = type(forward).create(
+        forward.semantic_artifact_digest,
+        object_bongard_catalog_contrast_rubric(foil, target),
+        (foil, target),
+    )
+    with pytest.raises(
+        calibration.ObjectBongardRubricCalibrationError,
+        match="canonical frozen orientation",
+    ):
+        type(source)(
+            historical_plan_file_sha256=source.historical_plan_file_sha256,
+            historical_plan_record_digest=source.historical_plan_record_digest,
+            historical_description_file_sha256=(
+                source.historical_description_file_sha256
+            ),
+            historical_description_artifact_digest=(
+                source.historical_description_artifact_digest
+            ),
+            panels=source.panels,
+            rubric_specs=(forward, reverse),
+            nomination_artifact=source.nomination_artifact,
+            nomination_authorization_digest=(
+                source.nomination_authorization_digest
+            ),
+            nomination_precommit_digest=source.nomination_precommit_digest,
+            nomination_replay_digest=source.nomination_replay_digest,
+            nomination_result_digest=source.nomination_result_digest,
+            source_digest=source.source_digest,
+        )
 
 
 def test_internal_verified_nomination_content_replaces_historical_cues_exactly(
@@ -235,10 +268,6 @@ def test_internal_verified_nomination_content_replaces_historical_cues_exactly(
             "paired_sector_mismatch_support_ppm",
             "triangle_with_three_lines_support_ppm",
         ),
-        (
-            "triangle_with_three_lines_support_ppm",
-            "paired_sector_mismatch_support_ppm",
-        ),
     )
     assert nominated.to_data()[
         "historical_description_used_for_rubric_derivation"
@@ -288,14 +317,8 @@ def test_parallel_batch_persists_assesses_gaps_and_cold_replays_without_calls(
     exact_source, runtime, tmp_path: Path
 ) -> None:
     source, _ = exact_source
-    first_rubric = source.rubric_specs[0].rubric
-
-    def levels(panel, prompt: str) -> int:
-        # Spec zero separates A/B perfectly.  Spec one deliberately scores
-        # everything high, exercising a canonical language gap.
-        if first_rubric in prompt:
-            return 4 if panel in source.group_a_panels else 0
-        return 4
+    def levels(panel, _prompt: str) -> int:
+        return 4 if panel in source.group_a_panels else 0
 
     transport, calls = _fake_transport(source, levels)
     batch = run_object_bongard_rubric_calibration_observations(
@@ -307,9 +330,9 @@ def test_parallel_batch_persists_assesses_gaps_and_cold_replays_without_calls(
         parallel_workers=4,
         underlying_transport=transport,
     )
-    assert len(batch.runs) == 24
-    assert len(calls) == 30
-    assert len(tuple((tmp_path / "batch").glob("**/manifest.json"))) == 30
+    assert len(batch.runs) == 12
+    assert len(calls) == 15
+    assert len(tuple((tmp_path / "batch").glob("**/manifest.json"))) == 15
 
     durable = tmp_path / "batch.json"
     durable.write_bytes(canonical_json(batch.to_data()) + b"\n")
@@ -319,19 +342,13 @@ def test_parallel_batch_persists_assesses_gaps_and_cold_replays_without_calls(
     assert reloaded == batch
 
     assessment = assess_object_bongard_rubric_calibration(source, reloaded)
-    perfect, gap = assessment.spec_assessments
+    (perfect,) = assessment.spec_assessments
     assert len(perfect.survivor_candidate_digests) == 2
     assert perfect.gap_kind is None
     for counts in perfect.candidate_counts:
         assert counts.positive.present == 6
         assert counts.negative.certified_absent == 6
         assert counts.support_consistent is True
-    assert gap.survivor_candidate_digests == ()
-    assert gap.gap_kind is not None
-    assert gap.gap_kind.value == "language_gap"
-    assert any(
-        counts.negative.present == 6 for counts in gap.candidate_counts
-    )
     assert ObjectBongardRubricCalibrationAssessment.from_data(
         assessment.to_data()
     ) == assessment

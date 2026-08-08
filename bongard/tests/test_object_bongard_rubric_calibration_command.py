@@ -17,11 +17,14 @@ from bongard.object_bongard_rubric_calibration_command import (
     ASSESSMENT_FILENAME,
     AUTHORIZATION_FILENAME,
     CALIBRATION_ACCEPTANCE_RULE,
+    CALIBRATION_JOB_COUNT,
+    CALIBRATION_SHEET_JOURNAL_COUNT,
     DEFAULT_CALIBRATION_CODEX_LAUNCHER_SHA256,
     INVENTORY_FILENAME,
     NOMINATION_DIRECTORY,
     PRECOMMIT_FILENAME,
     REPLAY_FILENAME,
+    CalibrationObservationJobCommitment,
     ObjectBongardRubricCalibrationAuthorization,
     ObjectBongardRubricCalibrationCommandError,
     load_object_bongard_rubric_calibration_authorization,
@@ -47,7 +50,6 @@ from bongard.transport import (
 def _fake_transport(source, calls: list[tuple[str, str]]):
     lock = Lock()
     by_png = {item.png_sha256: item for item in source.panels}
-    first_rubric = source.rubric_specs[0].rubric
 
     def transport(prompt, paths, names, schema, **_kwargs):
         panel_digest = hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
@@ -57,10 +59,7 @@ def _fake_transport(source, calls: list[tuple[str, str]]):
             for item in panel.hypothesis_packet.atlas_sheets
             if item.name == names[1]
         )
-        if first_rubric in prompt:
-            level = 4 if panel in source.group_a_panels else 0
-        else:
-            level = 4 if panel in source.group_b_panels else 0
+        level = 4 if panel in source.group_a_panels else 0
         payload = {
             "scene": {"lower": level, "upper": level},
             "slots": [
@@ -82,6 +81,12 @@ def _fake_transport(source, calls: list[tuple[str, str]]):
         return CodexStructuredResult(payload, receipt)
 
     return transport
+
+
+def test_command_cardinality_is_one_signed_spec() -> None:
+    assert CALIBRATION_JOB_COUNT == 12
+    assert CALIBRATION_SHEET_JOURNAL_COUNT == 15
+    assert "single-frozen-signed-rubric-spec" in CALIBRATION_ACCEPTANCE_RULE
 
 
 def test_command_seals_before_calls_persists_everything_and_cold_replays(
@@ -152,8 +157,15 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
             output_root
         )
         assert precommit.authorization_digest == authorization.authorization_digest
-        assert len(authorization.jobs) == 24
-        assert sum(len(item.sheets) for item in authorization.jobs) == 30
+        assert len(authorization.jobs) == CALIBRATION_JOB_COUNT == 12
+        assert (
+            sum(len(item.sheets) for item in authorization.jobs)
+            == CALIBRATION_SHEET_JOURNAL_COUNT
+            == 15
+        )
+        assert tuple(item.rubric_spec_index for item in authorization.jobs) == (
+            0,
+        ) * CALIBRATION_JOB_COUNT
         causal_gate_seen = True
         return run_object_bongard_rubric_calibration_observations(
             source,
@@ -188,17 +200,17 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
         "cold_replay_digest": nomination.cold_replay_digest,
         "command_result_digest": nomination.result_digest,
     }
-    assert len(calls) == 30
-    assert result.inventory.fresh_model_call_count == 30
+    assert len(calls) == 15
+    assert result.inventory.fresh_model_call_count == 15
     assert result.inventory.reused_model_call_count == 0
-    assert result.replay.survivor_counts == (2, 2)
+    assert result.replay.survivor_counts == (2,)
     assert result.accepted is True
     assert result.replay.to_data()["acceptance_rule"] == CALIBRATION_ACCEPTANCE_RULE
     assert result.replay.to_data()["threshold_tuning_performed"] is False
     assert result.replay.to_data()["preferred_candidate_selected"] is False
     assert result.replay.to_data()["fresh_broad_release_prepared"] is False
-    assert len(tuple((output_root / "observer_artifacts").glob("*.json"))) == 24
-    assert len(tuple((output_root / "journals").glob("**/manifest.json"))) == 30
+    assert len(tuple((output_root / "observer_artifacts").glob("*.json"))) == 12
+    assert len(tuple((output_root / "journals").glob("**/manifest.json"))) == 15
     for filename in (
         AUTHORIZATION_FILENAME,
         PRECOMMIT_FILENAME,
@@ -214,11 +226,19 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
     )
 
     tampered = result.authorization.to_data()
-    tampered["sheet_journal_count"] = 29
+    tampered["sheet_journal_count"] = 14
     with pytest.raises(
         ObjectBongardRubricCalibrationCommandError, match="policy"
     ):
         ObjectBongardRubricCalibrationAuthorization.from_data(tampered)
+
+    reverse_job = result.authorization.jobs[0].to_data()
+    reverse_job["rubric_spec_index"] = 1
+    with pytest.raises(
+        ObjectBongardRubricCalibrationCommandError,
+        match="canonical index zero",
+    ):
+        CalibrationObservationJobCommitment.from_data(reverse_job)
 
 
 def test_command_source_has_no_lean_import() -> None:
