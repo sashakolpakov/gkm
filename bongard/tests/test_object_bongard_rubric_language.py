@@ -43,6 +43,10 @@ def test_spec_identity_is_ordered_prose_but_observer_and_scale_neutral() -> None
     assert "ordinal_scale_digest" not in data
     assert "observer_source_digest" not in data
     assert "atlas" not in spec.rubric.lower()
+    assert "Description A" in spec.rubric
+    assert "Description B" in spec.rubric
+    assert "target description" not in spec.rubric.lower()
+    assert "foil description" not in spec.rubric.lower()
     assert spec.target_cue.text in spec.rubric
     assert spec.foil_cue.text in spec.rubric
 

@@ -1,7 +1,7 @@
 """Observer-neutral language for prose-grounded Bongard predicates.
 
 The semantic proposer supplies two ordered positive soft cues.  This module
-binds their exact bytes into a target-versus-foil rubric, but deliberately
+binds their exact bytes into a description-A-versus-description-B rubric, but deliberately
 does not bind that rubric to an object atlas, a panel observer, or an ordinal
 scale.  The complete-panel ordinal scale is defined alongside the rubric
 language so observers and pure-Python evaluators can share one exact meaning
@@ -31,20 +31,20 @@ from bongard.object_bongard_soft_cues import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-RUBRIC_SPEC_SCHEMA = "gkm.bongard-soft-cue-rubric-spec.v4"
-RUBRIC_LANGUAGE_ID = "bongard.soft-cue-rubric/observer-neutral-forward-pair-v1"
+RUBRIC_SPEC_SCHEMA = "gkm.bongard-soft-cue-rubric-spec.v5"
+RUBRIC_LANGUAGE_ID = "bongard.soft-cue-rubric/observer-neutral-forward-pair-v2"
 RUBRIC_PRESENT_LOWER_BOUND = 3
 RUBRIC_ABSENCE_UPPER_BOUND = 1
 RUBRIC_ORDINAL_LEVEL_ANCHORS: tuple[tuple[int, str], ...] = (
     (
         0,
-        "The complete panel clearly matches the foil description more aptly "
-        "than the target description.",
+        "The complete panel clearly matches description B more aptly "
+        "than description A.",
     ),
     (
         1,
-        "The complete panel matches the foil description slightly more aptly "
-        "than the target description.",
+        "The complete panel matches description B slightly more aptly "
+        "than description A.",
     ),
     (
         2,
@@ -53,13 +53,13 @@ RUBRIC_ORDINAL_LEVEL_ANCHORS: tuple[tuple[int, str], ...] = (
     ),
     (
         3,
-        "The complete panel matches the target description slightly more aptly "
-        "than the foil description.",
+        "The complete panel matches description A slightly more aptly "
+        "than description B.",
     ),
     (
         4,
-        "The complete panel clearly matches the target description more aptly "
-        "than the foil description.",
+        "The complete panel clearly matches description A more aptly "
+        "than description B.",
     ),
 )
 
@@ -192,9 +192,9 @@ def object_bongard_soft_contrast_rubric(
             "target and foil soft cues must be distinct"
         )
     result = (
-        "Judge how much more strongly the visible form matches this target "
-        "description than this foil description. "
-        f"Target description, {target.text} Foil description, {foil.text}"
+        "Judge how much more strongly the visible form matches description A "
+        "than description B. "
+        f"Description A, {target.text} Description B, {foil.text}"
     )
     if result != result.strip() or len(result.encode("ascii")) > 768:
         raise ObjectBongardRubricLanguageError(
@@ -217,7 +217,7 @@ def _spec_content(value: "ObjectBongardRubricSpec") -> dict[str, object]:
         "rubric": value.rubric,
         "ordered_cue_roles": ["target", "foil"],
         "rubric_derivation_policy": (
-            "exact-content-addressed-positive-soft-cue-target-versus-foil"
+            "exact-content-addressed-positive-soft-cue-a-versus-b"
         ),
         "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
         "observation_scope_bound_in_spec": False,
@@ -228,7 +228,7 @@ def _spec_content(value: "ObjectBongardRubricSpec") -> dict[str, object]:
 
 @dataclass(frozen=True, slots=True)
 class ObjectBongardRubricSpec:
-    """One ordered, observer-neutral positive target-versus-foil contrast."""
+    """One ordered, observer-neutral positive description-A/B contrast."""
 
     semantic_artifact_digest: str
     candidate_rank: int
@@ -365,7 +365,7 @@ class ObjectBongardRubricSpec:
             or raw["language_id"] != RUBRIC_LANGUAGE_ID
             or raw["ordered_cue_roles"] != ["target", "foil"]
             or raw["rubric_derivation_policy"]
-            != "exact-content-addressed-positive-soft-cue-target-versus-foil"
+            != "exact-content-addressed-positive-soft-cue-a-versus-b"
             or raw["soft_cue_grammar_digest"]
             != object_bongard_soft_cue_grammar_digest()
             or raw["observation_scope_bound_in_spec"] is not False

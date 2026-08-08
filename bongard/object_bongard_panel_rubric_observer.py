@@ -51,7 +51,7 @@ from bongard.transport import (
 
 PANEL_RUBRIC_ARTIFACT_SCHEMA = "gkm.bongard-panel-rubric-observer-artifact.v2"
 PANEL_RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-panel-rubric-observation.v2"
-PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v3"
+PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v4"
 PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS = RUBRIC_ORDINAL_LEVEL_ANCHORS
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -169,16 +169,17 @@ def object_bongard_panel_rubric_prompt(rubric_spec: ObjectBongardRubricSpec) -> 
         "counts, and relations must belong to one spatially coherent figure, including "
         "decorations that trace or attach to its outline. Never pool evidence across "
         "spatially separate figures to manufacture one described figure. When both "
-        "descriptions refer to one figure or object, compare target and foil on the "
+        "descriptions refer to one figure or object, compare descriptions A and B on the "
         "same individual figure. If separate figures support the opposite descriptions "
         "comparably, use level 2 rather than assigning each description its own figure. "
-        "Apply this exact ordered target-versus-foil comparison to the complete panel:\n"
+        "Apply this exact ordered description-A-versus-description-B comparison "
+        "to the complete panel:\n"
         f"{rubric_spec.rubric}\n\n"
         "Use only this fixed ordinal scale:\n"
         f"{anchors}\n\n"
-        "Level 4 is reserved for a complete panel where the target description is "
-        "clearly more apt. Level 0 is reserved for a complete panel where the foil "
-        "description is clearly more apt. Level 2 covers both, neither, a tie, and "
+        "Level 4 is reserved for a complete panel where description A is clearly "
+        "more apt. Level 0 is reserved for a complete panel where description B is "
+        "clearly more apt. Level 2 covers both, neither, a tie, and "
         "genuine uncertainty. Return the narrowest honest inclusive lower and upper "
         "levels for the complete panel."
     )
