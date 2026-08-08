@@ -91,6 +91,12 @@ QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA = (
 QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY = (
     "scheduler_quiesced_incomplete_evidence_zero_ledger_v1"
 )
+QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA = (
+    "scheduler_quiesced_pre_workspace_recovery_v1"
+)
+QUIESCED_PRE_WORKSPACE_AUTHORITY = (
+    "scheduler_quiesced_pre_workspace_zero_ledger_v1"
+)
 CONTAINED_NORMAL_EXIT_RESIDUAL_EVENT = (
     "dispatch_contained_normal_exit_residual"
 )
@@ -168,6 +174,8 @@ SANDBOX_CONTRACTS = {
     "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b":
         RebootRecovery.SANDBOX_CONTRACT_SHA256,
     "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0":
+        RebootRecovery.SANDBOX_CONTRACT_SHA256,
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398":
         RebootRecovery.SANDBOX_CONTRACT_SHA256,
 }
 SANDBOX_ABANDON_EVENT_KEYS = frozenset({
@@ -258,6 +266,28 @@ QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS = frozenset({
     "wip_restore_logical_state_schema",
     "wip_restore_logical_state_sha256", "canonical_digest",
     *Status.FRONTIER_BINDING_FIELDS,
+})
+QUIESCED_PRE_WORKSPACE_EVENT_KEYS = frozenset({
+    "event", "schema", "recorded_at", "infrastructure_authority",
+    "dispatch_id", "game", "target_level", "reached",
+    "parent_action_count", "retry_complexity_n", "workspace",
+    "workspace_identity", "expected_workspace_prefix", "scratch_root",
+    "scratch_root_identity", "workspace_generation_absent", "protected",
+    "protected_generation_absent", "scheduler_pid",
+    "scheduler_pid_absence_sample_count", "scheduler_pid_absence_window_ns",
+    "scheduler_pid_absence_first_at", "scheduler_pid_absence_last_at",
+    "child_returncode", "failure_class", "failure_detail_class",
+    "terminal_errors", "taint_verdict", "retry_increment",
+    "codex_exec_appended", "process_tree_quiesced",
+    "descendant_quiescence_unproven", "detached_processes_proven_absent",
+    "normal_exit_left_captured_descendants",
+    "wip_restore_logical_state_schema",
+    "wip_restore_logical_state_sha256", "canonical_digest",
+    *Status.FRONTIER_BINDING_FIELDS,
+})
+QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMAS = frozenset({
+    QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+    QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA,
 })
 QUIESCED_INCOMPLETE_EVIDENCE_RESULT_KEYS = frozenset({
     "game", "target_level", "reached", "result", "reason",
@@ -6062,14 +6092,21 @@ def _validate_dispatch_release_terminal_prefix(
                     "zero-ledger release lacks its exact infrastructure event"
                 )
             infrastructure = suffix[0]
-            if infrastructure.get("schema") == (
-                QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+            infrastructure_schema = infrastructure.get("schema")
+            if infrastructure_schema in (
+                QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMAS
             ):
+                pre_workspace = (
+                    infrastructure_schema
+                    == QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA
+                )
                 expected = {
                     "event": ZERO_LEDGER_EVENT,
-                    "schema": QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+                    "schema": infrastructure_schema,
                     "infrastructure_authority": (
-                        QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
+                        QUIESCED_PRE_WORKSPACE_AUTHORITY
+                        if pre_workspace
+                        else QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
                     ),
                     "dispatch_id": dispatch_id,
                     "game": authority["game"],
@@ -6081,7 +6118,9 @@ def _validate_dispatch_release_terminal_prefix(
                     "child_returncode": 1,
                     "failure_class": "infrastructure",
                     "failure_detail_class": (
-                        "quiesced_incomplete_evidence_before_codex_exec_append"
+                        "quiesced_pre_workspace_failure_before_codex_exec_append"
+                        if pre_workspace
+                        else "quiesced_incomplete_evidence_before_codex_exec_append"
                     ),
                     "terminal_errors": [
                         RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
@@ -6098,6 +6137,13 @@ def _validate_dispatch_release_terminal_prefix(
                         for field in Status.FRONTIER_BINDING_FIELDS
                     },
                 }
+                if pre_workspace:
+                    expected.update({
+                        "workspace": None,
+                        "workspace_identity": None,
+                        "workspace_generation_absent": True,
+                        "protected": None,
+                    })
                 workspace = infrastructure.get("workspace")
                 lock_path = infrastructure.get("workspace_lock_path")
                 result_expected = {
@@ -6114,7 +6160,11 @@ def _validate_dispatch_release_terminal_prefix(
                 }
                 if any((
                     set(infrastructure)
-                    != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS,
+                    != (
+                        QUIESCED_PRE_WORKSPACE_EVENT_KEYS
+                        if pre_workspace
+                        else QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS
+                    ),
                     set(result)
                     != QUIESCED_INCOMPLETE_EVIDENCE_RESULT_KEYS,
                     any(
@@ -6131,17 +6181,45 @@ def _validate_dispatch_release_terminal_prefix(
                         ),
                         bool,
                     ),
-                    not isinstance(workspace, str),
-                    not bool(workspace),
-                    infrastructure.get("protected") != workspace,
-                    infrastructure.get("workspace_lock_schema")
-                    != "in_workspace_v1",
-                    not isinstance(lock_path, str),
-                    not isinstance(
-                        infrastructure.get(
-                            "workspace_tree_observation_sha256"
-                        ),
-                        str,
+                    (
+                        pre_workspace
+                        and (
+                            not isinstance(
+                                infrastructure.get(
+                                    "expected_workspace_prefix"
+                                ),
+                                str,
+                            )
+                            or not str(infrastructure.get(
+                                "expected_workspace_prefix"
+                            )).startswith(
+                                f"gkm_legs_ws_{authority['game']}_"
+                            )
+                            or not isinstance(
+                                infrastructure.get("scratch_root"), str
+                            )
+                            or infrastructure.get("scratch_root_identity")
+                            is None
+                        )
+                    ),
+                    (
+                        not pre_workspace
+                        and (
+                            not isinstance(workspace, str)
+                            or not bool(workspace)
+                            or infrastructure.get("protected") != workspace
+                            or infrastructure.get("workspace_lock_schema")
+                            != "in_workspace_v1"
+                            or not isinstance(lock_path, str)
+                            or not isinstance(
+                                infrastructure.get(
+                                    "workspace_tree_observation_sha256"
+                                ),
+                                str,
+                            )
+                            or infrastructure.get("workspace_lock_identity")
+                            is None
+                        )
                     ),
                     not isinstance(
                         infrastructure.get(
@@ -6165,7 +6243,6 @@ def _validate_dispatch_release_terminal_prefix(
                     ),
                     infrastructure.get("terminal_errors")
                     != [result.get("reason")],
-                    infrastructure.get("workspace_lock_identity") is None,
                     any(
                         not isinstance(result.get(field), str)
                         or not result[field]
@@ -6178,7 +6255,9 @@ def _validate_dispatch_release_terminal_prefix(
                         "quiesced incomplete-evidence release binding changed"
                     )
                 for field in (
-                    "workspace_tree_observation_sha256",
+                    *(() if pre_workspace else (
+                        "workspace_tree_observation_sha256",
+                    )),
                     "wip_restore_logical_state_sha256",
                     "canonical_digest",
                 ):
@@ -6186,13 +6265,22 @@ def _validate_dispatch_release_terminal_prefix(
                         raise CampaignPlanError(
                             "quiesced incomplete-evidence release hash changed"
                         )
-                _marker_identity(
-                    infrastructure.get("workspace_identity"), "workspace"
-                )
-                _marker_identity(
-                    infrastructure.get("workspace_lock_identity"),
-                    "workspace lock",
-                )
+                if not pre_workspace:
+                    _marker_identity(
+                        infrastructure.get("workspace_identity"), "workspace"
+                    )
+                    _marker_identity(
+                        infrastructure.get("workspace_lock_identity"),
+                        "workspace lock",
+                    )
+                else:
+                    _normalized_absolute_path(
+                        infrastructure.get("scratch_root"), "scratch_root"
+                    )
+                    _marker_identity(
+                        infrastructure.get("scratch_root_identity"),
+                        "scratch root",
+                    )
                 _recovery_recorded_at(
                     infrastructure,
                     "quiesced incomplete-evidence infrastructure event",
@@ -9175,6 +9263,22 @@ def _validate_post_reboot_dispatch_binding(
         )
 
 
+def _quiesced_incomplete_evidence_is_pre_workspace(
+    parsed: RebootRecovery.ParsedMarker,
+) -> bool:
+    failed = parsed.unquiesced
+    return all(
+        failed.get(field) is None
+        for field in (
+            "workspace",
+            "protected",
+            "transcript",
+            "workspace_identity",
+            "protected_identity",
+        )
+    )
+
+
 def _validate_quiesced_incomplete_evidence_binding(
     item: dict[str, Any], parsed: RebootRecovery.ParsedMarker
 ) -> None:
@@ -9226,21 +9330,37 @@ def _validate_quiesced_incomplete_evidence_binding(
             "quiesced incomplete-evidence marker does not bind the projected "
             f"plan item: {mismatched}"
         )
-    workspace = _safe_component(failed.get("workspace"), "workspace")
-    protected = _safe_component(
-        failed.get("protected"), "protected workspace"
-    )
-    expected_prefix = _dispatch_workspace_prefix(item)
-    if any((
-        not workspace.startswith(expected_prefix),
-        workspace == expected_prefix,
-        protected != workspace,
-        failed.get("transcript") is not None,
-        failed.get("protected_identity") is not None,
-    )):
-        raise CampaignPlanError(
-            "quiesced incomplete-evidence generation does not bind the dispatch"
+    if _quiesced_incomplete_evidence_is_pre_workspace(parsed):
+        if any(
+            failed.get(field) is not None
+            for field in (
+                "workspace",
+                "protected",
+                "transcript",
+                "workspace_identity",
+                "protected_identity",
+            )
+        ):
+            raise CampaignPlanError(
+                "pre-workspace incomplete-evidence binding is malformed"
+            )
+    else:
+        workspace = _safe_component(failed.get("workspace"), "workspace")
+        protected = _safe_component(
+            failed.get("protected"), "protected workspace"
         )
+        expected_prefix = _dispatch_workspace_prefix(item)
+        if any((
+            not workspace.startswith(expected_prefix),
+            workspace == expected_prefix,
+            protected != workspace,
+            failed.get("transcript") is not None,
+            failed.get("protected_identity") is not None,
+        )):
+            raise CampaignPlanError(
+                "quiesced incomplete-evidence generation does not bind the "
+                "dispatch"
+            )
     historical = armed.get("historical_runner")
     if not isinstance(historical, dict) or any((
         historical.get("source_sha256") not in SANDBOX_CONTRACTS,
@@ -9463,11 +9583,190 @@ def _build_quiesced_incomplete_evidence_event(
     }
 
 
+def _validate_quiesced_pre_workspace_generation_absence(
+    item: dict[str, Any], *, dispatch_id: str
+) -> tuple[Path, tuple[int, int], str]:
+    """Prove that the failed child never created a dispatch generation."""
+
+    historical = item.get("historical_runner")
+    if not isinstance(historical, dict):
+        raise CampaignPlanError(
+            "pre-workspace recovery lost its historical runner receipt"
+        )
+    scratch = _normalized_absolute_path(
+        historical.get("scratch_root"), "scratch_root"
+    )
+    if scratch != Path(Legs.SCRATCH).absolute():
+        raise CampaignPlanError(
+            "pre-workspace recovery scratch root changed"
+        )
+    scratch_identity = _host_directory_identity(
+        scratch, "pre-workspace scratch root"
+    )
+    protected_root = scratch / ".proposer_transcripts"
+    generation_prefix = _dispatch_workspace_prefix(item)
+    tombstone_prefix = (
+        f".post_reboot_cleanup_{dispatch_id}_{generation_prefix}"
+    )
+    if any((
+        _physical_directory_names(scratch, generation_prefix),
+        _physical_directory_names(scratch, tombstone_prefix),
+        _physical_directory_names(protected_root, generation_prefix),
+        _physical_directory_names(protected_root, tombstone_prefix),
+    )):
+        raise CampaignPlanError(
+            "pre-workspace incomplete-evidence generation appeared"
+        )
+    return scratch, scratch_identity, generation_prefix
+
+
+def _build_quiesced_pre_workspace_event(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    *,
+    absence: dict[str, Any],
+) -> dict[str, Any]:
+    failed = parsed.unquiesced
+    scratch, scratch_identity, generation_prefix = (
+        _validate_quiesced_pre_workspace_generation_absence(
+            item, dispatch_id=parsed.dispatch_id
+        )
+    )
+    return {
+        "event": ZERO_LEDGER_EVENT,
+        "schema": QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA,
+        "recorded_at": datetime.now(timezone.utc).isoformat(),
+        "infrastructure_authority": QUIESCED_PRE_WORKSPACE_AUTHORITY,
+        "dispatch_id": parsed.dispatch_id,
+        "game": item["game"],
+        "target_level": item["target_level"],
+        "reached": item["reached"],
+        "parent_action_count": item["parent_action_count"],
+        "retry_complexity_n": item["retry_complexity_n"],
+        "workspace": None,
+        "workspace_identity": None,
+        "expected_workspace_prefix": generation_prefix,
+        "scratch_root": os.fspath(scratch),
+        "scratch_root_identity": list(scratch_identity),
+        "workspace_generation_absent": True,
+        "protected": None,
+        "protected_generation_absent": True,
+        **absence,
+        "child_returncode": failed["child_returncode"],
+        "failure_class": "infrastructure",
+        "failure_detail_class": (
+            "quiesced_pre_workspace_failure_before_codex_exec_append"
+        ),
+        "terminal_errors": [failed["reason"]],
+        "taint_verdict": "quarantined",
+        "retry_increment": 0,
+        "codex_exec_appended": False,
+        "process_tree_quiesced": True,
+        "descendant_quiescence_unproven": False,
+        "detached_processes_proven_absent": False,
+        "normal_exit_left_captured_descendants": False,
+        "wip_restore_logical_state_schema": parsed.armed[
+            "wip_restore_logical_state_schema"
+        ],
+        "wip_restore_logical_state_sha256": parsed.armed[
+            "wip_restore_logical_state_sha256"
+        ],
+        "canonical_digest": parsed.armed["canonical_digest"],
+        **{
+            field: item[field]
+            for field in Status.FRONTIER_BINDING_FIELDS
+        },
+    }
+
+
+def _validate_quiesced_absence_observation(
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+) -> None:
+    absence_window = record.get("scheduler_pid_absence_window_ns")
+    if any((
+        record.get("scheduler_pid") != parsed.armed.get("pid"),
+        record.get("scheduler_pid_absence_sample_count")
+        != SANDBOX_ABSENCE_SAMPLES,
+        not isinstance(absence_window, int),
+        isinstance(absence_window, bool),
+    )):
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence process absence is malformed"
+        )
+    assert isinstance(absence_window, int) and not isinstance(
+        absence_window, bool
+    )
+    if absence_window <= 0:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence process absence is malformed"
+        )
+    first_at = _recovery_recorded_at({
+        "recorded_at": record.get("scheduler_pid_absence_first_at")
+    }, "scheduler PID absence first sample")
+    last_at = _recovery_recorded_at({
+        "recorded_at": record.get("scheduler_pid_absence_last_at")
+    }, "scheduler PID absence last sample")
+    event_at = _recovery_recorded_at(
+        record, "quiesced incomplete-evidence event"
+    )
+    failure_at = _recovery_recorded_at(
+        parsed.unquiesced, "quiesced incomplete-evidence failure"
+    )
+    if not failure_at <= first_at <= last_at <= event_at:
+        raise CampaignPlanError(
+            "quiesced incomplete-evidence observation timestamps are reversed"
+        )
+
+
+def _validate_quiesced_pre_workspace_event(
+    item: dict[str, Any],
+    parsed: RebootRecovery.ParsedMarker,
+    record: dict[str, Any],
+) -> None:
+    if (
+        not _quiesced_incomplete_evidence_is_pre_workspace(parsed)
+        or set(record) != QUIESCED_PRE_WORKSPACE_EVENT_KEYS
+    ):
+        raise CampaignPlanError(
+            "pre-workspace incomplete-evidence event has an invalid exact "
+            "schema"
+        )
+    _validate_quiesced_absence_observation(parsed, record)
+    absence = {
+        field: record.get(field)
+        for field in (
+            "scheduler_pid",
+            "scheduler_pid_absence_sample_count",
+            "scheduler_pid_absence_window_ns",
+            "scheduler_pid_absence_first_at",
+            "scheduler_pid_absence_last_at",
+        )
+    }
+    expected = _build_quiesced_pre_workspace_event(
+        item, parsed, absence=absence
+    )
+    expected.pop("recorded_at")
+    observed = dict(record)
+    observed.pop("recorded_at", None)
+    if observed != expected:
+        raise CampaignPlanError(
+            "pre-workspace incomplete-evidence event binding changed"
+        )
+
+
 def _validate_quiesced_incomplete_evidence_event(
     item: dict[str, Any],
     parsed: RebootRecovery.ParsedMarker,
     record: dict[str, Any],
 ) -> None:
+    if record.get("schema") == QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA:
+        _validate_quiesced_pre_workspace_event(item, parsed, record)
+        return
+    if _quiesced_incomplete_evidence_is_pre_workspace(parsed):
+        raise CampaignPlanError(
+            "pre-workspace incomplete-evidence event schema changed"
+        )
     if set(record) != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS:
         raise CampaignPlanError(
             "quiesced incomplete-evidence event has an invalid exact schema"
@@ -9497,40 +9796,7 @@ def _validate_quiesced_incomplete_evidence_event(
             "scheduler_pid_absence_last_at",
         )
     }
-    absence_window = absence["scheduler_pid_absence_window_ns"]
-    if any((
-        absence["scheduler_pid"] != parsed.armed.get("pid"),
-        absence["scheduler_pid_absence_sample_count"]
-        != SANDBOX_ABSENCE_SAMPLES,
-        not isinstance(absence_window, int),
-        isinstance(absence_window, bool),
-    )):
-        raise CampaignPlanError(
-            "quiesced incomplete-evidence process absence is malformed"
-        )
-    assert isinstance(absence_window, int) and not isinstance(
-        absence_window, bool
-    )
-    if absence_window <= 0:
-        raise CampaignPlanError(
-            "quiesced incomplete-evidence process absence is malformed"
-        )
-    first_at = _recovery_recorded_at({
-        "recorded_at": absence["scheduler_pid_absence_first_at"]
-    }, "scheduler PID absence first sample")
-    last_at = _recovery_recorded_at({
-        "recorded_at": absence["scheduler_pid_absence_last_at"]
-    }, "scheduler PID absence last sample")
-    event_at = _recovery_recorded_at(
-        record, "quiesced incomplete-evidence event"
-    )
-    failure_at = _recovery_recorded_at(
-        parsed.unquiesced, "quiesced incomplete-evidence failure"
-    )
-    if not failure_at <= first_at <= last_at <= event_at:
-        raise CampaignPlanError(
-            "quiesced incomplete-evidence observation timestamps are reversed"
-        )
+    _validate_quiesced_absence_observation(parsed, record)
     expected_lock_path = Path(Legs.SCRATCH).absolute() / str(
         parsed.unquiesced["workspace"]
     ) / ".orchestrate.lock"
@@ -17284,8 +17550,10 @@ def _validate_quiesced_incomplete_evidence_baseline(
         ),
     )
     if suffix:
-        if len(suffix) != 1 or suffix[0].get("schema") != (
-            QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+        if (
+            len(suffix) != 1
+            or suffix[0].get("schema")
+            not in QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMAS
         ):
             raise CampaignPlanError(
                 "quiesced incomplete-evidence ledger suffix is ambiguous"
@@ -17553,19 +17821,32 @@ def _recover_quiesced_incomplete_evidence_locked(
                 "quiesced incomplete-evidence release recovery lost its "
                 "WIP capsule"
             )
-        (
-            workspace,
-            protected,
-            workspace_tombstone,
-            protected_tombstone,
-        ) = _quiesced_incomplete_evidence_paths(item, parsed)
-        inventory = _quiesced_incomplete_evidence_workspace_inventory(
-            parsed,
-            workspace=workspace,
-            protected=protected,
-            workspace_tombstone=workspace_tombstone,
-            protected_tombstone=protected_tombstone,
+        pre_workspace = _quiesced_incomplete_evidence_is_pre_workspace(
+            parsed
         )
+        workspace: Path | None = None
+        protected: Path | None = None
+        workspace_tombstone: Path | None = None
+        protected_tombstone: Path | None = None
+        if pre_workspace:
+            _validate_quiesced_pre_workspace_generation_absence(
+                item, dispatch_id=parsed.dispatch_id
+            )
+            inventory = frozenset()
+        else:
+            (
+                workspace,
+                protected,
+                workspace_tombstone,
+                protected_tombstone,
+            ) = _quiesced_incomplete_evidence_paths(item, parsed)
+            inventory = _quiesced_incomplete_evidence_workspace_inventory(
+                parsed,
+                workspace=workspace,
+                protected=protected,
+                workspace_tombstone=workspace_tombstone,
+                protected_tombstone=protected_tombstone,
+            )
         release_wal = _safe_release_wal_inventory(
             marker.root_fd, marker.name
         )
@@ -17592,6 +17873,10 @@ def _recover_quiesced_incomplete_evidence_locked(
                 raise CampaignPlanError(
                     "quiesced incomplete-evidence release WAL predates "
                     "workspace cleanup"
+                )
+            if pre_workspace:
+                _validate_quiesced_pre_workspace_generation_absence(
+                    item, dispatch_id=parsed.dispatch_id
                 )
             _validate_capsule_restored_wip_state(
                 _capture_wip_rollback(item),
@@ -17623,29 +17908,38 @@ def _recover_quiesced_incomplete_evidence_locked(
         event: dict[str, Any]
         replayed = bool(suffix)
         if not suffix:
-            if inventory != frozenset({"W"}):
-                raise CampaignPlanError(
-                    "uncommitted quiesced incomplete-evidence workspace "
-                    "is not in its original phase"
-                )
-            held_lock, lock_schema, lock_path, lock_identity = (
-                _open_held_recovery_workspace_lock(item, workspace)
-            )
-            tree_sha = _generation_tree_observation_sha256(
-                workspace,
-                label="quiesced incomplete-evidence workspace",
-                normalize_root_ctime=True,
-            )
             absence = _observe_quiesced_incomplete_evidence_absence(parsed)
-            event = _build_quiesced_incomplete_evidence_event(
-                item,
-                parsed,
-                workspace_tree_sha256=tree_sha,
-                lock_schema=lock_schema,
-                lock_path=lock_path,
-                lock_identity=lock_identity,
-                absence=absence,
-            )
+            if pre_workspace:
+                _validate_quiesced_pre_workspace_generation_absence(
+                    item, dispatch_id=parsed.dispatch_id
+                )
+                event = _build_quiesced_pre_workspace_event(
+                    item, parsed, absence=absence
+                )
+            else:
+                if inventory != frozenset({"W"}):
+                    raise CampaignPlanError(
+                        "uncommitted quiesced incomplete-evidence workspace "
+                        "is not in its original phase"
+                    )
+                assert workspace is not None
+                held_lock, lock_schema, lock_path, lock_identity = (
+                    _open_held_recovery_workspace_lock(item, workspace)
+                )
+                tree_sha = _generation_tree_observation_sha256(
+                    workspace,
+                    label="quiesced incomplete-evidence workspace",
+                    normalize_root_ctime=True,
+                )
+                event = _build_quiesced_incomplete_evidence_event(
+                    item,
+                    parsed,
+                    workspace_tree_sha256=tree_sha,
+                    lock_schema=lock_schema,
+                    lock_path=lock_path,
+                    lock_identity=lock_identity,
+                    absence=absence,
+                )
             _validate_quiesced_incomplete_evidence_event(
                 item, parsed, event
             )
@@ -17654,15 +17948,21 @@ def _recover_quiesced_incomplete_evidence_locked(
             _validate_quiesced_incomplete_evidence_baseline(
                 item, marker, parsed
             )
-            if _generation_tree_observation_sha256(
-                workspace,
-                label="quiesced incomplete-evidence workspace",
-                normalize_root_ctime=True,
-            ) != tree_sha:
-                raise CampaignPlanError(
-                    "quiesced incomplete-evidence workspace changed before "
-                    "classification"
+            if pre_workspace:
+                _validate_quiesced_pre_workspace_generation_absence(
+                    item, dispatch_id=parsed.dispatch_id
                 )
+            else:
+                assert workspace is not None
+                if _generation_tree_observation_sha256(
+                    workspace,
+                    label="quiesced incomplete-evidence workspace",
+                    normalize_root_ctime=True,
+                ) != tree_sha:
+                    raise CampaignPlanError(
+                        "quiesced incomplete-evidence workspace changed "
+                        "before classification"
+                    )
             rebound_wip = _capture_wip_rollback(item)
             if _wip_recovery_state_sha256(rebound_wip) != (
                 _wip_recovery_state_sha256(current_wip)
@@ -17707,15 +18007,24 @@ def _recover_quiesced_incomplete_evidence_locked(
                     "wip_restore_logical_state_schema"
                 )),
             )
-        _resume_quiesced_incomplete_evidence_workspace_cleanup(
-            parsed=parsed,
-            event=event,
-            workspace=workspace,
-            protected=protected,
-            workspace_tombstone=workspace_tombstone,
-            protected_tombstone=protected_tombstone,
-            held_lock=held_lock,
-        )
+        if pre_workspace:
+            _validate_quiesced_pre_workspace_generation_absence(
+                item, dispatch_id=parsed.dispatch_id
+            )
+        else:
+            assert workspace is not None
+            assert protected is not None
+            assert workspace_tombstone is not None
+            assert protected_tombstone is not None
+            _resume_quiesced_incomplete_evidence_workspace_cleanup(
+                parsed=parsed,
+                event=event,
+                workspace=workspace,
+                protected=protected,
+                workspace_tombstone=workspace_tombstone,
+                protected_tombstone=protected_tombstone,
+                held_lock=held_lock,
+            )
         _validate_zero_ledger_baseline(
             item, parsed, reached_before=item["reached"]
         )
@@ -17758,17 +18067,26 @@ def _recover_quiesced_incomplete_evidence_locked(
                     "wip_restore_logical_state_schema"
                 )),
             )
-            if _quiesced_incomplete_evidence_workspace_inventory(
-                parsed,
-                workspace=workspace,
-                protected=protected,
-                workspace_tombstone=workspace_tombstone,
-                protected_tombstone=protected_tombstone,
-            ):
-                raise CampaignPlanError(
-                    "quiesced incomplete-evidence generation reappeared "
-                    "before release authorization"
+            if pre_workspace:
+                _validate_quiesced_pre_workspace_generation_absence(
+                    item, dispatch_id=parsed.dispatch_id
                 )
+            else:
+                assert workspace is not None
+                assert protected is not None
+                assert workspace_tombstone is not None
+                assert protected_tombstone is not None
+                if _quiesced_incomplete_evidence_workspace_inventory(
+                    parsed,
+                    workspace=workspace,
+                    protected=protected,
+                    workspace_tombstone=workspace_tombstone,
+                    protected_tombstone=protected_tombstone,
+                ):
+                    raise CampaignPlanError(
+                        "quiesced incomplete-evidence generation reappeared "
+                        "before release authorization"
+                    )
             _validate_quiesced_incomplete_evidence_event(
                 item, parsed, event
             )
@@ -17800,11 +18118,15 @@ def _validate_markerless_quiesced_incomplete_evidence_event(
 ) -> None:
     """Validate the terminal row after its marker/capsule were retired."""
 
+    schema = event.get("schema")
+    pre_workspace = schema == QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA
     expected = {
         "event": ZERO_LEDGER_EVENT,
-        "schema": QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA,
+        "schema": schema,
         "infrastructure_authority": (
-            QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
+            QUIESCED_PRE_WORKSPACE_AUTHORITY
+            if pre_workspace
+            else QUIESCED_INCOMPLETE_EVIDENCE_AUTHORITY
         ),
         "dispatch_id": confirm_dispatch_id,
         "game": item["game"],
@@ -17816,7 +18138,9 @@ def _validate_markerless_quiesced_incomplete_evidence_event(
         "child_returncode": 1,
         "failure_class": "infrastructure",
         "failure_detail_class": (
-            "quiesced_incomplete_evidence_before_codex_exec_append"
+            "quiesced_pre_workspace_failure_before_codex_exec_append"
+            if pre_workspace
+            else "quiesced_incomplete_evidence_before_codex_exec_append"
         ),
         "terminal_errors": [
             RebootRecovery.QUIESCED_INCOMPLETE_EVIDENCE_REASON
@@ -17833,29 +18157,47 @@ def _validate_markerless_quiesced_incomplete_evidence_event(
             for field in Status.FRONTIER_BINDING_FIELDS
         },
     }
+    if pre_workspace:
+        expected.update({
+            "workspace": None,
+            "workspace_identity": None,
+            "expected_workspace_prefix": _dispatch_workspace_prefix(item),
+            "workspace_generation_absent": True,
+            "protected": None,
+        })
     if (
-        set(event) != QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS
+        schema not in QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMAS
+        or set(event) != (
+            QUIESCED_PRE_WORKSPACE_EVENT_KEYS
+            if pre_workspace
+            else QUIESCED_INCOMPLETE_EVIDENCE_EVENT_KEYS
+        )
         or any(event.get(field) != value for field, value in expected.items())
     ):
         raise CampaignPlanError(
             "markerless quiesced incomplete-evidence event binding changed"
         )
-    workspace_name = _safe_component(
-        event.get("workspace"), "completed incomplete-evidence workspace"
-    )
-    if any((
-        not workspace_name.startswith(_dispatch_workspace_prefix(item)),
-        workspace_name == _dispatch_workspace_prefix(item),
-        event.get("protected") != workspace_name,
-        event.get("workspace_lock_schema") != "in_workspace_v1",
-    )):
-        raise CampaignPlanError(
-            "markerless quiesced incomplete-evidence workspace changed"
+    if not pre_workspace:
+        workspace_name = _safe_component(
+            event.get("workspace"), "completed incomplete-evidence workspace"
         )
-    _marker_identity(event.get("workspace_identity"), "workspace")
-    _marker_identity(event.get("workspace_lock_identity"), "workspace lock")
+        if any((
+            not workspace_name.startswith(_dispatch_workspace_prefix(item)),
+            workspace_name == _dispatch_workspace_prefix(item),
+            event.get("protected") != workspace_name,
+            event.get("workspace_lock_schema") != "in_workspace_v1",
+        )):
+            raise CampaignPlanError(
+                "markerless quiesced incomplete-evidence workspace changed"
+            )
+        _marker_identity(event.get("workspace_identity"), "workspace")
+        _marker_identity(
+            event.get("workspace_lock_identity"), "workspace lock"
+        )
     for field in (
-        "workspace_tree_observation_sha256",
+        *(() if pre_workspace else (
+            "workspace_tree_observation_sha256",
+        )),
         "wip_restore_logical_state_sha256",
         "canonical_digest",
     ):
@@ -17880,26 +18222,37 @@ def _validate_markerless_quiesced_incomplete_evidence_event(
     scratch = _normalized_absolute_path(
         historical.get("scratch_root"), "scratch_root"
     )
-    workspace = scratch / workspace_name
-    protected = scratch / ".proposer_transcripts" / workspace_name
-    workspace_tombstone, protected_tombstone = _post_reboot_tombstones(
-        confirm_dispatch_id, workspace, protected
-    )
-    if event.get("workspace_lock_path") != os.fspath(
-        workspace / ".orchestrate.lock"
-    ):
-        raise CampaignPlanError(
-            "markerless quiesced incomplete-evidence lock path changed"
+    if pre_workspace:
+        if any((
+            event.get("scratch_root") != os.fspath(scratch),
+            _marker_identity(
+                event.get("scratch_root_identity"), "scratch root"
+            ) != _host_directory_identity(scratch, "scratch root"),
+        )):
+            raise CampaignPlanError(
+                "markerless pre-workspace scratch custody changed"
+            )
+    else:
+        workspace = scratch / workspace_name
+        protected = scratch / ".proposer_transcripts" / workspace_name
+        workspace_tombstone, protected_tombstone = _post_reboot_tombstones(
+            confirm_dispatch_id, workspace, protected
         )
-    if any(os.path.lexists(path) for path in (
-        workspace,
-        protected,
-        workspace_tombstone,
-        protected_tombstone,
-    )):
-        raise CampaignPlanError(
-            "markerless incomplete-evidence generation reappeared"
-        )
+        if event.get("workspace_lock_path") != os.fspath(
+            workspace / ".orchestrate.lock"
+        ):
+            raise CampaignPlanError(
+                "markerless quiesced incomplete-evidence lock path changed"
+            )
+        if any(os.path.lexists(path) for path in (
+            workspace,
+            protected,
+            workspace_tombstone,
+            protected_tombstone,
+        )):
+            raise CampaignPlanError(
+                "markerless incomplete-evidence generation reappeared"
+            )
     scheduler_pid = event.get("scheduler_pid")
     absence_window = event.get("scheduler_pid_absence_window_ns")
     if any((
@@ -17970,7 +18323,7 @@ def _completed_quiesced_incomplete_evidence_result(
         if (
             record.get("event") == ZERO_LEDGER_EVENT
             and record.get("schema")
-            == QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMA
+            in QUIESCED_INCOMPLETE_EVIDENCE_EVENT_SCHEMAS
             and record.get("dispatch_id") == confirm_dispatch_id
             and record.get("game") == item.get("game")
             and record.get("target_level") == item.get("target_level")
@@ -18143,19 +18496,24 @@ def _validate_authorized_quiesced_incomplete_release_replay(
         _validate_zero_ledger_baseline(
             item, parsed, reached_before=item["reached"]
         )
-        workspace, protected, workspace_tombstone, protected_tombstone = (
-            _quiesced_incomplete_evidence_paths(item, parsed)
-        )
-        if _quiesced_incomplete_evidence_workspace_inventory(
-            parsed,
-            workspace=workspace,
-            protected=protected,
-            workspace_tombstone=workspace_tombstone,
-            protected_tombstone=protected_tombstone,
-        ):
-            raise CampaignPlanError(
-                "authorized incomplete-evidence generation reappeared"
+        if _quiesced_incomplete_evidence_is_pre_workspace(parsed):
+            _validate_quiesced_pre_workspace_generation_absence(
+                item, dispatch_id=parsed.dispatch_id
             )
+        else:
+            workspace, protected, workspace_tombstone, protected_tombstone = (
+                _quiesced_incomplete_evidence_paths(item, parsed)
+            )
+            if _quiesced_incomplete_evidence_workspace_inventory(
+                parsed,
+                workspace=workspace,
+                protected=protected,
+                workspace_tombstone=workspace_tombstone,
+                protected_tombstone=protected_tombstone,
+            ):
+                raise CampaignPlanError(
+                    "authorized incomplete-evidence generation reappeared"
+                )
         if not marker.capsule_missing:
             if marker.capsule_state is None:
                 raise CampaignPlanError(

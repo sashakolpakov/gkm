@@ -66,6 +66,7 @@ APPROVED_SANDBOXED_GENERATION_SOURCES = frozenset({
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64",
     "7455d304c96f5b070ecb4e62a45bcca21e4d5faf52027b8c3434dc094f7e7b0b",
     "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0",
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398",
 })
 QUIESCED_INCOMPLETE_RUNNER_HEADS = {
     "bb3474290d3411f980d53ffcee75be8234e634d478b1136677b9c6a93fe9ec64": (
@@ -76,6 +77,9 @@ QUIESCED_INCOMPLETE_RUNNER_HEADS = {
     ),
     "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0": (
         "aa666cc3ff4c2167e12ce32b317bc3fe6c45a867"
+    ),
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398": (
+        "b37d0a0bece4c18da5cdc37f88f829e3a491fee9"
     ),
 }
 QUIESCED_INCOMPLETE_RUNNER_KEYS = frozenset({
@@ -1083,16 +1087,23 @@ def parse_quiesced_incomplete_evidence_marker(
         )
     workspace = failed.get("workspace")
     protected = failed.get("protected")
-    if (
-        not isinstance(workspace, str)
-        or not workspace
-        or SAFE_COMPONENT_RE.fullmatch(workspace) is None
-        or protected != workspace
-    ):
-        raise RecoveryEvidenceError(
-            "quiesced incomplete-evidence workspace name is malformed"
-        )
-    _identity(failed.get("workspace_identity"), "workspace")
+    workspace_identity = failed.get("workspace_identity")
+    pre_workspace = (
+        workspace is None
+        and protected is None
+        and workspace_identity is None
+    )
+    if not pre_workspace:
+        if (
+            not isinstance(workspace, str)
+            or not workspace
+            or SAFE_COMPONENT_RE.fullmatch(workspace) is None
+            or protected != workspace
+        ):
+            raise RecoveryEvidenceError(
+                "quiesced incomplete-evidence workspace name is malformed"
+            )
+        _identity(workspace_identity, "workspace")
     return ParsedMarker(dispatch_id, armed, failed, None)
 
 

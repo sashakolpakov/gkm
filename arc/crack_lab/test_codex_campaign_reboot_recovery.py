@@ -3418,6 +3418,12 @@ BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256 = (
 BOUNDARY_V3_HISTORICAL_RUNNER_HEAD = (
     "aa666cc3ff4c2167e12ce32b317bc3fe6c45a867"
 )
+BOUNDARY_V4_HISTORICAL_RUNNER_SOURCE_SHA256 = (
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398"
+)
+BOUNDARY_V4_HISTORICAL_RUNNER_HEAD = (
+    "b37d0a0bece4c18da5cdc37f88f829e3a491fee9"
+)
 
 
 def test_historical_runner_registries_are_exact_and_coherent():
@@ -3428,6 +3434,8 @@ def test_historical_runner_registries_are_exact_and_coherent():
             BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
         BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256:
             BOUNDARY_V3_HISTORICAL_RUNNER_HEAD,
+        BOUNDARY_V4_HISTORICAL_RUNNER_SOURCE_SHA256:
+            BOUNDARY_V4_HISTORICAL_RUNNER_HEAD,
     }
     assert set(R.PINNED_HISTORICAL_RUNNERS) == set(expected_heads)
     assert set(R.SANDBOX_CONTRACTS) == set(expected_heads)
@@ -3464,6 +3472,10 @@ def test_historical_runner_registries_are_exact_and_coherent():
         (
             BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256,
             BOUNDARY_V3_HISTORICAL_RUNNER_HEAD,
+        ),
+        (
+            BOUNDARY_V4_HISTORICAL_RUNNER_SOURCE_SHA256,
+            BOUNDARY_V4_HISTORICAL_RUNNER_HEAD,
         ),
     ),
 )
@@ -3792,6 +3804,26 @@ def _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch):
     }
 
 
+def _quiesced_pre_workspace_fixture(tmp_path, monkeypatch):
+    fixture = _quiesced_incomplete_evidence_fixture(tmp_path, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    for field in (
+        "workspace",
+        "protected",
+        "transcript",
+        "workspace_identity",
+        "protected_identity",
+    ):
+        rows[1][field] = None
+    fixture["marker"].write_bytes(b"".join(
+        Recovery.canonical_json_line(row) for row in rows
+    ))
+    (fixture["workspace"] / "host_seed.txt").unlink()
+    fixture["exact_lock"].unlink()
+    fixture["workspace"].rmdir()
+    return fixture
+
+
 def test_quiesced_incomplete_evidence_parser_is_exact(
     tmp_path, monkeypatch
 ):
@@ -3844,6 +3876,89 @@ def test_quiesced_incomplete_evidence_parser_is_exact(
         Recovery.parse_quiesced_incomplete_evidence_marker(
             raw + Recovery.canonical_json_line({"event": "extra"})
         )
+
+
+def test_quiesced_pre_workspace_parser_requires_exact_all_none_profile(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_pre_workspace_fixture(tmp_path, monkeypatch)
+    raw = fixture["marker"].read_bytes()
+    parsed = Recovery.parse_quiesced_incomplete_evidence_marker(
+        raw, require_recovery_arm=False
+    )
+    assert all(
+        parsed.unquiesced[field] is None
+        for field in (
+            "workspace",
+            "protected",
+            "transcript",
+            "workspace_identity",
+            "protected_identity",
+        )
+    )
+
+    rows = _canonical_rows(fixture["marker"])
+    for field, value in (
+        ("workspace", "partial"),
+        ("protected", "partial"),
+        ("workspace_identity", [1, 2]),
+    ):
+        changed = copy.deepcopy(rows)
+        changed[1][field] = value
+        with pytest.raises(Recovery.RecoveryEvidenceError):
+            Recovery.parse_quiesced_incomplete_evidence_marker(
+                b"".join(
+                    Recovery.canonical_json_line(row) for row in changed
+                ),
+                require_recovery_arm=False,
+            )
+
+
+def test_quiesced_pre_workspace_recovery_is_noncounting_and_idempotent(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_pre_workspace_fixture(tmp_path, monkeypatch)
+    first = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert first["result"] == "infrastructure_noncounting"
+    assert first["quiesced_incomplete_evidence_replayed"] is False
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    assert not fixture["attempt"].exists()
+    assert (
+        fixture["wip"] / "latest.json"
+    ).read_bytes() == fixture["baseline_latest"]
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert rows[0]["schema"] == R.QUIESCED_PRE_WORKSPACE_EVENT_SCHEMA
+    assert rows[0]["workspace"] is None
+    assert rows[0]["workspace_identity"] is None
+    assert rows[0]["workspace_generation_absent"] is True
+    assert rows[0]["protected_generation_absent"] is True
+    assert R.Status.infrastructure_noncounting_events(rows) == [rows[0]]
+
+    second = R._recover_quiesced_incomplete_evidence(
+        fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+    )
+    assert second["result"] == (
+        "infrastructure_noncounting_already_completed"
+    )
+
+
+def test_quiesced_pre_workspace_recovery_rejects_generation_appearance(
+    tmp_path, monkeypatch
+):
+    fixture = _quiesced_pre_workspace_fixture(tmp_path, monkeypatch)
+    appeared = fixture["scratch"] / (
+        R._dispatch_workspace_prefix(fixture["item"]) + "appeared"
+    )
+    appeared.mkdir()
+    with pytest.raises(R.CampaignPlanError, match="generation appeared"):
+        R._recover_quiesced_incomplete_evidence(
+            fixture["item"], confirm_dispatch_id=fixture["dispatch_id"]
+        )
+    assert fixture["marker"].exists()
+    assert fixture["capsule"].exists()
 
 
 def test_quiesced_incomplete_evidence_recovery_is_noncounting_and_minimal(

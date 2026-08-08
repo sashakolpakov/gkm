@@ -74,6 +74,7 @@ INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
         frozenset({
             "scheduler_zero_ledger_generation_quarantine_v1",
             "scheduler_quiesced_incomplete_evidence_recovery_v1",
+            "scheduler_quiesced_pre_workspace_recovery_v1",
         }),
     SANDBOX_ISOLATION_NONCOUNTING_EVENT:
         frozenset({
