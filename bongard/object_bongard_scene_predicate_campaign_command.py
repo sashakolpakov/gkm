@@ -52,7 +52,7 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 COMMAND_ID = (
     "bongard.scene-predicate-campaign/"
-    "exact-unused-train-semantic-drill-12-v5"
+    "exact-unused-train-semantic-drill-12-v6"
 )
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
@@ -83,10 +83,10 @@ TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v3"
 TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v4"
 TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
 TASK_SEMANTIC_PREPARED_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-prepared.v5"
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v6"
 )
 TASK_SEMANTIC_PROPOSAL_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-proposal.v5"
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v6"
 )
 TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v4"
 TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v4"
@@ -1514,11 +1514,22 @@ def _task_semantic_proposer_presentation(
             for source_name, payload in atlas
         )
         visible_row = visible_rows.get(alias)
+        expected_proposal_map = [
+            {
+                "entity_alias": f"entity_{index:03d}",
+                "atlas_image": f"{alias}_{item.atlas_name}",
+                "atlas_row": item.row_index,
+                "atlas_column": item.column_index,
+            }
+            for index, item in enumerate(panel.inventory.objects)
+        ]
         if (
             visible_row is None
             or visible_row.get("panel_image") != images[0][0]
             or visible_row.get("attached_images")
             != [name for name, _ in images]
+            or visible_row.get("proposal_atlas_map")
+            != expected_proposal_map
         ):
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "task semantic model-visible image manifest differs"
@@ -1998,7 +2009,7 @@ def _semantic_prepared_record(
             ),
             "semantic_registry_proposer_receives_all_support_atlases": True,
             "semantic_registry_proposer_receives_query_pixels": False,
-            "every_semantic_card_cites_all_positive_support_panels": True,
+            "every_semantic_card_binds_exactly_one_target_per_positive_support_panel": True,
             "prepared_input_persisted_before_named_image_proposer_call": True,
             "all_named_image_bytes_committed_before_semantic_proposer_call": True,
             **_authority_data(),
@@ -2115,7 +2126,7 @@ def _semantic_proposal_result_record(
             "proposer_reused_call_count": 0,
             "semantic_registry_proposer_modality": "named_image_structured",
             "semantic_registry_proposer_receives_query_pixels": False,
-            "every_semantic_card_cites_all_positive_support_panels": True,
+            "every_semantic_card_binds_exactly_one_target_per_positive_support_panel": True,
             "quarantined_concept_count": len(
                 semantic_proposal.dropped_concepts
             ),
@@ -4576,7 +4587,7 @@ def _verify_task_from_store(
         "semantic_registry_proposer_support_panel_count",
         "semantic_registry_proposer_receives_all_support_atlases",
         "semantic_registry_proposer_receives_query_pixels",
-        "every_semantic_card_cites_all_positive_support_panels",
+        "every_semantic_card_binds_exactly_one_target_per_positive_support_panel",
         "prepared_input_persisted_before_named_image_proposer_call",
         "all_named_image_bytes_committed_before_semantic_proposer_call",
         *_authority_data(),
@@ -4602,7 +4613,7 @@ def _verify_task_from_store(
         "proposer_reused_call_count",
         "semantic_registry_proposer_modality",
         "semantic_registry_proposer_receives_query_pixels",
-        "every_semantic_card_cites_all_positive_support_panels",
+        "every_semantic_card_binds_exactly_one_target_per_positive_support_panel",
         "quarantined_concept_count",
         "quarantined_concept_digests",
         "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one",
@@ -4742,7 +4753,7 @@ def _verify_task_from_store(
         )
         is not False
         or semantic_prepared_record.get(
-            "every_semantic_card_cites_all_positive_support_panels"
+            "every_semantic_card_binds_exactly_one_target_per_positive_support_panel"
         )
         is not True
         or semantic_proposal_record.get("proposer_fresh_call_count") != 1
@@ -4754,7 +4765,7 @@ def _verify_task_from_store(
         )
         is not False
         or semantic_proposal_record.get(
-            "every_semantic_card_cites_all_positive_support_panels"
+            "every_semantic_card_binds_exactly_one_target_per_positive_support_panel"
         )
         is not True
         or semantic_proposal_record.get(

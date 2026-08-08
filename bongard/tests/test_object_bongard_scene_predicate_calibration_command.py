@@ -500,14 +500,47 @@ def _run(
     }
     lock = Lock()
 
-    def semantic_payload(schema):
+    def semantic_payload(prompt, schema):
         properties = schema["properties"]
-        side0_aliases = properties["side0_positive"]["items"][
-            "properties"
-        ]["citations"]["items"]["enum"]
-        side1_aliases = properties["side1_positive"]["items"][
-            "properties"
-        ]["citations"]["items"]["enum"]
+        model_view = json.loads(
+            prompt.split("Frozen descriptions:\n", maxsplit=1)[1]
+        )
+
+        def support_bindings(
+            orientation: str, scope: str
+        ) -> list[dict[str, str]]:
+            rows_key = orientation.replace(
+                "_positive", "_support_descriptions"
+            )
+            rows = {
+                row["panel_alias"]: row
+                for row in model_view[rows_key]
+            }
+            panel_aliases = model_view[
+                "required_positive_binding_panels"
+            ][orientation]
+            schema_aliases = properties[orientation]["items"][
+                "properties"
+            ]["support_bindings"]["items"]["properties"][
+                "panel_alias"
+            ]["enum"]
+            assert panel_aliases == schema_aliases
+            return [
+                {
+                    "panel_alias": panel_alias,
+                    "target_alias": (
+                        "whole_panel"
+                        if scope == "panel"
+                        else rows[panel_alias]["proposal_atlas_map"][0][
+                            "entity_alias"
+                        ]
+                    ),
+                }
+                for panel_alias in panel_aliases
+            ]
+
+        side0_bindings = support_bindings("side0_positive", "panel")
+        side1_bindings = support_bindings("side1_positive", "panel")
         payload = {
             "side0_positive": [
                 {
@@ -527,7 +560,7 @@ def _run(
                     "near_miss_boundaries": [
                         "a plain circular blob does not qualify"
                     ],
-                    "citations": side0_aliases,
+                    "support_bindings": side0_bindings,
                 }
             ],
             "side1_positive": [
@@ -556,7 +589,7 @@ def _run(
                     "near_miss_boundaries": [
                         "an open two-segment angle does not qualify"
                     ],
-                    "citations": side1_aliases,
+                    "support_bindings": side1_bindings,
                 }
             ],
         }
@@ -573,7 +606,9 @@ def _run(
                     ],
                     "accepted_variants": [],
                     "near_miss_boundaries": [],
-                    "citations": side0_aliases,
+                    "support_bindings": support_bindings(
+                        "side0_positive", "entity"
+                    ),
                 }
             )
         return payload
@@ -595,7 +630,7 @@ def _run(
                 )
             )
             proposer_calls.append(prompt)
-            payload = semantic_payload(schema)
+            payload = semantic_payload(prompt, schema)
             return CodexStructuredResult(
                 payload, _receipt(prompt, paths, names, schema, payload)
             )
@@ -722,7 +757,8 @@ def _run(
         assert "historical_role" not in prompt
         assert "side0_positive" not in prompt
         assert "side1_positive" not in prompt
-        assert "citations" not in prompt
+        assert "support_bindings" not in prompt
+        assert "target_alias" not in prompt
     return verified, visual_calls, proposer_calls, ranker_calls
 
 
@@ -777,7 +813,7 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
         command.REPLAY_FILENAME: command.REPLAY_SCHEMA,
         command.RESULT_FILENAME: command.RESULT_SCHEMA,
     }
-    assert command.COMMAND_ID.endswith("-v6")
+    assert command.COMMAND_ID.endswith("-v7")
     for filename, schema in expected_schemas.items():
         assert json.loads((root / filename).read_text("utf-8"))["schema"] == schema
     for filename in (
@@ -827,11 +863,20 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     assert all("accepted_variants" in concept for concept in concepts)
     assert all("near_miss_boundaries" in concept for concept in concepts)
     bindings = semantic_input["prepared_input"]["model_view"][
-        "required_positive_bindings"
+        "required_positive_binding_panels"
     ]
     for orientation in ("side0_positive", "side1_positive"):
         assert all(
-            set(concept["citations"]) == set(bindings[orientation])
+            [
+                row["panel_alias"]
+                for row in concept["support_bindings"]
+            ]
+            == bindings[orientation]
+            for concept in semantic_result["semantic_proposal"][orientation]
+        )
+        assert all(
+            {row["target_alias"] for row in concept["support_bindings"]}
+            == {"whole_panel"}
             for concept in semantic_result["semantic_proposal"][orientation]
         )
     assert len(ranker_calls) == 1

@@ -94,10 +94,27 @@ def _aliases(prepared, side: int) -> tuple[str, ...]:
     )
 
 
+def _support_bindings(
+    scope: str,
+    panel_aliases,
+    *,
+    entity_target: str = "entity_000",
+) -> list[dict[str, str]]:
+    return [
+        {
+            "panel_alias": panel_alias,
+            "target_alias": (
+                "whole_panel" if scope == "panel" else entity_target
+            ),
+        }
+        for panel_alias in panel_aliases
+    ]
+
+
 def _concept(
     scope: str,
     phrase: str,
-    citations,
+    panel_aliases,
     *,
     required_witnesses=None,
     accepted_variants=(),
@@ -114,7 +131,7 @@ def _concept(
         "required_witnesses": witnesses,
         "accepted_variants": list(accepted_variants),
         "near_miss_boundaries": list(near_miss_boundaries),
-        "citations": list(citations),
+        "support_bindings": _support_bindings(scope, panel_aliases),
     }
 
 
@@ -168,13 +185,25 @@ def test_prepare_is_order_invariant_opaque_multimodal_and_strict(discovery_input
         "required_witnesses",
         "accepted_variants",
         "near_miss_boundaries",
-        "citations",
+        "support_bindings",
     }
+    binding_schema = concept_schema["properties"]["support_bindings"]["items"]
+    assert set(binding_schema["required"]) == {"panel_alias", "target_alias"}
+    assert binding_schema["additionalProperties"] is False
+    assert "whole_panel" in binding_schema["properties"]["target_alias"]["enum"]
+    assert "entity_000" in binding_schema["properties"]["target_alias"]["enum"]
+    assert set(
+        prepared.model_view["required_positive_binding_panels"]
+    ) == {"side0_positive", "side1_positive"}
     assert "near-miss boundaries are the sole exception" in prepared.prompt.lower()
     assert "using 'does not qualify', 'is excluded', or 'falls outside'" in (
         prepared.prompt
     )
     assert "never join alternative cues with 'or' or 'either'" in prepared.prompt
+    assert "never pool one cue from one entity" in prepared.prompt
+    assert "target_alias must be one entity_alias actually exposed" in (
+        prepared.prompt
+    )
     assert "these may enumerate alternatives with canonical commas" in (
         prepared.prompt
     )
@@ -261,6 +290,25 @@ def test_valid_both_bucket_union_requires_complete_positive_bindings(
     assert all(item.required_witnesses[0].witness_id == "witness_00" for item in registry.tags)
     assert all(len(item.criteria_digest) == 64 for item in registry.tags)
     assert all(len(item.tag_digest) == 64 for item in registry.tags)
+    for concept in (*proposal.side0_positive, *proposal.side1_positive):
+        assert len(concept.support_bindings) == 6
+        assert concept.support_bindings == tuple(
+            sorted(concept.support_bindings, key=lambda item: item[0])
+        )
+        assert concept.citations == tuple(
+            panel_alias for panel_alias, _ in concept.support_bindings
+        )
+        assert len(concept.support_bindings_digest) == 64
+        assert "citations" not in concept.to_data()
+        assert concept.to_data()["support_binding_count"] == 6
+        if concept.scope == "panel":
+            assert {item[1] for item in concept.support_bindings} == {
+                "whole_panel"
+            }
+        else:
+            assert {item[1] for item in concept.support_bindings} == {
+                "entity_000"
+            }
     assert registry.source_panel_digests == tuple(
         sorted(artifact.panel_digest for artifact in artifacts)
     )
@@ -467,7 +515,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a three-armed radial cluster falls outside this concept",
                     "two portions meeting along a broad shared edge do not qualify",
                 ],
-                "citations": list(side0),
+                "support_bindings": _support_bindings("entity", side0),
             },
             {
                 "scope": "entity",
@@ -499,7 +547,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "solid dots and solid blocks fall outside the hollow-loop count",
                     "loops scattered through the interior rather than tracing paths are excluded",
                 ],
-                "citations": list(side0),
+                "support_bindings": _support_bindings("entity", side0),
             },
             {
                 "scope": "panel",
@@ -532,7 +580,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a panel with repeated boundary units on both figures is excluded",
                     "decoration confined inside a plain outer boundary does not qualify as a patterned boundary",
                 ],
-                "citations": list(side0),
+                "support_bindings": _support_bindings("panel", side0),
             },
         ],
         "side1_positive": [
@@ -567,7 +615,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "two opposing lobes joined through a waist do not qualify",
                     "three chains forming a closed triangular frame are excluded",
                 ],
-                "citations": list(side1),
+                "support_bindings": _support_bindings("entity", side1),
             },
             {
                 "scope": "entity",
@@ -600,7 +648,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a single open arc without repeated closed symbols falls outside this concept",
                     "separate open and looped figures do not qualify as one entity",
                 ],
-                "citations": list(side1),
+                "support_bindings": _support_bindings("entity", side1),
             },
             {
                 "scope": "panel",
@@ -633,7 +681,7 @@ def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atom
                     "a panel with repeated units on only one figure is excluded",
                     "two plain continuous outlines fall outside this concept",
                 ],
-                "citations": list(side1),
+                "support_bindings": _support_bindings("panel", side1),
             },
         ],
     }
@@ -730,12 +778,15 @@ def test_quarantines_negation_logical_packaging_and_role_comparison(
     }
 
 
-def test_quarantines_duplicate_scoped_phrase_and_duplicate_citation(discovery_inputs):
+def test_quarantines_duplicate_scoped_phrase_and_incomplete_bindings(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     payload = _valid_payload(prepared)
     payload["side1_positive"][1]["scope"] = "entity"
     payload["side1_positive"][1]["phrase"] = "mismatched parts"
+    payload["side1_positive"][1]["support_bindings"] = _support_bindings(
+        "entity", _aliases(prepared, 1)
+    )
     assert (
         payload["side1_positive"][1]["required_witnesses"]
         != payload["side0_positive"][1]["required_witnesses"]
@@ -750,57 +801,113 @@ def test_quarantines_duplicate_scoped_phrase_and_duplicate_citation(discovery_in
     assert "mismatched parts" not in {item.tag for item in registry.tags}
 
     payload = _valid_payload(prepared)
-    alias = _aliases(prepared, 0)[0]
-    payload["side0_positive"][0]["citations"] = [alias, alias]
+    bindings = payload["side0_positive"][0]["support_bindings"]
+    bindings[-1] = deepcopy(bindings[0])
     proposal, registry = build_object_scene_semantic_registry_proposal(
         prepared, payload
     )
     assert len(proposal.dropped_concepts) == 1
-    assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+    assert proposal.dropped_concepts[0].reason_code == "binding_policy"
     assert "paired visible forms" not in {item.tag for item in registry.tags}
 
     payload = _valid_payload(prepared)
-    payload["side0_positive"][0]["citations"] = list(
-        _aliases(prepared, 0)[:-1]
-    )
+    payload["side0_positive"][0]["support_bindings"] = payload[
+        "side0_positive"
+    ][0]["support_bindings"][:-1]
     proposal, registry = build_object_scene_semantic_registry_proposal(
         prepared, payload
     )
     assert len(proposal.dropped_concepts) == 1
-    assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+    assert proposal.dropped_concepts[0].reason_code == "binding_policy"
     assert "paired visible forms" not in {item.tag for item in registry.tags}
 
 
-def test_quarantines_foreign_and_cross_side_citations(discovery_inputs):
+def test_quarantines_foreign_and_cross_side_bindings(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
-    for citation in ("panel_999", _aliases(prepared, 1)[0]):
+    for foreign_panel in ("panel_999", _aliases(prepared, 1)[0]):
         payload = _valid_payload(prepared)
-        citations = list(_aliases(prepared, 0))
-        citations[-1] = citation
-        payload["side0_positive"][0]["citations"] = citations
+        payload["side0_positive"][0]["support_bindings"][-1][
+            "panel_alias"
+        ] = foreign_panel
+        payload["side0_positive"][0]["support_bindings"].sort(
+            key=lambda item: item["panel_alias"]
+        )
         proposal, registry = build_object_scene_semantic_registry_proposal(
             prepared, payload
         )
         assert len(proposal.dropped_concepts) == 1
-        assert proposal.dropped_concepts[0].reason_code == "foreign_citation"
+        assert proposal.dropped_concepts[0].reason_code == "foreign_binding"
         assert "paired visible forms" not in {item.tag for item in registry.tags}
 
 
-def test_quarantines_malformed_citation_items_without_losing_valid_concepts(
+def test_quarantines_malformed_binding_items_without_losing_valid_concepts(
     discovery_inputs,
 ):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
-    for malformed in ([{}, {}], [1, 2], [_aliases(prepared, 0)[0], 2]):
+    for malformed in (
+        [{}, {}],
+        [1, 2],
+        [{"panel_alias": _aliases(prepared, 0)[0], "target_alias": 2}],
+    ):
         payload = _valid_payload(prepared)
-        payload["side0_positive"][0]["citations"] = malformed
+        payload["side0_positive"][0]["support_bindings"] = malformed
         proposal, registry = build_object_scene_semantic_registry_proposal(
             prepared, payload
         )
         assert len(proposal.dropped_concepts) == 1
-        assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+        assert proposal.dropped_concepts[0].reason_code == "binding_policy"
         assert "paired visible forms" not in {item.tag for item in registry.tags}
+
+
+@pytest.mark.parametrize(
+    "concept_index,target_alias",
+    (
+        (0, "entity_000"),
+        (1, "whole_panel"),
+        (1, "entity_999"),
+    ),
+)
+def test_scope_and_exposed_entity_target_bindings_are_enforced(
+    discovery_inputs, concept_index, target_alias,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    payload["side0_positive"][concept_index]["support_bindings"][0][
+        "target_alias"
+    ] = target_alias
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
+        "target_binding_policy",
+    )
+    rejected_phrase = payload["side0_positive"][concept_index]["phrase"]
+    assert rejected_phrase not in {item.tag for item in registry.tags}
+
+
+def test_v7_cross_entity_pooling_cannot_masquerade_as_six_panel_support(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    bindings = payload["side0_positive"][1]["support_bindings"]
+    # The old panel-only citation list could not express which entity allegedly
+    # carried all witnesses. Trying to bind two entities in one panel now both
+    # duplicates that panel and leaves another positive panel unbound.
+    pooled = [deepcopy(bindings[0]), deepcopy(bindings[0]), *deepcopy(bindings[1:-1])]
+    pooled[1]["target_alias"] = "entity_001"
+    payload["side0_positive"][1]["support_bindings"] = pooled
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
+        "binding_policy",
+    )
+    assert "mismatched parts" not in {item.tag for item in registry.tags}
 
 
 def test_all_invalid_rows_in_one_bucket_produce_typed_payload_error(
@@ -961,6 +1068,13 @@ def test_proposal_and_prepared_tampering_is_rejected(discovery_inputs):
     ] = "a visibly altered witness statement"
     with pytest.raises(ObjectSceneSemanticRegistryError):
         verify_object_scene_semantic_registry_proposal(raw, registry, artifacts, roles)
+
+    raw = proposal.to_data()
+    raw["side0_positive"][0]["support_bindings"][0]["target_alias"] = (
+        "entity_001"
+    )
+    with pytest.raises(ObjectSceneSemanticRegistryError):
+        ObjectSceneSemanticRegistryProposal.from_data(raw)
 
     prepared_raw = prepared.to_data()
     prepared_raw["alias_bindings"][0]["historical_role"] = (

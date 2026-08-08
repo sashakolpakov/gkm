@@ -70,7 +70,7 @@ RAW_6 = "6" * 64
 def _semantic_concept(
     scope: str,
     phrase: str,
-    citations: tuple[str, ...] | list[str],
+    support_bindings: tuple[dict[str, str], ...] | list[dict[str, str]],
     *,
     witness_kind: str = "shape_appearance",
     witness_statement: str | None = None,
@@ -88,15 +88,43 @@ def _semantic_concept(
         ],
         "accepted_variants": list(accepted_variants),
         "near_miss_boundaries": list(near_miss_boundaries),
-        "citations": list(citations),
+        "support_bindings": [dict(item) for item in support_bindings],
     }
 
 
-def test_campaign_v5_binds_drill_cohort_and_multimodal_semantic_wrappers() -> None:
-    assert COMMAND_ID.endswith("-v5")
+def _semantic_support_bindings(
+    prepared: object,
+    orientation: str,
+    scope: str,
+) -> list[dict[str, str]]:
+    model_view = getattr(prepared, "model_view")
+    rows_key = orientation.replace("_positive", "_support_descriptions")
+    rows = {
+        row["panel_alias"]: row
+        for row in model_view[rows_key]
+    }
+    return [
+        {
+            "panel_alias": panel_alias,
+            "target_alias": (
+                "whole_panel"
+                if scope == "panel"
+                else rows[panel_alias]["proposal_atlas_map"][0][
+                    "entity_alias"
+                ]
+            ),
+        }
+        for panel_alias in model_view[
+            "required_positive_binding_panels"
+        ][orientation]
+    ]
+
+
+def test_campaign_v6_binds_drill_cohort_and_multimodal_semantic_wrappers() -> None:
+    assert COMMAND_ID.endswith("-v6")
     assert TASK_BATCH_SCHEMA.endswith(".v3")
-    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v5")
-    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v5")
+    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v6")
+    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v6")
     assert TASK_REGISTRY_SCHEMA.endswith(".v4")
     assert TASK_IR_SCHEMA.endswith(".v4")
     assert TASK_RANK_INPUT_SCHEMA.endswith(".v4")
@@ -986,20 +1014,14 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
     semantic_prepared = prepare_object_scene_semantic_registry_proposal(
         discovery_artifacts, role_rows
     )
-    aliases = {
-        side: tuple(
-            row["alias"]
-            for row in semantic_prepared.alias_bindings
-            if row["historical_role"] == side and row["usable"] is True
-        )
-        for side in (0, 1)
-    }
     payload = {
         "side0_positive": [
             _semantic_concept(
                 "panel",
                 "paired visible forms",
-                aliases[0],
+                _semantic_support_bindings(
+                    semantic_prepared, "side0_positive", "panel"
+                ),
                 witness_kind="spatial_relation",
                 witness_statement=(
                     "two visible forms occupy distinct regions of the panel"
@@ -1014,7 +1036,9 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             _semantic_concept(
                 "entity",
                 "not pointed",
-                aliases[0],
+                _semantic_support_bindings(
+                    semantic_prepared, "side0_positive", "entity"
+                ),
                 witness_statement="the entity has one visibly sharp terminal tip",
             ),
         ],
@@ -1022,7 +1046,9 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             _semantic_concept(
                 "entity",
                 "unequal edge lengths",
-                aliases[1],
+                _semantic_support_bindings(
+                    semantic_prepared, "side1_positive", "entity"
+                ),
                 witness_kind="count_relation",
                 witness_statement=(
                     "two corresponding straight edges visibly differ in length"
@@ -1168,12 +1194,30 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         "named_image_commitments"
     ]
     required_bindings = semantic_prepared.model_view[
-        "required_positive_bindings"
+        "required_positive_binding_panels"
     ]
     for orientation in ("side0_positive", "side1_positive"):
         assert all(
-            set(item.citations) == set(required_bindings[orientation])
+            [panel_alias for panel_alias, _ in item.support_bindings]
+            == required_bindings[orientation]
             for item in getattr(proposal, orientation)
+        )
+    side1_rows = {
+        row["panel_alias"]: row
+        for row in semantic_prepared.model_view[
+            "side1_support_descriptions"
+        ]
+    }
+    for concept in proposal.side1_positive:
+        assert all(
+            target_alias
+            in {
+                entity["entity_alias"]
+                for entity in side1_rows[panel_alias][
+                    "proposal_atlas_map"
+                ]
+            }
+            for panel_alias, target_alias in concept.support_bindings
         )
 
     replay_calls: list[object] = []

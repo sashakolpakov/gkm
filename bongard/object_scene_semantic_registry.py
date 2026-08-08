@@ -48,19 +48,19 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v5"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v5"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v6"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v6"
 DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v2"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v5"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v6"
 MAX_CONCEPTS_PER_ORIENTATION = 16
 MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
 SUPPORT_PANEL_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_ROLE = 6
-MIN_CITATIONS_PER_CONCEPT = SUPPORT_PANEL_COUNT_PER_ROLE
-MAX_CITATIONS_PER_CONCEPT = SUPPORT_PANEL_COUNT_PER_ROLE
+EXACT_SUPPORT_BINDINGS_PER_CONCEPT = SUPPORT_PANEL_COUNT_PER_ROLE
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ALIAS = re.compile(r"panel_[0-9]{3}\Z")
+_ENTITY_ALIAS = re.compile(r"entity_[0-9]{3}\Z")
 _SEMANTIC_POLICY_LEAK = re.compile(
     r"\b(?:side|support|bucket|orientation|more|less|fewer|most|least|"
     r"common|frequent|typically|usually|never|isn't|isnt|avoids?|avoiding|"
@@ -81,10 +81,11 @@ _GAP_CODES = frozenset(("payload_rejected", "insufficient_discovery_evidence"))
 _DROP_REASON_CODES = frozenset(
     (
         "malformed_concept",
-        "citation_policy",
+        "binding_policy",
         "phrase_policy",
         "criteria_policy",
-        "foreign_citation",
+        "foreign_binding",
+        "target_binding_policy",
         "duplicate_scoped_phrase",
     )
 )
@@ -110,14 +111,14 @@ def _authority_data() -> dict[str, object]:
         "zero_image_proposer": False,
         "named_image_multimodal_proposer": True,
         "all_support_panels_and_atlases_attached": True,
-        "every_card_claims_all_positive_support_panels": True,
+        "every_card_binds_one_target_per_positive_support_panel": True,
         "both_orientations_in_one_call": True,
         "registered_evaluator_receives_roles": False,
         "semantic_proposal_is_not_a_truth_assignment": True,
         "soft_predicates_are_transparent_witness_macros": True,
         "registered_observer_authors_macro_disposition": False,
         "python_compiles_witness_dispositions": True,
-        "citation_count_is_not_visual_confidence": True,
+        "support_binding_count_is_not_visual_confidence": True,
         "invalid_optional_concept_discards_valid_concepts": False,
         "all_quarantined_invalid_concepts_and_finite_reasons_persisted": True,
         "orientation_coverage_gap_suppresses_otherwise_valid_concepts_from_registry": True,
@@ -131,7 +132,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v5",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v6",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
@@ -150,14 +151,14 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             "maximum_near_miss_boundaries": (
                 OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES
             ),
-            "exact_distinct_same_orientation_citations": (
-                SUPPORT_PANEL_COUNT_PER_ROLE
+            "exact_one_same_orientation_target_binding_per_panel": (
+                EXACT_SUPPORT_BINDINGS_PER_CONCEPT
             ),
             "support_panel_count": SUPPORT_PANEL_COUNT,
             "support_panel_count_per_role": SUPPORT_PANEL_COUNT_PER_ROLE,
             "alias_order": "sha256-artifact-digest-then-opaque-sequential-alias",
             "registry_order": (
-                "descending-distinct-cited-panel-count-then-scope-then-phrase"
+                "descending-distinct-bound-panel-count-then-scope-then-phrase"
             ),
             "optional_concept_failure_rule": (
                 "quarantine-exact-input-row-with-finite-reason;"
@@ -302,7 +303,9 @@ def _transcript_view(
 
 
 def _proposal_output_schema(
-    side0_aliases: Sequence[str], side1_aliases: Sequence[str]
+    side0_aliases: Sequence[str],
+    side1_aliases: Sequence[str],
+    exposed_entity_aliases: Sequence[str],
 ) -> dict[str, object]:
     def concept(aliases: Sequence[str]) -> dict[str, object]:
         return {
@@ -364,13 +367,34 @@ def _proposal_output_schema(
                         "never vote."
                     ),
                 },
-                "citations": {
+                "support_bindings": {
                     "type": "array",
-                    "items": {"type": "string", "enum": list(aliases)},
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "panel_alias": {
+                                "type": "string",
+                                "enum": list(aliases),
+                            },
+                            "target_alias": {
+                                "type": "string",
+                                "enum": [
+                                    "whole_panel",
+                                    *list(exposed_entity_aliases),
+                                ],
+                            },
+                        },
+                        "required": ["panel_alias", "target_alias"],
+                        "additionalProperties": False,
+                    },
                     "description": (
-                        "Exactly all six distinct aliases from this same "
-                        "orientation. This explicitly binds the affirmative "
-                        "card to every claimed positive support panel."
+                        "Exactly six objects in ascending panel_alias order, "
+                        "one for every panel in this orientation. For panel "
+                        "scope target_alias is whole_panel. For entity scope "
+                        "target_alias is one entity_alias actually exposed by "
+                        "that panel's model-view row. All required witnesses "
+                        "must hold on that one bound target; never pool cues "
+                        "from multiple entities."
                     ),
                 },
             },
@@ -380,7 +404,7 @@ def _proposal_output_schema(
                 "required_witnesses",
                 "accepted_variants",
                 "near_miss_boundaries",
-                "citations",
+                "support_bindings",
             ],
             "additionalProperties": False,
         }
@@ -655,13 +679,23 @@ def prepare_object_scene_semantic_registry_proposal(
     model_view: dict[str, object] = {
         "side0_support_descriptions": model_rows[0],
         "side1_support_descriptions": model_rows[1],
-        "required_positive_bindings": {
+        "required_positive_binding_panels": {
             "side0_positive": list(role_aliases[0]),
             "side1_positive": list(role_aliases[1]),
         },
     }
+    exposed_entity_aliases = tuple(
+        sorted(
+            {
+                str(entity["entity_alias"])
+                for rows in model_rows.values()
+                for row in rows
+                for entity in row["proposal_atlas_map"]
+            }
+        )
+    )
     output_schema = _proposal_output_schema(
-        role_aliases[0], role_aliases[1]
+        role_aliases[0], role_aliases[1], exposed_entity_aliases
     )
     prompt = (
         "Inspect every attached panel and proposal-atlas image together with "
@@ -695,13 +729,17 @@ def prepare_object_scene_semantic_registry_proposal(
         "every other combination yields INDETERMINATE. Do not ask the observer "
         "for the card's final state. Resolve meaningful visual tolerances and "
         "category boundaries such as wedge/fan/sector in the card. Do not use "
-        "a citation, support frequency, or bucket identity "
-        "as a visual cue. Every card must cite exactly all six panel aliases "
-        "from its own support orientation. Those citations explicitly bind the "
-        "affirmative hypothesis to every claimed positive support panel; for "
-        "entity scope the card claims that at least one visible entity satisfies "
-        "the same witnesses in every cited panel. A citation is still a proposal "
-        "binding, not a verified truth assignment. In concept phrases, required "
+        "a support binding, support frequency, or bucket identity "
+        "as a visual cue. Every card must provide support_bindings in ascending "
+        "panel_alias order with exactly one entry for each of the six panel "
+        "aliases in its own orientation. Each entry has exactly panel_alias and "
+        "target_alias. For panel scope, target_alias must be whole_panel. For "
+        "entity scope, target_alias must be one entity_alias actually exposed in "
+        "that panel's model-view row. Every required witness in the card must "
+        "visibly hold on that same single bound target; never pool one cue from "
+        "one entity with another cue from a different entity. A support binding "
+        "is a proposal-level grounding claim, not a verified truth assignment. "
+        "In concept phrases, required "
         "witnesses, and accepted variants, do not compare buckets, mention "
         "experimental roles or labels, use negation, or say something is "
         "missing. Near-miss boundaries are the sole exception: phrase each as "
@@ -770,6 +808,64 @@ def prepare_object_scene_semantic_registry_proposal(
     )
 
 
+def _support_bindings_data(
+    value: Sequence[tuple[str, str]],
+) -> list[dict[str, str]]:
+    return [
+        {"panel_alias": panel_alias, "target_alias": target_alias}
+        for panel_alias, target_alias in value
+    ]
+
+
+def _support_bindings_digest(value: Sequence[tuple[str, str]]) -> str:
+    return canonical_digest(
+        {
+            "schema": "gkm.object-scene-semantic-support-bindings.v1",
+            "support_bindings": _support_bindings_data(value),
+            "one_target_per_positive_panel": True,
+        }
+    )
+
+
+def _normalized_support_bindings(value: object) -> tuple[tuple[str, str], ...]:
+    if not isinstance(value, list):
+        raise ObjectSceneSemanticRegistryError(
+            "semantic concept support bindings must be an array"
+        )
+    rows: list[tuple[str, str]] = []
+    for item in value:
+        raw = _fields(
+            item,
+            {"panel_alias", "target_alias"},
+            "semantic concept support binding",
+        )
+        panel_alias = raw["panel_alias"]
+        target_alias = raw["target_alias"]
+        if (
+            not isinstance(panel_alias, str)
+            or _ALIAS.fullmatch(panel_alias) is None
+            or not isinstance(target_alias, str)
+            or (
+                target_alias != "whole_panel"
+                and _ENTITY_ALIAS.fullmatch(target_alias) is None
+            )
+        ):
+            raise ObjectSceneSemanticRegistryError(
+                "semantic concept support binding aliases differ"
+            )
+        rows.append((panel_alias, target_alias))
+    result = tuple(rows)
+    if (
+        len(result) != EXACT_SUPPORT_BINDINGS_PER_CONCEPT
+        or len({panel_alias for panel_alias, _ in result}) != len(result)
+        or result != tuple(sorted(result, key=lambda item: item[0]))
+    ):
+        raise ObjectSceneSemanticRegistryError(
+            "semantic concept support bindings are not exact and canonical"
+        )
+    return result
+
+
 def _concept_content(value: "ObjectSceneSemanticRegistryConcept") -> dict[str, object]:
     return {
         "schema": CONCEPT_SCHEMA,
@@ -782,8 +878,9 @@ def _concept_content(value: "ObjectSceneSemanticRegistryConcept") -> dict[str, o
         "accepted_variants": list(value.accepted_variants),
         "near_miss_boundaries": list(value.near_miss_boundaries),
         "criteria_digest": value.criteria_digest,
-        "citations": list(value.citations),
-        "citation_count": len(value.citations),
+        "support_bindings": _support_bindings_data(value.support_bindings),
+        "support_binding_count": len(value.support_bindings),
+        "support_bindings_digest": value.support_bindings_digest,
         "affirmative_observation_hypothesis_not_truth": True,
         "observer_judges_witnesses_not_macro": True,
         "python_compiles_macro_disposition": True,
@@ -823,7 +920,7 @@ def _compiled_semantic_operational_card(
             "tag_0000",
             scope,
             phrase,
-            MIN_CITATIONS_PER_CONCEPT,
+            EXACT_SUPPORT_BINDINGS_PER_CONCEPT,
             required_witnesses,
             accepted_variants,
             near_miss_boundaries,
@@ -853,7 +950,8 @@ class ObjectSceneSemanticRegistryConcept:
     accepted_variants: tuple[str, ...]
     near_miss_boundaries: tuple[str, ...]
     criteria_digest: str
-    citations: tuple[str, ...]
+    support_bindings: tuple[tuple[str, str], ...]
+    support_bindings_digest: str
     concept_digest: str
 
     def __post_init__(self) -> None:
@@ -876,16 +974,48 @@ class ObjectSceneSemanticRegistryConcept:
             or card.accepted_variants != self.accepted_variants
             or card.near_miss_boundaries != self.near_miss_boundaries
             or card.criteria_digest != self.criteria_digest
-            or not MIN_CITATIONS_PER_CONCEPT
-            <= len(self.citations)
-            <= MAX_CITATIONS_PER_CONCEPT
-            or self.citations != tuple(sorted(set(self.citations)))
-            or any(_ALIAS.fullmatch(item) is None for item in self.citations)
+            or len(self.support_bindings) != EXACT_SUPPORT_BINDINGS_PER_CONCEPT
+            or self.support_bindings
+            != tuple(sorted(self.support_bindings, key=lambda item: item[0]))
+            or len({item[0] for item in self.support_bindings})
+            != len(self.support_bindings)
+            or (
+                scope == "panel"
+                and any(
+                    target_alias != "whole_panel"
+                    for _, target_alias in self.support_bindings
+                )
+            )
+            or (
+                scope == "entity"
+                and any(
+                    target_alias == "whole_panel"
+                    for _, target_alias in self.support_bindings
+                )
+            )
+            or any(
+                not isinstance(item, tuple)
+                or len(item) != 2
+                or not isinstance(item[0], str)
+                or not isinstance(item[1], str)
+                or _ALIAS.fullmatch(item[0]) is None
+                or (
+                    item[1] != "whole_panel"
+                    and _ENTITY_ALIAS.fullmatch(item[1]) is None
+                )
+                for item in self.support_bindings
+            )
+            or self.support_bindings_digest
+            != _support_bindings_digest(self.support_bindings)
         ):
             raise ObjectSceneSemanticRegistryError(
-                "semantic concept phrase, card, or citations differ"
+                "semantic concept phrase, card, or support bindings differ"
             )
         _digest(self.criteria_digest, "semantic concept criteria digest")
+        _digest(
+            self.support_bindings_digest,
+            "semantic concept support bindings digest",
+        )
         _digest(self.concept_digest, "semantic concept digest")
         if self.concept_digest != canonical_digest(_concept_content(self)):
             raise ObjectSceneSemanticRegistryError("semantic concept digest differs")
@@ -899,16 +1029,8 @@ class ObjectSceneSemanticRegistryConcept:
         required_witnesses: object,
         accepted_variants: object,
         near_miss_boundaries: object,
-        citations: object,
+        support_bindings: object,
     ) -> "ObjectSceneSemanticRegistryConcept":
-        if (
-            not isinstance(citations, list)
-            or any(not isinstance(item, str) for item in citations)
-            or len(set(citations)) != len(citations)
-        ):
-            raise ObjectSceneSemanticRegistryError(
-                "semantic concept citations must be distinct"
-            )
         normalized_scope, normalized_phrase = _normalized_semantic_scope_phrase(
             scope, phrase
         )
@@ -919,7 +1041,7 @@ class ObjectSceneSemanticRegistryConcept:
             accepted_variants,
             near_miss_boundaries,
         )
-        normalized_citations = tuple(sorted(citations))
+        normalized_bindings = _normalized_support_bindings(support_bindings)
         provisional = object.__new__(cls)
         values = {
             "orientation": orientation,
@@ -929,7 +1051,10 @@ class ObjectSceneSemanticRegistryConcept:
             "accepted_variants": card.accepted_variants,
             "near_miss_boundaries": card.near_miss_boundaries,
             "criteria_digest": card.criteria_digest,
-            "citations": normalized_citations,
+            "support_bindings": normalized_bindings,
+            "support_bindings_digest": _support_bindings_digest(
+                normalized_bindings
+            ),
         }
         for key, item in values.items():
             object.__setattr__(provisional, key, item)
@@ -938,6 +1063,12 @@ class ObjectSceneSemanticRegistryConcept:
     def to_data(self) -> dict[str, object]:
         return {**_concept_content(self), "concept_digest": self.concept_digest}
 
+    @property
+    def citations(self) -> tuple[str, ...]:
+        """Derived bound-panel inventory for legacy in-process consumers."""
+
+        return tuple(panel_alias for panel_alias, _ in self.support_bindings)
+
     @classmethod
     def from_data(cls, value: object) -> "ObjectSceneSemanticRegistryConcept":
         raw = _fields(
@@ -945,8 +1076,9 @@ class ObjectSceneSemanticRegistryConcept:
             {
                 "schema", "orientation", "scope", "phrase",
                 "required_witnesses", "accepted_variants",
-                "near_miss_boundaries", "criteria_digest", "citations",
-                "citation_count", "affirmative_observation_hypothesis_not_truth",
+                "near_miss_boundaries", "criteria_digest", "support_bindings",
+                "support_binding_count", "support_bindings_digest",
+                "affirmative_observation_hypothesis_not_truth",
                 "observer_judges_witnesses_not_macro",
                 "python_compiles_macro_disposition", "concept_digest",
             },
@@ -957,9 +1089,13 @@ class ObjectSceneSemanticRegistryConcept:
             or raw["affirmative_observation_hypothesis_not_truth"] is not True
             or raw["observer_judges_witnesses_not_macro"] is not True
             or raw["python_compiles_macro_disposition"] is not True
-            or raw["citation_count"]
-            != (len(raw["citations"]) if isinstance(raw["citations"], list) else -1)
-            or not isinstance(raw["citations"], list)
+            or raw["support_binding_count"]
+            != (
+                len(raw["support_bindings"])
+                if isinstance(raw["support_bindings"], list)
+                else -1
+            )
+            or not isinstance(raw["support_bindings"], list)
             or not isinstance(raw["required_witnesses"], list)
             or not isinstance(raw["accepted_variants"], list)
             or not isinstance(raw["near_miss_boundaries"], list)
@@ -974,7 +1110,9 @@ class ObjectSceneSemanticRegistryConcept:
                 ),
                 tuple(raw["accepted_variants"]),
                 tuple(raw["near_miss_boundaries"]),
-                raw["criteria_digest"], tuple(raw["citations"]),
+                raw["criteria_digest"],
+                _normalized_support_bindings(raw["support_bindings"]),
+                raw["support_bindings_digest"],
                 raw["concept_digest"],
             )
         except ObjectSceneSemanticRegistryError:
@@ -1368,6 +1506,58 @@ def _proposal(
     )
 
 
+def _exposed_entity_targets_by_panel(
+    prepared: ObjectScenePreparedSemanticRegistryProposal,
+) -> dict[str, frozenset[str]]:
+    result: dict[str, frozenset[str]] = {}
+    for key in ("side0_support_descriptions", "side1_support_descriptions"):
+        rows = prepared.model_view.get(key)
+        if not isinstance(rows, list):
+            raise ObjectSceneSemanticRegistryError(
+                "prepared semantic model-view support rows differ"
+            )
+        for row in rows:
+            if not isinstance(row, Mapping):
+                raise ObjectSceneSemanticRegistryError(
+                    "prepared semantic model-view support row differs"
+                )
+            panel_alias = row.get("panel_alias")
+            proposal_atlas_map = row.get("proposal_atlas_map")
+            if (
+                not isinstance(panel_alias, str)
+                or _ALIAS.fullmatch(panel_alias) is None
+                or panel_alias in result
+                or not isinstance(proposal_atlas_map, list)
+            ):
+                raise ObjectSceneSemanticRegistryError(
+                    "prepared semantic model-view target inventory differs"
+                )
+            aliases: set[str] = set()
+            for entity in proposal_atlas_map:
+                target_alias = (
+                    entity.get("entity_alias")
+                    if isinstance(entity, Mapping)
+                    else None
+                )
+                if (
+                    not isinstance(target_alias, str)
+                    or _ENTITY_ALIAS.fullmatch(target_alias) is None
+                    or target_alias in aliases
+                ):
+                    raise ObjectSceneSemanticRegistryError(
+                        "prepared semantic model-view entity target differs"
+                    )
+                aliases.add(target_alias)
+            result[panel_alias] = frozenset(aliases)
+    if set(result) != {
+        str(item["alias"]) for item in prepared.alias_bindings
+    }:
+        raise ObjectSceneSemanticRegistryError(
+            "prepared semantic model-view panel targets differ"
+        )
+    return result
+
+
 def _project_semantic_payload(
     prepared: ObjectScenePreparedSemanticRegistryProposal,
     payload: Mapping[str, Any],
@@ -1410,6 +1600,7 @@ def _project_semantic_payload(
         }
         for side in (0, 1)
     }
+    exposed_entity_targets = _exposed_entity_targets_by_panel(prepared)
     indexed: dict[
         int, list[tuple[int, ObjectSceneSemanticRegistryConcept]]
     ] = {0: [], 1: []}
@@ -1425,7 +1616,7 @@ def _project_semantic_payload(
                         "required_witnesses",
                         "accepted_variants",
                         "near_miss_boundaries",
-                        "citations",
+                        "support_bindings",
                     },
                     "semantic concept payload",
                 )
@@ -1436,30 +1627,59 @@ def _project_semantic_payload(
                     )
                 )
                 continue
-            citations = concept_raw["citations"]
-            if (
-                not isinstance(citations, list)
-                or any(not isinstance(value, str) for value in citations)
-                or not MIN_CITATIONS_PER_CONCEPT
-                <= len(citations)
-                <= MAX_CITATIONS_PER_CONCEPT
-                or len(set(citations)) != len(citations)
-                or any(_ALIAS.fullmatch(value) is None for value in citations)
-            ):
+            try:
+                support_bindings = _normalized_support_bindings(
+                    concept_raw["support_bindings"]
+                )
+            except ObjectSceneSemanticRegistryError:
                 dropped.append(
                     ObjectSceneDroppedSemanticRegistryConcept.create(
-                        key, input_index, item, "citation_policy"
+                        key, input_index, item, "binding_policy"
+                    )
+                )
+                continue
+            bound_panels = {panel_alias for panel_alias, _ in support_bindings}
+            if not bound_panels.issubset(allowed[side]):
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "foreign_binding"
+                    )
+                )
+                continue
+            if bound_panels != allowed[side]:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "binding_policy"
                     )
                 )
                 continue
             try:
-                _normalized_semantic_scope_phrase(
+                normalized_scope, _ = _normalized_semantic_scope_phrase(
                     concept_raw["scope"], concept_raw["phrase"]
                 )
             except ObjectSceneSemanticRegistryError:
                 dropped.append(
                     ObjectSceneDroppedSemanticRegistryConcept.create(
                         key, input_index, item, "phrase_policy"
+                    )
+                )
+                continue
+            if (
+                normalized_scope == "panel"
+                and any(
+                    target_alias != "whole_panel"
+                    for _, target_alias in support_bindings
+                )
+            ) or (
+                normalized_scope == "entity"
+                and any(
+                    target_alias not in exposed_entity_targets[panel_alias]
+                    for panel_alias, target_alias in support_bindings
+                )
+            ):
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "target_binding_policy"
                     )
                 )
                 continue
@@ -1485,26 +1705,12 @@ def _project_semantic_payload(
                     concept_raw["required_witnesses"],
                     concept_raw["accepted_variants"],
                     concept_raw["near_miss_boundaries"],
-                    citations,
+                    concept_raw["support_bindings"],
                 )
             except ObjectSceneSemanticRegistryError:
                 dropped.append(
                     ObjectSceneDroppedSemanticRegistryConcept.create(
                         key, input_index, item, "criteria_policy"
-                    )
-                )
-                continue
-            if not set(concept.citations).issubset(allowed[side]):
-                dropped.append(
-                    ObjectSceneDroppedSemanticRegistryConcept.create(
-                        key, input_index, item, "foreign_citation"
-                    )
-                )
-                continue
-            if set(concept.citations) != allowed[side]:
-                dropped.append(
-                    ObjectSceneDroppedSemanticRegistryConcept.create(
-                        key, input_index, item, "citation_policy"
                     )
                 )
                 continue
@@ -1530,7 +1736,9 @@ def _project_semantic_payload(
                 )
             else:
                 buckets[side].append(concept)
-        buckets[side].sort(key=lambda item: (item.scope, item.phrase, item.citations))
+        buckets[side].sort(
+            key=lambda item: (item.scope, item.phrase, item.support_bindings)
+        )
     dropped.sort(
         key=lambda item: (item.orientation, item.input_index, item.payload_digest)
     )

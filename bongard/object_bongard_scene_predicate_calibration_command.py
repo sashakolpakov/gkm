@@ -76,27 +76,27 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v6"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v6"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v6"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v6"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v6"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v6"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v6"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v6"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v6"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v7"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v7"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v7"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v7"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v7"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v7"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v7"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v7"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v7"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v5"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v6"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v5"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v6"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v6"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v6"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v6"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v6"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v6"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v6"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v7"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v7"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v7"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v7"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v7"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v7"
 IR_BUNDLE_SCHEMA = SCENE_CALIBRATION_BUNDLE_SCHEMA
 
 AUTHORIZATION_FILENAME = "authorization.json"
@@ -177,7 +177,7 @@ def _authority_data() -> dict[str, object]:
         "semantic_registry_proposer_support_panel_count": PANEL_COUNT,
         "semantic_registry_proposer_receives_all_support_atlases": True,
         "semantic_registry_proposer_receives_query_pixels": False,
-        "every_semantic_card_cites_all_positive_support_panels": True,
+        "every_semantic_card_binds_exactly_one_target_per_positive_support_panel": True,
         "accepted_ranker_call_count": ACCEPTED_RANKER_CALL_COUNT,
         "discovery_omission_means_absence": False,
         "registered_soft_tag_requires_explicit_cells_in_passes_a_and_b": True,
@@ -192,7 +192,7 @@ def _authority_data() -> dict[str, object]:
         ),
         "soft_tag_minimum_distinct_panel_frequency": 2,
         "soft_tag_order": (
-            "descending-distinct-cited-panel-frequency-then-scope-then-phrase"
+            "descending-distinct-bound-panel-frequency-then-scope-then-phrase"
         ),
         "maximum_registered_soft_tags": MAX_REGISTERED_SOFT_TAGS,
         "all_dropped_tags_and_reasons_persisted": True,
@@ -1028,6 +1028,12 @@ def _semantic_proposer_presentation(
     """Rebind every support panel/atlas byte snapshot to its opaque alias."""
 
     by_scene = {panel.blind_panel_id: panel for panel in inputs.panels}
+    inventory_by_scene = {
+        panel.blind_panel_id: inventory
+        for panel, inventory in zip(
+            inputs.panels, inputs.inventories, strict=True
+        )
+    }
     rows = {
         item.get("panel_alias"): item
         for key in (
@@ -1057,11 +1063,27 @@ def _semantic_proposer_presentation(
             ]
         )
         visible_row = rows.get(alias)
+        inventory = inventory_by_scene.get(binding.get("scene_id"))
+        expected_proposal_map = (
+            None
+            if inventory is None
+            else [
+                {
+                    "entity_alias": f"entity_{index:03d}",
+                    "atlas_image": f"{alias}_{item.atlas_name}",
+                    "atlas_row": item.row_index,
+                    "atlas_column": item.column_index,
+                }
+                for index, item in enumerate(inventory.objects)
+            ]
+        )
         if (
             visible_row is None
             or visible_row.get("panel_image") != images[0][0]
             or visible_row.get("attached_images")
             != [name for name, _ in images]
+            or visible_row.get("proposal_atlas_map")
+            != expected_proposal_map
         ):
             raise ObjectBongardScenePredicateCalibrationCommandError(
                 "semantic proposer visible image manifest differs"
