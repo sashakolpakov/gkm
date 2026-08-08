@@ -7,6 +7,10 @@ from types import SimpleNamespace
 import pytest
 
 from bongard.object_bongard_scene_predicate_campaign_command import (
+    CAMPAIGN_REPLAY_SCHEMA,
+    CAMPAIGN_RESULT_SCHEMA,
+    CAMPAIGN_RUNTIME_CUSTODY_SCHEMA,
+    CAMPAIGN_RUNTIME_SCHEMA,
     COMMAND_ID,
     DISCOVERY_CALLS_PER_TASK,
     EXPOSURE_PREDECESSOR_FILE_SHA256,
@@ -19,8 +23,19 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     REGISTERED_A_CALLS_PER_TASK,
     REGISTERED_B_CALLS_PER_TASK,
     SEMANTIC_PROPOSER_CALLS_PER_TASK,
+    TASK_BATCH_SCHEMA,
     TASK_COUNT,
+    TASK_IR_SCHEMA,
+    TASK_RANK_INPUT_SCHEMA,
+    TASK_RANK_RESULT_SCHEMA,
+    TASK_REGISTRY_SCHEMA,
     TASK_RESULT_SCHEMA,
+    TASK_ROLE_REVEAL_SCHEMA,
+    TASK_SEMANTIC_PREPARED_SCHEMA,
+    TASK_SEMANTIC_PROPOSAL_SCHEMA,
+    TYPED_GROUNDING_REPEATABILITY_GAP,
+    TYPED_LANGUAGE_GAP,
+    TYPED_SELECTIVITY_GAP,
     _CallBudget,
     _automatic_release_source_bindings,
     _authority_data,
@@ -29,6 +44,7 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     _restore_campaign_runtime,
     _runtime_record,
     _semantic_payload_gap_code,
+    _digest_free_task_ranker_row,
     _validate_task_result_record,
     commit_and_release_object_bongard_scene_predicate_queries,
     prepare_object_bongard_scene_predicate_campaign,
@@ -36,6 +52,7 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     verify_object_bongard_scene_predicate_exposure_transition,
     verify_object_bongard_scene_predicate_campaign,
     _query_score_rows,
+    _ranker_prompt,
     _rank_task_bundle,
 )
 
@@ -46,6 +63,103 @@ ADDRESS_3 = "sha256:" + "3" * 64
 ADDRESS_4 = "sha256:" + "4" * 64
 RAW_5 = "5" * 64
 RAW_6 = "6" * 64
+
+
+def _semantic_concept(
+    scope: str,
+    phrase: str,
+    citations: tuple[str, ...] | list[str],
+    *,
+    witness_kind: str = "shape_appearance",
+    witness_statement: str | None = None,
+    accepted_variants: tuple[str, ...] = (),
+    near_miss_boundaries: tuple[str, ...] = (),
+) -> dict[str, object]:
+    return {
+        "scope": scope,
+        "phrase": phrase,
+        "required_witnesses": [
+            {
+                "kind": witness_kind,
+                "statement": witness_statement or phrase,
+            }
+        ],
+        "accepted_variants": list(accepted_variants),
+        "near_miss_boundaries": list(near_miss_boundaries),
+        "citations": list(citations),
+    }
+
+
+def test_campaign_v3_cascade_bumps_only_semantically_affected_wrappers() -> None:
+    assert COMMAND_ID.endswith("-v3")
+    assert TASK_BATCH_SCHEMA.endswith(".v2")
+    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v3")
+    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v3")
+    assert TASK_REGISTRY_SCHEMA.endswith(".v3")
+    assert TASK_IR_SCHEMA.endswith(".v3")
+    assert TASK_RANK_INPUT_SCHEMA.endswith(".v3")
+    assert TASK_RANK_RESULT_SCHEMA.endswith(".v3")
+    assert TASK_RESULT_SCHEMA.endswith(".v3")
+    assert CAMPAIGN_RESULT_SCHEMA.endswith(".v3")
+    assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v3")
+
+    # These wrappers did not change shape or meaning.  The command ID and
+    # parent digests still bind them transitively to this campaign generation.
+    assert TASK_ROLE_REVEAL_SCHEMA.endswith(".v1")
+    assert CAMPAIGN_RUNTIME_SCHEMA.endswith(".v1")
+    assert CAMPAIGN_RUNTIME_CUSTODY_SCHEMA.endswith(".v1")
+
+
+def test_ranker_prompt_keeps_frozen_operational_witness_card() -> None:
+    row = {
+        "candidate_digest": RAW_5,
+        "orientation": "group0_positive",
+        "complexity": 1,
+        "formula": {
+            "node": "positive_atom",
+            "kind": "registered_tag",
+            "tag_id": "tag_0000",
+            "tag_digest": RAW_6,
+            "criteria_digest": RAW_5,
+            "affirmative_phrase": "paired visible forms",
+            "required_witnesses": [
+                {
+                    "witness_id": "witness_00",
+                    "kind": "spatial_relation",
+                    "statement": (
+                        "two visible forms occupy distinct regions of the panel"
+                    ),
+                }
+            ],
+            "accepted_variants": [
+                "touching forms count when both visible extents remain distinct"
+            ],
+            "near_miss_boundaries": [
+                "one internally divided form does not qualify"
+            ],
+        },
+        "merged_support_summary": {
+            "present": 6,
+            "certified_absent": 6,
+            "indeterminate": 0,
+            "error": 0,
+        },
+        "gate_summary": {
+            "coverage": True,
+            "selectivity": True,
+            "repeatability": True,
+        },
+        "formula_is_frozen": True,
+        "ranker_can_only_select": True,
+    }
+    projected = _digest_free_task_ranker_row(row)
+    prompt = _ranker_prompt((projected,))
+    assert '"required_witnesses"' in prompt
+    assert '"accepted_variants"' in prompt
+    assert '"near_miss_boundaries"' in prompt
+    assert "two visible forms occupy distinct regions" in prompt
+    assert '"tag_digest"' not in prompt
+    assert '"criteria_digest"' not in prompt
 
 
 def test_rejected_calibration_is_the_only_touched_dependency(tmp_path: Path) -> None:
@@ -468,6 +582,7 @@ def test_semantic_proposal_gap_never_calls_ranker(
     )
     assert selected is None
     assert proposer_calls == []
+    assert rank_input["typed_gap_status"] == "typed_semantic_proposal_gap"
     assert rank_input["ranker_slate"] == []
     assert rank_input["omitted_survivors"] == [
         {
@@ -477,6 +592,227 @@ def test_semantic_proposal_gap_never_calls_ranker(
     ]
     assert rank_result["status"] == "typed_semantic_proposal_gap"
     assert rank_result["ranker_called"] is False
+    assert [kind for kind, _ in persisted] == [
+        "scene-task-rank-input",
+        "scene-task-rank-result",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("coverage", "selectivity", "repeatability", "expected_status"),
+    (
+        (False, False, False, TYPED_LANGUAGE_GAP),
+        (True, False, False, TYPED_SELECTIVITY_GAP),
+        (True, True, False, TYPED_GROUNDING_REPEATABILITY_GAP),
+    ),
+)
+def test_empty_task_slate_names_first_failed_evidence_gate(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    coverage: bool,
+    selectivity: bool,
+    repeatability: bool,
+    expected_status: str,
+) -> None:
+    import bongard.object_bongard_scene_predicate_campaign_command as campaign
+
+    monkeypatch.setattr(
+        campaign,
+        "_persist_record",
+        lambda _store, **kwargs: (
+            kwargs["record"],
+            SimpleNamespace(object_kind=kwargs["object_kind"]),
+        ),
+    )
+    bundle = SimpleNamespace(
+        complete_survivor_digests=(),
+        ranker_slate=(),
+        omitted_survivors=(),
+        bundle_digest=RAW_6,
+        coverage_gate=SimpleNamespace(passed=coverage),
+        selectivity_gate=SimpleNamespace(passed=selectivity),
+        repeatability_gate=SimpleNamespace(passed=repeatability),
+    )
+    rank_input, _, rank_result, _, selected = _rank_task_bundle(
+        tmp_path,
+        prepared=SimpleNamespace(release=SimpleNamespace(store=object())),
+        task=SimpleNamespace(record_digest=ADDRESS_1, family="bd"),
+        task_index=0,
+        bundle=bundle,
+        ir_record={"ir_freeze_digest": ADDRESS_2},
+        semantic_proposal_record={
+            "semantic_proposal_result_digest": ADDRESS_3,
+            "semantic_proposal_digest": RAW_6,
+            "semantic_proposal_status": "proposed",
+            "semantic_proposal_valid": True,
+        },
+        runtime=object(),
+        text_transport=lambda *_args, **_kwargs: pytest.fail(
+            "typed evidence gap called ranker"
+        ),
+        budget=_CallBudget(),
+    )
+    assert selected is None
+    assert rank_input["typed_gap_status"] == expected_status
+    assert rank_result["status"] == expected_status
+    assert rank_result["ranker_called"] is False
+
+
+def test_accepted_rank_path_projects_lineage_but_keeps_witness_cards(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bongard.object_bongard_scene_predicate_calibration_command as calibration
+    import bongard.object_bongard_scene_predicate_campaign_command as campaign
+    import bongard.object_bongard_turn_journal as journal_module
+
+    prompts: list[str] = []
+
+    def ranker_transport(prompt: str, *_args: object, **_kwargs: object) -> object:
+        prompts.append(prompt)
+        return SimpleNamespace(payload={"selected_survivor_digest": RAW_5})
+
+    class FakeJournal:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.transport = kwargs["underlying_transport"]
+            self.fresh_call_count = 0
+            self.reused_call_count = 0
+
+        def __call__(self, *args: object, **kwargs: object) -> object:
+            result = self.transport(*args, **kwargs)
+            self.fresh_call_count = 1
+            return result
+
+    persisted: list[tuple[str, dict[str, object]]] = []
+
+    def persist(
+        _store: object,
+        *,
+        object_kind: str,
+        record: dict[str, object],
+        digest_field: str,
+    ) -> tuple[dict[str, object], object]:
+        assert digest_field in record
+        persisted.append((object_kind, record))
+        return record, SimpleNamespace(object_kind=object_kind)
+
+    monkeypatch.setattr(calibration, "_journal_runtime_kwargs", lambda _runtime: {})
+    monkeypatch.setattr(
+        journal_module, "ObjectBongardTextTurnJournalTransport", FakeJournal
+    )
+    monkeypatch.setattr(
+        journal_module,
+        "verify_object_bongard_turn_journal",
+        lambda _journal: SimpleNamespace(record_digest=ADDRESS_4),
+    )
+    monkeypatch.setattr(campaign, "_persist_record", persist)
+
+    ranker_row = {
+        "candidate_digest": RAW_5,
+        "orientation": "group0_positive",
+        "complexity": 1,
+        "formula_digest": RAW_6,
+        "formula": {
+            "node": "positive_atom",
+            "kind": "registered_tag",
+            "tag_id": "tag_0000",
+            "tag_digest": RAW_6,
+            "criteria_digest": ADDRESS_3,
+            "affirmative_phrase": "bird-like object",
+            "required_witnesses": [
+                {
+                    "witness_id": "witness_00",
+                    "witness_digest": RAW_6,
+                    "kind": "shape_appearance",
+                    "statement": "one silhouette has a beak-like protrusion",
+                }
+            ],
+            "accepted_variants": ["either left- or right-facing silhouette"],
+            "near_miss_boundaries": ["a plain oval does not qualify"],
+        },
+        "merged_support_summary": {
+            "present": 6,
+            "certified_absent": 6,
+            "indeterminate": 0,
+            "error": 0,
+        },
+        "gate_summary": {
+            "coverage": True,
+            "selectivity": True,
+            "repeatability": True,
+        },
+        "formula_is_frozen": True,
+        "ranker_can_only_select": True,
+    }
+    bundle = SimpleNamespace(
+        complete_survivor_digests=(RAW_5,),
+        ranker_slate=(ranker_row,),
+        omitted_survivors=(),
+        bundle_digest=RAW_6,
+    )
+    prepared = SimpleNamespace(
+        release=SimpleNamespace(
+            store=object(),
+            authorization=SimpleNamespace(record_digest=ADDRESS_1),
+            precommit=SimpleNamespace(record_digest=ADDRESS_2),
+        )
+    )
+    rank_input, _, rank_result, _, selected = _rank_task_bundle(
+        tmp_path,
+        prepared=prepared,
+        task=SimpleNamespace(record_digest=ADDRESS_1, family="bd"),
+        task_index=0,
+        bundle=bundle,
+        ir_record={"ir_freeze_digest": ADDRESS_2},
+        semantic_proposal_record={
+            "semantic_proposal_result_digest": ADDRESS_3,
+            "semantic_proposal_digest": RAW_6,
+            "semantic_proposal_status": "proposed",
+            "semantic_proposal_valid": True,
+        },
+        runtime=object(),
+        text_transport=ranker_transport,
+        budget=_CallBudget(),
+    )
+
+    projected = rank_input["ranker_slate"][0]
+    assert selected == RAW_5
+    assert rank_input["typed_gap_status"] is None
+    assert rank_result["status"] == "selected_frozen_survivor"
+    assert projected["candidate_digest"] == RAW_5
+    assert projected["formula"]["affirmative_phrase"] == "bird-like object"
+    assert projected["formula"]["required_witnesses"] == [
+        {
+            "kind": "shape_appearance",
+            "statement": "one silhouette has a beak-like protrusion",
+            "witness_id": "witness_00",
+        }
+    ]
+    assert projected["formula"]["accepted_variants"] == [
+        "either left- or right-facing silhouette"
+    ]
+    assert projected["formula"]["near_miss_boundaries"] == [
+        "a plain oval does not qualify"
+    ]
+
+    def forbidden_digest_keys(value: object) -> list[str]:
+        if isinstance(value, dict):
+            return [
+                key
+                for key, item in value.items()
+                if key.endswith("_digest") and key != "candidate_digest"
+            ] + [
+                key
+                for item in value.values()
+                for key in forbidden_digest_keys(item)
+            ]
+        if isinstance(value, list):
+            return [key for item in value for key in forbidden_digest_keys(item)]
+        return []
+
+    assert forbidden_digest_keys(projected) == []
+    assert len(prompts) == 1
+    assert "one silhouette has a beak-like protrusion" in prompts[0]
+    assert RAW_6 not in prompts[0]
     assert [kind for kind, _ in persisted] == [
         "scene-task-rank-input",
         "scene-task-rank-result",
@@ -650,23 +986,41 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
     }
     payload = {
         "side0_positive": [
-            {
-                "scope": "panel",
-                "phrase": "paired visible forms",
-                "citations": list(aliases[0][:2]),
-            },
-            {
-                "scope": "entity",
-                "phrase": "not pointed",
-                "citations": list(aliases[0][1:3]),
-            },
+            _semantic_concept(
+                "panel",
+                "paired visible forms",
+                aliases[0][:2],
+                witness_kind="spatial_relation",
+                witness_statement=(
+                    "two visible forms occupy distinct regions of the panel"
+                ),
+                accepted_variants=(
+                    "touching forms count when both visible extents remain distinct",
+                ),
+                near_miss_boundaries=(
+                    "one form divided only by an internal mark does not qualify",
+                ),
+            ),
+            _semantic_concept(
+                "entity",
+                "not pointed",
+                aliases[0][1:3],
+                witness_statement="the entity has one visibly sharp terminal tip",
+            ),
         ],
         "side1_positive": [
-            {
-                "scope": "entity",
-                "phrase": "unequal edge lengths",
-                "citations": list(aliases[1][:2]),
-            }
+            _semantic_concept(
+                "entity",
+                "unequal edge lengths",
+                aliases[1][:2],
+                witness_kind="count_relation",
+                witness_statement=(
+                    "two corresponding straight edges visibly differ in length"
+                ),
+                near_miss_boundaries=(
+                    "perspective-only apparent shortening does not qualify",
+                ),
+            )
         ],
     }
 
@@ -790,7 +1144,10 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
 
 
 def _task_result_fixture(
-    *, queried: bool, semantic_valid: bool = True
+    *,
+    queried: bool,
+    semantic_valid: bool = True,
+    gap_status: str = TYPED_LANGUAGE_GAP,
 ) -> dict[str, object]:
     dependencies = {
         "discovery_batch": {},
@@ -834,7 +1191,7 @@ def _task_result_fixture(
                 "evaluated"
                 if queried
                 else (
-                    "typed_version_space_gap"
+                    gap_status
                     if semantic_valid
                     else "typed_semantic_proposal_gap"
                 )
@@ -881,10 +1238,24 @@ def test_accepted_and_gap_task_records_fail_closed_on_tamper_or_budget() -> None
     gap = _task_result_fixture(queried=False)
     semantic_gap = _task_result_fixture(queried=False, semantic_valid=False)
     assert _validate_task_result_record(accepted)["status"] == "evaluated"
-    assert (
-        _validate_task_result_record(gap)["status"]
-        == "typed_version_space_gap"
-    )
+    assert _validate_task_result_record(gap)["status"] == TYPED_LANGUAGE_GAP
+    for status in (TYPED_SELECTIVITY_GAP, TYPED_GROUNDING_REPEATABILITY_GAP):
+        assert (
+            _validate_task_result_record(
+                _task_result_fixture(queried=False, gap_status=status)
+            )["status"]
+            == status
+        )
+    with pytest.raises(
+        ObjectBongardScenePredicateCampaignCommandError,
+        match="policy or budget differs",
+    ):
+        _validate_task_result_record(
+            _task_result_fixture(
+                queried=False,
+                gap_status="typed_version_space_gap",
+            )
+        )
     restored_semantic_gap = _validate_task_result_record(semantic_gap)
     assert restored_semantic_gap["status"] == "typed_semantic_proposal_gap"
     assert restored_semantic_gap["physical_call_delta"]["ranker_calls"] == 0

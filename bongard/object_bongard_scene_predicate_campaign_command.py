@@ -46,7 +46,7 @@ from bongard.object_bongard_batch import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v2"
+COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v3"
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
 DISCOVERY_CALLS_PER_TASK = 12
@@ -72,19 +72,19 @@ DEFAULT_PARALLEL_WORKERS = 4
 MAX_PARALLEL_WORKERS = 4
 DEFAULT_CAMPAIGN_MINUTES = 480
 
-TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v1"
-TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v2"
+TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v2"
+TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v3"
 TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
 TASK_SEMANTIC_PREPARED_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-prepared.v2"
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v3"
 )
 TASK_SEMANTIC_PROPOSAL_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-proposal.v2"
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v3"
 )
-TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v2"
-TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v2"
-TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v2"
-TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v2"
+TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v3"
+TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v3"
+TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v3"
+TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v3"
 CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
 CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-campaign-runtime-custody.v1"
@@ -92,8 +92,8 @@ CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
 QUERY_RELEASE_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-query-release-custody.v1"
 )
-CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v2"
-CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v2"
+CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v3"
+CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v3"
 RESULT_FILENAME = "campaign_result.json"
 JOURNAL_DIRECTORY = "journals"
 
@@ -137,6 +137,17 @@ EXPOSURE_PREDECESSOR_DIGEST = (
 
 _RAW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
+
+TYPED_SEMANTIC_PROPOSAL_GAP = "typed_semantic_proposal_gap"
+TYPED_LANGUAGE_GAP = "typed_language_gap"
+TYPED_SELECTIVITY_GAP = "typed_selectivity_gap"
+TYPED_GROUNDING_REPEATABILITY_GAP = "typed_grounding_repeatability_gap"
+TYPED_TASK_GAP_STATUSES = (
+    TYPED_SEMANTIC_PROPOSAL_GAP,
+    TYPED_LANGUAGE_GAP,
+    TYPED_SELECTIVITY_GAP,
+    TYPED_GROUNDING_REPEATABILITY_GAP,
+)
 
 
 class ObjectBongardScenePredicateCampaignCommandError(RuntimeError):
@@ -2360,9 +2371,13 @@ def _freeze_task_ir(
     registered_b_batch: Mapping[str, Any],
 ) -> tuple[object, dict[str, Any], object]:
     from bongard.object_bongard_scene_predicate_ir import (
+        SCENE_CALIBRATION_BUNDLE_SCHEMA,
         ScenePredicateCalibrationBundle,
         build_object_bongard_scene_predicate_calibration_bundle,
         cold_replay_object_bongard_scene_predicate_calibration_bundle,
+    )
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
     )
 
     if not _registered_envelopes_match(
@@ -2380,6 +2395,16 @@ def _freeze_task_ir(
         semantic_registry_proposal=semantic_proposal,
     )
     data = bundle.to_data()
+    if (
+        data.get("schema") != SCENE_CALIBRATION_BUNDLE_SCHEMA
+        or bundle.registry_derivation_mode
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        or bundle.registry_derivation_digest
+        != getattr(semantic_proposal, "proposal_digest", None)
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task IR does not bind the current role-aware semantic registry"
+        )
     decoded = ScenePredicateCalibrationBundle.from_data(data)
     replayed = cold_replay_object_bongard_scene_predicate_calibration_bundle(
         decoded,
@@ -2461,6 +2486,80 @@ def _ranker_output_schema(survivors: Sequence[str]) -> dict[str, object]:
     return schema
 
 
+def _digest_free_task_ranker_value(value: object) -> object:
+    """Project frozen IR rows into the deterministic model-visible view."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: _digest_free_task_ranker_value(item)
+            for key, item in value.items()
+            if key == "candidate_digest" or not key.endswith("_digest")
+        }
+    if isinstance(value, (list, tuple)):
+        return [_digest_free_task_ranker_value(item) for item in value]
+    return value
+
+
+def _digest_free_task_ranker_row(value: Mapping[str, Any]) -> dict[str, Any]:
+    row = _canonical_mapping(value, "task ranker row")
+    projected = _digest_free_task_ranker_value(row)
+    if not isinstance(projected, dict):  # pragma: no cover - structural guard
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker slate projection differs"
+        )
+    candidate_digest = projected.get("candidate_digest")
+    if (
+        not isinstance(candidate_digest, str)
+        or _RAW_DIGEST.fullmatch(candidate_digest) is None
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker slate projection lost candidate identity"
+        )
+    return projected
+
+
+def _task_bundle_field(bundle: object, field: str) -> object:
+    if isinstance(bundle, Mapping):
+        return bundle.get(field)
+    return getattr(bundle, field, None)
+
+
+def _task_typed_gap_status(*, semantic_valid: bool, bundle: object) -> str | None:
+    """Name the first failed evidence gate, matching calibration semantics."""
+
+    if type(semantic_valid) is not bool:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal decision is not Boolean"
+        )
+    if not semantic_valid:
+        return TYPED_SEMANTIC_PROPOSAL_GAP
+    survivors = _task_bundle_field(bundle, "complete_survivor_digests")
+    if not isinstance(survivors, (list, tuple)):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task survivor inventory differs"
+        )
+    if survivors:
+        return None
+    for field, status in (
+        ("coverage_gate", TYPED_LANGUAGE_GAP),
+        ("selectivity_gate", TYPED_SELECTIVITY_GAP),
+        ("repeatability_gate", TYPED_GROUNDING_REPEATABILITY_GAP),
+    ):
+        gate = _task_bundle_field(bundle, field)
+        passed = gate.get("passed") if isinstance(gate, Mapping) else getattr(
+            gate, "passed", None
+        )
+        if type(passed) is not bool:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"task {field} decision differs"
+            )
+        if not passed:
+            return status
+    raise ObjectBongardScenePredicateCampaignCommandError(
+        "empty task survivor space has no failed evidence gate"
+    )
+
+
 def _ranker_prompt(rows: Sequence[Mapping[str, Any]]) -> str:
     slate = tuple(_canonical_mapping(item, "task ranker row") for item in rows)
     _ranker_output_schema(tuple(item["candidate_digest"] for item in slate))
@@ -2536,8 +2635,15 @@ def _rank_task_bundle(
 
     survivors = tuple(getattr(bundle, "complete_survivor_digests"))
     semantic_valid = semantic_proposal_record.get("semantic_proposal_valid") is True
+    gap_status = _task_typed_gap_status(
+        semantic_valid=semantic_valid,
+        bundle=bundle,
+    )
     if semantic_valid:
-        slate = tuple(dict(item) for item in getattr(bundle, "ranker_slate"))
+        slate = tuple(
+            _digest_free_task_ranker_row(item)
+            for item in getattr(bundle, "ranker_slate")
+        )
         omitted = tuple(dict(item) for item in getattr(bundle, "omitted_survivors"))
     else:
         slate = ()
@@ -2565,6 +2671,7 @@ def _rank_task_bundle(
                 "semantic_proposal_status"
             ],
             "semantic_proposal_valid": semantic_valid,
+            "typed_gap_status": gap_status,
             "complete_survivor_digests": list(survivors),
             "ranker_slate": list(slate),
             "omitted_survivors": list(omitted),
@@ -2579,7 +2686,7 @@ def _rank_task_bundle(
         record=rank_input_record,
         digest_field="rank_input_digest",
     )
-    if not semantic_valid or not survivors:
+    if gap_status is not None:
         if slate:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "typed gap carries a ranker slate"
@@ -2590,11 +2697,7 @@ def _rank_task_bundle(
                 "command_id": COMMAND_ID,
                 "task_plan_digest": getattr(task, "record_digest"),
                 "rank_input_digest": rank_input["rank_input_digest"],
-                "status": (
-                    "typed_semantic_proposal_gap"
-                    if not semantic_valid
-                    else "typed_version_space_gap"
-                ),
+                "status": gap_status,
                 "ranker_called": False,
                 "ranker_fresh_call_count": 0,
                 "selected_survivor_digest": None,
@@ -2698,13 +2801,23 @@ def _cold_replay_task_ranker(
     slate = tuple(rank_input["ranker_slate"])
     if not slate:
         semantic_valid = rank_input.get("semantic_proposal_valid") is True
-        expected_status = (
-            "typed_version_space_gap"
-            if semantic_valid
-            else "typed_semantic_proposal_gap"
-        )
+        expected_status = rank_input.get("typed_gap_status")
         if (
-            (semantic_valid and rank_input["complete_survivor_digests"])
+            expected_status not in TYPED_TASK_GAP_STATUSES
+            or (
+                not semantic_valid
+                and expected_status != TYPED_SEMANTIC_PROPOSAL_GAP
+            )
+            or (
+                semantic_valid
+                and expected_status
+                not in (
+                    TYPED_LANGUAGE_GAP,
+                    TYPED_SELECTIVITY_GAP,
+                    TYPED_GROUNDING_REPEATABILITY_GAP,
+                )
+            )
+            or (semantic_valid and rank_input["complete_survivor_digests"])
             or rank_result.get("status") != expected_status
             or rank_result["ranker_called"] is not False
             or rank_result["selected_survivor_digest"] is not None
@@ -2714,6 +2827,10 @@ def _cold_replay_task_ranker(
                 "typed gap forged a ranker journal"
             )
         return None
+    if rank_input.get("typed_gap_status") is not None:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "nonempty cold-replay ranker slate carries a typed gap"
+        )
     prompt = _ranker_prompt(slate)
     _assert_task_ranker_privacy(slate, task=task, prompt=prompt)
     schema = _ranker_output_schema(
@@ -3156,21 +3273,26 @@ def _execute_task(
     query_batch_receipt: object | None = None
     score_rows: tuple[dict[str, Any], dict[str, Any]]
     semantic_valid = semantic_proposal_record["semantic_proposal_valid"] is True
+    expected_gap_status = _task_typed_gap_status(
+        semantic_valid=semantic_valid,
+        bundle=bundle,
+    )
     if selected is None:
-        if semantic_valid and bundle.complete_survivor_digests:
+        if expected_gap_status is None:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "nonempty task version space was converted to a gap"
             )
-        if not semantic_valid and (
-            tuple(getattr(registry, "tags"))
-            or rank_result.get("status") != "typed_semantic_proposal_gap"
-        ):
+        if rank_result.get("status") != expected_gap_status:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "task rank result differs from its failed evidence gate"
+            )
+        if not semantic_valid and tuple(getattr(registry, "tags")):
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "invalid semantic proposal escaped its zero-tag typed gap"
             )
         score_rows = _typed_gap_score_rows()
     else:
-        if not semantic_valid:
+        if not semantic_valid or expected_gap_status is not None:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "invalid semantic proposal reached ranker or query release"
             )
@@ -3397,11 +3519,7 @@ def _execute_task(
             "status": (
                 "evaluated"
                 if queried
-                else (
-                    "typed_semantic_proposal_gap"
-                    if not semantic_valid
-                    else "typed_version_space_gap"
-                )
+                else expected_gap_status
             ),
             "semantic_proposal_digest": semantic_proposal.proposal_digest,
             "semantic_proposal_status": semantic_proposal.status,
@@ -3978,13 +4096,18 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
     selected = raw.get("selected_survivor_digest")
     queried = selected is not None
     semantic_valid = raw.get("semantic_proposal_valid") is True
-    expected_status = (
-        "evaluated"
+    status = raw.get("status")
+    status_matches_semantic_state = (
+        status == "evaluated"
         if queried
         else (
-            "typed_semantic_proposal_gap"
+            status == TYPED_SEMANTIC_PROPOSAL_GAP
             if not semantic_valid
-            else "typed_version_space_gap"
+            else status in (
+                TYPED_LANGUAGE_GAP,
+                TYPED_SELECTIVITY_GAP,
+                TYPED_GROUNDING_REPEATABILITY_GAP,
+            )
         )
     )
     expected_delta = {
@@ -4030,7 +4153,7 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         != ("proposed" if semantic_valid else "typed_proposal_gap")
         or (queried and not semantic_valid)
         or _RAW_DIGEST.fullmatch(str(raw.get("semantic_proposal_digest"))) is None
-        or raw.get("status") != expected_status
+        or not status_matches_semantic_state
         or not isinstance(delta, Mapping)
         or set(delta) != set(expected_delta)
         or any(type(delta.get(key)) is not int for key in expected_delta)
@@ -4096,6 +4219,7 @@ def _verify_task_from_store(
     task_result: Mapping[str, Any],
 ) -> tuple[int, bool]:
     from bongard.object_bongard_scene_predicate_ir import (
+        SCENE_CALIBRATION_BUNDLE_SCHEMA,
         ScenePredicateCalibrationBundle,
         ScenePredicateCandidate,
         ScenePredicateLanguage,
@@ -4359,6 +4483,7 @@ def _verify_task_from_store(
         "semantic_proposal_digest",
         "semantic_proposal_status",
         "semantic_proposal_valid",
+        "typed_gap_status",
         "complete_survivor_digests",
         "ranker_slate",
         "omitted_survivors",
@@ -4661,8 +4786,14 @@ def _verify_task_from_store(
         semantic_registry_proposal=semantic_proposal,
     )
     semantic_valid = semantic_proposal.status == "proposed"
+    expected_gap_status = _task_typed_gap_status(
+        semantic_valid=semantic_valid,
+        bundle=bundle,
+    )
     expected_ranker_slate = (
-        [dict(item) for item in bundle.ranker_slate] if semantic_valid else []
+        [_digest_free_task_ranker_row(item) for item in bundle.ranker_slate]
+        if semantic_valid
+        else []
     )
     expected_omitted = (
         [dict(item) for item in bundle.omitted_survivors]
@@ -4678,6 +4809,11 @@ def _verify_task_from_store(
     if (
         replayed_bundle != bundle
         or rebuilt_bundle != bundle
+        or ir_record["bundle"].get("schema")
+        != SCENE_CALIBRATION_BUNDLE_SCHEMA
+        or bundle.registry_derivation_mode
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        or bundle.registry_derivation_digest != semantic_proposal.proposal_digest
         or ir_record["bundle_digest"] != bundle.bundle_digest
         or task_result["bundle_digest"] != bundle.bundle_digest
         or rank_input["task_plan_digest"] != getattr(task, "record_digest")
@@ -4688,6 +4824,7 @@ def _verify_task_from_store(
         or rank_input["semantic_proposal_digest"] != semantic_proposal.proposal_digest
         or rank_input["semantic_proposal_status"] != semantic_proposal.status
         or rank_input["semantic_proposal_valid"] is not semantic_valid
+        or rank_input["typed_gap_status"] != expected_gap_status
         or rank_input["complete_survivor_digests"]
         != list(bundle.complete_survivor_digests)
         or rank_input["ranker_slate"] != expected_ranker_slate
@@ -4714,16 +4851,12 @@ def _verify_task_from_store(
             "task rank selection differs on disk cold replay"
         )
     if selected is None:
-        expected_gap_status = (
-            "typed_version_space_gap"
-            if semantic_valid
-            else "typed_semantic_proposal_gap"
-        )
         if (
-            (semantic_valid and bundle.complete_survivor_digests)
+            expected_gap_status is None
             or (not semantic_valid and tuple(registry.tags))
             or rank_result.get("ranker_called") is not False
             or rank_result.get("status") != expected_gap_status
+            or task_result.get("status") != expected_gap_status
             or rank_result.get("ranker_fresh_call_count") != 0
             or rank_result.get("ranker_payload") is not None
             or rank_result.get("ranker_journal_directory") is not None
@@ -4736,7 +4869,7 @@ def _verify_task_from_store(
             )
         return int(task_result["correct_count"]), False
 
-    if not semantic_valid:
+    if not semantic_valid or expected_gap_status is not None:
         raise ObjectBongardScenePredicateCampaignCommandError(
             "semantic proposal gap reached persisted ranker/query path"
         )
