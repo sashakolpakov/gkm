@@ -1,10 +1,11 @@
-"""Prose-grounded ordinal visual observations for generic Bongard panels.
+"""Contrastive prose-grounded visual observations for generic Bongard panels.
 
-The model does not write a predicate.  It applies one frozen prose rubric to
-candidate-independent atlas cells and to the complete scene, returning only
-inclusive intervals on a fixed five-level ordinal scale.  Pure Python then
-projects those raw rows onto reciprocal-stable object lineages, conservative
-unresolved possible-object rows, and one canonical whole-scene witness.
+The model does not write a predicate.  In one turn it applies one frozen,
+ordered target-versus-foil rubric to candidate-independent atlas cells and to
+the complete scene, returning only inclusive intervals on a fixed five-level
+ordinal scale.  Pure Python then projects those raw rows onto reciprocal-stable
+object lineages, conservative unresolved possible-object rows, and one
+canonical whole-scene witness.
 
 All predicate identity and decisions remain Python-authoritative.  Lean is
 neither imported nor required and may be removed without changing replay.
@@ -62,21 +63,23 @@ from bongard.transport import (
 )
 
 
-RUBRIC_SPEC_SCHEMA = "gkm.bongard-object-rubric-spec.v1"
+RUBRIC_SPEC_SCHEMA = "gkm.bongard-object-rubric-spec.v2"
 RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-object-rubric-observation.v1"
 RUBRIC_SHARD_SCHEMA = "gkm.bongard-object-rubric-observer-shard.v1"
 RUBRIC_OBSERVER_ARTIFACT_SCHEMA = "gkm.bongard-object-rubric-observer-artifact.v1"
-RUBRIC_OBSERVER_PROTOCOL_ID = "bongard.object-rubric-observer/ordinal-atlas-scene-v1"
+RUBRIC_OBSERVER_PROTOCOL_ID = (
+    "bongard.object-rubric-observer/contrastive-ordinal-atlas-scene-v2"
+)
 
 # These strings are the operational meaning of every threshold in the closed
 # downstream language.  They are model-visible, content-addressed, and shared
 # verbatim with the text-only survivor ranker.
 RUBRIC_ORDINAL_LEVEL_ANCHORS: tuple[tuple[int, str], ...] = (
-    (0, "No visible match, or the visible form contradicts the description."),
-    (1, "One weak or incidental visible cue matches the description."),
-    (2, "A plausible but partial or ambiguous visible match."),
-    (3, "A clear match showing most defining visible cues."),
-    (4, "An unmistakable prototypical visible match."),
+    (0, "The visible form matches the foil description clearly more strongly than the target description."),
+    (1, "The visible form matches the foil description only slightly more strongly than the target description."),
+    (2, "Neither description matches more strongly, or the preference is genuinely uncertain."),
+    (3, "The visible form matches the target description only slightly more strongly than the foil description."),
+    (4, "The visible form matches the target description clearly more strongly than the foil description."),
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -111,6 +114,8 @@ def _authority_data() -> dict[str, object]:
         "lean_defines_identity_or_decision": False,
         "lean_required_for_replay": False,
         "lean_removal_changes_decision": False,
+        "negation_allowed": False,
+        "polarity_flip_allowed": False,
     }
 
 
@@ -149,9 +154,13 @@ def object_bongard_rubric_observer_source_digest() -> str:
 def object_bongard_rubric_ordinal_scale_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-ordinal-scale.v1",
+            "schema": "gkm.bongard-object-rubric-ordinal-scale.v2",
             "anchors": [list(item) for item in RUBRIC_ORDINAL_LEVEL_ANCHORS],
             "interval_semantics": "inclusive-lower-upper-narrowest-honest-range",
+            "preference_direction": "ordered-foil-through-tie-through-target",
+            "certified_target_preference_levels": [3, 4],
+            "deadband_levels": [2],
+            "certified_foil_preference_levels": [0, 1],
         }
     )
 
@@ -178,15 +187,47 @@ def object_bongard_catalog_cue_rubric(feature_id: str) -> str:
     return rubric
 
 
+def object_bongard_catalog_contrast_rubric(
+    target_feature_id: str,
+    foil_feature_id: str,
+) -> str:
+    """Derive the exact frozen ordered target-versus-foil observer prose."""
+
+    target = object_bongard_catalog_cue_rubric(target_feature_id)
+    foil = object_bongard_catalog_cue_rubric(foil_feature_id)
+    if target_feature_id == foil_feature_id:
+        raise ObjectBongardRubricObserverError(
+            "target and foil semantic cue IDs must be distinct"
+        )
+    rubric = (
+        "Judge how much more strongly the visible form matches this target "
+        "description than this foil description. "
+        f"Target description, {target} Foil description, {foil}"
+    )
+    try:
+        checked = _object_protocol._audit_prose(
+            rubric, "catalog contrast rubric"
+        )
+    except (TypeError, ValueError) as exc:  # pragma: no cover - frozen guard
+        raise ObjectBongardRubricObserverError(
+            "frozen catalog contrast rubric violates the observer prose grammar"
+        ) from exc
+    if checked != rubric:
+        raise ObjectBongardRubricObserverError(
+            "frozen catalog contrast rubric is not canonical"
+        )
+    return rubric
+
+
 def object_bongard_rubric_observer_catalog_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-observer-catalog.v1",
+            "schema": "gkm.bongard-object-rubric-observer-catalog.v2",
             "protocol_id": RUBRIC_OBSERVER_PROTOCOL_ID,
             "source_digest": object_bongard_rubric_observer_source_digest(),
             "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
             "semantic_cue_rubric_derivation": (
-                "exact-operational-description-by-single-feature-id"
+                "exact-ordered-target-versus-foil-operational-descriptions"
             ),
             "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
             "hypothesis_extractor_digest": (
@@ -206,6 +247,10 @@ def _spec_content(value: "ObjectBongardRubricSpec") -> dict[str, object]:
         "semantic_artifact_digest": value.semantic_artifact_digest,
         "rubric": value.rubric,
         "feature_nominations": list(value.feature_nominations),
+        "ordered_feature_roles": ["target", "foil"],
+        "rubric_derivation_policy": (
+            "exact-frozen-catalog-ordered-target-versus-foil"
+        ),
         "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
         "prose_is_observed_not_executable": True,
         **_authority_data(),
@@ -229,12 +274,18 @@ class ObjectBongardRubricSpec:
             raise ObjectBongardRubricObserverError("rubric prose differs")
         if (
             not isinstance(self.feature_nominations, tuple)
-            or not self.feature_nominations
-            or self.feature_nominations
-            != tuple(sorted(set(self.feature_nominations), key=OBJECT_FEATURE_IDS.index))
+            or len(self.feature_nominations) != 2
+            or len(set(self.feature_nominations)) != 2
             or any(item not in OBJECT_FEATURE_IDS for item in self.feature_nominations)
         ):
             raise ObjectBongardRubricObserverError("feature nominations are invalid")
+        target_feature_id, foil_feature_id = self.feature_nominations
+        if self.rubric != object_bongard_catalog_contrast_rubric(
+            target_feature_id, foil_feature_id
+        ):
+            raise ObjectBongardRubricObserverError(
+                "rubric is not the exact ordered catalog contrast derivation"
+            )
         _digest(self.spec_digest, "rubric spec digest")
         if self.spec_digest != canonical_digest(_spec_content(self)):
             raise ObjectBongardRubricObserverError("rubric spec digest differs")
@@ -289,11 +340,14 @@ class ObjectBongardRubricSpec:
             or semantic.feature_families[0] == semantic.feature_families[1]
         ):
             raise ObjectBongardRubricObserverError("semantic artifact differs")
-        cue_id = semantic.feature_families[0][0]
+        target_cue_id = semantic.feature_families[0][0]
+        foil_cue_id = semantic.feature_families[1][0]
         return cls.create(
             expected,
-            object_bongard_catalog_cue_rubric(cue_id),
-            (cue_id,),
+            object_bongard_catalog_contrast_rubric(
+                target_cue_id, foil_cue_id
+            ),
+            (target_cue_id, foil_cue_id),
         )
 
     def to_data(self) -> dict[str, object]:
@@ -305,7 +359,8 @@ class ObjectBongardRubricSpec:
             value,
             {
                 "schema", "semantic_artifact_digest", "rubric",
-                "feature_nominations", "ordinal_scale_digest",
+                "feature_nominations", "ordered_feature_roles",
+                "rubric_derivation_policy", "ordinal_scale_digest",
                 "prose_is_observed_not_executable", *_authority_data(), "spec_digest",
             },
             "rubric spec",
@@ -313,6 +368,9 @@ class ObjectBongardRubricSpec:
         if (
             raw["schema"] != RUBRIC_SPEC_SCHEMA
             or raw["ordinal_scale_digest"] != object_bongard_rubric_ordinal_scale_digest()
+            or raw["ordered_feature_roles"] != ["target", "foil"]
+            or raw["rubric_derivation_policy"]
+            != "exact-frozen-catalog-ordered-target-versus-foil"
             or raw["prose_is_observed_not_executable"] is not True
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["feature_nominations"], list)
@@ -759,7 +817,8 @@ def object_bongard_rubric_observer_prompt(
     )
     return (
         "Inspect scene.png and the occupied cells of the four-by-four grid in "
-        f"{sheet.name}. Apply this exact visible-description rubric:\n"
+        f"{sheet.name}. Apply this exact ordered target-versus-foil visible "
+        "comparison jointly in the same view:\n"
         f"{rubric_spec.rubric}\n\n"
         "Use only this fixed ordinal scale:\n"
         f"{anchors}\n\n"
@@ -774,13 +833,16 @@ def object_bongard_rubric_observer_prompt(
 def object_bongard_rubric_observer_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-observer-protocol.v1",
+            "schema": "gkm.bongard-object-rubric-observer-protocol.v2",
             "protocol_id": RUBRIC_OBSERVER_PROTOCOL_ID,
             "source_digest": object_bongard_rubric_observer_source_digest(),
             "catalog_digest": object_bongard_rubric_observer_catalog_digest(),
             "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
             "output_schema": object_bongard_rubric_observer_output_schema(),
-            "prompt_policy": "exact-rubric-fixed-anchors-exhaustive-row-major-slots",
+            "prompt_policy": (
+                "exact-ordered-target-versus-foil-rubric-joint-same-turn-"
+                "fixed-anchors-exhaustive-row-major-slots"
+            ),
             **_authority_data(),
         }
     )
@@ -1607,6 +1669,7 @@ __all__ = (
     "RubricObservationState",
     "RubricScope",
     "RubricScopeObservation",
+    "object_bongard_catalog_contrast_rubric",
     "object_bongard_catalog_cue_rubric",
     "object_bongard_rubric_observer_catalog_digest",
     "object_bongard_rubric_observer_model_digest",

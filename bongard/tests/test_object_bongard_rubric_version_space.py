@@ -20,6 +20,7 @@ from bongard.object_bongard_rubric_observer import (
     RubricObservationState,
     RubricScope,
     RubricScopeObservation,
+    object_bongard_catalog_contrast_rubric,
     object_bongard_rubric_ordinal_scale_digest,
     observe_object_bongard_rubric,
     verify_object_bongard_rubric_observer_artifact,
@@ -62,7 +63,9 @@ def _raw(label: str) -> str:
 def _spec() -> ObjectBongardRubricSpec:
     return ObjectBongardRubricSpec.create(
         _raw("semantic-artifact"),
-        "A compact bird-like angular form with several oblique spans.",
+        object_bongard_catalog_contrast_rubric(
+            "oblique_span_support_ppm", "bird_like_support_ppm"
+        ),
         ("oblique_span_support_ppm", "bird_like_support_ppm"),
     )
 
@@ -211,7 +214,7 @@ def _base_support() -> tuple[
         _observed_artifact(
             f"bd/rubric_fixture/0/{index}.png",
             image_index=index + 6,
-            object_interval=(2, 2),
+            object_interval=(1, 1),
             scene_interval=(4, 4),
             rubric_spec=spec,
         )
@@ -265,11 +268,11 @@ def _candidate(
     )
 
 
-def test_complete_eight_candidate_inventory_is_positive_closed_and_scale_bound() -> None:
+def test_complete_two_candidate_inventory_is_positive_closed_and_scale_bound() -> None:
     spec = _spec()
     candidates = enumerate_object_bongard_rubric_candidates(spec)
 
-    assert len(candidates) == 8
+    assert len(candidates) == 2
     assert [(item.scope, item.threshold) for item in candidates] == [
         *((RubricScope.OBJECT, value) for value in RUBRIC_THRESHOLDS),
         *((RubricScope.SCENE, value) for value in RUBRIC_THRESHOLDS),
@@ -295,6 +298,8 @@ def test_complete_eight_candidate_inventory_is_positive_closed_and_scale_bound()
     assert version_module._language_data()["ordinal_scale_digest"] == (
         object_bongard_rubric_ordinal_scale_digest()
     )
+    assert version_module._language_data()["deadband_levels"] == [2]
+    assert version_module._language_data()["tie_can_certify_absence"] is False
 
 
 def test_real_observation_interval_is_closed_and_canonical() -> None:
@@ -322,16 +327,10 @@ def test_public_observer_artifact_separates_object_and_scene_interval_logic() ->
     assert artifact.object_observations
     assert artifact.canonical_scene_observation is not None
     assert evaluate_object_bongard_rubric_candidate(
-        _candidate(spec, RubricScope.OBJECT, 2), artifact
-    ).disposition is Disposition.PRESENT
-    assert evaluate_object_bongard_rubric_candidate(
         _candidate(spec, RubricScope.OBJECT, 3), artifact
     ).disposition is Disposition.INDETERMINATE
     assert evaluate_object_bongard_rubric_candidate(
-        _candidate(spec, RubricScope.OBJECT, 4), artifact
-    ).disposition is Disposition.CERTIFIED_ABSENT
-    assert evaluate_object_bongard_rubric_candidate(
-        _candidate(spec, RubricScope.SCENE, 1), artifact
+        _candidate(spec, RubricScope.SCENE, 3), artifact
     ).disposition is Disposition.CERTIFIED_ABSENT
 
 
@@ -341,7 +340,7 @@ def test_exact_six_plus_six_support_retains_only_the_verified_threshold() -> Non
         spec, positives, negatives
     )
 
-    assert len(version.candidates) == 8
+    assert len(version.candidates) == 2
     assert len(version.support_panel_ids) == 12
     assert len(set(version.support_panel_ids)) == 12
     assert len(version.survivor_candidate_digests) == 1
@@ -412,7 +411,7 @@ def test_missing_errors_and_unresolved_possible_objects_never_become_absence() -
         spec, "unresolved-low", RubricScope.OBJECT, lower=0, upper=0
     )
     unresolved_crossing = _observation(
-        spec, "unresolved-crossing", RubricScope.OBJECT, lower=0, upper=1
+        spec, "unresolved-crossing", RubricScope.OBJECT, lower=0, upper=2
     )
     unresolved_error = _observation(
         spec,
@@ -422,21 +421,39 @@ def test_missing_errors_and_unresolved_possible_objects_never_become_absence() -
     )
 
     assert version_module._evaluate_object_scope(
-        (stable_low,), (unresolved_low,), 1
+        (stable_low,), (unresolved_low,), 3
     ) is Disposition.CERTIFIED_ABSENT
     assert version_module._evaluate_object_scope(
-        (stable_low,), (unresolved_crossing,), 1
+        (stable_low,), (unresolved_crossing,), 3
     ) is Disposition.INDETERMINATE
     assert version_module._evaluate_object_scope(
-        (stable_low,), (unresolved_error,), 1
+        (stable_low,), (unresolved_error,), 3
     ) is Disposition.ERROR
     assert version_module._evaluate_object_scope(
-        (stable_high,), (unresolved_error,), 1
+        (stable_high,), (unresolved_error,), 3
+    ) is Disposition.ERROR
+    stable_target = _observation(
+        spec, "stable-target", RubricScope.OBJECT, lower=3, upper=3
+    )
+    assert version_module._evaluate_object_scope(
+        (stable_target,), (unresolved_error,), 3
     ) is Disposition.PRESENT
-    assert version_module._evaluate_object_scope((), (), 1) is (
+    stable_tie = _observation(
+        spec, "stable-tie", RubricScope.OBJECT, lower=2, upper=2
+    )
+    assert version_module._evaluate_object_scope(
+        (stable_tie,), (), 3
+    ) is Disposition.INDETERMINATE
+    assert version_module._evaluate_object_scope((), (), 3) is (
         Disposition.INDETERMINATE
     )
-    assert version_module._evaluate_scene_scope(None, 1) is (
+    assert version_module._evaluate_scene_scope(None, 3) is (
+        Disposition.INDETERMINATE
+    )
+    scene_tie = _observation(
+        spec, "scene-tie", RubricScope.SCENE, lower=2, upper=2
+    )
+    assert version_module._evaluate_scene_scope(scene_tie, 3) is (
         Disposition.INDETERMINATE
     )
 
@@ -449,10 +466,10 @@ def test_missing_errors_and_unresolved_possible_objects_never_become_absence() -
         transport_error=True,
     )
     assert evaluate_object_bongard_rubric_candidate(
-        _candidate(spec, RubricScope.OBJECT, 1), failed
+        _candidate(spec, RubricScope.OBJECT, 3), failed
     ).disposition is Disposition.ERROR
     assert evaluate_object_bongard_rubric_candidate(
-        _candidate(spec, RubricScope.SCENE, 1), failed
+        _candidate(spec, RubricScope.SCENE, 3), failed
     ).disposition is Disposition.ERROR
 
 

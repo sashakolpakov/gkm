@@ -16,7 +16,7 @@ from bongard.object_bongard_semantics import (
 )
 from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricSpec,
-    object_bongard_catalog_cue_rubric,
+    object_bongard_catalog_contrast_rubric,
 )
 from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.tests.test_prototype_scene_observer import (
@@ -210,9 +210,12 @@ def test_audit_prose_cannot_conjoin_or_implicitly_complement_the_predicate(
     spec = ObjectBongardRubricSpec.from_semantic_artifact(
         artifact, expected_artifact_digest=artifact.artifact_digest
     )
-    assert spec.feature_nominations == ("bird_like_support_ppm",)
-    assert spec.rubric == object_bongard_catalog_cue_rubric(
-        "bird_like_support_ppm"
+    assert spec.feature_nominations == (
+        "bird_like_support_ppm",
+        "rounded_leaf_support_ppm",
+    )
+    assert spec.rubric == object_bongard_catalog_contrast_rubric(
+        "bird_like_support_ppm", "rounded_leaf_support_ppm"
     )
     assert audit_prose != spec.rubric
 

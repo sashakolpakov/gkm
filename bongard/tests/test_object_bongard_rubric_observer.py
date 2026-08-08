@@ -16,7 +16,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
     RubricObservationState,
-    object_bongard_catalog_cue_rubric,
+    object_bongard_catalog_contrast_rubric,
     object_bongard_rubric_observer_prompt,
     object_bongard_rubric_ordinal_scale_digest,
     observe_object_bongard_rubric,
@@ -46,8 +46,10 @@ def _inputs():
     lineages = extract_object_lineage_packet(scene, hypotheses)
     spec = ObjectBongardRubricSpec.create(
         SEMANTIC_DIGEST,
-        "A rounded bird-like contour arrangement recurs.",
-        ("bird_like_support_ppm",),
+        object_bongard_catalog_contrast_rubric(
+            "bird_like_support_ppm", "rounded_leaf_support_ppm"
+        ),
+        ("bird_like_support_ppm", "rounded_leaf_support_ppm"),
     )
     return scene, hypotheses, lineages, spec
 
@@ -132,27 +134,55 @@ def test_live_ordinal_rows_project_and_cold_replay() -> None:
     assert len(object_bongard_rubric_ordinal_scale_digest()) == 64
 
 
-def test_semantic_cue_derives_catalog_rubric_while_direct_specs_remain_usable() -> None:
+def test_semantic_cues_derive_ordered_contrast_while_direct_specs_remain_usable() -> None:
     semantic, calls = _describe_semantic()
     assert calls == 1
     derived = ObjectBongardRubricSpec.from_semantic_artifact(
         semantic, expected_artifact_digest=semantic.artifact_digest
     )
-    assert derived.feature_nominations == ("bird_like_support_ppm",)
-    assert derived.rubric == object_bongard_catalog_cue_rubric(
-        "bird_like_support_ppm"
+    assert derived.feature_nominations == (
+        "bird_like_support_ppm",
+        "rounded_leaf_support_ppm",
+    )
+    assert derived.rubric == object_bongard_catalog_contrast_rubric(
+        "bird_like_support_ppm", "rounded_leaf_support_ppm"
     )
     assert derived.rubric != semantic.rubrics[0]
 
     fixed_calibration = ObjectBongardRubricSpec.create(
         SEMANTIC_DIGEST,
-        "A fixed calibration-only visible description.",
-        ("bird_like_support_ppm",),
+        object_bongard_catalog_contrast_rubric(
+            "paired_sector_mismatch_support_ppm", "bird_like_support_ppm"
+        ),
+        ("paired_sector_mismatch_support_ppm", "bird_like_support_ppm"),
     )
-    assert fixed_calibration.rubric == "A fixed calibration-only visible description."
+    assert fixed_calibration.feature_nominations == (
+        "paired_sector_mismatch_support_ppm",
+        "bird_like_support_ppm",
+    )
+    assert fixed_calibration.to_data()["ordered_feature_roles"] == [
+        "target",
+        "foil",
+    ]
     assert ObjectBongardRubricSpec.from_data(
         fixed_calibration.to_data()
     ) == fixed_calibration
+
+    reversed_spec = ObjectBongardRubricSpec.create(
+        SEMANTIC_DIGEST,
+        object_bongard_catalog_contrast_rubric(
+            "bird_like_support_ppm", "paired_sector_mismatch_support_ppm"
+        ),
+        ("bird_like_support_ppm", "paired_sector_mismatch_support_ppm"),
+    )
+    assert reversed_spec.spec_digest != fixed_calibration.spec_digest
+
+    with pytest.raises(ObjectBongardRubricObserverError):
+        ObjectBongardRubricSpec.create(
+            SEMANTIC_DIGEST,
+            derived.rubric,
+            tuple(reversed(derived.feature_nominations)),
+        )
 
 
 def test_receipted_payload_cannot_be_decoupled_from_projected_rows() -> None:
@@ -192,6 +222,7 @@ def test_prompt_binds_exact_scale_and_has_no_experimental_role_words() -> None:
     )
     for _, meaning in RUBRIC_ORDINAL_LEVEL_ANCHORS:
         assert meaning in prompt
+    assert "ordered target-versus-foil" in prompt
     lowered = prompt.lower()
     for word in ("positive", "negative", "query", "formula", "predicate"):
         assert word not in lowered

@@ -1,11 +1,11 @@
 """Closed pure-Python predicates over ordinal visual-rubric observations.
 
-The vision observer supplies candidate-independent ordinal intervals.  This
-module is the only decision authority: for one frozen rubric it enumerates
-exactly eight positive ``AT_LEAST`` predicates (two scopes by four fixed
-thresholds), evaluates them with interval-safe rules, and retains every
-support-consistent predicate.  There is no negation, polarity repair,
-disjunction, arbitrary code, or model-selected threshold.
+The vision observer supplies candidate-independent ordinal preference
+intervals.  This module is the only decision authority: for one frozen rubric
+it enumerates exactly two positive ``AT_LEAST 3`` predicates, one per scope.
+Presence requires a lower bound of at least 3, absence requires an upper bound
+of at most 1, and level 2 is a mandatory deadband.  There is no negation,
+polarity repair, disjunction, arbitrary code, or model-selected threshold.
 """
 
 from __future__ import annotations
@@ -33,21 +33,23 @@ from bongard.object_bongard_rubric_observer import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-RUBRIC_CANDIDATE_SCHEMA = "gkm.bongard-object-rubric-candidate.v1"
+RUBRIC_CANDIDATE_SCHEMA = "gkm.bongard-object-rubric-candidate.v2"
 RUBRIC_CANDIDATE_EVALUATION_SCHEMA = (
-    "gkm.bongard-object-rubric-candidate-evaluation.v1"
+    "gkm.bongard-object-rubric-candidate-evaluation.v2"
 )
 RUBRIC_SUPPORT_DIAGNOSTIC_SCHEMA = (
     "gkm.bongard-object-rubric-support-diagnostic.v1"
 )
 RUBRIC_SUPPORT_GAP_SCHEMA = "gkm.bongard-object-rubric-support-gap.v1"
 RUBRIC_SUPPORT_VERSION_SPACE_SCHEMA = (
-    "gkm.bongard-object-rubric-support-version-space.v1"
+    "gkm.bongard-object-rubric-support-version-space.v2"
 )
 RUBRIC_VERSION_SPACE_ALGORITHM_ID = (
-    "bongard.object-rubric-version-space/positive-at-least-v1"
+    "bongard.object-rubric-version-space/positive-prefers-deadband-v2"
 )
-RUBRIC_THRESHOLDS = (1, 2, 3, 4)
+RUBRIC_PRESENT_LOWER_BOUND = 3
+RUBRIC_ABSENCE_UPPER_BOUND = 1
+RUBRIC_THRESHOLDS = (RUBRIC_PRESENT_LOWER_BOUND,)
 RUBRIC_SUPPORT_PANELS_PER_SIDE = 6
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -89,6 +91,13 @@ def _language_data() -> dict[str, object]:
     return {
         "operator": RubricPredicateOperator.AT_LEAST.value,
         "thresholds": list(RUBRIC_THRESHOLDS),
+        "present_when_interval_lower_at_least": RUBRIC_PRESENT_LOWER_BOUND,
+        "certified_absent_when_interval_upper_at_most": (
+            RUBRIC_ABSENCE_UPPER_BOUND
+        ),
+        "deadband_levels": [2],
+        "deadband_disposition": Disposition.INDETERMINATE.value,
+        "tie_can_certify_absence": False,
         "ordinal_scale_digest": object_bongard_rubric_ordinal_scale_digest(),
         "scopes": [RubricScope.OBJECT.value, RubricScope.SCENE.value],
         "object_quantifier": "exists-over-stable-object-observations",
@@ -136,7 +145,7 @@ def _threshold(value: object) -> int:
         RUBRIC_THRESHOLDS
     ):
         raise ObjectBongardRubricVersionSpaceError(
-            "rubric threshold must be one of the four frozen levels"
+            "rubric threshold must be the frozen target-preference level"
         )
     return value
 
@@ -154,7 +163,7 @@ def object_bongard_rubric_version_space_algorithm_digest() -> str:
 
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-rubric-version-space-algorithm.v1",
+            "schema": "gkm.bongard-object-rubric-version-space-algorithm.v2",
             "algorithm_id": RUBRIC_VERSION_SPACE_ALGORITHM_ID,
             "implementation_source_sha256": (
                 object_bongard_rubric_version_space_source_digest()
@@ -163,7 +172,7 @@ def object_bongard_rubric_version_space_algorithm_digest() -> str:
             "positive_accept": Disposition.PRESENT.value,
             "negative_accept": Disposition.CERTIFIED_ABSENT.value,
             "support_panels_per_side": RUBRIC_SUPPORT_PANELS_PER_SIDE,
-            "candidate_order": "object-threshold-ascending-then-scene-threshold-ascending",
+            "candidate_order": "object-prefers-target-then-scene-prefers-target",
             **_authority_data(),
         }
     )
@@ -196,7 +205,7 @@ def _candidate_content(value: "ObjectBongardRubricCandidate") -> dict[str, objec
 
 @dataclass(frozen=True, slots=True)
 class ObjectBongardRubricCandidate:
-    """One member of the fixed 2 x 4 rubric predicate inventory."""
+    """One member of the fixed two-scope target-preference inventory."""
 
     rubric_spec_digest: str
     scope: RubricScope
@@ -296,7 +305,7 @@ class ObjectBongardRubricCandidate:
 def enumerate_object_bongard_rubric_candidates(
     spec: ObjectBongardRubricSpec,
 ) -> tuple[ObjectBongardRubricCandidate, ...]:
-    """Return the complete, deterministic eight-candidate inventory."""
+    """Return the complete deterministic object/scene candidate inventory."""
 
     if not isinstance(spec, ObjectBongardRubricSpec):
         raise TypeError("spec must be ObjectBongardRubricSpec")
@@ -329,6 +338,9 @@ def _evaluation_content(
             "stable-object-only-for-object-scope;canonical-scene-only-for-scene-scope"
         ),
         "failed_or_missing_observation_is_absence": False,
+        "deadband_disposition_policy": (
+            "present-lower-ge-3-absent-upper-le-1-else-indeterminate"
+        ),
         **_authority_data(),
     }
 
@@ -368,7 +380,7 @@ class ObjectBongardRubricCandidateEvaluation:
         }
         if self.candidate_digest not in admitted:
             raise ObjectBongardRubricVersionSpaceError(
-                "evaluation candidate is outside the closed eight-member inventory"
+                "evaluation candidate is outside the closed two-member inventory"
             )
         if self.evaluation_digest != canonical_digest(_evaluation_content(self)):
             raise ObjectBongardRubricVersionSpaceError(
@@ -398,6 +410,7 @@ class ObjectBongardRubricCandidateEvaluation:
                 "disposition",
                 "positive_witness_source",
                 "failed_or_missing_observation_is_absence",
+                "deadband_disposition_policy",
                 *_authority_data(),
                 "evaluation_digest",
             },
@@ -543,7 +556,7 @@ class ObjectBongardRubricSupportGap:
             != tuple(sorted(item.candidate_digest for item in self.diagnostics))
         ):
             raise ObjectBongardRubricVersionSpaceError(
-                "gap diagnostics must be eight unique digest-ordered candidates"
+                "gap diagnostics must cover every unique digest-ordered candidate"
             )
         _digest(self.gap_digest, "gap_digest")
         if self.gap_digest != canonical_digest(_gap_content(self)):
@@ -703,7 +716,7 @@ def _version_content(
 
 @dataclass(frozen=True, slots=True)
 class ObjectBongardRubricSupportVersionSpace:
-    """All eight candidate rows and their exact support-consistent subset."""
+    """Both candidate rows and their exact support-consistent subset."""
 
     algorithm_digest: str
     rubric_spec_digest: str
@@ -945,6 +958,7 @@ def _evaluate_object_scope(
     unresolved: Sequence[RubricScopeObservation],
     threshold: int,
 ) -> Disposition:
+    _threshold(threshold)
     stable_values = tuple(stable)
     unresolved_values = tuple(unresolved)
     for item in (*stable_values, *unresolved_values):
@@ -962,12 +976,13 @@ def _evaluate_object_scope(
 
     # Absence is considerably stricter.  At least one stable object must have
     # been admitted, and every stable as well as every eligible unresolved
-    # possible-object observation must have a scored upper bound below the
-    # threshold.  Arbitrary unions never reach either observer inventory.
+    # possible-object observation must certify foil preference with an upper
+    # bound at most 1.  A tie at level 2 is deliberately indeterminate.
+    # Arbitrary unions never reach either observer inventory.
     all_values = stable_values + unresolved_values
     if stable_values and all(
         item.state is RubricObservationState.SCORED
-        and _scored_bounds(item)[1] < threshold
+        and _scored_bounds(item)[1] <= RUBRIC_ABSENCE_UPPER_BOUND
         for item in all_values
     ):
         return Disposition.CERTIFIED_ABSENT
@@ -982,6 +997,7 @@ def _evaluate_object_scope(
 def _evaluate_scene_scope(
     observation: RubricScopeObservation | None, threshold: int
 ) -> Disposition:
+    _threshold(threshold)
     if observation is None:
         return Disposition.INDETERMINATE
     _require_observation_scope(observation, RubricScope.SCENE)
@@ -992,7 +1008,7 @@ def _evaluate_scene_scope(
     lower, upper = _scored_bounds(observation)
     if lower >= threshold:
         return Disposition.PRESENT
-    if upper < threshold:
+    if upper <= RUBRIC_ABSENCE_UPPER_BOUND:
         return Disposition.CERTIFIED_ABSENT
     return Disposition.INDETERMINATE
 
@@ -1068,7 +1084,7 @@ def build_object_bongard_rubric_support_version_space(
     positives: Sequence[ObjectBongardRubricObserverArtifact],
     negatives: Sequence[ObjectBongardRubricObserverArtifact],
 ) -> ObjectBongardRubricSupportVersionSpace:
-    """Enumerate and filter the exact eight predicates on 6 + 6 support."""
+    """Enumerate and filter the exact two predicates on 6 + 6 support."""
 
     if not isinstance(spec, ObjectBongardRubricSpec):
         raise TypeError("spec must be ObjectBongardRubricSpec")
@@ -1166,6 +1182,8 @@ __all__ = (
     "ObjectBongardRubricSupportGap",
     "ObjectBongardRubricSupportVersionSpace",
     "ObjectBongardRubricVersionSpaceError",
+    "RUBRIC_ABSENCE_UPPER_BOUND",
+    "RUBRIC_PRESENT_LOWER_BOUND",
     "RUBRIC_SUPPORT_PANELS_PER_SIDE",
     "RUBRIC_THRESHOLDS",
     "RUBRIC_VERSION_SPACE_ALGORITHM_ID",

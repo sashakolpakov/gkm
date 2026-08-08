@@ -16,6 +16,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
+    object_bongard_catalog_contrast_rubric,
     object_bongard_catalog_cue_rubric,
     object_bongard_rubric_ordinal_scale_digest,
 )
@@ -75,7 +76,9 @@ TARGET_RUBRIC = object_bongard_catalog_cue_rubric("bird_like_support_ppm")
 CONTRAST_RUBRIC = object_bongard_catalog_cue_rubric(
     "rounded_leaf_support_ppm"
 )
-FEATURES = ("bird_like_support_ppm",)
+CONTRASTIVE_RUBRIC = object_bongard_catalog_contrast_rubric(
+    "bird_like_support_ppm", "rounded_leaf_support_ppm"
+)
 
 
 @lru_cache(maxsize=1)
@@ -94,16 +97,16 @@ def _spec(semantic_artifact=None) -> ObjectBongardRubricSpec:
 
 @lru_cache(maxsize=None)
 def _version_space(
-    spec: ObjectBongardRubricSpec, *, survivor_count: int = 3
+    spec: ObjectBongardRubricSpec, *, survivor_count: int = 2
 ) -> tuple[
     ObjectBongardRubricSupportVersionSpace,
     tuple[ObjectBongardRubricObserverArtifact, ...],
     tuple[ObjectBongardRubricObserverArtifact, ...],
 ]:
-    if survivor_count not in (0, 3):
-        raise ValueError("rank fixture supports only zero or three survivors")
+    if survivor_count not in (0, 2):
+        raise ValueError("rank fixture supports only zero or two survivors")
     if survivor_count == 0:
-        _, witnessed, absent = _version_space(spec, survivor_count=3)
+        _, witnessed, absent = _version_space(spec, survivor_count=2)
         version = build_object_bongard_rubric_support_version_space(
             spec, absent, witnessed
         )
@@ -114,7 +117,7 @@ def _version_space(
             f"bd/rank_fixture/1/{index}.png",
             image_index=index,
             object_interval=(3, 3),
-            scene_interval=(0, 0),
+            scene_interval=(3, 3),
             rubric_spec=spec,
         )
         for index in range(6)
@@ -203,7 +206,7 @@ def _text_receipt(
 
 
 class _Transport:
-    def __init__(self, aliases: tuple[str, ...] = ("r002", "r000", "r001")):
+    def __init__(self, aliases: tuple[str, ...] = ("r001", "r000")):
         self.aliases = aliases
         self.calls = 0
         self.prompts: list[str] = []
@@ -297,11 +300,10 @@ def test_exact_verified_survivors_are_ranked_and_cold_verified() -> None:
     expected = version.survivor_candidate_digests
     assert transport.calls == 1
     assert response.ordered_candidate_digests == (
-        expected[2],
-        expected[0],
         expected[1],
+        expected[0],
     )
-    assert response.selected_candidate_digest == expected[2]
+    assert response.selected_candidate_digest == expected[1]
     assert response.ranker_protocol_id == OBJECT_BONGARD_RUBRIC_RANKER_PROTOCOL_ID
     assert response.ranker_protocol_digest == (
         object_bongard_rubric_ranker_protocol_digest()
@@ -332,6 +334,7 @@ def test_prompt_contains_only_rubrics_and_immutable_candidate_inventory() -> Non
     )
 
     assert TARGET_RUBRIC in prompt and CONTRAST_RUBRIC in prompt
+    assert f"contrastive_observer_rubric: {CONTRASTIVE_RUBRIC}" in prompt
     assert AUDIT_TARGET_RUBRIC not in prompt
     assert AUDIT_CONTRAST_RUBRIC not in prompt
     assert OBJECT_FEATURE_CATALOG_DIGEST in prompt
@@ -416,10 +419,10 @@ def test_contrast_is_derived_from_group_one_cue_and_bound_by_rank_input() -> Non
 @pytest.mark.parametrize(
     "aliases",
     [
-        ("r000", "r001"),
-        ("r000", "r000", "r002"),
-        ("r000", "r001", "r999"),
-        ("r000", "r001", "r002", "r003"),
+        ("r000",),
+        ("r000", "r000"),
+        ("r000", "r999"),
+        ("r000", "r001", "r002"),
     ],
 )
 def test_incomplete_duplicate_foreign_or_extra_aliases_are_rejected(
@@ -432,7 +435,7 @@ def test_incomplete_duplicate_foreign_or_extra_aliases_are_rejected(
 def test_extra_payload_field_is_rejected() -> None:
     def transport(prompt, schema, **kwargs):
         payload = {
-            "ordered_aliases": ["r000", "r001", "r002"],
+            "ordered_aliases": ["r000", "r001"],
             "formula": "model-authored formula is forbidden",
         }
         return CodexStructuredResult(payload, _text_receipt(prompt, schema, payload))
@@ -443,7 +446,7 @@ def test_extra_payload_field_is_rejected() -> None:
 
 def test_stale_receipt_and_response_tamper_fail_closed() -> None:
     def stale(prompt, schema, **kwargs):
-        payload = {"ordered_aliases": ["r000", "r001", "r002"]}
+        payload = {"ordered_aliases": ["r000", "r001"]}
         return CodexStructuredResult(
             payload, _text_receipt(prompt + " altered", schema, payload)
         )
@@ -474,8 +477,10 @@ def test_spec_artifact_contrast_and_rank_input_drift_fail_before_transport() -> 
         )
     forged_target = ObjectBongardRubricSpec.create(
         semantic.artifact_digest,
-        "A compact pointed contour with multiple angled segments.",
-        FEATURES,
+        object_bongard_catalog_contrast_rubric(
+            "rounded_leaf_support_ppm", "bird_like_support_ppm"
+        ),
+        ("rounded_leaf_support_ppm", "bird_like_support_ppm"),
     )
     with pytest.raises(ObjectBongardRubricRankerError):
         ranker(

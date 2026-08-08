@@ -1,4 +1,4 @@
-"""Sealed replay calibration for prose-grounded Bongard rubric predicates.
+"""Sealed replay calibration for contrastive Bongard rubric predicates.
 
 This module deliberately reuses only twelve panels that were durably released
 by the 2026-08-07 object campaign.  It verifies their exact historical JSON and
@@ -6,8 +6,10 @@ PNG commitments, extracts the successful historical hypothesis catalogs, and
 recomputes the current candidate-independent object lineages.  It never opens
 the new broad cohort.
 
-Vision is run before either support-side label is selected.  The only
-downstream predicates are the eight closed pure-Python rubric candidates from
+Vision is run before either support-side label is selected.  Each vision turn
+jointly judges one frozen ordered target-versus-foil description; independently
+scored adjectives are never subtracted downstream.  The only downstream
+predicates are the two closed pure-Python rubric candidates from
 ``object_bongard_rubric_version_space``.  Lean is not imported or required.
 """
 
@@ -35,6 +37,7 @@ from bongard.evidence import Disposition
 from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
+    object_bongard_catalog_contrast_rubric,
     object_bongard_rubric_observer_output_schema,
     object_bongard_rubric_observer_prompt,
     observe_object_bongard_rubric,
@@ -72,7 +75,7 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-source.v1"
+    "gkm.bongard-object-rubric-calibration-source.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_LIVE_OBSERVATION_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-live-observation.v1"
@@ -90,7 +93,7 @@ OBJECT_RUBRIC_CALIBRATION_ASSESSMENT_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-assessment.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID = (
-    "bongard.object-rubric-calibration/exact-released-12-v1"
+    "bongard.object-rubric-calibration/exact-released-12-contrastive-v2"
 )
 
 DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
@@ -126,6 +129,11 @@ _RUBRIC_ROWS = (
         "A rounded, bird-like contour arrangement recurs.",
         "bird_like_support_ppm",
     ),
+)
+
+_CALIBRATION_ORIENTED_CUE_PAIRS = (
+    (_RUBRIC_ROWS[0][1], _RUBRIC_ROWS[1][1]),
+    (_RUBRIC_ROWS[1][1], _RUBRIC_ROWS[0][1]),
 )
 
 # ordinal -> (task_id, panel_id, released file SHA-256, released record digest,
@@ -281,6 +289,19 @@ def _authority_data() -> dict[str, object]:
         "lean_required_for_replay": False,
         "lean_removal_changes_decision": False,
     }
+
+
+def _calibration_rubric_specs() -> tuple[ObjectBongardRubricSpec, ...]:
+    """Derive both orientations only from the two verified historical cues."""
+
+    return tuple(
+        ObjectBongardRubricSpec.create(
+            _DESCRIPTION_ARTIFACT_DIGEST,
+            object_bongard_catalog_contrast_rubric(target, foil),
+            (target, foil),
+        )
+        for target, foil in _CALIBRATION_ORIENTED_CUE_PAIRS
+    )
 
 
 def _raw_digest(value: object, label: str) -> str:
@@ -511,6 +532,11 @@ def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, 
         "historical_description_artifact_digest": value.historical_description_artifact_digest,
         "selected_ordinals": list(CALIBRATION_SELECTED_ORDINALS),
         "selection_policy": "ordinal-first-prior-geometry-success-exactly-six-per-group",
+        "rubric_derivation_policy": (
+            "verify-both-historical-description-rows-then-derive-both-"
+            "ordered-target-versus-foil-orientations"
+        ),
+        "vision_judgment_policy": "joint-same-turn-target-versus-foil",
         "panels": [item.commitment_data() for item in value.panels],
         "rubric_specs": [item.to_data() for item in value.rubric_specs],
         "labels_consumed_while_observing": False,
@@ -549,15 +575,10 @@ class ObjectBongardRubricCalibrationSource:
             raise ObjectBongardRubricCalibrationError(
                 "calibration source panel selection differs"
             )
-        expected_specs = tuple(
-            ObjectBongardRubricSpec.create(
-                _DESCRIPTION_ARTIFACT_DIGEST, prose, (feature,)
-            )
-            for prose, feature in _RUBRIC_ROWS
-        )
+        expected_specs = _calibration_rubric_specs()
         if self.rubric_specs != expected_specs:
             raise ObjectBongardRubricCalibrationError(
-                "calibration rubric specs differ from frozen description"
+                "calibration rubric specs differ from both frozen cue orientations"
             )
         _raw_digest(self.source_digest, "calibration source digest")
         if self.source_digest != canonical_digest(_source_content(self)):
@@ -620,7 +641,6 @@ def _verify_plan_and_description(
         raise ObjectBongardRubricCalibrationError(
             "historical description identity/inventory differs"
         )
-    specs: list[ObjectBongardRubricSpec] = []
     for index, (prose, feature) in enumerate(_RUBRIC_ROWS):
         rubric = description["rubrics"][index]
         profile = description["profiles"][index]
@@ -640,12 +660,7 @@ def _verify_plan_and_description(
             raise ObjectBongardRubricCalibrationError(
                 "historical prose/profile row differs"
             )
-        specs.append(
-            ObjectBongardRubricSpec.create(
-                _DESCRIPTION_ARTIFACT_DIGEST, prose, (feature,)
-            )
-        )
-    return tuple(specs)
+    return _calibration_rubric_specs()
 
 
 def load_object_bongard_rubric_calibration_source(

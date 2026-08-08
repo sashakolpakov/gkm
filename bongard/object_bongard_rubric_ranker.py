@@ -1,12 +1,13 @@
 """Text-only Codex ranking over verified rubric-predicate survivors.
 
 The closed Python rubric version space supplies the exact survivor set.  This
-module exposes only an opaque version-space digest, the two rubrics derived
-from the neutral groups' frozen catalog cue IDs, and immutable candidate
-aliases/formulas to Codex.  The semantic model's free prose is never shown to
-the ranker.  Codex may order the aliases; it cannot create or edit a predicate.
-Python checks the exact permutation, resolves aliases to candidate digests,
-and cold verifies the complete causal receipt without another model call.
+module exposes only an opaque version-space digest, the frozen ordered
+target-versus-foil rubric derived from the neutral groups' catalog cue IDs,
+and immutable candidate aliases/formulas to Codex.  The semantic model's free
+prose is never shown to the ranker.  Codex may order the aliases; it cannot
+create or edit a predicate.  Python checks the exact permutation, resolves
+aliases to candidate digests, and cold verifies the complete causal receipt
+without another model call.
 
 No pixels, panel identities, support-side names, held-out material, or Lean
 content enter the model-visible prompt.  Python remains the sole predicate,
@@ -37,6 +38,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
     RUBRIC_ORDINAL_LEVEL_ANCHORS,
+    object_bongard_catalog_contrast_rubric,
     object_bongard_catalog_cue_rubric,
     object_bongard_rubric_ordinal_scale_digest,
 )
@@ -66,13 +68,13 @@ from bongard.transport import (
 
 
 OBJECT_BONGARD_RUBRIC_RANKER_PROTOCOL_ID = (
-    "bongard.object-rubric-version-space/text-only-codex-ranker-v1"
+    "bongard.object-rubric-version-space/text-only-contrastive-codex-ranker-v2"
 )
 OBJECT_BONGARD_RUBRIC_RANKER_PROTOCOL_SCHEMA = (
-    "gkm.bongard-object-rubric-ranker-protocol.v1"
+    "gkm.bongard-object-rubric-ranker-protocol.v2"
 )
 OBJECT_BONGARD_RUBRIC_RANK_INPUT_SCHEMA = (
-    "gkm.bongard-object-rubric-rank-input.v1"
+    "gkm.bongard-object-rubric-rank-input.v2"
 )
 OBJECT_BONGARD_RUBRIC_RANK_OUTPUT_SCHEMA = (
     "gkm.bongard-object-rubric-rank-output.v1"
@@ -84,7 +86,7 @@ OBJECT_BONGARD_RUBRIC_RANK_RECEIPT_SCHEMA = (
     "gkm.bongard-object-rubric-rank-receipt.v1"
 )
 
-MAX_SURVIVOR_COUNT = 8
+MAX_SURVIVOR_COUNT = 2
 MAX_PROMPT_UTF8_BYTES = 64_000
 MAX_RUBRIC_UTF8_BYTES = 2_048
 
@@ -183,7 +185,7 @@ def _freeze_spec(spec: object) -> ObjectBongardRubricSpec:
         raise ObjectBongardRubricRankerError(
             "rubric feature nominations are not canonical"
         )
-    _neutral_rubric(spec.rubric, "target rubric")
+    _neutral_rubric(spec.rubric, "contrastive observer rubric")
     return spec
 
 
@@ -257,19 +259,20 @@ def _freeze_semantic_artifact(
         or expected_spec != spec
     ):
         raise ObjectBongardRubricRankerError(
-            "rubric spec is not exactly derived from the semantic target cue"
+            "rubric spec is not exactly derived from the ordered semantic cues"
         )
     target_id, target_rubric, contrast_id, contrast_rubric = (
         _semantic_catalog_cues(value)
     )
     if (
-        spec.feature_nominations != (target_id,)
-        or spec.rubric != target_rubric
+        spec.feature_nominations != (target_id, contrast_id)
+        or spec.rubric
+        != object_bongard_catalog_contrast_rubric(target_id, contrast_id)
         or contrast_id == target_id
         or contrast_rubric == target_rubric
     ):
         raise ObjectBongardRubricRankerError(
-            "target and neutral contrast cues do not derive distinct catalog rubrics"
+            "target and foil cues do not derive the exact ordered catalog contrast"
         )
     return value
 
@@ -384,7 +387,7 @@ def _freeze_version_space(
     )
     if not 1 <= len(survivors) <= MAX_SURVIVOR_COUNT:
         raise ObjectBongardRubricRankerError(
-            "rubric ranker requires between one and eight verified survivors"
+            "rubric ranker requires between one and two verified survivors"
         )
     if (
         tuple(item.candidate_digest for item in survivors)
@@ -452,6 +455,7 @@ def _rank_input_digest_from_frozen(
             "rubric_spec_digest": spec.spec_digest,
             "semantic_artifact_digest": semantic.artifact_digest,
             "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "contrastive_observer_rubric": spec.rubric,
             "target_rubric": target_rubric,
             "target_feature_nominations": [target_id],
             "neutral_contrast_rubric": contrast_rubric,
@@ -576,6 +580,7 @@ def _ranker_prompt_from_frozen(
         f"version_space_digest: {version.version_space_digest}\n"
         f"rubric_spec_digest: {spec.spec_digest}\n"
         f"feature_catalog_digest: {OBJECT_FEATURE_CATALOG_DIGEST}\n"
+        f"contrastive_observer_rubric: {spec.rubric}\n"
         f"target_cue_id: {target_id}\n"
         f"target_rubric: {target_rubric}\n"
         f"neutral_contrast_cue_id: {contrast_id}\n"
@@ -641,9 +646,12 @@ def object_bongard_rubric_ranker_protocol_digest() -> str:
                 object_bongard_rubric_version_space_algorithm_digest()
             ),
             "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
-            "semantic_cue_policy": "one-distinct-feature-id-per-neutral-group",
+            "semantic_cue_policy": (
+                "ordered-group-zero-target-group-one-foil-one-distinct-"
+                "feature-id-per-neutral-group"
+            ),
             "rubric_grounding_policy": (
-                "exact-frozen-catalog-operational-description-by-feature-id"
+                "exact-frozen-catalog-ordered-target-versus-foil-contrast"
             ),
             "semantic_audit_prose_model_visible": False,
             "rubric_ordinal_scale_digest": scale_digest,

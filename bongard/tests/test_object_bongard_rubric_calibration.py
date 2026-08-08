@@ -25,6 +25,9 @@ from bongard.object_bongard_rubric_calibration import (
     run_object_bongard_rubric_calibration_observation,
     run_object_bongard_rubric_calibration_observations,
 )
+from bongard.object_bongard_rubric_observer import (
+    object_bongard_catalog_contrast_rubric,
+)
 from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
 from bongard.prototype_object_hypotheses import (
     ObjectHypothesisPacket,
@@ -127,6 +130,20 @@ def test_exact_source_recomputes_current_geometry_and_preserves_history(
     assert tuple(item.ordinal for item in source.panels) == CALIBRATION_SELECTED_ORDINALS
     assert len(source.group_a_panels) == len(source.group_b_panels) == 6
     assert len(source.rubric_specs) == 2
+    assert tuple(item.feature_nominations for item in source.rubric_specs) == (
+        (
+            "paired_sector_mismatch_support_ppm",
+            "bird_like_support_ppm",
+        ),
+        (
+            "bird_like_support_ppm",
+            "paired_sector_mismatch_support_ppm",
+        ),
+    )
+    assert tuple(item.rubric for item in source.rubric_specs) == tuple(
+        object_bongard_catalog_contrast_rubric(*item.feature_nominations)
+        for item in source.rubric_specs
+    )
     for panel in source.panels:
         observer_path = (
             SOURCE_ROOT
@@ -231,7 +248,7 @@ def test_parallel_batch_persists_assesses_gaps_and_cold_replays_without_calls(
 
     assessment = assess_object_bongard_rubric_calibration(source, reloaded)
     perfect, gap = assessment.spec_assessments
-    assert len(perfect.survivor_candidate_digests) == 8
+    assert len(perfect.survivor_candidate_digests) == 2
     assert perfect.gap_kind is None
     for counts in perfect.candidate_counts:
         assert counts.positive.present == 6

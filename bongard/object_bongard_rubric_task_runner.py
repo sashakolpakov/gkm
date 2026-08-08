@@ -1,11 +1,11 @@
-"""Pure-Python freeze/query runner for one prose-rubric Bongard task.
+"""Pure-Python freeze/query runner for one contrastive-rubric Bongard task.
 
 The visual model supplies candidate-independent ordinal observations.  Python
-derives the group-0 rubric, enumerates and verifies the complete closed
-eight-predicate version space, and lets Codex rank only its survivors.  The
-selected immutable candidate is then durably frozen and reloaded before the
-sealed query source can be called.  Lean is absent from identity, decision,
-scoring, and replay.
+derives the ordered group-0-over-group-1 rubric, enumerates and verifies the
+complete closed two-scope version space, and lets Codex rank only its
+survivors.  The selected immutable candidate is then durably frozen and
+reloaded before the sealed query source can be called.  Lean is absent from
+identity, decision, scoring, and replay.
 """
 
 from __future__ import annotations
@@ -28,7 +28,7 @@ from bongard.object_bongard_batch import ObjectBongardTaskPlan
 from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricObserverArtifact,
     ObjectBongardRubricSpec,
-    object_bongard_catalog_cue_rubric,
+    object_bongard_catalog_contrast_rubric,
 )
 from bongard.object_bongard_rubric_ranker import (
     ObjectBongardRubricRankResponse,
@@ -176,12 +176,14 @@ def _canonical_parents(
             "semantic artifact must nominate one distinct frozen cue per group"
         )
     group_0_cue = semantic.feature_families[0][0]
+    group_1_cue = semantic.feature_families[1][0]
     if (
-        spec.feature_nominations != (group_0_cue,)
-        or spec.rubric != object_bongard_catalog_cue_rubric(group_0_cue)
+        spec.feature_nominations != (group_0_cue, group_1_cue)
+        or spec.rubric
+        != object_bongard_catalog_contrast_rubric(group_0_cue, group_1_cue)
     ):
         raise ObjectBongardRubricTaskRunnerError(
-            "group-0 rubric spec is not the exact frozen catalog cue derivation"
+            "rubric spec is not the exact ordered group-0-over-group-1 catalog contrast"
         )
     return plan, semantic, spec, precommit
 

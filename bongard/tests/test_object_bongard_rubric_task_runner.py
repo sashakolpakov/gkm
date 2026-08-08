@@ -127,7 +127,7 @@ class _Forbidden:
 def _complete_run(*, uncertain_positive_query: bool = True):
     plan, semantic, spec = _parents()
     positives, negatives = _support(spec, plan)
-    rank_transport = _RankTransport()
+    rank_transport = _RankTransport(("r000",))
     ranker = _ranker(rank_transport)
     store = _DurableFreezeStore()
     positive_interval = (2, 3) if uncertain_positive_query else (4, 4)
@@ -242,7 +242,7 @@ def test_typed_language_gap_never_calls_rank_freeze_or_query() -> None:
 def test_query_source_cannot_run_after_a_bad_durable_reload() -> None:
     plan, semantic, spec = _parents()
     positives, negatives = _support(spec, plan)
-    ranker = _ranker(_RankTransport())
+    ranker = _ranker(_RankTransport(("r000",)))
     store = _DurableFreezeStore()
     forbidden_query = _Forbidden()
 
@@ -286,4 +286,3 @@ def test_archive_tamper_and_lean_dependency_are_rejected() -> None:
     assert not any("lean" in name.lower() for name in imported)
     assert archive.to_data()["lean_present"] is False
     assert archive.to_data()["lean_removable"] is True
-
