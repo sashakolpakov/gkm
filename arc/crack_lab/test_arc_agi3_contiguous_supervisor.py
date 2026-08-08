@@ -3924,6 +3924,89 @@ def _launch_receipt_inputs(
     }
 
 
+def _selective_control_fixture(tmp_path: Path) -> dict:
+    manifest = (tmp_path / "selective-runtime.json").resolve()
+    control_root = (tmp_path / "selective-controls").resolve()
+    conformance_path = (
+        tmp_path / "selective-prelaunch.json"
+    ).resolve()
+    control_sha256 = "3" * 64
+    supplied = {
+        "status": "PASS",
+        "launch_authority": False,
+        "container_image_digest": None,
+        "entry_command": ["python", "sealed-controls"],
+        "suite_execution_policy_sha256": "1" * 64,
+        "registry_sha256": "2" * 64,
+        "launch_requirements_sha256": "4" * 64,
+        "control_contract_sha256": control_sha256,
+        "control_contract_files_sha256": {"control.py": "5" * 64},
+        "suite_source_loaded_sha256": "6" * 64,
+        "suite_interpreter_path": str(PYTHON_EXECUTABLE),
+        "suite_interpreter_sha256": PYTHON_EXECUTABLE_SHA256,
+        "suite_runtime_manifest_path": str(manifest),
+        "suite_runtime_manifest_sha256": "7" * 64,
+        "execution_control_root": str(control_root),
+        "execution_control_snapshot_sha256": control_sha256,
+        "execution_control_snapshot_immutable": True,
+        "component_test_files_sha256": "8" * 64,
+        "component_suite_inventory_sha256": "9" * 64,
+        "component_suite_outcomes_sha256": "a" * 64,
+        "suite_loaded_control_modules_sha256": "b" * 64,
+        "inventory_sha256": B.authoritative_inventory_sha256(),
+        "games": 25,
+        "levels": 183,
+        "pytest_output_sha256": "c" * 64,
+    }
+    runtime = copy.deepcopy(supplied)
+    runtime.update({
+        "execution_control_root": str(
+            (tmp_path / "fresh-selective-controls").resolve()
+        ),
+        "pytest_output_sha256": "d" * 64,
+    })
+    digest = "sha256:" + "e" * 64
+    gate_path = (tmp_path / "selective-pilot.json").resolve()
+    pilot = {
+        "schema": 1,
+        "kind": "arc_agi3_contiguous_pilot_gate",
+        "status": "PASS",
+        "full_campaign_launch_gate": "UNLOCKED",
+        "pilot_games": ["ft09", "lp85"],
+        "pilot_targets": [6, 8],
+        "pilot_lineage_canonical": False,
+        "image_digest": digest,
+        "control_contract_sha256": control_sha256,
+        "production_stack_attestation_path": str(
+            (tmp_path / "production-stack.json").resolve()
+        ),
+        "production_stack_attestation_sha256": "f" * 64,
+        "pilot_manifest_sha256": P.PILOT_MANIFEST_SHA256,
+        "receipt_sha256": "0" * 64,
+        "file_sha256": "1" * 64,
+        "path": str(gate_path),
+        "meta_handoff_count": 1,
+    }
+    return {
+        "attestation": conformance_path,
+        "requested_image_digest": digest,
+        "conformance_result": conformance_path,
+        "python_executable": PYTHON_EXECUTABLE,
+        "python_executable_sha256": PYTHON_EXECUTABLE_SHA256,
+        "runtime_control_snapshot_root": control_root,
+        "pilot_gate_receipt": gate_path,
+        "pilot_authentication_key": (
+            tmp_path / "selective-pilot.key"
+        ).resolve(),
+        "pilot_production_stack_attestation_sha256": "f" * 64,
+        "python_runtime_manifest": manifest,
+        "python_runtime_manifest_sha256": "7" * 64,
+        "supplied": supplied,
+        "runtime": runtime,
+        "pilot": pilot,
+    }
+
+
 def _receipt_authority_fixture(tmp_path: Path) -> dict:
     runtime_manifest = (tmp_path / "runtime-manifest.json").resolve()
     release = (tmp_path / "release.json").resolve()
@@ -4470,6 +4553,314 @@ def test_full_launch_reopens_exact_ordered_pilot_gate(
     assert result["launch_authority_sha256"] == (
         result["launch_authority_evidence"]["authority_sha256"]
     )
+
+
+def test_selective_continuation_preflight_rechecks_controls_and_pilot(
+    tmp_path, monkeypatch
+):
+    inputs = _selective_control_fixture(tmp_path)
+    observed = {
+        "conformance": 0,
+        "manifest": 0,
+        "pilot": 0,
+        "suite": 0,
+    }
+
+    def load_prelaunch(path, *, repository):
+        observed["conformance"] += 1
+        assert path == inputs["attestation"]
+        assert repository == inputs["runtime_control_snapshot_root"]
+        return copy.deepcopy(inputs["supplied"])
+
+    def load_manifest(
+        path,
+        *,
+        expected_sha256,
+        python_executable,
+        python_executable_sha256,
+    ):
+        observed["manifest"] += 1
+        assert path == inputs["python_runtime_manifest"]
+        assert expected_sha256 == inputs[
+            "python_runtime_manifest_sha256"
+        ]
+        assert python_executable == inputs["python_executable"]
+        assert python_executable_sha256 == inputs[
+            "python_executable_sha256"
+        ]
+        return {"schema": 1, "manifest_sha256": expected_sha256}
+
+    def verify_pilot(
+        receipt_path,
+        *,
+        authentication_key_path,
+        expected_image_digest,
+        expected_control_contract_sha256,
+        expected_production_stack_attestation_sha256,
+    ):
+        observed["pilot"] += 1
+        assert receipt_path == inputs["pilot_gate_receipt"]
+        assert authentication_key_path == inputs[
+            "pilot_authentication_key"
+        ]
+        assert expected_image_digest == inputs[
+            "requested_image_digest"
+        ]
+        assert expected_control_contract_sha256 == inputs[
+            "supplied"
+        ]["control_contract_sha256"]
+        assert expected_production_stack_attestation_sha256 == inputs[
+            "pilot_production_stack_attestation_sha256"
+        ]
+        return copy.deepcopy(inputs["pilot"])
+
+    def run_suite(**kwargs):
+        observed["suite"] += 1
+        assert kwargs == {
+            "python_executable": inputs["python_executable"],
+            "python_executable_sha256": inputs[
+                "python_executable_sha256"
+            ],
+            "python_runtime_manifest": inputs[
+                "python_runtime_manifest"
+            ],
+            "python_runtime_manifest_sha256": inputs[
+                "python_runtime_manifest_sha256"
+            ],
+            "runtime_control_snapshot_root": inputs[
+                "runtime_control_snapshot_root"
+            ],
+        }
+        return copy.deepcopy(inputs["runtime"])
+
+    monkeypatch.setattr(C, "load_result", load_prelaunch)
+    monkeypatch.setattr(
+        C,
+        "control_contract_sha256",
+        lambda _repository: inputs["supplied"][
+            "control_contract_sha256"
+        ],
+    )
+    monkeypatch.setattr(
+        B.RuntimeManifest, "load_runtime_manifest", load_manifest
+    )
+    monkeypatch.setattr(P, "verify_pilot_gate_receipt", verify_pilot)
+    monkeypatch.setattr(B, "_run_control_suite", run_suite)
+    monkeypatch.setattr(
+        C,
+        "bind_terminal_launch_authority",
+        lambda *_args, **_kwargs: pytest.fail(
+            "selective preflight must not bind terminal authority"
+        ),
+    )
+    monkeypatch.setattr(
+        B,
+        "validate_launch_attestation",
+        lambda *_args, **_kwargs: pytest.fail(
+            "selective preflight must not validate terminal authority"
+        ),
+    )
+    call = {
+        key: value
+        for key, value in inputs.items()
+        if key not in {"supplied", "runtime", "pilot"}
+    }
+    result = B.selective_continuation_preflight(**call)
+    assert observed == {
+        "conformance": 2,
+        "manifest": 2,
+        "pilot": 2,
+        "suite": 1,
+    }
+    assert result["status"] == "PASS"
+    assert result["launch_authority"] == (
+        "SELECTIVE_CONTROL_RECEIPT_DERIVED"
+    )
+    assert result["launch_authority_kind"] == (
+        "arc_agi3_selective_continuation_control_authority"
+    )
+    authority = result["launch_authority_evidence"]
+    assert authority["terminal_release_authority"] is False
+    assert authority["authority_scope"] == (
+        "control_image_production_stack_and_pilot"
+    )
+    assert authority["authority_sha256"] == hashlib.sha256(
+        B._operator_lease_canonical_json({
+            key: value
+            for key, value in authority.items()
+            if key != "authority_sha256"
+        })
+    ).hexdigest()
+    assert "frozen_release_receipt_sha256" not in authority
+    assert result["launch_authority_sha256"] == authority[
+        "authority_sha256"
+    ]
+    assert result["conformance_registry_sha256"] == inputs[
+        "supplied"
+    ]["registry_sha256"]
+    assert result["control_contract_sha256"] == inputs[
+        "supplied"
+    ]["control_contract_sha256"]
+    assert result["pilot_gate_receipt"] == str(
+        inputs["pilot_gate_receipt"]
+    )
+    assert result["pilot_gate_receipt_sha256"] == "1" * 64
+    assert result["pilot_manifest_sha256"] == P.PILOT_MANIFEST_SHA256
+    assert result["pilot_meta_handoff_count"] == 1
+
+
+@pytest.mark.parametrize(
+    ("field", "bad_value"),
+    (
+        ("launch_authority", True),
+        ("execution_control_snapshot_immutable", False),
+        ("suite_runtime_manifest_path", None),
+        ("suite_runtime_manifest_sha256", None),
+        ("suite_interpreter_sha256", "0" * 64),
+    ),
+)
+def test_selective_continuation_attestation_is_strictly_prelaunch(
+    tmp_path, monkeypatch, field, bad_value
+):
+    inputs = _selective_control_fixture(tmp_path)
+    inputs["supplied"][field] = bad_value
+    monkeypatch.setattr(
+        C,
+        "load_result",
+        lambda *_args, **_kwargs: copy.deepcopy(inputs["supplied"]),
+    )
+    monkeypatch.setattr(
+        C,
+        "control_contract_sha256",
+        lambda _repository: inputs["supplied"][
+            "control_contract_sha256"
+        ],
+    )
+    with pytest.raises(
+        B.SupervisorContractError,
+        match="immutable nonterminal conformance",
+    ):
+        B.validate_selective_continuation_attestation(
+            inputs["attestation"],
+            repository=inputs["runtime_control_snapshot_root"],
+            python_executable=inputs["python_executable"],
+            python_executable_sha256=inputs[
+                "python_executable_sha256"
+            ],
+            python_runtime_manifest=inputs[
+                "python_runtime_manifest"
+            ],
+            python_runtime_manifest_sha256=inputs[
+                "python_runtime_manifest_sha256"
+            ],
+        )
+
+
+def test_selective_continuation_preflight_rejects_identity_drift(
+    tmp_path, monkeypatch
+):
+    inputs = _selective_control_fixture(tmp_path)
+    drifted = copy.deepcopy(inputs["runtime"])
+    drifted["component_suite_outcomes_sha256"] = "0" * 64
+    monkeypatch.setattr(
+        B,
+        "validate_selective_continuation_attestation",
+        lambda *_args, **_kwargs: copy.deepcopy(inputs["supplied"]),
+    )
+    monkeypatch.setattr(
+        B.RuntimeManifest,
+        "load_runtime_manifest",
+        lambda *_args, **_kwargs: {"schema": 1},
+    )
+    monkeypatch.setattr(
+        P,
+        "verify_pilot_gate_receipt",
+        lambda *_args, **_kwargs: copy.deepcopy(inputs["pilot"]),
+    )
+    monkeypatch.setattr(
+        B,
+        "_run_control_suite",
+        lambda **_kwargs: drifted,
+    )
+    call = {
+        key: value
+        for key, value in inputs.items()
+        if key not in {"supplied", "runtime", "pilot"}
+    }
+    with pytest.raises(
+        B.SupervisorContractError,
+        match="fresh selective controls differ",
+    ):
+        B.selective_continuation_preflight(**call)
+
+
+def test_selective_continuation_preflight_requires_one_receipt_path(
+    tmp_path, monkeypatch
+):
+    inputs = _selective_control_fixture(tmp_path)
+    inputs["conformance_result"] = (
+        tmp_path / "different-prelaunch.json"
+    ).resolve()
+    monkeypatch.setattr(
+        B,
+        "validate_selective_continuation_attestation",
+        lambda *_args, **_kwargs: pytest.fail(
+            "path mismatch must fail before conformance loading"
+        ),
+    )
+    call = {
+        key: value
+        for key, value in inputs.items()
+        if key not in {"supplied", "runtime", "pilot"}
+    }
+    with pytest.raises(
+        B.SupervisorContractError,
+        match="one prelaunch conformance receipt",
+    ):
+        B.selective_continuation_preflight(**call)
+
+
+def test_selective_continuation_preflight_rejects_reopened_evidence(
+    tmp_path, monkeypatch
+):
+    inputs = _selective_control_fixture(tmp_path)
+    calls = {"conformance": 0}
+
+    def load_prelaunch(*_args, **_kwargs):
+        calls["conformance"] += 1
+        result = copy.deepcopy(inputs["supplied"])
+        if calls["conformance"] == 2:
+            result["registry_sha256"] = "0" * 64
+        return result
+
+    monkeypatch.setattr(
+        B, "validate_selective_continuation_attestation", load_prelaunch
+    )
+    monkeypatch.setattr(
+        B.RuntimeManifest,
+        "load_runtime_manifest",
+        lambda *_args, **_kwargs: {"schema": 1},
+    )
+    monkeypatch.setattr(
+        P,
+        "verify_pilot_gate_receipt",
+        lambda *_args, **_kwargs: copy.deepcopy(inputs["pilot"]),
+    )
+    monkeypatch.setattr(
+        B,
+        "_run_control_suite",
+        lambda **_kwargs: copy.deepcopy(inputs["runtime"]),
+    )
+    call = {
+        key: value
+        for key, value in inputs.items()
+        if key not in {"supplied", "runtime", "pilot"}
+    }
+    with pytest.raises(
+        B.SupervisorContractError,
+        match="prelaunch conformance changed",
+    ):
+        B.selective_continuation_preflight(**call)
 
 
 def test_post_incident_meta_diagnostic_is_once_and_quarantine_only(

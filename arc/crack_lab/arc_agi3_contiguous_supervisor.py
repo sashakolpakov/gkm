@@ -159,6 +159,33 @@ _TERMINAL_LAUNCH_IDENTITY_FIELDS = (
     "levels",
 )
 
+# Static identities which a fresh selective-continuation control execution
+# must share with its supplied prelaunch conformance result.  Run-specific
+# timestamps, output hashes, snapshot paths/inodes, and terminal release fields
+# are deliberately absent.
+_SELECTIVE_CONTROL_IDENTITY_FIELDS = (
+    "entry_command",
+    "suite_execution_policy_sha256",
+    "registry_sha256",
+    "launch_requirements_sha256",
+    "control_contract_sha256",
+    "control_contract_files_sha256",
+    "suite_source_loaded_sha256",
+    "suite_interpreter_path",
+    "suite_interpreter_sha256",
+    "suite_runtime_manifest_path",
+    "suite_runtime_manifest_sha256",
+    "execution_control_snapshot_sha256",
+    "execution_control_snapshot_immutable",
+    "component_test_files_sha256",
+    "component_suite_inventory_sha256",
+    "component_suite_outcomes_sha256",
+    "suite_loaded_control_modules_sha256",
+    "inventory_sha256",
+    "games",
+    "levels",
+)
+
 
 class SupervisorContractError(RuntimeError):
     """A fail-closed supervisor admission or integrity error."""
@@ -6929,6 +6956,424 @@ def _run_control_suite(
         raise error
     assert result is not None
     return result
+
+
+def validate_selective_continuation_attestation(
+    path: Path,
+    *,
+    repository: Path,
+    python_executable: Path,
+    python_executable_sha256: str,
+    python_runtime_manifest: Path,
+    python_runtime_manifest_sha256: str,
+) -> dict[str, Any]:
+    """Validate immutable, nonterminal control authority for continuation.
+
+    Unlike :func:`validate_launch_attestation`, this accepts only the
+    prelaunch result.  It neither accepts nor rebinds a frozen-release receipt.
+    """
+
+    manifest_path = Path(python_runtime_manifest)
+    interpreter = Path(python_executable).resolve()
+    try:
+        result = Conformance.load_result(
+            Path(path),
+            repository=Path(repository),
+        )
+    except Exception as exc:
+        raise SupervisorContractError(
+            "selective continuation attestation is not exact prelaunch "
+            "conformance"
+        ) from exc
+    if (
+        result.get("status") != "PASS"
+        or result.get("launch_authority") is not False
+        or result.get("container_image_digest") is not None
+        or result.get("execution_control_snapshot_immutable") is not True
+        or result.get("inventory_sha256")
+        != authoritative_inventory_sha256()
+        or result.get("control_contract_sha256")
+        != Conformance.control_contract_sha256(Path(repository))
+        or not manifest_path.is_absolute()
+        or not _is_sha256_hex(python_runtime_manifest_sha256)
+        or result.get("suite_runtime_manifest_path")
+        != str(manifest_path)
+        or result.get("suite_runtime_manifest_sha256")
+        != python_runtime_manifest_sha256
+        or result.get("suite_interpreter_path") != str(interpreter)
+        or result.get("suite_interpreter_sha256")
+        != python_executable_sha256
+    ):
+        raise SupervisorContractError(
+            "selective continuation requires immutable nonterminal "
+            "conformance for the exact control, inventory, interpreter, "
+            "and runtime manifest"
+        )
+    return result
+
+
+def _derive_selective_continuation_control_authority(
+    *,
+    supplied_prelaunch: Mapping[str, Any],
+    runtime_prelaunch: Mapping[str, Any],
+    conformance_result: Path,
+    pilot_gate: Mapping[str, Any],
+    pilot_gate_receipt: Path,
+    requested_image_digest: str,
+    python_runtime_manifest: Path,
+    python_runtime_manifest_sha256: str,
+    production_stack_attestation_sha256: str,
+) -> dict[str, Any]:
+    """Bind selective control/image authority without terminal authority."""
+
+    if any(
+        supplied_prelaunch.get(field) != runtime_prelaunch.get(field)
+        for field in _SELECTIVE_CONTROL_IDENTITY_FIELDS
+    ):
+        raise SupervisorContractError(
+            "runtime selective controls differ from supplied prelaunch "
+            "conformance"
+        )
+    for label, result in (
+        ("supplied", supplied_prelaunch),
+        ("runtime", runtime_prelaunch),
+    ):
+        if (
+            result.get("status") != "PASS"
+            or result.get("launch_authority") is not False
+            or result.get("container_image_digest") is not None
+            or result.get("execution_control_snapshot_immutable") is not True
+            or result.get("inventory_sha256")
+            != authoritative_inventory_sha256()
+            or result.get("games") != EXPECTED_GAMES
+            or result.get("levels") != EXPECTED_LEVELS
+        ):
+            raise SupervisorContractError(
+                f"{label} selective control result is not exact immutable "
+                "prelaunch conformance"
+            )
+    manifest_path = Path(python_runtime_manifest)
+    if (
+        not manifest_path.is_absolute()
+        or not _is_sha256_hex(python_runtime_manifest_sha256)
+        or supplied_prelaunch.get("suite_runtime_manifest_path")
+        != str(manifest_path)
+        or supplied_prelaunch.get("suite_runtime_manifest_sha256")
+        != python_runtime_manifest_sha256
+        or runtime_prelaunch.get("suite_runtime_manifest_path")
+        != str(manifest_path)
+        or runtime_prelaunch.get("suite_runtime_manifest_sha256")
+        != python_runtime_manifest_sha256
+    ):
+        raise SupervisorContractError(
+            "selective control authority lacks the exact runtime manifest"
+        )
+    gate_path = Path(pilot_gate_receipt).resolve()
+    if (
+        not isinstance(requested_image_digest, str)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", requested_image_digest
+        )
+        is None
+        or not _is_sha256_hex(production_stack_attestation_sha256)
+        or pilot_gate.get("schema") != 1
+        or pilot_gate.get("kind")
+        != "arc_agi3_contiguous_pilot_gate"
+        or pilot_gate.get("status") != "PASS"
+        or pilot_gate.get("full_campaign_launch_gate") != "UNLOCKED"
+        or pilot_gate.get("pilot_games") != ["ft09", "lp85"]
+        or pilot_gate.get("pilot_targets") != [6, 8]
+        or pilot_gate.get("pilot_lineage_canonical") is not False
+        or pilot_gate.get("image_digest") != requested_image_digest
+        or pilot_gate.get("control_contract_sha256")
+        != supplied_prelaunch.get("control_contract_sha256")
+        or pilot_gate.get("production_stack_attestation_sha256")
+        != production_stack_attestation_sha256
+        or not isinstance(
+            pilot_gate.get("production_stack_attestation_path"), str
+        )
+        or not Path(
+            pilot_gate["production_stack_attestation_path"]
+        ).is_absolute()
+        or not _is_sha256_hex(pilot_gate.get("pilot_manifest_sha256"))
+        or not _is_sha256_hex(pilot_gate.get("receipt_sha256"))
+        or not _is_sha256_hex(pilot_gate.get("file_sha256"))
+        or pilot_gate.get("path") != str(gate_path)
+        or isinstance(pilot_gate.get("meta_handoff_count"), bool)
+        or not isinstance(pilot_gate.get("meta_handoff_count"), int)
+        or pilot_gate["meta_handoff_count"] < 1
+    ):
+        raise SupervisorContractError(
+            "selective control authority lacks the exact ordered pilot "
+            "and production-stack evidence"
+        )
+    supplied_bytes = (
+        _operator_lease_canonical_json(dict(supplied_prelaunch)) + b"\n"
+    )
+    runtime_bytes = (
+        _operator_lease_canonical_json(dict(runtime_prelaunch)) + b"\n"
+    )
+    body = {
+        "schema": 1,
+        "kind":
+            "arc_agi3_selective_continuation_control_authority",
+        "status": "PASS",
+        "authority_scope": "control_image_production_stack_and_pilot",
+        "terminal_release_authority": False,
+        "inventory_sha256": supplied_prelaunch["inventory_sha256"],
+        "control_contract_sha256": supplied_prelaunch[
+            "control_contract_sha256"
+        ],
+        "image_digest": requested_image_digest,
+        "conformance_result": str(Path(conformance_result).resolve()),
+        "supplied_prelaunch_sha256": hashlib.sha256(
+            supplied_bytes
+        ).hexdigest(),
+        "runtime_prelaunch_sha256": hashlib.sha256(
+            runtime_bytes
+        ).hexdigest(),
+        "python_runtime_manifest": str(manifest_path),
+        "python_runtime_manifest_sha256":
+            python_runtime_manifest_sha256,
+        "pilot_gate_receipt": str(gate_path),
+        "pilot_gate_receipt_sha256": pilot_gate["file_sha256"],
+        "pilot_gate_content_sha256": pilot_gate["receipt_sha256"],
+        "pilot_manifest_sha256": pilot_gate["pilot_manifest_sha256"],
+        "production_stack_attestation_sha256":
+            production_stack_attestation_sha256,
+        "pilot_meta_handoff_count": pilot_gate[
+            "meta_handoff_count"
+        ],
+    }
+    return {
+        **body,
+        "authority_sha256": hashlib.sha256(
+            _operator_lease_canonical_json(body)
+        ).hexdigest(),
+    }
+
+
+def selective_continuation_preflight(
+    attestation: Path,
+    *,
+    requested_image_digest: str,
+    conformance_result: Path,
+    python_executable: Path,
+    python_executable_sha256: str,
+    runtime_control_snapshot_root: Path,
+    pilot_gate_receipt: Path | None = None,
+    pilot_authentication_key: Path | None = None,
+    pilot_production_stack_attestation_sha256: str | None = None,
+    python_runtime_manifest: Path | None = None,
+    python_runtime_manifest_sha256: str | None = None,
+) -> dict[str, Any]:
+    """Derive a nonterminal control/image gate for selective continuation."""
+
+    if (
+        Path(os.path.abspath(attestation))
+        != Path(os.path.abspath(conformance_result))
+    ):
+        raise SupervisorContractError(
+            "selective continuation requires one prelaunch conformance "
+            "receipt, not a separate caller attestation"
+        )
+    if (
+        not isinstance(requested_image_digest, str)
+        or re.fullmatch(
+            r"sha256:[0-9a-f]{64}", requested_image_digest
+        )
+        is None
+    ):
+        raise SupervisorContractError(
+            "selective continuation requires one exact tested image digest"
+        )
+    if (
+        python_runtime_manifest is None
+        or not Path(python_runtime_manifest).is_absolute()
+        or not _is_sha256_hex(python_runtime_manifest_sha256)
+    ):
+        raise SupervisorContractError(
+            "selective continuation requires one exact pinned Python "
+            "runtime manifest"
+        )
+    if (
+        pilot_gate_receipt is None
+        or pilot_authentication_key is None
+        or not _is_sha256_hex(
+            pilot_production_stack_attestation_sha256
+        )
+    ):
+        raise SupervisorContractError(
+            "selective continuation requires exact pilot, key, and "
+            "production-stack receipt inputs"
+        )
+    prior_conformance = validate_selective_continuation_attestation(
+        attestation,
+        repository=runtime_control_snapshot_root,
+        python_executable=python_executable,
+        python_executable_sha256=python_executable_sha256,
+        python_runtime_manifest=Path(python_runtime_manifest),
+        python_runtime_manifest_sha256=str(
+            python_runtime_manifest_sha256
+        ),
+    )
+    try:
+        runtime_manifest = RuntimeManifest.load_runtime_manifest(
+            Path(python_runtime_manifest),
+            expected_sha256=str(python_runtime_manifest_sha256),
+            python_executable=Path(python_executable),
+            python_executable_sha256=python_executable_sha256,
+        )
+    except Exception as exc:
+        raise SupervisorContractError(
+            "selective continuation runtime manifest failed its initial "
+            "recheck"
+        ) from exc
+    try:
+        import arc_agi3_contiguous_pilot as Pilot
+
+        pilot_gate = Pilot.verify_pilot_gate_receipt(
+            Path(pilot_gate_receipt),
+            authentication_key_path=Path(
+                pilot_authentication_key
+            ),
+            expected_image_digest=requested_image_digest,
+            expected_control_contract_sha256=prior_conformance[
+                "control_contract_sha256"
+            ],
+            expected_production_stack_attestation_sha256=str(
+                pilot_production_stack_attestation_sha256
+            ),
+        )
+    except Exception as exc:
+        raise SupervisorContractError(
+            "selective continuation requires the exact authenticated "
+            "ordered pilot gate"
+        ) from exc
+    runtime_conformance = _run_control_suite(
+        python_executable=python_executable,
+        python_executable_sha256=python_executable_sha256,
+        python_runtime_manifest=Path(python_runtime_manifest),
+        python_runtime_manifest_sha256=str(
+            python_runtime_manifest_sha256
+        ),
+        runtime_control_snapshot_root=runtime_control_snapshot_root,
+    )
+    if any(
+        prior_conformance.get(field) != runtime_conformance.get(field)
+        for field in _SELECTIVE_CONTROL_IDENTITY_FIELDS
+    ):
+        raise SupervisorContractError(
+            "fresh selective controls differ from supplied prelaunch "
+            "conformance"
+        )
+    try:
+        reopened_runtime_manifest = (
+            RuntimeManifest.load_runtime_manifest(
+                Path(python_runtime_manifest),
+                expected_sha256=str(
+                    python_runtime_manifest_sha256
+                ),
+                python_executable=Path(python_executable),
+                python_executable_sha256=python_executable_sha256,
+            )
+        )
+        reopened_conformance = (
+            validate_selective_continuation_attestation(
+                attestation,
+                repository=runtime_control_snapshot_root,
+                python_executable=python_executable,
+                python_executable_sha256=python_executable_sha256,
+                python_runtime_manifest=Path(
+                    python_runtime_manifest
+                ),
+                python_runtime_manifest_sha256=str(
+                    python_runtime_manifest_sha256
+                ),
+            )
+        )
+        reopened_pilot_gate = Pilot.verify_pilot_gate_receipt(
+            Path(pilot_gate_receipt),
+            authentication_key_path=Path(
+                pilot_authentication_key
+            ),
+            expected_image_digest=requested_image_digest,
+            expected_control_contract_sha256=runtime_conformance[
+                "control_contract_sha256"
+            ],
+            expected_production_stack_attestation_sha256=str(
+                pilot_production_stack_attestation_sha256
+            ),
+        )
+    except Exception as exc:
+        raise SupervisorContractError(
+            "selective continuation evidence changed during final "
+            "revalidation"
+        ) from exc
+    if reopened_runtime_manifest != runtime_manifest:
+        raise SupervisorContractError(
+            "Python runtime manifest changed during selective preflight"
+        )
+    if reopened_conformance != prior_conformance:
+        raise SupervisorContractError(
+            "prelaunch conformance changed during selective preflight"
+        )
+    if reopened_pilot_gate != pilot_gate:
+        raise SupervisorContractError(
+            "pilot or production-stack evidence changed during selective "
+            "preflight"
+        )
+    authority = _derive_selective_continuation_control_authority(
+        supplied_prelaunch=reopened_conformance,
+        runtime_prelaunch=runtime_conformance,
+        conformance_result=Path(conformance_result),
+        pilot_gate=reopened_pilot_gate,
+        pilot_gate_receipt=Path(pilot_gate_receipt),
+        requested_image_digest=requested_image_digest,
+        python_runtime_manifest=Path(python_runtime_manifest),
+        python_runtime_manifest_sha256=str(
+            python_runtime_manifest_sha256
+        ),
+        production_stack_attestation_sha256=str(
+            pilot_production_stack_attestation_sha256
+        ),
+    )
+    return {
+        "status": "PASS",
+        "runtime_contiguous_conformance": "PASS",
+        "launch_authority": "SELECTIVE_CONTROL_RECEIPT_DERIVED",
+        "launch_authority_kind": authority["kind"],
+        "launch_authority_sha256": authority["authority_sha256"],
+        "launch_authority_evidence": authority,
+        "conformance_result": str(conformance_result),
+        "conformance_registry_sha256": prior_conformance[
+            "registry_sha256"
+        ],
+        "runtime_conformance_output_sha256": runtime_conformance[
+            "pytest_output_sha256"
+        ],
+        "attestation": str(attestation),
+        "image_digest": requested_image_digest,
+        "authoritative_inventory_sha256": prior_conformance[
+            "inventory_sha256"
+        ],
+        "control_contract_sha256": prior_conformance[
+            "control_contract_sha256"
+        ],
+        "python_runtime_manifest": str(python_runtime_manifest),
+        "python_runtime_manifest_sha256":
+            python_runtime_manifest_sha256,
+        "pilot_gate_receipt": str(
+            Path(pilot_gate_receipt).resolve()
+        ),
+        "pilot_gate_receipt_sha256": pilot_gate["file_sha256"],
+        "pilot_manifest_sha256": pilot_gate[
+            "pilot_manifest_sha256"
+        ],
+        "pilot_meta_handoff_count": pilot_gate[
+            "meta_handoff_count"
+        ],
+    }
 
 
 def _derive_receipt_launch_authority(

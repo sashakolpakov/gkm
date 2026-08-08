@@ -79,6 +79,7 @@ WINNING_SOURCE_NAME = Supervisor.WINNING_SOURCE_NAME
 CANDIDATE_NAME = Supervisor.CANDIDATE_NAME
 UNIFIED_AUDIT_SCHEMA = 1
 CANONICAL_TERMINAL_CONDITION = "complete"
+SELECTIVE_TERMINAL_CONDITION = "selective_complete"
 TERMINAL_PROMOTION_REPLAY_AUDIT_NAME = "promotion_replay.json"
 AUXILIARY_DRIVER_PROTOCOL_TEXT = """\
 ARC-AGI-3 contiguous auxiliary backend protocol v1
@@ -1688,6 +1689,9 @@ class ProductionPromotionGate:
         *,
         replay_executor: SourceReplayExecutor,
         secret_sentinels: tuple[str, ...] = (),
+        frontier_import_root: Path | None = None,
+        selective_frontier_import:
+            Runner.SelectiveFrontierImport | None = None,
         fault_at: str | None = None,
     ) -> None:
         requested_root = Path(root)
@@ -1699,12 +1703,80 @@ class ProductionPromotionGate:
             raise ContiguousOrchestratorError(
                 "promotion store root cannot be a symlink"
             )
+        resolved_import_root: Path | None = None
+        if frontier_import_root is not None:
+            requested_import_root = Path(frontier_import_root)
+            if (
+                not requested_import_root.is_absolute()
+                or requested_import_root.is_symlink()
+                or not requested_import_root.is_dir()
+            ):
+                raise ContiguousOrchestratorError(
+                    "frontier import root must be an existing absolute "
+                    "regular directory"
+                )
+            try:
+                resolved_import_root = requested_import_root.resolve(
+                    strict=True
+                )
+                prospective_root = requested_root.resolve(strict=False)
+            except OSError as exc:
+                raise ContiguousOrchestratorError(
+                    "promotion/import roots cannot be resolved"
+                ) from exc
+            if (
+                resolved_import_root != requested_import_root
+                or prospective_root != requested_root
+            ):
+                raise ContiguousOrchestratorError(
+                    "promotion/import root is aliased"
+                )
+            _require_owned_directory(
+                resolved_import_root,
+                label="frontier import authority root",
+            )
+            try:
+                resolved_import_root.relative_to(prospective_root)
+            except ValueError:
+                pass
+            else:
+                raise ContiguousOrchestratorError(
+                    "frontier import root is inside mutable promotion root"
+                )
+            try:
+                prospective_root.relative_to(resolved_import_root)
+            except ValueError:
+                pass
+            else:
+                raise ContiguousOrchestratorError(
+                    "mutable promotion root is inside frontier import root"
+                )
         requested_root.mkdir(parents=True, exist_ok=True, mode=0o700)
         os.chmod(requested_root, 0o700, follow_symlinks=False)
         _require_owned_directory(
             requested_root, label="promotion store root"
         )
         self.root = requested_root
+        self.frontier_import_root = resolved_import_root
+        if (
+            selective_frontier_import is not None
+            and resolved_import_root is None
+        ):
+            raise ContiguousOrchestratorError(
+                "pinned selective import requires its authority root"
+            )
+        try:
+            self.selective_frontier_import = (
+                None
+                if selective_frontier_import is None
+                else Runner.selective_frontier_import_from_dict(
+                    asdict(selective_frontier_import)
+                )
+            )
+        except Runner.ContiguousRunnerError as exc:
+            raise ContiguousOrchestratorError(
+                "pinned selective frontier import is malformed"
+            ) from exc
         if not callable(getattr(replay_executor, "replay_from_zero", None)):
             raise ContiguousOrchestratorError(
                 "production promotion requires an isolated replay executor"
@@ -1748,6 +1820,30 @@ class ProductionPromotionGate:
             _ensure_private_directory(
                 root / name, label=f"promotion {name} directory"
             )
+        return root
+
+    def _import_game_root(self, game: str) -> Path:
+        if (
+            not isinstance(game, str)
+            or re.fullmatch(r"[a-z0-9]{4}", game) is None
+        ):
+            raise ContiguousOrchestratorError("invalid game identity")
+        if self.frontier_import_root is None:
+            raise ContiguousOrchestratorError(
+                "selective continuation has no frontier import root"
+            )
+        root = self.frontier_import_root / game
+        if (
+            root.is_symlink()
+            or not root.is_dir()
+            or root.resolve(strict=True) != root
+        ):
+            raise ContiguousOrchestratorError(
+                "frontier import game root is unavailable or aliased"
+            )
+        _require_owned_directory(
+            root, label="frontier import game root"
+        )
         return root
 
     @staticmethod
@@ -2302,6 +2398,14 @@ class ProductionPromotionGate:
             pointer_path, maximum=MAX_JSON_BYTES
         )
         pointer = _strict_json(pointer_raw, label="promotion pointer")
+        return self._validate_selected_pointer(game_root, pointer)
+
+    def _validate_selected_pointer(
+        self,
+        game_root: Path,
+        pointer: Mapping[str, Any],
+    ) -> dict[str, Any]:
+        pointer = dict(pointer)
         required = {
             "schema",
             "kind",
@@ -2459,6 +2563,164 @@ class ProductionPromotionGate:
             ],
         )
 
+    def _selective_frontier_import_from_pointer(
+        self,
+        game_root: Path,
+        pointer: Mapping[str, Any],
+    ) -> Runner.SelectiveFrontierImport:
+        selected = self._validate_selected_pointer(
+            game_root, pointer
+        )
+        version = game_root / VERSIONS_NAME / selected["version"]
+        subject = version / f"{selected['game']}_legs"
+        receipt_path = subject / HOST_RECEIPT_NAME
+        receipt = _strict_json(
+            _read_regular(receipt_path, maximum=MAX_JSON_BYTES),
+            label="selective frontier host receipt",
+        )
+        inventory = Supervisor.authoritative_inventory()
+        Supervisor.validate_inventory(inventory)
+        if (
+            selected["game"] not in inventory
+            or receipt.get("authoritative_target")
+            != inventory[selected["game"]]
+            or selected["target_level"]
+            >= inventory[selected["game"]]
+        ):
+            raise ContiguousOrchestratorError(
+                "selected version is not an incomplete authoritative frontier"
+            )
+        return Runner.build_selective_frontier_import(
+            game=selected["game"],
+            reached=selected["target_level"],
+            authoritative_target=inventory[selected["game"]],
+            parent_checkpoint_sha256=(
+                selected["parent_checkpoint_sha256"]
+            ),
+            checkpoint_path=str(subject / Supervisor.CHECKPOINT_NAME),
+            checkpoint_sha256=selected["checkpoint_sha256"],
+            source_path=str(subject / WINNING_SOURCE_NAME),
+            source_tree_sha256=selected[
+                "winning_source_tree_sha256"
+            ],
+            promotion_receipt_path=str(receipt_path),
+            promotion_receipt_sha256=selected[
+                "host_receipt_sha256"
+            ],
+            source_version_id=selected["version"],
+            version_tree_sha256=selected["version_tree_sha256"],
+            selected_pointer_sha256=hashlib.sha256(
+                _canonical_json(selected)
+            ).hexdigest(),
+        )
+
+    def issue_selective_frontier_import(
+        self, game: str
+    ) -> Runner.SelectiveFrontierImport:
+        """Issue the exact current frontier from a separate read-only root."""
+
+        game_root = self._import_game_root(game)
+        first = self._current(game_root)
+        if first is None:
+            raise ContiguousOrchestratorError(
+                "frontier import game has no selected version"
+            )
+        binding = self._selective_frontier_import_from_pointer(
+            game_root, first
+        )
+        second = self._current(game_root)
+        if second != first:
+            raise ContiguousOrchestratorError(
+                "frontier import pointer changed during issuance"
+            )
+        return self.verify_selective_frontier_import(binding)
+
+    def verify_selective_frontier_import(
+        self,
+        binding: Runner.SelectiveFrontierImport,
+    ) -> Runner.SelectiveFrontierImport:
+        """Reopen a sealed imported version after its current pointer moves."""
+
+        if not isinstance(binding, Runner.SelectiveFrontierImport):
+            raise ContiguousOrchestratorError(
+                "frontier import binding is not typed"
+            )
+        try:
+            canonical = Runner.selective_frontier_import_from_dict(
+                asdict(binding)
+            )
+        except Runner.ContiguousRunnerError as exc:
+            raise ContiguousOrchestratorError(
+                "frontier import binding is malformed"
+            ) from exc
+        game_root = self._import_game_root(canonical.game)
+        version = (
+            game_root
+            / VERSIONS_NAME
+            / canonical.source_version_id
+        )
+        subject = version / f"{canonical.game}_legs"
+        if (
+            Path(canonical.checkpoint_path)
+            != subject / Supervisor.CHECKPOINT_NAME
+            or Path(canonical.source_path)
+            != subject / WINNING_SOURCE_NAME
+            or Path(canonical.promotion_receipt_path)
+            != subject / HOST_RECEIPT_NAME
+        ):
+            raise ContiguousOrchestratorError(
+                "frontier import escaped its configured authority root"
+            )
+        receipt = _strict_json(
+            _read_regular(
+                subject / HOST_RECEIPT_NAME,
+                maximum=MAX_JSON_BYTES,
+            ),
+            label="selective frontier host receipt",
+        )
+        pointer = self._pointer_for_version(
+            version, receipt=receipt
+        )
+        if hashlib.sha256(
+            _canonical_json(pointer)
+        ).hexdigest() != canonical.selected_pointer_sha256:
+            raise ContiguousOrchestratorError(
+                "frontier import selected-pointer identity changed"
+            )
+        reopened = self._selective_frontier_import_from_pointer(
+            game_root, pointer
+        )
+        if reopened != canonical:
+            raise ContiguousOrchestratorError(
+                "frontier import version differs from its binding"
+            )
+        return reopened
+
+    def _selective_parent_binding(
+        self, spec: Runner.AttemptSpec
+    ) -> Runner.SelectiveFrontierImport:
+        binding = self.selective_frontier_import
+        if binding is None:
+            binding = self.issue_selective_frontier_import(spec.game)
+        else:
+            binding = self.verify_selective_frontier_import(binding)
+        if (
+            spec.game != binding.game
+            or spec.authoritative_target != binding.authoritative_target
+            or spec.target_level != binding.reached + 1
+            or spec.parent_checkpoint_path != binding.checkpoint_path
+            or spec.parent_checkpoint_sha256
+            != binding.checkpoint_sha256
+            or spec.parent_source_path != binding.source_path
+            or spec.parent_source_tree_sha256
+            != binding.source_tree_sha256
+            or spec.frontier_sha256 != binding.frontier_sha256
+        ):
+            raise ContiguousOrchestratorError(
+                "candidate does not extend the exact imported frontier"
+            )
+        return binding
+
     @staticmethod
     def _matching_receipt(
         version: Path,
@@ -2535,10 +2797,13 @@ class ProductionPromotionGate:
         if current is not None and current["version"] == version.name:
             return self._commit_from_pointer(game_root, current)
         if current is None:
-            if spec.target_level != 1:
-                raise ContiguousOrchestratorError(
-                    "recovery cannot skip a missing selected parent"
-                )
+            if self.frontier_import_root is None:
+                if spec.target_level != 1:
+                    raise ContiguousOrchestratorError(
+                        "recovery cannot skip a missing selected parent"
+                    )
+            else:
+                self._selective_parent_binding(spec)
         elif (
             current["target_level"] != spec.target_level - 1
             or current["checkpoint_sha256"]
@@ -2901,13 +3166,15 @@ class ProductionPromotionGate:
             current = self._current(game_root)
             if spec.target_level > 1:
                 if current is None:
-                    raise ContiguousOrchestratorError(
-                        "promotion lacks its selected parent version"
+                    imported = self._selective_parent_binding(spec)
+                    parent_version = Path(
+                        imported.checkpoint_path
+                    ).parent
+                else:
+                    parent_version = (
+                        game_root / VERSIONS_NAME / current["version"]
+                        / f"{spec.game}_legs"
                     )
-                parent_version = (
-                    game_root / VERSIONS_NAME / current["version"]
-                    / f"{spec.game}_legs"
-                )
                 shutil.copytree(
                     parent_version / "promotion_evidence",
                     game_stage / "promotion_evidence",
@@ -3346,14 +3613,22 @@ class ProductionPromotionGate:
             if recovered is not None:
                 return recovered
             current = self._current(game_root)
-            if spec.target_level == 1:
-                if current is not None:
+            if current is None:
+                if self.frontier_import_root is not None:
+                    try:
+                        self._selective_parent_binding(spec)
+                    except ContiguousOrchestratorError as exc:
+                        raise Runner.PromotionRejected(str(exc)) from exc
+                elif spec.target_level != 1:
                     raise Runner.PromotionRejected(
-                        "L1 candidate conflicts with an existing selected version"
+                        "candidate lacks its exact selected parent"
                     )
+            elif spec.target_level == 1:
+                raise Runner.PromotionRejected(
+                    "L1 candidate conflicts with an existing selected version"
+                )
             elif (
-                current is None
-                or current["target_level"] != spec.target_level - 1
+                current["target_level"] != spec.target_level - 1
                 or current["checkpoint_sha256"]
                 != spec.parent_checkpoint_sha256
                 or Path(spec.parent_checkpoint_path)
@@ -3830,6 +4105,601 @@ def verify_contiguous_campaign_unified_audit(
     ):
         raise ContiguousOrchestratorError(
             "unified campaign audit is stale, forged, or not PASS"
+        )
+    return expected
+
+
+def _read_only_selective_frontier_gate(
+    frontier_import_root: Path,
+) -> ProductionPromotionGate:
+    """Build a verifier for a separate immutable promotion store.
+
+    The production gate constructor intentionally creates its output root.
+    Selective preflight and audit are read-only, so they bind only the
+    already descriptor-validated authority root and reuse the gate's sealed
+    version verification methods without invoking that constructor.
+    """
+
+    selected = Path(frontier_import_root)
+    if (
+        not selected.is_absolute()
+        or selected.is_symlink()
+        or not selected.is_dir()
+        or selected.resolve(strict=True) != selected
+    ):
+        raise ContiguousOrchestratorError(
+            "frontier import authority root is unavailable or aliased"
+        )
+    _require_owned_directory(
+        selected, label="frontier import authority root"
+    )
+    verifier = object.__new__(ProductionPromotionGate)
+    verifier.frontier_import_root = selected
+    return verifier
+
+
+def issue_selective_frontier_import_read_only(
+    *, frontier_import_root: Path, game: str
+) -> Runner.SelectiveFrontierImport:
+    """Issue one twice-read current frontier without creating output state."""
+
+    return _read_only_selective_frontier_gate(
+        frontier_import_root
+    ).issue_selective_frontier_import(game)
+
+
+def _require_operator_authorized_selective_frontier(
+    config: OperatorConfiguration,
+    binding: Runner.SelectiveFrontierImport,
+) -> Runner.SelectiveFrontierImport:
+    """Require one import to equal the exact digest authorized by config."""
+
+    expected = getattr(
+        config, "selective_frontier_import_sha256", None
+    )
+    game = getattr(config, "selective_continuation_game", None)
+    if (
+        not isinstance(expected, str)
+        or SHA256_RE.fullmatch(expected) is None
+        or not isinstance(game, str)
+        or binding.game != game
+        or binding.import_sha256 != expected
+    ):
+        raise ContiguousOrchestratorError(
+            "selective frontier import differs from operator-authorized "
+            "digest"
+        )
+    return binding
+
+
+def _selective_operator_genesis_frontier(
+    config: OperatorConfiguration,
+) -> Runner.SelectiveFrontierImport | None:
+    """Reopen the earliest durable selective frontier authority, if any."""
+
+    path = config.campaign_root / "operator_genesis.json"
+    if not path.exists() and not path.is_symlink():
+        return None
+    if path.is_symlink() or not path.is_file():
+        raise ContiguousOrchestratorError(
+            "selective operator genesis is unavailable or aliased"
+        )
+    genesis = _strict_json(
+        _read_regular(path, maximum=MAX_JSON_BYTES),
+        label="selective operator genesis",
+    )
+    contract = genesis.get("selective_durable_launch_contract")
+    required_contract_fields = {
+        "schema",
+        "kind",
+        "operator_configuration_sha256",
+        "frontier_import_root",
+        "selective_continuation_game",
+        "selective_frontier_import",
+        "selective_frontier_import_sha256",
+        "operator_authorized_selective_frontier_import_sha256",
+        "conformance_registry_sha256",
+        "control_contract_sha256",
+        "supplied_prelaunch_sha256",
+        "authoritative_inventory_sha256",
+        "image_digest",
+        "python_runtime_manifest_sha256",
+        "pilot_gate_receipt_sha256",
+        "pilot_manifest_sha256",
+        "pilot_meta_handoff_count",
+        "production_stack_attestation_sha256",
+        "contract_sha256",
+    }
+    if not isinstance(contract, Mapping):
+        raise ContiguousOrchestratorError(
+            "selective operator genesis lacks its launch contract"
+        )
+    contract_dict = dict(contract)
+    contract_body = {
+        key: value
+        for key, value in contract_dict.items()
+        if key != "contract_sha256"
+    }
+    try:
+        binding = Runner.selective_frontier_import_from_dict(
+            contract_dict.get("selective_frontier_import")
+        )
+    except Runner.ContiguousRunnerError as exc:
+        raise ContiguousOrchestratorError(
+            "selective operator genesis import is malformed"
+        ) from exc
+    if (
+        set(contract_dict) != required_contract_fields
+        or contract_dict.get("schema") != 1
+        or contract_dict.get("kind")
+        != "arc_agi3_selective_durable_launch_contract"
+        or contract_dict.get("contract_sha256")
+        != _json_sha256(contract_body)
+        or genesis.get("schema") != 1
+        or genesis.get("kind")
+        != "arc_agi3_contiguous_operator_genesis"
+        or genesis.get("operator_config_sha256")
+        != config.config_sha256
+        or genesis.get("campaign_mode")
+        != "selective_continuation"
+        or genesis.get("terminal_condition")
+        != SELECTIVE_TERMINAL_CONDITION
+        or genesis.get("frontier_import_root")
+        != str(config.frontier_import_root)
+        or genesis.get("selective_continuation_game")
+        != config.selective_continuation_game
+        or genesis.get("selective_frontier_import_sha256")
+        != binding.import_sha256
+        or genesis.get(
+            "operator_authorized_selective_frontier_import_sha256"
+        )
+        != config.selective_frontier_import_sha256
+        or genesis.get("selective_launch_authority_sha256")
+        != contract_dict.get("contract_sha256")
+        or contract_dict.get("operator_configuration_sha256")
+        != config.config_sha256
+        or contract_dict.get("frontier_import_root")
+        != str(config.frontier_import_root)
+        or contract_dict.get("selective_continuation_game")
+        != config.selective_continuation_game
+        or contract_dict.get("selective_frontier_import_sha256")
+        != binding.import_sha256
+        or contract_dict.get(
+            "operator_authorized_selective_frontier_import_sha256"
+        )
+        != config.selective_frontier_import_sha256
+        or binding.import_sha256
+        != config.selective_frontier_import_sha256
+    ):
+        raise ContiguousOrchestratorError(
+            "selective operator genesis launch contract is stale or forged"
+        )
+    return _require_operator_authorized_selective_frontier(
+        config, binding
+    )
+
+
+def _selective_preflight_frontier(
+    config: OperatorConfiguration,
+) -> tuple[Runner.SelectiveFrontierImport, str]:
+    """Issue fresh current once, then recover only the durable pinned import."""
+
+    if (
+        config.frontier_import_root is None
+        or config.selective_continuation_game is None
+        or config.selective_frontier_import_sha256 is None
+    ):
+        raise ContiguousOrchestratorError(
+            "selective operator lacks its import configuration"
+        )
+    operator_binding = _selective_operator_genesis_frontier(config)
+    journal_path = config.campaign_root / "attempt_journal"
+    if not journal_path.exists() and not journal_path.is_symlink():
+        if operator_binding is not None:
+            verified = _read_only_selective_frontier_gate(
+                config.frontier_import_root
+            ).verify_selective_frontier_import(operator_binding)
+            if verified != operator_binding:
+                raise ContiguousOrchestratorError(
+                    "operator-genesis frontier changed during preflight"
+                )
+            return (
+                operator_binding,
+                "authenticated_durable_operator_genesis_frontier",
+            )
+        return (
+            _require_operator_authorized_selective_frontier(
+                config,
+                issue_selective_frontier_import_read_only(
+                    frontier_import_root=config.frontier_import_root,
+                    game=config.selective_continuation_game,
+                ),
+            ),
+            "authenticated_current_frontier",
+        )
+    if journal_path.is_symlink() or not journal_path.is_dir():
+        raise ContiguousOrchestratorError(
+            "selective campaign journal is unavailable or aliased"
+        )
+    try:
+        events = Scheduler.read_journal(config.campaign_root)
+    except Exception as exc:
+        raise ContiguousOrchestratorError(
+            "selective campaign journal cannot authenticate its import"
+        ) from exc
+    if not events:
+        if operator_binding is not None:
+            verified = _read_only_selective_frontier_gate(
+                config.frontier_import_root
+            ).verify_selective_frontier_import(operator_binding)
+            if verified != operator_binding:
+                raise ContiguousOrchestratorError(
+                    "operator-genesis frontier changed during preflight"
+                )
+            return (
+                operator_binding,
+                "authenticated_durable_operator_genesis_frontier",
+            )
+        return (
+            _require_operator_authorized_selective_frontier(
+                config,
+                issue_selective_frontier_import_read_only(
+                    frontier_import_root=config.frontier_import_root,
+                    game=config.selective_continuation_game,
+                ),
+            ),
+            "authenticated_current_frontier_empty_journal_recovery",
+        )
+    if events[0].get("kind") != "GENESIS":
+        raise ContiguousOrchestratorError(
+            "selective campaign lacks authenticated genesis"
+        )
+    genesis = events[0].get("payload")
+    if not isinstance(genesis, Mapping):
+        raise ContiguousOrchestratorError(
+            "selective campaign genesis is malformed"
+        )
+    try:
+        binding = Runner.selective_frontier_import_from_dict(
+            genesis.get("selective_frontier_import")
+        )
+    except Runner.ContiguousRunnerError as exc:
+        raise ContiguousOrchestratorError(
+            "selective campaign genesis lacks its pinned import"
+        ) from exc
+    if (
+        genesis.get("campaign_mode") != "selective_continuation"
+        or genesis.get("operator_configuration_sha256")
+        != config.config_sha256
+        or genesis.get("selective_continuation_game")
+        != config.selective_continuation_game
+        or genesis.get("selective_frontier_import_sha256")
+        != binding.import_sha256
+        or genesis.get(
+            "operator_authorized_selective_frontier_import_sha256"
+        )
+        != config.selective_frontier_import_sha256
+        or binding.import_sha256
+        != config.selective_frontier_import_sha256
+    ):
+        raise ContiguousOrchestratorError(
+            "selective campaign genesis disagrees with operator authority"
+        )
+    if operator_binding is not None and operator_binding != binding:
+        raise ContiguousOrchestratorError(
+            "operator and runner genesis frontier authorities disagree"
+        )
+    import_events = [
+        event
+        for event in events[1:]
+        if event.get("kind") == "FRONTIER_IMPORTED"
+    ]
+    expected_payload = Runner.selective_frontier_import_to_dict(
+        binding
+    )
+    missing_recoverable_import_event = (
+        not import_events and len(events) == 1
+    )
+    if not missing_recoverable_import_event and (
+        len(import_events) != 1
+        or import_events[0].get("sequence") != 2
+        or import_events[0].get("payload") != expected_payload
+    ):
+        raise ContiguousOrchestratorError(
+            "selective campaign import event is missing or substituted"
+        )
+    verified = _read_only_selective_frontier_gate(
+        config.frontier_import_root
+    ).verify_selective_frontier_import(binding)
+    if verified != binding:
+        raise ContiguousOrchestratorError(
+            "selective durable frontier changed during preflight"
+        )
+    return (
+        _require_operator_authorized_selective_frontier(
+            config, binding
+        ),
+        (
+            "authenticated_durable_operator_and_runner_genesis_frontier"
+            if operator_binding is not None
+            else "authenticated_durable_genesis_frontier"
+        ),
+    )
+
+
+def audit_selective_continuation_unified(
+    *,
+    campaign_root: Path,
+    scheduler_audit_receipt_path: Path,
+    runner_state_receipt: object,
+    promotion_root: Path,
+    frontier_import_root: Path,
+    expected_selective_frontier_import_sha256: str,
+    secret_sentinels: tuple[str, ...] = (),
+    controller_state_canaries: tuple[Taint.LiveCanary, ...] = (),
+) -> dict[str, Any]:
+    """Audit exactly the imported K-to-target continuation scope.
+
+    Imported evidence is reopened from its immutable authority store.  Fresh
+    promotions are reopened from the distinct mutable output store.  Global
+    183-level completion remains false and cannot be inferred by this audit.
+    """
+
+    campaign = Path(campaign_root).resolve()
+    scheduler_path = Path(scheduler_audit_receipt_path).resolve()
+    promotions = Path(promotion_root).resolve()
+    import_root = Path(frontier_import_root)
+    try:
+        if (
+            not isinstance(
+                expected_selective_frontier_import_sha256, str
+            )
+            or SHA256_RE.fullmatch(
+                expected_selective_frontier_import_sha256
+            )
+            is None
+        ):
+            raise ContiguousOrchestratorError(
+                "operator-authorized selective import digest is malformed"
+            )
+        runner_receipt = Runner.verify_runner_state_audit(
+            runner_state_receipt,
+            campaign_root=campaign,
+            secret_sentinels=secret_sentinels,
+            controller_state_canaries=controller_state_canaries,
+        )
+        raw_import = runner_receipt.get("selective_frontier_import")
+        if (
+            runner_receipt.get("status") != "PASS"
+            or runner_receipt.get("campaign_mode")
+            != "selective_continuation"
+            or runner_receipt.get("complete") is not False
+            or runner_receipt.get("selective_complete") is not True
+            or not isinstance(raw_import, dict)
+        ):
+            raise ContiguousOrchestratorError(
+                "runner audit is not a selective-complete PASS"
+            )
+        selective_import = Runner.selective_frontier_import_from_dict(
+            raw_import
+        )
+        if (
+            runner_receipt.get("selective_continuation_game")
+            != selective_import.game
+            or runner_receipt.get(
+                "selective_frontier_import_sha256"
+            )
+            != selective_import.import_sha256
+            or runner_receipt.get(
+                "operator_authorized_selective_frontier_import_sha256"
+            )
+            != expected_selective_frontier_import_sha256
+            or selective_import.import_sha256
+            != expected_selective_frontier_import_sha256
+        ):
+            raise ContiguousOrchestratorError(
+                "runner audit changes its selective import identity"
+            )
+        reopened_import = _read_only_selective_frontier_gate(
+            import_root
+        ).verify_selective_frontier_import(selective_import)
+        if reopened_import != selective_import:
+            raise ContiguousOrchestratorError(
+                "selective frontier import changed during audit"
+            )
+        scheduler_receipt = Scheduler.verify_audit_receipt(
+            campaign, scheduler_path
+        )
+        terminal_retention = Runner.audit_terminal_attempt_retention(
+            campaign,
+            runner_receipt,
+            secret_sentinels=secret_sentinels,
+            controller_state_canaries=controller_state_canaries,
+        )
+        if terminal_retention.get("status") != "NOT_REQUIRED":
+            raise ContiguousOrchestratorError(
+                "selective audit cannot exercise global terminal retention"
+            )
+        scheduler_summary = scheduler_receipt.get("summary")
+        if not isinstance(scheduler_summary, dict):
+            raise ContiguousOrchestratorError(
+                "selective scheduler audit summary is malformed"
+            )
+        scope_solved = runner_receipt.get(
+            "selective_scope_solved_levels"
+        )
+        scope_total = runner_receipt.get(
+            "selective_scope_total_levels"
+        )
+        if (
+            scheduler_receipt.get("campaign_root") != str(campaign)
+            or runner_receipt.get("campaign_root") != str(campaign)
+            or scheduler_receipt.get("policy_sha256")
+            != runner_receipt.get("scheduler_policy_sha256")
+            or scheduler_receipt.get("journal_events")
+            != runner_receipt.get("journal_event_count")
+            or scheduler_receipt.get("journal_head_sequence")
+            != runner_receipt.get("journal_head_sequence")
+            or scheduler_receipt.get("journal_head_digest")
+            != runner_receipt.get("journal_head_digest")
+            or scheduler_summary.get("journal_prefix")
+            != runner_receipt.get("journal_prefix")
+            or scheduler_summary.get("campaign_mode")
+            != "selective_continuation"
+            or scheduler_summary.get("selective_continuation_game")
+            != selective_import.game
+            or scheduler_summary.get(
+                "selective_frontier_import_sha256"
+            )
+            != selective_import.import_sha256
+            or scheduler_summary.get(
+                "operator_authorized_selective_frontier_import_sha256"
+            )
+            != expected_selective_frontier_import_sha256
+            or scheduler_summary.get("policy_promoted_levels")
+            != scope_solved
+            or scheduler_summary.get(
+                "selective_scope_promoted_levels"
+            )
+            != scope_solved
+            or scheduler_summary.get(
+                "selective_scope_total_levels"
+            )
+            != scope_total
+            or scheduler_summary.get("selective_complete") is not True
+            or scope_solved != scope_total
+            or scheduler_summary.get("pending_decision") is not None
+            or scheduler_summary.get("active_auxiliary_assignments")
+            != []
+            or scheduler_summary.get("live_reservation_units") != 0
+        ):
+            raise ContiguousOrchestratorError(
+                "selective scheduler and runner receipts disagree"
+            )
+        promotion_records, verified_boundaries = (
+            _read_only_promotion_records(
+                promotions,
+                campaign_id=str(runner_receipt["campaign_id"]),
+                lane_boundaries=runner_receipt["lane_boundaries"],
+            )
+        )
+        scope_verified = verified_boundaries - selective_import.reached
+        if (
+            scope_verified != scope_solved
+            or verified_boundaries != runner_receipt["solved_levels"]
+        ):
+            raise ContiguousOrchestratorError(
+                "selective scope lacks exact fresh promotion evidence"
+            )
+        body = {
+            "schema": UNIFIED_AUDIT_SCHEMA,
+            "kind": "arc_agi3_selective_continuation_unified_audit",
+            "status": "PASS",
+            "campaign_mode": "selective_continuation",
+            "campaign_root": str(campaign),
+            "promotion_root": str(promotions),
+            "frontier_import_root": str(import_root),
+            "scheduler_audit_receipt_sha256":
+                scheduler_receipt["receipt_sha256"],
+            "runner_state_receipt_sha256":
+                runner_receipt["receipt_sha256"],
+            "terminal_retention_receipt_sha256":
+                terminal_retention["receipt_sha256"],
+            "campaign_id": runner_receipt["campaign_id"],
+            "inventory_sha256": runner_receipt["inventory_sha256"],
+            "scheduler_policy_sha256":
+                runner_receipt["scheduler_policy_sha256"],
+            "operator_configuration_sha256":
+                runner_receipt["operator_configuration_sha256"],
+            "journal_event_count": runner_receipt[
+                "journal_event_count"
+            ],
+            "journal_head_sequence": runner_receipt[
+                "journal_head_sequence"
+            ],
+            "journal_head_digest": runner_receipt[
+                "journal_head_digest"
+            ],
+            "selective_continuation_game": selective_import.game,
+            "selective_frontier_import_sha256":
+                selective_import.import_sha256,
+            "operator_authorized_selective_frontier_import_sha256":
+                expected_selective_frontier_import_sha256,
+            "imported_frontier_levels": selective_import.reached,
+            "selective_scope_solved_levels": scope_solved,
+            "selective_scope_total_levels": scope_total,
+            "selective_verified_promotion_boundaries": scope_verified,
+            "selective_complete": True,
+            "solved_levels": verified_boundaries,
+            "total_levels": runner_receipt["total_levels"],
+            "complete": False,
+            "promotion_records": promotion_records,
+            "promotion_records_sha256": _json_sha256(
+                promotion_records
+            ),
+            "findings": [],
+        }
+    except (
+        ContiguousOrchestratorError,
+        Runner.ContiguousRunnerError,
+        Scheduler.SchedulerError,
+        OSError,
+        KeyError,
+        TypeError,
+        ValueError,
+    ) as exc:
+        body = {
+            "schema": UNIFIED_AUDIT_SCHEMA,
+            "kind": "arc_agi3_selective_continuation_unified_audit",
+            "status": "FAIL",
+            "campaign_mode": "selective_continuation",
+            "campaign_root": str(campaign),
+            "promotion_root": str(promotions),
+            "frontier_import_root": str(import_root),
+            "operator_authorized_selective_frontier_import_sha256":
+                expected_selective_frontier_import_sha256,
+            "selective_complete": False,
+            "complete": False,
+            "findings": [f"{type(exc).__name__}: {exc}"],
+        }
+    return {**body, "receipt_sha256": _json_sha256(body)}
+
+
+def verify_selective_continuation_unified_audit(
+    receipt: object,
+    *,
+    campaign_root: Path,
+    scheduler_audit_receipt_path: Path,
+    runner_state_receipt: object,
+    promotion_root: Path,
+    frontier_import_root: Path,
+    expected_selective_frontier_import_sha256: str,
+    secret_sentinels: tuple[str, ...] = (),
+    controller_state_canaries: tuple[Taint.LiveCanary, ...] = (),
+) -> dict[str, Any]:
+    """Recompute and require the exact selective continuation PASS."""
+
+    expected = audit_selective_continuation_unified(
+        campaign_root=campaign_root,
+        scheduler_audit_receipt_path=scheduler_audit_receipt_path,
+        runner_state_receipt=runner_state_receipt,
+        promotion_root=promotion_root,
+        frontier_import_root=frontier_import_root,
+        expected_selective_frontier_import_sha256=(
+            expected_selective_frontier_import_sha256
+        ),
+        secret_sentinels=secret_sentinels,
+        controller_state_canaries=controller_state_canaries,
+    )
+    if (
+        not isinstance(receipt, dict)
+        or receipt != expected
+        or expected.get("status") != "PASS"
+        or expected.get("selective_complete") is not True
+        or expected.get("complete") is not False
+    ):
+        raise ContiguousOrchestratorError(
+            "selective unified audit is stale, forged, or not PASS"
         )
     return expected
 
@@ -6152,6 +7022,9 @@ class OperatorConfiguration:
     canary_placements: Mapping[str, str]
     path_relationships: Mapping[str, object]
     path_relationships_sha256: str
+    frontier_import_root: Path | None = None
+    selective_continuation_game: str | None = None
+    selective_frontier_import_sha256: str | None = None
 
 
 _OPERATOR_CONFIG_FIELDS = frozenset({
@@ -6187,6 +7060,11 @@ _OPERATOR_CONFIG_FIELDS = frozenset({
     "poll_interval_seconds",
     "terminal_condition",
     "canary_placements",
+})
+_SELECTIVE_OPERATOR_CONFIG_FIELDS = _OPERATOR_CONFIG_FIELDS | frozenset({
+    "frontier_import_root",
+    "selective_continuation_game",
+    "selective_frontier_import_sha256",
 })
 _BACKEND_CONFIGURATION_FIELDS = frozenset({
     "image_reference",
@@ -6439,7 +7317,27 @@ def _operator_path_relationship_projection(
     paths: Mapping[str, Path],
     auxiliary_configuration: AuxiliaryBackendDriverConfiguration,
     canary_placements: Mapping[str, str],
+    selective_frontier_import_sha256: str | None = None,
 ) -> dict[str, object]:
+    if (
+        ("frontier_import_root" in paths)
+        != (selective_frontier_import_sha256 is not None)
+        or (
+            selective_frontier_import_sha256 is not None
+            and (
+                not isinstance(
+                    selective_frontier_import_sha256, str
+                )
+                or SHA256_RE.fullmatch(
+                    selective_frontier_import_sha256
+                )
+                is None
+            )
+        )
+    ):
+        raise ContiguousOrchestratorError(
+            "selective path projection lacks its authorized import digest"
+        )
     mutable = {
         name: paths[name]
         for name in (
@@ -6477,6 +7375,10 @@ def _operator_path_relationship_projection(
             "environments_root",
         )
     }
+    if "frontier_import_root" in paths:
+        authority_roots["frontier_import_root"] = paths[
+            "frontier_import_root"
+        ]
     authority_files = {
         "config_path": config_path,
         **{
@@ -6537,6 +7439,11 @@ def _operator_path_relationship_projection(
         left_class, left_path = roles[left_name]
         for right_name in role_names[index + 1:]:
             right_class, right_path = roles[right_name]
+            shared_conformance_endpoint = (
+                {left_name, right_name}
+                == {"launch_attestation", "conformance_result"}
+                and left_path == right_path
+            )
             left_contains = _path_contains_or_equals(
                 left_path, right_path
             )
@@ -6545,7 +7452,7 @@ def _operator_path_relationship_projection(
             )
             exact = left_path == right_path
             if (
-                exact
+                (exact and not shared_conformance_endpoint)
                 or (
                     "mutable_root" in {left_class, right_class}
                     and (left_contains or right_contains)
@@ -6614,6 +7521,10 @@ def _operator_path_relationship_projection(
                 ) == (
                     right_final["device"],
                     right_final["inode"],
+                ) and not (
+                    {left_name, right_name}
+                    == {"launch_attestation", "conformance_result"}
+                    and left_path == right_path
                 ):
                     raise ContiguousOrchestratorError(
                         "operator endpoint identity is aliased: "
@@ -6657,7 +7568,7 @@ def _operator_path_relationship_projection(
         raise ContiguousOrchestratorError(
             "operator path identity changed during pre-mutation binding"
         )
-    return {
+    projection: dict[str, object] = {
         "schema": 1,
         "kind": "arc_agi3_operator_path_relationships",
         "allowed_matrix": {
@@ -6667,6 +7578,8 @@ def _operator_path_relationship_projection(
             "authority_root:authority_file": "containment_allowed",
             "authority_root:canary_file": "containment_allowed",
             "authority_file:authority_file": "distinct",
+            "launch_attestation:conformance_result":
+                "same_exact_receipt_required",
             "authority_file:canary_file": "disjoint",
             "canary_file:canary_file": "disjoint",
         },
@@ -6674,6 +7587,11 @@ def _operator_path_relationship_projection(
         "environment_canary_name":
             canary_placements["environment"],
     }
+    if selective_frontier_import_sha256 is not None:
+        projection["selective_frontier_import_sha256"] = (
+            selective_frontier_import_sha256
+        )
+    return projection
 
 
 def _revalidate_operator_path_relationships(
@@ -6700,6 +7618,11 @@ def _revalidate_operator_path_relationships(
             "environments_root",
         )
     }
+    frontier_import_root = getattr(
+        config, "frontier_import_root", None
+    )
+    if frontier_import_root is not None:
+        paths["frontier_import_root"] = frontier_import_root
     observed = _operator_path_relationship_projection(
         config_path=config.config_path,
         paths=paths,
@@ -6707,6 +7630,9 @@ def _revalidate_operator_path_relationships(
             config.auxiliary_backend_configuration
         ),
         canary_placements=config.canary_placements,
+        selective_frontier_import_sha256=getattr(
+            config, "selective_frontier_import_sha256", None
+        ),
     )
     if (
         observed != config.path_relationships
@@ -6804,7 +7730,15 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
     )
     raw = _private_operator_config_bytes(config_path)
     value = _strict_json(raw, label="operator config")
-    if set(value) != _OPERATOR_CONFIG_FIELDS or value["schema"] != 1:
+    selected_fields = frozenset(value)
+    selective_mode = selected_fields == _SELECTIVE_OPERATOR_CONFIG_FIELDS
+    if (
+        selected_fields not in {
+            _OPERATOR_CONFIG_FIELDS,
+            _SELECTIVE_OPERATOR_CONFIG_FIELDS,
+        }
+        or value["schema"] != 1
+    ):
         raise ContiguousOrchestratorError(
             "operator config has missing, duplicate, or unknown fields"
         )
@@ -6845,10 +7779,17 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         "canonical_root",
         "environments_root",
     )
+    if selective_mode:
+        path_names = (*path_names, "frontier_import_root")
     paths = {
         name: _absolute_path(value[name], label=name)
         for name in path_names
     }
+    if paths["launch_attestation"] != paths["conformance_result"]:
+        raise ContiguousOrchestratorError(
+            "launch attestation and conformance result must be the same "
+            "exact receipt"
+        )
     _verify_executable(
         paths["docker_binary"],
         value["docker_binary_sha256"],
@@ -6873,7 +7814,7 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         raise ContiguousOrchestratorError(
             "Python runtime manifest is not exact current evidence"
         ) from exc
-    for name in (
+    required_existing_paths = (
         "docker_socket",
         "docker_config_root",
         "credential_source",
@@ -6883,7 +7824,13 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         "pilot_authentication_key",
         "canonical_root",
         "environments_root",
-    ):
+    )
+    if selective_mode:
+        required_existing_paths = (
+            *required_existing_paths,
+            "frontier_import_root",
+        )
+    for name in required_existing_paths:
         if not paths[name].exists() or paths[name].is_symlink():
             raise ContiguousOrchestratorError(
                 f"{name} does not exist as an explicit unaliased path"
@@ -6919,6 +7866,11 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         paths=paths,
         auxiliary_configuration=auxiliary_backend_configuration,
         canary_placements=placements,
+        selective_frontier_import_sha256=(
+            value["selective_frontier_import_sha256"]
+            if selective_mode
+            else None
+        ),
     )
     path_relationships_sha256 = _json_sha256(
         path_relationships
@@ -6957,7 +7909,33 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         )
         is None
         or value["terminal_condition"]
-        != CANONICAL_TERMINAL_CONDITION
+        != (
+            SELECTIVE_TERMINAL_CONDITION
+            if selective_mode
+            else CANONICAL_TERMINAL_CONDITION
+        )
+        or (
+            selective_mode
+            and (
+                not isinstance(
+                    value["selective_continuation_game"], str
+                )
+                or re.fullmatch(
+                    r"[a-z0-9]{4}",
+                    value["selective_continuation_game"],
+                )
+                is None
+                or value["selective_continuation_game"]
+                not in Supervisor.authoritative_inventory()
+                or not isinstance(
+                    value["selective_frontier_import_sha256"], str
+                )
+                or SHA256_RE.fullmatch(
+                    value["selective_frontier_import_sha256"]
+                )
+                is None
+            )
+        )
     ):
         raise ContiguousOrchestratorError(
             "operator scheduling controls are malformed"
@@ -7028,6 +8006,21 @@ def load_operator_configuration(path: Path) -> OperatorConfiguration:
         canary_placements=dict(placements),
         path_relationships=path_relationships,
         path_relationships_sha256=path_relationships_sha256,
+        frontier_import_root=(
+            paths["frontier_import_root"]
+            if selective_mode
+            else None
+        ),
+        selective_continuation_game=(
+            value["selective_continuation_game"]
+            if selective_mode
+            else None
+        ),
+        selective_frontier_import_sha256=(
+            value["selective_frontier_import_sha256"]
+            if selective_mode
+            else None
+        ),
     )
 
 
@@ -7905,6 +8898,129 @@ def _validate_host_child_ledger_audit(
     return selected
 
 
+def _selective_campaign_audit(
+    *,
+    config: OperatorConfiguration,
+    credentials: Transport.ExternalChatGptCredentials,
+    planting: _CanaryPlanting,
+    command_runner: Any,
+) -> dict[str, Any]:
+    """Finalize the exact imported continuation without a global purge."""
+
+    if (
+        config.frontier_import_root is None
+        or config.selective_continuation_game is None
+        or config.selective_frontier_import_sha256 is None
+    ):
+        raise ContiguousOrchestratorError(
+            "selective terminal audit lacks its import authority"
+        )
+    audit_root = config.campaign_root / "terminal_audits"
+    _ensure_private_directory(audit_root, label="terminal audit root")
+    host_child_audit = _validate_host_child_ledger_audit(
+        command_runner.audit_invocation_ledger(),
+        campaign_root=config.campaign_root,
+        require_quiescent=True,
+    )
+    host_child_path = audit_root / "host_children.json"
+    _ensure_receipt(host_child_path, host_child_audit)
+    scheduler_receipt, scheduler_path = (
+        _load_or_create_terminal_scheduler_audit(
+            campaign_root=config.campaign_root,
+            audit_root=audit_root,
+        )
+    )
+    runner_receipt = Runner.audit_runner_state_read_only(
+        config.campaign_root,
+        secret_sentinels=credentials.leak_sentinels,
+        controller_state_canaries=planting.canaries,
+    )
+    if (
+        runner_receipt.get("status") != "PASS"
+        or runner_receipt.get("campaign_mode")
+        != "selective_continuation"
+        or runner_receipt.get("selective_continuation_game")
+        != config.selective_continuation_game
+        or runner_receipt.get(
+            "operator_authorized_selective_frontier_import_sha256"
+        )
+        != config.selective_frontier_import_sha256
+        or runner_receipt.get("selective_complete") is not True
+        or runner_receipt.get("complete") is not False
+    ):
+        raise ContiguousOrchestratorError(
+            "selective terminal runner audit is not an exact PASS"
+        )
+    retention_receipt = Runner.audit_terminal_attempt_retention(
+        config.campaign_root,
+        runner_receipt,
+        secret_sentinels=credentials.leak_sentinels,
+        controller_state_canaries=planting.canaries,
+    )
+    if retention_receipt.get("status") != "NOT_REQUIRED":
+        raise ContiguousOrchestratorError(
+            "selective terminal attempted a global retention purge"
+        )
+    runner_path = audit_root / "runner.json"
+    _ensure_receipt(runner_path, runner_receipt)
+    unified = audit_selective_continuation_unified(
+        campaign_root=config.campaign_root,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=config.promotion_root,
+        frontier_import_root=config.frontier_import_root,
+        expected_selective_frontier_import_sha256=(
+            config.selective_frontier_import_sha256
+        ),
+        secret_sentinels=credentials.leak_sentinels,
+        controller_state_canaries=planting.canaries,
+    )
+    verify_selective_continuation_unified_audit(
+        unified,
+        campaign_root=config.campaign_root,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=config.promotion_root,
+        frontier_import_root=config.frontier_import_root,
+        expected_selective_frontier_import_sha256=(
+            config.selective_frontier_import_sha256
+        ),
+        secret_sentinels=credentials.leak_sentinels,
+        controller_state_canaries=planting.canaries,
+    )
+    unified_path = audit_root / "unified.json"
+    _ensure_receipt(unified_path, unified)
+    return {
+        "campaign_mode": "selective_continuation",
+        "host_child_ledger_audit": str(host_child_path),
+        "host_child_ledger_audit_sha256":
+            _sha256(_canonical_json(host_child_audit) + b"\n"),
+        "scheduler_audit": str(scheduler_path),
+        "runner_audit": str(runner_path),
+        "terminal_retention_status": "NOT_REQUIRED",
+        "terminal_retention_receipt_sha256":
+            retention_receipt["receipt_sha256"],
+        "unified_audit": str(unified_path),
+        "unified_audit_sha256": unified["receipt_sha256"],
+        "selective_continuation_game":
+            unified["selective_continuation_game"],
+        "selective_frontier_import_sha256":
+            unified["selective_frontier_import_sha256"],
+        "operator_authorized_selective_frontier_import_sha256":
+            unified[
+                "operator_authorized_selective_frontier_import_sha256"
+            ],
+        "selective_scope_solved_levels":
+            unified["selective_scope_solved_levels"],
+        "selective_scope_total_levels":
+            unified["selective_scope_total_levels"],
+        "selective_complete": True,
+        "complete": False,
+        "solved_levels": unified["solved_levels"],
+        "total_levels": unified["total_levels"],
+    }
+
+
 def _terminal_campaign_audit(
     *,
     config: OperatorConfiguration,
@@ -7912,6 +9028,13 @@ def _terminal_campaign_audit(
     planting: _CanaryPlanting,
     command_runner: Any,
 ) -> dict[str, Any]:
+    if config.selective_continuation_game is not None:
+        return _selective_campaign_audit(
+            config=config,
+            credentials=credentials,
+            planting=planting,
+            command_runner=command_runner,
+        )
     audit_root = config.campaign_root / "terminal_audits"
     _ensure_private_directory(audit_root, label="terminal audit root")
     host_child_audit = _validate_host_child_ledger_audit(
@@ -8042,12 +9165,50 @@ def _quiescent_authenticated_blocked_projection(
         raise ContiguousOrchestratorError(
             "runner state lacks typed lane/auxiliary inventories"
         )
+    selective = state.get("campaign_mode") == "selective_continuation"
+    selected_game = state.get("selective_continuation_game")
+    selective_import = state.get("selective_frontier_import")
+    if selective:
+        if (
+            not isinstance(selected_game, str)
+            or selected_game not in lanes
+            or not isinstance(selective_import, dict)
+            or SHA256_RE.fullmatch(
+                str(selective_import.get("import_sha256"))
+            )
+            is None
+        ):
+            raise ContiguousOrchestratorError(
+                "selective runner state lacks its exact selected lane"
+            )
+        for game, lane in lanes.items():
+            if not isinstance(lane, dict):
+                raise ContiguousOrchestratorError(
+                    "selective runner state has an untyped lane"
+                )
+            if game == selected_game:
+                if (
+                    lane.get("blocked")
+                    == Runner.SELECTIVE_SCOPE_BLOCKED_REASON
+                ):
+                    raise ContiguousOrchestratorError(
+                        "selected lane is marked outside selective scope"
+                    )
+            elif (
+                lane.get("blocked")
+                != Runner.SELECTIVE_SCOPE_BLOCKED_REASON
+                or lane.get("active") is not None
+            ):
+                raise ContiguousOrchestratorError(
+                    "nonselected lane lacks exact scope exclusion"
+                )
     unresolved = [
         (game, lane)
         for game, lane in sorted(lanes.items())
         if (
             isinstance(lane, dict)
             and lane.get("reached") < lane.get("target")
+            and (not selective or game == selected_game)
         )
     ]
     active_auxiliary = [
@@ -8061,6 +9222,7 @@ def _quiescent_authenticated_blocked_projection(
     ]
     if (
         state.get("complete") is True
+        or (selective and state.get("selective_complete") is True)
         or not unresolved
         or state.get("pending_scheduler_decision") is not None
         or state.get("pending_auxiliary_decision") is not None
@@ -8072,7 +9234,7 @@ def _quiescent_authenticated_blocked_projection(
         )
     ):
         return None
-    return {
+    result = {
         "schema": 1,
         "kind": "arc_agi3_contiguous_operator_terminal",
         "status": "BLOCKED",
@@ -8095,6 +9257,22 @@ def _quiescent_authenticated_blocked_projection(
         "pending_scheduler_decision": False,
         "pending_auxiliary_decision": False,
     }
+    if selective:
+        result.update({
+            "campaign_mode": "selective_continuation",
+            "selective_continuation_game": selected_game,
+            "selective_frontier_import_sha256": selective_import[
+                "import_sha256"
+            ],
+            "selective_scope_solved_levels": state.get(
+                "selective_scope_solved_levels"
+            ),
+            "selective_scope_total_levels": state.get(
+                "selective_scope_total_levels"
+            ),
+            "scope_excluded_lane_count": len(lanes) - 1,
+        })
+    return result
 
 
 def _operator_journal_head(
@@ -8603,31 +9781,29 @@ def _storage_exhausted_terminal_value(
     }
 
 
-def _run_operator_impl(
+def _selective_operator_preflight(
     config: OperatorConfiguration,
 ) -> dict[str, Any]:
-    """Run recovery/cycles until the exact declared audited terminal state."""
+    """Bind fresh controls and the exact current imported frontier."""
 
     if (
-        getattr(config, "terminal_condition", None)
-        != CANONICAL_TERMINAL_CONDITION
+        config.frontier_import_root is None
+        or config.selective_continuation_game is None
+        or config.selective_frontier_import_sha256 is None
     ):
         raise ContiguousOrchestratorError(
-            "operator terminal condition is fixed by campaign policy"
+            "selective operator lacks its exact import configuration"
         )
-    if isinstance(config, OperatorConfiguration):
-        _revalidate_operator_path_relationships(config)
-
-    # This is the last read-only boundary.  A failure here cannot create the
-    # campaign root, plant canaries, or start any external process.
-    preflight = Supervisor.launch_preflight(
+    first, frontier_authority_source = (
+        _selective_preflight_frontier(config)
+    )
+    _require_operator_authorized_selective_frontier(config, first)
+    control = Supervisor.selective_continuation_preflight(
         config.launch_attestation,
         requested_image_digest=(
             config.backend_configuration.image_digest
         ),
         conformance_result=config.conformance_result,
-        canonical_root=config.canonical_root,
-        environments_root=config.environments_root,
         python_executable=config.python_executable,
         python_executable_sha256=config.python_executable_sha256,
         python_runtime_manifest=config.python_runtime_manifest,
@@ -8638,13 +9814,241 @@ def _run_operator_impl(
             config.runtime_control_snapshot_root
         ),
         pilot_gate_receipt=config.pilot_gate_receipt,
-        pilot_authentication_key=(
-            config.pilot_authentication_key
-        ),
+        pilot_authentication_key=config.pilot_authentication_key,
         pilot_production_stack_attestation_sha256=(
             config.pilot_production_stack_attestation_sha256
         ),
     )
+    control_evidence = control.get("launch_authority_evidence")
+    if (
+        control.get("status") != "PASS"
+        or control.get("launch_authority")
+        != "SELECTIVE_CONTROL_RECEIPT_DERIVED"
+        or control.get("launch_authority_kind")
+        != "arc_agi3_selective_continuation_control_authority"
+        or not isinstance(control_evidence, Mapping)
+        or control_evidence.get("authority_sha256")
+        != control.get("launch_authority_sha256")
+        or control_evidence.get("terminal_release_authority") is not False
+        or control.get("image_digest")
+        != config.backend_configuration.image_digest
+    ):
+        raise ContiguousOrchestratorError(
+            "selective control preflight did not issue exact authority"
+        )
+    second, reopened_frontier_authority_source = (
+        _selective_preflight_frontier(config)
+    )
+    if (
+        second != first
+        or reopened_frontier_authority_source
+        != frontier_authority_source
+    ):
+        raise ContiguousOrchestratorError(
+            "current frontier changed during selective launch preflight"
+        )
+    frontier = Runner.selective_frontier_import_to_dict(first)
+    body = {
+        "schema": 1,
+        "kind": "arc_agi3_selective_frontier_launch_authority",
+        "status": "PASS",
+        "authority_source":
+            "verified_controls_pilot_and_authenticated_frontier",
+        "frontier_authority_source": frontier_authority_source,
+        "operator_configuration_sha256": config.config_sha256,
+        "frontier_import_root": str(config.frontier_import_root),
+        "selective_continuation_game":
+            config.selective_continuation_game,
+        "selective_frontier_import": frontier,
+        "selective_frontier_import_sha256": first.import_sha256,
+        "operator_authorized_selective_frontier_import_sha256":
+            config.selective_frontier_import_sha256,
+        "control_launch_authority_sha256": control[
+            "launch_authority_sha256"
+        ],
+        "control_launch_authority_kind": control[
+            "launch_authority_kind"
+        ],
+        "control_launch_authority_evidence": control[
+            "launch_authority_evidence"
+        ],
+        "control_contract_sha256": control[
+            "control_contract_sha256"
+        ],
+        "python_runtime_manifest_sha256":
+            config.python_runtime_manifest_sha256,
+        "image_digest": config.backend_configuration.image_digest,
+        "pilot_gate_receipt_sha256": control[
+            "pilot_gate_receipt_sha256"
+        ],
+        "pilot_manifest_sha256": control[
+            "pilot_manifest_sha256"
+        ],
+    }
+    authority_sha256 = _json_sha256(body)
+    return {
+        **control,
+        "launch_authority": "SELECTIVE_FRONTIER_RECEIPT_DERIVED",
+        "launch_authority_kind":
+            "arc_agi3_selective_frontier_launch_authority",
+        "launch_authority_sha256": authority_sha256,
+        "launch_authority_evidence": {
+            **body,
+            "authority_sha256": authority_sha256,
+        },
+        "selective_continuation_game":
+            config.selective_continuation_game,
+        "selective_frontier_import": frontier,
+        "selective_frontier_import_sha256": first.import_sha256,
+        "operator_authorized_selective_frontier_import_sha256":
+            config.selective_frontier_import_sha256,
+    }
+
+
+def _selective_durable_preflight_projection(
+    config: OperatorConfiguration,
+    preflight: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Project restart-stable authority, excluding fresh-run timestamps."""
+
+    outer = preflight.get("launch_authority_evidence")
+    if not isinstance(outer, Mapping):
+        raise ContiguousOrchestratorError(
+            "selective preflight lacks outer authority evidence"
+        )
+    control = outer.get("control_launch_authority_evidence")
+    if not isinstance(control, Mapping):
+        raise ContiguousOrchestratorError(
+            "selective preflight lacks control authority evidence"
+        )
+    if (
+        preflight.get("selective_frontier_import_sha256")
+        != config.selective_frontier_import_sha256
+        or outer.get(
+            "operator_authorized_selective_frontier_import_sha256"
+        )
+        != config.selective_frontier_import_sha256
+    ):
+        raise ContiguousOrchestratorError(
+            "selective preflight differs from operator-authorized import"
+        )
+    body = {
+        "schema": 1,
+        "kind": "arc_agi3_selective_durable_launch_contract",
+        "operator_configuration_sha256": config.config_sha256,
+        "frontier_import_root": str(config.frontier_import_root),
+        "selective_continuation_game":
+            config.selective_continuation_game,
+        "selective_frontier_import": preflight[
+            "selective_frontier_import"
+        ],
+        "selective_frontier_import_sha256": preflight[
+            "selective_frontier_import_sha256"
+        ],
+        "operator_authorized_selective_frontier_import_sha256":
+            config.selective_frontier_import_sha256,
+        "conformance_registry_sha256": preflight[
+            "conformance_registry_sha256"
+        ],
+        "control_contract_sha256": preflight[
+            "control_contract_sha256"
+        ],
+        "supplied_prelaunch_sha256": control[
+            "supplied_prelaunch_sha256"
+        ],
+        "authoritative_inventory_sha256": preflight[
+            "authoritative_inventory_sha256"
+        ],
+        "image_digest": preflight["image_digest"],
+        "python_runtime_manifest_sha256": preflight[
+            "python_runtime_manifest_sha256"
+        ],
+        "pilot_gate_receipt_sha256": preflight[
+            "pilot_gate_receipt_sha256"
+        ],
+        "pilot_manifest_sha256": preflight[
+            "pilot_manifest_sha256"
+        ],
+        "pilot_meta_handoff_count": preflight[
+            "pilot_meta_handoff_count"
+        ],
+        "production_stack_attestation_sha256": control[
+            "production_stack_attestation_sha256"
+        ],
+    }
+    return {**body, "contract_sha256": _json_sha256(body)}
+
+
+def _run_operator_impl(
+    config: OperatorConfiguration,
+) -> dict[str, Any]:
+    """Run recovery/cycles until the exact declared audited terminal state."""
+
+    selective_game = getattr(
+        config, "selective_continuation_game", None
+    )
+    frontier_import_root = getattr(
+        config, "frontier_import_root", None
+    )
+    selective_frontier_import_sha256 = getattr(
+        config, "selective_frontier_import_sha256", None
+    )
+    selective_mode = (
+        selective_game is not None
+        or frontier_import_root is not None
+        or selective_frontier_import_sha256 is not None
+    )
+    expected_terminal = (
+        SELECTIVE_TERMINAL_CONDITION
+        if selective_mode
+        else CANONICAL_TERMINAL_CONDITION
+    )
+    if (
+        getattr(config, "terminal_condition", None)
+        != expected_terminal
+        or selective_mode
+        and (
+            selective_game is None
+            or frontier_import_root is None
+            or selective_frontier_import_sha256 is None
+        )
+    ):
+        raise ContiguousOrchestratorError(
+            "operator terminal condition is fixed by campaign policy"
+        )
+    if isinstance(config, OperatorConfiguration):
+        _revalidate_operator_path_relationships(config)
+
+    # This is the last read-only boundary.  A failure here cannot create the
+    # campaign root, plant canaries, or start any external process.
+    if selective_mode:
+        preflight = _selective_operator_preflight(config)
+    else:
+        preflight = Supervisor.launch_preflight(
+            config.launch_attestation,
+            requested_image_digest=(
+                config.backend_configuration.image_digest
+            ),
+            conformance_result=config.conformance_result,
+            canonical_root=config.canonical_root,
+            environments_root=config.environments_root,
+            python_executable=config.python_executable,
+            python_executable_sha256=config.python_executable_sha256,
+            python_runtime_manifest=config.python_runtime_manifest,
+            python_runtime_manifest_sha256=(
+                config.python_runtime_manifest_sha256
+            ),
+            runtime_control_snapshot_root=(
+                config.runtime_control_snapshot_root
+            ),
+            pilot_gate_receipt=config.pilot_gate_receipt,
+            pilot_authentication_key=(
+                config.pilot_authentication_key
+            ),
+            pilot_production_stack_attestation_sha256=(
+                config.pilot_production_stack_attestation_sha256
+            ),
+        )
     # Reopen the sidecar controls after the global release preflight and
     # before the first campaign mutation.  The formal operator has no
     # per-dispatch selector: this one manifest remains fixed for genesis.
@@ -8719,6 +10123,13 @@ def _run_operator_owned_impl(
     operator_lease.assert_healthy()
     import arc_agi3_container_backend as Container
 
+    selective_durable_preflight = (
+        None
+        if config.selective_continuation_game is None
+        else _selective_durable_preflight_projection(
+            config, preflight
+        )
+    )
     operator_genesis = {
         "schema": 1,
         "kind": "arc_agi3_contiguous_operator_genesis",
@@ -8757,7 +10168,11 @@ def _run_operator_owned_impl(
         "conformance_result": str(config.conformance_result),
         "conformance_registry_sha256":
             preflight["conformance_registry_sha256"],
-        "preflight_sha256": _json_sha256(preflight),
+        "preflight_sha256": (
+            _json_sha256(preflight)
+            if selective_durable_preflight is None
+            else selective_durable_preflight["contract_sha256"]
+        ),
         "pilot_gate_receipt":
             preflight["pilot_gate_receipt"],
         "pilot_gate_receipt_sha256":
@@ -8767,6 +10182,25 @@ def _run_operator_owned_impl(
         "pilot_meta_handoff_count":
             preflight["pilot_meta_handoff_count"],
     }
+    if config.selective_continuation_game is not None:
+        operator_genesis.update({
+            "campaign_mode": "selective_continuation",
+            "terminal_condition": SELECTIVE_TERMINAL_CONDITION,
+            "frontier_import_root": str(
+                config.frontier_import_root
+            ),
+            "selective_continuation_game":
+                config.selective_continuation_game,
+            "selective_frontier_import_sha256": preflight[
+                "selective_frontier_import_sha256"
+            ],
+            "operator_authorized_selective_frontier_import_sha256":
+                config.selective_frontier_import_sha256,
+            "selective_launch_authority_sha256":
+                selective_durable_preflight["contract_sha256"],
+            "selective_durable_launch_contract":
+                selective_durable_preflight,
+        })
     _ensure_receipt(
         config.campaign_root / "operator_genesis.json",
         operator_genesis,
@@ -8871,10 +10305,19 @@ def _run_operator_owned_impl(
         replay_image_reference=config.replay_image_reference,
         evidence_root=config.replay_evidence_root,
     )
+    expected_selective_import = (
+        None
+        if config.selective_continuation_game is None
+        else Runner.selective_frontier_import_from_dict(
+            preflight["selective_frontier_import"]
+        )
+    )
     promotion_gate = ProductionPromotionGate(
         config.promotion_root,
         replay_executor=replay,
         secret_sentinels=credentials.leak_sentinels,
+        frontier_import_root=config.frontier_import_root,
+        selective_frontier_import=expected_selective_import,
     )
     runner = Runner.ContiguousCampaignRunner(
         config.campaign_root,
@@ -8891,6 +10334,13 @@ def _run_operator_owned_impl(
         auxiliary_backend=auxiliary_backend,
         auxiliary_launch_configuration=(
             config.auxiliary_launch_configuration
+        ),
+        selective_continuation_game=(
+            config.selective_continuation_game
+        ),
+        selective_frontier_import=expected_selective_import,
+        selective_frontier_import_sha256=(
+            config.selective_frontier_import_sha256
         ),
     )
     cycles = 0
@@ -9014,8 +10464,17 @@ def _run_operator_owned_impl(
                 ),
                 terminal_value=storage_value,
             )
-        if state["complete"]:
-            terminal = CANONICAL_TERMINAL_CONDITION
+        if config.selective_continuation_game is not None:
+            reached_terminal = (
+                state.get("selective_complete") is True
+                and not _runner_cleanup_pending(state)
+                and state.get("pending_scheduler_decision") is None
+                and state.get("pending_auxiliary_decision") is None
+            )
+        else:
+            reached_terminal = state["complete"] is True
+        if reached_terminal:
+            terminal = config.terminal_condition
             break
         if blocked_terminal is not None:
             blocked_terminal = {
@@ -9039,20 +10498,36 @@ def _run_operator_owned_impl(
                 terminal_receipt_path=blocked_path,
                 terminal_value=blocked_terminal,
             )
+        operator_status = {
+            "schema": 1,
+            "kind": "contiguous_operator_status",
+            "cycles": cycles,
+            "solved_levels": report["solved_levels"],
+            "total_levels": report["total_levels"],
+            "active_lanes": report["active_lanes"],
+            "draining": report["draining"],
+            "operator_incident": report["operator_incident"],
+            "recoverable_errors": report["recoverable_errors"],
+        }
+        if config.selective_continuation_game is not None:
+            operator_status.update({
+                "campaign_mode": "selective_continuation",
+                "selective_continuation_game":
+                    config.selective_continuation_game,
+                "operator_authorized_selective_frontier_import_sha256":
+                    config.selective_frontier_import_sha256,
+                "selective_scope_solved_levels": state[
+                    "selective_scope_solved_levels"
+                ],
+                "selective_scope_total_levels": state[
+                    "selective_scope_total_levels"
+                ],
+                "selective_complete": state["selective_complete"],
+                "complete": False,
+            })
         _replace_json(
             config.campaign_root / "operator_status.json",
-            {
-                "schema": 1,
-                "kind": "contiguous_operator_status",
-                "cycles": cycles,
-                "solved_levels": report["solved_levels"],
-                "total_levels": report["total_levels"],
-                "active_lanes": report["active_lanes"],
-                "draining": report["draining"],
-                "operator_incident":
-                    report["operator_incident"],
-                "recoverable_errors": report["recoverable_errors"],
-            },
+            operator_status,
         )
         time.sleep(config.poll_interval_seconds)
     operator_lease.assert_healthy()
@@ -9234,13 +10709,17 @@ __all__ = [
     "OperatorConfiguration",
     "ProductionPromotionGate",
     "ProductionAuxiliaryBackend",
+    "SELECTIVE_TERMINAL_CONDITION",
     "SourceReplayExecutor",
     "TrustedCandidateCollector",
     "audit_contiguous_campaign_unified",
+    "audit_selective_continuation_unified",
+    "issue_selective_frontier_import_read_only",
     "load_operator_configuration",
     "main",
     "run_operator",
     "verify_contiguous_campaign_unified_audit",
+    "verify_selective_continuation_unified_audit",
 ]
 
 

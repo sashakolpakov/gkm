@@ -44,6 +44,11 @@ import arc_agi3_compatibility_arena_closure as CompatibilityClosure
 
 JOURNAL_SCHEMA = 1
 RUNNER_SCHEMA = 1
+SELECTIVE_FRONTIER_IMPORT_SCHEMA = 1
+SELECTIVE_FRONTIER_IMPORT_AUTHORITY = (
+    "contiguous_schema_v2_selected_version_v1"
+)
+SELECTIVE_SCOPE_BLOCKED_REASON = "selective_continuation_scope_excluded"
 MAX_LANES = 6
 MAX_VERIFIED_QUIESCENT_COLLECTIONS = 2 * MAX_LANES
 MAX_QUIESCENT_COLLECTION_DIRECTORIES = (
@@ -2757,6 +2762,29 @@ class PromotionCommit:
 
 
 @dataclass(frozen=True)
+class SelectiveFrontierImport:
+    """One sealed, independently promoted frontier admitted for continuation."""
+
+    schema: Literal[1]
+    authority: Literal["contiguous_schema_v2_selected_version_v1"]
+    game: str
+    reached: int
+    authoritative_target: int
+    parent_checkpoint_sha256: str
+    checkpoint_path: str
+    checkpoint_sha256: str
+    source_path: str
+    source_tree_sha256: str
+    promotion_receipt_path: str
+    promotion_receipt_sha256: str
+    source_version_id: str
+    version_tree_sha256: str
+    selected_pointer_sha256: str
+    frontier_sha256: str
+    import_sha256: str
+
+
+@dataclass(frozen=True)
 class HostBlockerEvidence:
     """Host-only blocker authority bound to one exact attempt/frontier."""
 
@@ -4028,6 +4056,18 @@ class PromotionGate(Protocol):
         """Reconcile an ambiguous acknowledgement without republishing."""
         ...
 
+    def issue_selective_frontier_import(
+        self, game: str
+    ) -> SelectiveFrontierImport:
+        """Issue one import from the currently selected sealed version."""
+        ...
+
+    def verify_selective_frontier_import(
+        self, binding: SelectiveFrontierImport
+    ) -> SelectiveFrontierImport:
+        """Reopen one previously issued immutable import binding."""
+        ...
+
 
 def frontier_sha256(
     game: str, reached: int, parent_checkpoint_sha256: str
@@ -4043,6 +4083,174 @@ def frontier_sha256(
             }
         )
     ).hexdigest()
+
+
+def _selective_frontier_import_body(
+    binding: SelectiveFrontierImport,
+) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in asdict(binding).items()
+        if key != "import_sha256"
+    }
+
+
+def selective_frontier_import_sha256(
+    body: Mapping[str, Any],
+) -> str:
+    if "import_sha256" in body:
+        raise ContiguousRunnerError(
+            "selective frontier import digest body is not canonical"
+        )
+    return hashlib.sha256(
+        b"arc-agi3-selective-frontier-import-v1\0"
+        + _canonical_json(dict(body))
+    ).hexdigest()
+
+
+def build_selective_frontier_import(
+    *,
+    game: str,
+    reached: int,
+    authoritative_target: int,
+    parent_checkpoint_sha256: str,
+    checkpoint_path: str,
+    checkpoint_sha256: str,
+    source_path: str,
+    source_tree_sha256: str,
+    promotion_receipt_path: str,
+    promotion_receipt_sha256: str,
+    source_version_id: str,
+    version_tree_sha256: str,
+    selected_pointer_sha256: str,
+) -> SelectiveFrontierImport:
+    frontier = frontier_sha256(
+        game, reached, checkpoint_sha256
+    )
+    body: dict[str, Any] = {
+        "schema": SELECTIVE_FRONTIER_IMPORT_SCHEMA,
+        "authority": SELECTIVE_FRONTIER_IMPORT_AUTHORITY,
+        "game": game,
+        "reached": reached,
+        "authoritative_target": authoritative_target,
+        "parent_checkpoint_sha256": parent_checkpoint_sha256,
+        "checkpoint_path": checkpoint_path,
+        "checkpoint_sha256": checkpoint_sha256,
+        "source_path": source_path,
+        "source_tree_sha256": source_tree_sha256,
+        "promotion_receipt_path": promotion_receipt_path,
+        "promotion_receipt_sha256": promotion_receipt_sha256,
+        "source_version_id": source_version_id,
+        "version_tree_sha256": version_tree_sha256,
+        "selected_pointer_sha256": selected_pointer_sha256,
+        "frontier_sha256": frontier,
+    }
+    body["import_sha256"] = selective_frontier_import_sha256(body)
+    return selective_frontier_import_from_dict(body)
+
+
+def selective_frontier_import_to_dict(
+    binding: SelectiveFrontierImport,
+) -> dict[str, Any]:
+    canonical = selective_frontier_import_from_dict(asdict(binding))
+    return asdict(canonical)
+
+
+def selective_frontier_import_from_dict(
+    value: object,
+) -> SelectiveFrontierImport:
+    required = {
+        "schema",
+        "authority",
+        "game",
+        "reached",
+        "authoritative_target",
+        "parent_checkpoint_sha256",
+        "checkpoint_path",
+        "checkpoint_sha256",
+        "source_path",
+        "source_tree_sha256",
+        "promotion_receipt_path",
+        "promotion_receipt_sha256",
+        "source_version_id",
+        "version_tree_sha256",
+        "selected_pointer_sha256",
+        "frontier_sha256",
+        "import_sha256",
+    }
+    if not isinstance(value, Mapping) or set(value) != required:
+        raise ContiguousRunnerError(
+            "selective frontier import schema mismatch"
+        )
+    try:
+        binding = SelectiveFrontierImport(**dict(value))
+    except TypeError as exc:
+        raise ContiguousRunnerError(
+            "selective frontier import schema mismatch"
+        ) from exc
+    paths = tuple(
+        Path(item)
+        for item in (
+            binding.checkpoint_path,
+            binding.source_path,
+            binding.promotion_receipt_path,
+        )
+        if _safe_path_string(item)
+    )
+    if (
+        binding.schema != SELECTIVE_FRONTIER_IMPORT_SCHEMA
+        or binding.authority != SELECTIVE_FRONTIER_IMPORT_AUTHORITY
+        or not isinstance(binding.game, str)
+        or re.fullmatch(r"[a-z0-9]{4}", binding.game) is None
+        or not isinstance(binding.reached, int)
+        or isinstance(binding.reached, bool)
+        or not isinstance(binding.authoritative_target, int)
+        or isinstance(binding.authoritative_target, bool)
+        or not 1 <= binding.reached < binding.authoritative_target
+        or not _safe_identifier(binding.source_version_id)
+        or len(paths) != 3
+        or any(not path.is_absolute() for path in paths)
+        or any(str(path) != raw for path, raw in zip(paths, (
+            binding.checkpoint_path,
+            binding.source_path,
+            binding.promotion_receipt_path,
+        )))
+        or binding.checkpoint_path
+        != str(paths[0].parent / Contract.CHECKPOINT_NAME)
+        or binding.source_path
+        != str(paths[0].parent / Contract.WINNING_SOURCE_NAME)
+        or binding.promotion_receipt_path
+        != str(paths[0].parent / Contract.HOST_RECEIPT_NAME)
+        or paths[0].parent.name != f"{binding.game}_legs"
+        or paths[0].parent.parent.name != binding.source_version_id
+        or any(
+            not _is_sha256(item)
+            for item in (
+                binding.parent_checkpoint_sha256,
+                binding.checkpoint_sha256,
+                binding.source_tree_sha256,
+                binding.promotion_receipt_sha256,
+                binding.version_tree_sha256,
+                binding.selected_pointer_sha256,
+                binding.frontier_sha256,
+                binding.import_sha256,
+            )
+        )
+        or binding.frontier_sha256
+        != frontier_sha256(
+            binding.game,
+            binding.reached,
+            binding.checkpoint_sha256,
+        )
+        or binding.import_sha256
+        != selective_frontier_import_sha256(
+            _selective_frontier_import_body(binding)
+        )
+    ):
+        raise ContiguousRunnerError(
+            "selective frontier import binding is invalid"
+        )
+    return binding
 
 
 @dataclass(frozen=True)
@@ -7714,6 +7922,9 @@ class ContiguousCampaignRunner:
         auxiliary_backend: AuxiliaryBackend | None = None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration | None = None,
+        selective_continuation_game: str | None = None,
+        selective_frontier_import: SelectiveFrontierImport | None = None,
+        selective_frontier_import_sha256: str | None = None,
         clock: Callable[[], float] = time.time,
         id_factory: Callable[[], str] = lambda: str(uuid.uuid4()),
     ):
@@ -7742,6 +7953,71 @@ class ContiguousCampaignRunner:
         if not _safe_identifier(cost_window_id):
             raise ContiguousRunnerError(
                 "cost_window_id must be an explicit safe identifier"
+            )
+        if (
+            selective_continuation_game is not None
+            and (
+                not isinstance(selective_continuation_game, str)
+                or re.fullmatch(
+                    r"[a-z0-9]{4}", selective_continuation_game
+                )
+                is None
+            )
+        ):
+            raise ContiguousRunnerError(
+                "selective continuation game is malformed"
+            )
+        if (
+            selective_frontier_import is not None
+            and selective_continuation_game is None
+        ):
+            raise ContiguousRunnerError(
+                "selective frontier import requires its exact game"
+            )
+        if (
+            selective_frontier_import_sha256 is not None
+            and (
+                selective_continuation_game is None
+                or not _is_sha256(
+                    selective_frontier_import_sha256
+                )
+            )
+        ):
+            raise ContiguousRunnerError(
+                "selective frontier import digest is malformed"
+            )
+        expected_selective_import = (
+            None
+            if selective_frontier_import is None
+            else selective_frontier_import_from_dict(
+                asdict(selective_frontier_import)
+            )
+        )
+        if (
+            expected_selective_import is not None
+            and expected_selective_import.game
+            != selective_continuation_game
+        ):
+            raise ContiguousRunnerError(
+                "selective frontier import targets another game"
+            )
+        if (
+            expected_selective_import is not None
+            and selective_frontier_import_sha256 is not None
+            and expected_selective_import.import_sha256
+            != selective_frontier_import_sha256
+        ):
+            raise ContiguousRunnerError(
+                "selective frontier import differs from authorized digest"
+            )
+        if (
+            selective_continuation_game is not None
+            and operator_configuration_sha256 is not None
+            and selective_frontier_import_sha256 is None
+        ):
+            raise ContiguousRunnerError(
+                "production selective runner lacks operator-authorized "
+                "frontier digest"
             )
         auxiliary_configuration = (
             Scheduler.disabled_auxiliary_launch_configuration()
@@ -7893,6 +8169,13 @@ class ContiguousCampaignRunner:
         self.auxiliary_launch_configuration = auxiliary_configuration
         self._trusted_auxiliary_event_digests: set[str] = set()
         self.promotion_gate = promotion_gate
+        self.selective_continuation_game = selective_continuation_game
+        self.expected_selective_frontier_import = (
+            expected_selective_import
+        )
+        self.selective_frontier_import_sha256 = (
+            selective_frontier_import_sha256
+        )
         self.input_builder = input_builder
         self.backend_configuration = backend_configuration
         # Live-only containment inputs.  They are never serialized into the
@@ -7939,6 +8222,11 @@ class ContiguousCampaignRunner:
                 operator_configuration_sha256
             ),
             auxiliary_launch_configuration=auxiliary_configuration,
+            selective_continuation_game=selective_continuation_game,
+            selective_frontier_import=expected_selective_import,
+            selective_frontier_import_sha256=(
+                selective_frontier_import_sha256
+            ),
         )
         # A complete replay is the admission check.  No external action occurs in
         # construction, so callers explicitly choose when to call cycle().
@@ -7955,6 +8243,9 @@ class ContiguousCampaignRunner:
         operator_configuration_sha256: str | None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration,
+        selective_continuation_game: str | None,
+        selective_frontier_import: SelectiveFrontierImport | None,
+        selective_frontier_import_sha256: str | None,
     ) -> None:
         descriptor = _open_unaliased(
             self.root / ".init.lock", os.O_RDWR | os.O_CREAT
@@ -7974,6 +8265,13 @@ class ContiguousCampaignRunner:
                 auxiliary_launch_configuration=(
                     auxiliary_launch_configuration
                 ),
+                selective_continuation_game=(
+                    selective_continuation_game
+                ),
+                selective_frontier_import=selective_frontier_import,
+                selective_frontier_import_sha256=(
+                    selective_frontier_import_sha256
+                ),
             )
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
@@ -7990,10 +8288,82 @@ class ContiguousCampaignRunner:
         operator_configuration_sha256: str | None,
         auxiliary_launch_configuration:
             Scheduler.AuxiliaryLaunchConfiguration,
+        selective_continuation_game: str | None,
+        selective_frontier_import: SelectiveFrontierImport | None,
+        selective_frontier_import_sha256: str | None,
     ) -> None:
         events = self.journal._read_authenticated()
         if not events:
             campaign_id = self._new_identifier("campaign")
+            selective_import: SelectiveFrontierImport | None = None
+            if selective_continuation_game is not None:
+                if selective_continuation_game not in inventory:
+                    raise ContiguousRunnerError(
+                        "selective continuation game is not authoritative"
+                    )
+                issue = getattr(
+                    self.promotion_gate,
+                    "issue_selective_frontier_import",
+                    None,
+                )
+                verify = getattr(
+                    self.promotion_gate,
+                    "verify_selective_frontier_import",
+                    None,
+                )
+                if not callable(verify) or (
+                    selective_frontier_import is None
+                    and not callable(issue)
+                ):
+                    raise ContiguousRunnerError(
+                        "promotion gate lacks selective import authority"
+                    )
+                try:
+                    if selective_frontier_import is not None:
+                        selective_import = (
+                            selective_frontier_import_from_dict(
+                                asdict(selective_frontier_import)
+                            )
+                        )
+                    else:
+                        issued = issue(selective_continuation_game)
+                        if not isinstance(
+                            issued, SelectiveFrontierImport
+                        ):
+                            raise ContiguousRunnerError(
+                                "promotion gate issued an untyped frontier "
+                                "import"
+                            )
+                        selective_import = (
+                            selective_frontier_import_from_dict(
+                                asdict(issued)
+                            )
+                        )
+                    verified = verify(selective_import)
+                except ContiguousRunnerError:
+                    raise
+                except Exception as exc:
+                    raise ContiguousRunnerError(
+                        "promotion gate rejected selective frontier import"
+                    ) from exc
+                if verified != selective_import:
+                    raise ContiguousRunnerError(
+                        "promotion gate changed selective frontier import"
+                    )
+                if (
+                    selective_frontier_import_sha256 is not None
+                    and selective_import.import_sha256
+                    != selective_frontier_import_sha256
+                ):
+                    raise ContiguousRunnerError(
+                        "issued selective frontier differs from authorized "
+                        "digest"
+                    )
+                self._validate_selective_frontier_import_files(
+                    selective_import,
+                    inventory=inventory,
+                    verify_gate=False,
+                )
             zero = {
                 game: self._create_zero_checkpoint(game)
                 for game in sorted(inventory)
@@ -8009,38 +8379,66 @@ class ContiguousCampaignRunner:
                 raise ContiguousRunnerError(
                     "L0 source scaffold differs between game lanes"
                 )
+            genesis_payload = {
+                "schema": RUNNER_SCHEMA,
+                "campaign_id": campaign_id,
+                "inventory": inventory,
+                "inventory_sha256":
+                    Contract.authoritative_inventory_sha256(inventory),
+                "max_lanes": max_lanes,
+                "limit": float(limit) if limit is not None else None,
+                "limit_units": Scheduler.limit_to_units(limit),
+                "cost_window_id": cost_window_id,
+                "scheduler_policy_sha256":
+                    SCHEDULER_POLICY_SHA256,
+                "backend_configuration":
+                    _backend_configuration_to_dict(
+                        backend_configuration
+                    ),
+                "operator_configuration_sha256":
+                    operator_configuration_sha256,
+                "auxiliary_launch_configuration":
+                    Scheduler.auxiliary_launch_configuration_to_dict(
+                        auxiliary_launch_configuration
+                    ),
+                "zero_checkpoints": zero,
+                "zero_sources": zero_sources,
+                "l0_source_tree_sha256":
+                    next(iter(zero_source_hashes)),
+            }
+            if selective_import is not None:
+                genesis_payload.update({
+                    "campaign_mode": "selective_continuation",
+                    "selective_continuation_game":
+                        selective_import.game,
+                    "selective_frontier_import_sha256":
+                        selective_import.import_sha256,
+                    "operator_authorized_selective_frontier_import_sha256":
+                        (
+                            selective_frontier_import_sha256
+                            if selective_frontier_import_sha256 is not None
+                            else selective_import.import_sha256
+                        ),
+                    "selective_frontier_import":
+                        selective_frontier_import_to_dict(
+                            selective_import
+                        ),
+                })
             self.journal.append(
                 event_id="campaign:genesis",
                 kind="GENESIS",
-                payload={
-                    "schema": RUNNER_SCHEMA,
-                    "campaign_id": campaign_id,
-                    "inventory": inventory,
-                    "inventory_sha256":
-                        Contract.authoritative_inventory_sha256(inventory),
-                    "max_lanes": max_lanes,
-                    "limit": float(limit) if limit is not None else None,
-                    "limit_units": Scheduler.limit_to_units(limit),
-                    "cost_window_id": cost_window_id,
-                    "scheduler_policy_sha256":
-                        SCHEDULER_POLICY_SHA256,
-                    "backend_configuration":
-                        _backend_configuration_to_dict(
-                            backend_configuration
-                        ),
-                    "operator_configuration_sha256":
-                        operator_configuration_sha256,
-                    "auxiliary_launch_configuration":
-                        Scheduler.auxiliary_launch_configuration_to_dict(
-                            auxiliary_launch_configuration
-                        ),
-                    "zero_checkpoints": zero,
-                    "zero_sources": zero_sources,
-                    "l0_source_tree_sha256":
-                        next(iter(zero_source_hashes)),
-                },
+                payload=genesis_payload,
                 recorded_at=self.clock(),
             )
+            if selective_import is not None:
+                self.journal.append(
+                    event_id="campaign:frontier-import",
+                    kind="FRONTIER_IMPORTED",
+                    payload=selective_frontier_import_to_dict(
+                        selective_import
+                    ),
+                    recorded_at=self.clock(),
+                )
         else:
             genesis = events[0]
             if genesis["kind"] != "GENESIS":
@@ -8084,6 +8482,96 @@ class ContiguousCampaignRunner:
             ):
                 raise ContiguousRunnerError(
                     "runner configuration disagrees with durable genesis"
+                )
+            raw_selective_import = payload.get(
+                "selective_frontier_import"
+            )
+            if selective_continuation_game is None:
+                if (
+                    raw_selective_import is not None
+                    or "selective_frontier_import" in payload
+                    or payload.get(
+                        "operator_authorized_selective_frontier_import_sha256"
+                    )
+                    is not None
+                    or any(
+                        event.get("kind") == "FRONTIER_IMPORTED"
+                        for event in events[1:]
+                    )
+                ):
+                    raise ContiguousRunnerError(
+                        "full runner cannot open a selective campaign"
+                    )
+                return
+            if raw_selective_import is None:
+                raise ContiguousRunnerError(
+                    "selective runner cannot open a full campaign"
+                )
+            selective_import = selective_frontier_import_from_dict(
+                raw_selective_import
+            )
+            if (
+                selective_import.game != selective_continuation_game
+                or payload.get("campaign_mode")
+                != "selective_continuation"
+                or payload.get("selective_continuation_game")
+                != selective_continuation_game
+                or payload.get("selective_frontier_import_sha256")
+                != selective_import.import_sha256
+                or payload.get(
+                    "operator_authorized_selective_frontier_import_sha256"
+                )
+                != selective_import.import_sha256
+                or (
+                    selective_frontier_import_sha256 is not None
+                    and payload.get(
+                        "operator_authorized_selective_frontier_import_sha256"
+                    )
+                    != selective_frontier_import_sha256
+                )
+            ):
+                raise ContiguousRunnerError(
+                    "selective runner configuration disagrees with genesis"
+                )
+            if (
+                selective_frontier_import is not None
+                and selective_frontier_import != selective_import
+            ):
+                raise ContiguousRunnerError(
+                    "selective launch authority disagrees with genesis"
+                )
+            self._validate_selective_frontier_import_files(
+                selective_import,
+                inventory=inventory,
+                verify_gate=True,
+            )
+            import_events = [
+                event
+                for event in events[1:]
+                if event.get("kind") == "FRONTIER_IMPORTED"
+            ]
+            if not import_events:
+                if len(events) != 1:
+                    raise ContiguousRunnerError(
+                        "selective import is not the first post-genesis event"
+                    )
+                self.journal.append(
+                    event_id="campaign:frontier-import",
+                    kind="FRONTIER_IMPORTED",
+                    payload=selective_frontier_import_to_dict(
+                        selective_import
+                    ),
+                    recorded_at=self.clock(),
+                )
+            elif (
+                len(import_events) != 1
+                or events[1] is not import_events[0]
+                or import_events[0].get("sequence") != 2
+                or import_events[0].get("payload")
+                != selective_frontier_import_to_dict(selective_import)
+            ):
+                raise ContiguousRunnerError(
+                    "selective frontier import event is not exact"
                 )
 
     def _new_identifier(self, prefix: str) -> str:
@@ -8214,6 +8702,116 @@ class ContiguousCampaignRunner:
                 "zero source tree differs from its admitted hash"
             )
         return {"path": str(path), "sha256": tree_sha256}
+
+    def _validate_selective_frontier_import_files(
+        self,
+        binding: SelectiveFrontierImport,
+        *,
+        inventory: Mapping[str, int],
+        verify_gate: bool,
+    ) -> None:
+        canonical = selective_frontier_import_from_dict(
+            asdict(binding)
+        )
+        if (
+            canonical.game not in inventory
+            or inventory[canonical.game]
+            != canonical.authoritative_target
+        ):
+            raise ContiguousRunnerError(
+                "selective import differs from authoritative inventory"
+            )
+        checkpoint = Path(canonical.checkpoint_path)
+        source = Path(canonical.source_path)
+        receipt = Path(canonical.promotion_receipt_path)
+        version = checkpoint.parent.parent
+        try:
+            resolved = tuple(
+                path.resolve(strict=True)
+                for path in (checkpoint, source, receipt, version)
+            )
+        except OSError as exc:
+            raise ContiguousRunnerError(
+                "selective import artifact is unavailable"
+            ) from exc
+        if resolved != (checkpoint, source, receipt, version):
+            raise ContiguousRunnerError(
+                "selective import artifact path is aliased"
+            )
+        try:
+            version.relative_to(self.root)
+        except ValueError:
+            pass
+        else:
+            raise ContiguousRunnerError(
+                "selective import version is inside the mutable campaign"
+            )
+        try:
+            self.root.relative_to(version)
+        except ValueError:
+            pass
+        else:
+            raise ContiguousRunnerError(
+                "mutable campaign is inside the selective import version"
+            )
+        try:
+            Contract._validate_regular_tree(
+                version, label="selective frontier import version"
+            )
+            if Contract._tree_hash(version) != canonical.version_tree_sha256:
+                raise ContiguousRunnerError(
+                    "selective import version changed"
+                )
+            if _sha256_file(checkpoint) != canonical.checkpoint_sha256:
+                raise ContiguousRunnerError(
+                    "selective import checkpoint changed"
+                )
+            if _sha256_file(receipt) != canonical.promotion_receipt_sha256:
+                raise ContiguousRunnerError(
+                    "selective import promotion receipt changed"
+                )
+            if (
+                Contract.validate_winning_source_tree(source)
+                != canonical.source_tree_sha256
+            ):
+                raise ContiguousRunnerError(
+                    "selective import winning source changed"
+                )
+            parsed = Contract.load_trusted_checkpoint(
+                checkpoint,
+                expected_game=canonical.game,
+                authoritative_target=canonical.authoritative_target,
+            )
+        except ContiguousRunnerError:
+            raise
+        except Exception as exc:
+            raise ContiguousRunnerError(
+                "selective import artifact validation failed"
+            ) from exc
+        if parsed.reached != canonical.reached or not parsed.validated:
+            raise ContiguousRunnerError(
+                "selective import is not a validated exact frontier"
+            )
+        if verify_gate:
+            verify = getattr(
+                getattr(self, "promotion_gate", None),
+                "verify_selective_frontier_import",
+                None,
+            )
+            if not callable(verify):
+                raise ContiguousRunnerError(
+                    "live runner lacks selective import verification"
+                )
+            try:
+                reopened = verify(canonical)
+            except Exception as exc:
+                raise ContiguousRunnerError(
+                    "promotion gate rejected selective frontier import"
+                ) from exc
+            if reopened != canonical:
+                raise ContiguousRunnerError(
+                    "promotion gate changed selective frontier import"
+                )
 
     @staticmethod
     def _blank_lane(
@@ -9356,6 +9954,81 @@ class ContiguousCampaignRunner:
             )
             for game in sorted(inventory)
         }
+        raw_selective_import = genesis.get(
+            "selective_frontier_import"
+        )
+        selective_import: SelectiveFrontierImport | None = None
+        reducer_start = 1
+        import_events = [
+            event
+            for event in events[1:]
+            if event.get("kind") == "FRONTIER_IMPORTED"
+        ]
+        if raw_selective_import is None:
+            if (
+                "selective_frontier_import" in genesis
+                or genesis.get("campaign_mode") is not None
+                or genesis.get("selective_continuation_game") is not None
+                or genesis.get("selective_frontier_import_sha256")
+                is not None
+                or genesis.get(
+                    "operator_authorized_selective_frontier_import_sha256"
+                )
+                is not None
+                or import_events
+            ):
+                raise ContiguousRunnerError(
+                    "full campaign has selective continuation metadata"
+                )
+        else:
+            selective_import = selective_frontier_import_from_dict(
+                raw_selective_import
+            )
+            expected_payload = selective_frontier_import_to_dict(
+                selective_import
+            )
+            if (
+                genesis.get("campaign_mode")
+                != "selective_continuation"
+                or genesis.get("selective_continuation_game")
+                != selective_import.game
+                or genesis.get("selective_frontier_import_sha256")
+                != selective_import.import_sha256
+                or genesis.get(
+                    "operator_authorized_selective_frontier_import_sha256"
+                )
+                != selective_import.import_sha256
+                or len(import_events) != 1
+                or len(events) < 2
+                or events[1] is not import_events[0]
+                or events[1].get("sequence") != 2
+                or events[1].get("payload") != expected_payload
+            ):
+                raise ContiguousRunnerError(
+                    "selective frontier import transition is not exact"
+                )
+            if full_external_audit:
+                self._validate_selective_frontier_import_files(
+                    selective_import,
+                    inventory=inventory,
+                    verify_gate=hasattr(self, "promotion_gate"),
+                )
+            for game, lane in lanes.items():
+                if game == selective_import.game:
+                    lane.update(
+                        reached=selective_import.reached,
+                        checkpoint_path=selective_import.checkpoint_path,
+                        checkpoint_sha256=(
+                            selective_import.checkpoint_sha256
+                        ),
+                        source_path=selective_import.source_path,
+                        source_tree_sha256=(
+                            selective_import.source_tree_sha256
+                        ),
+                    )
+                else:
+                    lane["blocked"] = SELECTIVE_SCOPE_BLOCKED_REASON
+            reducer_start = 2
         attempts: dict[str, dict[str, Any]] = {}
         if (
             not _safe_identifier(genesis.get("cost_window_id"))
@@ -9424,7 +10097,6 @@ class ContiguousCampaignRunner:
             tuple[object, ...], Any
         ] = {}
 
-        reducer_start = 1
         cached_reducer = getattr(self, "_reducer_checkpoint", None)
         if (
             isinstance(cached_reducer, _ReducerCheckpoint)
@@ -13733,7 +14405,7 @@ class ContiguousCampaignRunner:
             storage_incident=copy.deepcopy(storage_incident),
             storage_quiescence=copy.deepcopy(storage_quiescence),
         )
-        return {
+        state = {
             "schema": RUNNER_SCHEMA,
             "campaign_id": genesis["campaign_id"],
             "inventory": inventory,
@@ -13807,6 +14479,27 @@ class ContiguousCampaignRunner:
                 for attempt in attempts.values()
             ),
         }
+        if selective_import is not None:
+            selected_lane = lanes[selective_import.game]
+            state.update({
+                "campaign_mode": "selective_continuation",
+                "selective_continuation_game": selective_import.game,
+                "selective_frontier_import":
+                    selective_frontier_import_to_dict(
+                        selective_import
+                    ),
+                "operator_authorized_selective_frontier_import_sha256":
+                    genesis[
+                        "operator_authorized_selective_frontier_import_sha256"
+                    ],
+                "selective_scope_solved_levels":
+                    selected_lane["reached"] - selective_import.reached,
+                "selective_scope_total_levels":
+                    selected_lane["target"] - selective_import.reached,
+                "selective_complete":
+                    selected_lane["reached"] == selected_lane["target"],
+            })
+        return state
 
     @staticmethod
     def _attempt(
@@ -24851,6 +25544,25 @@ def audit_runner_state_read_only(
         "generation_ids": generation_ids,
         "lane_boundaries": lane_boundaries,
     }
+    if state.get("campaign_mode") == "selective_continuation":
+        body.update({
+            "campaign_mode": "selective_continuation",
+            "selective_continuation_game":
+                state["selective_continuation_game"],
+            "selective_frontier_import":
+                state["selective_frontier_import"],
+            "selective_frontier_import_sha256":
+                state["selective_frontier_import"]["import_sha256"],
+            "operator_authorized_selective_frontier_import_sha256":
+                state[
+                    "operator_authorized_selective_frontier_import_sha256"
+                ],
+            "selective_scope_solved_levels":
+                state["selective_scope_solved_levels"],
+            "selective_scope_total_levels":
+                state["selective_scope_total_levels"],
+            "selective_complete": state["selective_complete"],
+        })
     return {
         **body,
         "receipt_sha256": hashlib.sha256(
@@ -24912,6 +25624,10 @@ __all__ = [
     "PromotionCandidate",
     "PromotionCommit",
     "PromotionGate",
+    "SelectiveFrontierImport",
+    "SELECTIVE_FRONTIER_IMPORT_AUTHORITY",
+    "SELECTIVE_FRONTIER_IMPORT_SCHEMA",
+    "SELECTIVE_SCOPE_BLOCKED_REASON",
     "ReadOnlyAttemptJournal",
     "ResourceLimitsProjection",
     "SimulatedCrash",
@@ -24927,6 +25643,10 @@ __all__ = [
     "escalation",
     "finalize_terminal_attempt_retention",
     "frontier_sha256",
+    "build_selective_frontier_import",
+    "selective_frontier_import_from_dict",
+    "selective_frontier_import_sha256",
+    "selective_frontier_import_to_dict",
     "should_restore_wip",
     "verify_runner_state_audit",
 ]

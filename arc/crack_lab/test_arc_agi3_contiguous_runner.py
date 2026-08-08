@@ -4879,6 +4879,81 @@ class FakePromotionGate:
     ) -> R.PromotionCommit | None:
         return self.commits.get(spec.attempt_id)
 
+    def _selective_import(
+        self, commit: R.PromotionCommit
+    ) -> R.SelectiveFrontierImport:
+        checkpoint = Path(commit.checkpoint_path)
+        version = checkpoint.parent.parent
+        pointer_identity = {
+            "game": commit.game,
+            "reached": commit.to_level,
+            "checkpoint_sha256": commit.checkpoint_sha256,
+            "source_version_id": commit.source_version_id,
+            "version_tree_sha256": Contract._tree_hash(version),
+        }
+        return R.build_selective_frontier_import(
+            game=commit.game,
+            reached=commit.to_level,
+            authoritative_target=(
+                Contract.authoritative_inventory()[commit.game]
+            ),
+            parent_checkpoint_sha256=(
+                commit.parent_checkpoint_sha256
+            ),
+            checkpoint_path=commit.checkpoint_path,
+            checkpoint_sha256=commit.checkpoint_sha256,
+            source_path=str(
+                checkpoint.parent / Contract.WINNING_SOURCE_NAME
+            ),
+            source_tree_sha256=commit.source_tree_sha256,
+            promotion_receipt_path=str(
+                checkpoint.parent / Contract.HOST_RECEIPT_NAME
+            ),
+            promotion_receipt_sha256=(
+                commit.promotion_receipt_sha256
+            ),
+            source_version_id=commit.source_version_id,
+            version_tree_sha256=Contract._tree_hash(version),
+            selected_pointer_sha256=hashlib.sha256(
+                R._canonical_json(pointer_identity)
+            ).hexdigest(),
+        )
+
+    def issue_selective_frontier_import(
+        self, game: str
+    ) -> R.SelectiveFrontierImport:
+        matches = [
+            commit
+            for commit in self.commits.values()
+            if commit.game == game
+        ]
+        if not matches:
+            raise R.ContiguousRunnerError(
+                "fake gate has no selected frontier"
+            )
+        return self._selective_import(
+            max(matches, key=lambda item: item.to_level)
+        )
+
+    def verify_selective_frontier_import(
+        self, binding: R.SelectiveFrontierImport
+    ) -> R.SelectiveFrontierImport:
+        matches = [
+            commit
+            for commit in self.commits.values()
+            if commit.source_version_id == binding.source_version_id
+        ]
+        if len(matches) != 1:
+            raise R.ContiguousRunnerError(
+                "fake import version is not unique"
+            )
+        reopened = self._selective_import(matches[0])
+        if reopened != binding:
+            raise R.ContiguousRunnerError(
+                "fake import binding changed"
+            )
+        return reopened
+
 
 def ids():
     index = 0
@@ -5025,6 +5100,9 @@ def make_runner(
     auxiliary_backend=None,
     auxiliary_launch_configuration=None,
     operator_configuration_sha256=None,
+    selective_continuation_game=None,
+    selective_frontier_import=None,
+    selective_frontier_import_sha256=None,
 ):
     backend = backend or FakeBackend()
     gate = gate or FakePromotionGate(tmp_path / "promotions")
@@ -5048,6 +5126,11 @@ def make_runner(
         auxiliary_backend=auxiliary_backend,
         auxiliary_launch_configuration=(
             auxiliary_launch_configuration
+        ),
+        selective_continuation_game=selective_continuation_game,
+        selective_frontier_import=selective_frontier_import,
+        selective_frontier_import_sha256=(
+            selective_frontier_import_sha256
         ),
         clock=clock,
         id_factory=id_factory or ids(),
@@ -5832,7 +5915,6 @@ def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
     assert sentinel in (
         Path(next_level_frontier.parent_source_path) / "solve.py"
     ).read_bytes()
-
     prior_events = recovered.journal.read()
     blocked_identities = (
         set(recovered_state["used_scheduler_identifiers"])
@@ -5864,6 +5946,268 @@ def test_promoted_winning_source_is_exact_next_level_parent_after_restart(
         == 4
     )
 
+
+def _one_level_selective_import_fixture(tmp_path):
+    authority_root = tmp_path / "frontier-authority"
+    gate = FakePromotionGate(authority_root)
+    origin_backend = FakeBackend(candidate_result)
+    origin, _, _, _, _ = make_runner(
+        tmp_path / "origin",
+        backend=origin_backend,
+        gate=gate,
+        max_lanes=1,
+    )
+    origin.cycle()
+    origin.cycle()
+    spec = next(iter(origin_backend.specs.values()))
+    assert origin.state()["lanes"][spec.game]["reached"] == 1
+    return gate, spec.game
+
+
+def test_selective_continuation_imports_exactly_one_sealed_frontier(
+    tmp_path,
+):
+    gate, game = _one_level_selective_import_fixture(tmp_path)
+    continuation_root = tmp_path / "continuation"
+    backend = FakeBackend()
+    runner, _, _, _, _ = make_runner(
+        continuation_root,
+        backend=backend,
+        gate=gate,
+        max_lanes=1,
+        selective_continuation_game=game,
+    )
+    events = runner.journal.read()
+    state = runner.state()
+    assert [event["kind"] for event in events[:2]] == [
+        "GENESIS",
+        "FRONTIER_IMPORTED",
+    ]
+    scheduler_audit = R.Scheduler.validate_journal_event_sequence(
+        events
+    )
+    assert scheduler_audit["policy_promoted_levels"] == 0
+    assert scheduler_audit["selective_continuation_game"] == game
+    read_only_audit = R.audit_runner_state_read_only(
+        continuation_root / "campaign"
+    )
+    assert read_only_audit["selective_continuation_game"] == game
+    assert read_only_audit["selective_complete"] is False
+    assert sum(
+        lane["blocked"] == R.SELECTIVE_SCOPE_BLOCKED_REASON
+        for selected_game, lane in state["lanes"].items()
+        if selected_game != game
+    ) == len(state["lanes"]) - 1
+    selected = state["lanes"][game]
+    assert selected["reached"] == 1
+    assert state["selective_scope_solved_levels"] == 0
+    assert state["selective_complete"] is False
+    snapshot = runner._scheduler_snapshot_from_state(state)
+    eligible = R.Scheduler.eligible_frontiers(snapshot)
+    assert tuple(item.game for item in eligible) == (game,)
+    assert eligible[0].reached == 1
+
+    runner.cycle()
+    launched = next(iter(backend.specs.values()))
+    assert launched.game == game
+    assert launched.target_level == 2
+    assert launched.parent_checkpoint_path == selected["checkpoint_path"]
+    assert (
+        launched.parent_checkpoint_sha256
+        == selected["checkpoint_sha256"]
+    )
+
+    recovered = R.ContiguousCampaignRunner(
+        continuation_root / "campaign",
+        backend=backend,
+        promotion_gate=gate,
+        input_builder=FakeInputBuilder(),
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        controller_state_canaries=backend.controller_state_canaries,
+        selective_continuation_game=game,
+        id_factory=ids(),
+    )
+    recovered_state = recovered.state()
+    assert recovered_state["selective_frontier_import"] == state[
+        "selective_frontier_import"
+    ]
+    assert len([
+        event
+        for event in recovered.journal.read()
+        if event["kind"] == "FRONTIER_IMPORTED"
+    ]) == 1
+
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="full runner cannot open a selective campaign",
+    ):
+        R.ContiguousCampaignRunner(
+            continuation_root / "campaign",
+            backend=backend,
+            promotion_gate=gate,
+            input_builder=FakeInputBuilder(),
+            backend_configuration=backend_configuration(),
+            cost_window_id=COST_WINDOW_ID,
+            max_lanes=1,
+            controller_state_canaries=(
+                backend.controller_state_canaries
+            ),
+            id_factory=ids(),
+        )
+
+
+def test_selective_continuation_reopens_imported_version_bytes(
+    tmp_path,
+):
+    gate, game = _one_level_selective_import_fixture(tmp_path)
+    runner, _, _, _, _ = make_runner(
+        tmp_path / "continuation",
+        gate=gate,
+        max_lanes=1,
+        selective_continuation_game=game,
+    )
+    binding = R.selective_frontier_import_from_dict(
+        runner.state()["selective_frontier_import"]
+    )
+    receipt = Path(binding.promotion_receipt_path)
+    receipt.write_bytes(receipt.read_bytes() + b"\n")
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="selective import",
+    ):
+        runner.state()
+
+
+def test_selective_continuation_uses_supplied_stable_import_without_current(
+    tmp_path,
+    monkeypatch,
+):
+    gate, game = _one_level_selective_import_fixture(tmp_path)
+    expected = gate.issue_selective_frontier_import(game)
+    monkeypatch.setattr(
+        gate,
+        "issue_selective_frontier_import",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("pinned runner consulted mutable current")
+        ),
+    )
+    runner, _, _, _, _ = make_runner(
+        tmp_path / "continuation",
+        gate=gate,
+        max_lanes=1,
+        operator_configuration_sha256="a" * 64,
+        selective_continuation_game=game,
+        selective_frontier_import=expected,
+        selective_frontier_import_sha256=expected.import_sha256,
+    )
+    assert runner.state()["selective_frontier_import"] == (
+        R.selective_frontier_import_to_dict(expected)
+    )
+    assert runner.state()[
+        "operator_authorized_selective_frontier_import_sha256"
+    ] == expected.import_sha256
+    audit = R.audit_runner_state_read_only(runner.root)
+    assert audit[
+        "operator_authorized_selective_frontier_import_sha256"
+    ] == expected.import_sha256
+
+    recovered = R.ContiguousCampaignRunner(
+        runner.root,
+        backend=runner.backend,
+        promotion_gate=gate,
+        input_builder=FakeInputBuilder(),
+        backend_configuration=backend_configuration(),
+        cost_window_id=COST_WINDOW_ID,
+        max_lanes=1,
+        operator_configuration_sha256="a" * 64,
+        controller_state_canaries=(
+            runner.backend.controller_state_canaries
+        ),
+        selective_continuation_game=game,
+        selective_frontier_import_sha256=expected.import_sha256,
+        id_factory=ids(),
+    )
+    assert recovered.state()[
+        "operator_authorized_selective_frontier_import_sha256"
+    ] == expected.import_sha256
+
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="configuration disagrees with genesis",
+    ):
+        R.ContiguousCampaignRunner(
+            runner.root,
+            backend=runner.backend,
+            promotion_gate=gate,
+            input_builder=FakeInputBuilder(),
+            backend_configuration=backend_configuration(),
+            cost_window_id=COST_WINDOW_ID,
+            max_lanes=1,
+            operator_configuration_sha256="a" * 64,
+            controller_state_canaries=(
+                runner.backend.controller_state_canaries
+            ),
+            selective_continuation_game=game,
+            selective_frontier_import_sha256="0" * 64,
+            id_factory=ids(),
+        )
+
+    with pytest.raises(
+        R.ContiguousRunnerError,
+        match="authorized digest",
+    ):
+        make_runner(
+            tmp_path / "wrong-import",
+            gate=gate,
+            max_lanes=1,
+            operator_configuration_sha256="a" * 64,
+            selective_continuation_game=game,
+            selective_frontier_import=expected,
+            selective_frontier_import_sha256="0" * 64,
+        )
+    assert not (tmp_path / "wrong-import" / "campaign").exists()
+
+
+def test_selective_continuation_recovers_genesis_import_crash_cut(
+    tmp_path,
+    monkeypatch,
+):
+    gate, game = _one_level_selective_import_fixture(tmp_path)
+    continuation_root = tmp_path / "continuation"
+    original_append = R.DurableAttemptJournal.append
+
+    def crash_before_import(self, *, kind, **kwargs):
+        if kind == "FRONTIER_IMPORTED":
+            raise R.SimulatedCrash()
+        return original_append(self, kind=kind, **kwargs)
+
+    monkeypatch.setattr(
+        R.DurableAttemptJournal, "append", crash_before_import
+    )
+    with pytest.raises(R.SimulatedCrash):
+        make_runner(
+            continuation_root,
+            gate=gate,
+            max_lanes=1,
+            selective_continuation_game=game,
+        )
+    monkeypatch.setattr(
+        R.DurableAttemptJournal, "append", original_append
+    )
+    recovered, _, _, _, _ = make_runner(
+        continuation_root,
+        gate=gate,
+        max_lanes=1,
+        selective_continuation_game=game,
+    )
+    events = recovered.journal.read()
+    assert [event["kind"] for event in events] == [
+        "GENESIS",
+        "FRONTIER_IMPORTED",
+    ]
+    assert recovered.state()["lanes"][game]["reached"] == 1
 
 def stat_mode(path: Path) -> int:
     return os.stat(path, follow_symlinks=False).st_mode & 0o777

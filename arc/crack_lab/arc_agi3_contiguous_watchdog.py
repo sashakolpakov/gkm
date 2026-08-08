@@ -325,31 +325,166 @@ class WatchdogLease:
 def _production_preflight(
     config: Orchestrator.OperatorConfiguration,
 ) -> Mapping[str, Any]:
-    result = Supervisor.launch_preflight(
-        config.launch_attestation,
-        requested_image_digest=(
-            config.backend_configuration.image_digest
-        ),
-        conformance_result=config.conformance_result,
-        canonical_root=config.canonical_root,
-        environments_root=config.environments_root,
-        python_executable=config.python_executable,
-        python_executable_sha256=config.python_executable_sha256,
-        python_runtime_manifest=config.python_runtime_manifest,
-        python_runtime_manifest_sha256=(
-            config.python_runtime_manifest_sha256
-        ),
-        runtime_control_snapshot_root=(
-            config.runtime_control_snapshot_root
-        ),
-        pilot_gate_receipt=config.pilot_gate_receipt,
-        pilot_authentication_key=(
-            config.pilot_authentication_key
-        ),
-        pilot_production_stack_attestation_sha256=(
-            config.pilot_production_stack_attestation_sha256
-        ),
+    selective_game = getattr(
+        config, "selective_continuation_game", None
     )
+    frontier_import_root = getattr(
+        config, "frontier_import_root", None
+    )
+    selective_frontier_import_sha256 = getattr(
+        config, "selective_frontier_import_sha256", None
+    )
+    selective_mode = (
+        selective_game is not None
+        or frontier_import_root is not None
+        or selective_frontier_import_sha256 is not None
+    )
+    expected_terminal = (
+        Orchestrator.SELECTIVE_TERMINAL_CONDITION
+        if selective_mode
+        else Orchestrator.CANONICAL_TERMINAL_CONDITION
+    )
+    if (
+        getattr(config, "terminal_condition", None)
+        != expected_terminal
+        or selective_mode
+        and (
+            selective_game is None
+            or frontier_import_root is None
+            or selective_frontier_import_sha256 is None
+        )
+    ):
+        raise WatchdogError(
+            "watchdog preflight mode differs from the exact operator "
+            "configuration"
+        )
+    if selective_mode:
+        result = Orchestrator._selective_operator_preflight(config)
+    else:
+        result = Supervisor.launch_preflight(
+            config.launch_attestation,
+            requested_image_digest=(
+                config.backend_configuration.image_digest
+            ),
+            conformance_result=config.conformance_result,
+            canonical_root=config.canonical_root,
+            environments_root=config.environments_root,
+            python_executable=config.python_executable,
+            python_executable_sha256=config.python_executable_sha256,
+            python_runtime_manifest=config.python_runtime_manifest,
+            python_runtime_manifest_sha256=(
+                config.python_runtime_manifest_sha256
+            ),
+            runtime_control_snapshot_root=(
+                config.runtime_control_snapshot_root
+            ),
+            pilot_gate_receipt=config.pilot_gate_receipt,
+            pilot_authentication_key=(
+                config.pilot_authentication_key
+            ),
+            pilot_production_stack_attestation_sha256=(
+                config.pilot_production_stack_attestation_sha256
+            ),
+        )
+    if not isinstance(result, Mapping):
+        raise WatchdogError(
+            "watchdog preflight returned authority for another campaign "
+            "mode"
+        )
+    evidence = result.get("launch_authority_evidence")
+    authority_sha256 = result.get("launch_authority_sha256")
+
+    def valid_authority_evidence(
+        value: object, expected_sha256: object
+    ) -> bool:
+        if (
+            not isinstance(value, Mapping)
+            or not isinstance(expected_sha256, str)
+            or re.fullmatch(r"[0-9a-f]{64}", expected_sha256)
+            is None
+            or value.get("authority_sha256") != expected_sha256
+        ):
+            return False
+        body = {
+            key: item
+            for key, item in value.items()
+            if key != "authority_sha256"
+        }
+        try:
+            return (
+                Orchestrator._json_sha256(body)
+                == expected_sha256
+            )
+        except (TypeError, ValueError):
+            return False
+
+    common_valid = (
+        result.get("status") == "PASS"
+        and valid_authority_evidence(evidence, authority_sha256)
+    )
+    if selective_mode:
+        control = (
+            evidence.get("control_launch_authority_evidence")
+            if isinstance(evidence, Mapping)
+            else None
+        )
+        authority_valid = (
+            common_valid
+            and result.get("launch_authority")
+            == "SELECTIVE_FRONTIER_RECEIPT_DERIVED"
+            and result.get("launch_authority_kind")
+            == "arc_agi3_selective_frontier_launch_authority"
+            and evidence.get("kind")
+            == "arc_agi3_selective_frontier_launch_authority"
+            and evidence.get("operator_configuration_sha256")
+            == config.config_sha256
+            and evidence.get("frontier_import_root")
+            == str(frontier_import_root)
+            and evidence.get("selective_continuation_game")
+            == selective_game
+            and result.get("selective_continuation_game")
+            == selective_game
+            and result.get("selective_frontier_import_sha256")
+            == selective_frontier_import_sha256
+            and result.get(
+                "operator_authorized_selective_frontier_import_sha256"
+            )
+            == selective_frontier_import_sha256
+            and evidence.get("selective_frontier_import_sha256")
+            == selective_frontier_import_sha256
+            and evidence.get(
+                "operator_authorized_selective_frontier_import_sha256"
+            )
+            == selective_frontier_import_sha256
+            and result.get("image_digest")
+            == config.backend_configuration.image_digest
+            and isinstance(control, Mapping)
+            and control.get("kind")
+            == "arc_agi3_selective_continuation_control_authority"
+            and evidence.get("control_launch_authority_kind")
+            == control.get("kind")
+            and valid_authority_evidence(
+                control,
+                evidence.get("control_launch_authority_sha256"),
+            )
+            and control.get("terminal_release_authority") is False
+        )
+    else:
+        authority_valid = (
+            common_valid
+            and result.get("launch_authority") == "RECEIPT_DERIVED"
+            and evidence.get("kind")
+            == "arc_agi3_contiguous_receipt_launch_authority"
+            and result.get("games") == Supervisor.EXPECTED_GAMES
+            and result.get("levels") == Supervisor.EXPECTED_LEVELS
+            and evidence.get("games") == Supervisor.EXPECTED_GAMES
+            and evidence.get("levels") == Supervisor.EXPECTED_LEVELS
+        )
+    if not authority_valid:
+        raise WatchdogError(
+            "watchdog preflight returned authority for another campaign "
+            "mode"
+        )
     Orchestrator._verify_auxiliary_backend_configuration(
         config.auxiliary_backend_configuration,
         config.auxiliary_launch_configuration,

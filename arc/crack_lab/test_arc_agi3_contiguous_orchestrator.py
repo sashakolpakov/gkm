@@ -7,7 +7,7 @@ import signal
 import subprocess
 import sys
 import tempfile
-from dataclasses import asdict
+from dataclasses import asdict, replace
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1081,6 +1081,159 @@ def test_operator_path_matrix_is_exact_and_pre_mutation(tmp_path):
     assert all(not path.exists() for path in mutable)
 
 
+def test_selective_import_root_is_read_only_disjoint_authority(tmp_path):
+    config_path, paths, auxiliary, placements = (
+        _operator_path_matrix_fixture(tmp_path)
+    )
+    import_root = tmp_path / "authority-roots" / "frontier-import"
+    import_root.mkdir(mode=0o700)
+    selective_paths = {
+        **paths,
+        "frontier_import_root": import_root,
+    }
+    projection = O._operator_path_relationship_projection(
+        config_path=config_path,
+        paths=selective_paths,
+        auxiliary_configuration=auxiliary,
+        canary_placements=placements,
+        selective_frontier_import_sha256="a" * 64,
+    )
+    assert projection["roles"]["frontier_import_root"]["role"] == (
+        "authority_root"
+    )
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="authorized import digest",
+    ):
+        O._operator_path_relationship_projection(
+            config_path=config_path,
+            paths=selective_paths,
+            auxiliary_configuration=auxiliary,
+            canary_placements=placements,
+            selective_frontier_import_sha256=7,  # type: ignore[arg-type]
+        )
+    nested = dict(selective_paths)
+    nested["promotion_root"] = import_root / "fresh-output"
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="relationship is forbidden",
+    ):
+        O._operator_path_relationship_projection(
+            config_path=config_path,
+            paths=nested,
+            auxiliary_configuration=auxiliary,
+            canary_placements=placements,
+            selective_frontier_import_sha256="a" * 64,
+        )
+    assert not nested["promotion_root"].exists()
+
+
+def test_operator_config_selective_fields_are_exact_and_typed(
+    tmp_path, monkeypatch
+):
+    config_path, paths, auxiliary, placements = (
+        _operator_path_matrix_fixture(tmp_path)
+    )
+    import_root = tmp_path / "authority-roots" / "frontier-import"
+    import_root.mkdir(mode=0o700)
+    game = sorted(O.Supervisor.authoritative_inventory())[0]
+    image = "gkm/selective@sha256:" + "a" * 64
+    backend = SimpleNamespace(
+        image_reference=image,
+        image_digest="sha256:" + "a" * 64,
+    )
+    launch = object()
+    monkeypatch.setattr(
+        O, "_parse_backend_configuration", lambda _value: backend
+    )
+    monkeypatch.setattr(
+        O.Scheduler,
+        "auxiliary_launch_configuration_from_dict",
+        lambda _value: launch,
+    )
+    monkeypatch.setattr(
+        O,
+        "_parse_auxiliary_backend_configuration",
+        lambda _value, _launch: auxiliary,
+    )
+    monkeypatch.setattr(O, "_verify_executable", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        O.RuntimeManifest,
+        "load_runtime_manifest",
+        lambda *_a, **_k: {},
+    )
+    value = {
+        "schema": 1,
+        **{name: str(path) for name, path in paths.items()},
+        "launch_attestation": str(paths["conformance_result"]),
+        "docker_binary_sha256": "b" * 64,
+        "python_executable_sha256": "c" * 64,
+        "python_runtime_manifest_sha256": "d" * 64,
+        "pilot_production_stack_attestation_sha256": "e" * 64,
+        "workspace_probe_image_reference": image,
+        "replay_image_reference": image,
+        "backend_configuration": {
+            "image_reference": image,
+            "image_digest": "sha256:" + "a" * 64,
+        },
+        "auxiliary_launch_configuration": {},
+        "auxiliary_backend_configuration": {},
+        "cost_window_id": "selective-window",
+        "limit": None,
+        "max_lanes": 1,
+        "poll_interval_seconds": 0.05,
+        "terminal_condition": O.SELECTIVE_TERMINAL_CONDITION,
+        "canary_placements": placements,
+        "frontier_import_root": str(import_root),
+        "selective_continuation_game": game,
+        "selective_frontier_import_sha256": "f" * 64,
+    }
+    assert frozenset(value) == O._SELECTIVE_OPERATOR_CONFIG_FIELDS
+    config_path.chmod(0o600)
+    config_path.write_bytes(_json_bytes(value))
+    config_path.chmod(0o400)
+    selected = O.load_operator_configuration(config_path)
+    assert selected.frontier_import_root == import_root
+    assert selected.selective_continuation_game == game
+    assert selected.selective_frontier_import_sha256 == "f" * 64
+    assert selected.terminal_condition == O.SELECTIVE_TERMINAL_CONDITION
+    assert selected.path_relationships["roles"][
+        "frontier_import_root"
+    ]["role"] == "authority_root"
+
+    value["terminal_condition"] = O.CANONICAL_TERMINAL_CONDITION
+    config_path.chmod(0o600)
+    config_path.write_bytes(_json_bytes(value))
+    config_path.chmod(0o400)
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="scheduling controls",
+    ):
+        O.load_operator_configuration(config_path)
+
+    del value["frontier_import_root"]
+    del value["selective_continuation_game"]
+    del value["selective_frontier_import_sha256"]
+    config_path.chmod(0o600)
+    config_path.write_bytes(_json_bytes(value))
+    config_path.chmod(0o400)
+    full = O.load_operator_configuration(config_path)
+    assert full.frontier_import_root is None
+    assert full.selective_continuation_game is None
+    assert full.selective_frontier_import_sha256 is None
+    assert full.terminal_condition == O.CANONICAL_TERMINAL_CONDITION
+
+    value["launch_attestation"] = str(paths["launch_attestation"])
+    config_path.chmod(0o600)
+    config_path.write_bytes(_json_bytes(value))
+    config_path.chmod(0o400)
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="same exact receipt",
+    ):
+        O.load_operator_configuration(config_path)
+
+
 def test_formal_auxiliary_backend_executes_only_policy_selected_quarantine_path(
     tmp_path, monkeypatch
 ):
@@ -1895,6 +2048,38 @@ def test_formal_operator_rejects_cli_and_preflight_before_mutation(
         O.run_operator(config)
     assert preflight_calls == 1
     assert not campaign.exists()
+
+    selective_campaign = tmp_path / "selective-must-not-exist"
+    selective_config = SimpleNamespace(
+        **{
+            **vars(config),
+            "campaign_root": selective_campaign,
+            "frontier_import_root": tmp_path / "frontier-import",
+            "selective_continuation_game": "sel9",
+            "selective_frontier_import_sha256": "8" * 64,
+            "terminal_condition": O.SELECTIVE_TERMINAL_CONDITION,
+        }
+    )
+    selective_calls = 0
+
+    def reject_selective(_config):
+        nonlocal selective_calls
+        selective_calls += 1
+        raise O.Supervisor.SupervisorContractError(
+            "selective frontier authority absent"
+        )
+
+    monkeypatch.setattr(
+        O, "_selective_operator_preflight", reject_selective
+    )
+    with pytest.raises(
+        O.Supervisor.SupervisorContractError,
+        match="selective frontier authority",
+    ):
+        O.run_operator(selective_config)
+    assert selective_calls == 1
+    assert preflight_calls == 1
+    assert not selective_campaign.exists()
 
 
 def test_formal_operator_holds_one_process_lease_across_mutable_path(
@@ -2734,6 +2919,535 @@ def test_quiescent_blocked_terminal_ignores_completed_lanes_and_requires_no_work
         journal_head_sequence=18,
         journal_head_digest="b" * 64,
     ) is None
+
+
+def test_selective_blocked_projection_excludes_only_scope_lanes():
+    state = {
+        "campaign_mode": "selective_continuation",
+        "selective_continuation_game": "sel9",
+        "selective_frontier_import": {"import_sha256": "d" * 64},
+        "selective_scope_solved_levels": 0,
+        "selective_scope_total_levels": 2,
+        "selective_complete": False,
+        "complete": False,
+        "solved_levels": 8,
+        "total_levels": 183,
+        "pending_scheduler_decision": None,
+        "pending_auxiliary_decision": None,
+        "lanes": {
+            "sel9": {
+                "reached": 8,
+                "target": 10,
+                "active": None,
+                "blocked": "authenticated_frontier_blocker",
+            },
+            "off1": {
+                "reached": 0,
+                "target": 6,
+                "active": None,
+                "blocked": Runner.SELECTIVE_SCOPE_BLOCKED_REASON,
+            },
+            "off2": {
+                "reached": 0,
+                "target": 7,
+                "active": None,
+                "blocked": Runner.SELECTIVE_SCOPE_BLOCKED_REASON,
+            },
+        },
+        "auxiliary_assignments": {},
+    }
+    blocked = O._quiescent_authenticated_blocked_projection(
+        state,
+        journal_head_sequence=31,
+        journal_head_digest="e" * 64,
+    )
+    assert blocked is not None
+    assert blocked["unresolved_frontiers"] == [{
+        "game": "sel9",
+        "reached": 8,
+        "target": 10,
+        "blocker": "authenticated_frontier_blocker",
+    }]
+    assert blocked["scope_excluded_lane_count"] == 2
+
+    completed = json.loads(json.dumps(state))
+    completed["selective_complete"] = True
+    completed["lanes"]["sel9"].update({
+        "reached": 10,
+        "blocked": None,
+    })
+    assert O._quiescent_authenticated_blocked_projection(
+        completed,
+        journal_head_sequence=32,
+        journal_head_digest="f" * 64,
+    ) is None
+
+    malformed = json.loads(json.dumps(state))
+    malformed["lanes"]["off1"]["blocked"] = None
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="scope exclusion",
+    ):
+        O._quiescent_authenticated_blocked_projection(
+            malformed,
+            journal_head_sequence=33,
+            journal_head_digest="1" * 64,
+        )
+
+
+def _synthetic_selective_frontier(
+    tmp_path: Path, *, version: str = "1" * 32
+) -> Runner.SelectiveFrontierImport:
+    subject = tmp_path / version / "sel9_legs"
+    return Runner.build_selective_frontier_import(
+        game="sel9",
+        reached=8,
+        authoritative_target=10,
+        parent_checkpoint_sha256="1" * 64,
+        checkpoint_path=str(subject / Runner.Contract.CHECKPOINT_NAME),
+        checkpoint_sha256="2" * 64,
+        source_path=str(subject / Runner.Contract.WINNING_SOURCE_NAME),
+        source_tree_sha256="3" * 64,
+        promotion_receipt_path=str(
+            subject / Runner.Contract.HOST_RECEIPT_NAME
+        ),
+        promotion_receipt_sha256="4" * 64,
+        source_version_id=version,
+        version_tree_sha256="5" * 64,
+        selected_pointer_sha256="6" * 64,
+    )
+
+
+def test_selective_preflight_binds_same_current_frontier_twice(
+    tmp_path, monkeypatch
+):
+    imported = _synthetic_selective_frontier(tmp_path)
+    issued = []
+
+    def issue(**_kwargs):
+        issued.append(True)
+        return imported
+
+    monkeypatch.setattr(
+        O, "issue_selective_frontier_import_read_only", issue
+    )
+    monkeypatch.setattr(
+        O.Supervisor,
+        "selective_continuation_preflight",
+        lambda *_args, **_kwargs: {
+            "status": "PASS",
+            "launch_authority": "SELECTIVE_CONTROL_RECEIPT_DERIVED",
+            "launch_authority_kind":
+                "arc_agi3_selective_continuation_control_authority",
+            "launch_authority_sha256": "7" * 64,
+            "launch_authority_evidence": {
+                "authority_sha256": "7" * 64,
+                "terminal_release_authority": False,
+                "supplied_prelaunch_sha256": "6" * 64,
+                "production_stack_attestation_sha256": "0" * 64,
+            },
+            "control_contract_sha256": "8" * 64,
+            "conformance_registry_sha256": "9" * 64,
+            "authoritative_inventory_sha256": "5" * 64,
+            "python_runtime_manifest_sha256": "f" * 64,
+            "pilot_gate_receipt": str(tmp_path / "pilot.json"),
+            "pilot_gate_receipt_sha256": "a" * 64,
+            "pilot_manifest_sha256": "b" * 64,
+            "pilot_meta_handoff_count": 1,
+            "image_digest": "sha256:" + "c" * 64,
+        },
+    )
+    config = SimpleNamespace(
+        campaign_root=tmp_path / "selective-campaign",
+        frontier_import_root=tmp_path,
+        selective_continuation_game="sel9",
+        selective_frontier_import_sha256=imported.import_sha256,
+        config_sha256="d" * 64,
+        launch_attestation=tmp_path / "prelaunch.json",
+        conformance_result=tmp_path / "prelaunch.json",
+        python_executable=Path(sys.executable),
+        python_executable_sha256="e" * 64,
+        python_runtime_manifest=tmp_path / "runtime.json",
+        python_runtime_manifest_sha256="f" * 64,
+        runtime_control_snapshot_root=tmp_path / "controls",
+        pilot_gate_receipt=tmp_path / "pilot.json",
+        pilot_authentication_key=tmp_path / "pilot.key",
+        pilot_production_stack_attestation_sha256="0" * 64,
+        backend_configuration=SimpleNamespace(
+            image_digest="sha256:" + "c" * 64
+        ),
+    )
+    result = O._selective_operator_preflight(config)
+    assert len(issued) == 2
+    assert result["launch_authority"] == (
+        "SELECTIVE_FRONTIER_RECEIPT_DERIVED"
+    )
+    assert result["launch_authority_kind"] == (
+        "arc_agi3_selective_frontier_launch_authority"
+    )
+    assert result["selective_frontier_import"] == (
+        Runner.selective_frontier_import_to_dict(imported)
+    )
+    first_contract = O._selective_durable_preflight_projection(
+        config, result
+    )
+    fresh_runtime = json.loads(json.dumps(result))
+    fresh_runtime["launch_authority_sha256"] = "4" * 64
+    fresh_runtime["runtime_conformance_output_sha256"] = "3" * 64
+    fresh_runtime["launch_authority_evidence"][
+        "frontier_authority_source"
+    ] = "authenticated_durable_genesis_frontier"
+    fresh_runtime["launch_authority_evidence"][
+        "control_launch_authority_evidence"
+    ]["runtime_prelaunch_sha256"] = "2" * 64
+    assert O._selective_durable_preflight_projection(
+        config, fresh_runtime
+    ) == first_contract
+
+    replacement = _synthetic_selective_frontier(
+        tmp_path, version="2" * 32
+    )
+    sequence = iter((imported, replacement))
+    monkeypatch.setattr(
+        O,
+        "issue_selective_frontier_import_read_only",
+        lambda **_kwargs: next(sequence),
+    )
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="operator-authorized digest",
+    ):
+        O._selective_operator_preflight(config)
+
+    wrong_digest = SimpleNamespace(
+        **{
+            **vars(config),
+            "selective_frontier_import_sha256": "0" * 64,
+        }
+    )
+    monkeypatch.setattr(
+        O,
+        "issue_selective_frontier_import_read_only",
+        lambda **_kwargs: imported,
+    )
+    monkeypatch.setattr(
+        O.Supervisor,
+        "selective_continuation_preflight",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(
+            AssertionError("wrong digest reached control preflight")
+        ),
+    )
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="operator-authorized digest",
+    ):
+        O._selective_operator_preflight(wrong_digest)
+    assert not wrong_digest.campaign_root.exists()
+
+
+def test_selective_restart_reopens_durable_import_not_new_current(
+    tmp_path, monkeypatch
+):
+    campaign = tmp_path / "campaign"
+    (campaign / "attempt_journal").mkdir(parents=True)
+    imported = _synthetic_selective_frontier(tmp_path / "authority")
+    payload = Runner.selective_frontier_import_to_dict(imported)
+    config = SimpleNamespace(
+        campaign_root=campaign,
+        frontier_import_root=tmp_path / "authority",
+        selective_continuation_game="sel9",
+        selective_frontier_import_sha256=imported.import_sha256,
+        config_sha256="a" * 64,
+    )
+    events = [
+        {
+            "sequence": 1,
+            "kind": "GENESIS",
+            "payload": {
+                "campaign_mode": "selective_continuation",
+                "operator_configuration_sha256": "a" * 64,
+                "selective_continuation_game": "sel9",
+                "selective_frontier_import_sha256":
+                    imported.import_sha256,
+                "operator_authorized_selective_frontier_import_sha256":
+                    imported.import_sha256,
+                "selective_frontier_import": payload,
+            },
+        },
+        {
+            "sequence": 2,
+            "kind": "FRONTIER_IMPORTED",
+            "payload": payload,
+        },
+    ]
+    monkeypatch.setattr(
+        O.Scheduler, "read_journal", lambda _root: events
+    )
+    monkeypatch.setattr(
+        O,
+        "issue_selective_frontier_import_read_only",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("restart consulted mutable current")
+        ),
+    )
+    monkeypatch.setattr(
+        O,
+        "_read_only_selective_frontier_gate",
+        lambda _root: SimpleNamespace(
+            verify_selective_frontier_import=lambda binding: binding
+        ),
+    )
+    assert O._selective_preflight_frontier(config) == (
+        imported,
+        "authenticated_durable_genesis_frontier",
+    )
+    events.pop()
+    assert O._selective_preflight_frontier(config) == (
+        imported,
+        "authenticated_durable_genesis_frontier",
+    )
+
+
+def test_selective_restart_uses_operator_genesis_before_runner_genesis(
+    tmp_path, monkeypatch
+):
+    campaign = tmp_path / "campaign"
+    campaign.mkdir()
+    authority = tmp_path / "authority"
+    imported = _synthetic_selective_frontier(authority)
+    import_payload = Runner.selective_frontier_import_to_dict(imported)
+    config = SimpleNamespace(
+        campaign_root=campaign,
+        frontier_import_root=authority,
+        selective_continuation_game="sel9",
+        selective_frontier_import_sha256=imported.import_sha256,
+        config_sha256="a" * 64,
+    )
+    contract_body = {
+        "schema": 1,
+        "kind": "arc_agi3_selective_durable_launch_contract",
+        "operator_configuration_sha256": "a" * 64,
+        "frontier_import_root": str(authority),
+        "selective_continuation_game": "sel9",
+        "selective_frontier_import": import_payload,
+        "selective_frontier_import_sha256": imported.import_sha256,
+        "operator_authorized_selective_frontier_import_sha256":
+            imported.import_sha256,
+        "conformance_registry_sha256": "1" * 64,
+        "control_contract_sha256": "2" * 64,
+        "supplied_prelaunch_sha256": "3" * 64,
+        "authoritative_inventory_sha256": "4" * 64,
+        "image_digest": "sha256:" + "5" * 64,
+        "python_runtime_manifest_sha256": "6" * 64,
+        "pilot_gate_receipt_sha256": "7" * 64,
+        "pilot_manifest_sha256": "8" * 64,
+        "pilot_meta_handoff_count": 1,
+        "production_stack_attestation_sha256": "9" * 64,
+    }
+    contract = {
+        **contract_body,
+        "contract_sha256": O._json_sha256(contract_body),
+    }
+    (campaign / "operator_genesis.json").write_bytes(_json_bytes({
+        "schema": 1,
+        "kind": "arc_agi3_contiguous_operator_genesis",
+        "operator_config_sha256": "a" * 64,
+        "campaign_mode": "selective_continuation",
+        "terminal_condition": O.SELECTIVE_TERMINAL_CONDITION,
+        "frontier_import_root": str(authority),
+        "selective_continuation_game": "sel9",
+        "selective_frontier_import_sha256": imported.import_sha256,
+        "operator_authorized_selective_frontier_import_sha256":
+            imported.import_sha256,
+        "selective_launch_authority_sha256":
+            contract["contract_sha256"],
+        "selective_durable_launch_contract": contract,
+    }))
+    monkeypatch.setattr(
+        O,
+        "issue_selective_frontier_import_read_only",
+        lambda **_kwargs: (_ for _ in ()).throw(
+            AssertionError("restart reissued advanced mutable current")
+        ),
+    )
+    verifier = SimpleNamespace(
+        verify_selective_frontier_import=lambda binding: binding
+    )
+    monkeypatch.setattr(
+        O,
+        "_read_only_selective_frontier_gate",
+        lambda _root: verifier,
+    )
+    assert O._selective_preflight_frontier(config) == (
+        imported,
+        "authenticated_durable_operator_genesis_frontier",
+    )
+
+    (campaign / "attempt_journal").mkdir()
+    monkeypatch.setattr(
+        O.Scheduler, "read_journal", lambda _root: []
+    )
+    assert O._selective_preflight_frontier(config) == (
+        imported,
+        "authenticated_durable_operator_genesis_frontier",
+    )
+
+
+def test_selective_unified_audit_requires_import_and_fresh_scope(
+    tmp_path, monkeypatch
+):
+    campaign = (tmp_path / "campaign").resolve()
+    campaign.mkdir()
+    promotions = (tmp_path / "output-promotions").resolve()
+    promotions.mkdir()
+    imports = (tmp_path / "frontier-imports").resolve()
+    imports.mkdir()
+    scheduler_path = tmp_path / "scheduler.json"
+    scheduler_path.write_text("{}\n", encoding="ascii")
+    imported = _synthetic_selective_frontier(imports)
+    import_dict = Runner.selective_frontier_import_to_dict(imported)
+    runner_receipt = {
+        "status": "PASS",
+        "campaign_mode": "selective_continuation",
+        "campaign_root": str(campaign),
+        "campaign_id": "campaign:selective",
+        "inventory_sha256": "1" * 64,
+        "scheduler_policy_sha256": Scheduler.SCHEDULER_POLICY_SHA256,
+        "operator_configuration_sha256": "2" * 64,
+        "journal_event_count": 41,
+        "journal_head_sequence": 41,
+        "journal_head_digest": "3" * 64,
+        "journal_prefix": {"events": 41},
+        "selective_continuation_game": "sel9",
+        "selective_frontier_import": import_dict,
+        "selective_frontier_import_sha256": imported.import_sha256,
+        "operator_authorized_selective_frontier_import_sha256":
+            imported.import_sha256,
+        "selective_scope_solved_levels": 2,
+        "selective_scope_total_levels": 2,
+        "selective_complete": True,
+        "solved_levels": 10,
+        "total_levels": 183,
+        "complete": False,
+        "lane_boundaries": [],
+        "receipt_sha256": "4" * 64,
+    }
+    scheduler_receipt = {
+        "campaign_root": str(campaign),
+        "policy_sha256": Scheduler.SCHEDULER_POLICY_SHA256,
+        "journal_events": 41,
+        "journal_head_sequence": 41,
+        "journal_head_digest": "3" * 64,
+        "receipt_sha256": "5" * 64,
+        "summary": {
+            "journal_prefix": {"events": 41},
+            "campaign_mode": "selective_continuation",
+            "selective_continuation_game": "sel9",
+            "selective_frontier_import_sha256":
+                imported.import_sha256,
+            "operator_authorized_selective_frontier_import_sha256":
+                imported.import_sha256,
+            "policy_promoted_levels": 2,
+            "selective_scope_promoted_levels": 2,
+            "selective_scope_total_levels": 2,
+            "selective_complete": True,
+            "pending_decision": None,
+            "active_auxiliary_assignments": [],
+            "live_reservation_units": 0,
+        },
+    }
+    monkeypatch.setattr(
+        Runner,
+        "verify_runner_state_audit",
+        lambda *_args, **_kwargs: runner_receipt,
+    )
+    monkeypatch.setattr(
+        Scheduler,
+        "verify_audit_receipt",
+        lambda *_args, **_kwargs: scheduler_receipt,
+    )
+    monkeypatch.setattr(
+        Runner,
+        "audit_terminal_attempt_retention",
+        lambda *_args, **_kwargs: {
+            "status": "NOT_REQUIRED",
+            "receipt_sha256": "6" * 64,
+        },
+    )
+    verifier = SimpleNamespace(
+        verify_selective_frontier_import=lambda binding: binding
+    )
+    monkeypatch.setattr(
+        O,
+        "_read_only_selective_frontier_gate",
+        lambda *_args, **_kwargs: verifier,
+    )
+    monkeypatch.setattr(
+        O,
+        "_read_only_promotion_records",
+        lambda *_args, **_kwargs: ([{"game": "sel9"}], 10),
+    )
+    receipt = O.audit_selective_continuation_unified(
+        campaign_root=campaign,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=promotions,
+        frontier_import_root=imports,
+        expected_selective_frontier_import_sha256=(
+            imported.import_sha256
+        ),
+    )
+    assert receipt["status"] == "PASS", receipt["findings"]
+    assert receipt["selective_complete"] is True
+    assert receipt["complete"] is False
+    assert receipt["selective_verified_promotion_boundaries"] == 2
+    assert O.verify_selective_continuation_unified_audit(
+        receipt,
+        campaign_root=campaign,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=promotions,
+        frontier_import_root=imports,
+        expected_selective_frontier_import_sha256=(
+            imported.import_sha256
+        ),
+    ) == receipt
+
+    wrong_import = O.audit_selective_continuation_unified(
+        campaign_root=campaign,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=promotions,
+        frontier_import_root=imports,
+        expected_selective_frontier_import_sha256="0" * 64,
+    )
+    assert wrong_import["status"] == "FAIL"
+    assert "selective import identity" in wrong_import["findings"][0]
+
+    malformed_import = O.audit_selective_continuation_unified(
+        campaign_root=campaign,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=promotions,
+        frontier_import_root=imports,
+        expected_selective_frontier_import_sha256=None,  # type: ignore[arg-type]
+    )
+    assert malformed_import["status"] == "FAIL"
+    assert "digest is malformed" in malformed_import["findings"][0]
+
+    scheduler_receipt["summary"]["policy_promoted_levels"] = 10
+    rejected = O.audit_selective_continuation_unified(
+        campaign_root=campaign,
+        scheduler_audit_receipt_path=scheduler_path,
+        runner_state_receipt=runner_receipt,
+        promotion_root=promotions,
+        frontier_import_root=imports,
+        expected_selective_frontier_import_sha256=(
+            imported.import_sha256
+        ),
+    )
+    assert rejected["status"] == "FAIL"
+    assert "disagree" in rejected["findings"][0]
 
 
 def test_unified_audit_requires_runner_and_promotion_evidence(
@@ -3666,6 +4380,86 @@ def test_schema_v2_commit_hashes_all_declared_source_and_recovers_ack_loss(
         })
     )
     assert gate.recover(spec=spec, candidate=candidate) == commit
+
+
+def test_selective_frontier_import_is_read_only_and_exact(
+    tmp_path,
+    monkeypatch,
+):
+    spec = _attempt_spec(tmp_path / "origin-attempt")
+    candidate = _candidate(spec)
+    _install_gate_stubs(
+        monkeypatch,
+        candidate,
+        attempt_id=spec.attempt_id,
+        campaign_id=spec.campaign_id,
+    )
+    authority_root = tmp_path / "sealed-authority"
+    authority = O.ProductionPromotionGate(
+        authority_root,
+        replay_executor=_Replay(tmp_path / "authority-replay"),
+    )
+    commit = authority.commit(spec=spec, candidate=candidate)
+    before = O._tree_hash(authority_root)
+
+    output_root = tmp_path / "continuation-output"
+    continuation = O.ProductionPromotionGate(
+        output_root,
+        replay_executor=_Replay(tmp_path / "continuation-replay"),
+        frontier_import_root=authority_root,
+    )
+    binding = continuation.issue_selective_frontier_import(spec.game)
+    assert binding.reached == commit.to_level == 1
+    assert binding.checkpoint_path == commit.checkpoint_path
+    assert binding.source_version_id == commit.source_version_id
+    assert continuation.verify_selective_frontier_import(binding) == binding
+    assert O._tree_hash(authority_root) == before
+
+    continued_spec = replace(
+        spec,
+        target_level=binding.reached + 1,
+        parent_checkpoint_path=binding.checkpoint_path,
+        parent_checkpoint_sha256=binding.checkpoint_sha256,
+        parent_source_path=binding.source_path,
+        parent_source_tree_sha256=binding.source_tree_sha256,
+        frontier_sha256=binding.frontier_sha256,
+    )
+    assert continuation._selective_parent_binding(
+        continued_spec
+    ) == binding
+    assert not any(output_root.rglob(O.POINTER_NAME))
+
+    pinned = O.ProductionPromotionGate(
+        tmp_path / "pinned-continuation-output",
+        replay_executor=_Replay(tmp_path / "pinned-replay"),
+        frontier_import_root=authority_root,
+        selective_frontier_import=binding,
+    )
+    monkeypatch.setattr(
+        pinned,
+        "issue_selective_frontier_import",
+        lambda *_args: (_ for _ in ()).throw(
+            AssertionError("pinned continuation reissued mutable current")
+        ),
+    )
+    assert pinned._selective_parent_binding(continued_spec) == binding
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="exact imported frontier",
+    ):
+        pinned._selective_parent_binding(
+            replace(continued_spec, game="nope")
+        )
+
+    with pytest.raises(
+        O.ContiguousOrchestratorError,
+        match="inside mutable promotion root|inside frontier import root",
+    ):
+        O.ProductionPromotionGate(
+            authority_root / "nested-output",
+            replay_executor=_Replay(tmp_path / "overlap-replay"),
+            frontier_import_root=authority_root,
+        )
 
 
 def test_store_rejects_symlink_root_and_dangling_pointer(
