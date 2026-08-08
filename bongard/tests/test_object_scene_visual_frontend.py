@@ -822,6 +822,47 @@ def test_operational_card_is_canonical_hashed_and_rendered_per_witness():
         frontend.ObjectSceneSoftTag.from_data(tampered)
 
 
+def test_operational_prose_admits_visual_paths_and_variant_alternatives_only():
+    assert frontend.normalize_object_scene_witness_statement(
+        "one visible path follows the left side"
+    ) == "one visible path follows the left side"
+    assert frontend.normalize_object_scene_accepted_variant(
+        "round, oval, square, or irregular loops count as boundary units"
+    ) == "round, oval, square, or irregular loops count as boundary units"
+    assert frontend.normalize_object_scene_near_miss_boundary(
+        "a path confined to one side falls outside this concept"
+    ) == "a path confined to one side falls outside this concept"
+
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_witness_statement(
+            "the portions differ in extent or contour"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_witness_statement(
+            "the entity has round, oval, and square boundary units"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_accepted_variant(
+            "round,oval, or square loops count as boundary units"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_accepted_variant(
+            "round loops do not qualify"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_accepted_variant(
+            "either round or square loops count as boundary units"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_near_miss_boundary(
+            "a path without markers falls outside this concept"
+        )
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        frontend.normalize_object_scene_near_miss_boundary(
+            "a path is not visible and one loop is excluded"
+        )
+
+
 def test_registered_witness_macro_has_closed_precedence_and_error_replay():
     tag = frontend.ObjectSceneSoftTag.create(
         "tag_0000",

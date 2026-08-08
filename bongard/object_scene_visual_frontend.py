@@ -68,9 +68,9 @@ from bongard.visual_witnesses import Q16BBox
 OBJECT_SCENE_INVENTORY_SCHEMA = "gkm.object-scene-proposal-inventory.v1"
 OBJECT_SCENE_CROP_RECEIPT_SCHEMA = "gkm.object-scene-crop-receipt.v1"
 OBJECT_SCENE_ATLAS_SHEET_SCHEMA = "gkm.object-scene-atlas-sheet.v1"
-OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v4"
-OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v4"
-OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v4"
+OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v5"
+OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v5"
+OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v5"
 OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA = "gkm.object-scene-dropped-open-tag.v1"
 OBJECT_SCENE_CANONICAL_SCENARIO_ID = "threshold064.close-cross-1"
 OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS = (
@@ -144,6 +144,11 @@ _OPERATIONAL_CRITERION = re.compile(
     rf"[a-z][a-z' -]{{{OBJECT_SCENE_MIN_CRITERION_CHARACTERS - 1},"
     rf"{OBJECT_SCENE_MAX_CRITERION_CHARACTERS - 1}}}\Z"
 )
+_ACCEPTED_VARIANT_CRITERION = re.compile(
+    rf"[a-z][a-z', -]{{{OBJECT_SCENE_MIN_CRITERION_CHARACTERS - 1},"
+    rf"{OBJECT_SCENE_MAX_CRITERION_CHARACTERS - 1}}}\Z"
+)
+_NONCANONICAL_CRITERION_COMMA = re.compile(r"\s,|,(?:\S| {2,})|,\Z")
 _PROSE = re.compile(r"[ -~]+\Z")
 _FORBIDDEN_VISIBLE = re.compile(
     r"\b(?:(?:candidate|group|class|label|target|foil|positive|negative|"
@@ -159,12 +164,17 @@ _FORBIDDEN_TAG_LOGIC = re.compile(
 )
 _FORBIDDEN_OPERATIONAL_CARD_LEAK = re.compile(
     r"\b(?:citations?|orientations?|roles?|experiments?|frequency|frequencies|"
-    r"frequent|recurring|dataset|training|sides?|paths?)\b",
+    r"frequent|recurring|dataset|training|side[01])\b",
+    re.IGNORECASE,
+)
+_FORBIDDEN_ACCEPTED_VARIANT_LOGIC = re.compile(
+    r"\b(?:no|not|none|neither|without|lacks?|lacking|absent|missing|"
+    r"except|either|versus|unlike)\b",
     re.IGNORECASE,
 )
 _FORBIDDEN_BOUNDARY_LOGIC = re.compile(
-    r"\b(?:no|none|neither|without|lacks?|lacking|absent|missing|except|or|"
-    r"either|versus|unlike)\b",
+    r"\b(?:no|not|none|neither|never|without|lacks?|lacking|absent|missing|"
+    r"except|or|either|versus|unlike)\b",
     re.IGNORECASE,
 )
 _EXPLICIT_BOUNDARY_EXCLUSION = re.compile(
@@ -299,13 +309,27 @@ def _soft_tag_scope(value: object, label: str = "soft tag scope") -> str:
     return value
 
 
-def _normalized_operational_clause(value: object, *, label: str) -> str:
+def _normalized_operational_clause(
+    value: object,
+    *,
+    label: str,
+    allow_canonical_commas: bool = False,
+) -> str:
     normalized = _normalize_model_visible_text(value)
+    criterion = (
+        _ACCEPTED_VARIANT_CRITERION
+        if allow_canonical_commas
+        else _OPERATIONAL_CRITERION
+    )
     if (
         not isinstance(normalized, str)
         or normalized != normalized.strip()
         or "  " in normalized
-        or _OPERATIONAL_CRITERION.fullmatch(normalized) is None
+        or criterion.fullmatch(normalized) is None
+        or (
+            allow_canonical_commas
+            and _NONCANONICAL_CRITERION_COMMA.search(normalized) is not None
+        )
         or _FORBIDDEN_VISIBLE.search(normalized) is not None
         or _FORBIDDEN_OPERATIONAL_CARD_LEAK.search(normalized) is not None
     ):
@@ -332,9 +356,11 @@ def normalize_object_scene_accepted_variant(value: object) -> str:
     """Normalize affirmative inclusion/equivalence guidance."""
 
     normalized = _normalized_operational_clause(
-        value, label="accepted variant"
+        value,
+        label="accepted variant",
+        allow_canonical_commas=True,
     )
-    if _FORBIDDEN_TAG_LOGIC.search(normalized) is not None:
+    if _FORBIDDEN_ACCEPTED_VARIANT_LOGIC.search(normalized) is not None:
         raise ObjectSceneVisualFrontendError(
             "accepted variant is not affirmative inclusion guidance"
         )
@@ -347,10 +373,19 @@ def normalize_object_scene_near_miss_boundary(value: object) -> str:
     normalized = _normalized_operational_clause(
         value, label="near-miss boundary"
     )
-    if (
-        _FORBIDDEN_BOUNDARY_LOGIC.search(normalized) is not None
-        or _EXPLICIT_BOUNDARY_EXCLUSION.search(normalized) is None
-    ):
+    exclusions = tuple(_EXPLICIT_BOUNDARY_EXCLUSION.finditer(normalized))
+    affirmative_antecedent = (
+        normalized
+        if len(exclusions) != 1
+        else (
+            normalized[: exclusions[0].start()]
+            + " qualifies"
+            + normalized[exclusions[0].end() :]
+        )
+    )
+    if len(exclusions) != 1 or _FORBIDDEN_BOUNDARY_LOGIC.search(
+        affirmative_antecedent
+    ) is not None:
         raise ObjectSceneVisualFrontendError(
             "near-miss boundary is not an explicit controlled exclusion"
         )
@@ -2302,7 +2337,7 @@ class ObjectSceneTranscript:
         return result
 
 
-OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v4"
+OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v5"
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -3037,7 +3072,7 @@ def prepare_object_scene_transcript_inputs(
     schema = object_scene_transcript_output_schema(inventory, mode, registry)
     identities = _presentation_identities(presentation)
     digest = canonical_digest({
-        "schema": "gkm.object-scene-prepared-transcript.v4",
+        "schema": "gkm.object-scene-prepared-transcript.v5",
         "inventory_digest": inventory.inventory_digest,
         "mode": mode.value,
         "registry_digest": None if registry is None else registry.registry_digest,
@@ -3268,7 +3303,7 @@ def _parse_object_scene_transcript_payload(
 
 def object_scene_transcript_protocol_digest() -> str:
     return canonical_digest({
-        "schema": "gkm.object-scene-transcript-protocol.v4",
+        "schema": "gkm.object-scene-transcript-protocol.v5",
         "frontend_id": OBJECT_SCENE_FRONTEND_ID,
         "source_digest": object_scene_visual_frontend_source_digest(),
         "inventory_protocol_digest": object_scene_inventory_protocol_digest(),

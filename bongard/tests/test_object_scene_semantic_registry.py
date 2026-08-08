@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+import bongard.object_scene_semantic_registry as semantic_registry
 from bongard.object_scene_semantic_registry import (
     MAX_CONCEPTS_PER_ORIENTATION,
     ObjectScenePreparedSemanticRegistryProposal,
@@ -168,6 +169,28 @@ def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs
     assert "using 'does not qualify', 'is excluded', or 'falls outside'" in (
         prepared.prompt
     )
+    assert "never join alternative cues with 'or' or 'either'" in prepared.prompt
+    assert "these may enumerate alternatives with canonical commas" in (
+        prepared.prompt
+    )
+    assert "visible paths, and visible sides are affirmative and allowed" in (
+        prepared.prompt
+    )
+    assert "the configuration before that exclusion must itself be affirmative" in (
+        prepared.prompt.lower()
+    )
+    witness_description = concept_schema["properties"]["required_witnesses"][
+        "description"
+    ]
+    variant_description = concept_schema["properties"]["accepted_variants"][
+        "description"
+    ]
+    boundary_description = concept_schema["properties"]["near_miss_boundaries"][
+        "description"
+    ]
+    assert "one atomic check" in witness_description
+    assert "comma-space lists and or are allowed here" in variant_description
+    assert "exactly one controlled exclusion phrase" in boundary_description
 
     lowered = prepared.prompt.lower()
     for forbidden in (
@@ -275,12 +298,12 @@ def test_transparent_witness_macro_is_canonical_and_digest_bound(
             {
                 "kind": "part_topology",
                 "statement": (
-                    "two joined opposing wedge-like portions share one narrow waist"
+                    "two visible paths join along one narrow side"
                 ),
             },
         ),
         accepted_variants=(
-            "fan-like and sector-like portions count as wedge-like portions",
+            "fan-like, sector-like, or wedge-like portions count as tapered portions",
         ),
         near_miss_boundaries=(
             "one closed triangle made from three strands does not qualify",
@@ -306,6 +329,9 @@ def test_transparent_witness_macro_is_canonical_and_digest_bound(
     )
     assert tag.required_witnesses == concept.required_witnesses
     assert tag.accepted_variants == concept.accepted_variants
+    assert tag.accepted_variants == (
+        "fan-like, sector-like, or wedge-like portions count as tapered portions",
+    )
     assert tag.near_miss_boundaries == concept.near_miss_boundaries
     assert tag.criteria_digest == concept.criteria_digest
 
@@ -366,6 +392,15 @@ def test_transparent_witness_macro_is_canonical_and_digest_bound(
                 }
             ],
         ),
+        (
+            "required_witnesses",
+            [
+                {
+                    "kind": "shape_appearance",
+                    "statement": "the entity has a pointed tip or curved edge",
+                }
+            ],
+        ),
     ),
 )
 def test_bad_operational_card_is_quarantined_without_losing_valid_rows(
@@ -383,6 +418,238 @@ def test_bad_operational_card_is_quarantined_without_losing_valid_rows(
     )
     assert "paired visible forms" not in {item.tag for item in registry.tags}
     assert "mismatched parts" in {item.tag for item in registry.tags}
+
+
+def test_exact_v4_proposer_cards_keep_variant_lists_nonvoting_and_witnesses_atomic(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    side0 = _aliases(prepared, 0)
+    side1 = _aliases(prepared, 1)
+    # These are the six operational cards returned by the historical v4
+    # proposer. Citations are rebound only because aliases are local to the
+    # deterministic synthetic discovery fixture.
+    payload = {
+        "side0_positive": [
+            {
+                "scope": "entity",
+                "phrase": "two unequal opposing wedges joined at a narrow center",
+                "required_witnesses": [
+                    {
+                        "kind": "count_relation",
+                        "statement": (
+                            "exactly two primary spreading portions belong to the entity"
+                        ),
+                    },
+                    {
+                        "kind": "spatial_relation",
+                        "statement": (
+                            "the two portions broaden into opposite regions from one shared narrow center"
+                        ),
+                    },
+                    {
+                        "kind": "shape_appearance",
+                        "statement": (
+                            "the two portions have visibly unequal extents or contours"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "fan-like, sector-like, and wedge-like portions count when each broadens away from the shared center"
+                ],
+                "near_miss_boundaries": [
+                    "a three-armed radial cluster falls outside this concept",
+                    "two portions meeting along a broad shared edge do not qualify",
+                ],
+                "citations": list(side0),
+            },
+            {
+                "scope": "entity",
+                "phrase": "circle and quadrilateral loops trace the same entity",
+                "required_witnesses": [
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "multiple hollow circular loops visibly repeat along an entity boundary or path"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "multiple hollow four-sided loops visibly repeat along the same entity boundary or path"
+                        ),
+                    },
+                    {
+                        "kind": "part_topology",
+                        "statement": (
+                            "the circular and four-sided loop chains participate in one composite entity"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "round, oval, square, rectangular, and irregular four-sided hollow units count as boundary loops"
+                ],
+                "near_miss_boundaries": [
+                    "solid dots and solid blocks fall outside the hollow-loop count",
+                    "loops scattered through the interior rather than tracing paths are excluded",
+                ],
+                "citations": list(side0[:4]),
+            },
+            {
+                "scope": "panel",
+                "phrase": "one patterned figure and one plain outlined figure",
+                "required_witnesses": [
+                    {
+                        "kind": "count_relation",
+                        "statement": (
+                            "exactly two spatially separate primary figures occupy the panel"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "one figure has a boundary or path assembled from many repeated small outlined units"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "the other figure is drawn predominantly with continuous plain outline strokes"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "a plain figure may use several continuous polygonal or curved strokes",
+                    "the patterned figure may use circular, polygonal, scalloped, or beaded boundary units",
+                ],
+                "near_miss_boundaries": [
+                    "a panel with repeated boundary units on both figures is excluded",
+                    "decoration confined inside a plain outer boundary does not qualify as a patterned boundary",
+                ],
+                "citations": list(side0),
+            },
+        ],
+        "side1_positive": [
+            {
+                "scope": "entity",
+                "phrase": "three patterned arms radiate from a compact center",
+                "required_witnesses": [
+                    {
+                        "kind": "count_relation",
+                        "statement": (
+                            "three primary elongated arms are visibly distinguishable within one entity"
+                        ),
+                    },
+                    {
+                        "kind": "spatial_relation",
+                        "statement": (
+                            "all three arms diverge from the same compact central meeting region"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "repeated small outlined geometric units occur along at least two arms"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "a broad curved wedge and narrow linear extensions count as arms when all radiate from one center",
+                    "rows of repeated circles, triangles, or quadrilaterals count as patterned arms",
+                ],
+                "near_miss_boundaries": [
+                    "two opposing lobes joined through a waist do not qualify",
+                    "three chains forming a closed triangular frame are excluded",
+                ],
+                "citations": list(side1[:3]),
+            },
+            {
+                "scope": "entity",
+                "phrase": "open paths coexist with many closed symbol loops",
+                "required_witnesses": [
+                    {
+                        "kind": "part_topology",
+                        "statement": (
+                            "at least one visible path in the entity terminates at a free endpoint"
+                        ),
+                    },
+                    {
+                        "kind": "count_relation",
+                        "statement": (
+                            "multiple small outlined symbols form closed loops within the same entity"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "the closed symbol loops repeat along one or more visible paths"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "visible stroke terminals and visibly unfinished patterned strands count as open paths",
+                    "hollow circles, triangles, quadrilaterals, and irregular polygons count as closed symbol loops",
+                ],
+                "near_miss_boundaries": [
+                    "a single open arc without repeated closed symbols falls outside this concept",
+                    "separate open and looped figures do not qualify as one entity",
+                ],
+                "citations": list(side1[:4]),
+            },
+            {
+                "scope": "panel",
+                "phrase": "two separated figures both use repeated geometric units",
+                "required_witnesses": [
+                    {
+                        "kind": "count_relation",
+                        "statement": (
+                            "exactly two spatially separate primary figures occupy the panel"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "one figure contains a visible chain of repeated small outlined geometric units"
+                        ),
+                    },
+                    {
+                        "kind": "marking_pattern",
+                        "statement": (
+                            "the other figure also contains a visible chain of repeated small outlined geometric units"
+                        ),
+                    },
+                ],
+                "accepted_variants": [
+                    "circles, triangles, quadrilaterals, and irregular hollow polygons count as repeated geometric units",
+                    "dense zigzags count as patterning when paired with repeated hollow geometric units",
+                ],
+                "near_miss_boundaries": [
+                    "a panel with repeated units on only one figure is excluded",
+                    "two plain continuous outlines fall outside this concept",
+                ],
+                "citations": list(side1[:3]),
+            },
+        ],
+    }
+
+    _, buckets, dropped = semantic_registry._project_semantic_payload(
+        prepared, payload, require_usable_buckets=False
+    )
+    assert buckets[0] == []
+    assert tuple(item.phrase for item in buckets[1]) == (
+        "three patterned arms radiate from a compact center",
+        "two separated figures both use repeated geometric units",
+    )
+    assert tuple(
+        (item.orientation, item.input_index, item.reason_code)
+        for item in dropped
+    ) == (
+        ("side0_positive", 0, "criteria_policy"),
+        ("side0_positive", 1, "criteria_policy"),
+        ("side0_positive", 2, "criteria_policy"),
+        ("side1_positive", 1, "criteria_policy"),
+    )
 
 
 def test_orientation_is_audit_only_and_union_registry_is_role_blind(

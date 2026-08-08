@@ -756,7 +756,7 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
         command.REPLAY_FILENAME: command.REPLAY_SCHEMA,
         command.RESULT_FILENAME: command.RESULT_SCHEMA,
     }
-    assert command.COMMAND_ID.endswith("-v4")
+    assert command.COMMAND_ID.endswith("-v5")
     for filename, schema in expected_schemas.items():
         assert json.loads((root / filename).read_text("utf-8"))["schema"] == schema
     for filename in (

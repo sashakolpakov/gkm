@@ -47,10 +47,10 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v3"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v3"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v4"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v4"
 DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v2"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v3"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v4"
 MAX_CONCEPTS_PER_ORIENTATION = 16
 MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
 MIN_CITATIONS_PER_CONCEPT = 2
@@ -127,7 +127,7 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v3",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v4",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
@@ -294,7 +294,8 @@ def _proposal_output_schema(
                     "description": (
                         f"Between {OBJECT_SCENE_MIN_REQUIRED_WITNESSES} and "
                         f"{OBJECT_SCENE_MAX_REQUIRED_WITNESSES} typed affirmative "
-                        "visual witnesses. "
+                        "visual witnesses. Each witness is one atomic check and "
+                        "must not join alternatives with or or either. "
                         "Every witness must visibly hold "
                         "on the same scope-derived binding for PRESENT."
                     ),
@@ -306,7 +307,8 @@ def _proposal_output_schema(
                         "Between 0 and "
                         f"{OBJECT_SCENE_MAX_ACCEPTED_VARIANTS} affirmative "
                         "inclusion/equivalence clauses saying which visible "
-                        "variants count; these clauses never vote."
+                        "variants count. Canonical comma-space lists and or are "
+                        "allowed here; these clauses never vote."
                     ),
                 },
                 "near_miss_boundaries": {
@@ -316,8 +318,10 @@ def _proposal_output_schema(
                         "Between 0 and "
                         f"{OBJECT_SCENE_MAX_NEAR_MISS_BOUNDARIES} explicit "
                         "exclusions for visually "
-                        "confusable configurations; these clauses guide witness "
-                        "interpretation and never vote."
+                        "confusable configurations. Describe the configuration "
+                        "affirmatively, then use exactly one controlled exclusion "
+                        "phrase; these clauses guide witness interpretation and "
+                        "never vote."
                     ),
                 },
                 "citations": {
@@ -627,8 +631,12 @@ def prepare_object_scene_semantic_registry_proposal(
         "an operational card rather than merely restating its label: provide "
         "one to three required_witnesses. Each witness has a bounded kind and "
         "one affirmative visually local statement that can be judged separately "
-        "from the visible rendering. Also provide zero to two accepted_variants "
-        "that state affirmative visual inclusions or equivalences, plus zero to "
+        "from the visible rendering. A required witness must state one check: "
+        "never join alternative cues with 'or' or 'either'. Put category "
+        "alternatives in accepted_variants instead. Also provide zero to two "
+        "accepted_variants that state affirmative visual inclusions or "
+        "equivalences; these may enumerate alternatives with canonical commas "
+        "and 'or'. Provide zero to "
         "two near_miss_boundaries that explicitly exclude visually confusable "
         "configurations. Variants and boundaries clarify witness interpretation; "
         "they never replace a witness and never vote. For entity scope, every "
@@ -648,11 +656,18 @@ def prepare_object_scene_semantic_registry_proposal(
         "experimental roles or labels, use negation, or say something is "
         "missing. Near-miss boundaries are the sole exception: phrase each as "
         "a controlled exclusion using 'does not qualify', 'is excluded', or "
-        "'falls outside'. Ordinary internal visual relations and conjunctions such "
+        "'falls outside'. The configuration before that exclusion must itself be "
+        "affirmative: do not use no, none, neither, never, without, lacks, "
+        "missing, or a second exclusion phrase. Ordinary internal visual "
+        "relations and conjunctions such "
         "as mismatched upper and lower portions, circular and triangular marks, "
-        "lower-left placement, or unequal edge lengths are affirmative and "
-        "allowed. Every phrase must be 2 to 80 ASCII characters. Every cue or "
-        "variant must be 8 to 160 ASCII characters. Supply at most 16 concepts "
+        "lower-left placement, unequal edge lengths, visible paths, and visible "
+        "sides are affirmative and allowed. Every phrase must be 2 to 80 ASCII "
+        "characters. Every witness statement, accepted variant, and near-miss "
+        "boundary must be 8 to 160 ASCII characters. In witness statements and "
+        "near-miss boundaries use only lowercase ASCII letters, spaces, "
+        "apostrophes, and hyphens. Accepted variants may additionally use "
+        "canonical comma-space separators. Supply at most 16 concepts "
         "per bucket. Python will discard bucket membership, freeze one union of "
         "transparent witness macros, and two fresh role-blind visual passes will "
         "judge their witnesses. Return only the required JSON object.\n\nFrozen descriptions:\n"

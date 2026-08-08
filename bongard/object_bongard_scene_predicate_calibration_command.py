@@ -74,27 +74,27 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v4"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v4"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v4"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v4"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v4"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v4"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v4"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v4"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v4"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v5"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v5"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v5"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v5"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v5"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v5"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v5"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v5"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v5"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v3"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v4"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v3"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v4"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v4"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v4"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v4"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v4"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v4"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v4"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v5"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v5"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v5"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v5"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v5"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v5"
 IR_BUNDLE_SCHEMA = SCENE_CALIBRATION_BUNDLE_SCHEMA
 
 AUTHORIZATION_FILENAME = "authorization.json"

@@ -90,18 +90,18 @@ def _semantic_concept(
     }
 
 
-def test_campaign_v3_cascade_bumps_only_semantically_affected_wrappers() -> None:
-    assert COMMAND_ID.endswith("-v3")
-    assert TASK_BATCH_SCHEMA.endswith(".v2")
-    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v3")
-    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v3")
-    assert TASK_REGISTRY_SCHEMA.endswith(".v3")
-    assert TASK_IR_SCHEMA.endswith(".v3")
-    assert TASK_RANK_INPUT_SCHEMA.endswith(".v3")
-    assert TASK_RANK_RESULT_SCHEMA.endswith(".v3")
-    assert TASK_RESULT_SCHEMA.endswith(".v3")
-    assert CAMPAIGN_RESULT_SCHEMA.endswith(".v3")
-    assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v3")
+def test_campaign_v4_cascade_bumps_only_semantically_affected_wrappers() -> None:
+    assert COMMAND_ID.endswith("-v4")
+    assert TASK_BATCH_SCHEMA.endswith(".v3")
+    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v4")
+    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v4")
+    assert TASK_REGISTRY_SCHEMA.endswith(".v4")
+    assert TASK_IR_SCHEMA.endswith(".v4")
+    assert TASK_RANK_INPUT_SCHEMA.endswith(".v4")
+    assert TASK_RANK_RESULT_SCHEMA.endswith(".v4")
+    assert TASK_RESULT_SCHEMA.endswith(".v4")
+    assert CAMPAIGN_RESULT_SCHEMA.endswith(".v4")
+    assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v4")
 
     # These wrappers did not change shape or meaning.  The command ID and
     # parent digests still bind them transitively to this campaign generation.

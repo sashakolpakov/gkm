@@ -46,7 +46,7 @@ from bongard.object_bongard_batch import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v3"
+COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v4"
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
 DISCOVERY_CALLS_PER_TASK = 12
@@ -72,19 +72,19 @@ DEFAULT_PARALLEL_WORKERS = 4
 MAX_PARALLEL_WORKERS = 4
 DEFAULT_CAMPAIGN_MINUTES = 480
 
-TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v2"
-TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v3"
+TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v3"
+TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v4"
 TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
 TASK_SEMANTIC_PREPARED_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-prepared.v3"
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v4"
 )
 TASK_SEMANTIC_PROPOSAL_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-proposal.v3"
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v4"
 )
-TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v3"
-TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v3"
-TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v3"
-TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v3"
+TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v4"
+TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v4"
+TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v4"
+TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v4"
 CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
 CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-campaign-runtime-custody.v1"
@@ -92,8 +92,8 @@ CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
 QUERY_RELEASE_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-query-release-custody.v1"
 )
-CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v3"
-CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v3"
+CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v4"
+CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v4"
 RESULT_FILENAME = "campaign_result.json"
 JOURNAL_DIRECTORY = "journals"
 
