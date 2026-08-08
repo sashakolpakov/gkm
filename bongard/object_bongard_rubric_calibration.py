@@ -79,7 +79,7 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-source.v4"
+    "gkm.bongard-object-rubric-calibration-source.v5"
 )
 OBJECT_RUBRIC_CALIBRATION_LIVE_OBSERVATION_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-live-observation.v1"
@@ -97,7 +97,7 @@ OBJECT_RUBRIC_CALIBRATION_ASSESSMENT_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-assessment.v2"
 )
 OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID = (
-    "bongard.object-rubric-calibration/exact-released-12-single-signed-v4"
+    "bongard.object-rubric-calibration/two-soft-cue-ranks-fit-confirm-v5"
 )
 
 DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
@@ -312,12 +312,16 @@ def _calibration_rubric_specs() -> tuple[ObjectBongardRubricSpec, ...]:
 def _nominated_rubric_specs(
     artifact: ObjectBongardSemanticArtifact,
 ) -> tuple[ObjectBongardRubricSpec, ...]:
-    """Derive one canonical group-0-over-group-1 signed comparison."""
+    """Derive both ranked canonical group-0-over-group-1 comparisons."""
 
-    forward = ObjectBongardRubricSpec.from_semantic_artifact(
-        artifact, expected_artifact_digest=artifact.artifact_digest
+    return tuple(
+        ObjectBongardRubricSpec.from_semantic_artifact(
+            artifact,
+            expected_artifact_digest=artifact.artifact_digest,
+            candidate_rank=rank,
+        )
+        for rank in (0, 1)
     )
-    return (forward,)
 
 
 def _raw_digest(value: object, label: str) -> str:
@@ -552,8 +556,8 @@ def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, 
         "rubric_derivation_policy": (
             "verified-historical-description-cues/canonical-group-a-over-group-b/v4"
             if nomination is None
-            else "one-sealed-joint-contrastive-semantic-nomination-then-one-"
-            "canonical-group-0-over-group-1-signed-orientation/v2"
+            else "one-sealed-fit-only-two-rank-soft-cue-slate-then-two-"
+            "canonical-group-0-over-group-1-forward-orientations/v3"
         ),
         "historical_description_used_for_rubric_derivation": nomination is None,
         "nomination_binding": (
@@ -688,7 +692,7 @@ class ObjectBongardRubricCalibrationSource:
             expected_specs = _nominated_rubric_specs(artifact)
         if self.rubric_specs != expected_specs:
             raise ObjectBongardRubricCalibrationError(
-                "calibration rubric spec differs from the canonical frozen orientation"
+                "calibration rubric specs differ from the two canonical frozen ranks"
             )
         _raw_digest(self.source_digest, "calibration source digest")
         if self.source_digest != canonical_digest(_source_content(self)):

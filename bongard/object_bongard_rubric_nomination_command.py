@@ -674,7 +674,17 @@ def _verify_precommit_before_inference(
 
 
 def _support(source: object) -> dict[str, bytes]:
-    return {item.panel_id: item.exact_png_bytes for item in source.panels}
+    admitted = set().union(*_groups(source))
+    support = {
+        item.panel_id: item.exact_png_bytes
+        for item in source.panels
+        if item.panel_id in admitted
+    }
+    if set(support) != admitted:
+        raise ObjectBongardRubricNominationCommandError(
+            "fit-only support PNG inventory differs from the authorization"
+        )
+    return support
 
 
 def _images(source: object) -> tuple[tuple[str, bytes], ...]:
