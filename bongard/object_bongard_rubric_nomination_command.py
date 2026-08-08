@@ -1,11 +1,12 @@
-"""Sealed one-turn visual cue nomination for rubric calibration.
+"""Sealed one-turn soft-cue-pair nomination for rubric calibration.
 
 This command is deliberately smaller than the calibration campaign.  It opens
 only the twelve already-released development PNGs, freezes the exact two
 neutral groups and Codex runtime before inference, performs one journaled
 named-image turn, and then cold-verifies the artifact without model access.
-The result is a typed predecessor; downstream calibration must consume that
-verified value rather than accepting caller-supplied digest strings.
+The exact two ranked positive cue pairs are typed, content-addressed
+predecessors; downstream calibration must consume that verified value rather
+than accepting caller-supplied text or digest strings.
 """
 
 from __future__ import annotations
@@ -33,12 +34,18 @@ from bongard.codex_no_tools_preflight import (
     attest_codex_no_tools,
 )
 from bongard.object_bongard_semantics import (
+    SOFT_CUE_CANDIDATE_COUNT,
     ObjectBongardSemanticArtifact,
     describe_object_bongard_support,
+    object_bongard_semantics_output_schema,
     object_bongard_semantics_prompt,
     object_bongard_semantics_protocol_digest,
     object_bongard_semantics_source_digest,
     verify_object_bongard_semantic_artifact,
+)
+from bongard.object_bongard_soft_cues import (
+    object_bongard_soft_cue_grammar_digest,
+    object_bongard_soft_cue_source_digest,
 )
 from bongard.object_bongard_turn_journal import (
     ObjectBongardNamedImageTurnJournalTransport,
@@ -46,10 +53,6 @@ from bongard.object_bongard_turn_journal import (
     object_bongard_turn_journal_source_digest,
     verify_object_bongard_turn_journal,
 )
-from bongard.prototype_object_observer_protocol import (
-    prototype_object_description_output_schema,
-)
-from bongard.prototype_object_profiles import OBJECT_FEATURE_CATALOG_DIGEST
 from bongard.prototype_object_scene_observer import (
     PrototypeSceneObserverStatus,
     prototype_scene_transport_source_digest,
@@ -67,11 +70,11 @@ from bongard.transport import (
 )
 
 
-AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v1"
-PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v1"
-REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v1"
-RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v1"
-COMMAND_ID = "bongard.object-rubric-nomination/seal-one-turn-replay-v1"
+AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v2"
+PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v2"
+REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v2"
+RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v2"
+COMMAND_ID = "bongard.object-rubric-nomination/seal-two-soft-cue-pairs-replay-v2"
 
 AUTHORIZATION_FILENAME = "authorization.json"
 PRECOMMIT_FILENAME = "execution_precommit.json"
@@ -107,8 +110,11 @@ def _authority_data() -> dict[str, object]:
     return {
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
-        "model_can_nominate_feature_ids_only": True,
+        "model_can_propose_positive_soft_cue_text_only": True,
         "model_can_choose_operator_threshold_or_polarity": False,
+        "soft_cue_text_defines_identity": True,
+        "soft_cue_text_is_observed_not_executed": True,
+        "feature_catalog_used": False,
         "negation_allowed": False,
         "query_pixels_used": False,
         "fresh_broad_cohort_pixels_used": False,
@@ -341,6 +347,7 @@ def _source_digests() -> list[dict[str, str]]:
             object_bongard_rubric_calibration_source_digest()
         ),
         "semantics_source_sha256": object_bongard_semantics_source_digest(),
+        "soft_cue_source_sha256": object_bongard_soft_cue_source_digest(),
         "turn_journal_source_sha256": object_bongard_turn_journal_source_digest(),
         "transport_source_sha256": prototype_scene_transport_source_digest(),
     }
@@ -411,7 +418,11 @@ def _authorization(
         ),
         "groups": _panel_commitments(source),
         "semantic_protocol_digest": object_bongard_semantics_protocol_digest(),
-        "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+        "semantic_output_schema_digest": canonical_digest(
+            object_bongard_semantics_output_schema()
+        ),
+        "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
+        "ranked_soft_cue_pair_count": SOFT_CUE_CANDIDATE_COUNT,
         "physical_model_call_count": 1,
         "fresh_calibration_panels_used": False,
         "historical_released_pixels_only": True,
@@ -484,6 +495,14 @@ def _precommit(
         "source_digests": authorization["source_digests"],
         "context_task_id": authorization["context_task_id"],
         "groups": authorization["groups"],
+        "semantic_protocol_digest": authorization["semantic_protocol_digest"],
+        "semantic_output_schema_digest": authorization[
+            "semantic_output_schema_digest"
+        ],
+        "soft_cue_grammar_digest": authorization["soft_cue_grammar_digest"],
+        "ranked_soft_cue_pair_count": authorization[
+            "ranked_soft_cue_pair_count"
+        ],
         "runtime_binding": runtime.binding,
         "cloud_policy_cache_snapshot_base64": _encode_bytes(
             runtime.cloud_policy_cache_snapshot.data
@@ -572,6 +591,10 @@ def _verify_precommit_before_inference(
         "source_digests",
         "context_task_id",
         "groups",
+        "semantic_protocol_digest",
+        "semantic_output_schema_digest",
+        "soft_cue_grammar_digest",
+        "ranked_soft_cue_pair_count",
         "runtime_binding",
         "cloud_policy_cache_snapshot_base64",
         "model_catalog_snapshot_base64",
@@ -594,6 +617,19 @@ def _verify_precommit_before_inference(
         or raw["source_digests"] != _source_digests()
         or raw["context_task_id"] != authorization["context_task_id"]
         or raw["groups"] != authorization["groups"]
+        or raw["semantic_protocol_digest"]
+        != authorization["semantic_protocol_digest"]
+        or raw["semantic_protocol_digest"]
+        != object_bongard_semantics_protocol_digest()
+        or raw["semantic_output_schema_digest"]
+        != authorization["semantic_output_schema_digest"]
+        or raw["semantic_output_schema_digest"]
+        != canonical_digest(object_bongard_semantics_output_schema())
+        or raw["soft_cue_grammar_digest"]
+        != authorization["soft_cue_grammar_digest"]
+        or raw["soft_cue_grammar_digest"]
+        != object_bongard_soft_cue_grammar_digest()
+        or raw["ranked_soft_cue_pair_count"] != SOFT_CUE_CANDIDATE_COUNT
         or raw["precommit_fsynced_before_inference"] is not True
         or raw["physical_model_call_count"] != 1
         or any(raw[key] != value for key, value in _authority_data().items())
@@ -648,7 +684,7 @@ def _journal(
         turn_kind="semantic_nomination",
         expected_prompt=object_bongard_semantics_prompt(),
         expected_images=_images(source),
-        expected_output_schema=prototype_object_description_output_schema(),
+        expected_output_schema=object_bongard_semantics_output_schema(),
         runtime=runtime,
         underlying_transport=transport,
     )
@@ -720,6 +756,30 @@ def _verify_prefix(
     return authorization, precommit, runtime, artifact, summary
 
 
+def _soft_cue_pair_commitments(
+    artifact: ObjectBongardSemanticArtifact,
+) -> list[dict[str, object]]:
+    """Expose the exact ranked text identities without a catalog surrogate."""
+
+    if artifact.status is not PrototypeSceneObserverStatus.SUCCESS:
+        return []
+    if len(artifact.soft_cue_candidates) != SOFT_CUE_CANDIDATE_COUNT:
+        raise ObjectBongardRubricNominationCommandError(
+            "successful nomination does not contain exactly two soft-cue pairs"
+        )
+    return [
+        {
+            "candidate_rank": pair.candidate_rank,
+            "pair_digest": pair.pair_digest,
+            "group_0_cue_digest": pair.group_0_cue.cue_digest,
+            "group_0_cue_text": pair.group_0_cue.text,
+            "group_1_cue_digest": pair.group_1_cue.cue_digest,
+            "group_1_cue_text": pair.group_1_cue.text,
+        }
+        for pair in artifact.soft_cue_candidates
+    ]
+
+
 def _replay_record(
     source: object,
     authorization: Mapping[str, Any],
@@ -735,6 +795,8 @@ def _replay_record(
         "execution_precommit_digest": precommit["precommit_digest"],
         "semantic_artifact_digest": artifact.artifact_digest,
         "semantic_status": artifact.status.value,
+        "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
+        "ranked_soft_cue_pairs": _soft_cue_pair_commitments(artifact),
         "journal_summary": dict(journal_summary),
         "verified_physical_turn_count": 1,
         "model_calls_during_replay": 0,
@@ -763,10 +825,8 @@ def _result_record(
         "semantic_artifact_digest": artifact.artifact_digest,
         "cold_replay_digest": replay["replay_digest"],
         "semantic_status": artifact.status.value,
-        "feature_ids_in_neutral_group_order": (
-            [group[0] for group in artifact.feature_families] if accepted else []
-        ),
-        "vision_prose_audit_only": list(artifact.rubrics) if accepted else [],
+        "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
+        "ranked_soft_cue_pairs": _soft_cue_pair_commitments(artifact),
         "physical_model_call_count": 1,
         "model_calls_during_replay": 0,
         **_authority_data(),
@@ -1002,7 +1062,9 @@ def _default_source_root() -> Path:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="python3 -m bongard.object_bongard_rubric_nomination_command",
-        description="Seal, run, or cold-verify one neutral Bongard cue nomination",
+        description=(
+            "Seal, run, or cold-verify two ranked neutral Bongard soft-cue pairs"
+        ),
     )
     sub = parser.add_subparsers(dest="command", required=True)
     launch = sub.add_parser("launch")
@@ -1043,11 +1105,9 @@ def main(argv: list[str] | None = None) -> int:
                 "semantic_artifact_digest": verified.artifact.artifact_digest,
                 "cold_replay_digest": verified.cold_replay_digest,
                 "result_digest": verified.result_digest,
-                "feature_ids_in_neutral_group_order": [
-                    group[0] for group in verified.artifact.feature_families
-                ]
-                if verified.accepted
-                else [],
+                "ranked_soft_cue_pairs": _soft_cue_pair_commitments(
+                    verified.artifact
+                ),
                 **_authority_data(),
             },
             sort_keys=True,

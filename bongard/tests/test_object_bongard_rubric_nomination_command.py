@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import ast
+import json
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -22,6 +24,8 @@ from bongard.object_bongard_rubric_nomination_command import (
     cold_verify_object_bongard_rubric_nomination,
     run_object_bongard_rubric_nomination,
 )
+from bongard.object_bongard_soft_cues import ObjectBongardSoftCuePair
+from bongard.prototype_object_scene_observer import PrototypeSceneObserverStatus
 from bongard.tests.no_tools_fixture import (
     canonical_codex_receipt,
     canonical_no_tools_runtime,
@@ -49,18 +53,16 @@ def test_nomination_seals_one_turn_then_cold_replays_and_resumes(
         assert (output_root / PRECOMMIT_FILENAME).is_file()
         assert len(paths) == len(names) == 12
         payload = {
-            "profiles": [
-                {
-                    "group_id": "group_0",
-                    "rubric": "Mismatched joined sector-like pieces recur.",
-                    "feature_ids": ["paired_sector_mismatch_support_ppm"],
-                },
-                {
-                    "group_id": "group_1",
-                    "rubric": "A triangle accompanied by three spans recurs.",
-                    "feature_ids": ["triangle_with_three_lines_support_ppm"],
-                },
-            ]
+            "proposal_0": {
+                "group_0_cue_text": "mismatched joined sector-like pieces",
+                "group_1_cue_text": "rounded leaf-like contour arrangement",
+            },
+            "proposal_1": {
+                "group_0_cue_text": "mismatched joined sector-like pieces",
+                "group_1_cue_text": (
+                    "three line-like spans forming a triangular arrangement"
+                ),
+            },
         }
         receipt = canonical_codex_receipt(
             prompt,
@@ -87,9 +89,47 @@ def test_nomination_seals_one_turn_then_cold_replays_and_resumes(
     verified = run_object_bongard_rubric_nomination(output_root, **kwargs)
     assert calls == 1
     assert verified.accepted is True
-    assert verified.artifact.feature_families == (
-        ("paired_sector_mismatch_support_ppm",),
-        ("triangle_with_three_lines_support_ppm",),
+    assert tuple(
+        (
+            item.group_0_cue.text,
+            item.group_1_cue.text,
+        )
+        for item in verified.artifact.soft_cue_candidates
+    ) == (
+        (
+            "mismatched joined sector-like pieces",
+            "rounded leaf-like contour arrangement",
+        ),
+        (
+            "mismatched joined sector-like pieces",
+            "three line-like spans forming a triangular arrangement",
+        ),
+    )
+    result = json.loads((output_root / RESULT_FILENAME).read_text(encoding="utf-8"))
+    assert "feature_ids_in_neutral_group_order" not in result
+    assert "vision_prose_audit_only" not in result
+    assert result["ranked_soft_cue_pairs"] == [
+        {
+            "candidate_rank": pair.candidate_rank,
+            "pair_digest": pair.pair_digest,
+            "group_0_cue_digest": pair.group_0_cue.cue_digest,
+            "group_0_cue_text": pair.group_0_cue.text,
+            "group_1_cue_digest": pair.group_1_cue.cue_digest,
+            "group_1_cue_text": pair.group_1_cue.text,
+        }
+        for pair in verified.artifact.soft_cue_candidates
+    ]
+    authorization = json.loads(
+        (output_root / AUTHORIZATION_FILENAME).read_text(encoding="utf-8")
+    )
+    assert authorization["feature_catalog_used"] is False
+    assert authorization["ranked_soft_cue_pair_count"] == 2
+    assert authorization["soft_cue_grammar_digest"] == (
+        nomination_command.object_bongard_soft_cue_grammar_digest()
+    )
+    assert any(
+        item["role"] == "soft_cue_source_sha256"
+        for item in authorization["source_digests"]
     )
     assert cold_verify_object_bongard_rubric_nomination(
         output_root, source_root=DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE
@@ -146,6 +186,15 @@ def test_self_digested_tampered_resume_precommit_cannot_call_transport(
         "executable": "codex",
         "expected_launcher_sha256": DEFAULT_EXPECTED_LAUNCHER_SHA256,
     }
+    semantic_protocol_digest = (
+        nomination_command.object_bongard_semantics_protocol_digest()
+    )
+    semantic_output_schema_digest = nomination_command.canonical_digest(
+        nomination_command.object_bongard_semantics_output_schema()
+    )
+    soft_cue_grammar_digest = (
+        nomination_command.object_bongard_soft_cue_grammar_digest()
+    )
     authorization = nomination_command._record(
         {
             "schema": nomination_command.AUTHORIZATION_SCHEMA,
@@ -154,6 +203,10 @@ def test_self_digested_tampered_resume_precommit_cannot_call_transport(
             "source_digests": source_digests,
             "context_task_id": "bd_fixture_0000",
             "groups": groups,
+            "semantic_protocol_digest": semantic_protocol_digest,
+            "semantic_output_schema_digest": semantic_output_schema_digest,
+            "soft_cue_grammar_digest": soft_cue_grammar_digest,
+            "ranked_soft_cue_pair_count": 2,
         },
         "authorization_digest",
     )
@@ -166,6 +219,10 @@ def test_self_digested_tampered_resume_precommit_cannot_call_transport(
             "source_digests": source_digests,
             "context_task_id": authorization["context_task_id"],
             "groups": groups,
+            "semantic_protocol_digest": semantic_protocol_digest,
+            "semantic_output_schema_digest": semantic_output_schema_digest,
+            "soft_cue_grammar_digest": soft_cue_grammar_digest,
+            "ranked_soft_cue_pair_count": 2,
             "runtime_binding": {},
             "cloud_policy_cache_snapshot_base64": None,
             "model_catalog_snapshot_base64": "",
@@ -213,6 +270,42 @@ def test_self_digested_tampered_resume_precommit_cannot_call_transport(
         )
     assert calls == 0
     assert not (root / "journals").exists()
+
+
+def test_result_binds_ranked_soft_cue_text_and_no_feature_id_summary() -> None:
+    pairs = (
+        ObjectBongardSoftCuePair.create(
+            0,
+            "mismatched joined sector-like pieces",
+            "rounded leaf-like contour arrangement",
+        ),
+        ObjectBongardSoftCuePair.create(
+            1,
+            "mismatched joined sector-like pieces",
+            "three line-like spans forming a triangular arrangement",
+        ),
+    )
+    artifact = SimpleNamespace(
+        status=PrototypeSceneObserverStatus.SUCCESS,
+        artifact_digest="a" * 64,
+        soft_cue_candidates=pairs,
+    )
+    result = nomination_command._result_record(
+        SimpleNamespace(source_digest="b" * 64),
+        {"authorization_digest": "sha256:" + "c" * 64},
+        {"precommit_digest": "sha256:" + "d" * 64},
+        artifact,
+        {"replay_digest": "sha256:" + "e" * 64},
+    )
+
+    assert result["schema"] == nomination_command.RESULT_SCHEMA
+    assert result["ranked_soft_cue_pairs"] == (
+        nomination_command._soft_cue_pair_commitments(artifact)
+    )
+    assert "feature_ids_in_neutral_group_order" not in result
+    assert "vision_prose_audit_only" not in result
+    assert result["soft_cue_text_defines_identity"] is True
+    assert result["feature_catalog_used"] is False
 
 
 def test_nomination_command_source_has_no_lean_import() -> None:
