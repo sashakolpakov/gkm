@@ -302,6 +302,12 @@ PINNED_HISTORICAL_RUNNERS = {
         "evidence_schema": "sealed_transcript_only_v1",
         "lock_schema": "in_workspace_v1",
     },
+    # Current hardened protocol after boundary/scaffold remediation.
+    "3bbd7ca93c9d74eef0b532ca8159283ce6d7fa81b6be316f0792a72ccd054398": {
+        "head_commit": "b37d0a0bece4c18da5cdc37f88f829e3a491fee9",
+        "evidence_schema": "sealed_transcript_only_v1",
+        "lock_schema": "in_workspace_v1",
+    },
 }
 MAX_WIP_SNAPSHOT_ENTRIES = 200_000
 MAX_WIP_SNAPSHOT_BYTES = 16 * 1024 * 1024 * 1024
