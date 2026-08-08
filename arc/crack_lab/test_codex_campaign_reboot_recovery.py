@@ -6,6 +6,7 @@ import fcntl
 import hashlib
 import json
 import os
+import signal
 import stat
 import subprocess
 import sys
@@ -595,6 +596,67 @@ def test_post_reboot_recovery_cli_requires_explicit_nonce(
 
     with pytest.raises(R.CampaignPlanError, match="requires.*nonce"):
         R.main()
+
+
+@pytest.mark.parametrize("action", ("arm", "recover"))
+def test_interrupted_generation_cli_routes_explicit_operator_action(
+    tmp_path, monkeypatch, capsys, action
+):
+    item = _item()
+    plan_path = tmp_path / "plan.json"
+    plan_path.write_text(
+        json.dumps({"initial_queue": [item], "reserve_percent": 25}),
+        encoding="utf-8",
+    )
+    calls = []
+    monkeypatch.setattr(R, "_authoritative_targets", lambda: {"ar25": 8})
+    monkeypatch.setattr(
+        R, "_project_runner_receipt", lambda _plan, selected, **_kwargs: selected
+    )
+    monkeypatch.setattr(
+        R, "validate_item", lambda selected, *_args, **_kwargs: selected["argv"]
+    )
+    monkeypatch.setattr(R, "validate_inventory_item", lambda *_args: None)
+    monkeypatch.setattr(R, "_checkpoint_reached", lambda _game: 0)
+
+    def arm(selected, *, confirm_dispatch_id):
+        calls.append(("arm", selected["game"], confirm_dispatch_id, None))
+        return {"result": "interrupted_generation_release_armed"}
+
+    def recover(
+        selected, *, confirm_dispatch_id, confirm_recovery_nonce
+    ):
+        calls.append((
+            "recover",
+            selected["game"],
+            confirm_dispatch_id,
+            confirm_recovery_nonce,
+        ))
+        return {"result": "sandbox_isolated_noncounting"}
+
+    monkeypatch.setattr(R, "_arm_interrupted_generation_release", arm)
+    monkeypatch.setattr(R, "_recover_interrupted_generation_release", recover)
+    flag = (
+        "--arm-interrupted-generation-release"
+        if action == "arm"
+        else "--recover-interrupted-generation-release"
+    )
+    argv = [
+        "codex_campaign_runner.py",
+        "--plan", os.fspath(plan_path),
+        flag, "ar25",
+        "--confirm-dispatch-id", "a" * 32,
+    ]
+    if action == "recover":
+        argv.extend(["--confirm-recovery-nonce", "b" * 32])
+    monkeypatch.setattr(sys, "argv", argv)
+
+    assert R.main() == 0
+    assert calls == [(
+        action, "ar25", "a" * 32,
+        None if action == "arm" else "b" * 32,
+    )]
+    assert json.loads(capsys.readouterr().out)["outcomes"][0]["result"]
 
 
 @pytest.mark.parametrize(
@@ -3350,6 +3412,12 @@ BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256 = (
 BOUNDARY_V2_HISTORICAL_RUNNER_HEAD = (
     "246405c1cd903e1dcde9d3a4c6eed1ec93cf2c1f"
 )
+BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256 = (
+    "18b5a3f1da18d10e9f7dba2c73b5d097abe691bd1b2cdfad3f3dcdf99d6a9fc0"
+)
+BOUNDARY_V3_HISTORICAL_RUNNER_HEAD = (
+    "aa666cc3ff4c2167e12ce32b317bc3fe6c45a867"
+)
 
 
 def test_historical_runner_registries_are_exact_and_coherent():
@@ -3358,6 +3426,8 @@ def test_historical_runner_registries_are_exact_and_coherent():
             "c1f8168f230732f2d745c234555b3e3dfcb8aefa",
         BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256:
             BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
+        BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256:
+            BOUNDARY_V3_HISTORICAL_RUNNER_HEAD,
     }
     assert set(R.PINNED_HISTORICAL_RUNNERS) == set(expected_heads)
     assert set(R.SANDBOX_CONTRACTS) == set(expected_heads)
@@ -3391,6 +3461,10 @@ def test_historical_runner_registries_are_exact_and_coherent():
             BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256,
             BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
         ),
+        (
+            BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256,
+            BOUNDARY_V3_HISTORICAL_RUNNER_HEAD,
+        ),
     ),
 )
 def test_registered_historical_runner_source_matches_pinned_head(
@@ -3414,6 +3488,8 @@ def test_registered_historical_runner_source_matches_pinned_head(
 def _sandboxed_generation_fixture(
     tmp_path, monkeypatch, *,
     source_sha256=LEGACY_HISTORICAL_RUNNER_SOURCE_SHA256,
+    interrupted_exec=False,
+    boundary_finding_counts=None,
 ):
     monkeypatch.setattr(R, "HERE", tmp_path)
     artifact = tmp_path / "agent_solutions" / "ar25_legs"
@@ -3436,20 +3512,42 @@ def _sandboxed_generation_fixture(
     workspace.mkdir()
     protected.mkdir()
     (workspace / "attempt.txt").write_bytes(b"isolated unpublished attempt\n")
+    if interrupted_exec:
+        (workspace / "dynamic_probe.py").write_bytes(b'exec("pass")\n')
     transcript_name = "codex_turn_20260805T000000000000Z_ar25_L1_propose.jsonl"
     (protected / transcript_name).write_bytes(b'{"type":"thread.started"}\n')
     ledger = tmp_path / "usage.jsonl"
     ledger.write_bytes(b"")
-    historical = {
-        "source_sha256": source_sha256,
-        "scratch_root": os.fspath(scratch),
-        "lock_schema": "hashed_external_v1",
-        "evidence_schema": "sealed_transcript_only_v1",
-        "cwd": os.fspath(tmp_path),
-    }
+    historical = (
+        {
+            "schema": 1,
+            "worktree": os.fspath(Path(__file__).resolve().parents[2]),
+            "cwd": os.fspath(tmp_path),
+            "interpreter": os.fspath(Path(sys.executable).absolute()),
+            "head_commit": BOUNDARY_V2_HISTORICAL_RUNNER_HEAD,
+            "source_sha256": BOUNDARY_V2_HISTORICAL_RUNNER_SOURCE_SHA256,
+            "artifacts_root": os.fspath(tmp_path / "agent_solutions"),
+            "scratch_root": os.fspath(scratch),
+            "ledger": os.fspath(ledger),
+            "lock_schema": "in_workspace_v1",
+            "evidence_schema": "sealed_transcript_only_v1",
+        }
+        if interrupted_exec
+        else {
+            "source_sha256": source_sha256,
+            "scratch_root": os.fspath(scratch),
+            "lock_schema": "hashed_external_v1",
+            "evidence_schema": "sealed_transcript_only_v1",
+            "cwd": os.fspath(tmp_path),
+        }
+    )
     item["historical_runner"] = historical
     item["argv"].extend([f"--tag={tag}", f"--codex-ledger={ledger}"])
-    exact_lock = R.Legs._workspace_lock_path(os.fspath(workspace))
+    exact_lock = (
+        workspace / ".orchestrate.lock"
+        if interrupted_exec
+        else R.Legs._workspace_lock_path(os.fspath(workspace))
+    )
     exact_lock.write_bytes(b"")
     os.chmod(exact_lock, 0o600)
 
@@ -3479,6 +3577,10 @@ def _sandboxed_generation_fixture(
     monkeypatch.setattr(
         R, "_revalidate_historical_control", lambda _item, **_kwargs: None
     )
+    if interrupted_exec:
+        monkeypatch.setattr(
+            R, "_historical_tester_scaffolds", lambda *_args, **_kwargs: {}
+        )
 
     marker = R._arm_dispatch_quarantine(
         item,
@@ -3488,17 +3590,23 @@ def _sandboxed_generation_fixture(
         durable_wip_capsule=True,
     )
     R._write_dispatch_quarantine_record(marker, {
-        "event": "dispatch_failed",
+        "event": (
+            "dispatch_unquiesced" if interrupted_exec else "dispatch_failed"
+        ),
         "recorded_at": datetime.now(timezone.utc).isoformat(),
         "exception_type": "UnquiescedChildError",
         "reason": "synthetic Darwin descendant terminal was unavailable",
-        "child_pid": 424242,
-        "child_returncode": None,
+        **({} if interrupted_exec else {"child_pid": 424242}),
+        "child_returncode": -signal.SIGINT if interrupted_exec else None,
         "workspace": workspace.name,
         "protected": protected.name,
         "transcript": transcript_name,
         "workspace_identity": [workspace.stat().st_dev, workspace.stat().st_ino],
         "protected_identity": [protected.stat().st_dev, protected.stat().st_ino],
+        **(
+            {"boundary_finding_counts": boundary_finding_counts}
+            if boundary_finding_counts is not None else {}
+        ),
     })
     marker_path = marker.path
     dispatch_id = marker.dispatch_id
@@ -4189,7 +4297,7 @@ def test_quiesced_incomplete_evidence_wrong_dispatch_keeps_quarantine(
     assert R.Guard.read_ledger(fixture["ledger"]) == []
 
 
-def _append_sandbox_exec(fixture):
+def _append_sandbox_exec(fixture, *, interrupted_exec=False):
     item = fixture["item"]
     record = {
         "event": "codex_exec",
@@ -4213,8 +4321,24 @@ def _append_sandbox_exec(fixture):
         "returncode": 0,
         "failure_class": None,
         "timed_out": False,
-        "interrupted": False,
+        "interrupted": interrupted_exec,
     }
+    if interrupted_exec:
+        protected = fixture["protected"] / fixture["transcript_name"]
+        record.update({
+            "allocation_expired": False,
+            "surviving_process_group": False,
+            "public_action_protocol_violation": False,
+            "protected_transcript_status": "sealed",
+            "protected_transcript_error": None,
+            "protected_transcript_sha256": hashlib.sha256(
+                protected.read_bytes()
+            ).hexdigest(),
+            "launch_error": None,
+            "postflight_error": None,
+            "failure_detail_class": None,
+            "terminal_errors": [],
+        })
     R.Guard.append_ledger(record, fixture["ledger"])
     return record
 
@@ -4282,6 +4406,415 @@ def _arm_sandboxed_generation(fixture, monkeypatch):
         confirm_dispatch_id=fixture["dispatch_id"],
         boot_identity_provider=lambda: fixture["boot"],
     )
+
+
+def _interrupted_generation_fixture(
+    tmp_path, monkeypatch, *, boundary_finding_counts=None
+):
+    fixture = _sandboxed_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        interrupted_exec=True,
+        boundary_finding_counts=boundary_finding_counts,
+    )
+    fixture["execution"] = _append_sandbox_exec(
+        fixture, interrupted_exec=True
+    )
+    return fixture
+
+
+def _arm_interrupted_generation(fixture, monkeypatch):
+    def absent(_parsed):
+        observed = datetime.now(timezone.utc).isoformat()
+        return {
+            "absence_sample_count": R.SANDBOX_ABSENCE_SAMPLES,
+            "absence_window_ns": 1,
+            "absence_first_at": observed,
+            "absence_last_at": observed,
+        }
+
+    monkeypatch.setattr(R, "_observe_interrupted_scheduler_absence", absent)
+    return R._arm_interrupted_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+
+def _recover_interrupted_generation(fixture, armed):
+    return R._recover_interrupted_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=armed["recovery_nonce"],
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+
+def _armed_one_exec_crash_fixture(
+    tmp_path, monkeypatch, interrupted_exec
+):
+    if interrupted_exec:
+        fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+        armed = _arm_interrupted_generation(fixture, monkeypatch)
+        recover = lambda: _recover_interrupted_generation(fixture, armed)
+    else:
+        fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+        _append_sandbox_exec(fixture)
+        armed = _arm_sandboxed_generation(fixture, monkeypatch)
+        recover = lambda: R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+    return fixture, armed, recover
+
+
+@pytest.mark.parametrize(
+    "counts", (None, {"dynamic_execution": 1})
+)
+def test_interrupted_generation_parser_accepts_exact_legacy_and_counted_rows(
+    tmp_path, monkeypatch, counts
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path, monkeypatch, boundary_finding_counts=counts
+    )
+    parsed = Recovery.parse_interrupted_generation_marker(
+        fixture["marker"].read_bytes(), require_recovery_arm=False
+    )
+    assert parsed.unquiesced.get("boundary_finding_counts") == counts
+    with pytest.raises(Recovery.RecoveryEvidenceError):
+        Recovery.parse_sandboxed_generation_marker(
+            fixture["marker"].read_bytes(), require_recovery_arm=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("event", "dispatch_failed"),
+        ("child_returncode", -signal.SIGKILL),
+        ("child_pid", 424242),
+        ("boundary_finding_counts", {}),
+        ("boundary_finding_counts", {"dynamic_execution": 2}),
+        ("boundary_finding_counts", {"detached_process_escape": 1}),
+        ("boundary_finding_counts", {"shell_or_subprocess_escape": 1}),
+        ("boundary_finding_counts", {
+            "dynamic_execution": 1,
+            "detached_process_escape": 1,
+        }),
+    ),
+)
+def test_interrupted_generation_parser_rejects_nearby_marker_profiles(
+    tmp_path, monkeypatch, field, value
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    rows[1][field] = value
+    raw = b"".join(Recovery.canonical_json_line(row) for row in rows)
+    with pytest.raises(Recovery.RecoveryEvidenceError):
+        Recovery.parse_interrupted_generation_marker(
+            raw, require_recovery_arm=False
+        )
+
+
+def test_interrupted_generation_parser_does_not_retrofit_v3_pin(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    historical = rows[0]["historical_runner"]
+    historical["source_sha256"] = BOUNDARY_V3_HISTORICAL_RUNNER_SOURCE_SHA256
+    historical["head_commit"] = BOUNDARY_V3_HISTORICAL_RUNNER_HEAD
+    raw = b"".join(Recovery.canonical_json_line(row) for row in rows)
+    with pytest.raises(Recovery.RecoveryEvidenceError, match="exact v2 runner"):
+        Recovery.parse_interrupted_generation_marker(
+            raw, require_recovery_arm=False
+        )
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    (
+        ("returncode", 1),
+        ("interrupted", False),
+        ("timed_out", True),
+        ("allocation_expired", True),
+        ("surviving_process_group", True),
+        ("public_action_protocol_violation", True),
+        ("protected_transcript_status", "missing"),
+        ("terminal_errors", ["synthetic"]),
+    ),
+)
+def test_interrupted_generation_arm_rejects_nearby_exec_profiles(
+    tmp_path, monkeypatch, field, value
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    rows[0][field] = value
+    _write_canonical_rows(fixture["ledger"], rows)
+    marker_before = fixture["marker"].read_bytes()
+    with pytest.raises(R.CampaignPlanError, match="exact sealed exec-zero"):
+        _arm_interrupted_generation(fixture, monkeypatch)
+    assert fixture["marker"].read_bytes() == marker_before
+    assert len(_canonical_rows(fixture["marker"])) == 2
+
+
+def test_interrupted_generation_rejects_arm_contract_before_wal(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    armed = _arm_interrupted_generation(fixture, monkeypatch)
+    rows = _canonical_rows(fixture["marker"])
+    rows[2]["sandbox_contract_sha256"] = "f" * 64
+    _write_canonical_rows(fixture["marker"], rows)
+    ledger_before = fixture["ledger"].read_bytes()
+    with pytest.raises(R.CampaignPlanError, match="arm schema"):
+        _recover_interrupted_generation(fixture, armed)
+    assert fixture["ledger"].read_bytes() == ledger_before
+    assert fixture["marker"].exists()
+    assert fixture["capsule"].exists()
+
+
+@pytest.mark.parametrize("drift", ("transcript", "clean", "different"))
+def test_interrupted_generation_arm_rejects_evidence_drift(
+    tmp_path, monkeypatch, drift
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    if drift == "transcript":
+        (fixture["protected"] / fixture["transcript_name"]).write_bytes(
+            b'{"type":"tampered"}\n'
+        )
+    elif drift == "clean":
+        (fixture["workspace"] / "dynamic_probe.py").unlink()
+    else:
+        (fixture["workspace"] / "second_dynamic.py").write_bytes(
+            b'exec("pass")\n'
+        )
+    with pytest.raises(R.CampaignPlanError):
+        _arm_interrupted_generation(fixture, monkeypatch)
+    assert len(_canonical_rows(fixture["marker"])) == 2
+    assert len(R.Guard.read_ledger(fixture["ledger"])) == 1
+
+
+def test_interrupted_generation_observer_is_darwin_only(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    parsed = Recovery.parse_interrupted_generation_marker(
+        fixture["marker"].read_bytes(), require_recovery_arm=False
+    )
+    monkeypatch.setattr(R.sys, "platform", "linux")
+    with pytest.raises(R.CampaignPlanError, match="Darwin incident"):
+        R._observe_interrupted_scheduler_absence(parsed)
+
+
+def test_interrupted_generation_arm_rejects_live_scheduler_and_active_lock(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_observe_interrupted_scheduler_absence",
+        lambda _parsed: (_ for _ in ()).throw(
+            R.CampaignPlanError(
+                "interrupted-generation scheduler PID remains live"
+            )
+        ),
+    )
+    with pytest.raises(R.CampaignPlanError, match="scheduler PID remains live"):
+        R._arm_interrupted_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
+
+    monkeypatch.setattr(
+        R,
+        "_observe_interrupted_scheduler_absence",
+        lambda _parsed: {
+            "absence_sample_count": R.SANDBOX_ABSENCE_SAMPLES,
+            "absence_window_ns": 1,
+            "absence_first_at": datetime.now(timezone.utc).isoformat(),
+            "absence_last_at": datetime.now(timezone.utc).isoformat(),
+        },
+    )
+    lock = fixture["exact_lock"].open("r+")
+    fcntl.flock(lock.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+    try:
+        with pytest.raises(R.CampaignPlanError, match="workspace lock remains active"):
+            R._arm_interrupted_generation_release(
+                fixture["item"],
+                confirm_dispatch_id=fixture["dispatch_id"],
+                boot_identity_provider=lambda: fixture["boot"],
+            )
+    finally:
+        fcntl.flock(lock.fileno(), fcntl.LOCK_UN)
+        lock.close()
+
+
+def test_interrupted_generation_arm_requires_full_taint_pass(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    monkeypatch.setattr(
+        R,
+        "_taint_gate",
+        lambda: (_ for _ in ()).throw(
+            R.CampaignPlanError("synthetic full taint failure")
+        ),
+    )
+    with pytest.raises(R.CampaignPlanError, match="full taint failure"):
+        _arm_interrupted_generation(fixture, monkeypatch)
+    assert len(_canonical_rows(fixture["marker"])) == 2
+
+
+def test_interrupted_generation_recovery_is_noncounting_and_idempotent(
+    tmp_path, monkeypatch
+):
+    fixture = _interrupted_generation_fixture(
+        tmp_path,
+        monkeypatch,
+        boundary_finding_counts={"dynamic_execution": 1},
+    )
+    baseline_latest = (fixture["wip"] / "latest.json").read_bytes()
+    (fixture["wip"] / "latest.json").write_bytes(
+        b'{"attempt":"interrupted"}\n'
+    )
+    disposable = fixture["wip"] / "interrupted.txt"
+    disposable.write_bytes(b"restore from capsule\n")
+    old_scratch = _sandbox_tree_snapshot(fixture["scratch"])
+    armed = _arm_interrupted_generation(fixture, monkeypatch)
+    nonce = armed["recovery_nonce"]
+
+    result = R._recover_interrupted_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=nonce,
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+
+    assert result["result"] == "sandbox_isolated_noncounting"
+    assert (fixture["wip"] / "latest.json").read_bytes() == baseline_latest
+    assert not disposable.exists()
+    assert _sandbox_tree_snapshot(fixture["scratch"]) == old_scratch
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    rows = R.Guard.read_ledger(fixture["ledger"])
+    assert [row["event"] for row in rows] == [
+        "codex_exec",
+        "codex_exec_classification_correction",
+        R.SANDBOX_ABANDON_EVENT,
+        "codex_dispatch_release_authorized",
+    ]
+    correction, event = rows[1:3]
+    assert correction["boundary_finding_counts"] == {"dynamic_execution": 1}
+    assert event["boundary_finding_counts"] == {"dynamic_execution": 1}
+    assert event["schema"] == R.INTERRUPTED_EXEC_ABANDON_EVENT_SCHEMA
+    assert event["retry_increment"] == 0
+    assert event["codex_exec_appended"] is True
+    assert event["taint_verdict"] == "quarantined"
+    assert rows[3]["terminal_kind"] == R.INTERRUPTED_RELEASE_AUTHORITY_KIND
+    R._validate_sandbox_abandon_event(fixture["item"], event)
+    changed_counts = dict(event)
+    changed_counts["boundary_finding_counts"] = {
+        "detached_process_escape": 1
+    }
+    with pytest.raises(R.CampaignPlanError, match="boundary findings"):
+        R._validate_sandbox_abandon_event(fixture["item"], changed_counts)
+    changed_tree = dict(correction)
+    changed_tree["protected_tree_sha256"] = "f" * 64
+    with pytest.raises(R.CampaignPlanError, match="evidence seal"):
+        R._validate_sandbox_exec_classification(
+            fixture["item"], rows[0], changed_tree, terminal=event
+        )
+    for field, value in (
+        ("absence_window_ns", 60_000_000_001),
+        ("absence_last_at", "2099-01-01T00:00:00+00:00"),
+    ):
+        changed_absence = dict(event)
+        changed_absence[field] = value
+        with pytest.raises(R.CampaignPlanError):
+            R._validate_sandbox_abandon_event(
+                fixture["item"], changed_absence
+            )
+    assert R.Status.infrastructure_noncounting_events(rows) == [event]
+    with pytest.raises(
+        R.CampaignPlanError, match="abandoned sandbox namespace"
+    ):
+        R._reject_abandoned_scratch_root(
+            fixture["scratch"], fixture["ledger"]
+        )
+
+    sealed = fixture["ledger"].read_bytes()
+    repeated = R._recover_interrupted_generation_release(
+        fixture["item"],
+        confirm_dispatch_id=fixture["dispatch_id"],
+        confirm_recovery_nonce=nonce,
+        boot_identity_provider=lambda: fixture["boot"],
+    )
+    assert repeated["result"] == (
+        "interrupted_sandbox_isolated_noncounting_already_completed"
+    )
+    assert fixture["ledger"].read_bytes() == sealed
+
+
+@pytest.mark.parametrize("crash_after", ("capsule", "marker"))
+def test_interrupted_release_replays_half_retired_namespace(
+    tmp_path, monkeypatch, crash_after
+):
+    fixture = _interrupted_generation_fixture(tmp_path, monkeypatch)
+    armed = _arm_interrupted_generation(fixture, monkeypatch)
+    real_release = R._release_dispatch_quarantine
+    real_ensure = R._ensure_dispatch_release_authority_row
+
+    def crash_during_retirement(
+        marker,
+        item,
+        authority,
+        *,
+        before_authority_append=None,
+        before_retirement=None,
+    ):
+        record, intent_identity = R._install_dispatch_release_intent(
+            marker, authority
+        )
+        real_ensure(
+            item,
+            marker.root_fd,
+            record,
+            intent_identity,
+            allow_new_authority_append=True,
+            before_authority_append=before_authority_append,
+        )
+        if before_retirement is not None:
+            before_retirement(record, intent_identity)
+        real_ensure(item, marker.root_fd, record, intent_identity)
+        os.unlink(marker.capsule_name, dir_fd=marker.root_fd)
+        os.fsync(marker.root_fd)
+        if crash_after == "capsule":
+            raise RuntimeError("synthetic crash after capsule unlink")
+        os.unlink(marker.name, dir_fd=marker.root_fd)
+        os.fsync(marker.root_fd)
+        raise RuntimeError("synthetic crash after marker unlink")
+
+    monkeypatch.setattr(
+        R, "_release_dispatch_quarantine", crash_during_retirement
+    )
+    with pytest.raises(RuntimeError, match=f"after {crash_after} unlink"):
+        _recover_interrupted_generation(fixture, armed)
+    assert not fixture["capsule"].exists()
+    assert fixture["marker"].exists() is (crash_after == "capsule")
+    assert list(fixture["marker"].parent.glob("*.release_intent"))
+
+    monkeypatch.setattr(R, "_release_dispatch_quarantine", real_release)
+    result = _recover_interrupted_generation(fixture, armed)
+    assert result["result"] == (
+        "interrupted_sandbox_isolated_noncounting_already_completed"
+    )
+    assert not fixture["marker"].exists()
+    assert not fixture["capsule"].exists()
+    assert not list(fixture["marker"].parent.glob("*.release_intent"))
 
 
 @pytest.mark.parametrize(
@@ -4935,12 +5468,13 @@ def test_sandboxed_recovery_rechecks_canonical_after_final_tree_hash(
     ]
 
 
+@pytest.mark.parametrize("interrupted_exec", (False, True))
 def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, interrupted_exec
 ):
-    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
-    _append_sandbox_exec(fixture)
-    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    fixture, _armed, recover = _armed_one_exec_crash_fixture(
+        tmp_path, monkeypatch, interrupted_exec
+    )
     real_append = R._append_recovery_phase_cas
     crashed = False
 
@@ -4958,12 +5492,7 @@ def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
 
     monkeypatch.setattr(R, "_append_recovery_phase_cas", append_then_crash)
     with pytest.raises(RuntimeError, match="sandbox classification"):
-        R._recover_sandboxed_generation_release(
-            fixture["item"],
-            confirm_dispatch_id=fixture["dispatch_id"],
-            confirm_recovery_nonce=armed["recovery_nonce"],
-            boot_identity_provider=lambda: fixture["boot"],
-        )
+        recover()
     assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
         "codex_exec", "codex_exec_classification_correction",
     ]
@@ -4971,12 +5500,7 @@ def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
     assert fixture["capsule"].is_file()
 
     monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
-    result = R._recover_sandboxed_generation_release(
-        fixture["item"],
-        confirm_dispatch_id=fixture["dispatch_id"],
-        confirm_recovery_nonce=armed["recovery_nonce"],
-        boot_identity_provider=lambda: fixture["boot"],
-    )
+    result = recover()
     assert result["result"] == "sandbox_isolated_noncounting"
     assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
         "codex_exec",
@@ -4986,12 +5510,13 @@ def test_sandboxed_one_exec_recovery_resumes_after_durable_classification(
     ]
 
 
+@pytest.mark.parametrize("interrupted_exec", (False, True))
 def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, interrupted_exec
 ):
-    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
-    _append_sandbox_exec(fixture)
-    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    fixture, _armed, recover = _armed_one_exec_crash_fixture(
+        tmp_path, monkeypatch, interrupted_exec
+    )
     ledger_identity = (
         fixture["ledger"].stat().st_dev,
         fixture["ledger"].stat().st_ino,
@@ -5024,12 +5549,7 @@ def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
     monkeypatch.setattr(R, "_append_recovery_phase_cas", target_terminal)
     monkeypatch.setattr(R.os, "write", partial_terminal_write)
     with pytest.raises(R.CampaignPlanError, match="phase append failed"):
-        R._recover_sandboxed_generation_release(
-            fixture["item"],
-            confirm_dispatch_id=fixture["dispatch_id"],
-            confirm_recovery_nonce=armed["recovery_nonce"],
-            boot_identity_provider=lambda: fixture["boot"],
-        )
+        recover()
     assert partial_written
     intents = list(
         fixture["marker"].parent.glob(".codex_recovery_*.intent")
@@ -5046,12 +5566,7 @@ def test_sandboxed_one_exec_recovery_repairs_partial_terminal_intent(
 
     monkeypatch.setattr(R, "_append_recovery_phase_cas", real_append)
     monkeypatch.setattr(R.os, "write", real_write)
-    result = R._recover_sandboxed_generation_release(
-        fixture["item"],
-        confirm_dispatch_id=fixture["dispatch_id"],
-        confirm_recovery_nonce=armed["recovery_nonce"],
-        boot_identity_provider=lambda: fixture["boot"],
-    )
+    result = recover()
 
     assert result["result"] == "sandbox_isolated_noncounting"
     rows = R.Guard.read_ledger(fixture["ledger"])
@@ -5242,17 +5757,35 @@ def test_sandboxed_one_exec_rechecks_authority_after_wip_restore(
     assert fixture["capsule"].is_file()
 
 
+@pytest.mark.parametrize("interrupted_exec", (False, True))
 def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
-    tmp_path, monkeypatch
+    tmp_path, monkeypatch, interrupted_exec
 ):
-    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    fixture = (
+        _interrupted_generation_fixture(tmp_path, monkeypatch)
+        if interrupted_exec
+        else _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    )
     baseline_latest = (fixture["wip"] / "latest.json").read_bytes()
     (fixture["wip"] / "latest.json").write_bytes(
         b'{"attempt":"isolated-unpublished"}\n'
     )
     disposable = fixture["wip"] / "isolated-attempt.txt"
     disposable.write_bytes(b"must survive until authorized rollback\n")
-    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    armed = (
+        _arm_interrupted_generation(fixture, monkeypatch)
+        if interrupted_exec
+        else _arm_sandboxed_generation(fixture, monkeypatch)
+    )
+    if interrupted_exec:
+        recover = lambda: _recover_interrupted_generation(fixture, armed)
+    else:
+        recover = lambda: R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
     real_restore = R._restore_wip_from_rollback_capsule
     observed_durable_event = False
 
@@ -5269,31 +5802,26 @@ def test_partial_sandbox_wip_restore_replays_only_behind_durable_event(
         R, "_restore_wip_from_rollback_capsule", partial_restore_then_crash
     )
     with pytest.raises(RuntimeError, match="authorized WIP restore"):
-        R._recover_sandboxed_generation_release(
-            fixture["item"],
-            confirm_dispatch_id=fixture["dispatch_id"],
-            confirm_recovery_nonce=armed["recovery_nonce"],
-            boot_identity_provider=lambda: fixture["boot"],
-        )
+        recover()
     assert observed_durable_event is True
     assert fixture["marker"].is_file()
     assert fixture["capsule"].is_file()
     assert disposable.is_file()
+    expected_prefix = (
+        ["codex_exec", "codex_exec_classification_correction"]
+        if interrupted_exec else []
+    )
     assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
-        R.SANDBOX_ABANDON_EVENT
+        *expected_prefix, R.SANDBOX_ABANDON_EVENT
     ]
 
     monkeypatch.setattr(R, "_restore_wip_from_rollback_capsule", real_restore)
-    result = R._recover_sandboxed_generation_release(
-        fixture["item"],
-        confirm_dispatch_id=fixture["dispatch_id"],
-        confirm_recovery_nonce=armed["recovery_nonce"],
-        boot_identity_provider=lambda: fixture["boot"],
-    )
+    result = recover()
     assert result["result"] == "sandbox_isolated_noncounting"
     assert not disposable.exists()
     assert (fixture["wip"] / "latest.json").read_bytes() == baseline_latest
     assert [row["event"] for row in R.Guard.read_ledger(fixture["ledger"])] == [
+        *expected_prefix,
         R.SANDBOX_ABANDON_EVENT,
         "codex_dispatch_release_authorized",
     ]
@@ -5355,19 +5883,39 @@ def test_sandboxed_recovery_checks_canonical_before_any_wal_reconciliation(
 
 
 @pytest.mark.parametrize("wal_crash", ("partial_authority", "authorized"))
-@pytest.mark.parametrize("one_exec", (False, True))
+@pytest.mark.parametrize("profile", ("zero", "one", "interrupted"))
 def test_sandboxed_release_wal_reconciles_before_marker_replay(
-    tmp_path, monkeypatch, wal_crash, one_exec
+    tmp_path, monkeypatch, wal_crash, profile
 ):
-    fixture = _sandboxed_generation_fixture(tmp_path, monkeypatch)
-    if one_exec:
+    interrupted_exec = profile == "interrupted"
+    fixture = (
+        _interrupted_generation_fixture(tmp_path, monkeypatch)
+        if interrupted_exec
+        else _sandboxed_generation_fixture(tmp_path, monkeypatch)
+    )
+    if profile == "one":
         _append_sandbox_exec(fixture)
-    armed = _arm_sandboxed_generation(fixture, monkeypatch)
+    armed = (
+        _arm_interrupted_generation(fixture, monkeypatch)
+        if interrupted_exec
+        else _arm_sandboxed_generation(fixture, monkeypatch)
+    )
+    if interrupted_exec:
+        recover = lambda: _recover_interrupted_generation(fixture, armed)
+    else:
+        recover = lambda: R._recover_sandboxed_generation_release(
+            fixture["item"],
+            confirm_dispatch_id=fixture["dispatch_id"],
+            confirm_recovery_nonce=armed["recovery_nonce"],
+            boot_identity_provider=lambda: fixture["boot"],
+        )
     real_ensure = R._ensure_dispatch_release_authority_row
     real_finish = R._finish_dispatch_release_intent
 
     if wal_crash == "authorized":
-        def crash_after_authority(item, root_fd, record, intent_identity):
+        def crash_after_authority(
+            item, root_fd, record, intent_identity, **_kwargs
+        ):
             real_ensure(
                 item,
                 root_fd,
@@ -5388,6 +5936,7 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
             intent_identity,
             *,
             allow_new_authority_append=False,
+            **kwargs,
         ):
             if not allow_new_authority_append:
                 return real_ensure(
@@ -5396,7 +5945,11 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
                     record,
                     intent_identity,
                     allow_new_authority_append=False,
+                    **kwargs,
                 )
+            callback = kwargs.get("before_authority_append")
+            if callback is not None:
+                callback(record, intent_identity)
             authority = record["release_authority"]
             line = Recovery.canonical_json_line(
                 authority["authority_record"]
@@ -5416,26 +5969,20 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
         )
 
     with pytest.raises(RuntimeError, match="release authorization"):
-        R._recover_sandboxed_generation_release(
-            fixture["item"],
-            confirm_dispatch_id=fixture["dispatch_id"],
-            confirm_recovery_nonce=armed["recovery_nonce"],
-            boot_identity_provider=lambda: fixture["boot"],
-        )
+        recover()
     assert fixture["marker"].is_file()
     assert fixture["capsule"].is_file()
 
     monkeypatch.setattr(R, "_ensure_dispatch_release_authority_row", real_ensure)
     monkeypatch.setattr(R, "_finish_dispatch_release_intent", real_finish)
-    result = R._recover_sandboxed_generation_release(
-        fixture["item"],
-        confirm_dispatch_id=fixture["dispatch_id"],
-        confirm_recovery_nonce=armed["recovery_nonce"],
-        boot_identity_provider=lambda: fixture["boot"],
-    )
+    result = recover()
 
     expected = (
-        "sandbox_isolated_noncounting_already_completed"
+        (
+            "interrupted_sandbox_isolated_noncounting_already_completed"
+            if interrupted_exec
+            else "sandbox_isolated_noncounting_already_completed"
+        )
         if wal_crash == "authorized"
         else "sandbox_isolated_noncounting"
     )
@@ -5444,7 +5991,7 @@ def test_sandboxed_release_wal_reconciles_before_marker_replay(
     assert not fixture["capsule"].exists()
     expected_events = (
         ["codex_exec", "codex_exec_classification_correction"]
-        if one_exec else []
+        if profile != "zero" else []
     ) + [R.SANDBOX_ABANDON_EVENT, "codex_dispatch_release_authorized"]
     assert [
         row["event"] for row in R.Guard.read_ledger(fixture["ledger"])

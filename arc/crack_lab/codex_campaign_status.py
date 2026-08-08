@@ -79,6 +79,7 @@ INFRASTRUCTURE_NONCOUNTING_SCHEMAS = {
         frozenset({
             "scheduler_sandbox_isolated_generation_abandoned_v1",
             "scheduler_sandbox_isolated_generation_abandoned_v2",
+            "scheduler_sandbox_isolated_generation_abandoned_v3",
         }),
 }
 
@@ -1628,8 +1629,10 @@ def infrastructure_noncounting_events(
             and row.get("failure_class") == "infrastructure"
             and row.get("retry_increment") == 0
             and row.get("codex_exec_appended") is (
-                row.get("schema")
-                == "scheduler_sandbox_isolated_generation_abandoned_v2"
+                row.get("schema") in {
+                    "scheduler_sandbox_isolated_generation_abandoned_v2",
+                    "scheduler_sandbox_isolated_generation_abandoned_v3",
+                }
             )
         )
     ]

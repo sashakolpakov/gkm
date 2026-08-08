@@ -3310,6 +3310,7 @@ def test_complete_unquiesced_generation_writes_recoverable_marker(
             ),
             descendant_quiescence_unproven=True,
             process_tree_quiesced=True,
+            boundary_finding_counts=(("dynamic_execution", 1),),
         )
 
     monkeypatch.setattr(
@@ -3333,6 +3334,9 @@ def test_complete_unquiesced_generation_writes_recoverable_marker(
     )
     assert parsed.unquiesced["event"] == "dispatch_unquiesced"
     assert parsed.unquiesced["workspace"] == fixture["workspace"].name
+    assert parsed.unquiesced["boundary_finding_counts"] == {
+        "dynamic_execution": 1
+    }
 
 
 def test_dispatch_quarantine_root_replacement_refuses_safe_release(
@@ -5887,7 +5891,7 @@ def test_guarded_child_preserves_first_live_taint_reason_at_terminal_scan(
             )
 
     class FakeFinding:
-        code = "shell_or_host_filesystem_escape"
+        code = "dynamic_execution"
 
         def __init__(self, description):
             self.description = description
@@ -5921,6 +5925,7 @@ def test_guarded_child_preserves_first_live_taint_reason_at_terminal_scan(
     assert result.taint_reason == "first live taint"
     assert result.process_tree_quiesced is True
     assert result.detached_processes_proven_absent is True
+    assert result.boundary_finding_counts == (("dynamic_execution", 1),)
 
 
 def test_guarded_child_keeps_original_control_error_after_handled_sigterm(
