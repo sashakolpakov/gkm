@@ -8,6 +8,7 @@ import pytest
 
 from bongard.object_bongard_semantics import (
     GROUP_SIZE,
+    SEMANTIC_PROTOCOL_ID,
     ObjectBongardSemanticArtifact,
     ObjectBongardSemanticsError,
     describe_object_bongard_support,
@@ -104,8 +105,16 @@ def test_semantic_turn_emits_audit_prose_and_one_catalog_cue_per_group() -> None
         ("rounded_leaf_support_ppm",),
     )
     prompt = object_bongard_semantics_prompt()
+    assert SEMANTIC_PROTOCOL_ID == (
+        "bongard.object-task-semantics/joint-contrastive-two-neutral-groups-v2"
+    )
     assert "two neutral groups of six" in prompt
+    assert "Consider both groups jointly" in prompt
     assert "exactly one matching feature identifier" in prompt
+    assert "must both recur within its group" in prompt
+    assert "visibly more characteristic" in prompt
+    assert "merely typical" in prompt
+    assert "Group names are neutral" in prompt
     assert "retained only as audit text" in prompt
     assert "do not choose an operator, threshold" in prompt
     assert "500000" not in prompt and "500_000" not in prompt

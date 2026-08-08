@@ -45,7 +45,9 @@ from bongard.transport import run_codex_named_images_structured
 
 
 SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v1"
-SEMANTIC_PROTOCOL_ID = "bongard.object-task-semantics/two-neutral-groups-v1"
+SEMANTIC_PROTOCOL_ID = (
+    "bongard.object-task-semantics/joint-contrastive-two-neutral-groups-v2"
+)
 GROUP_IDS = ("group_0", "group_1")
 GROUP_SIZE = 6
 
@@ -114,9 +116,15 @@ def object_bongard_semantics_prompt() -> str:
     return (
         "Inspect twelve drawings arranged as two neutral groups of six, named "
         "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
-        "group_1_ref_05. For each group, write one concise sentence describing "
-        "a recurring visible appearance and nominate exactly one matching "
-        "feature identifier from the complete frozen measurement catalog. "
+        "group_1_ref_05. Consider both groups jointly. For each group, write "
+        "one concise sentence describing a recurring visible appearance and "
+        "nominate exactly one matching feature identifier from the complete "
+        "frozen measurement catalog. The nominated cue must both recur within "
+        "its group and be visibly more characteristic of that group than of "
+        "the other group. Compare each catalog meaning across both groups "
+        "before choosing; a cue that is merely typical of one group but also "
+        "similarly characteristic of the other group is invalid. Group names "
+        "are neutral and do not indicate class polarity. "
         "Ignore pose, scale, location, and incidental stroke variation. Return "
         "group_0 then group_1. Emit prose and feature identifiers only: do not "
         "choose an operator, threshold, number, polarity, weight, negation, "
@@ -135,7 +143,7 @@ def object_bongard_semantics_prompt() -> str:
 def object_bongard_semantics_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-task-semantics-protocol.v1",
+            "schema": "gkm.bongard-object-task-semantics-protocol.v2",
             "protocol_id": SEMANTIC_PROTOCOL_ID,
             "source_digest": object_bongard_semantics_source_digest(),
             "prompt_sha256": hashlib.sha256(
@@ -149,6 +157,11 @@ def object_bongard_semantics_protocol_digest() -> str:
             "images_per_group": GROUP_SIZE,
             "feature_ids_per_group": 1,
             "distinct_group_feature_ids_required": True,
+            "cross_group_comparison_required": True,
+            "cue_must_recur_within_nominated_group": True,
+            "cue_must_be_more_characteristic_than_in_other_group": True,
+            "independently_typical_cue_nomination_allowed": False,
+            "group_names_encode_class_polarity": False,
             "vision_prose_authority": "audit-only",
             "observer_rubric_derivation": (
                 "exact-frozen-catalog-operational-description-by-feature-id"
