@@ -27,6 +27,7 @@ from typing import Any, Mapping, Sequence
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.object_scene_visual_frontend import (
     OBJECT_SCENE_MAX_REGISTERED_TAGS,
+    OBJECT_SCENE_MAX_TAG_CHARACTERS,
     ObjectSceneSoftTag,
     ObjectSceneSoftTagRegistry,
     ObjectSceneTranscriptArtifact,
@@ -40,10 +41,12 @@ from bongard.transport import validate_codex_strict_output_schema
 ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE = (
     "role_aware_semantic_concept_proposal"
 )
-PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v1"
-CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v1"
-PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v1"
+PREPARED_SCHEMA = "gkm.object-scene-semantic-registry-prepared.v2"
+CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-concept.v2"
+DROPPED_CONCEPT_SCHEMA = "gkm.object-scene-semantic-registry-dropped-concept.v1"
+PROPOSAL_SCHEMA = "gkm.object-scene-semantic-registry-proposal.v2"
 MAX_CONCEPTS_PER_ORIENTATION = 16
+MAX_CONCEPT_PHRASE_CHARACTERS = OBJECT_SCENE_MAX_TAG_CHARACTERS
 MIN_CITATIONS_PER_CONCEPT = 2
 MAX_CITATIONS_PER_CONCEPT = 16
 SUPPORT_PANEL_COUNT = 12
@@ -54,12 +57,21 @@ _ALIAS = re.compile(r"panel_[0-9]{3}\Z")
 _SEMANTIC_POLICY_LEAK = re.compile(
     r"\b(?:side|support|bucket|orientation|more|less|fewer|most|least|"
     r"common|frequent|typically|usually|never|isn't|isnt|avoids?|avoiding|"
-    r"free|fails?|cannot|can't|cant|plus|also|both|while|along|combined|"
-    r"higher|lower|rarer|dominant|prevalent|exclusive|contrastive|"
+    r"fails?|cannot|can't|cant|and|or|than|plus|also|while|combined|"
+    r"rarer|dominant|prevalent|exclusive|contrastive|"
     r"occurrences?|frequency|often|always|sometimes|only)\b|\bnon[- ]?[a-z]",
     re.IGNORECASE,
 )
 _GAP_CODES = frozenset(("payload_rejected", "insufficient_discovery_evidence"))
+_DROP_REASON_CODES = frozenset(
+    (
+        "malformed_concept",
+        "citation_policy",
+        "phrase_policy",
+        "foreign_citation",
+        "duplicate_scoped_phrase",
+    )
+)
 
 
 class ObjectSceneSemanticRegistryError(ValueError):
@@ -84,6 +96,9 @@ def _authority_data() -> dict[str, object]:
         "registered_evaluator_receives_roles": False,
         "semantic_proposal_is_not_a_truth_assignment": True,
         "citation_count_is_not_visual_confidence": True,
+        "invalid_optional_concept_discards_valid_concepts": False,
+        "all_quarantined_invalid_concepts_and_finite_reasons_persisted": True,
+        "orientation_coverage_gap_suppresses_otherwise_valid_concepts_from_registry": True,
         "lean_present": False,
         "lean_required": False,
         "lean_removable": True,
@@ -94,13 +109,15 @@ def _authority_data() -> dict[str, object]:
 def object_scene_semantic_registry_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-semantic-registry-protocol.v1",
+            "schema": "gkm.object-scene-semantic-registry-protocol.v2",
             "source_digest": object_scene_semantic_registry_source_digest(),
             "frontend_source_digest": _frontend.object_scene_visual_frontend_source_digest(),
             "prepared_schema": PREPARED_SCHEMA,
             "concept_schema": CONCEPT_SCHEMA,
+            "dropped_concept_schema": DROPPED_CONCEPT_SCHEMA,
             "proposal_schema": PROPOSAL_SCHEMA,
             "maximum_concepts_per_orientation": MAX_CONCEPTS_PER_ORIENTATION,
+            "maximum_concept_phrase_characters": MAX_CONCEPT_PHRASE_CHARACTERS,
             "maximum_union_concepts": OBJECT_SCENE_MAX_REGISTERED_TAGS,
             "minimum_distinct_same_orientation_citations": MIN_CITATIONS_PER_CONCEPT,
             "support_panel_count": SUPPORT_PANEL_COUNT,
@@ -109,6 +126,11 @@ def object_scene_semantic_registry_protocol_digest() -> str:
             "registry_order": (
                 "descending-distinct-cited-panel-count-then-scope-then-phrase"
             ),
+            "optional_concept_failure_rule": (
+                "quarantine-exact-input-row-with-finite-reason;"
+                "accept-only-if-each-orientation-retains-one-concept"
+            ),
+            "duplicate_scoped_phrase_rule": "quarantine-every-member-of-group",
             **_authority_data(),
         }
     )
@@ -211,10 +233,22 @@ def _proposal_output_schema(
             "type": "object",
             "properties": {
                 "scope": {"type": "string", "enum": ["panel", "entity"]},
-                "phrase": {"type": "string"},
+                "phrase": {
+                    "type": "string",
+                    "description": (
+                        "One lowercase affirmative visual phrase of 2 to "
+                        f"{MAX_CONCEPT_PHRASE_CHARACTERS} ASCII characters; "
+                        "no negation, alternatives, labels, or bucket comparisons."
+                    ),
+                },
                 "citations": {
                     "type": "array",
                     "items": {"type": "string", "enum": list(aliases)},
+                    "description": (
+                        f"Between {MIN_CITATIONS_PER_CONCEPT} and "
+                        f"{MAX_CITATIONS_PER_CONCEPT} distinct aliases from this "
+                        "same bucket."
+                    ),
                 },
             },
             "required": ["scope", "phrase", "citations"],
@@ -227,10 +261,18 @@ def _proposal_output_schema(
             "side0_positive": {
                 "type": "array",
                 "items": concept(side0_aliases),
+                "description": (
+                    f"Between 1 and {MAX_CONCEPTS_PER_ORIENTATION} affirmative "
+                    "concept objects for side0."
+                ),
             },
             "side1_positive": {
                 "type": "array",
                 "items": concept(side1_aliases),
+                "description": (
+                    f"Between 1 and {MAX_CONCEPTS_PER_ORIENTATION} affirmative "
+                    "concept objects for side1."
+                ),
             },
         },
         "required": ["side0_positive", "side1_positive"],
@@ -468,12 +510,20 @@ def prepare_object_scene_semantic_registry_proposal(
         model_rows[role["historical_role"]].append(
             _transcript_view(alias, transcript)
         )
-    role_aliases = {
+    all_role_aliases = {
         side: tuple(
             item["alias"]
             for item in bindings
             if item["historical_role"] == side
         )
+        for side in (0, 1)
+    }
+    role_aliases = {
+        side: tuple(
+            item["alias"]
+            for item in bindings
+            if item["historical_role"] == side and item["usable"] is True
+        ) or all_role_aliases[side][:1]
         for side in (0, 1)
     }
     model_view: dict[str, object] = {
@@ -492,7 +542,8 @@ def prepare_object_scene_semantic_registry_proposal(
         "where the prose suggests the concept; it is not a truth assignment. "
         "Do not compare the buckets, mention roles or labels, use negation, say "
         "that something is missing, or package multiple conditions into one "
-        "phrase. Internal visible relations such as mismatched parts or unequal "
+        "phrase. Every phrase must be 2 to 80 ASCII characters. Internal visible "
+        "relations such as mismatched parts, lower-left placement, or unequal "
         "edge lengths are affirmative and allowed. Supply at most 16 concepts "
         "per bucket. Python will discard bucket membership, freeze one union, "
         "and two fresh role-blind visual passes will judge every phrase. Return "
@@ -583,6 +634,7 @@ class ObjectSceneSemanticRegistryConcept:
         if (
             scope != self.scope
             or phrase != self.phrase
+            or len(self.phrase) > MAX_CONCEPT_PHRASE_CHARACTERS
             or _SEMANTIC_POLICY_LEAK.search(self.phrase) is not None
             or not MIN_CITATIONS_PER_CONCEPT
             <= len(self.citations)
@@ -663,6 +715,108 @@ class ObjectSceneSemanticRegistryConcept:
         return result
 
 
+def _dropped_concept_content(
+    value: "ObjectSceneDroppedSemanticRegistryConcept",
+) -> dict[str, object]:
+    return {
+        "schema": DROPPED_CONCEPT_SCHEMA,
+        "orientation": value.orientation,
+        "input_index": value.input_index,
+        "payload_digest": value.payload_digest,
+        "reason_code": value.reason_code,
+        "optional_bad_concept_does_not_discard_valid_concepts": True,
+    }
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class ObjectSceneDroppedSemanticRegistryConcept:
+    orientation: str
+    input_index: int
+    payload_digest: str
+    reason_code: str
+    drop_digest: str
+
+    def __post_init__(self) -> None:
+        if (
+            self.orientation not in ("side0_positive", "side1_positive")
+            or type(self.input_index) is not int
+            or self.input_index < 0
+            or self.reason_code not in _DROP_REASON_CODES
+        ):
+            raise ObjectSceneSemanticRegistryError(
+                "dropped semantic concept disposition differs"
+            )
+        _digest(self.payload_digest, "dropped concept payload digest")
+        _digest(self.drop_digest, "dropped concept digest")
+        if self.drop_digest != canonical_digest(_dropped_concept_content(self)):
+            raise ObjectSceneSemanticRegistryError(
+                "dropped semantic concept digest differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        orientation: str,
+        input_index: int,
+        payload: object,
+        reason_code: str,
+    ) -> "ObjectSceneDroppedSemanticRegistryConcept":
+        values = {
+            "orientation": orientation,
+            "input_index": input_index,
+            "payload_digest": canonical_digest(payload),
+            "reason_code": reason_code,
+        }
+        provisional = object.__new__(cls)
+        for key, item in values.items():
+            object.__setattr__(provisional, key, item)
+        return cls(
+            **values,
+            drop_digest=canonical_digest(_dropped_concept_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_dropped_concept_content(self), "drop_digest": self.drop_digest}
+
+    @classmethod
+    def from_data(
+        cls, value: object
+    ) -> "ObjectSceneDroppedSemanticRegistryConcept":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "orientation",
+                "input_index",
+                "payload_digest",
+                "reason_code",
+                "optional_bad_concept_does_not_discard_valid_concepts",
+                "drop_digest",
+            },
+            "dropped semantic concept",
+        )
+        if (
+            raw["schema"] != DROPPED_CONCEPT_SCHEMA
+            or raw["optional_bad_concept_does_not_discard_valid_concepts"]
+            is not True
+        ):
+            raise ObjectSceneSemanticRegistryError(
+                "dropped semantic concept policy differs"
+            )
+        result = cls(
+            raw["orientation"],
+            raw["input_index"],
+            raw["payload_digest"],
+            raw["reason_code"],
+            raw["drop_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneSemanticRegistryError(
+                "dropped semantic concept is not canonical"
+            )
+        return result
+
+
 def _proposal_content(value: "ObjectSceneSemanticRegistryProposal") -> dict[str, object]:
     return {
         "schema": PROPOSAL_SCHEMA,
@@ -679,6 +833,7 @@ def _proposal_content(value: "ObjectSceneSemanticRegistryProposal") -> dict[str,
         "model_payload_digest": value.model_payload_digest,
         "side0_positive": [item.to_data() for item in value.side0_positive],
         "side1_positive": [item.to_data() for item in value.side1_positive],
+        "dropped_concepts": [item.to_data() for item in value.dropped_concepts],
         "gap_code": value.gap_code,
         "registry_digest": value.registry_digest,
         "union_discards_orientation_membership_before_visual_evaluation": True,
@@ -700,6 +855,7 @@ class ObjectSceneSemanticRegistryProposal:
     model_payload_digest: str | None
     side0_positive: tuple[ObjectSceneSemanticRegistryConcept, ...]
     side1_positive: tuple[ObjectSceneSemanticRegistryConcept, ...]
+    dropped_concepts: tuple[ObjectSceneDroppedSemanticRegistryConcept, ...]
     gap_code: str | None
     registry_digest: str
     proposal_digest: str
@@ -736,8 +892,38 @@ class ObjectSceneSemanticRegistryProposal:
             != ("side0_positive",) * len(self.side0_positive)
             or tuple(item.orientation for item in self.side1_positive)
             != ("side1_positive",) * len(self.side1_positive)
+            or self.dropped_concepts
+            != tuple(
+                sorted(
+                    self.dropped_concepts,
+                    key=lambda item: (
+                        item.orientation,
+                        item.input_index,
+                        item.payload_digest,
+                    ),
+                )
+            )
+            or len(
+                {
+                    (item.orientation, item.input_index)
+                    for item in self.dropped_concepts
+                }
+            )
+            != len(self.dropped_concepts)
         ):
             raise ObjectSceneSemanticRegistryError("semantic proposal concept inventory differs")
+        if self.model_payload is not None:
+            for dropped in self.dropped_concepts:
+                bucket = self.model_payload.get(dropped.orientation)
+                if (
+                    not isinstance(bucket, list)
+                    or dropped.input_index >= len(bucket)
+                    or canonical_digest(bucket[dropped.input_index])
+                    != dropped.payload_digest
+                ):
+                    raise ObjectSceneSemanticRegistryError(
+                        "dropped semantic concept payload binding differs"
+                    )
         if self.status == "proposed":
             if (
                 not self.side0_positive
@@ -784,7 +970,7 @@ class ObjectSceneSemanticRegistryProposal:
             "source_digest", "preparation_digest", "role_rows_digest",
             "source_artifact_digests", "source_transcript_digests",
             "source_panel_digests", "model_payload", "model_payload_digest",
-            "side0_positive", "side1_positive", "gap_code", "registry_digest",
+            "side0_positive", "side1_positive", "dropped_concepts", "gap_code", "registry_digest",
             "union_discards_orientation_membership_before_visual_evaluation",
             *_authority_data(), "proposal_digest",
         }
@@ -801,6 +987,7 @@ class ObjectSceneSemanticRegistryProposal:
                 for key in (
                     "source_artifact_digests", "source_transcript_digests",
                     "source_panel_digests", "side0_positive", "side1_positive",
+                    "dropped_concepts",
                 )
             )
         ):
@@ -822,6 +1009,10 @@ class ObjectSceneSemanticRegistryProposal:
             tuple(
                 ObjectSceneSemanticRegistryConcept.from_data(item)
                 for item in raw["side1_positive"]
+            ),
+            tuple(
+                ObjectSceneDroppedSemanticRegistryConcept.from_data(item)
+                for item in raw["dropped_concepts"]
             ),
             raw["gap_code"], raw["registry_digest"], raw["proposal_digest"],
         )
@@ -868,6 +1059,7 @@ def _proposal(
     model_payload: Mapping[str, Any] | None,
     side0: Sequence[ObjectSceneSemanticRegistryConcept],
     side1: Sequence[ObjectSceneSemanticRegistryConcept],
+    dropped: Sequence[ObjectSceneDroppedSemanticRegistryConcept],
     gap_code: str | None,
     registry: ObjectSceneSoftTagRegistry,
 ) -> ObjectSceneSemanticRegistryProposal:
@@ -887,6 +1079,7 @@ def _proposal(
         "model_payload_digest": None if payload is None else canonical_digest(payload),
         "side0_positive": tuple(side0),
         "side1_positive": tuple(side1),
+        "dropped_concepts": tuple(dropped),
         "gap_code": gap_code,
         "registry_digest": registry.registry_digest,
     }
@@ -898,21 +1091,16 @@ def _proposal(
     )
 
 
-def build_object_scene_semantic_registry_proposal(
+def _project_semantic_payload(
     prepared: ObjectScenePreparedSemanticRegistryProposal,
     payload: Mapping[str, Any],
-) -> tuple[ObjectSceneSemanticRegistryProposal, ObjectSceneSoftTagRegistry]:
-    if not isinstance(prepared, ObjectScenePreparedSemanticRegistryProposal):
-        raise TypeError("prepared must be ObjectScenePreparedSemanticRegistryProposal")
-    ObjectScenePreparedSemanticRegistryProposal.from_data(prepared.to_data())
-    allowed = {
-        side: {
-            item["alias"]
-            for item in prepared.alias_bindings
-            if item["historical_role"] == side and item["usable"] is True
-        }
-        for side in (0, 1)
-    }
+    *,
+    require_usable_buckets: bool,
+) -> tuple[
+    Mapping[str, Any],
+    dict[int, list[ObjectSceneSemanticRegistryConcept]],
+    tuple[ObjectSceneDroppedSemanticRegistryConcept, ...],
+]:
     try:
         raw = _fields(
             _canonical_mapping(payload, "semantic registry proposal payload"),
@@ -932,39 +1120,119 @@ def build_object_scene_semantic_registry_proposal(
             raise ObjectSceneSemanticRegistryError(
                 "semantic proposal bucket capacity differs"
             )
-        buckets: dict[int, list[ObjectSceneSemanticRegistryConcept]] = {
-            0: [], 1: []
+    except ObjectSceneSemanticRegistryPayloadError:
+        raise
+    except ObjectSceneSemanticRegistryError as exc:
+        raise ObjectSceneSemanticRegistryPayloadError(str(exc)) from exc
+
+    allowed = {
+        side: {
+            item["alias"]
+            for item in prepared.alias_bindings
+            if item["historical_role"] == side and item["usable"] is True
         }
-        for side, key in ((0, "side0_positive"), (1, "side1_positive")):
-            for item in raw[key]:
+        for side in (0, 1)
+    }
+    indexed: dict[
+        int, list[tuple[int, ObjectSceneSemanticRegistryConcept]]
+    ] = {0: [], 1: []}
+    dropped: list[ObjectSceneDroppedSemanticRegistryConcept] = []
+    for side, key in ((0, "side0_positive"), (1, "side1_positive")):
+        for input_index, item in enumerate(raw[key]):
+            try:
                 concept_raw = _fields(
                     item,
                     {"scope", "phrase", "citations"},
                     "semantic concept payload",
                 )
+            except ObjectSceneSemanticRegistryError:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "malformed_concept"
+                    )
+                )
+                continue
+            citations = concept_raw["citations"]
+            if (
+                not isinstance(citations, list)
+                or any(not isinstance(value, str) for value in citations)
+                or not MIN_CITATIONS_PER_CONCEPT
+                <= len(citations)
+                <= MAX_CITATIONS_PER_CONCEPT
+                or len(set(citations)) != len(citations)
+                or any(_ALIAS.fullmatch(value) is None for value in citations)
+            ):
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "citation_policy"
+                    )
+                )
+                continue
+            try:
                 concept = ObjectSceneSemanticRegistryConcept.create(
                     key,
                     concept_raw["scope"],
                     concept_raw["phrase"],
-                    concept_raw["citations"],
+                    citations,
                 )
-                if not set(concept.citations).issubset(allowed[side]):
-                    raise ObjectSceneSemanticRegistryError(
-                        "semantic concept cites a foreign or cross-side panel"
+            except ObjectSceneSemanticRegistryError:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "phrase_policy"
                     )
+                )
+                continue
+            if not set(concept.citations).issubset(allowed[side]):
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key, input_index, item, "foreign_citation"
+                    )
+                )
+                continue
+            indexed[side].append((input_index, concept))
+
+    key_counts: dict[tuple[str, str], int] = {}
+    for rows in indexed.values():
+        for _, concept in rows:
+            identity = (concept.scope, concept.phrase)
+            key_counts[identity] = key_counts.get(identity, 0) + 1
+    repeated = {identity for identity, count in key_counts.items() if count > 1}
+    buckets: dict[int, list[ObjectSceneSemanticRegistryConcept]] = {0: [], 1: []}
+    for side, key in ((0, "side0_positive"), (1, "side1_positive")):
+        for input_index, concept in indexed[side]:
+            if (concept.scope, concept.phrase) in repeated:
+                dropped.append(
+                    ObjectSceneDroppedSemanticRegistryConcept.create(
+                        key,
+                        input_index,
+                        raw[key][input_index],
+                        "duplicate_scoped_phrase",
+                    )
+                )
+            else:
                 buckets[side].append(concept)
-            buckets[side].sort(
-                key=lambda item: (item.scope, item.phrase, item.citations)
-            )
-        concepts = (*buckets[0], *buckets[1])
-        if len({(item.scope, item.phrase) for item in concepts}) != len(concepts):
-            raise ObjectSceneSemanticRegistryError(
-                "semantic proposal repeats a scoped phrase"
-            )
-    except ObjectSceneSemanticRegistryPayloadError:
-        raise
-    except ObjectSceneSemanticRegistryError as exc:
-        raise ObjectSceneSemanticRegistryPayloadError(str(exc)) from exc
+        buckets[side].sort(key=lambda item: (item.scope, item.phrase, item.citations))
+    dropped.sort(
+        key=lambda item: (item.orientation, item.input_index, item.payload_digest)
+    )
+    if require_usable_buckets and any(not buckets[side] for side in (0, 1)):
+        raise ObjectSceneSemanticRegistryPayloadError(
+            "semantic proposal has no usable concept in one or both buckets"
+        )
+    return raw, buckets, tuple(dropped)
+
+
+def build_object_scene_semantic_registry_proposal(
+    prepared: ObjectScenePreparedSemanticRegistryProposal,
+    payload: Mapping[str, Any],
+) -> tuple[ObjectSceneSemanticRegistryProposal, ObjectSceneSoftTagRegistry]:
+    if not isinstance(prepared, ObjectScenePreparedSemanticRegistryProposal):
+        raise TypeError("prepared must be ObjectScenePreparedSemanticRegistryProposal")
+    ObjectScenePreparedSemanticRegistryProposal.from_data(prepared.to_data())
+    raw, buckets, dropped = _project_semantic_payload(
+        prepared, payload, require_usable_buckets=True
+    )
+    concepts = (*buckets[0], *buckets[1])
     registry = _semantic_registry(prepared, concepts)
     proposal = _proposal(
         prepared,
@@ -972,6 +1240,7 @@ def build_object_scene_semantic_registry_proposal(
         model_payload=raw,
         side0=buckets[0],
         side1=buckets[1],
+        dropped=dropped,
         gap_code=None,
         registry=registry,
     )
@@ -1000,6 +1269,23 @@ def build_object_scene_semantic_registry_gap(
         raise ObjectSceneSemanticRegistryError(
             "payload-rejected gap must bind its rejected payload"
         )
+    dropped: tuple[ObjectSceneDroppedSemanticRegistryConcept, ...] = ()
+    if rejected_payload is not None:
+        try:
+            _, projected, dropped = _project_semantic_payload(
+                prepared,
+                rejected_payload,
+                require_usable_buckets=False,
+            )
+        except ObjectSceneSemanticRegistryPayloadError:
+            pass
+        else:
+            if gap_code == "payload_rejected" and all(
+                projected[side] for side in (0, 1)
+            ):
+                raise ObjectSceneSemanticRegistryError(
+                    "payload-rejected gap binds a usable semantic proposal"
+                )
     registry = _semantic_registry(prepared, ())
     return (
         _proposal(
@@ -1008,6 +1294,7 @@ def build_object_scene_semantic_registry_gap(
             model_payload=rejected_payload,
             side0=(),
             side1=(),
+            dropped=dropped,
             gap_code=gap_code,
             registry=registry,
         ),
@@ -1059,6 +1346,8 @@ def verify_object_scene_semantic_registry_proposal(
 
 __all__ = (
     "MAX_CONCEPTS_PER_ORIENTATION",
+    "MAX_CONCEPT_PHRASE_CHARACTERS",
+    "ObjectSceneDroppedSemanticRegistryConcept",
     "ObjectScenePreparedSemanticRegistryProposal",
     "ObjectSceneSemanticRegistryConcept",
     "ObjectSceneSemanticRegistryError",

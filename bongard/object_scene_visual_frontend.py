@@ -68,9 +68,10 @@ from bongard.visual_witnesses import Q16BBox
 OBJECT_SCENE_INVENTORY_SCHEMA = "gkm.object-scene-proposal-inventory.v1"
 OBJECT_SCENE_CROP_RECEIPT_SCHEMA = "gkm.object-scene-crop-receipt.v1"
 OBJECT_SCENE_ATLAS_SHEET_SCHEMA = "gkm.object-scene-atlas-sheet.v1"
-OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v2"
-OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v2"
-OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v2"
+OBJECT_SCENE_TRANSCRIPT_SCHEMA = "gkm.object-scene-transcript.v3"
+OBJECT_SCENE_TRANSCRIPT_ARTIFACT_SCHEMA = "gkm.object-scene-transcript-artifact.v3"
+OBJECT_SCENE_FRONTEND_ID = "object-scene-visual-frontend/stable-lineages-panel-entity-one-call-v3"
+OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA = "gkm.object-scene-dropped-open-tag.v1"
 OBJECT_SCENE_CANONICAL_SCENARIO_ID = "threshold064.close-cross-1"
 OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS = (
     "triangle_like",
@@ -109,6 +110,7 @@ OBJECT_SCENE_COUNT_OBSERVABLE_IDS = (
 )
 OBJECT_SCENE_MAX_TAGS_PER_OBJECT = 8
 OBJECT_SCENE_MAX_TAGS_PER_PANEL = 8
+OBJECT_SCENE_MAX_TAG_CHARACTERS = 80
 OBJECT_SCENE_MAX_REGISTERED_TAGS = 32
 OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY = 2
 OBJECT_SCENE_SOFT_TAG_SCOPES = ("entity", "panel")
@@ -121,18 +123,29 @@ _HYPOTHESIS_ID = re.compile(r"hypothesis-[0-9]{8}\Z")
 _TAG_ID = re.compile(r"tag_[0-9]{4}\Z")
 _ATLAS_NAME = re.compile(r"objects_[0-9]{3}\.png\Z")
 _CODE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
-_POSITIVE_TAG = re.compile(r"[a-z][a-z' -]{1,47}\Z")
+_POSITIVE_TAG = re.compile(
+    rf"[a-z][a-z' -]{{1,{OBJECT_SCENE_MAX_TAG_CHARACTERS - 1}}}\Z"
+)
 _PROSE = re.compile(r"[ -~]+\Z")
 _FORBIDDEN_VISIBLE = re.compile(
     r"\b(?:(?:candidate|group|class|label|target|foil|positive|negative|"
     r"predicate|formula|task|query|answer|prompt|instruction|system|assistant|"
+    r"role|bucket|"
     r"user|tool|code|python|theorem|proof)s?)\b",
     re.IGNORECASE,
 )
 _FORBIDDEN_TAG_LOGIC = re.compile(
     r"\b(?:no|not|none|neither|without|lacks?|lacking|absent|missing|"
-    r"except|and|or|versus|unlike|different|other|than)\b",
+    r"except|or|either|versus|unlike|different|other)\b",
     re.IGNORECASE,
+)
+OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES = (
+    "malformed_item",
+    "invalid_tag",
+    "invalid_state",
+    "invalid_evidence",
+    "duplicate_normalized_tag",
+    "capacity_exceeded",
 )
 _UNICODE_DASH = re.compile(r"[ \t]*[\u2013\u2014][ \t]*")
 _UNICODE_VISIBLE_TRANSLATION = str.maketrans(
@@ -1169,6 +1182,134 @@ class ObjectSceneOpenTag:
         return result
 
 
+def _dropped_open_tag_content(
+    value: "ObjectSceneDroppedOpenTag",
+) -> dict[str, object]:
+    return {
+        "schema": OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA,
+        "scope": value.scope,
+        "owner_id": value.owner_id,
+        "item_index": value.item_index,
+        "raw_item_digest": value.raw_item_digest,
+        "reason_code": value.reason_code,
+    }
+
+
+def _dropped_open_tag_sort_key(
+    value: "ObjectSceneDroppedOpenTag",
+) -> tuple[int, str, int, str, str]:
+    return (
+        0 if value.scope == "panel" else 1,
+        value.owner_id,
+        value.item_index,
+        value.raw_item_digest,
+        value.reason_code,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectSceneDroppedOpenTag:
+    """One quarantined optional discovery tag, bound to its raw payload item."""
+
+    scope: str
+    owner_id: str
+    item_index: int
+    raw_item_digest: str
+    reason_code: str
+    drop_digest: str
+
+    def __post_init__(self) -> None:
+        _soft_tag_scope(self.scope, "dropped open tag scope")
+        if (
+            (self.scope == "panel" and self.owner_id != "panel")
+            or (
+                self.scope == "entity"
+                and (
+                    not isinstance(self.owner_id, str)
+                    or _OBJECT_ID.fullmatch(self.owner_id) is None
+                )
+            )
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag owner differs"
+            )
+        _integer(self.item_index, "dropped open tag item index")
+        _digest(self.raw_item_digest, "dropped open tag raw item digest")
+        if self.reason_code not in OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES:
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag reason code differs"
+            )
+        _digest(self.drop_digest, "dropped open tag digest")
+        if self.drop_digest != canonical_digest(_dropped_open_tag_content(self)):
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag content digest differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        scope: str,
+        owner_id: str,
+        item_index: int,
+        raw_item: object,
+        reason_code: str,
+    ) -> "ObjectSceneDroppedOpenTag":
+        values = {
+            "scope": scope,
+            "owner_id": owner_id,
+            "item_index": item_index,
+            "raw_item_digest": canonical_digest(raw_item),
+            "reason_code": reason_code,
+        }
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,
+            drop_digest=canonical_digest(_dropped_open_tag_content(provisional)),
+        )
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            **_dropped_open_tag_content(self),
+            "drop_digest": self.drop_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "ObjectSceneDroppedOpenTag":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "scope",
+                "owner_id",
+                "item_index",
+                "raw_item_digest",
+                "reason_code",
+                "drop_digest",
+            },
+            "dropped open tag",
+        )
+        if raw["schema"] != OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA:
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag schema differs"
+            )
+        result = cls(
+            raw["scope"],
+            raw["owner_id"],
+            raw["item_index"],
+            raw["raw_item_digest"],
+            raw["reason_code"],
+            raw["drop_digest"],
+        )
+        if result.to_data() != dict(raw):
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag is not canonical"
+            )
+        return result
+
+
 def _registered_cell_content(value: "ObjectSceneRegisteredTagCell") -> dict[str, object]:
     return {
         "tag_id": value.tag_id,
@@ -1304,10 +1445,14 @@ def _transcript_content(value: "ObjectSceneTranscript") -> dict[str, object]:
         "panel_registered_tag_cells": [
             item.to_data() for item in value.panel_registered_tag_cells
         ],
+        "dropped_open_tags": [
+            item.to_data() for item in value.dropped_open_tags
+        ],
         "registered_panel_tag_ids": list(value.registered_panel_tag_ids),
         "registered_entity_tag_ids": list(value.registered_entity_tag_ids),
         "objects": [item.to_data() for item in value.objects],
         "omitted_discovery_tag_semantics": "indeterminate-never-absence",
+        "dropped_discovery_tag_semantics": "indeterminate-never-absence",
         **_authority_data(),
     }
 
@@ -1321,6 +1466,7 @@ class ObjectSceneTranscript:
     panel_summary: str
     panel_open_tags: tuple[ObjectSceneOpenTag, ...]
     panel_registered_tag_cells: tuple[ObjectSceneRegisteredTagCell, ...]
+    dropped_open_tags: tuple[ObjectSceneDroppedOpenTag, ...]
     registered_panel_tag_ids: tuple[str, ...]
     registered_entity_tag_ids: tuple[str, ...]
     objects: tuple[ObjectSceneTranscriptObject, ...]
@@ -1352,6 +1498,26 @@ class ObjectSceneTranscript:
             raise ObjectSceneVisualFrontendError(
                 "transcript panel mixes discovery and registered modes"
             )
+        if self.dropped_open_tags != tuple(
+            sorted(self.dropped_open_tags, key=_dropped_open_tag_sort_key)
+        ) or len(
+            {
+                (item.scope, item.owner_id, item.item_index)
+                for item in self.dropped_open_tags
+            }
+        ) != len(self.dropped_open_tags):
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tags differ from canonical item order"
+            )
+        object_ids = {item.object_id for item in self.objects}
+        if any(
+            (item.scope == "panel" and item.owner_id != "panel")
+            or (item.scope == "entity" and item.owner_id not in object_ids)
+            for item in self.dropped_open_tags
+        ):
+            raise ObjectSceneVisualFrontendError(
+                "dropped open tag transcript owner differs"
+            )
         if self.mode is ObjectSceneTranscriptMode.DISCOVERY:
             if (
                 self.registry_digest is not None
@@ -1363,7 +1529,11 @@ class ObjectSceneTranscript:
                 raise ObjectSceneVisualFrontendError("discovery transcript carries registry cells")
         else:
             _digest(self.registry_digest, "transcript registry digest")
-            if self.panel_open_tags or any(item.open_tags for item in self.objects):
+            if (
+                self.panel_open_tags
+                or self.dropped_open_tags
+                or any(item.open_tags for item in self.objects)
+            ):
                 raise ObjectSceneVisualFrontendError("registered transcript carries open tags")
             partition_ids = (
                 *self.registered_panel_tag_ids,
@@ -1422,20 +1592,25 @@ class ObjectSceneTranscript:
         expected = {
             "schema", "panel_digest", "inventory_digest", "mode",
             "registry_digest", "panel_summary", "panel_open_tags",
-            "panel_registered_tag_cells", "registered_panel_tag_ids",
+            "panel_registered_tag_cells", "dropped_open_tags",
+            "registered_panel_tag_ids",
             "registered_entity_tag_ids", "objects",
-            "omitted_discovery_tag_semantics", *_authority_data(),
+            "omitted_discovery_tag_semantics",
+            "dropped_discovery_tag_semantics", *_authority_data(),
             "transcript_digest",
         }
         raw = _fields(value, expected, "object scene transcript")
         if (
             raw["schema"] != OBJECT_SCENE_TRANSCRIPT_SCHEMA
             or raw["omitted_discovery_tag_semantics"] != "indeterminate-never-absence"
+            or raw["dropped_discovery_tag_semantics"]
+            != "indeterminate-never-absence"
             or any(raw[key] != item for key, item in _authority_data().items())
             or any(
                 not isinstance(raw[key], list)
                 for key in (
                     "panel_open_tags", "panel_registered_tag_cells",
+                    "dropped_open_tags",
                     "registered_panel_tag_ids", "registered_entity_tag_ids",
                     "objects"
                 )
@@ -1454,6 +1629,10 @@ class ObjectSceneTranscript:
                 ObjectSceneRegisteredTagCell.from_data(item)
                 for item in raw["panel_registered_tag_cells"]
             ),
+            tuple(
+                ObjectSceneDroppedOpenTag.from_data(item)
+                for item in raw["dropped_open_tags"]
+            ),
             tuple(raw["registered_panel_tag_ids"]),
             tuple(raw["registered_entity_tag_ids"]),
             tuple(ObjectSceneTranscriptObject.from_data(item) for item in raw["objects"]),
@@ -1464,7 +1643,7 @@ class ObjectSceneTranscript:
         return result
 
 
-OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v2"
+OBJECT_SCENE_TAG_REGISTRY_SCHEMA = "gkm.object-scene-soft-tag-registry.v3"
 
 
 @dataclass(frozen=True, order=True, slots=True)
@@ -1795,7 +1974,13 @@ def object_scene_transcript_output_schema(
     open_tag = {
         "type": "object",
         "properties": {
-            "tag": {"type": "string"},
+            "tag": {
+                "type": "string",
+                "description": (
+                    "Lowercase affirmative visual phrase; at most "
+                    f"{OBJECT_SCENE_MAX_TAG_CHARACTERS} characters."
+                ),
+            },
             "state": {"type": "string", "enum": ["present", "indeterminate"]},
             "evidence": {"type": "string"},
         },
@@ -1830,7 +2015,14 @@ def object_scene_transcript_output_schema(
             "summary": {"type": "string"},
             "counts": {"type": "array", "items": count_cell},
             "observables": {"type": "array", "items": qualitative_cell},
-            "open_tags": {"type": "array", "items": open_tag},
+            "open_tags": {
+                "type": "array",
+                "description": (
+                    "At most "
+                    f"{OBJECT_SCENE_MAX_TAGS_PER_OBJECT} optional visual phrases."
+                ),
+                "items": open_tag,
+            },
             "registered_tags": {
                 "type": "array",
                 "items": registered_cell("entity"),
@@ -1843,7 +2035,14 @@ def object_scene_transcript_output_schema(
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
-            "open_tags": {"type": "array", "items": open_tag},
+            "open_tags": {
+                "type": "array",
+                "description": (
+                    "At most "
+                    f"{OBJECT_SCENE_MAX_TAGS_PER_PANEL} optional visual phrases."
+                ),
+                "items": open_tag,
+            },
             "registered_tags": {
                 "type": "array",
                 "items": registered_cell("panel"),
@@ -1884,6 +2083,9 @@ def object_scene_transcript_prompt(
             "including visible relations or arrangements spanning proposals. "
             "Each proposal's open_tags may contain at most eight short atomic "
             "affirmative visual phrases about that proposal itself. "
+            f"Every open_tags phrase must contain at most {OBJECT_SCENE_MAX_TAG_CHARACTERS} characters. "
+            "Natural internal visible relations using 'and' or 'than' are allowed, "
+            "but negation, alternatives, and experimental vocabulary are forbidden. "
             "Use normalized lowercase phrases in lexical order. Each may be present or indeterminate, never absent. "
             "Omission means only unrecorded and remains indeterminate; omission never means absent. "
             "All registered_tags arrays must be empty."
@@ -1964,7 +2166,7 @@ def prepare_object_scene_transcript_inputs(
     schema = object_scene_transcript_output_schema(inventory, mode, registry)
     identities = _presentation_identities(presentation)
     digest = canonical_digest({
-        "schema": "gkm.object-scene-prepared-transcript.v2",
+        "schema": "gkm.object-scene-prepared-transcript.v3",
         "inventory_digest": inventory.inventory_digest,
         "mode": mode.value,
         "registry_digest": None if registry is None else registry.registry_digest,
@@ -1983,24 +2185,85 @@ def _parse_transcript_tag_payload(
     registry_ids: tuple[str, ...],
     maximum_open_tags: int,
     label: str,
-) -> tuple[tuple[ObjectSceneOpenTag, ...], tuple[ObjectSceneRegisteredTagCell, ...]]:
+    scope: str,
+    owner_id: str,
+) -> tuple[
+    tuple[ObjectSceneOpenTag, ...],
+    tuple[ObjectSceneRegisteredTagCell, ...],
+    tuple[ObjectSceneDroppedOpenTag, ...],
+]:
     if not isinstance(open_values, list) or not isinstance(registered_values, list):
         raise ObjectSceneVisualFrontendError(f"{label} tag arrays differ")
     open_tags: list[ObjectSceneOpenTag] = []
     registered_cells: list[ObjectSceneRegisteredTagCell] = []
+    dropped: list[ObjectSceneDroppedOpenTag] = []
     if mode is ObjectSceneTranscriptMode.DISCOVERY:
-        if registered_values or len(open_values) > maximum_open_tags:
+        if registered_values:
             raise ObjectSceneVisualFrontendError(f"{label} discovery tag bounds differ")
-        for value in open_values:
-            tag = _fields(value, {"tag", "state", "evidence"}, f"{label} open tag payload")
-            open_tags.append(
-                ObjectSceneOpenTag.create(tag["tag"], tag["state"], tag["evidence"])
+        candidates: list[tuple[ObjectSceneOpenTag, int, object]] = []
+
+        def drop(index: int, value: object, reason: str) -> None:
+            dropped.append(
+                ObjectSceneDroppedOpenTag.create(
+                    scope=scope,
+                    owner_id=owner_id,
+                    item_index=index,
+                    raw_item=value,
+                    reason_code=reason,
+                )
             )
-        if len({item.tag for item in open_tags}) != len(open_tags):
-            raise ObjectSceneVisualFrontendError(
-                f"{label} open tag payload repeats a normalized tag"
+
+        for index, value in enumerate(open_values):
+            try:
+                tag = _fields(
+                    value,
+                    {"tag", "state", "evidence"},
+                    f"{label} open tag payload",
+                )
+            except ObjectSceneVisualFrontendError:
+                drop(index, value, "malformed_item")
+                continue
+            try:
+                phrase = _normalized_positive_tag(tag["tag"])
+            except ObjectSceneVisualFrontendError:
+                drop(index, value, "invalid_tag")
+                continue
+            if tag["state"] not in ("present", "indeterminate"):
+                drop(index, value, "invalid_state")
+                continue
+            try:
+                evidence = _normalized_bounded_prose(
+                    tag["evidence"], "open tag evidence", 240
+                )
+            except ObjectSceneVisualFrontendError:
+                drop(index, value, "invalid_evidence")
+                continue
+            candidates.append(
+                (
+                    ObjectSceneOpenTag.create(
+                        phrase, tag["state"], evidence
+                    ),
+                    index,
+                    value,
+                )
             )
-        open_tags.sort(key=lambda item: item.tag)
+
+        grouped: dict[str, list[tuple[ObjectSceneOpenTag, int, object]]] = {}
+        for candidate in candidates:
+            grouped.setdefault(candidate[0].tag, []).append(candidate)
+        unique: list[tuple[ObjectSceneOpenTag, int, object]] = []
+        for phrase in sorted(grouped):
+            group = grouped[phrase]
+            if len(group) == 1:
+                unique.append(group[0])
+                continue
+            for _, index, value in group:
+                drop(index, value, "duplicate_normalized_tag")
+        for observed, _, _ in unique[:maximum_open_tags]:
+            open_tags.append(observed)
+        for _, index, value in unique[maximum_open_tags:]:
+            drop(index, value, "capacity_exceeded")
+        dropped.sort(key=_dropped_open_tag_sort_key)
     else:
         if open_values or len(registered_values) != len(registry_ids):
             raise ObjectSceneVisualFrontendError(
@@ -2022,7 +2285,7 @@ def _parse_transcript_tag_payload(
                     tag["tag_id"], tag["state"], tag["evidence"]
                 )
             )
-    return tuple(open_tags), tuple(registered_cells)
+    return tuple(open_tags), tuple(registered_cells), tuple(dropped)
 
 
 def _parse_object_scene_transcript_payload(
@@ -2054,12 +2317,19 @@ def _parse_object_scene_transcript_payload(
         raw["panel"], {"summary", "open_tags", "registered_tags"},
         "payload panel",
     )
-    panel_open_tags, panel_registered_cells = _parse_transcript_tag_payload(
-        panel["open_tags"], panel["registered_tags"], mode=mode,
-        registry_ids=panel_registry_ids,
-        maximum_open_tags=OBJECT_SCENE_MAX_TAGS_PER_PANEL,
-        label="panel",
+    panel_open_tags, panel_registered_cells, panel_dropped = (
+        _parse_transcript_tag_payload(
+            panel["open_tags"],
+            panel["registered_tags"],
+            mode=mode,
+            registry_ids=panel_registry_ids,
+            maximum_open_tags=OBJECT_SCENE_MAX_TAGS_PER_PANEL,
+            label="panel",
+            scope="panel",
+            owner_id="panel",
+        )
     )
+    dropped_open_tags = list(panel_dropped)
     for index, (item, crop) in enumerate(zip(raw["objects"], inventory.objects, strict=True)):
         row = _fields(item, {"object_id", "summary", "counts", "observables", "open_tags", "registered_tags"}, f"payload object {index}")
         if row["object_id"] != crop.object_id or any(not isinstance(row[key], list) for key in ("counts", "observables", "open_tags", "registered_tags")):
@@ -2078,12 +2348,15 @@ def _parse_object_scene_transcript_payload(
             if cell["observable_id"] != expected_id:
                 raise ObjectSceneVisualFrontendError("qualitative payload order differs")
             qualities.append(ObjectSceneQualitativeCell.create(expected_id, cell["state"], cell["evidence"]))
-        open_tags, registered_cells = _parse_transcript_tag_payload(
+        open_tags, registered_cells, row_dropped = _parse_transcript_tag_payload(
             row["open_tags"], row["registered_tags"], mode=mode,
             registry_ids=entity_registry_ids,
             maximum_open_tags=OBJECT_SCENE_MAX_TAGS_PER_OBJECT,
             label=f"object {index}",
+            scope="entity",
+            owner_id=crop.object_id,
         )
+        dropped_open_tags.extend(row_dropped)
         row_values = {
             "object_id": crop.object_id,
             "crop_receipt_digest": crop.receipt_digest,
@@ -2107,6 +2380,9 @@ def _parse_object_scene_transcript_payload(
         ),
         "panel_open_tags": panel_open_tags,
         "panel_registered_tag_cells": panel_registered_cells,
+        "dropped_open_tags": tuple(
+            sorted(dropped_open_tags, key=_dropped_open_tag_sort_key)
+        ),
         "registered_panel_tag_ids": panel_registry_ids,
         "registered_entity_tag_ids": entity_registry_ids,
         "objects": tuple(rows),
@@ -2119,7 +2395,7 @@ def _parse_object_scene_transcript_payload(
 
 def object_scene_transcript_protocol_digest() -> str:
     return canonical_digest({
-        "schema": "gkm.object-scene-transcript-protocol.v2",
+        "schema": "gkm.object-scene-transcript-protocol.v3",
         "frontend_id": OBJECT_SCENE_FRONTEND_ID,
         "source_digest": object_scene_visual_frontend_source_digest(),
         "inventory_protocol_digest": object_scene_inventory_protocol_digest(),
@@ -2130,13 +2406,26 @@ def object_scene_transcript_protocol_digest() -> str:
         "fixed_qualitative_observable_ids": list(OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS),
         "discovery_tag_cap_per_proposal": OBJECT_SCENE_MAX_TAGS_PER_OBJECT,
         "discovery_tag_cap_for_whole_panel": OBJECT_SCENE_MAX_TAGS_PER_PANEL,
+        "discovery_tag_max_characters": OBJECT_SCENE_MAX_TAG_CHARACTERS,
+        "discovery_tag_drop_reason_codes": list(
+            OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES
+        ),
+        "discovery_tag_drop_record_schema": (
+            OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA
+        ),
+        "discovery_tag_item_failure_semantics": (
+            "quarantine-item-preserve-mandatory-transcript"
+        ),
+        "discovery_tag_drop_binding": (
+            "scope-owner-id-item-index-exact-raw-item-digest"
+        ),
         "whole_panel_summary_and_tag_cells": True,
         "whole_panel_is_not_a_semantic_object": True,
         "model_visible_unicode_normalization": (
             "predeclared-ordinary-punctuation-to-canonical-ascii-before-validation"
         ),
         "discovery_open_tag_input_order": (
-            "unordered-normalize-reject-duplicates-sort-lexically"
+            "unordered-normalize-drop-all-duplicate-members-then-lexical-cap"
         ),
         "registry_minimum_distinct_panel_frequency": OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY,
         "registry_capacity": OBJECT_SCENE_MAX_REGISTERED_TAGS,
@@ -2149,7 +2438,10 @@ def object_scene_transcript_protocol_digest() -> str:
             "whole-panel-cells-exhaust-panel-scope-and-each-proposal-exhausts-entity-scope"
         ),
         "omitted_or_unregistered_tag": "indeterminate-never-absence",
-        "failure_semantics": "error-never-absence",
+        "failure_semantics": (
+            "mandatory-and-registered-errors-fail-closed-never-absence;"
+            "optional-discovery-tag-item-errors-are-quarantined"
+        ),
         "repeated_registered_calls": "same-visible-envelope-distinct-opaque-context",
         **_authority_data(),
     })
@@ -2718,13 +3010,17 @@ def lookup_object_scene_panel_soft_tag(
 __all__ = [
     "CountInterval",
     "OBJECT_SCENE_COUNT_OBSERVABLE_IDS",
+    "OBJECT_SCENE_DISCOVERY_OPEN_TAG_DROP_REASON_CODES",
+    "OBJECT_SCENE_DROPPED_OPEN_TAG_SCHEMA",
     "OBJECT_SCENE_MAX_REGISTERED_TAGS",
+    "OBJECT_SCENE_MAX_TAG_CHARACTERS",
     "OBJECT_SCENE_MAX_TAGS_PER_PANEL",
     "OBJECT_SCENE_MAX_TAGS_PER_OBJECT",
     "OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS",
     "OBJECT_SCENE_SOFT_TAG_SCOPES",
     "ObjectSceneCountCell",
     "ObjectSceneCropReceipt",
+    "ObjectSceneDroppedOpenTag",
     "ObjectSceneDroppedSoftTag",
     "ObjectSceneOpenTag",
     "ObjectScenePreparedTranscriptInputs",

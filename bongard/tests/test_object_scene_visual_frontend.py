@@ -16,6 +16,7 @@ from bongard.evidence import Disposition
 import bongard.object_scene_visual_frontend as frontend
 from bongard.object_scene_visual_frontend import (
     OBJECT_SCENE_COUNT_OBSERVABLE_IDS,
+    OBJECT_SCENE_MAX_TAG_CHARACTERS,
     OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS,
     ObjectSceneProposalInventory,
     ObjectSceneSoftTagRegistry,
@@ -232,6 +233,14 @@ def test_visible_envelope_is_opaque_and_exhausts_fixed_vocabulary():
     for observable_id in (*OBJECT_SCENE_COUNT_OBSERVABLE_IDS, *OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS):
         assert observable_id in prompt
     assert "Omission means only unrecorded and remains indeterminate" in prompt
+    assert f"at most {OBJECT_SCENE_MAX_TAG_CHARACTERS} characters" in prompt
+    tag_schema = schema["properties"]["panel"]["properties"]["open_tags"][
+        "items"
+    ]["properties"]["tag"]
+    assert tag_schema["description"].endswith(
+        f"at most {OBJECT_SCENE_MAX_TAG_CHARACTERS} characters."
+    )
+    assert "maxLength" not in tag_schema
 
 
 def test_discovery_is_one_call_typed_and_cold_replayable():
@@ -385,7 +394,7 @@ def test_ordinary_lean_language_is_not_confused_with_proof_assistant_language():
     assert rejected.transcript is None
 
 
-def test_discovery_open_tags_are_sorted_after_normalization_and_duplicates_reject():
+def test_discovery_open_tags_are_sorted_and_all_duplicate_members_are_quarantined():
     raw = _scene()
     inventory = extract_object_scene_proposal_inventory(raw)
     payload = _payload(inventory, open_tags=("arched form", "wing-like form"))
@@ -422,9 +431,215 @@ def test_discovery_open_tags_are_sorted_after_normalization_and_duplicates_rejec
             "evidence": "same visible wing contour",
         },
     ]
-    rejected = _observe(raw, duplicate)
-    assert rejected.status is PrototypeSceneObserverStatus.PARSER_ERROR
-    assert rejected.transcript is None
+    salvaged = _observe(raw, duplicate)
+    assert salvaged.status is PrototypeSceneObserverStatus.SUCCESS
+    assert salvaged.transcript is not None
+    assert salvaged.transcript.objects[0].open_tags == ()
+    drops = tuple(
+        item
+        for item in salvaged.transcript.dropped_open_tags
+        if item.owner_id == "object_0000"
+    )
+    assert tuple(item.reason_code for item in drops) == (
+        "duplicate_normalized_tag",
+        "duplicate_normalized_tag",
+    )
+    assert tuple(item.item_index for item in drops) == (0, 1)
+    assert tuple(item.raw_item_digest for item in drops) == tuple(
+        frontend.canonical_digest(item)
+        for item in duplicate["objects"][0]["open_tags"]
+    )
+    assert lookup_object_scene_soft_tag(
+        salvaged, "object_0000", "wing - like form"
+    ).disposition is Disposition.INDETERMINATE
+
+
+def test_bad_discovery_tag_items_preserve_summaries_fixed_cells_and_cold_replay():
+    raw = _scene()
+    inventory = extract_object_scene_proposal_inventory(raw)
+    payload = _payload(inventory, open_tags=())
+    payload["panel"]["open_tags"] = [
+        {
+            "tag": "x" * (OBJECT_SCENE_MAX_TAG_CHARACTERS + 1),
+            "state": "present",
+            "evidence": "complete composition contains a visible form",
+        }
+    ]
+    row = payload["objects"][0]
+    row["open_tags"] = [
+        {
+            "tag": "larger upper arc and smaller lower arc",
+            "state": "present",
+            "evidence": "two differently sized arcs are visible",
+        },
+        {
+            "tag": "left arm longer than right arm",
+            "state": "present",
+            "evidence": "the left arm visibly extends farther",
+        },
+        {
+            "tag": "shape without internal marks",
+            "state": "present",
+            "evidence": "the interior appears plain",
+        },
+        {
+            "tag": "circle or triangle",
+            "state": "indeterminate",
+            "evidence": "the outline is visually ambiguous",
+        },
+        {
+            "tag": "role marked form",
+            "state": "present",
+            "evidence": "an outlined form is visible",
+        },
+        {
+            "tag": "y" * (OBJECT_SCENE_MAX_TAG_CHARACTERS + 1),
+            "state": "present",
+            "evidence": "an elongated form is visible",
+        },
+        "not-an-object",
+        {"tag": "missing evidence form", "state": "present"},
+        {
+            "tag": "pointed state form",
+            "state": "absent",
+            "evidence": "a pointed contour was inspected",
+        },
+        {
+            "tag": "small evidence form",
+            "state": "present",
+            "evidence": "x",
+        },
+    ]
+
+    artifact = _observe(raw, payload)
+
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    transcript = artifact.transcript
+    assert transcript.panel_summary == payload["panel"]["summary"]
+    assert transcript.panel_open_tags == ()
+    assert transcript.objects[0].summary == row["summary"]
+    assert len(transcript.objects[0].count_cells) == len(
+        OBJECT_SCENE_COUNT_OBSERVABLE_IDS
+    )
+    assert len(transcript.objects[0].qualitative_cells) == len(
+        OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS
+    )
+    assert tuple(item.tag for item in transcript.objects[0].open_tags) == tuple(
+        sorted(
+            (
+                "larger upper arc and smaller lower arc",
+                "left arm longer than right arm",
+            )
+        )
+    )
+    assert tuple(item.reason_code for item in transcript.dropped_open_tags) == (
+        "invalid_tag",
+        "invalid_tag",
+        "invalid_tag",
+        "invalid_tag",
+        "invalid_tag",
+        "malformed_item",
+        "malformed_item",
+        "invalid_state",
+        "invalid_evidence",
+    )
+    assert transcript.dropped_open_tags[0].scope == "panel"
+    assert transcript.dropped_open_tags[0].owner_id == "panel"
+    assert transcript.dropped_open_tags[0].item_index == 0
+    assert transcript.dropped_open_tags[0].raw_item_digest == (
+        frontend.canonical_digest(payload["panel"]["open_tags"][0])
+    )
+    assert verify_object_scene_transcript_artifact(
+        artifact,
+        raw,
+        expected_scene_id="opaque-scene",
+        expected_observation_context_digest=CONTEXT_A,
+        expected_panel_sha256=hashlib.sha256(raw).hexdigest(),
+        expected_artifact_digest=artifact.artifact_digest,
+    ) == artifact
+
+    tampered = deepcopy(artifact.to_data())
+    dropped = tampered["transcript"]["dropped_open_tags"][0]
+    dropped["raw_item_digest"] = "f" * 64
+    dropped["drop_digest"] = frontend.canonical_digest(
+        {key: value for key, value in dropped.items() if key != "drop_digest"}
+    )
+    transcript_data = tampered["transcript"]
+    transcript_data["transcript_digest"] = frontend.canonical_digest(
+        {
+            key: value
+            for key, value in transcript_data.items()
+            if key != "transcript_digest"
+        }
+    )
+    tampered["artifact_digest"] = frontend.canonical_digest(
+        {key: value for key, value in tampered.items() if key != "artifact_digest"}
+    )
+    resealed = ObjectSceneTranscriptArtifact.from_data(tampered)
+    with pytest.raises(
+        ObjectSceneVisualFrontendError,
+        match="transcript replay differs",
+    ):
+        verify_object_scene_transcript_artifact(
+            resealed,
+            raw,
+            expected_scene_id="opaque-scene",
+            expected_observation_context_digest=CONTEXT_A,
+            expected_panel_sha256=hashlib.sha256(raw).hexdigest(),
+            expected_artifact_digest=resealed.artifact_digest,
+        )
+
+
+def test_discovery_tag_capacity_is_lexical_and_excess_items_are_bound():
+    raw = _scene()
+    inventory = extract_object_scene_proposal_inventory(raw)
+    payload = _payload(inventory, open_tags=())
+    phrases = (
+        "form alpha",
+        "form beta",
+        "form gamma",
+        "form delta",
+        "form epsilon",
+        "form zeta",
+        "form eta",
+        "form theta",
+        "form iota",
+        "form kappa",
+    )
+    raw_items = [
+        {
+            "tag": phrase,
+            "state": "present",
+            "evidence": "the outlined form supports this phrase",
+        }
+        for phrase in reversed(phrases)
+    ]
+    payload["objects"][0]["open_tags"] = raw_items
+
+    artifact = _observe(raw, payload)
+
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    assert tuple(item.tag for item in artifact.transcript.objects[0].open_tags) == (
+        tuple(sorted(phrases))[:8]
+    )
+    capacity_drops = tuple(
+        item
+        for item in artifact.transcript.dropped_open_tags
+        if item.owner_id == "object_0000"
+    )
+    assert tuple(item.reason_code for item in capacity_drops) == (
+        "capacity_exceeded",
+        "capacity_exceeded",
+    )
+    assert {
+        item.raw_item_digest for item in capacity_drops
+    } == {
+        frontend.canonical_digest(item)
+        for item in raw_items
+        if item["tag"] in set(sorted(phrases)[8:])
+    }
 
 
 def test_registry_uses_distinct_panel_frequency_and_persists_every_drop():
@@ -627,6 +842,7 @@ def test_scope_partition_tampering_is_rejected_by_transcript_and_artifact():
         "panel_registered_tag_cells": transcript.objects[
             0
         ].registered_tag_cells,
+        "dropped_open_tags": transcript.dropped_open_tags,
         "registered_panel_tag_ids": transcript.registered_entity_tag_ids,
         "registered_entity_tag_ids": transcript.registered_panel_tag_ids,
         "objects": tuple(rows),

@@ -5,13 +5,15 @@ read the cohort plan, inspect the archive, create its output directory, release
 panel bytes, or call a model.  The official release gate durably appends one
 12-task exposure event before support bytes can be released.
 
-For every task, twelve support panels receive one discovery observation and
-two independent registered-evaluation observations.  Python constructs a
-closed, conservative predicate version space.  A typed gap makes no ranker or
-query calls; otherwise one zero-image ranker may select one frozen survivor.
-The exact formula is durably frozen and committed before exactly two sealed
-query panels are released.  Lean is absent and removable: Python artifacts are
-the sole decision and replay authority.
+For every task, twelve support panels receive one blind discovery observation.
+After that batch is durable, one zero-image proposer sees the frozen prose in
+both revealed support buckets and proposes an affirmative soft-tag union.  Two
+independent role-blind registered-evaluation observations ground those tags,
+then Python constructs a closed, conservative predicate version space.  A
+typed gap makes no ranker or query calls; otherwise one zero-image ranker may
+select one frozen survivor.  The exact formula is durably frozen and committed
+before exactly two sealed query panels are released.  Lean is absent and
+removable: Python artifacts are the sole decision and replay authority.
 """
 
 from __future__ import annotations
@@ -44,18 +46,20 @@ from bongard.object_bongard_batch import (
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v1"
+COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v2"
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
 DISCOVERY_CALLS_PER_TASK = 12
 REGISTERED_A_CALLS_PER_TASK = 12
 REGISTERED_B_CALLS_PER_TASK = 12
 SUPPORT_VISUAL_CALLS_PER_TASK = 36
+SEMANTIC_PROPOSER_CALLS_PER_TASK = 1
 MAX_RANKER_CALLS_PER_TASK = 1
 QUERY_CALLS_PER_TASK = 2
 QUERY_DENOMINATOR = TASK_COUNT * QUERY_CALLS_PER_TASK
 MAX_VISUAL_CALLS = TASK_COUNT * (SUPPORT_VISUAL_CALLS_PER_TASK + QUERY_CALLS_PER_TASK)
 MAX_RANKER_CALLS = TASK_COUNT
+MAX_SEMANTIC_PROPOSER_CALLS = TASK_COUNT
 
 MODEL = "gpt-5.6-sol"
 REASONING_EFFORT = "medium"
@@ -69,11 +73,18 @@ MAX_PARALLEL_WORKERS = 4
 DEFAULT_CAMPAIGN_MINUTES = 480
 
 TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v1"
-TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v1"
-TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v1"
-TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v1"
-TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v1"
-TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v1"
+TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v2"
+TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
+TASK_SEMANTIC_PREPARED_SCHEMA = (
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v2"
+)
+TASK_SEMANTIC_PROPOSAL_SCHEMA = (
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v2"
+)
+TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v2"
+TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v2"
+TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v2"
+TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v2"
 CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
 CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-campaign-runtime-custody.v1"
@@ -81,8 +92,8 @@ CAMPAIGN_RUNTIME_CUSTODY_SCHEMA = (
 QUERY_RELEASE_CUSTODY_SCHEMA = (
     "gkm.bongard-scene-predicate-query-release-custody.v1"
 )
-CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v1"
-CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v1"
+CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v2"
+CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v2"
 RESULT_FILENAME = "campaign_result.json"
 JOURNAL_DIRECTORY = "journals"
 
@@ -244,6 +255,7 @@ def _verify_accepted_calibration_first(
         getattr(verified, "accepted", False) is not True
         or getattr(verified, "status", None) != "accepted"
         or getattr(verified, "visual_fresh_call_count", None) != 36
+        or getattr(verified, "semantic_proposer_fresh_call_count", None) != 1
         or getattr(verified, "ranker_fresh_call_count", None) != 1
         or not isinstance(getattr(verified, "selected_survivor_digest", None), str)
     ):
@@ -253,6 +265,12 @@ def _verify_accepted_calibration_first(
     if _RAW_DIGEST.fullmatch(str(getattr(verified, "source_digest", ""))) is None:
         raise ObjectBongardScenePredicateCampaignCommandError(
             "accepted calibration source_digest differs"
+        )
+    if _RAW_DIGEST.fullmatch(
+        str(getattr(verified, "semantic_proposal_digest", ""))
+    ) is None:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "accepted calibration semantic proposal digest differs"
         )
     for name in (
         "authorization_digest",
@@ -281,6 +299,7 @@ def _verify_accepted_calibration_first(
 @dataclass(frozen=True, slots=True)
 class ObjectBongardScenePredicateCampaignBudget:
     discovery_calls: int = 0
+    semantic_proposer_calls: int = 0
     registered_a_calls: int = 0
     registered_b_calls: int = 0
     ranker_calls: int = 0
@@ -300,6 +319,8 @@ class ObjectBongardScenePredicateCampaignBudget:
             raise ObjectBongardScenePredicateCampaignCommandError("campaign task count differs")
         if (
             self.discovery_calls != task_count * DISCOVERY_CALLS_PER_TASK
+            or self.semantic_proposer_calls
+            != task_count * SEMANTIC_PROPOSER_CALLS_PER_TASK
             or self.registered_a_calls != task_count * REGISTERED_A_CALLS_PER_TASK
             or self.registered_b_calls != task_count * REGISTERED_B_CALLS_PER_TASK
             or not 0 <= self.ranker_calls <= task_count
@@ -316,7 +337,8 @@ class _CallBudget:
         self._lock = Lock()
         self._deadline_monotonic = deadline_monotonic
         self._counts = {stage: 0 for stage in (
-            "discovery", "registered_a", "registered_b", "ranker", "query"
+            "discovery", "semantic_proposer", "registered_a", "registered_b",
+            "ranker", "query"
         )}
 
     def count(self, stage: str, limit: int) -> None:
@@ -1014,6 +1036,9 @@ def prepare_object_bongard_scene_predicate_campaign(
     from bongard.object_scene_visual_frontend import (
         object_scene_visual_frontend_source_digest,
     )
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_source_digest,
+    )
     from bongard.prototype_scene_observer import (
         prototype_scene_transport_source_digest,
     )
@@ -1072,6 +1097,8 @@ def prepare_object_bongard_scene_predicate_campaign(
         "calibration_result": calibration_result,
         "scene_visual_frontend": "sha256:"
         + object_scene_visual_frontend_source_digest(),
+        "scene_semantic_registry": "sha256:"
+        + object_scene_semantic_registry_source_digest(),
         "scene_predicate_ir": "sha256:"
         + object_bongard_scene_predicate_ir_source_digest(),
         "turn_journal": "sha256:" + object_bongard_turn_journal_source_digest(),
@@ -1120,6 +1147,7 @@ def prepare_object_bongard_scene_predicate_campaign(
         configuration={
             "task_count": TASK_COUNT,
             "discovery_calls_per_task": DISCOVERY_CALLS_PER_TASK,
+            "semantic_proposer_calls_per_task": SEMANTIC_PROPOSER_CALLS_PER_TASK,
             "registered_a_calls_per_task": REGISTERED_A_CALLS_PER_TASK,
             "registered_b_calls_per_task": REGISTERED_B_CALLS_PER_TASK,
             "ranker_calls_max_per_task": MAX_RANKER_CALLS_PER_TASK,
@@ -1129,6 +1157,7 @@ def prepare_object_bongard_scene_predicate_campaign(
             "campaign_wall_clock_minutes": campaign_minutes,
             "maximum_visual_calls": MAX_VISUAL_CALLS,
             "maximum_ranker_calls": MAX_RANKER_CALLS,
+            "maximum_semantic_proposer_calls": MAX_SEMANTIC_PROPOSER_CALLS,
             "authenticated_runtime_persisted_before_exposure": True,
             "python_canonical": True,
             "lean_required": False,
@@ -1429,6 +1458,7 @@ def _observation_context_digest(
 def _stage_limit(stage: str) -> int:
     return {
         "discovery": TASK_COUNT * DISCOVERY_CALLS_PER_TASK,
+        "semantic_proposer": MAX_SEMANTIC_PROPOSER_CALLS,
         "registered_a": TASK_COUNT * REGISTERED_A_CALLS_PER_TASK,
         "registered_b": TASK_COUNT * REGISTERED_B_CALLS_PER_TASK,
         "query": TASK_COUNT * QUERY_CALLS_PER_TASK,
@@ -1686,7 +1716,7 @@ def _forbidden_named_transport(*_args: object, **_kwargs: object) -> object:
 
 
 def _forbidden_text_transport(*_args: object, **_kwargs: object) -> object:
-    raise AssertionError("campaign cold replay attempted a ranker model call")
+    raise AssertionError("campaign cold replay attempted a text model call")
 
 
 def _cold_replay_task_visual_batch(
@@ -1771,38 +1801,500 @@ def _cold_replay_task_visual_batch(
     return tuple(summaries)
 
 
+def _task_role_rows(
+    panels: Sequence[_TaskSupportPanel],
+) -> tuple[Mapping[str, object], ...]:
+    rows = tuple(
+        {
+            "ordinal": panel.ordinal,
+            "neutral_panel_digest": panel.neutral_panel_digest,
+            "historical_role": panel.support_role,
+            "blind_panel_id": panel.blind_panel_id,
+        }
+        for panel in panels
+    )
+    if (
+        len(rows) != SUPPORT_PANEL_COUNT_PER_TASK
+        or tuple(item["historical_role"] for item in rows) != (0,) * 6 + (1,) * 6
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task support role inventory differs"
+        )
+    return rows
+
+
+def _freeze_task_role_reveal(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    panels: Sequence[_TaskSupportPanel],
+    discovery_batch: Mapping[str, Any],
+) -> tuple[tuple[Mapping[str, object], ...], dict[str, Any], object]:
+    rows = _task_role_rows(panels)
+    record = _record(
+        {
+            "schema": TASK_ROLE_REVEAL_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "discovery_batch_digest": discovery_batch["batch_digest"],
+            "rows": [dict(item) for item in rows],
+            "revealed_after_blind_discovery_batch_was_durable": True,
+            "semantic_proposer_calls_after_reveal": SEMANTIC_PROPOSER_CALLS_PER_TASK,
+            "registered_visual_calls_after_reveal": (
+                REGISTERED_A_CALLS_PER_TASK + REGISTERED_B_CALLS_PER_TASK
+            ),
+            "registered_visual_evaluators_receive_roles": False,
+            **_authority_data(),
+        },
+        "role_reveal_digest",
+    )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-role-reveal",
+        record=record,
+        digest_field="role_reveal_digest",
+    )
+    if raw["rows"] != [dict(item) for item in rows]:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task role reveal durable replay differs"
+        )
+    return rows, raw, receipt
+
+
+def _semantic_prepared_record(
+    *,
+    task: object,
+    discovery_batch: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+    semantic_prepared: object,
+) -> dict[str, Any]:
+    return _record(
+        {
+            "schema": TASK_SEMANTIC_PREPARED_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "discovery_batch_digest": discovery_batch["batch_digest"],
+            "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "prepared_input": semantic_prepared.to_data(),
+            "preparation_digest": semantic_prepared.preparation_digest,
+            "prepared_input_persisted_before_zero_image_proposer_call": True,
+            **_authority_data(),
+        },
+        "semantic_prepared_digest",
+    )
+
+
+def _freeze_task_semantic_prepared(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    discovery_batch: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> tuple[object, dict[str, Any], object]:
+    from bongard.object_scene_semantic_registry import (
+        ObjectScenePreparedSemanticRegistryProposal,
+        prepare_object_scene_semantic_registry_proposal,
+    )
+
+    semantic_prepared = prepare_object_scene_semantic_registry_proposal(
+        tuple(discovery_artifacts), tuple(role_rows)
+    )
+    record = _semantic_prepared_record(
+        task=task,
+        discovery_batch=discovery_batch,
+        role_reveal=role_reveal,
+        semantic_prepared=semantic_prepared,
+    )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-semantic-prepared",
+        record=record,
+        digest_field="semantic_prepared_digest",
+    )
+    restored = ObjectScenePreparedSemanticRegistryProposal.from_data(
+        raw["prepared_input"]
+    )
+    expected = prepare_object_scene_semantic_registry_proposal(
+        tuple(discovery_artifacts), tuple(role_rows)
+    )
+    if restored != semantic_prepared or expected != semantic_prepared:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic prepared input durable replay differs"
+        )
+    return restored, raw, receipt
+
+
+def _semantic_proposal_result_record(
+    *,
+    task: object,
+    semantic_prepared_record: Mapping[str, Any],
+    semantic_proposal: object,
+    registry: object,
+    payload: Mapping[str, Any],
+    transport_receipt: object,
+    journal_directory: str,
+    journal_summary_digest: str,
+) -> dict[str, Any]:
+    status = getattr(semantic_proposal, "status", None)
+    if (
+        status not in ("proposed", "typed_proposal_gap")
+        or getattr(semantic_proposal, "preparation_digest", None)
+        != semantic_prepared_record["preparation_digest"]
+        or getattr(semantic_proposal, "registry_digest", None)
+        != getattr(registry, "registry_digest", None)
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal status differs"
+        )
+    return _record(
+        {
+            "schema": TASK_SEMANTIC_PROPOSAL_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "semantic_prepared_digest": semantic_prepared_record[
+                "semantic_prepared_digest"
+            ],
+            "semantic_proposal": semantic_proposal.to_data(),
+            "semantic_proposal_digest": semantic_proposal.proposal_digest,
+            "semantic_proposal_status": status,
+            "semantic_proposal_valid": status == "proposed",
+            "semantic_registry": registry.to_data(),
+            "semantic_registry_digest": registry.registry_digest,
+            "proposer_payload": _canonical_mapping(
+                payload, "task semantic proposer payload"
+            ),
+            "proposer_receipt": transport_receipt.to_dict(),
+            "proposer_receipt_digest": transport_receipt.receipt_digest,
+            "proposer_journal_directory": journal_directory,
+            "proposer_journal_summary_digest": journal_summary_digest,
+            "proposer_fresh_call_count": 1,
+            "proposer_reused_call_count": 0,
+            "quarantined_concept_count": len(
+                semantic_proposal.dropped_concepts
+            ),
+            "quarantined_concept_digests": [
+                item.drop_digest for item in semantic_proposal.dropped_concepts
+            ],
+            "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one": True,
+            "orientation_coverage_gap_suppresses_otherwise_valid_concepts_from_registry": True,
+            "structural_or_zero_orientation_payload_becomes_zero_tag_typed_gap": True,
+            **_authority_data(),
+        },
+        "semantic_proposal_result_digest",
+    )
+
+
+def _semantic_payload_gap_code(semantic_prepared: object) -> str:
+    usable_by_role = {
+        role: sum(
+            item["usable"] is True and item["historical_role"] == role
+            for item in getattr(semantic_prepared, "alias_bindings")
+        )
+        for role in (0, 1)
+    }
+    return (
+        "insufficient_discovery_evidence"
+        if any(count < 2 for count in usable_by_role.values())
+        else "payload_rejected"
+    )
+
+
+def _restore_task_semantic_proposal(
+    record: Mapping[str, Any],
+    *,
+    task: object,
+    semantic_prepared_record: Mapping[str, Any],
+    semantic_prepared: object,
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> tuple[object, object]:
+    from bongard.object_bongard_turn_journal import _receipt_from_data
+    from bongard.object_scene_semantic_registry import (
+        ObjectSceneSemanticRegistryPayloadError,
+        ObjectSceneSemanticRegistryProposal,
+        build_object_scene_semantic_registry_gap,
+        build_object_scene_semantic_registry_proposal,
+        verify_object_scene_semantic_registry_proposal,
+    )
+    from bongard.object_scene_visual_frontend import ObjectSceneSoftTagRegistry
+
+    raw = _canonical_mapping(record, "task semantic proposal result")
+    _validate_self_sealed_record(
+        raw,
+        schema=TASK_SEMANTIC_PROPOSAL_SCHEMA,
+        digest_field="semantic_proposal_result_digest",
+        label="task semantic proposal result",
+    )
+    persisted_proposal = ObjectSceneSemanticRegistryProposal.from_data(
+        raw["semantic_proposal"]
+    )
+    persisted_registry = ObjectSceneSoftTagRegistry.from_data(
+        raw["semantic_registry"]
+    )
+    payload = _canonical_mapping(raw["proposer_payload"], "semantic proposer payload")
+    if raw.get("semantic_proposal_status") == "proposed":
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            semantic_prepared, payload
+        )
+    elif raw.get("semantic_proposal_status") == "typed_proposal_gap":
+        try:
+            build_object_scene_semantic_registry_proposal(semantic_prepared, payload)
+        except ObjectSceneSemanticRegistryPayloadError:
+            pass
+        else:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "task semantic proposal gap payload is valid"
+            )
+        expected_gap_code = _semantic_payload_gap_code(semantic_prepared)
+        if persisted_proposal.gap_code != expected_gap_code:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "task semantic proposal gap code differs"
+            )
+        proposal, registry = build_object_scene_semantic_registry_gap(
+            semantic_prepared, expected_gap_code, payload
+        )
+    else:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal result status differs"
+        )
+    transport_receipt = _receipt_from_data(raw["proposer_receipt"])
+    expected = _semantic_proposal_result_record(
+        task=task,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_proposal=proposal,
+        registry=registry,
+        payload=payload,
+        transport_receipt=transport_receipt,
+        journal_directory=raw["proposer_journal_directory"],
+        journal_summary_digest=raw["proposer_journal_summary_digest"],
+    )
+    if (
+        proposal != persisted_proposal
+        or registry != persisted_registry
+        or raw != expected
+        or (proposal.status == "typed_proposal_gap" and tuple(registry.tags))
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal differs on reconstruction"
+        )
+    verify_object_scene_semantic_registry_proposal(
+        proposal,
+        registry,
+        tuple(discovery_artifacts),
+        tuple(role_rows),
+    )
+    return proposal, registry
+
+
+def _execute_task_semantic_proposal(
+    task_root: Path,
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    runtime: object,
+    semantic_prepared_record: Mapping[str, Any],
+    semantic_prepared: object,
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+    text_transport: Callable[..., object],
+    budget: _CallBudget,
+) -> tuple[object, object, dict[str, Any], object]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _journal_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardTextTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+    from bongard.object_scene_semantic_registry import (
+        ObjectSceneSemanticRegistryPayloadError,
+        build_object_scene_semantic_registry_gap,
+        build_object_scene_semantic_registry_proposal,
+    )
+
+    relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
+
+    def counted_transport(*args: object, **kwargs: object) -> object:
+        budget.count("semantic_proposer", _stage_limit("semantic_proposer"))
+        return text_transport(*args, **kwargs)
+
+    journal = ObjectBongardTextTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_semantic_{task_index:02d}",
+        turn_kind="semantic_registry_proposal",
+        expected_prompt=semantic_prepared.prompt,
+        expected_output_schema=semantic_prepared.output_schema,
+        runtime=runtime,
+        underlying_transport=counted_transport,
+    )
+    result = journal(
+        semantic_prepared.prompt,
+        semantic_prepared.output_schema,
+        **_journal_runtime_kwargs(runtime),
+    )
+    budget.assert_within_deadline()
+    payload = _canonical_mapping(result.payload, "task semantic proposer payload")
+    try:
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            semantic_prepared, payload
+        )
+    except ObjectSceneSemanticRegistryPayloadError:
+        proposal, registry = build_object_scene_semantic_registry_gap(
+            semantic_prepared, _semantic_payload_gap_code(semantic_prepared), payload
+        )
+    if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposer call accounting differs"
+        )
+    summary = verify_object_bongard_turn_journal(journal)
+    record = _semantic_proposal_result_record(
+        task=task,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_proposal=proposal,
+        registry=registry,
+        payload=payload,
+        transport_receipt=result.receipt,
+        journal_directory=str(relative),
+        journal_summary_digest=summary.record_digest,
+    )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-semantic-proposal",
+        record=record,
+        digest_field="semantic_proposal_result_digest",
+    )
+    restored_proposal, restored_registry = _restore_task_semantic_proposal(
+        raw,
+        task=task,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_prepared=semantic_prepared,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=role_rows,
+    )
+    if restored_proposal != proposal or restored_registry != registry:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal durable reload differs"
+        )
+    return proposal, registry, raw, receipt
+
+
+def _cold_replay_task_semantic_proposal(
+    task_root: Path,
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    runtime: object,
+    semantic_prepared_record: Mapping[str, Any],
+    semantic_prepared: object,
+    semantic_proposal_record: Mapping[str, Any],
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> tuple[object, object, str]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _journal_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardTextTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+
+    relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
+    journal = ObjectBongardTextTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_semantic_{task_index:02d}",
+        turn_kind="semantic_registry_proposal",
+        expected_prompt=semantic_prepared.prompt,
+        expected_output_schema=semantic_prepared.output_schema,
+        runtime=runtime,
+        underlying_transport=_forbidden_text_transport,
+    )
+    replayed = journal(
+        semantic_prepared.prompt,
+        semantic_prepared.output_schema,
+        **_journal_runtime_kwargs(runtime),
+    )
+    summary = verify_object_bongard_turn_journal(journal)
+    proposal, registry = _restore_task_semantic_proposal(
+        semantic_proposal_record,
+        task=task,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_prepared=semantic_prepared,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=role_rows,
+    )
+    if (
+        _canonical_mapping(replayed.payload, "replayed task semantic payload")
+        != semantic_proposal_record["proposer_payload"]
+        or replayed.receipt.to_dict()
+        != semantic_proposal_record["proposer_receipt"]
+        or summary.record_digest
+        != semantic_proposal_record["proposer_journal_summary_digest"]
+        or journal.fresh_call_count != 0
+        or journal.reused_call_count != 1
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposer cold replay differs"
+        )
+    return proposal, registry, summary.record_digest
+
+
 def _freeze_task_registry(
     *,
     prepared: PreparedObjectBongardScenePredicateCampaign,
     task: object,
     discovery_batch: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+    semantic_prepared_record: Mapping[str, Any],
+    semantic_proposal_record: Mapping[str, Any],
+    semantic_proposal: object,
+    registry: object,
     discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
 ) -> tuple[object, dict[str, Any], object]:
-    from bongard.object_scene_visual_frontend import (
-        ObjectSceneSoftTagRegistry,
-        freeze_object_scene_soft_tag_registry,
-        verify_object_scene_soft_tag_registry,
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+        verify_object_scene_semantic_registry_proposal,
     )
+    from bongard.object_scene_visual_frontend import ObjectSceneSoftTagRegistry
 
-    transcripts = tuple(
-        item.transcript
-        for item in discovery_artifacts
-        if getattr(item, "transcript", None) is not None
+    verify_object_scene_semantic_registry_proposal(
+        semantic_proposal,
+        registry,
+        tuple(discovery_artifacts),
+        tuple(role_rows),
     )
-    registry = freeze_object_scene_soft_tag_registry(transcripts)
     record = _record(
         {
             "schema": TASK_REGISTRY_SCHEMA,
             "command_id": COMMAND_ID,
             "task_plan_digest": getattr(task, "record_digest"),
             "discovery_batch_digest": discovery_batch["batch_digest"],
+            "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "semantic_prepared_digest": semantic_prepared_record[
+                "semantic_prepared_digest"
+            ],
+            "semantic_proposal_result_digest": semantic_proposal_record[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": getattr(
+                semantic_proposal, "proposal_digest"
+            ),
+            "semantic_proposal_status": getattr(semantic_proposal, "status"),
             "registry": registry.to_data(),
             "registry_digest": registry.registry_digest,
-            "successful_discovery_transcript_count": len(transcripts),
-            "discovery_error_or_parser_gap_count": (
-                SUPPORT_PANEL_COUNT_PER_TASK - len(transcripts)
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
             ),
-            "support_roles_used": False,
+            "orientation_membership_discarded_before_registered_visual_calls": True,
+            "registered_visual_evaluators_receive_roles": False,
             "persisted_and_reloaded_before_registered_pass_a": True,
             **_authority_data(),
         },
@@ -1815,8 +2307,11 @@ def _freeze_task_registry(
         digest_field="registry_freeze_digest",
     )
     restored = ObjectSceneSoftTagRegistry.from_data(raw["registry"])
-    verify_object_scene_soft_tag_registry(
-        restored, transcripts, expected_registry_digest=raw["registry_digest"]
+    verify_object_scene_semantic_registry_proposal(
+        semantic_proposal,
+        restored,
+        tuple(discovery_artifacts),
+        tuple(role_rows),
     )
     if restored != registry:
         raise ObjectBongardScenePredicateCampaignCommandError(
@@ -1852,8 +2347,11 @@ def _freeze_task_ir(
     *,
     prepared: PreparedObjectBongardScenePredicateCampaign,
     task: object,
-    panels: Sequence[_TaskSupportPanel],
     registry: object,
+    semantic_proposal: object,
+    semantic_proposal_record: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+    role_rows: Sequence[Mapping[str, object]],
     discovery_artifacts: Sequence[object],
     registered_a_artifacts: Sequence[object],
     registered_b_artifacts: Sequence[object],
@@ -1873,29 +2371,22 @@ def _freeze_task_ir(
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task registered pass A/B model-visible envelopes differ"
         )
-    # This is the first point where support roles exist in the version-space
-    # construction.  Every visual artifact and both registered batches are
-    # already durable and reloaded.
-    role_rows = tuple(
-        {
-            "ordinal": panel.ordinal,
-            "neutral_panel_digest": panel.neutral_panel_digest,
-            "historical_role": panel.support_role,
-            "blind_panel_id": panel.blind_panel_id,
-        }
-        for panel in panels
-    )
     bundle = build_object_bongard_scene_predicate_calibration_bundle(
         registry,
         tuple(discovery_artifacts),
         tuple(registered_a_artifacts),
         tuple(registered_b_artifacts),
-        role_rows,
+        tuple(role_rows),
+        semantic_registry_proposal=semantic_proposal,
     )
     data = bundle.to_data()
     decoded = ScenePredicateCalibrationBundle.from_data(data)
     replayed = cold_replay_object_bongard_scene_predicate_calibration_bundle(
-        decoded, registry
+        decoded,
+        registry,
+        semantic_registry_proposal=semantic_proposal,
+        discovery_artifacts=tuple(discovery_artifacts),
+        role_rows=tuple(role_rows),
     )
     if replayed != decoded:
         raise ObjectBongardScenePredicateCampaignCommandError(
@@ -1909,8 +2400,17 @@ def _freeze_task_ir(
             "discovery_batch_digest": discovery_batch["batch_digest"],
             "registered_a_batch_digest": registered_a_batch["batch_digest"],
             "registered_b_batch_digest": registered_b_batch["batch_digest"],
+            "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "semantic_proposal_result_digest": semantic_proposal_record[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": getattr(
+                semantic_proposal, "proposal_digest"
+            ),
+            "semantic_proposal_status": getattr(semantic_proposal, "status"),
             "role_rows": [dict(item) for item in role_rows],
-            "roles_revealed_after_all_three_support_batches": True,
+            "roles_revealed_after_discovery_before_semantic_proposer": True,
+            "registered_visual_passes_were_role_blind": True,
             "bundle": data,
             "bundle_digest": bundle.bundle_digest,
             "model_calls_during_python_build_or_replay": 0,
@@ -2021,6 +2521,7 @@ def _rank_task_bundle(
     task_index: int,
     bundle: object,
     ir_record: Mapping[str, Any],
+    semantic_proposal_record: Mapping[str, Any],
     runtime: object,
     text_transport: Callable[..., object],
     budget: _CallBudget,
@@ -2034,8 +2535,19 @@ def _rank_task_bundle(
     )
 
     survivors = tuple(getattr(bundle, "complete_survivor_digests"))
-    slate = tuple(dict(item) for item in getattr(bundle, "ranker_slate"))
-    omitted = tuple(dict(item) for item in getattr(bundle, "omitted_survivors"))
+    semantic_valid = semantic_proposal_record.get("semantic_proposal_valid") is True
+    if semantic_valid:
+        slate = tuple(dict(item) for item in getattr(bundle, "ranker_slate"))
+        omitted = tuple(dict(item) for item in getattr(bundle, "omitted_survivors"))
+    else:
+        slate = ()
+        omitted = tuple(
+            {
+                "candidate_digest": item,
+                "reason": "mandatory_semantic_proposal_gap",
+            }
+            for item in survivors
+        )
     rank_input_record = _record(
         {
             "schema": TASK_RANK_INPUT_SCHEMA,
@@ -2043,6 +2555,16 @@ def _rank_task_bundle(
             "task_plan_digest": getattr(task, "record_digest"),
             "ir_freeze_digest": ir_record["ir_freeze_digest"],
             "bundle_digest": getattr(bundle, "bundle_digest"),
+            "semantic_proposal_result_digest": semantic_proposal_record[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": semantic_proposal_record[
+                "semantic_proposal_digest"
+            ],
+            "semantic_proposal_status": semantic_proposal_record[
+                "semantic_proposal_status"
+            ],
+            "semantic_proposal_valid": semantic_valid,
             "complete_survivor_digests": list(survivors),
             "ranker_slate": list(slate),
             "omitted_survivors": list(omitted),
@@ -2057,7 +2579,7 @@ def _rank_task_bundle(
         record=rank_input_record,
         digest_field="rank_input_digest",
     )
-    if not survivors:
+    if not semantic_valid or not survivors:
         if slate:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "typed gap carries a ranker slate"
@@ -2068,7 +2590,11 @@ def _rank_task_bundle(
                 "command_id": COMMAND_ID,
                 "task_plan_digest": getattr(task, "record_digest"),
                 "rank_input_digest": rank_input["rank_input_digest"],
-                "status": "typed_gap",
+                "status": (
+                    "typed_semantic_proposal_gap"
+                    if not semantic_valid
+                    else "typed_version_space_gap"
+                ),
                 "ranker_called": False,
                 "ranker_fresh_call_count": 0,
                 "selected_survivor_digest": None,
@@ -2171,8 +2697,15 @@ def _cold_replay_task_ranker(
 
     slate = tuple(rank_input["ranker_slate"])
     if not slate:
+        semantic_valid = rank_input.get("semantic_proposal_valid") is True
+        expected_status = (
+            "typed_version_space_gap"
+            if semantic_valid
+            else "typed_semantic_proposal_gap"
+        )
         if (
-            rank_input["complete_survivor_digests"]
+            (semantic_valid and rank_input["complete_survivor_digests"])
+            or rank_result.get("status") != expected_status
             or rank_result["ranker_called"] is not False
             or rank_result["selected_survivor_digest"] is not None
             or (task_root / JOURNAL_DIRECTORY / "ranker").exists()
@@ -2474,6 +3007,7 @@ def _budget_delta(
         name: getattr(after, name) - getattr(before, name)
         for name in (
             "discovery_calls",
+            "semantic_proposer_calls",
             "registered_a_calls",
             "registered_b_calls",
             "ranker_calls",
@@ -2515,11 +3049,48 @@ def _execute_task(
         transport=named_image_transport,
         budget=budget,
     )
+    role_rows, role_reveal, role_reveal_receipt = _freeze_task_role_reveal(
+        prepared=prepared,
+        task=task,
+        panels=panels,
+        discovery_batch=discovery_batch,
+    )
+    semantic_prepared, semantic_prepared_record, semantic_prepared_receipt = (
+        _freeze_task_semantic_prepared(
+            prepared=prepared,
+            task=task,
+            discovery_batch=discovery_batch,
+            role_reveal=role_reveal,
+            discovery_artifacts=discovery,
+            role_rows=role_rows,
+        )
+    )
+    semantic_proposal, semantic_registry, semantic_proposal_record, semantic_proposal_receipt = (
+        _execute_task_semantic_proposal(
+            task_root,
+            prepared=prepared,
+            task=task,
+            task_index=task_index,
+            runtime=runtime,
+            semantic_prepared_record=semantic_prepared_record,
+            semantic_prepared=semantic_prepared,
+            discovery_artifacts=discovery,
+            role_rows=role_rows,
+            text_transport=text_transport,
+            budget=budget,
+        )
+    )
     registry, registry_record, registry_receipt = _freeze_task_registry(
         prepared=prepared,
         task=task,
         discovery_batch=discovery_batch,
+        role_reveal=role_reveal,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_proposal_record=semantic_proposal_record,
+        semantic_proposal=semantic_proposal,
+        registry=semantic_registry,
         discovery_artifacts=discovery,
+        role_rows=role_rows,
     )
     pass_a, pass_a_batch, pass_a_receipt = _execute_task_visual_batch(
         task_root,
@@ -2548,8 +3119,11 @@ def _execute_task(
     bundle, ir_record, ir_receipt = _freeze_task_ir(
         prepared=prepared,
         task=task,
-        panels=panels,
         registry=registry,
+        semantic_proposal=semantic_proposal,
+        semantic_proposal_record=semantic_proposal_record,
+        role_reveal=role_reveal,
+        role_rows=role_rows,
         discovery_artifacts=discovery,
         registered_a_artifacts=pass_a,
         registered_b_artifacts=pass_b,
@@ -2565,6 +3139,7 @@ def _execute_task(
             task_index=task_index,
             bundle=bundle,
             ir_record=ir_record,
+            semantic_proposal_record=semantic_proposal_record,
             runtime=runtime,
             text_transport=text_transport,
             budget=budget,
@@ -2580,13 +3155,25 @@ def _execute_task(
     query_batch: dict[str, Any] | None = None
     query_batch_receipt: object | None = None
     score_rows: tuple[dict[str, Any], dict[str, Any]]
+    semantic_valid = semantic_proposal_record["semantic_proposal_valid"] is True
     if selected is None:
-        if bundle.complete_survivor_digests:
+        if semantic_valid and bundle.complete_survivor_digests:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "nonempty task version space was converted to a gap"
             )
+        if not semantic_valid and (
+            tuple(getattr(registry, "tags"))
+            or rank_result.get("status") != "typed_semantic_proposal_gap"
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "invalid semantic proposal escaped its zero-tag typed gap"
+            )
         score_rows = _typed_gap_score_rows()
     else:
+        if not semantic_valid:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "invalid semantic proposal reached ranker or query release"
+            )
         selected_data = candidate_by_digest.get(selected)
         if selected_data is None:
             raise ObjectBongardScenePredicateCampaignCommandError(
@@ -2688,8 +3275,33 @@ def _execute_task(
             digest_field="batch_digest",
         )
 
+    replayed_semantic_proposal, replayed_semantic_registry, semantic_journal_summary = (
+        _cold_replay_task_semantic_proposal(
+            task_root,
+            prepared=prepared,
+            task=task,
+            task_index=task_index,
+            runtime=runtime,
+            semantic_prepared_record=semantic_prepared_record,
+            semantic_prepared=semantic_prepared,
+            semantic_proposal_record=semantic_proposal_record,
+            discovery_artifacts=discovery,
+            role_rows=role_rows,
+        )
+    )
+    if (
+        replayed_semantic_proposal != semantic_proposal
+        or replayed_semantic_registry != registry
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic proposal changed during terminal replay"
+        )
     replayed_bundle = cold_replay_object_bongard_scene_predicate_calibration_bundle(
-        bundle, registry
+        bundle,
+        registry,
+        semantic_registry_proposal=semantic_proposal,
+        discovery_artifacts=discovery,
+        role_rows=role_rows,
     )
     if replayed_bundle != bundle:
         raise ObjectBongardScenePredicateCampaignCommandError(
@@ -2745,6 +3357,7 @@ def _execute_task(
     queried = selected is not None
     expected_delta = {
         "discovery_calls": DISCOVERY_CALLS_PER_TASK,
+        "semantic_proposer_calls": SEMANTIC_PROPOSER_CALLS_PER_TASK,
         "registered_a_calls": REGISTERED_A_CALLS_PER_TASK,
         "registered_b_calls": REGISTERED_B_CALLS_PER_TASK,
         "ranker_calls": int(queried),
@@ -2756,6 +3369,9 @@ def _execute_task(
         )
     dependencies = {
         "discovery_batch": discovery_receipt.to_data(),
+        "role_reveal": role_reveal_receipt.to_data(),
+        "semantic_prepared": semantic_prepared_receipt.to_data(),
+        "semantic_proposal": semantic_proposal_receipt.to_data(),
         "registry_freeze": registry_receipt.to_data(),
         "registered_a_batch": pass_a_receipt.to_data(),
         "registered_b_batch": pass_b_receipt.to_data(),
@@ -2778,7 +3394,18 @@ def _execute_task(
                 item.release_store_receipt.to_data() for item in panels
             ],
             "dependencies": dependencies,
-            "status": "evaluated" if queried else "typed_gap",
+            "status": (
+                "evaluated"
+                if queried
+                else (
+                    "typed_semantic_proposal_gap"
+                    if not semantic_valid
+                    else "typed_version_space_gap"
+                )
+            ),
+            "semantic_proposal_digest": semantic_proposal.proposal_digest,
+            "semantic_proposal_status": semantic_proposal.status,
+            "semantic_proposal_valid": semantic_valid,
             "selected_survivor_digest": selected,
             "bundle_digest": bundle.bundle_digest,
             "rank_result_digest": rank_result["rank_result_digest"],
@@ -2797,7 +3424,9 @@ def _execute_task(
             "typed_gap_makes_no_ranker_or_query_calls": not queried,
             "terminal_python_ir_cold_replayed": True,
             "support_journal_summary_digests": list(support_journal_summaries),
+            "semantic_proposer_journal_summary_digest": semantic_journal_summary,
             "query_journal_summary_digests": list(query_journal_summaries),
+            "semantic_proposer_journal_cold_replayed": True,
             "ranker_journal_cold_replayed_if_called": queried,
             "all_task_journals_cold_replayed_without_model_calls": True,
             **_authority_data(),
@@ -2830,6 +3459,7 @@ class VerifiedObjectBongardScenePredicateCampaign:
     typed_gap_count: int
     evaluated_task_count: int
     visual_fresh_call_count: int
+    semantic_proposer_fresh_call_count: int
     ranker_fresh_call_count: int
 
 
@@ -2862,6 +3492,7 @@ def _verified_campaign(root: Path, result: Mapping[str, Any]) -> VerifiedObjectB
         int(result["typed_gap_count"]),
         int(result["evaluated_task_count"]),
         int(result["physical_calls"]["visual_calls"]),
+        int(result["physical_calls"]["semantic_proposer_calls"]),
         int(result["physical_calls"]["ranker_calls"]),
     )
 
@@ -3004,6 +3635,8 @@ def run_object_bongard_scene_predicate_campaign_command(
             "support_visual_journals_cold_replayed": (
                 TASK_COUNT * SUPPORT_VISUAL_CALLS_PER_TASK
             ),
+            "semantic_proposer_journals_cold_replayed": TASK_COUNT,
+            "semantic_registry_proposals_cold_replayed": TASK_COUNT,
             "query_visual_journals_cold_replayed": queried_count * 2,
             "ranker_journals_cold_replayed": queried_count,
             "model_calls_during_replay": 0,
@@ -3052,6 +3685,7 @@ def run_object_bongard_scene_predicate_campaign_command(
             },
             "physical_calls": {
                 "discovery_calls": final_budget.discovery_calls,
+                "semantic_proposer_calls": final_budget.semantic_proposer_calls,
                 "registered_a_calls": final_budget.registered_a_calls,
                 "registered_b_calls": final_budget.registered_b_calls,
                 "ranker_calls": final_budget.ranker_calls,
@@ -3310,6 +3944,9 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         "support_release_receipts",
         "dependencies",
         "status",
+        "semantic_proposal_digest",
+        "semantic_proposal_status",
+        "semantic_proposal_valid",
         "selected_survivor_digest",
         "bundle_digest",
         "rank_result_digest",
@@ -3324,7 +3961,9 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         "typed_gap_makes_no_ranker_or_query_calls",
         "terminal_python_ir_cold_replayed",
         "support_journal_summary_digests",
+        "semantic_proposer_journal_summary_digest",
         "query_journal_summary_digests",
+        "semantic_proposer_journal_cold_replayed",
         "ranker_journal_cold_replayed_if_called",
         "all_task_journals_cold_replayed_without_model_calls",
         *_authority_data(),
@@ -3338,8 +3977,19 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
     query_summaries = raw.get("query_journal_summary_digests")
     selected = raw.get("selected_survivor_digest")
     queried = selected is not None
+    semantic_valid = raw.get("semantic_proposal_valid") is True
+    expected_status = (
+        "evaluated"
+        if queried
+        else (
+            "typed_semantic_proposal_gap"
+            if not semantic_valid
+            else "typed_version_space_gap"
+        )
+    )
     expected_delta = {
         "discovery_calls": DISCOVERY_CALLS_PER_TASK,
+        "semantic_proposer_calls": SEMANTIC_PROPOSER_CALLS_PER_TASK,
         "registered_a_calls": REGISTERED_A_CALLS_PER_TASK,
         "registered_b_calls": REGISTERED_B_CALLS_PER_TASK,
         "ranker_calls": int(queried),
@@ -3375,7 +4025,12 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         or raw.get("correct_count") != sum(item["correct"] for item in rows)
         or type(raw.get("score_denominator_contribution")) is not int
         or raw["score_denominator_contribution"] != QUERY_CALLS_PER_TASK
-        or raw.get("status") != ("evaluated" if queried else "typed_gap")
+        or type(raw.get("semantic_proposal_valid")) is not bool
+        or raw.get("semantic_proposal_status")
+        != ("proposed" if semantic_valid else "typed_proposal_gap")
+        or (queried and not semantic_valid)
+        or _RAW_DIGEST.fullmatch(str(raw.get("semantic_proposal_digest"))) is None
+        or raw.get("status") != expected_status
         or not isinstance(delta, Mapping)
         or set(delta) != set(expected_delta)
         or any(type(delta.get(key)) is not int for key in expected_delta)
@@ -3390,6 +4045,9 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         or set(dependencies)
         != {
             "discovery_batch",
+            "role_reveal",
+            "semantic_prepared",
+            "semantic_proposal",
             "registry_freeze",
             "registered_a_batch",
             "registered_b_batch",
@@ -3403,6 +4061,11 @@ def _validate_task_result_record(value: object) -> dict[str, Any]:
         or (raw.get("task_decision_commit_digest") is None) is queried
         or raw.get("typed_gap_makes_no_ranker_or_query_calls") is queried
         or raw.get("ranker_journal_cold_replayed_if_called") is not queried
+        or raw.get("semantic_proposer_journal_cold_replayed") is not True
+        or _ADDRESS.fullmatch(
+            str(raw.get("semantic_proposer_journal_summary_digest"))
+        )
+        is None
         or raw.get("all_task_journals_cold_replayed_without_model_calls") is not True
         or raw.get("support_pixels_released_only_through_official_gate") is not True
         or raw.get("query_pixels_released_only_after_exact_formula_commit")
@@ -3439,12 +4102,16 @@ def _verify_task_from_store(
         build_object_bongard_scene_predicate_calibration_bundle,
         cold_replay_object_bongard_scene_predicate_calibration_bundle,
     )
-    from bongard.object_bongard_release_gate import ObjectBongardWriteOnceReceipt
+    from bongard.object_scene_semantic_registry import (
+        ObjectScenePreparedSemanticRegistryProposal,
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+        prepare_object_scene_semantic_registry_proposal,
+        verify_object_scene_semantic_registry_proposal,
+    )
     from bongard.object_scene_visual_frontend import (
         ObjectSceneSoftTagRegistry,
         ObjectSceneTranscriptArtifact,
         extract_object_scene_proposal_inventory,
-        verify_object_scene_soft_tag_registry,
     )
     from bongard.official_panel_archive import ReleasedOfficialPanel
 
@@ -3523,6 +4190,17 @@ def _verify_task_from_store(
     dependencies = task_result["dependencies"]
     dependency_specs = (
         ("discovery_batch", "discovery batch", "scene-discovery-batch"),
+        ("role_reveal", "role reveal", "scene-task-role-reveal"),
+        (
+            "semantic_prepared",
+            "semantic prepared input",
+            "scene-task-semantic-prepared",
+        ),
+        (
+            "semantic_proposal",
+            "semantic proposal",
+            "scene-task-semantic-proposal",
+        ),
         ("registry_freeze", "registry freeze", "scene-task-registry"),
         ("registered_a_batch", "registered A batch", "scene-registered-a-batch"),
         ("registered_b_batch", "registered B batch", "scene-registered-b-batch"),
@@ -3539,6 +4217,9 @@ def _verify_task_from_store(
             expected_object_kind=kind,
         )
     discovery = loaded["discovery_batch"][0]
+    role_reveal = loaded["role_reveal"][0]
+    semantic_prepared_record = loaded["semantic_prepared"][0]
+    semantic_proposal_record = loaded["semantic_proposal"][0]
     registry_record = loaded["registry_freeze"][0]
     pass_a = loaded["registered_a_batch"][0]
     pass_b = loaded["registered_b_batch"][0]
@@ -3557,6 +4238,19 @@ def _verify_task_from_store(
             label=f"{stage} batch",
         )
     for raw, schema, field, label in (
+        (role_reveal, TASK_ROLE_REVEAL_SCHEMA, "role_reveal_digest", "role reveal"),
+        (
+            semantic_prepared_record,
+            TASK_SEMANTIC_PREPARED_SCHEMA,
+            "semantic_prepared_digest",
+            "semantic prepared input",
+        ),
+        (
+            semantic_proposal_record,
+            TASK_SEMANTIC_PROPOSAL_SCHEMA,
+            "semantic_proposal_result_digest",
+            "semantic proposal",
+        ),
         (registry_record, TASK_REGISTRY_SCHEMA, "registry_freeze_digest", "registry freeze"),
         (ir_record, TASK_IR_SCHEMA, "ir_freeze_digest", "IR freeze"),
         (rank_input, TASK_RANK_INPUT_SCHEMA, "rank_input_digest", "rank input"),
@@ -3565,16 +4259,72 @@ def _verify_task_from_store(
         _validate_self_sealed_record(
             raw, schema=schema, digest_field=field, label=label
         )
+    role_reveal_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "discovery_batch_digest",
+        "rows",
+        "revealed_after_blind_discovery_batch_was_durable",
+        "semantic_proposer_calls_after_reveal",
+        "registered_visual_calls_after_reveal",
+        "registered_visual_evaluators_receive_roles",
+        *_authority_data(),
+        "role_reveal_digest",
+    }
+    semantic_prepared_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "discovery_batch_digest",
+        "role_reveal_digest",
+        "prepared_input",
+        "preparation_digest",
+        "prepared_input_persisted_before_zero_image_proposer_call",
+        *_authority_data(),
+        "semantic_prepared_digest",
+    }
+    semantic_proposal_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "semantic_prepared_digest",
+        "semantic_proposal",
+        "semantic_proposal_digest",
+        "semantic_proposal_status",
+        "semantic_proposal_valid",
+        "semantic_registry",
+        "semantic_registry_digest",
+        "proposer_payload",
+        "proposer_receipt",
+        "proposer_receipt_digest",
+        "proposer_journal_directory",
+        "proposer_journal_summary_digest",
+        "proposer_fresh_call_count",
+        "proposer_reused_call_count",
+        "quarantined_concept_count",
+        "quarantined_concept_digests",
+        "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one",
+        "orientation_coverage_gap_suppresses_otherwise_valid_concepts_from_registry",
+        "structural_or_zero_orientation_payload_becomes_zero_tag_typed_gap",
+        *_authority_data(),
+        "semantic_proposal_result_digest",
+    }
     registry_fields = {
         "schema",
         "command_id",
         "task_plan_digest",
         "discovery_batch_digest",
+        "role_reveal_digest",
+        "semantic_prepared_digest",
+        "semantic_proposal_result_digest",
+        "semantic_proposal_digest",
+        "semantic_proposal_status",
         "registry",
         "registry_digest",
-        "successful_discovery_transcript_count",
-        "discovery_error_or_parser_gap_count",
-        "support_roles_used",
+        "registry_derivation_mode",
+        "orientation_membership_discarded_before_registered_visual_calls",
+        "registered_visual_evaluators_receive_roles",
         "persisted_and_reloaded_before_registered_pass_a",
         *_authority_data(),
         "registry_freeze_digest",
@@ -3586,8 +4336,13 @@ def _verify_task_from_store(
         "discovery_batch_digest",
         "registered_a_batch_digest",
         "registered_b_batch_digest",
+        "role_reveal_digest",
+        "semantic_proposal_result_digest",
+        "semantic_proposal_digest",
+        "semantic_proposal_status",
         "role_rows",
-        "roles_revealed_after_all_three_support_batches",
+        "roles_revealed_after_discovery_before_semantic_proposer",
+        "registered_visual_passes_were_role_blind",
         "bundle",
         "bundle_digest",
         "model_calls_during_python_build_or_replay",
@@ -3600,6 +4355,10 @@ def _verify_task_from_store(
         "task_plan_digest",
         "ir_freeze_digest",
         "bundle_digest",
+        "semantic_proposal_result_digest",
+        "semantic_proposal_digest",
+        "semantic_proposal_status",
+        "semantic_proposal_valid",
         "complete_survivor_digests",
         "ranker_slate",
         "omitted_survivors",
@@ -3624,8 +4383,25 @@ def _verify_task_from_store(
     selected_rank_result_fields = gap_rank_result_fields | {
         "ranker_journal_summary_digest"
     }
+    nested_semantic_proposal = semantic_proposal_record.get("semantic_proposal")
+    nested_dropped_concepts = (
+        nested_semantic_proposal.get("dropped_concepts")
+        if isinstance(nested_semantic_proposal, Mapping)
+        else None
+    )
+    nested_drop_digests = (
+        [
+            item.get("drop_digest") if isinstance(item, Mapping) else None
+            for item in nested_dropped_concepts
+        ]
+        if isinstance(nested_dropped_concepts, list)
+        else None
+    )
     if (
-        set(registry_record) != registry_fields
+        set(role_reveal) != role_reveal_fields
+        or set(semantic_prepared_record) != semantic_prepared_fields
+        or set(semantic_proposal_record) != semantic_proposal_fields
+        or set(registry_record) != registry_fields
         or set(ir_record) != ir_fields
         or set(rank_input) != rank_input_fields
         or set(rank_result)
@@ -3634,37 +4410,109 @@ def _verify_task_from_store(
             if rank_result.get("ranker_called") is True
             else gap_rank_result_fields
         )
-        or registry_record.get("support_roles_used") is not False
+        or role_reveal.get("revealed_after_blind_discovery_batch_was_durable")
+        is not True
+        or role_reveal.get("semantic_proposer_calls_after_reveal")
+        != SEMANTIC_PROPOSER_CALLS_PER_TASK
+        or role_reveal.get("registered_visual_calls_after_reveal")
+        != REGISTERED_A_CALLS_PER_TASK + REGISTERED_B_CALLS_PER_TASK
+        or role_reveal.get("registered_visual_evaluators_receive_roles") is not False
+        or semantic_prepared_record.get(
+            "prepared_input_persisted_before_zero_image_proposer_call"
+        )
+        is not True
+        or semantic_proposal_record.get("proposer_fresh_call_count") != 1
+        or semantic_proposal_record.get("proposer_reused_call_count") != 0
+        or semantic_proposal_record.get(
+            "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one"
+        )
+        is not True
+        or semantic_proposal_record.get(
+            "orientation_coverage_gap_suppresses_otherwise_valid_concepts_from_registry"
+        )
+        is not True
+        or semantic_proposal_record.get(
+            "structural_or_zero_orientation_payload_becomes_zero_tag_typed_gap"
+        )
+        is not True
+        or semantic_proposal_record.get("quarantined_concept_count")
+        != (
+            len(nested_dropped_concepts)
+            if isinstance(nested_dropped_concepts, list)
+            else None
+        )
+        or semantic_proposal_record.get("quarantined_concept_digests")
+        != nested_drop_digests
+        or registry_record.get(
+            "orientation_membership_discarded_before_registered_visual_calls"
+        )
+        is not True
+        or registry_record.get("registry_derivation_mode")
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        or registry_record.get("registered_visual_evaluators_receive_roles") is not False
         or registry_record.get(
             "persisted_and_reloaded_before_registered_pass_a"
         )
         is not True
-        or ir_record.get("roles_revealed_after_all_three_support_batches")
+        or ir_record.get("roles_revealed_after_discovery_before_semantic_proposer")
         is not True
+        or ir_record.get("registered_visual_passes_were_role_blind") is not True
         or ir_record.get("model_calls_during_python_build_or_replay") != 0
         or rank_input.get("ranker_input_frozen_before_call") is not True
         or any(
             record.get("command_id") != COMMAND_ID
-            for record in (registry_record, ir_record, rank_input, rank_result)
+            for record in (
+                role_reveal,
+                semantic_prepared_record,
+                semantic_proposal_record,
+                registry_record,
+                ir_record,
+                rank_input,
+                rank_result,
+            )
         )
         or any(
             record.get(key) != value
-            for record in (registry_record, ir_record, rank_input, rank_result)
+            for record in (
+                role_reveal,
+                semantic_prepared_record,
+                semantic_proposal_record,
+                registry_record,
+                ir_record,
+                rank_input,
+                rank_result,
+            )
             for key, value in _authority_data().items()
         )
     ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task registry/IR/rank wrapper fields differ"
         )
+    expected_roles = [dict(item) for item in _task_role_rows(panels)]
+    discovery_artifacts = _restore_task_visual_batch(
+        discovery,
+        stage="discovery",
+        task=task,
+        panels=panels,
+        registry=None,
+    )
+    semantic_prepared = ObjectScenePreparedSemanticRegistryProposal.from_data(
+        semantic_prepared_record["prepared_input"]
+    )
+    rebuilt_semantic_prepared = prepare_object_scene_semantic_registry_proposal(
+        discovery_artifacts, expected_roles
+    )
+    semantic_proposal, semantic_registry = _restore_task_semantic_proposal(
+        semantic_proposal_record,
+        task=task,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_prepared=semantic_prepared,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=expected_roles,
+    )
     registry = ObjectSceneSoftTagRegistry.from_data(registry_record["registry"])
     artifacts = (
-        _restore_task_visual_batch(
-            discovery,
-            stage="discovery",
-            task=task,
-            panels=panels,
-            registry=None,
-        ),
+        discovery_artifacts,
         _restore_task_visual_batch(
             pass_a,
             stage="registered_a",
@@ -3680,52 +4528,53 @@ def _verify_task_from_store(
             registry=registry,
         ),
     )
-    successful_discovery_count = sum(
-        item.transcript is not None for item in artifacts[0]
-    )
     if (
-        type(registry_record.get("successful_discovery_transcript_count")) is not int
-        or registry_record["successful_discovery_transcript_count"]
-        != successful_discovery_count
-        or type(registry_record.get("discovery_error_or_parser_gap_count")) is not int
-        or registry_record["discovery_error_or_parser_gap_count"]
-        != SUPPORT_PANEL_COUNT_PER_TASK - successful_discovery_count
-    ):
-        raise ObjectBongardScenePredicateCampaignCommandError(
-            "task discovery/registry accounting differs"
+        semantic_prepared != rebuilt_semantic_prepared
+        or semantic_prepared_record
+        != _semantic_prepared_record(
+            task=task,
+            discovery_batch=discovery,
+            role_reveal=role_reveal,
+            semantic_prepared=rebuilt_semantic_prepared,
         )
-    verify_object_scene_soft_tag_registry(
-        registry,
-        tuple(
-            item.transcript for item in artifacts[0] if item.transcript is not None
-        ),
-        expected_registry_digest=registry.registry_digest,
-    )
-    if (
-        registry_record["task_plan_digest"] != getattr(task, "record_digest")
+        or role_reveal.get("task_plan_digest") != getattr(task, "record_digest")
+        or role_reveal.get("discovery_batch_digest") != discovery["batch_digest"]
+        or role_reveal.get("rows") != expected_roles
+        or registry != semantic_registry
+        or registry_record["task_plan_digest"] != getattr(task, "record_digest")
         or registry_record["discovery_batch_digest"] != discovery["batch_digest"]
+        or registry_record["role_reveal_digest"]
+        != role_reveal["role_reveal_digest"]
+        or registry_record["semantic_prepared_digest"]
+        != semantic_prepared_record["semantic_prepared_digest"]
+        or registry_record["semantic_proposal_result_digest"]
+        != semantic_proposal_record["semantic_proposal_result_digest"]
+        or registry_record["semantic_proposal_digest"]
+        != semantic_proposal.proposal_digest
+        or registry_record["semantic_proposal_status"] != semantic_proposal.status
         or registry_record["registry_digest"] != registry.registry_digest
         or ir_record["task_plan_digest"] != getattr(task, "record_digest")
         or ir_record["discovery_batch_digest"] != discovery["batch_digest"]
         or ir_record["registered_a_batch_digest"] != pass_a["batch_digest"]
         or ir_record["registered_b_batch_digest"] != pass_b["batch_digest"]
+        or ir_record["role_reveal_digest"] != role_reveal["role_reveal_digest"]
+        or ir_record["semantic_proposal_result_digest"]
+        != semantic_proposal_record["semantic_proposal_result_digest"]
+        or ir_record["semantic_proposal_digest"] != semantic_proposal.proposal_digest
+        or ir_record["semantic_proposal_status"] != semantic_proposal.status
+        or ir_record["role_rows"] != expected_roles
+        or task_result["semantic_proposal_digest"]
+        != semantic_proposal.proposal_digest
+        or task_result["semantic_proposal_status"] != semantic_proposal.status
+        or task_result["semantic_proposal_valid"]
+        is not (semantic_proposal.status == "proposed")
     ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task visual/registry/IR parent binding differs"
         )
-    expected_roles = [
-        {
-            "ordinal": panel.ordinal,
-            "neutral_panel_digest": panel.neutral_panel_digest,
-            "historical_role": panel.support_role,
-            "blind_panel_id": panel.blind_panel_id,
-        }
-        for panel in panels
-    ]
-    if ir_record["role_rows"] != expected_roles:
-        raise ObjectBongardScenePredicateCampaignCommandError(
-            "task support role reveal differs"
-        )
+    verify_object_scene_semantic_registry_proposal(
+        semantic_proposal, registry, discovery_artifacts, expected_roles
+    )
     persisted_support_summaries = [
         row["journal_summary_digest"]
         for batch in (discovery, pass_a, pass_b)
@@ -3771,13 +4620,60 @@ def _verify_task_from_store(
         raise ObjectBongardScenePredicateCampaignCommandError(
             "support journals differ on disk cold replay"
         )
+    replayed_semantic_proposal, replayed_registry, semantic_summary = (
+        _cold_replay_task_semantic_proposal(
+            task_root,
+            prepared=prepared,
+            task=task,
+            task_index=task_index,
+            runtime=runtime,
+            semantic_prepared_record=semantic_prepared_record,
+            semantic_prepared=semantic_prepared,
+            semantic_proposal_record=semantic_proposal_record,
+            discovery_artifacts=discovery_artifacts,
+            role_rows=expected_roles,
+        )
+    )
+    if (
+        replayed_semantic_proposal != semantic_proposal
+        or replayed_registry != registry
+        or semantic_summary
+        != task_result["semantic_proposer_journal_summary_digest"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "semantic proposer differs on disk cold replay"
+        )
 
     bundle = ScenePredicateCalibrationBundle.from_data(ir_record["bundle"])
     replayed_bundle = cold_replay_object_bongard_scene_predicate_calibration_bundle(
-        bundle, registry
+        bundle,
+        registry,
+        semantic_registry_proposal=semantic_proposal,
+        discovery_artifacts=artifacts[0],
+        role_rows=ir_record["role_rows"],
     )
     rebuilt_bundle = build_object_bongard_scene_predicate_calibration_bundle(
-        registry, artifacts[0], artifacts[1], artifacts[2], ir_record["role_rows"]
+        registry,
+        artifacts[0],
+        artifacts[1],
+        artifacts[2],
+        ir_record["role_rows"],
+        semantic_registry_proposal=semantic_proposal,
+    )
+    semantic_valid = semantic_proposal.status == "proposed"
+    expected_ranker_slate = (
+        [dict(item) for item in bundle.ranker_slate] if semantic_valid else []
+    )
+    expected_omitted = (
+        [dict(item) for item in bundle.omitted_survivors]
+        if semantic_valid
+        else [
+            {
+                "candidate_digest": item,
+                "reason": "mandatory_semantic_proposal_gap",
+            }
+            for item in bundle.complete_survivor_digests
+        ]
     )
     if (
         replayed_bundle != bundle
@@ -3787,11 +4683,15 @@ def _verify_task_from_store(
         or rank_input["task_plan_digest"] != getattr(task, "record_digest")
         or rank_input["ir_freeze_digest"] != ir_record["ir_freeze_digest"]
         or rank_input["bundle_digest"] != bundle.bundle_digest
+        or rank_input["semantic_proposal_result_digest"]
+        != semantic_proposal_record["semantic_proposal_result_digest"]
+        or rank_input["semantic_proposal_digest"] != semantic_proposal.proposal_digest
+        or rank_input["semantic_proposal_status"] != semantic_proposal.status
+        or rank_input["semantic_proposal_valid"] is not semantic_valid
         or rank_input["complete_survivor_digests"]
         != list(bundle.complete_survivor_digests)
-        or rank_input["ranker_slate"] != [dict(item) for item in bundle.ranker_slate]
-        or rank_input["omitted_survivors"]
-        != [dict(item) for item in bundle.omitted_survivors]
+        or rank_input["ranker_slate"] != expected_ranker_slate
+        or rank_input["omitted_survivors"] != expected_omitted
         or rank_result["task_plan_digest"] != getattr(task, "record_digest")
         or rank_result["rank_input_digest"] != rank_input["rank_input_digest"]
         or task_result["rank_result_digest"] != rank_result["rank_result_digest"]
@@ -3814,10 +4714,16 @@ def _verify_task_from_store(
             "task rank selection differs on disk cold replay"
         )
     if selected is None:
+        expected_gap_status = (
+            "typed_version_space_gap"
+            if semantic_valid
+            else "typed_semantic_proposal_gap"
+        )
         if (
-            bundle.complete_survivor_digests
+            (semantic_valid and bundle.complete_survivor_digests)
+            or (not semantic_valid and tuple(registry.tags))
             or rank_result.get("ranker_called") is not False
-            or rank_result.get("status") != "typed_gap"
+            or rank_result.get("status") != expected_gap_status
             or rank_result.get("ranker_fresh_call_count") != 0
             or rank_result.get("ranker_payload") is not None
             or rank_result.get("ranker_journal_directory") is not None
@@ -3829,6 +4735,11 @@ def _verify_task_from_store(
                 "typed gap rank/query custody differs"
             )
         return int(task_result["correct_count"]), False
+
+    if not semantic_valid:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "semantic proposal gap reached persisted ranker/query path"
+        )
 
     query_batch, _ = _load_stored_record(
         store,
@@ -4172,6 +5083,8 @@ def verify_object_bongard_scene_predicate_campaign(
         "task_python_version_spaces_cold_replayed",
         "query_formula_evaluations_recomputed",
         "support_visual_journals_cold_replayed",
+        "semantic_proposer_journals_cold_replayed",
+        "semantic_registry_proposals_cold_replayed",
         "query_visual_journals_cold_replayed",
         "ranker_journals_cold_replayed",
         "model_calls_during_replay",
@@ -4206,6 +5119,7 @@ def verify_object_bongard_scene_predicate_campaign(
         or set(calls)
         != {
             "discovery_calls",
+            "semantic_proposer_calls",
             "registered_a_calls",
             "registered_b_calls",
             "ranker_calls",
@@ -4235,6 +5149,8 @@ def verify_object_bongard_scene_predicate_campaign(
                 "task_python_version_spaces_cold_replayed",
                 "query_formula_evaluations_recomputed",
                 "support_visual_journals_cold_replayed",
+                "semantic_proposer_journals_cold_replayed",
+                "semantic_registry_proposals_cold_replayed",
                 "query_visual_journals_cold_replayed",
                 "ranker_journals_cold_replayed",
                 "model_calls_during_replay",
@@ -4440,6 +5356,9 @@ def verify_object_bongard_scene_predicate_campaign(
     from bongard.object_scene_visual_frontend import (
         object_scene_visual_frontend_source_digest,
     )
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_source_digest,
+    )
     from bongard.prototype_scene_observer import (
         prototype_scene_transport_source_digest,
     )
@@ -4453,6 +5372,8 @@ def verify_object_bongard_scene_predicate_campaign(
         "calibration_result": getattr(calibration, "result_digest"),
         "scene_visual_frontend": "sha256:"
         + object_scene_visual_frontend_source_digest(),
+        "scene_semantic_registry": "sha256:"
+        + object_scene_semantic_registry_source_digest(),
         "scene_predicate_ir": "sha256:"
         + object_bongard_scene_predicate_ir_source_digest(),
         "turn_journal": "sha256:" + object_bongard_turn_journal_source_digest(),
@@ -4465,6 +5386,7 @@ def verify_object_bongard_scene_predicate_campaign(
     expected_configuration = {
         "task_count": TASK_COUNT,
         "discovery_calls_per_task": DISCOVERY_CALLS_PER_TASK,
+        "semantic_proposer_calls_per_task": SEMANTIC_PROPOSER_CALLS_PER_TASK,
         "registered_a_calls_per_task": REGISTERED_A_CALLS_PER_TASK,
         "registered_b_calls_per_task": REGISTERED_B_CALLS_PER_TASK,
         "ranker_calls_max_per_task": MAX_RANKER_CALLS_PER_TASK,
@@ -4474,6 +5396,7 @@ def verify_object_bongard_scene_predicate_campaign(
         "campaign_wall_clock_minutes": envelope["campaign_wall_clock_minutes"],
         "maximum_visual_calls": MAX_VISUAL_CALLS,
         "maximum_ranker_calls": MAX_RANKER_CALLS,
+        "maximum_semantic_proposer_calls": MAX_SEMANTIC_PROPOSER_CALLS,
         "authenticated_runtime_persisted_before_exposure": True,
         "python_canonical": True,
         "lean_required": False,
@@ -4546,6 +5469,14 @@ def verify_object_bongard_scene_predicate_campaign(
                         / f"panel_{panel_index:02d}"
                     ).as_posix()
                 )
+        expected_journal_roots.add(
+            (
+                Path("tasks")
+                / f"task_{index:02d}"
+                / JOURNAL_DIRECTORY
+                / "semantic_registry_proposer"
+            ).as_posix()
+        )
         if task_result["selected_survivor_digest"] is not None:
             expected_journal_roots.add(
                 (
@@ -4598,6 +5529,7 @@ def verify_object_bongard_scene_predicate_campaign(
         )
     expected_calls = {
         "discovery_calls": TASK_COUNT * DISCOVERY_CALLS_PER_TASK,
+        "semantic_proposer_calls": TASK_COUNT * SEMANTIC_PROPOSER_CALLS_PER_TASK,
         "registered_a_calls": TASK_COUNT * REGISTERED_A_CALLS_PER_TASK,
         "registered_b_calls": TASK_COUNT * REGISTERED_B_CALLS_PER_TASK,
         "ranker_calls": queried,
@@ -4615,6 +5547,8 @@ def verify_object_bongard_scene_predicate_campaign(
         or score["accuracy"] != correct / QUERY_DENOMINATOR
         or replay.get("support_visual_journals_cold_replayed")
         != TASK_COUNT * SUPPORT_VISUAL_CALLS_PER_TASK
+        or replay.get("semantic_proposer_journals_cold_replayed") != TASK_COUNT
+        or replay.get("semantic_registry_proposals_cold_replayed") != TASK_COUNT
         or replay.get("query_visual_journals_cold_replayed")
         != queried * QUERY_CALLS_PER_TASK
         or replay.get("ranker_journals_cold_replayed") != queried
@@ -4677,6 +5611,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "typed_gap_count": verified.typed_gap_count,
                 "evaluated_task_count": verified.evaluated_task_count,
                 "visual_fresh_call_count": verified.visual_fresh_call_count,
+                "semantic_proposer_fresh_call_count": (
+                    verified.semantic_proposer_fresh_call_count
+                ),
                 "ranker_fresh_call_count": verified.ranker_fresh_call_count,
             }
         ).decode("utf-8")

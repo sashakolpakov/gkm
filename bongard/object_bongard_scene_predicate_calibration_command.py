@@ -71,27 +71,27 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v2"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v2"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v2"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v2"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v2"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v2"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v2"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v2"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v2"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v3"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v3"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v3"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v3"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v3"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v3"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v3"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v3"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v3"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v1"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v2"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v1"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v2"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v2"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v2"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v2"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v2"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v2"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v2"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v3"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v3"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v3"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v3"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v3"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v3"
 IR_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v2"
 
 AUTHORIZATION_FILENAME = "authorization.json"
@@ -176,7 +176,8 @@ def _authority_data() -> dict[str, object]:
         "blind_discovery_frozen_before_support_role_reveal": True,
         "support_roles_revealed_before_semantic_synthesis": True,
         "affirmative_concepts_for_both_orientations_proposed_in_one_call": True,
-        "semantic_invalid_payload_is_typed_proposal_gap_not_absence": True,
+        "semantic_invalid_optional_rows_are_quarantined_with_provenance": True,
+        "semantic_structural_or_zero_orientation_payload_is_typed_gap_not_absence": True,
         "one_scoped_union_registry_frozen_before_registered_evaluation": True,
         "registered_evaluator_receives_support_roles": False,
         "concept_or_formula_added_after_registered_evaluation": False,

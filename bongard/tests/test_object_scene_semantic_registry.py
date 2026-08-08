@@ -183,6 +183,7 @@ def test_valid_both_bucket_union_uses_citations_for_counts_and_order(
     )
 
     assert proposal.status == "proposed"
+    assert proposal.dropped_concepts == ()
     assert tuple(
         (item.tag_id, item.scope, item.tag, item.distinct_panel_count)
         for item in registry.tags
@@ -238,34 +239,56 @@ def test_same_phrase_may_exist_at_panel_and_entity_scope(discovery_inputs):
         "contrastive curvedness",
     ),
 )
-def test_rejects_negation_logical_packaging_and_role_comparison(
+def test_quarantines_negation_logical_packaging_and_role_comparison(
     discovery_inputs, phrase,
 ):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     payload = _valid_payload(prepared)
     payload["side0_positive"][0]["phrase"] = phrase
-    with pytest.raises(ObjectSceneSemanticRegistryError):
-        build_object_scene_semantic_registry_proposal(prepared, payload)
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert proposal.status == "proposed"
+    assert len(proposal.dropped_concepts) == 1
+    assert proposal.dropped_concepts[0].orientation == "side0_positive"
+    assert proposal.dropped_concepts[0].input_index == 0
+    assert proposal.dropped_concepts[0].reason_code == "phrase_policy"
+    assert phrase not in {item.tag for item in registry.tags}
+    assert {item.tag for item in registry.tags} == {
+        "mismatched parts",
+        "unequal edge lengths",
+        "balanced spacing",
+    }
 
 
-def test_rejects_duplicate_scoped_phrase_and_duplicate_citation(discovery_inputs):
+def test_quarantines_duplicate_scoped_phrase_and_duplicate_citation(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     payload = _valid_payload(prepared)
     payload["side1_positive"][1]["scope"] = "entity"
     payload["side1_positive"][1]["phrase"] = "mismatched parts"
-    with pytest.raises(ObjectSceneSemanticRegistryError, match="repeats"):
-        build_object_scene_semantic_registry_proposal(prepared, payload)
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
+        "duplicate_scoped_phrase",
+        "duplicate_scoped_phrase",
+    )
+    assert "mismatched parts" not in {item.tag for item in registry.tags}
 
     payload = _valid_payload(prepared)
     alias = _aliases(prepared, 0)[0]
     payload["side0_positive"][0]["citations"] = [alias, alias]
-    with pytest.raises(ObjectSceneSemanticRegistryError, match="distinct"):
-        build_object_scene_semantic_registry_proposal(prepared, payload)
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert len(proposal.dropped_concepts) == 1
+    assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+    assert "paired visible forms" not in {item.tag for item in registry.tags}
 
 
-def test_rejects_foreign_and_cross_side_citations(discovery_inputs):
+def test_quarantines_foreign_and_cross_side_citations(discovery_inputs):
     artifacts, roles = discovery_inputs
     prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
     for citation in ("panel_999", _aliases(prepared, 1)[0]):
@@ -273,11 +296,15 @@ def test_rejects_foreign_and_cross_side_citations(discovery_inputs):
         payload["side0_positive"][0]["citations"] = [
             _aliases(prepared, 0)[0], citation
         ]
-        with pytest.raises(ObjectSceneSemanticRegistryError, match="foreign|cross-side"):
-            build_object_scene_semantic_registry_proposal(prepared, payload)
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            prepared, payload
+        )
+        assert len(proposal.dropped_concepts) == 1
+        assert proposal.dropped_concepts[0].reason_code == "foreign_citation"
+        assert "paired visible forms" not in {item.tag for item in registry.tags}
 
 
-def test_rejects_malformed_citation_items_with_typed_payload_error(
+def test_quarantines_malformed_citation_items_without_losing_valid_concepts(
     discovery_inputs,
 ):
     artifacts, roles = discovery_inputs
@@ -285,8 +312,73 @@ def test_rejects_malformed_citation_items_with_typed_payload_error(
     for malformed in ([{}, {}], [1, 2], [_aliases(prepared, 0)[0], 2]):
         payload = _valid_payload(prepared)
         payload["side0_positive"][0]["citations"] = malformed
-        with pytest.raises(ObjectSceneSemanticRegistryError):
-            build_object_scene_semantic_registry_proposal(prepared, payload)
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            prepared, payload
+        )
+        assert len(proposal.dropped_concepts) == 1
+        assert proposal.dropped_concepts[0].reason_code == "citation_policy"
+        assert "paired visible forms" not in {item.tag for item in registry.tags}
+
+
+def test_all_invalid_rows_in_one_bucket_produce_typed_payload_error(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = _valid_payload(prepared)
+    for row in payload["side0_positive"]:
+        row["phrase"] = "not a visible affirmative concept"
+    with pytest.raises(
+        ObjectSceneSemanticRegistryError, match="no usable concept"
+    ):
+        build_object_scene_semantic_registry_proposal(prepared, payload)
+
+
+def test_long_spatial_phrases_survive_while_one_compound_is_quarantined(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    side0 = _aliases(prepared, 0)
+    side1 = _aliases(prepared, 1)
+    payload = {
+        "side0_positive": [
+            _concept(
+                "entity",
+                "a jagged region paired with chains of outlined motifs",
+                side0[:2],
+            ),
+            _concept(
+                "panel",
+                "a larger intricate figure in the lower-left region",
+                side0[1:3],
+            ),
+        ],
+        "side1_positive": [
+            _concept(
+                "entity", "serrated edging along decorated bands", side1[:2]
+            ),
+            _concept(
+                "entity",
+                "mixed circular triangular and quadrilateral outlines",
+                side1[1:3],
+            ),
+        ],
+    }
+    proposal, registry = build_object_scene_semantic_registry_proposal(
+        prepared, payload
+    )
+    assert proposal.status == "proposed"
+    assert tuple(item.reason_code for item in proposal.dropped_concepts) == (
+        "phrase_policy",
+    )
+    assert proposal.dropped_concepts[0].orientation == "side1_positive"
+    assert proposal.dropped_concepts[0].input_index == 1
+    assert {item.tag for item in registry.tags} == {
+        "a jagged region paired with chains of outlined motifs",
+        "a larger intricate figure in the lower-left region",
+        "serrated edging along decorated bands",
+    }
 
 
 def test_prepare_requires_exact_twelve_and_six_per_role(discovery_inputs):
@@ -424,6 +516,41 @@ def test_typed_gap_has_zero_tags_and_verifies(discovery_inputs, gap_code):
     assert proposal.status == "typed_proposal_gap"
     assert proposal.model_payload == rejected_payload
     assert proposal.side0_positive == proposal.side1_positive == ()
+    assert registry.tags == ()
+    assert verify_object_scene_semantic_registry_proposal(
+        proposal, registry, artifacts, roles
+    ) == proposal
+
+
+def test_orientation_coverage_gap_binds_valid_rows_and_quarantines_invalid_rows(
+    discovery_inputs,
+):
+    artifacts, roles = discovery_inputs
+    prepared = prepare_object_scene_semantic_registry_proposal(artifacts, roles)
+    payload = {
+        "side0_positive": [
+            _concept(
+                "entity", "a birdlike angular silhouette", _aliases(prepared, 0)[:2]
+            )
+        ],
+        "side1_positive": [
+            _concept(
+                "entity", "circular and triangular outlines", _aliases(prepared, 1)[:2]
+            )
+        ],
+    }
+    with pytest.raises(ObjectSceneSemanticRegistryError, match="no usable concept"):
+        build_object_scene_semantic_registry_proposal(prepared, payload)
+    proposal, registry = build_object_scene_semantic_registry_gap(
+        prepared, "payload_rejected", payload
+    )
+    assert proposal.status == "typed_proposal_gap"
+    assert proposal.model_payload == payload
+    assert proposal.side0_positive == proposal.side1_positive == ()
+    assert tuple(
+        (item.orientation, item.input_index, item.reason_code)
+        for item in proposal.dropped_concepts
+    ) == (("side1_positive", 0, "phrase_policy"),)
     assert registry.tags == ()
     assert verify_object_scene_semantic_registry_proposal(
         proposal, registry, artifacts, roles

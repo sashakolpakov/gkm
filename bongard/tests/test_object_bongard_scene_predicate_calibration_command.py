@@ -438,6 +438,7 @@ def _run(
     *,
     accepted: bool | None,
     semantic_valid: bool = True,
+    semantic_extra_invalid: bool = False,
 ) -> tuple[
     command.VerifiedObjectBongardScenePredicateCalibration,
     list[str],
@@ -542,6 +543,14 @@ def _run(
                     }
                 ],
             }
+            if semantic_extra_invalid:
+                payload["side0_positive"].append(
+                    {
+                        "scope": "entity",
+                        "phrase": "pointed and curved",
+                        "citations": side0_aliases[1:3],
+                    }
+                )
         else:
             assert set(properties) == {"selected_survivor_digest"}
             assert (root / command.RANK_INPUT_FREEZE_FILENAME).is_file()
@@ -769,6 +778,45 @@ def test_semantic_invalid_payload_is_typed_gap_and_never_calls_ranker(
     assert (len(visual_calls), len(proposer_calls), len(ranker_calls)) == before
 
 
+def test_semantic_optional_bad_row_is_quarantined_and_valid_pipeline_continues(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    calibration_inputs: command._CalibrationInputs,
+) -> None:
+    root = tmp_path / "semantic_quarantine_scene_calibration"
+    verified, visual_calls, proposer_calls, ranker_calls = _run(
+        root,
+        monkeypatch,
+        calibration_inputs,
+        accepted=True,
+        semantic_extra_invalid=True,
+    )
+
+    assert verified.status == "accepted"
+    assert len(visual_calls) == 36
+    assert len(proposer_calls) == 1
+    assert len(ranker_calls) == 1
+    semantic_result = json.loads(
+        (root / command.SEMANTIC_PROPOSAL_RESULT_FILENAME).read_text("utf-8")
+    )
+    assert semantic_result["semantic_proposal_status"] == "proposed"
+    assert semantic_result["semantic_proposal_valid"] is True
+    assert [
+        row["reason_code"]
+        for row in semantic_result["semantic_proposal"]["dropped_concepts"]
+    ] == ["phrase_policy"]
+    registry = json.loads(
+        (root / command.REGISTRY_FREEZE_FILENAME).read_text("utf-8")
+    )["registry"]
+    assert {row["tag"] for row in registry["tags"]} == {
+        "bird-like object",
+        "three-sided frame with distinct edge markers",
+    }
+    assert command.verify_object_bongard_scene_predicate_calibration(
+        root, source_root="offline-source"
+    ) == verified
+
+
 def test_ranker_privacy_rejects_formula_digest_leak(
     calibration_inputs: command._CalibrationInputs,
 ) -> None:
@@ -795,6 +843,10 @@ def test_ranker_privacy_rejects_formula_digest_leak(
 
 
 def test_command_is_python_canonical_and_has_no_lean_or_legacy_observer_import() -> None:
+    from bongard.object_bongard_scene_predicate_ir import (
+        SCENE_CALIBRATION_BUNDLE_SCHEMA,
+    )
+
     tree = ast.parse(Path(command.__file__).read_text("utf-8"))
     imports = {
         alias.name
@@ -809,3 +861,4 @@ def test_command_is_python_canonical_and_has_no_lean_or_legacy_observer_import()
     assert authority["lean_present"] is False
     assert authority["lean_required"] is False
     assert authority["lean_removable"] is True
+    assert command.IR_BUNDLE_SCHEMA == SCENE_CALIBRATION_BUNDLE_SCHEMA

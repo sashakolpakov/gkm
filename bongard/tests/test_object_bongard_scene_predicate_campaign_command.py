@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import pytest
 
 from bongard.object_bongard_scene_predicate_campaign_command import (
+    COMMAND_ID,
     DISCOVERY_CALLS_PER_TASK,
     EXPOSURE_PREDECESSOR_FILE_SHA256,
     MAX_VISUAL_CALLS,
@@ -17,13 +18,17 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     QUERY_DENOMINATOR,
     REGISTERED_A_CALLS_PER_TASK,
     REGISTERED_B_CALLS_PER_TASK,
+    SEMANTIC_PROPOSER_CALLS_PER_TASK,
     TASK_COUNT,
+    TASK_RESULT_SCHEMA,
     _CallBudget,
     _automatic_release_source_bindings,
     _authority_data,
+    _execute_task_semantic_proposal,
     _record,
     _restore_campaign_runtime,
     _runtime_record,
+    _semantic_payload_gap_code,
     _validate_task_result_record,
     commit_and_release_object_bongard_scene_predicate_queries,
     prepare_object_bongard_scene_predicate_campaign,
@@ -31,6 +36,7 @@ from bongard.object_bongard_scene_predicate_campaign_command import (
     verify_object_bongard_scene_predicate_exposure_transition,
     verify_object_bongard_scene_predicate_campaign,
     _query_score_rows,
+    _rank_task_bundle,
 )
 
 
@@ -101,8 +107,10 @@ def test_rejected_calibration_is_the_only_touched_dependency(tmp_path: Path) -> 
             accepted=True,
             status="accepted",
             visual_fresh_call_count=36,
+            semantic_proposer_fresh_call_count=1,
             ranker_fresh_call_count=1,
             selected_survivor_digest=RAW_5,
+            semantic_proposal_digest=RAW_5,
             source_digest=RAW_6,
             **accepted_digest_fields,
         )
@@ -288,6 +296,7 @@ def test_formula_freeze_and_commit_are_durable_before_exactly_two_queries() -> N
 def test_stage_budgets_denominator_and_python_authority_are_closed() -> None:
     budget = ObjectBongardScenePredicateCampaignBudget(
         discovery_calls=TASK_COUNT * DISCOVERY_CALLS_PER_TASK,
+        semantic_proposer_calls=TASK_COUNT * SEMANTIC_PROPOSER_CALLS_PER_TASK,
         registered_a_calls=TASK_COUNT * REGISTERED_A_CALLS_PER_TASK,
         registered_b_calls=TASK_COUNT * REGISTERED_B_CALLS_PER_TASK,
         ranker_calls=7,
@@ -393,9 +402,213 @@ def test_query_scoring_uses_certified_absence_in_both_orientations(
     assert all(row["correct"] for row in (*rows0, *rows1))
 
 
-def _task_result_fixture(*, queried: bool) -> dict[str, object]:
+def test_semantic_gap_code_is_determined_by_usable_discovery_evidence() -> None:
+    enough = SimpleNamespace(
+        alias_bindings=tuple(
+            {"historical_role": role, "usable": True}
+            for role in (0, 0, 1, 1)
+        )
+    )
+    insufficient = SimpleNamespace(
+        alias_bindings=tuple(
+            {"historical_role": role, "usable": True}
+            for role in (0, 0, 1)
+        )
+    )
+    assert _semantic_payload_gap_code(enough) == "payload_rejected"
+    assert (
+        _semantic_payload_gap_code(insufficient)
+        == "insufficient_discovery_evidence"
+    )
+
+
+def test_semantic_proposal_gap_never_calls_ranker(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bongard.object_bongard_scene_predicate_campaign_command as campaign
+
+    persisted: list[tuple[str, dict[str, object]]] = []
+
+    def persist(
+        _store: object,
+        *,
+        object_kind: str,
+        record: dict[str, object],
+        digest_field: str,
+    ) -> tuple[dict[str, object], object]:
+        assert digest_field in record
+        persisted.append((object_kind, record))
+        return record, SimpleNamespace(object_kind=object_kind)
+
+    monkeypatch.setattr(campaign, "_persist_record", persist)
+    proposer_calls: list[object] = []
+    bundle = SimpleNamespace(
+        complete_survivor_digests=(RAW_5,),
+        ranker_slate=({"candidate_digest": RAW_5},),
+        omitted_survivors=(),
+        bundle_digest=RAW_6,
+    )
+    prepared = SimpleNamespace(release=SimpleNamespace(store=object()))
+    rank_input, _, rank_result, _, selected = _rank_task_bundle(
+        tmp_path,
+        prepared=prepared,
+        task=SimpleNamespace(record_digest=ADDRESS_1, family="bd"),
+        task_index=0,
+        bundle=bundle,
+        ir_record={"ir_freeze_digest": ADDRESS_2},
+        semantic_proposal_record={
+            "semantic_proposal_result_digest": ADDRESS_3,
+            "semantic_proposal_digest": RAW_6,
+            "semantic_proposal_status": "typed_proposal_gap",
+            "semantic_proposal_valid": False,
+        },
+        runtime=object(),
+        text_transport=lambda *_args, **_kwargs: proposer_calls.append(object()),
+        budget=_CallBudget(),
+    )
+    assert selected is None
+    assert proposer_calls == []
+    assert rank_input["ranker_slate"] == []
+    assert rank_input["omitted_survivors"] == [
+        {
+            "candidate_digest": RAW_5,
+            "reason": "mandatory_semantic_proposal_gap",
+        }
+    ]
+    assert rank_result["status"] == "typed_semantic_proposal_gap"
+    assert rank_result["ranker_called"] is False
+    assert [kind for kind, _ in persisted] == [
+        "scene-task-rank-input",
+        "scene-task-rank-result",
+    ]
+
+
+def test_semantic_payload_error_seals_exact_rejected_payload(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bongard.object_bongard_scene_predicate_calibration_command as calibration
+    import bongard.object_bongard_scene_predicate_campaign_command as campaign
+    import bongard.object_bongard_turn_journal as journal_module
+    import bongard.object_scene_semantic_registry as semantic
+
+    payload = {"side0_positive": [], "side1_positive": []}
+    receipt = SimpleNamespace(
+        receipt_digest=ADDRESS_1,
+        to_dict=lambda: {"receipt": "semantic"},
+    )
+
+    class FakeJournal:
+        def __init__(self, *_args: object, **kwargs: object) -> None:
+            self.transport = kwargs["underlying_transport"]
+            self.fresh_call_count = 0
+            self.reused_call_count = 0
+
+        def __call__(self, *args: object, **kwargs: object) -> object:
+            self.transport(*args, **kwargs)
+            self.fresh_call_count = 1
+            return SimpleNamespace(payload=payload, receipt=receipt)
+
+    proposal = SimpleNamespace(
+        status="typed_proposal_gap",
+        preparation_digest=RAW_5,
+        registry_digest=RAW_6,
+        proposal_digest=RAW_5,
+        dropped_concepts=(),
+        to_data=lambda: {"proposal": "typed-gap"},
+    )
+    registry = SimpleNamespace(
+        registry_digest=RAW_6,
+        tags=(),
+        to_data=lambda: {"registry": "zero-tags"},
+    )
+    gap_calls: list[tuple[str, dict[str, object]]] = []
+
+    def reject(_prepared: object, _payload: object) -> object:
+        raise semantic.ObjectSceneSemanticRegistryPayloadError("invalid payload")
+
+    def build_gap(
+        _prepared: object, gap_code: str, rejected_payload: object
+    ) -> tuple[object, object]:
+        gap_calls.append((gap_code, dict(rejected_payload)))
+        return proposal, registry
+
+    monkeypatch.setattr(calibration, "_journal_runtime_kwargs", lambda _runtime: {})
+    monkeypatch.setattr(
+        journal_module, "ObjectBongardTextTurnJournalTransport", FakeJournal
+    )
+    monkeypatch.setattr(
+        journal_module,
+        "verify_object_bongard_turn_journal",
+        lambda _journal: SimpleNamespace(record_digest=ADDRESS_2),
+    )
+    monkeypatch.setattr(
+        semantic, "build_object_scene_semantic_registry_proposal", reject
+    )
+    monkeypatch.setattr(
+        semantic, "build_object_scene_semantic_registry_gap", build_gap
+    )
+    monkeypatch.setattr(
+        campaign,
+        "_persist_record",
+        lambda _store, **kwargs: (
+            kwargs["record"],
+            SimpleNamespace(object_kind=kwargs["object_kind"]),
+        ),
+    )
+    monkeypatch.setattr(
+        campaign,
+        "_restore_task_semantic_proposal",
+        lambda *_args, **_kwargs: (proposal, registry),
+    )
+    prepared_input = SimpleNamespace(
+        prompt="both frozen support buckets",
+        output_schema={"type": "object"},
+        alias_bindings=tuple(
+            {"historical_role": role, "usable": True}
+            for role in (0, 0, 1, 1)
+        ),
+    )
+    budget = _CallBudget()
+    returned_proposal, returned_registry, record, _ = (
+        _execute_task_semantic_proposal(
+            tmp_path,
+            prepared=SimpleNamespace(
+                release=SimpleNamespace(
+                    authorization=SimpleNamespace(record_digest=ADDRESS_1),
+                    precommit=SimpleNamespace(record_digest=ADDRESS_2),
+                    store=object(),
+                )
+            ),
+            task=SimpleNamespace(record_digest=ADDRESS_3, family="bd"),
+            task_index=0,
+            runtime=object(),
+            semantic_prepared_record={
+                "preparation_digest": RAW_5,
+                "semantic_prepared_digest": ADDRESS_4,
+            },
+            semantic_prepared=prepared_input,
+            discovery_artifacts=(),
+            role_rows=(),
+            text_transport=lambda *_args, **_kwargs: object(),
+            budget=budget,
+        )
+    )
+    assert returned_proposal is proposal
+    assert returned_registry is registry
+    assert gap_calls == [("payload_rejected", payload)]
+    assert record["proposer_payload"] == payload
+    assert record["semantic_proposal_valid"] is False
+    assert budget.snapshot().semantic_proposer_calls == 1
+
+
+def _task_result_fixture(
+    *, queried: bool, semantic_valid: bool = True
+) -> dict[str, object]:
     dependencies = {
         "discovery_batch": {},
+        "role_reveal": {},
+        "semantic_prepared": {},
+        "semantic_proposal": {},
         "registry_freeze": {},
         "registered_a_batch": {},
         "registered_b_batch": {},
@@ -421,15 +634,28 @@ def _task_result_fixture(*, queried: bool) -> dict[str, object]:
     ]
     return _record(
         {
-            "schema": "gkm.bongard-scene-predicate-task-result.v1",
-            "command_id": "bongard.scene-predicate-campaign/exact-unused-train-12-v1",
+            "schema": TASK_RESULT_SCHEMA,
+            "command_id": COMMAND_ID,
             "task_ordinal": 0,
             "task_id": "opaque-task-00",
             "task_plan_digest": ADDRESS_1,
             "execution_precommit_digest": ADDRESS_2,
             "support_release_receipts": [{}] * 12,
             "dependencies": dependencies,
-            "status": "evaluated" if queried else "typed_gap",
+            "status": (
+                "evaluated"
+                if queried
+                else (
+                    "typed_version_space_gap"
+                    if semantic_valid
+                    else "typed_semantic_proposal_gap"
+                )
+            ),
+            "semantic_proposal_digest": RAW_6,
+            "semantic_proposal_status": (
+                "proposed" if semantic_valid else "typed_proposal_gap"
+            ),
+            "semantic_proposal_valid": semantic_valid,
             "selected_survivor_digest": selected,
             "bundle_digest": RAW_6,
             "rank_result_digest": ADDRESS_3,
@@ -440,6 +666,7 @@ def _task_result_fixture(*, queried: bool) -> dict[str, object]:
             "score_denominator_contribution": 2,
             "physical_call_delta": {
                 "discovery_calls": 12,
+                "semantic_proposer_calls": 1,
                 "registered_a_calls": 12,
                 "registered_b_calls": 12,
                 "ranker_calls": 1 if queried else 0,
@@ -450,7 +677,9 @@ def _task_result_fixture(*, queried: bool) -> dict[str, object]:
             "typed_gap_makes_no_ranker_or_query_calls": not queried,
             "terminal_python_ir_cold_replayed": True,
             "support_journal_summary_digests": [ADDRESS_1] * 36,
+            "semantic_proposer_journal_summary_digest": ADDRESS_3,
             "query_journal_summary_digests": [ADDRESS_2] * (2 if queried else 0),
+            "semantic_proposer_journal_cold_replayed": True,
             "ranker_journal_cold_replayed_if_called": queried,
             "all_task_journals_cold_replayed_without_model_calls": True,
             **_authority_data(),
@@ -462,8 +691,26 @@ def _task_result_fixture(*, queried: bool) -> dict[str, object]:
 def test_accepted_and_gap_task_records_fail_closed_on_tamper_or_budget() -> None:
     accepted = _task_result_fixture(queried=True)
     gap = _task_result_fixture(queried=False)
+    semantic_gap = _task_result_fixture(queried=False, semantic_valid=False)
     assert _validate_task_result_record(accepted)["status"] == "evaluated"
-    assert _validate_task_result_record(gap)["status"] == "typed_gap"
+    assert (
+        _validate_task_result_record(gap)["status"]
+        == "typed_version_space_gap"
+    )
+    restored_semantic_gap = _validate_task_result_record(semantic_gap)
+    assert restored_semantic_gap["status"] == "typed_semantic_proposal_gap"
+    assert restored_semantic_gap["physical_call_delta"]["ranker_calls"] == 0
+    assert restored_semantic_gap["physical_call_delta"]["query_calls"] == 0
+    assert all(not row["correct"] for row in restored_semantic_gap["score_rows"])
+
+    invalid_semantic_query = _task_result_fixture(
+        queried=True, semantic_valid=False
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateCampaignCommandError,
+        match="policy or budget differs",
+    ):
+        _validate_task_result_record(invalid_semantic_query)
 
     tampered = dict(accepted)
     tampered["correct_count"] = 0
