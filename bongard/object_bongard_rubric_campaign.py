@@ -15,10 +15,13 @@ from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded
 _LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
 
 from dataclasses import dataclass
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import hashlib
 import json
+import os
 from pathlib import Path
 import re
+import stat
 import threading
 from typing import Any, Callable, Mapping, Sequence
 
@@ -34,6 +37,7 @@ from bongard.object_bongard_batch import (
 )
 from bongard.object_bongard_release_gate import (
     ObjectBongardExecutionPrecommit,
+    ObjectBongardReleaseAuthorization,
     ObjectBongardReleaseStore,
     ObjectBongardWriteOnceReceipt,
     PreparedObjectBongardRelease,
@@ -51,6 +55,7 @@ from bongard.object_bongard_rubric_observer import (
     ObjectBongardRubricSpec,
     object_bongard_rubric_observer_output_schema,
     object_bongard_rubric_observer_prompt,
+    object_bongard_rubric_observer_protocol_digest,
     object_bongard_rubric_observer_source_digest,
     observe_object_bongard_rubric,
     verify_object_bongard_rubric_observer_artifact,
@@ -60,6 +65,7 @@ from bongard.object_bongard_rubric_ranker import (
     ObjectBongardRubricRanker,
     object_bongard_rubric_ranker_output_schema,
     object_bongard_rubric_ranker_prompt,
+    object_bongard_rubric_ranker_protocol_digest,
     object_bongard_rubric_ranker_source_digest,
     object_bongard_rubric_ranker_transport_source_digest,
 )
@@ -74,12 +80,14 @@ from bongard.object_bongard_rubric_task_runner import (
 )
 from bongard.object_bongard_rubric_version_space import (
     ObjectBongardRubricSupportVersionSpace,
+    object_bongard_rubric_version_space_algorithm_digest,
     object_bongard_rubric_version_space_source_digest,
 )
 from bongard.object_bongard_semantics import (
     ObjectBongardSemanticArtifact,
     describe_object_bongard_support,
     object_bongard_semantics_prompt,
+    object_bongard_semantics_protocol_digest,
     object_bongard_semantics_source_digest,
     verify_object_bongard_semantic_artifact,
 )
@@ -171,21 +179,70 @@ def _strict_json_file(path: str | Path, label: str) -> dict[str, Any]:
                 )
             result[key] = value
         return result
+    flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+    descriptor: int | None = None
     try:
-        before = source.stat()
-        payload = source.read_bytes()
-        after = source.stat()
+        before = os.lstat(source)
+        descriptor = os.open(source, flags)
+        opened = os.fstat(descriptor)
+        identity = (
+            before.st_dev, before.st_ino, before.st_size,
+            before.st_mtime_ns, before.st_ctime_ns,
+        )
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or (
+                opened.st_dev, opened.st_ino, opened.st_size,
+                opened.st_mtime_ns, opened.st_ctime_ns,
+            )
+            != identity
+            or not 0 < opened.st_size <= 128 * 1024 * 1024
+        ):
+            raise ObjectBongardRubricCampaignError(
+                f"{label} is not a stable private file"
+            )
+        chunks: list[bytes] = []
+        total = 0
+        while chunk := os.read(descriptor, 1024 * 1024):
+            chunks.append(chunk)
+            total += len(chunk)
+            if total > 128 * 1024 * 1024:
+                raise ObjectBongardRubricCampaignError(
+                    f"{label} exceeds its byte bound"
+                )
+        after = os.fstat(descriptor)
+        after_path = os.lstat(source)
+        if (
+            total != opened.st_size
+            or (
+                after.st_dev, after.st_ino, after.st_size,
+                after.st_mtime_ns, after.st_ctime_ns,
+            )
+            != identity
+            or (
+                after_path.st_dev, after_path.st_ino, after_path.st_size,
+                after_path.st_mtime_ns, after_path.st_ctime_ns,
+            )
+            != identity
+        ):
+            raise ObjectBongardRubricCampaignError(
+                f"{label} changed during its authenticated read"
+            )
+        payload = b"".join(chunks)
         value = json.loads(
             payload.decode("utf-8", errors="strict"),
             object_pairs_hook=unique_object,
         )
     except (OSError, UnicodeError, json.JSONDecodeError) as exc:
         raise ObjectBongardRubricCampaignError(f"cannot read {label}") from exc
+    finally:
+        if descriptor is not None:
+            os.close(descriptor)
     if (
         not isinstance(value, dict)
         or not payload.endswith(b"\n")
-        or (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns)
-        != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns)
+        or payload.endswith(b"\n\n")
     ):
         raise ObjectBongardRubricCampaignError(f"{label} is not a stable JSON object")
     return value
@@ -205,13 +262,21 @@ def object_bongard_rubric_campaign_source_bindings() -> dict[str, str]:
         "batch_source": object_bongard_batch_source_digest(),
         "release_gate_source": object_bongard_release_gate_source_digest(),
         "semantic_source": object_bongard_semantics_source_digest(),
+        "semantic_protocol": object_bongard_semantics_protocol_digest(),
         "hypothesis_source": object_hypothesis_extractor_source_digest(),
         "lineage_source": object_lineage_source_digest(),
         "rubric_observer_source": object_bongard_rubric_observer_source_digest(),
+        "rubric_observer_protocol": (
+            object_bongard_rubric_observer_protocol_digest()
+        ),
         "rubric_version_space_source": (
             object_bongard_rubric_version_space_source_digest()
         ),
+        "rubric_version_space_algorithm": (
+            object_bongard_rubric_version_space_algorithm_digest()
+        ),
         "rubric_ranker_source": object_bongard_rubric_ranker_source_digest(),
+        "rubric_ranker_protocol": object_bongard_rubric_ranker_protocol_digest(),
         "rubric_ranker_transport_source": (
             object_bongard_rubric_ranker_transport_source_digest()
         ),
@@ -305,7 +370,8 @@ def verify_object_bongard_rubric_campaign_metadata(
 
     plan_raw = _strict_json_file(plan_path, "batch plan")
     plan = ObjectBongardBatchPlan.from_data(plan_raw)
-    descriptor = OfficialReleaseDescriptor.load(descriptor_path)
+    descriptor_raw = _strict_json_file(descriptor_path, "release descriptor")
+    descriptor = OfficialReleaseDescriptor.from_dict(descriptor_raw)
     descriptor.verify_split(split_path)
     split = SplitIndex.load(split_path)
     groups = split.canonical_groups
@@ -320,6 +386,10 @@ def verify_object_bongard_rubric_campaign_metadata(
         )
     predecessor_raw = _strict_json_file(predecessor_path, "exposure predecessor")
     predecessor = ExposureLedger.from_dict(predecessor_raw)
+    if predecessor.corpus_digest != descriptor.corpus_manifest_sha256:
+        raise ObjectBongardRubricCampaignError(
+            "exposure predecessor corpus differs from official release"
+        )
     exact_used_task_ids = tuple(sorted(predecessor.exposed_task_ids))
     verify_object_bongard_batch_plan(
         plan,
@@ -454,6 +524,33 @@ class ObjectBongardPhysicalCallBudget:
             return result
 
         return bounded
+
+    def account_journal_reuse(
+        self,
+        kind: str,
+        journal: ObjectBongardNamedImageTurnJournalTransport
+        | ObjectBongardTextTurnJournalTransport,
+    ) -> None:
+        """Charge a prior durable physical turn when resuming its journal."""
+
+        if (
+            journal.attempted_call_count != 1
+            or journal.fresh_call_count not in (0, 1)
+            or journal.reused_call_count not in (0, 1)
+            or journal.fresh_call_count + journal.reused_call_count != 1
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "journal invocation accounting differs"
+            )
+        if journal.reused_call_count == 0:
+            return
+        with self._lock:
+            if self._count >= self.limit:
+                raise ObjectBongardRubricCampaignError(
+                    "cumulative physical model-call budget exhausted"
+                )
+            self._count += 1
+            self._by_kind[kind] = self._by_kind.get(kind, 0) + 1
 
 
 def prepare_object_bongard_rubric_campaign(
@@ -727,6 +824,7 @@ def _semantic_turn(
         **_runtime_kwargs(runtime),
         transport=journal,
     )
+    budget.account_journal_reuse("semantic", journal)
     verify_object_bongard_semantic_artifact(
         artifact,
         support_png_by_panel_id={
@@ -810,6 +908,8 @@ def _observe_released_panel(
         **_runtime_kwargs(runtime),
         transport=dispatch,
     )
+    for journal in journals.values():
+        budget.account_journal_reuse("rubric_observer", journal)
     verify_object_bongard_rubric_observer_artifact(
         artifact,
         png,
@@ -918,6 +1018,7 @@ class _JournaledRubricRanker:
             negative_support_artifacts=negative_support_artifacts,
             rank_input_digest=rank_input_digest,
         )
+        self.budget.account_journal_reuse("rank", journal)
         self.journal = journal
         self.ranker = ranker
         self.summary = _summary_data(journal.verify())
@@ -1477,3 +1578,712 @@ def run_object_bongard_rubric_campaign_task(
     )
     prepared.store.verify(receipt, expected_data=execution.to_data())
     return PersistedObjectBongardRubricTaskExecution(execution, receipt)
+
+
+def _forbidden_model_transport(*_args: object, **_kwargs: object) -> CodexStructuredResult:
+    raise AssertionError("model transport called during campaign cold replay")
+
+
+def _verify_journal_summary(
+    actual: ObjectBongardTurnJournalSummary, expected: Mapping[str, Any]
+) -> None:
+    if actual.to_data() != dict(expected):
+        raise ObjectBongardRubricCampaignError(
+            "cold-replayed journal summary differs"
+        )
+
+
+def _cold_replay_panel_observation(
+    observation: ObjectBongardRubricPanelObservation,
+    *,
+    task_id: str,
+    expected_store_kind: str,
+    turn_kind_prefix: str,
+    prepared: PreparedObjectBongardRelease,
+    archive: OfficialPanelArchive,
+    runtime: ObjectBongardTurnRuntime,
+    journals_root: Path,
+) -> None:
+    released = observation.released_panel
+    receipt = observation.released_panel_store_receipt
+    if receipt.object_kind != expected_store_kind:
+        raise ObjectBongardRubricCampaignError(
+            "released panel store kind differs during replay"
+        )
+    prepared.store.verify(receipt, expected_data=released.to_data())
+    released.cold_verify(
+        archive,
+        expected_execution_precommit_digest=prepared.precommit.record_digest,
+        expected_exposure_successor_digest=prepared.successor.digest,
+    )
+    png = released.exact_png_bytes
+    rendered = dict(render_object_hypothesis_atlas(observation.hypothesis_packet, png))
+    verify_object_hypothesis_packet(
+        observation.hypothesis_packet,
+        expected_png_bytes=png,
+        expected_atlas_png_by_name=rendered,
+    )
+    verify_object_lineage_packet(observation.lineage_packet, png)
+    verify_object_bongard_rubric_observer_artifact(
+        observation.artifact,
+        png,
+        panel_id=released.panel_id,
+        rubric_spec=observation.artifact.rubric_spec,
+        hypothesis_packet=observation.hypothesis_packet,
+        lineage_packet=observation.lineage_packet,
+        expected_artifact_digest=observation.artifact.artifact_digest,
+    )
+    schema = object_bongard_rubric_observer_output_schema()
+    for sheet, relative, expected_summary in zip(
+        observation.hypothesis_packet.atlas_sheets,
+        observation.journal_relative_directories,
+        observation.journal_summaries,
+        strict=True,
+    ):
+        journal = ObjectBongardNamedImageTurnJournalTransport(
+            journals_root / relative,
+            authorization_digest=prepared.authorization.record_digest,
+            execution_precommit_digest=prepared.precommit.record_digest,
+            task_id=task_id,
+            turn_kind=f"{turn_kind_prefix}_{sheet.sheet_index:03d}",
+            expected_prompt=object_bongard_rubric_observer_prompt(
+                observation.artifact.rubric_spec, sheet
+            ),
+            expected_images=(
+                ("scene.png", png),
+                (sheet.name, rendered[sheet.name]),
+            ),
+            expected_output_schema=schema,
+            runtime=runtime,
+            underlying_transport=_forbidden_model_transport,
+        )
+        _verify_journal_summary(journal.verify(), expected_summary)
+
+
+def cold_replay_object_bongard_rubric_campaign_task(
+    execution: ObjectBongardRubricTaskExecution | Mapping[str, Any],
+    *,
+    expected_execution_digest: str,
+    execution_store_receipt: ObjectBongardWriteOnceReceipt,
+    prepared: PreparedObjectBongardRelease,
+    archive: OfficialPanelArchive,
+    runtime: ObjectBongardRubricCampaignRuntime,
+    journals_root: str | Path,
+) -> ObjectBongardRubricTaskExecution:
+    """Verify official PNGs, artifacts, journals, freezes, and score with no model."""
+
+    expected = _require_address(expected_execution_digest, "task execution digest")
+    restored = (
+        ObjectBongardRubricTaskExecution.from_data(execution)
+        if isinstance(execution, Mapping)
+        else ObjectBongardRubricTaskExecution.from_data(execution.to_data())
+    )
+    if (
+        restored.record_digest != expected
+        or restored.runtime_binding_digest != runtime.binding_digest
+        or restored.execution_precommit_digest != prepared.precommit.record_digest
+        or restored.release_authorization_digest
+        != prepared.authorization.record_digest
+        or execution_store_receipt.object_kind != "rubric-task-execution"
+        or execution_store_receipt.object_digest != expected
+    ):
+        raise ObjectBongardRubricCampaignError(
+            "cold task execution parent differs"
+        )
+    verify_prepared_object_bongard_release(prepared)
+    prepared.store.verify(
+        execution_store_receipt, expected_data=restored.to_data()
+    )
+    root = Path(journals_root).absolute()
+    support = restored.support_observations
+    support_png = {
+        item.released_panel.panel_id: item.released_panel.exact_png_bytes
+        for item in support
+    }
+    verify_object_bongard_semantic_artifact(
+        restored.semantic_artifact,
+        support_png_by_panel_id=support_png,
+        expected_task_id=restored.task_plan.task_id,
+        expected_observation_context_digest=prepared.precommit.record_digest,
+        expected_artifact_digest=restored.semantic_artifact.artifact_digest,
+    )
+    semantic_names = tuple(
+        [f"group_0_ref_{index:02d}.png" for index in range(6)]
+        + [f"group_1_ref_{index:02d}.png" for index in range(6)]
+    )
+    semantic_images = tuple(
+        (name, item.released_panel.exact_png_bytes)
+        for name, item in zip(semantic_names, support, strict=True)
+    )
+    semantic_journal = ObjectBongardNamedImageTurnJournalTransport(
+        root / restored.semantic_journal_relative_directory,
+        authorization_digest=prepared.authorization.record_digest,
+        execution_precommit_digest=prepared.precommit.record_digest,
+        task_id=restored.task_plan.task_id,
+        turn_kind="semantic",
+        expected_prompt=object_bongard_semantics_prompt(),
+        expected_images=semantic_images,
+        expected_output_schema=prototype_object_description_output_schema(),
+        runtime=runtime.visual,
+        underlying_transport=_forbidden_model_transport,
+    )
+    _verify_journal_summary(
+        semantic_journal.verify(), restored.semantic_journal_summary
+    )
+    for index, observation in enumerate(support):
+        _cold_replay_panel_observation(
+            observation,
+            task_id=restored.task_plan.task_id,
+            expected_store_kind="released-support-panel",
+            turn_kind_prefix=f"s{index:02d}",
+            prepared=prepared,
+            archive=archive,
+            runtime=runtime.visual,
+            journals_root=root,
+        )
+
+    task_run = cold_replay_object_bongard_rubric_task(
+        restored.task_run,
+        expected_archive_digest=restored.task_run.record_digest,
+    )
+    if task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE:
+        if (
+            restored.rank_journal_relative_directory is None
+            or restored.rank_journal_summary is None
+            or task_run.rank_response is None
+            or task_run.rank_input_digest is None
+            or task_run.freeze is None
+            or task_run.freeze_commit is None
+            or restored.task_freeze_store_receipt is None
+            or restored.task_commit_store_receipt is None
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "complete cold task lacks later-phase records"
+            )
+        prompt = object_bongard_rubric_ranker_prompt(
+            version_space=task_run.version_space,
+            rubric_spec=task_run.rubric_spec,
+            semantic_artifact=task_run.semantic_artifact,
+            positive_support_artifacts=task_run.side_0_support,
+            negative_support_artifacts=task_run.side_1_support,
+            rank_input_digest=task_run.rank_input_digest,
+        )
+        rank_journal = ObjectBongardTextTurnJournalTransport(
+            root / restored.rank_journal_relative_directory,
+            authorization_digest=prepared.authorization.record_digest,
+            execution_precommit_digest=prepared.precommit.record_digest,
+            task_id=restored.task_plan.task_id,
+            turn_kind="rank",
+            expected_prompt=prompt,
+            expected_output_schema=object_bongard_rubric_ranker_output_schema(),
+            runtime=runtime.rank,
+            underlying_transport=_forbidden_model_transport,
+        )
+        _verify_journal_summary(
+            rank_journal.verify(), restored.rank_journal_summary
+        )
+        snapshot = runtime.rank.cloud_policy_cache_snapshot
+        if snapshot is None:
+            raise ObjectBongardRubricCampaignError(
+                "rank cold replay lacks policy-cache snapshot"
+            )
+        ranker = ObjectBongardRubricRanker(
+            model=runtime.rank.model,
+            reasoning_effort=runtime.rank.reasoning_effort,
+            minutes=runtime.rank.minutes,
+            verbose=runtime.rank.verbose,
+            executable=runtime.rank.executable,
+            expected_launcher_digest=runtime.rank.expected_launcher_digest,
+            cloud_policy_cache_snapshot=snapshot,
+            expected_cloud_policy_cache_binding=runtime.rank.policy_cache_binding,
+            expected_transport_source_digest=runtime.rank.transport_source_digest,
+            model_catalog_snapshot=runtime.rank.model_catalog_snapshot,
+            no_tools_attestation=runtime.rank.no_tools_attestation,
+            transport=_forbidden_model_transport,
+        )
+        ranker.verify_response(
+            task_run.rank_response,
+            version_space=task_run.version_space,
+            rubric_spec=task_run.rubric_spec,
+            semantic_artifact=task_run.semantic_artifact,
+            positive_support_artifacts=task_run.side_0_support,
+            negative_support_artifacts=task_run.side_1_support,
+            rank_input_digest=task_run.rank_input_digest,
+            expected_response_digest=task_run.rank_response.response_digest,
+        )
+        freeze_bytes = canonical_json(task_run.freeze.to_data()) + b"\n"
+        task_run.freeze_commit.assert_matches(task_run.freeze, freeze_bytes)
+        prepared.store.verify(
+            restored.task_freeze_store_receipt,
+            expected_data=task_run.freeze.to_data(),
+        )
+        prepared.store.verify(
+            restored.task_commit_store_receipt,
+            expected_data=task_run.freeze_commit.to_data(),
+        )
+        for index, observation in enumerate(restored.query_observations):
+            _cold_replay_panel_observation(
+                observation,
+                task_id=restored.task_plan.task_id,
+                expected_store_kind="released-query-panel",
+                turn_kind_prefix=f"q{index}",
+                prepared=prepared,
+                archive=archive,
+                runtime=runtime.visual,
+                journals_root=root,
+            )
+    return restored
+
+
+def _campaign_content(value: "ObjectBongardRubricCampaignArchive") -> dict[str, object]:
+    return {
+        "schema": CAMPAIGN_SCHEMA,
+        "campaign_id": CAMPAIGN_ID,
+        "campaign_source_digest": value.campaign_source_digest,
+        "plan": value.plan.to_data(),
+        "execution_precommit": value.execution_precommit.to_data(),
+        "exposure_predecessor": value.exposure_predecessor.to_dict(),
+        "exposure_successor": value.exposure_successor.to_dict(),
+        "release_authorization": value.release_authorization.to_data(),
+        "plan_store_receipt": value.plan_store_receipt.to_data(),
+        "precommit_store_receipt": value.precommit_store_receipt.to_data(),
+        "exposure_store_receipt": value.exposure_store_receipt.to_data(),
+        "authorization_store_receipt": value.authorization_store_receipt.to_data(),
+        "runtime_binding_digest": value.runtime_binding_digest,
+        "max_workers": value.max_workers,
+        "max_physical_model_calls": value.max_physical_model_calls,
+        "physical_model_calls": value.physical_model_calls,
+        "physical_model_calls_by_kind": [
+            list(item) for item in value.physical_model_calls_by_kind
+        ],
+        "task_executions": [item.to_data() for item in value.task_executions],
+        "task_execution_store_receipts": [
+            item.to_data() for item in value.task_execution_store_receipts
+        ],
+        "task_count": len(value.task_executions),
+        "complete_task_count": value.complete_task_count,
+        "gap_task_count": value.gap_task_count,
+        "correct_count": value.correct_count,
+        "abstention_count": value.abstention_count,
+        "fixed_score_denominator": value.fixed_score_denominator,
+        "accuracy_ppm": value.accuracy_ppm,
+        "every_planned_task_contributes_exactly_two_query_slots": True,
+        "gap_contributes_zero_correct_and_two_abstentions": True,
+        "campaign_cold_replay_model_calls": 0,
+        **_authority_data(),
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ObjectBongardRubricCampaignArchive:
+    campaign_source_digest: str
+    plan: ObjectBongardBatchPlan
+    execution_precommit: ObjectBongardExecutionPrecommit
+    exposure_predecessor: ExposureLedger
+    exposure_successor: ExposureLedger
+    release_authorization: ObjectBongardReleaseAuthorization
+    plan_store_receipt: ObjectBongardWriteOnceReceipt
+    precommit_store_receipt: ObjectBongardWriteOnceReceipt
+    exposure_store_receipt: ObjectBongardWriteOnceReceipt
+    authorization_store_receipt: ObjectBongardWriteOnceReceipt
+    runtime_binding_digest: str
+    max_workers: int
+    max_physical_model_calls: int
+    physical_model_calls: int
+    physical_model_calls_by_kind: tuple[tuple[str, int], ...]
+    task_executions: tuple[ObjectBongardRubricTaskExecution, ...]
+    task_execution_store_receipts: tuple[ObjectBongardWriteOnceReceipt, ...]
+    complete_task_count: int
+    gap_task_count: int
+    correct_count: int
+    abstention_count: int
+    fixed_score_denominator: int
+    accuracy_ppm: int
+    record_digest: str
+
+    def __post_init__(self) -> None:
+        if self.campaign_source_digest != object_bongard_rubric_campaign_source_digest():
+            raise ObjectBongardRubricCampaignError(
+                "campaign archive source differs"
+            )
+        for name in ("runtime_binding_digest", "record_digest"):
+            _require_address(getattr(self, name), name)
+        if (
+            self.execution_precommit.batch_plan_digest != self.plan.record_digest
+            or self.execution_precommit.exposure_predecessor_digest
+            != self.exposure_predecessor.digest
+            or self.release_authorization.execution_precommit_digest
+            != self.execution_precommit.record_digest
+            or self.release_authorization.exposure_successor_digest
+            != self.exposure_successor.digest
+            or self.plan_store_receipt.object_digest != self.plan.record_digest
+            or self.precommit_store_receipt.object_digest
+            != self.execution_precommit.record_digest
+            or self.exposure_store_receipt.object_digest
+            != self.exposure_successor.digest
+            or self.authorization_store_receipt.object_digest
+            != self.release_authorization.record_digest
+            or self.plan_store_receipt.record_digest
+            != self.release_authorization.plan_store_receipt_digest
+            or self.precommit_store_receipt.record_digest
+            != self.release_authorization.precommit_store_receipt_digest
+            or self.exposure_store_receipt.record_digest
+            != self.release_authorization.exposure_store_receipt_digest
+            or dict(self.execution_precommit.runtime_source_bindings)
+            != object_bongard_rubric_campaign_source_bindings()
+            or dict(self.execution_precommit.configuration).get(
+                "runtime_binding_digest"
+            )
+            != self.runtime_binding_digest
+            or dict(self.execution_precommit.configuration).get("max_workers")
+            != self.max_workers
+            or dict(self.execution_precommit.configuration).get(
+                "max_physical_model_calls"
+            )
+            != self.max_physical_model_calls
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "campaign durable release parents differ"
+            )
+        task_ids = tuple(item.task_plan.task_id for item in self.task_executions)
+        expected_task_ids = tuple(item.task_id for item in self.plan.tasks)
+        if (
+            task_ids != expected_task_ids
+            or len(self.task_execution_store_receipts) != len(self.task_executions)
+            or any(
+                receipt.object_kind != "rubric-task-execution"
+                or receipt.object_digest != execution.record_digest
+                for execution, receipt in zip(
+                    self.task_executions,
+                    self.task_execution_store_receipts,
+                    strict=True,
+                )
+            )
+            or any(
+                execution.execution_precommit_digest
+                != self.execution_precommit.record_digest
+                or execution.release_authorization_digest
+                != self.release_authorization.record_digest
+                or execution.runtime_binding_digest != self.runtime_binding_digest
+                for execution in self.task_executions
+            )
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "campaign task inventory or parent bindings differ"
+            )
+        count = len(self.task_executions)
+        complete = sum(
+            item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
+            for item in self.task_executions
+        )
+        correct = sum(item.correct_count for item in self.task_executions)
+        abstentions = sum(item.abstention_count for item in self.task_executions)
+        denominator = count * 2
+        if (
+            isinstance(self.max_workers, bool)
+            or not isinstance(self.max_workers, int)
+            or not 1 <= self.max_workers <= 12
+            or isinstance(self.max_physical_model_calls, bool)
+            or not isinstance(self.max_physical_model_calls, int)
+            or self.max_physical_model_calls <= 0
+            or isinstance(self.physical_model_calls, bool)
+            or not isinstance(self.physical_model_calls, int)
+            or not 0 <= self.physical_model_calls <= self.max_physical_model_calls
+            or self.physical_model_calls_by_kind
+            != tuple(sorted(self.physical_model_calls_by_kind))
+            or sum(item[1] for item in self.physical_model_calls_by_kind)
+            != self.physical_model_calls
+            or self.complete_task_count != complete
+            or self.gap_task_count != count - complete
+            or self.correct_count != correct
+            or self.abstention_count != abstentions
+            or self.fixed_score_denominator != denominator
+            or self.accuracy_ppm
+            != (0 if denominator == 0 else correct * 1_000_000 // denominator)
+            or (self.plan.requested_per_family == 4 and denominator != 24)
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "campaign aggregate or fixed denominator differs"
+            )
+        if self.record_digest != _address(_campaign_content(self)):
+            raise ObjectBongardRubricCampaignError(
+                "campaign archive content digest differs"
+            )
+
+    def to_data(self) -> dict[str, object]:
+        return {**_campaign_content(self), "record_digest": self.record_digest}
+
+    @classmethod
+    def seal(cls, **values: object) -> "ObjectBongardRubricCampaignArchive":
+        provisional = object.__new__(cls)
+        for name, item in values.items():
+            object.__setattr__(provisional, name, item)
+        return cls(
+            **values,  # type: ignore[arg-type]
+            record_digest=_address(_campaign_content(provisional)),
+        )
+
+    @classmethod
+    def from_data(
+        cls, value: Mapping[str, Any]
+    ) -> "ObjectBongardRubricCampaignArchive":
+        required = {
+            "schema", "campaign_id", "campaign_source_digest", "plan",
+            "execution_precommit", "exposure_predecessor", "exposure_successor",
+            "release_authorization", "plan_store_receipt",
+            "precommit_store_receipt", "exposure_store_receipt",
+            "authorization_store_receipt", "runtime_binding_digest",
+            "max_workers", "max_physical_model_calls", "physical_model_calls",
+            "physical_model_calls_by_kind", "task_executions",
+            "task_execution_store_receipts", "task_count",
+            "complete_task_count", "gap_task_count", "correct_count",
+            "abstention_count", "fixed_score_denominator", "accuracy_ppm",
+            "every_planned_task_contributes_exactly_two_query_slots",
+            "gap_contributes_zero_correct_and_two_abstentions",
+            "campaign_cold_replay_model_calls", *_authority_data(),
+            "record_digest",
+        }
+        mapping_fields = (
+            "plan", "execution_precommit", "exposure_predecessor",
+            "exposure_successor", "release_authorization", "plan_store_receipt",
+            "precommit_store_receipt", "exposure_store_receipt",
+            "authorization_store_receipt",
+        )
+        if (
+            not isinstance(value, Mapping)
+            or set(value) != required
+            or value["schema"] != CAMPAIGN_SCHEMA
+            or value["campaign_id"] != CAMPAIGN_ID
+            or value["every_planned_task_contributes_exactly_two_query_slots"]
+            is not True
+            or value["gap_contributes_zero_correct_and_two_abstentions"]
+            is not True
+            or value["campaign_cold_replay_model_calls"] != 0
+            or any(value[key] != item for key, item in _authority_data().items())
+            or any(not isinstance(value[key], Mapping) for key in mapping_fields)
+            or not isinstance(value["physical_model_calls_by_kind"], list)
+            or not isinstance(value["task_executions"], list)
+            or not isinstance(value["task_execution_store_receipts"], list)
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "campaign archive fields differ"
+            )
+        executions = tuple(
+            ObjectBongardRubricTaskExecution.from_data(item)
+            for item in value["task_executions"]
+        )
+        result = cls(
+            campaign_source_digest=value["campaign_source_digest"],
+            plan=ObjectBongardBatchPlan.from_data(value["plan"]),
+            execution_precommit=ObjectBongardExecutionPrecommit.from_data(
+                value["execution_precommit"]
+            ),
+            exposure_predecessor=ExposureLedger.from_dict(
+                value["exposure_predecessor"]
+            ),
+            exposure_successor=ExposureLedger.from_dict(
+                value["exposure_successor"]
+            ),
+            release_authorization=ObjectBongardReleaseAuthorization.from_data(
+                value["release_authorization"]
+            ),
+            plan_store_receipt=ObjectBongardWriteOnceReceipt.from_data(
+                value["plan_store_receipt"]
+            ),
+            precommit_store_receipt=ObjectBongardWriteOnceReceipt.from_data(
+                value["precommit_store_receipt"]
+            ),
+            exposure_store_receipt=ObjectBongardWriteOnceReceipt.from_data(
+                value["exposure_store_receipt"]
+            ),
+            authorization_store_receipt=ObjectBongardWriteOnceReceipt.from_data(
+                value["authorization_store_receipt"]
+            ),
+            runtime_binding_digest=value["runtime_binding_digest"],
+            max_workers=value["max_workers"],
+            max_physical_model_calls=value["max_physical_model_calls"],
+            physical_model_calls=value["physical_model_calls"],
+            physical_model_calls_by_kind=tuple(
+                tuple(item) for item in value["physical_model_calls_by_kind"]
+            ),
+            task_executions=executions,
+            task_execution_store_receipts=tuple(
+                ObjectBongardWriteOnceReceipt.from_data(item)
+                for item in value["task_execution_store_receipts"]
+            ),
+            complete_task_count=value["complete_task_count"],
+            gap_task_count=value["gap_task_count"],
+            correct_count=value["correct_count"],
+            abstention_count=value["abstention_count"],
+            fixed_score_denominator=value["fixed_score_denominator"],
+            accuracy_ppm=value["accuracy_ppm"],
+            record_digest=value["record_digest"],
+        )
+        if value["task_count"] != len(executions) or result.to_data() != dict(value):
+            raise ObjectBongardRubricCampaignError(
+                "campaign archive is not canonical"
+            )
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class PersistedObjectBongardRubricCampaign:
+    archive: ObjectBongardRubricCampaignArchive
+    store_receipt: ObjectBongardWriteOnceReceipt
+
+    def __post_init__(self) -> None:
+        if (
+            not isinstance(self.archive, ObjectBongardRubricCampaignArchive)
+            or not isinstance(self.store_receipt, ObjectBongardWriteOnceReceipt)
+            or self.store_receipt.object_kind != "rubric-campaign"
+            or self.store_receipt.object_digest != self.archive.record_digest
+        ):
+            raise ObjectBongardRubricCampaignError(
+                "persisted campaign binding differs"
+            )
+
+
+def run_object_bongard_rubric_campaign(
+    *,
+    prepared: PreparedObjectBongardRelease,
+    archive: OfficialPanelArchive,
+    runtime: ObjectBongardRubricCampaignRuntime,
+    journals_root: str | Path,
+    visual_transport: Callable[..., CodexStructuredResult],
+    rank_transport: Callable[..., CodexStructuredResult],
+) -> PersistedObjectBongardRubricCampaign:
+    """Execute every frozen task with bounded concurrency and one call budget."""
+
+    verify_prepared_object_bongard_release(prepared)
+    budget = ObjectBongardPhysicalCallBudget(runtime.max_physical_model_calls)
+    results: dict[str, PersistedObjectBongardRubricTaskExecution] = {}
+    with ThreadPoolExecutor(max_workers=runtime.max_workers) as executor:
+        futures = {
+            executor.submit(
+                run_object_bongard_rubric_campaign_task,
+                task=task,
+                prepared=prepared,
+                archive=archive,
+                runtime=runtime,
+                journals_root=journals_root,
+                budget=budget,
+                visual_transport=visual_transport,
+                rank_transport=rank_transport,
+            ): task.task_id
+            for task in prepared.plan.tasks
+        }
+        for future in as_completed(futures):
+            task_id = futures[future]
+            if task_id in results:
+                raise ObjectBongardRubricCampaignError(
+                    "campaign completed one task more than once"
+                )
+            results[task_id] = future.result()
+    ordered = tuple(results[task.task_id] for task in prepared.plan.tasks)
+    executions = tuple(item.execution for item in ordered)
+    receipts = tuple(item.store_receipt for item in ordered)
+    complete = sum(
+        item.task_run.status is ObjectBongardRubricTaskRunStatus.COMPLETE
+        for item in executions
+    )
+    correct = sum(item.correct_count for item in executions)
+    abstentions = sum(item.abstention_count for item in executions)
+    denominator = len(executions) * 2
+    campaign = ObjectBongardRubricCampaignArchive.seal(
+        campaign_source_digest=object_bongard_rubric_campaign_source_digest(),
+        plan=prepared.plan,
+        execution_precommit=prepared.precommit,
+        exposure_predecessor=prepared.predecessor,
+        exposure_successor=prepared.successor,
+        release_authorization=prepared.authorization,
+        plan_store_receipt=prepared.plan_receipt,
+        precommit_store_receipt=prepared.precommit_receipt,
+        exposure_store_receipt=prepared.exposure_receipt,
+        authorization_store_receipt=prepared.authorization_receipt,
+        runtime_binding_digest=runtime.binding_digest,
+        max_workers=runtime.max_workers,
+        max_physical_model_calls=runtime.max_physical_model_calls,
+        physical_model_calls=budget.count,
+        physical_model_calls_by_kind=tuple(budget.by_kind.items()),
+        task_executions=executions,
+        task_execution_store_receipts=receipts,
+        complete_task_count=complete,
+        gap_task_count=len(executions) - complete,
+        correct_count=correct,
+        abstention_count=abstentions,
+        fixed_score_denominator=denominator,
+        accuracy_ppm=0 if denominator == 0 else correct * 1_000_000 // denominator,
+    )
+    receipt = prepared.store.persist(
+        object_kind="rubric-campaign",
+        object_digest=campaign.record_digest,
+        data=campaign.to_data(),
+    )
+    prepared.store.verify(receipt, expected_data=campaign.to_data())
+    return PersistedObjectBongardRubricCampaign(campaign, receipt)
+
+
+def cold_replay_object_bongard_rubric_campaign(
+    campaign: ObjectBongardRubricCampaignArchive | Mapping[str, Any],
+    *,
+    expected_campaign_digest: str,
+    campaign_store_receipt: ObjectBongardWriteOnceReceipt,
+    store: ObjectBongardReleaseStore,
+    archive: OfficialPanelArchive,
+    runtime: ObjectBongardRubricCampaignRuntime,
+    journals_root: str | Path,
+) -> ObjectBongardRubricCampaignArchive:
+    """Cold-replay the whole durable campaign without accepting transports."""
+
+    expected = _require_address(expected_campaign_digest, "campaign digest")
+    restored = (
+        ObjectBongardRubricCampaignArchive.from_data(campaign)
+        if isinstance(campaign, Mapping)
+        else ObjectBongardRubricCampaignArchive.from_data(campaign.to_data())
+    )
+    if (
+        restored.record_digest != expected
+        or restored.runtime_binding_digest != runtime.binding_digest
+        or campaign_store_receipt.object_kind != "rubric-campaign"
+        or campaign_store_receipt.object_digest != expected
+        or restored.execution_precommit.archive_record_digest
+        != archive.record_digest
+    ):
+        raise ObjectBongardRubricCampaignError(
+            "campaign cold replay parents differ"
+        )
+    prepared = PreparedObjectBongardRelease(
+        store=store,
+        plan=restored.plan,
+        precommit=restored.execution_precommit,
+        predecessor=restored.exposure_predecessor,
+        successor=restored.exposure_successor,
+        authorization=restored.release_authorization,
+        plan_receipt=restored.plan_store_receipt,
+        precommit_receipt=restored.precommit_store_receipt,
+        exposure_receipt=restored.exposure_store_receipt,
+        authorization_receipt=restored.authorization_store_receipt,
+    )
+    verify_prepared_object_bongard_release(prepared)
+    store.verify(campaign_store_receipt, expected_data=restored.to_data())
+    replayed = tuple(
+        cold_replay_object_bongard_rubric_campaign_task(
+            execution,
+            expected_execution_digest=execution.record_digest,
+            execution_store_receipt=receipt,
+            prepared=prepared,
+            archive=archive,
+            runtime=runtime,
+            journals_root=journals_root,
+        )
+        for execution, receipt in zip(
+            restored.task_executions,
+            restored.task_execution_store_receipts,
+            strict=True,
+        )
+    )
+    if replayed != restored.task_executions:
+        raise ObjectBongardRubricCampaignError(
+            "campaign task cold replay differs"
+        )
+    return restored

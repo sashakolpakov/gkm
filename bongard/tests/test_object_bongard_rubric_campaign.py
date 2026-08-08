@@ -24,6 +24,7 @@ from bongard.object_bongard_release_gate import (
 from bongard.object_bongard_rubric_campaign import (
     ObjectBongardPhysicalCallBudget,
     ObjectBongardRubricCampaignRuntime,
+    cold_replay_object_bongard_rubric_campaign_task,
     object_bongard_rubric_campaign_source_bindings,
     run_object_bongard_rubric_campaign_task,
     verify_object_bongard_rubric_campaign_metadata,
@@ -299,6 +300,18 @@ def test_one_task_crosses_real_release_gate_only_after_durable_freeze(
     assert persisted.store_receipt.object_kind == "rubric-task-execution"
     assert budget.count == visual.calls + rank.calls
     assert rank.calls == 1
+    calls_before_replay = (visual.calls, rank.calls, budget.count)
+    replayed = cold_replay_object_bongard_rubric_campaign_task(
+        execution,
+        expected_execution_digest=execution.record_digest,
+        execution_store_receipt=persisted.store_receipt,
+        prepared=prepared,
+        archive=archive,
+        runtime=runtime,
+        journals_root=tmp_path / "journals",
+    )
+    assert replayed == execution
+    assert (visual.calls, rank.calls, budget.count) == calls_before_replay
 
 
 def test_checked_in_preregistration_replays_exact_broad_unused_train_cohort() -> None:
