@@ -42,6 +42,7 @@ from bongard.prototype_scene_observer import (
     verify_prototype_reference_catalog,
     verify_prototype_rubric_description_artifact,
     verify_prototype_scene_observer_artifact,
+    _assert_model_visible_boundary,
 )
 from bongard.prototype_scene_calibration import (
     PrototypeSceneCalibrationError,
@@ -221,6 +222,52 @@ def _assert_neutral(
     ):
         assert re.search(rf"\b{forbidden}s?\b", envelope, re.I) is None
     assert not any(value in envelope for value in hidden)
+
+
+def test_model_visible_boundary_visual_word_allowance_is_narrow():
+    schema = {"type": "object"}
+
+    with pytest.raises(PrototypeSceneObserverError):
+        _assert_model_visible_boundary(
+            "one path crosses from the opposite side",
+            schema,
+            ("panel.png",),
+            hidden_values=(),
+        )
+
+    _assert_model_visible_boundary(
+        "one path crosses from the opposite side",
+        schema,
+        ("panel.png",),
+        hidden_values=(),
+        allowed_visual_words=("side", "path"),
+    )
+
+    for prompt, hidden in (
+        ("one candidate path crosses from the opposite side", ()),
+        (
+            "one path crosses hidden-identity from the opposite side",
+            ("hidden-identity",),
+        ),
+    ):
+        with pytest.raises(PrototypeSceneObserverError):
+            _assert_model_visible_boundary(
+                prompt,
+                schema,
+                ("panel.png",),
+                hidden_values=hidden,
+                allowed_visual_words=("side", "path"),
+            )
+
+    for allowance in (("candidate",), ("side", "side")):
+        with pytest.raises(PrototypeSceneObserverError):
+            _assert_model_visible_boundary(
+                "plain visible form",
+                schema,
+                ("panel.png",),
+                hidden_values=(),
+                allowed_visual_words=allowance,
+            )
 
 
 def _description_payload() -> dict[str, Any]:

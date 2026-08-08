@@ -3039,6 +3039,7 @@ def object_scene_transcript_prompt(
         object_scene_transcript_output_schema(inventory, mode, registry),
         ("panel.png", *(item.name for item in inventory.atlas_sheets)),
         hidden_values=(inventory.panel_digest, inventory.inventory_digest, *( () if registry is None else (registry.registry_digest,) )),
+        allowed_visual_words=("side", "path"),
     )
     return prompt
 

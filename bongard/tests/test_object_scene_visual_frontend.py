@@ -863,6 +863,47 @@ def test_operational_prose_admits_visual_paths_and_variant_alternatives_only():
         )
 
 
+def test_registered_prompt_admits_rigorous_visual_path_and_side_cards():
+    raw_a, raw_b = _scene(0), _scene(2)
+    inventory_a = extract_object_scene_proposal_inventory(raw_a)
+    inventory_b = extract_object_scene_proposal_inventory(raw_b)
+    first = _observe(raw_a, _payload(inventory_a))
+    second = _observe(raw_b, _payload(inventory_b), context=CONTEXT_B)
+    base = freeze_object_scene_soft_tag_registry(
+        (first.transcript, second.transcript)
+    )
+    original = base.tags[0]
+    tag = frontend.ObjectSceneSoftTag.create(
+        original.tag_id,
+        original.scope,
+        original.tag,
+        original.distinct_panel_count,
+        (
+            {
+                "kind": "marking_pattern",
+                "statement": "repeated hollow markers trace one visible path",
+            },
+            {
+                "kind": "spatial_relation",
+                "statement": "two visible paths cross from opposite sides",
+            },
+        ),
+        ("overlap, intersection, or through-crossing counts as path crossing",),
+        ("paths touching only at terminal tips are excluded",),
+    )
+    registry = _registry_with_tags(base, (tag,))
+
+    prepared = prepare_object_scene_transcript_inputs(
+        raw_a,
+        inventory_a,
+        ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry,
+    )
+
+    assert "two visible paths cross from opposite sides" in prepared.prompt
+    assert "through-crossing counts as path crossing" in prepared.prompt
+
+
 def test_registered_witness_macro_has_closed_precedence_and_error_replay():
     tag = frontend.ObjectSceneSoftTag.create(
         "tag_0000",

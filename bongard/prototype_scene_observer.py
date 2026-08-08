@@ -2385,9 +2385,21 @@ def _assert_model_visible_boundary(
     names: Sequence[str],
     *,
     hidden_values: Sequence[str],
+    allowed_visual_words: Sequence[str] = (),
 ) -> None:
+    allowed = tuple(allowed_visual_words)
+    if (
+        any(not isinstance(word, str) for word in allowed)
+        or len(set(allowed)) != len(allowed)
+        or not set(allowed).issubset({"side", "path"})
+    ):
+        raise PrototypeSceneObserverError(
+            "model-visible boundary visual-word allowance differs"
+        )
     envelope = prompt + "\n" + json.dumps(schema, sort_keys=True) + "\n" + "\n".join(names)
     for word in ("task", "side", "label", "path", "candidate", "formula", "query"):
+        if word in allowed:
+            continue
         if re.search(rf"\b{word}s?\b", envelope, re.IGNORECASE):
             raise PrototypeSceneObserverError(
                 "model-visible envelope contains experimental vocabulary"
