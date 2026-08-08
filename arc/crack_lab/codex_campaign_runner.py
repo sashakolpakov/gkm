@@ -344,6 +344,7 @@ MAX_WIP_SNAPSHOT_BYTES = 16 * 1024 * 1024 * 1024
 MAX_CANONICAL_ROLLBACK_ENTRIES = 100_000
 MAX_CANONICAL_ROLLBACK_BYTES = 512 * 1024 * 1024
 LIVE_BOUNDARY_POLL_SECONDS = 0.25
+LIVE_TRANSCRIPT_SCAN_ATTEMPTS = 3
 EXACT_CHILD_TERMINATE_SECONDS = 30.0
 UNQUIESCED_BOUNDARY_CODES = RebootRecovery.BOUNDARY_FINDING_COUNT_CODES
 
@@ -20481,6 +20482,56 @@ def _live_transcript_inventory(
     return (transcript_paths[0] if transcript_paths else None), None
 
 
+def _live_transcript_fingerprint(path: Path) -> tuple[int, int, int, int, int]:
+    """Fingerprint one live regular file without following a replacement link."""
+
+    try:
+        metadata = path.stat(follow_symlinks=False)
+    except OSError as exc:
+        raise CampaignPlanError(
+            "live protected transcript became unavailable during scan"
+        ) from exc
+    if not stat.S_ISREG(metadata.st_mode) or metadata.st_nlink != 1:
+        raise CampaignPlanError(
+            "live protected transcript became unsafe during scan"
+        )
+    return (
+        metadata.st_dev,
+        metadata.st_ino,
+        metadata.st_size,
+        metadata.st_mtime_ns,
+        metadata.st_ctime_ns,
+    )
+
+
+def _scan_live_transcript(
+    monitor: Boundary.LiveBoundaryMonitor,
+    transcript: Path,
+    *,
+    final: bool,
+) -> tuple[Boundary.BoundaryFinding, ...]:
+    """Scan a live transcript without promoting an append race to malformed."""
+
+    if final:
+        return tuple(monitor.scan_transcript(transcript, final=True))
+
+    findings: tuple[Boundary.BoundaryFinding, ...] = ()
+    for _attempt in range(LIVE_TRANSCRIPT_SCAN_ATTEMPTS):
+        before = _live_transcript_fingerprint(transcript)
+        findings = tuple(monitor.scan_transcript(transcript, final=False))
+        after = _live_transcript_fingerprint(transcript)
+        if before == after:
+            return findings
+        if not findings or any(
+            finding.code != "malformed_transcript" for finding in findings
+        ):
+            # Never defer a command-surface or any other substantive finding.
+            return findings
+    # A producer that never yields a stable view remains fail-closed: retain
+    # the last malformed finding so the guarded-child path quarantines it.
+    return findings
+
+
 def _launch_exact_child(
     argv: list[str],
     *,
@@ -20764,7 +20815,8 @@ def _run_guarded_child(
                             )
                         transcript = selected
                         transcript_seen = True
-                        transcript_findings = monitor.scan_transcript(
+                        transcript_findings = _scan_live_transcript(
+                            monitor,
                             selected, final=final
                         )
                         transcript_boundary_findings = tuple(

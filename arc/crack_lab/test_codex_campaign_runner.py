@@ -5506,6 +5506,196 @@ def _historical_watchdog_fixture(tmp_path, monkeypatch):
     return item, workspace, protected, transcript
 
 
+def _synthetic_boundary_finding(code, description):
+    return SimpleNamespace(
+        code=code,
+        describe=lambda: description,
+    )
+
+
+def test_live_transcript_scan_retries_mutated_incomplete_tail(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{"type":"turn.com')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "transient incomplete tail"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            if len(self.calls) == 1:
+                with path.open("ab") as stream:
+                    stream.write(b'pleted","usage":{}}\n')
+                return [malformed]
+            return []
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == ()
+    assert monitor.calls == [False, False]
+
+
+def test_live_transcript_scan_keeps_stable_interior_malformed_finding(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{not-json}\n')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "completed malformed interior row"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            if len(self.calls) == 1:
+                with path.open("ab") as stream:
+                    stream.write(b'{"type":"turn.com')
+            return [malformed]
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == (malformed,)
+    assert monitor.calls == [False, False]
+
+
+def test_live_transcript_scan_keeps_first_stable_malformed_finding(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{not-json}\n')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "stable malformed row"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, _path, *, final):
+            self.calls.append(final)
+            return [malformed]
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == (malformed,)
+    assert monitor.calls == [False]
+
+
+def test_live_transcript_scan_never_retries_mutated_clean_result(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{"type":"thread.started"}\n')
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            with path.open("ab") as stream:
+                stream.write(b'{"type":"turn.com')
+            return []
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == ()
+    assert monitor.calls == [False]
+
+
+def test_live_transcript_scan_never_retries_command_surface_finding(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{"type":"thread.started"}\n')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "transient incomplete tail"
+    )
+    command = _synthetic_boundary_finding(
+        "shell_or_host_filesystem_escape", "forbidden command surface"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            with path.open("ab") as stream:
+                stream.write(b'{"type":"turn.com')
+            return [malformed, command]
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == (malformed, command)
+    assert monitor.calls == [False]
+
+
+def test_live_transcript_scan_never_retries_final_finding(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{"type":"turn.com')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "sealed incomplete tail"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            with path.open("ab") as stream:
+                stream.write(b"still-changing")
+            return [malformed]
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=True
+    )
+
+    assert findings == (malformed,)
+    assert monitor.calls == [True]
+
+
+def test_live_transcript_scan_persistent_mutation_fails_closed(tmp_path):
+    transcript = tmp_path / "codex_turn_synthetic.jsonl"
+    transcript.write_bytes(b'{"type":"turn.com')
+    malformed = _synthetic_boundary_finding(
+        "malformed_transcript", "persistently unstable tail"
+    )
+
+    class FakeMonitor:
+        def __init__(self):
+            self.calls = []
+
+        def scan_transcript(self, path, *, final):
+            self.calls.append(final)
+            with path.open("ab") as stream:
+                stream.write(b"x")
+            return [malformed]
+
+    monitor = FakeMonitor()
+    findings = R._scan_live_transcript(
+        monitor, transcript, final=False
+    )
+
+    assert findings == (malformed,)
+    assert monitor.calls == [False] * R.LIVE_TRANSCRIPT_SCAN_ATTEMPTS
+
+
 def test_guarded_child_contains_launch_return_handoff_failure(
     tmp_path, monkeypatch
 ):
