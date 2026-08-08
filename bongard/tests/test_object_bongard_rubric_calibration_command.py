@@ -83,10 +83,10 @@ def _fake_transport(source, calls: list[tuple[str, str]]):
     return transport
 
 
-def test_command_cardinality_is_one_signed_spec() -> None:
-    assert CALIBRATION_JOB_COUNT == 12
-    assert CALIBRATION_SHEET_JOURNAL_COUNT == 15
-    assert "single-frozen-signed-rubric-spec" in CALIBRATION_ACCEPTANCE_RULE
+def test_command_cardinality_is_two_ranked_specs_and_four_candidates() -> None:
+    assert CALIBRATION_JOB_COUNT == 24
+    assert CALIBRATION_SHEET_JOURNAL_COUNT == 30
+    assert "four-fixed-rank-major-object-then-scene" in CALIBRATION_ACCEPTANCE_RULE
 
 
 def test_command_seals_before_calls_persists_everything_and_cold_replays(
@@ -105,18 +105,18 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
         nonlocal nomination_calls
         nomination_calls += 1
         payload = {
-            "profiles": [
-                {
-                    "group_id": "group_0",
-                    "rubric": "Mismatched joined sector-like pieces recur.",
-                    "feature_ids": ["paired_sector_mismatch_support_ppm"],
-                },
-                {
-                    "group_id": "group_1",
-                    "rubric": "A triangle accompanied by three spans recurs.",
-                    "feature_ids": ["triangle_with_three_lines_support_ppm"],
-                },
-            ]
+            "proposal_0": {
+                "group_0_cue_text": (
+                    "one wholly solid contour figure accompanies one bead-textured figure"
+                ),
+                "group_1_cue_text": (
+                    "a triangular bead chain meets a zigzag contour segment"
+                ),
+            },
+            "proposal_1": {
+                "group_0_cue_text": "exactly one bead-textured figure occurs",
+                "group_1_cue_text": "triangular beads occur on a contour",
+            },
         }
         return CodexStructuredResult(
             payload,
@@ -157,15 +157,15 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
             output_root
         )
         assert precommit.authorization_digest == authorization.authorization_digest
-        assert len(authorization.jobs) == CALIBRATION_JOB_COUNT == 12
+        assert len(authorization.jobs) == CALIBRATION_JOB_COUNT == 24
         assert (
             sum(len(item.sheets) for item in authorization.jobs)
             == CALIBRATION_SHEET_JOURNAL_COUNT
-            == 15
+            == 30
         )
         assert tuple(item.rubric_spec_index for item in authorization.jobs) == (
-            0,
-        ) * CALIBRATION_JOB_COUNT
+            (0,) * 12 + (1,) * 12
+        )
         causal_gate_seen = True
         return run_object_bongard_rubric_calibration_observations(
             source,
@@ -200,17 +200,20 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
         "cold_replay_digest": nomination.cold_replay_digest,
         "command_result_digest": nomination.result_digest,
     }
-    assert len(calls) == 15
-    assert result.inventory.fresh_model_call_count == 15
+    assert len(calls) == 30
+    assert result.inventory.fresh_model_call_count == 30
     assert result.inventory.reused_model_call_count == 0
-    assert result.replay.survivor_counts == (2,)
+    assert result.replay.survivor_counts == (2, 2)
+    assert result.replay.selected_candidate_digest == (
+        result.assessment.slate_selection.selected_candidate_digest
+    )
     assert result.accepted is True
     assert result.replay.to_data()["acceptance_rule"] == CALIBRATION_ACCEPTANCE_RULE
     assert result.replay.to_data()["threshold_tuning_performed"] is False
     assert result.replay.to_data()["preferred_candidate_selected"] is False
     assert result.replay.to_data()["fresh_broad_release_prepared"] is False
-    assert len(tuple((output_root / "observer_artifacts").glob("*.json"))) == 12
-    assert len(tuple((output_root / "journals").glob("**/manifest.json"))) == 15
+    assert len(tuple((output_root / "observer_artifacts").glob("*.json"))) == 24
+    assert len(tuple((output_root / "journals").glob("**/manifest.json"))) == 30
     for filename in (
         AUTHORIZATION_FILENAME,
         PRECOMMIT_FILENAME,
@@ -233,10 +236,10 @@ def test_command_seals_before_calls_persists_everything_and_cold_replays(
         ObjectBongardRubricCalibrationAuthorization.from_data(tampered)
 
     reverse_job = result.authorization.jobs[0].to_data()
-    reverse_job["rubric_spec_index"] = 1
+    reverse_job["rubric_spec_index"] = 2
     with pytest.raises(
         ObjectBongardRubricCalibrationCommandError,
-        match="canonical index zero",
+        match="canonical rank zero or one",
     ):
         CalibrationObservationJobCommitment.from_data(reverse_job)
 

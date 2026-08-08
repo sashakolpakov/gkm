@@ -8,8 +8,8 @@ the new broad cohort.
 
 Vision is run before either support-side label is selected.  Each vision turn
 jointly judges one frozen ordered target-versus-foil description; independently
-scored adjectives are never subtracted downstream.  The only downstream
-predicates are the two closed pure-Python rubric candidates from
+scored adjectives are never subtracted downstream.  Two ranked descriptions
+times two fixed scopes give exactly four closed pure-Python candidates from
 ``object_bongard_rubric_version_space``.  Lean is not imported or required.
 """
 
@@ -55,6 +55,10 @@ from bongard.object_bongard_rubric_version_space import (
     RubricSupportSide,
     build_object_bongard_rubric_support_version_space,
 )
+from bongard.object_bongard_rubric_slate import (
+    ObjectBongardRubricSlateSelection,
+    select_object_bongard_rubric_slate,
+)
 from bongard.object_bongard_turn_journal import (
     ObjectBongardNamedImageTurnJournalTransport,
     ObjectBongardTurnJournalSummary,
@@ -79,13 +83,13 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_SOURCE_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-source.v5"
+    "gkm.bongard-object-rubric-calibration-source.v6"
 )
 OBJECT_RUBRIC_CALIBRATION_LIVE_OBSERVATION_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-live-observation.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_OBSERVATION_BATCH_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-observation-batch.v2"
+    "gkm.bongard-object-rubric-calibration-observation-batch.v3"
 )
 OBJECT_RUBRIC_CALIBRATION_COUNTS_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-candidate-counts.v1"
@@ -94,10 +98,10 @@ OBJECT_RUBRIC_CALIBRATION_SPEC_ASSESSMENT_SCHEMA = (
     "gkm.bongard-object-rubric-calibration-spec-assessment.v1"
 )
 OBJECT_RUBRIC_CALIBRATION_ASSESSMENT_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-assessment.v2"
+    "gkm.bongard-object-rubric-calibration-assessment.v3"
 )
 OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID = (
-    "bongard.object-rubric-calibration/two-soft-cue-ranks-fit-confirm-v5"
+    "bongard.object-rubric-calibration/two-soft-cue-ranks-all-support-v6"
 )
 
 DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
@@ -107,10 +111,6 @@ DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE = Path(
 
 CALIBRATION_GROUP_A_ORDINALS = (0, 1, 3, 4, 5, 7)
 CALIBRATION_GROUP_B_ORDINALS = (14, 17, 18, 19, 20, 21)
-CALIBRATION_FIT_GROUP_A_ORDINALS = (0, 1, 3)
-CALIBRATION_FIT_GROUP_B_ORDINALS = (14, 17, 18)
-CALIBRATION_CONFIRM_GROUP_A_ORDINALS = (4, 5, 7)
-CALIBRATION_CONFIRM_GROUP_B_ORDINALS = (19, 20, 21)
 CALIBRATION_SELECTED_ORDINALS = (
     CALIBRATION_GROUP_A_ORDINALS + CALIBRATION_GROUP_B_ORDINALS
 )
@@ -556,8 +556,8 @@ def _source_content(value: "ObjectBongardRubricCalibrationSource") -> dict[str, 
         "rubric_derivation_policy": (
             "verified-historical-description-cues/canonical-group-a-over-group-b/v4"
             if nomination is None
-            else "one-sealed-fit-only-two-rank-soft-cue-slate-then-two-"
-            "canonical-group-0-over-group-1-forward-orientations/v3"
+            else "one-sealed-all-support-two-rank-soft-cue-slate-then-two-"
+            "canonical-group-0-over-group-1-forward-orientations/v4"
         ),
         "historical_description_used_for_rubric_derivation": nomination is None,
         "nomination_binding": (
@@ -1430,12 +1430,16 @@ class ObjectBongardRubricObservationBatch:
 
     def __post_init__(self) -> None:
         _raw_digest(self.source_digest, "batch source digest")
+        blocks = tuple(
+            self.runs[index : index + 12]
+            for index in range(0, len(self.runs), 12)
+        ) if isinstance(self.runs, tuple) else ()
         if (
             isinstance(self.parallel_workers, bool)
             or not isinstance(self.parallel_workers, int)
             or not 1 <= self.parallel_workers <= 32
             or not isinstance(self.runs, tuple)
-            or len(self.runs) != 12
+            or len(self.runs) not in (12, 24)
             or any(
                 not isinstance(item, ObjectBongardRubricLiveObservation)
                 for item in self.runs
@@ -1447,8 +1451,13 @@ class ObjectBongardRubricObservationBatch:
                 }
             )
             != len(self.runs)
-            or tuple(item.rubric_spec_digest for item in self.runs)
-            != (self.runs[0].rubric_spec_digest,) * 12
+            or any(
+                tuple(item.rubric_spec_digest for item in block)
+                != (block[0].rubric_spec_digest,) * 12
+                for block in blocks
+            )
+            or len({block[0].rubric_spec_digest for block in blocks})
+            != len(blocks)
             or len({item.panel_binding_digest for item in self.runs}) != 12
             or self.batch_digest != canonical_digest(_batch_content(self))
         ):
@@ -1922,7 +1931,10 @@ def _assessment_content(
         "implementation_source_sha256": object_bongard_rubric_calibration_source_digest(),
         "source_digest": value.source_digest,
         "spec_assessments": [item.to_data() for item in value.spec_assessments],
-        "spec_count": 1,
+        "slate_selection": (
+            None if value.slate_selection is None else value.slate_selection.to_data()
+        ),
+        "spec_count": len(value.spec_assessments),
         "support_panels_per_side": RUBRIC_SUPPORT_PANELS_PER_SIDE,
         "labels_visible_to_observer": False,
         "cold_replay_calls_model": False,
@@ -1936,13 +1948,14 @@ def _assessment_content(
 class ObjectBongardRubricCalibrationAssessment:
     source_digest: str
     spec_assessments: tuple[ObjectBongardRubricCalibrationSpecAssessment, ...]
+    slate_selection: ObjectBongardRubricSlateSelection | None
     assessment_digest: str
 
     def __post_init__(self) -> None:
         _raw_digest(self.source_digest, "assessment source digest")
         if (
             not isinstance(self.spec_assessments, tuple)
-            or len(self.spec_assessments) != 1
+            or len(self.spec_assessments) not in (1, 2)
             or any(
                 not isinstance(item, ObjectBongardRubricCalibrationSpecAssessment)
                 for item in self.spec_assessments
@@ -1950,10 +1963,22 @@ class ObjectBongardRubricCalibrationAssessment:
             or len(
                 {item.rubric_spec.spec_digest for item in self.spec_assessments}
             )
-            != 1
+            != len(self.spec_assessments)
         ):
             raise ObjectBongardRubricCalibrationError(
-                "assessment must contain the single frozen signed rubric spec"
+                "assessment must contain one legacy or two frozen ranked rubric specs"
+            )
+        expected_selection = (
+            None
+            if len(self.spec_assessments) == 1
+            else select_object_bongard_rubric_slate(
+                tuple(item.rubric_spec for item in self.spec_assessments),
+                tuple(item.version_space for item in self.spec_assessments),
+            )
+        )
+        if self.slate_selection != expected_selection:
+            raise ObjectBongardRubricCalibrationError(
+                "calibration deterministic slate selection differs"
             )
         _raw_digest(self.assessment_digest, "calibration assessment digest")
         if self.assessment_digest != canonical_digest(_assessment_content(self)):
@@ -1979,6 +2004,7 @@ class ObjectBongardRubricCalibrationAssessment:
                 "implementation_source_sha256",
                 "source_digest",
                 "spec_assessments",
+                "slate_selection",
                 "spec_count",
                 "support_panels_per_side",
                 "labels_visible_to_observer",
@@ -1995,7 +2021,7 @@ class ObjectBongardRubricCalibrationAssessment:
             or raw["algorithm_id"] != OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID
             or raw["implementation_source_sha256"]
             != object_bongard_rubric_calibration_source_digest()
-            or raw["spec_count"] != 1
+            or raw["spec_count"] not in (1, 2)
             or raw["support_panels_per_side"]
             != RUBRIC_SUPPORT_PANELS_PER_SIDE
             or raw["labels_visible_to_observer"] is not False
@@ -2013,6 +2039,13 @@ class ObjectBongardRubricCalibrationAssessment:
             tuple(
                 ObjectBongardRubricCalibrationSpecAssessment.from_data(item)
                 for item in raw["spec_assessments"]
+            ),
+            (
+                None
+                if raw["slate_selection"] is None
+                else ObjectBongardRubricSlateSelection.from_data(
+                    raw["slate_selection"]
+                )
             ),
             raw["assessment_digest"],
         )
@@ -2045,7 +2078,7 @@ def _canonical_observations(
     spec_digests = tuple(item.spec_digest for item in source.rubric_specs)
     if set(values) != set(spec_digests):
         raise ObjectBongardRubricCalibrationError(
-            "observations do not exhaust the single exact rubric spec"
+            "observations do not exhaust the two exact ranked rubric specs"
         )
     expected_panel_ids = tuple(item.panel_id for item in source.panels)
     result: dict[str, tuple[ObjectBongardRubricObserverArtifact, ...]] = {}
@@ -2118,6 +2151,14 @@ def assess_object_bongard_rubric_calibration(
     values = {
         "source_digest": source.source_digest,
         "spec_assessments": tuple(assessments),
+        "slate_selection": (
+            None
+            if len(assessments) == 1
+            else select_object_bongard_rubric_slate(
+                tuple(item.rubric_spec for item in assessments),
+                tuple(item.version_space for item in assessments),
+            )
+        ),
     }
     provisional = object.__new__(ObjectBongardRubricCalibrationAssessment)
     for name, item in values.items():
@@ -2164,10 +2205,6 @@ __all__ = (
     "CALIBRATION_GROUP_A_ORDINALS",
     "CALIBRATION_GROUP_B_ORDINALS",
     "CALIBRATION_SELECTED_ORDINALS",
-    "CALIBRATION_FIT_GROUP_A_ORDINALS",
-    "CALIBRATION_FIT_GROUP_B_ORDINALS",
-    "CALIBRATION_CONFIRM_GROUP_A_ORDINALS",
-    "CALIBRATION_CONFIRM_GROUP_B_ORDINALS",
     "DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE",
     "OBJECT_RUBRIC_CALIBRATION_ALGORITHM_ID",
     "ObjectBongardRubricCalibrationAssessment",

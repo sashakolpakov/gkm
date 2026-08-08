@@ -187,7 +187,7 @@ def test_source_rejects_an_independently_queried_reverse_orientation(
     )
     with pytest.raises(
         calibration.ObjectBongardRubricCalibrationError,
-        match="canonical frozen orientation",
+        match="canonical frozen ranks",
     ):
         type(source)(
             historical_plan_file_sha256=source.historical_plan_file_sha256,
@@ -219,18 +219,18 @@ def test_internal_verified_nomination_content_replaces_historical_cues_exactly(
     group_1 = tuple(sorted(item.panel_id for item in source.group_b_panels))
     pngs = {item.panel_id: item.exact_png_bytes for item in source.panels}
     payload = {
-        "profiles": [
-            {
-                "group_id": "group_0",
-                "rubric": "A mismatched pair of sector-like subshapes recurs.",
-                "feature_ids": ["paired_sector_mismatch_support_ppm"],
-            },
-            {
-                "group_id": "group_1",
-                "rubric": "A triangle accompanied by three line-like spans recurs.",
-                "feature_ids": ["triangle_with_three_lines_support_ppm"],
-            },
-        ]
+        "proposal_0": {
+            "group_0_cue_text": (
+                "one wholly solid contour figure accompanies one bead-textured figure"
+            ),
+            "group_1_cue_text": (
+                "a triangular bead chain meets a zigzag contour segment"
+            ),
+        },
+        "proposal_1": {
+            "group_0_cue_text": "exactly one bead-textured figure occurs",
+            "group_1_cue_text": "triangular beads occur on a contour",
+        },
     }
 
     def transport(prompt, paths, names, schema, **_kwargs):
@@ -263,10 +263,18 @@ def test_internal_verified_nomination_content_replaces_historical_cues_exactly(
         nomination_replay_digest="sha256:" + "e" * 64,
         nomination_result_digest="sha256:" + "f" * 64,
     )
-    assert tuple(item.feature_nominations for item in nominated.rubric_specs) == (
+    assert tuple(item.candidate_rank for item in nominated.rubric_specs) == (0, 1)
+    assert tuple(
+        (item.target_cue.text, item.foil_cue.text)
+        for item in nominated.rubric_specs
+    ) == (
         (
-            "paired_sector_mismatch_support_ppm",
-            "triangle_with_three_lines_support_ppm",
+            "one wholly solid contour figure accompanies one bead-textured figure",
+            "a triangular bead chain meets a zigzag contour segment",
+        ),
+        (
+            "exactly one bead-textured figure occurs",
+            "triangular beads occur on a contour",
         ),
     )
     assert nominated.to_data()[

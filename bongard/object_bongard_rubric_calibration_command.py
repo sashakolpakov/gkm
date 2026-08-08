@@ -4,8 +4,8 @@ The calibration driver owns the visual and predicate semantics.  This module
 owns the causal filesystem boundary around it:
 
 1. cold-verify and embed the one-turn neutral semantic nomination predecessor;
-2. bind its two distinct positive cue IDs to one canonical signed comparison;
-3. freeze and persist the complete 12-job / 15-sheet calibration inventory;
+2. bind its two ranked positive cue pairs to two canonical signed comparisons;
+3. freeze and persist the complete 24-job / 30-sheet calibration inventory;
 4. capture and durably persist the exact Codex runtime precommit;
 5. only then admit the journaled contrastive vision calls; and
 6. replay pixels, nomination, journals, predicates, and assessment without a
@@ -65,6 +65,10 @@ from bongard.object_bongard_rubric_observer import (
 from bongard.object_bongard_rubric_version_space import (
     object_bongard_rubric_version_space_algorithm_digest,
 )
+from bongard.object_bongard_rubric_slate import (
+    object_bongard_rubric_slate_algorithm_digest,
+    object_bongard_rubric_slate_source_digest,
+)
 from bongard.object_bongard_rubric_nomination_command import (
     VerifiedObjectBongardRubricNomination,
     cold_verify_object_bongard_rubric_nomination,
@@ -108,25 +112,25 @@ from bongard.transport import (
 
 
 OBJECT_RUBRIC_CALIBRATION_AUTHORIZATION_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-authorization.v3"
+    "gkm.bongard-object-rubric-calibration-authorization.v4"
 )
 OBJECT_RUBRIC_CALIBRATION_PRECOMMIT_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-execution-precommit.v3"
+    "gkm.bongard-object-rubric-calibration-execution-precommit.v4"
 )
 OBJECT_RUBRIC_CALIBRATION_INVENTORY_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-observation-inventory.v3"
+    "gkm.bongard-object-rubric-calibration-observation-inventory.v4"
 )
 OBJECT_RUBRIC_CALIBRATION_REPLAY_SCHEMA = (
-    "gkm.bongard-object-rubric-calibration-disk-replay.v3"
+    "gkm.bongard-object-rubric-calibration-disk-replay.v4"
 )
 OBJECT_RUBRIC_CALIBRATION_COMMAND_ID = (
-    "bongard.object-rubric-calibration-command/seal-run-reload-v3"
+    "bongard.object-rubric-calibration-command/seal-run-reload-v4"
 )
 
 CALIBRATION_MODEL = "gpt-5.6-sol"
 CALIBRATION_REASONING_EFFORT = "medium"
-CALIBRATION_JOB_COUNT = 12
-CALIBRATION_SHEET_JOURNAL_COUNT = 15
+CALIBRATION_JOB_COUNT = 24
+CALIBRATION_SHEET_JOURNAL_COUNT = 30
 CALIBRATION_PARALLEL_WORKERS = 4
 CALIBRATION_MINUTES = 15
 DEFAULT_CODEX_EXECUTABLE = "codex"
@@ -154,9 +158,9 @@ HISTORICAL_EXPOSURE_SUCCESSOR_DIGEST = (
 )
 
 CALIBRATION_ACCEPTANCE_RULE = (
-    "pass-iff-the-single-frozen-signed-rubric-spec-has-at-least-one-exact-"
-    "six-positive-present-six-negative-certified-absent-support-consistent-"
-    "candidate/v2"
+    "pass-iff-at-least-one-of-four-fixed-rank-major-object-then-scene-"
+    "candidates-is-an-exact-six-positive-present-six-negative-certified-"
+    "absent-support-survivor/v3"
 )
 
 AUTHORIZATION_FILENAME = "authorization.json"
@@ -628,6 +632,10 @@ def _source_digest_inventory() -> tuple[tuple[str, str], ...]:
         "rubric_version_space_algorithm_digest": (
             object_bongard_rubric_version_space_algorithm_digest()
         ),
+        "rubric_slate_algorithm_digest": (
+            object_bongard_rubric_slate_algorithm_digest()
+        ),
+        "rubric_slate_source_sha256": object_bongard_rubric_slate_source_digest(),
         "transport_source_sha256": prototype_scene_transport_source_digest(),
         "turn_journal_source_sha256": object_bongard_turn_journal_source_digest(),
     }
@@ -721,9 +729,9 @@ class CalibrationObservationJobCommitment:
     def __post_init__(self) -> None:
         if type(self.job_index) is not int or not 0 <= self.job_index < CALIBRATION_JOB_COUNT:
             raise ObjectBongardRubricCalibrationCommandError("job index is invalid")
-        if self.rubric_spec_index != 0:
+        if self.rubric_spec_index not in (0, 1):
             raise ObjectBongardRubricCalibrationCommandError(
-                "rubric spec index must be the canonical index zero"
+                "rubric spec index must be canonical rank zero or one"
             )
         if type(self.panel_ordinal) is not int or self.panel_ordinal < 0:
             raise ObjectBongardRubricCalibrationCommandError("panel ordinal is invalid")
@@ -1006,13 +1014,14 @@ def _build_job_inventory(
         len(jobs) != CALIBRATION_JOB_COUNT
         or sum(len(item.sheets) for item in jobs)
         != CALIBRATION_SHEET_JOURNAL_COUNT
-        or tuple(item.rubric_spec_index for item in jobs) != (0,) * 12
+        or tuple(item.rubric_spec_index for item in jobs)
+        != (0,) * 12 + (1,) * 12
         or tuple(item.panel_ordinal for item in jobs)
-        != tuple(item.ordinal for item in source.panels)
+        != tuple(item.ordinal for item in source.panels) * 2
         or len({item.panel_binding_digest for item in jobs}) != 12
     ):
         raise ObjectBongardRubricCalibrationCommandError(
-            "calibration job/sheet inventory is not exactly 12/15"
+            "calibration job/sheet inventory is not exactly 24/30"
         )
     return tuple(jobs)
 
@@ -1126,7 +1135,7 @@ class ObjectBongardRubricCalibrationAuthorization:
             != CALIBRATION_JOB_COUNT
         ):
             raise ObjectBongardRubricCalibrationCommandError(
-                "authorization must contain exactly 12 jobs and 15 sheets"
+                "authorization must contain exactly 24 jobs and 30 sheets"
             )
         _raw_digest(self.job_inventory_digest, "job inventory digest")
         if self.job_inventory_digest != canonical_digest(
@@ -1850,7 +1859,7 @@ class ObjectBongardRubricCalibrationObservationInventory:
             != CALIBRATION_SHEET_JOURNAL_COUNT
         ):
             raise ObjectBongardRubricCalibrationCommandError(
-                "observation inventory call counts differ from 15 journals"
+                "observation inventory call counts differ from 30 journals"
             )
         _address(self.inventory_digest, "observation inventory digest")
         if self.inventory_digest != "sha256:" + canonical_digest(
@@ -1951,6 +1960,8 @@ def _replay_content(
         "verified_observation_job_count": CALIBRATION_JOB_COUNT,
         "verified_sheet_journal_count": CALIBRATION_SHEET_JOURNAL_COUNT,
         "survivor_counts_in_frozen_spec_order": list(value.survivor_counts),
+        "slate_selection_digest": value.slate_selection_digest,
+        "selected_candidate_digest": value.selected_candidate_digest,
         "acceptance_rule": CALIBRATION_ACCEPTANCE_RULE,
         "accepted": value.accepted,
         "threshold_tuning_performed": False,
@@ -1972,6 +1983,8 @@ class ObjectBongardRubricCalibrationDiskReplay:
     source_digest: str
     nomination_binding: ObjectBongardRubricCalibrationNominationBinding
     survivor_counts: tuple[int, ...]
+    slate_selection_digest: str
+    selected_candidate_digest: str | None
     accepted: bool
     replay_digest: str
 
@@ -1989,12 +2002,16 @@ class ObjectBongardRubricCalibrationDiskReplay:
             ObjectBongardRubricCalibrationNominationBinding,
         ):
             raise TypeError("nomination_binding has the wrong type")
+        _raw_digest(self.slate_selection_digest, "slate selection digest")
+        if self.selected_candidate_digest is not None:
+            _raw_digest(self.selected_candidate_digest, "selected candidate digest")
         if (
             not isinstance(self.survivor_counts, tuple)
-            or len(self.survivor_counts) != 1
+            or len(self.survivor_counts) != 2
             or any(type(item) is not int or item < 0 for item in self.survivor_counts)
             or not isinstance(self.accepted, bool)
-            or self.accepted is not all(item >= 1 for item in self.survivor_counts)
+            or self.accepted is not any(item >= 1 for item in self.survivor_counts)
+            or self.accepted is not (self.selected_candidate_digest is not None)
         ):
             raise ObjectBongardRubricCalibrationCommandError(
                 "calibration acceptance result differs from the frozen rule"
@@ -2026,6 +2043,8 @@ class ObjectBongardRubricCalibrationDiskReplay:
             "verified_observation_job_count",
             "verified_sheet_journal_count",
             "survivor_counts_in_frozen_spec_order",
+            "slate_selection_digest",
+            "selected_candidate_digest",
             "acceptance_rule",
             "accepted",
             "threshold_tuning_performed",
@@ -2059,7 +2078,7 @@ class ObjectBongardRubricCalibrationDiskReplay:
                 "calibration disk replay policy differs"
             )
         counts = tuple(raw["survivor_counts_in_frozen_spec_order"])
-        if len(counts) != 1:
+        if len(counts) != 2:
             raise ObjectBongardRubricCalibrationCommandError(
                 "disk replay survivor count inventory differs"
             )
@@ -2073,6 +2092,8 @@ class ObjectBongardRubricCalibrationDiskReplay:
                 raw["nomination_binding"]
             ),
             counts,  # type: ignore[arg-type]
+            raw["slate_selection_digest"],
+            raw["selected_candidate_digest"],
             raw["accepted"],
             raw["replay_digest"],
         )
@@ -2558,9 +2579,14 @@ def _new_disk_replay(
         len(item.survivor_candidate_digests)
         for item in assessment.spec_assessments
     )
-    if len(counts) != 1:
+    if len(counts) != 2:
         raise ObjectBongardRubricCalibrationCommandError(
-            "assessment does not contain the single frozen signed rubric spec"
+            "assessment does not contain the two frozen ranked rubric specs"
+        )
+    selection = assessment.slate_selection
+    if selection is None:
+        raise ObjectBongardRubricCalibrationCommandError(
+            "assessment lacks its deterministic four-candidate slate selection"
         )
     values = {
         "authorization_digest": authorization.authorization_digest,
@@ -2570,7 +2596,9 @@ def _new_disk_replay(
         "source_digest": authorization.source_digest,
         "nomination_binding": authorization.nomination_binding,
         "survivor_counts": counts,
-        "accepted": all(item >= 1 for item in counts),
+        "slate_selection_digest": selection.selection_digest,
+        "selected_candidate_digest": selection.selected_candidate_digest,
+        "accepted": selection.selected_candidate_digest is not None,
     }
     provisional = object.__new__(ObjectBongardRubricCalibrationDiskReplay)
     for name, item in values.items():
