@@ -1,6 +1,7 @@
 """Sealed production command for the preregistered panel-rubric campaign.
 
-The command opens only the twelve exact-unused TRAIN tasks committed by the
+The command first cold-verifies an explicitly supplied accepted calibration
+parent, then opens only the twelve exact-unused TRAIN tasks committed by the
 checked-in preregistration.  For each task it obtains one two-rank semantic
 proposal, judges both ranks on the twelve support panels, and delegates all
 selection, freeze-before-query, and scoring decisions to
@@ -32,6 +33,13 @@ from typing import Any, Callable, Mapping, Sequence
 from bongard.canonical import canonical_digest, canonical_json
 from bongard.codex_no_tools_preflight import CodexNoToolsAttestation, attest_codex_no_tools
 from bongard.object_bongard_batch import ObjectBongardBatchPlan, ObjectBongardTaskPlan
+from bongard.object_bongard_panel_rubric_calibration_command import (
+    CALIBRATION_RESULT_SCHEMA,
+    RESULT_FILENAME as CALIBRATION_RESULT_FILENAME,
+    VerifiedObjectBongardPanelRubricCalibration,
+    object_bongard_panel_rubric_calibration_command_source_digest,
+    verify_object_bongard_panel_rubric_calibration,
+)
 from bongard.object_bongard_panel_rubric_observer import (
     ObjectBongardPanelRubricArtifact,
     object_bongard_panel_rubric_output_schema,
@@ -78,12 +86,15 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.panel-rubric-campaign-command/exact-train-12-v1"
-AUTHORIZATION_SCHEMA = "gkm.bongard-panel-rubric-campaign-authorization.v1"
-PRECOMMIT_SCHEMA = "gkm.bongard-panel-rubric-campaign-precommit.v1"
+COMMAND_ID = "bongard.panel-rubric-campaign-command/exact-train-12-v2"
+AUTHORIZATION_SCHEMA = "gkm.bongard-panel-rubric-campaign-authorization.v2"
+PRECOMMIT_SCHEMA = "gkm.bongard-panel-rubric-campaign-precommit.v2"
 TASK_RECORD_SCHEMA = "gkm.bongard-panel-rubric-campaign-task-record.v1"
-CAMPAIGN_SCHEMA = "gkm.bongard-panel-rubric-campaign-result.v1"
-REPLAY_SCHEMA = "gkm.bongard-panel-rubric-campaign-replay.v1"
+CAMPAIGN_SCHEMA = "gkm.bongard-panel-rubric-campaign-result.v2"
+REPLAY_SCHEMA = "gkm.bongard-panel-rubric-campaign-replay.v2"
+CALIBRATION_PARENT_SCHEMA = (
+    "gkm.bongard-panel-rubric-campaign-accepted-calibration-parent.v1"
+)
 
 MODEL = "gpt-5.6-sol"
 REASONING_EFFORT = "medium"
@@ -103,6 +114,15 @@ DEFAULT_PREREGISTRATION = _REPOSITORY_ROOT / "bongard/data/object_bongard_rubric
 DEFAULT_PLAN = _REPOSITORY_ROOT / "bongard/data/object_bongard_rubric_train_20260808.plan.json"
 DEFAULT_DESCRIPTOR = _REPOSITORY_ROOT / "bongard/data/shape_bongard_v2_release_v1.json"
 DEFAULT_ARCHIVE = _REPOSITORY_ROOT / "downloads/ShapeBongard_V2.zip"
+DEFAULT_CALIBRATION_NOMINATION_ROOT = (
+    _REPOSITORY_ROOT
+    / "downloads/ShapeBongard_V2_full/object_rubric_nomination_20260808_all_support_v10"
+)
+DEFAULT_CALIBRATION_SOURCE_DIRECTORY = (
+    _REPOSITORY_ROOT
+    / "downloads/ShapeBongard_V2_full/"
+    "prototype_pair_python_campaign_20260807_object_v1/objects"
+)
 
 PREREGISTRATION_FILE_SHA256 = "10d52f9eec047063e1861cd7c151fa6600cf2c4ef4ad6423784cc419db0fb76e"
 PLAN_FILE_SHA256 = "c2f07c7885a42f4125f397ddf5bf7f8827b3ef1a6c1fb77e82f08a6ab2b3d523"
@@ -127,6 +147,14 @@ NamedImageTransport = Callable[..., CodexStructuredResult]
 
 class ObjectBongardPanelRubricCampaignCommandError(RuntimeError):
     """The launch boundary, execution, or cold replay failed closed."""
+
+
+def _is_raw_digest(value: object) -> bool:
+    return isinstance(value, str) and _RAW_DIGEST.fullmatch(value) is not None
+
+
+def _is_address(value: object) -> bool:
+    return isinstance(value, str) and _ADDRESS.fullmatch(value) is not None
 
 
 def object_bongard_panel_rubric_campaign_command_source_digest() -> str:
@@ -246,6 +274,134 @@ def _load_exact_cohort(preregistration_path: Path, plan_path: Path) -> tuple[dic
     return prereg, plan
 
 
+def _validate_accepted_calibration_parent(value: object) -> dict[str, Any]:
+    expected_fields = {
+        "schema",
+        "calibration_verifier_source_sha256",
+        "calibration_result_digest",
+        "calibration_cold_replay_digest",
+        "calibration_source_digest",
+        "calibration_plan_digest",
+        "calibration_assessment_digest",
+        "selected_candidate_rank",
+        "selected_candidate_digest",
+        "fresh_call_count",
+        "reused_call_count",
+        "accepted",
+        "cold_verified_before_campaign_archive_access",
+        "parent_digest",
+    }
+    if (
+        not isinstance(value, Mapping)
+        or any(not isinstance(key, str) for key in value)
+        or set(value) != expected_fields
+    ):
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "accepted calibration parent fields differ"
+        )
+    raw = _validate_seal(value, "parent_digest", "accepted calibration parent")
+    if (
+        raw["schema"] != CALIBRATION_PARENT_SCHEMA
+        or not _is_raw_digest(raw["calibration_verifier_source_sha256"])
+        or not _is_address(raw["calibration_result_digest"])
+        or not _is_address(raw["calibration_cold_replay_digest"])
+        or not _is_raw_digest(raw["calibration_source_digest"])
+        or not _is_raw_digest(raw["calibration_plan_digest"])
+        or not _is_raw_digest(raw["calibration_assessment_digest"])
+        or type(raw["selected_candidate_rank"]) is not int
+        or raw["selected_candidate_rank"] not in (0, 1)
+        or not _is_raw_digest(raw["selected_candidate_digest"])
+        or raw["fresh_call_count"] != 24
+        or raw["reused_call_count"] != 0
+        or raw["accepted"] is not True
+        or raw["cold_verified_before_campaign_archive_access"] is not True
+    ):
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "accepted calibration parent policy differs"
+        )
+    return raw
+
+
+def _cold_verify_accepted_calibration_parent(
+    calibration_root: str | os.PathLike[str],
+) -> dict[str, Any]:
+    """Require a successful calibration before any fresh campaign access."""
+
+    candidate = Path(calibration_root).expanduser()
+    if candidate.is_symlink() or not candidate.is_dir():
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "accepted calibration root is unavailable or linked"
+        )
+    root = candidate.resolve(strict=True)
+    verified = verify_object_bongard_panel_rubric_calibration(
+        root,
+        nomination_root=DEFAULT_CALIBRATION_NOMINATION_ROOT,
+        source_directory=DEFAULT_CALIBRATION_SOURCE_DIRECTORY,
+    )
+    if not isinstance(verified, VerifiedObjectBongardPanelRubricCalibration):
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "calibration verifier returned the wrong type"
+        )
+    result = _validate_seal(
+        _read_json(root / CALIBRATION_RESULT_FILENAME, "calibration result"),
+        "record_digest",
+        "calibration result",
+    )
+    selected_digest = result.get("selected_candidate_digest")
+    if (
+        verified.output_root != root
+        or verified.accepted is not True
+        or verified.selected_candidate_rank not in (0, 1)
+        or verified.fresh_call_count != 24
+        or verified.reused_call_count != 0
+        or result.get("schema") != CALIBRATION_RESULT_SCHEMA
+        or result.get("record_digest") != verified.result_digest
+        or result.get("cold_replay_digest") != verified.replay_digest
+        or result.get("plan_digest") != verified.plan_digest
+        or result.get("assessment_digest") != verified.assessment_digest
+        or result.get("accepted") is not True
+        or result.get("selected_candidate_rank")
+        != verified.selected_candidate_rank
+        or not isinstance(selected_digest, str)
+        or _RAW_DIGEST.fullmatch(selected_digest) is None
+        or result.get("fresh_call_count") != 24
+        or result.get("reused_call_count") != 0
+        or result.get("physical_call_denominator") != 24
+        or result.get("all_24_artifacts_frozen_before_support_labels") is not True
+        or result.get("model_calls_during_assessment_or_replay") != 0
+        or result.get("query_pixels_opened") is not False
+        or result.get("broad_cohort_pixels_opened") is not False
+        or result.get("official_test_pixels_opened") is not False
+        or not isinstance(result.get("source_digest"), str)
+        or _RAW_DIGEST.fullmatch(result["source_digest"]) is None
+    ):
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "calibration is not an accepted cold-verified campaign parent"
+        )
+    return _validate_accepted_calibration_parent(
+        _seal(
+            {
+                "schema": CALIBRATION_PARENT_SCHEMA,
+                "calibration_verifier_source_sha256": (
+                    object_bongard_panel_rubric_calibration_command_source_digest()
+                ),
+                "calibration_result_digest": verified.result_digest,
+                "calibration_cold_replay_digest": verified.replay_digest,
+                "calibration_source_digest": result["source_digest"],
+                "calibration_plan_digest": verified.plan_digest,
+                "calibration_assessment_digest": verified.assessment_digest,
+                "selected_candidate_rank": verified.selected_candidate_rank,
+                "selected_candidate_digest": selected_digest,
+                "fresh_call_count": verified.fresh_call_count,
+                "reused_call_count": verified.reused_call_count,
+                "accepted": True,
+                "cold_verified_before_campaign_archive_access": True,
+            },
+            "parent_digest",
+        )
+    )
+
+
 def _ensure_fresh_root(value: str | os.PathLike[str]) -> Path:
     root = Path(value).absolute()
     try:
@@ -276,11 +432,15 @@ def _authorization_record(
     *,
     plan: ObjectBongardBatchPlan,
     preregistration: Mapping[str, Any],
+    accepted_calibration_parent: Mapping[str, Any],
     archive_identity: Mapping[str, Any],
     minutes: int,
     parallel_workers: int,
     expected_launcher_sha256: str,
 ) -> dict[str, Any]:
+    calibration_parent = _validate_accepted_calibration_parent(
+        accepted_calibration_parent
+    )
     jobs = [
         {
             "task_index": index,
@@ -306,6 +466,16 @@ def _authorization_record(
             "selected_task_ids_digest": preregistration["selected_task_ids_digest"],
             "sealed_query_panel_ids_digest": preregistration["sealed_query_panel_ids_digest"],
             "scope": preregistration["scope"],
+            "accepted_calibration_parent": calibration_parent,
+            "calibration_result_digest": calibration_parent[
+                "calibration_result_digest"
+            ],
+            "calibration_cold_replay_digest": calibration_parent[
+                "calibration_cold_replay_digest"
+            ],
+            "calibration_source_digest": calibration_parent[
+                "calibration_source_digest"
+            ],
             "archive_identity": dict(archive_identity),
             "jobs": jobs,
             "task_count": TASK_COUNT,
@@ -335,6 +505,7 @@ def _prepare_runtime_precommit(
     *,
     authorization: Mapping[str, Any],
     plan: ObjectBongardBatchPlan,
+    accepted_calibration_parent: Mapping[str, Any],
     minutes: int,
     executable: str,
     expected_launcher_sha256: str,
@@ -343,6 +514,13 @@ def _prepare_runtime_precommit(
     launcher_fingerprinter: Callable[..., Mapping[str, str]],
     runtime_attester: Callable[..., CodexNoToolsAttestation],
 ) -> tuple[dict[str, Any], ObjectBongardTurnRuntime]:
+    calibration_parent = _validate_accepted_calibration_parent(
+        accepted_calibration_parent
+    )
+    if authorization.get("accepted_calibration_parent") != calibration_parent:
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "authorization calibration parent differs"
+        )
     cache = cloud_policy_cache_snapshotter()
     catalog = model_catalog_snapshotter()
     if not isinstance(cache, CloudPolicyCacheSnapshot) or not isinstance(catalog, CodexModelCatalogSnapshot):
@@ -383,6 +561,16 @@ def _prepare_runtime_precommit(
             "command_id": COMMAND_ID,
             "authorization_digest": authorization["authorization_digest"],
             "batch_plan_digest": plan.record_digest,
+            "accepted_calibration_parent": calibration_parent,
+            "calibration_result_digest": calibration_parent[
+                "calibration_result_digest"
+            ],
+            "calibration_cold_replay_digest": calibration_parent[
+                "calibration_cold_replay_digest"
+            ],
+            "calibration_source_digest": calibration_parent[
+                "calibration_source_digest"
+            ],
             "model": MODEL,
             "reasoning_effort": REASONING_EFFORT,
             "minutes": minutes,
@@ -410,6 +598,20 @@ def _runtime_from_precommit(value: Mapping[str, Any]) -> ObjectBongardTurnRuntim
     raw = _validate_seal(value, "precommit_digest", "execution precommit")
     if raw.get("schema") != PRECOMMIT_SCHEMA:
         raise ObjectBongardPanelRubricCampaignCommandError("execution precommit schema differs")
+    calibration_parent = _validate_accepted_calibration_parent(
+        raw.get("accepted_calibration_parent")
+    )
+    if (
+        raw.get("calibration_result_digest")
+        != calibration_parent["calibration_result_digest"]
+        or raw.get("calibration_cold_replay_digest")
+        != calibration_parent["calibration_cold_replay_digest"]
+        or raw.get("calibration_source_digest")
+        != calibration_parent["calibration_source_digest"]
+    ):
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "execution precommit calibration binding differs"
+        )
     try:
         cache_data = (
             None
@@ -808,6 +1010,13 @@ def _campaign_record(
     task_records: Sequence[Mapping[str, Any]],
     physical_model_calls: int,
 ) -> dict[str, Any]:
+    calibration_parent = _validate_accepted_calibration_parent(
+        authorization.get("accepted_calibration_parent")
+    )
+    if precommit.get("accepted_calibration_parent") != calibration_parent:
+        raise ObjectBongardPanelRubricCampaignCommandError(
+            "campaign calibration parent differs across sealed records"
+        )
     records = tuple(dict(item) for item in task_records)
     correct = sum(int(item["correct_count"]) for item in records)
     status_counts = {
@@ -821,6 +1030,18 @@ def _campaign_record(
             "authorization_digest": authorization["authorization_digest"],
             "execution_precommit_digest": precommit["precommit_digest"],
             "batch_plan_digest": plan.record_digest,
+            "accepted_calibration_parent_digest": calibration_parent[
+                "parent_digest"
+            ],
+            "calibration_result_digest": calibration_parent[
+                "calibration_result_digest"
+            ],
+            "calibration_cold_replay_digest": calibration_parent[
+                "calibration_cold_replay_digest"
+            ],
+            "calibration_source_digest": calibration_parent[
+                "calibration_source_digest"
+            ],
             "task_records": list(records),
             "task_record_digests": [item["record_digest"] for item in records],
             "task_count": TASK_COUNT,
@@ -857,6 +1078,7 @@ def _load_default_archive(
 def run_object_bongard_panel_rubric_campaign_command(
     output_root: str | os.PathLike[str],
     *,
+    calibration_root: str | os.PathLike[str],
     preregistration_path: str | os.PathLike[str] = DEFAULT_PREREGISTRATION,
     plan_path: str | os.PathLike[str] = DEFAULT_PLAN,
     descriptor_path: str | os.PathLike[str] = DEFAULT_DESCRIPTOR,
@@ -885,6 +1107,13 @@ def run_object_bongard_panel_rubric_campaign_command(
         raise ObjectBongardPanelRubricCampaignCommandError("parallel_workers must lie in 1..12")
     if _RAW_DIGEST.fullmatch(expected_launcher_sha256) is None:
         raise ObjectBongardPanelRubricCampaignCommandError("launcher SHA-256 differs")
+    # This is deliberately the first external-data gate.  A missing, rejected,
+    # or tampered calibration fails before the cohort archive is constructed,
+    # before the fresh output root exists, and before a panel/model callback can
+    # be reached.
+    accepted_calibration_parent = _cold_verify_accepted_calibration_parent(
+        calibration_root
+    )
     prereg, plan = _load_exact_cohort(Path(preregistration_path), Path(plan_path))
     if panel_reader is None:
         official_archive = _load_default_archive(Path(descriptor_path), Path(archive_path))
@@ -901,11 +1130,12 @@ def run_object_bongard_panel_rubric_campaign_command(
     root = _ensure_fresh_root(output_root)
     plan_record = _seal(
         {
-            "schema": "gkm.bongard-panel-rubric-campaign-plan-binding.v1",
+            "schema": "gkm.bongard-panel-rubric-campaign-plan-binding.v2",
             "preregistration": prereg,
             "batch_plan": plan.to_data(),
             "preregistration_file_sha256": PREREGISTRATION_FILE_SHA256,
             "batch_plan_file_sha256": PLAN_FILE_SHA256,
+            "accepted_calibration_parent": accepted_calibration_parent,
             "exact_preregistered_train_tasks": True,
             "task_count": TASK_COUNT,
             **_authority_data(),
@@ -916,6 +1146,7 @@ def run_object_bongard_panel_rubric_campaign_command(
     authorization = _authorization_record(
         plan=plan,
         preregistration=prereg,
+        accepted_calibration_parent=accepted_calibration_parent,
         archive_identity=archive_identity,
         minutes=minutes,
         parallel_workers=parallel_workers,
@@ -927,6 +1158,7 @@ def run_object_bongard_panel_rubric_campaign_command(
     precommit, _runtime = _prepare_runtime_precommit(
         authorization=authorization,
         plan=plan,
+        accepted_calibration_parent=accepted_calibration_parent,
         minutes=minutes,
         executable=executable,
         expected_launcher_sha256=expected_launcher_sha256,
@@ -1013,6 +1245,18 @@ def run_object_bongard_panel_rubric_campaign_command(
             "campaign_digest": campaign["campaign_digest"],
             "authorization_digest": authorization["authorization_digest"],
             "execution_precommit_digest": precommit["precommit_digest"],
+            "accepted_calibration_parent_digest": accepted_calibration_parent[
+                "parent_digest"
+            ],
+            "calibration_result_digest": accepted_calibration_parent[
+                "calibration_result_digest"
+            ],
+            "calibration_cold_replay_digest": accepted_calibration_parent[
+                "calibration_cold_replay_digest"
+            ],
+            "calibration_source_digest": accepted_calibration_parent[
+                "calibration_source_digest"
+            ],
             "model_calls_during_replay": 0,
             "new_pixels_opened_during_replay": 0,
             "all_task_archives_cold_replayed": True,
@@ -1021,7 +1265,9 @@ def run_object_bongard_panel_rubric_campaign_command(
         "replay_digest",
     )
     _write_once(root / REPLAY_FILENAME, replay)
-    return verify_object_bongard_panel_rubric_campaign_command_directory(root)
+    return verify_object_bongard_panel_rubric_campaign_command_directory(
+        root, calibration_root=calibration_root
+    )
 
 
 def _decode_panel_snapshots(
@@ -1290,9 +1536,14 @@ def _cold_replay_task_record(
 
 def verify_object_bongard_panel_rubric_campaign_command_directory(
     output_root: str | os.PathLike[str],
+    *,
+    calibration_root: str | os.PathLike[str],
 ) -> ObjectBongardPanelRubricCampaignCommandResult:
     """Cold replay a completed campaign without transport or new pixel access."""
 
+    accepted_calibration_parent = _cold_verify_accepted_calibration_parent(
+        calibration_root
+    )
     root = Path(output_root).absolute()
     expected_root = {
         PLAN_FILENAME,
@@ -1315,6 +1566,8 @@ def verify_object_bongard_panel_rubric_campaign_command_directory(
         or prereg.get("record_digest") != PREREGISTRATION_DIGEST
         or plan_record.get("preregistration_file_sha256") != PREREGISTRATION_FILE_SHA256
         or plan_record.get("batch_plan_file_sha256") != PLAN_FILE_SHA256
+        or plan_record.get("accepted_calibration_parent")
+        != accepted_calibration_parent
         or len(plan.tasks) != TASK_COUNT
     ):
         raise ObjectBongardPanelRubricCampaignCommandError("campaign cohort replay differs")
@@ -1326,6 +1579,7 @@ def verify_object_bongard_panel_rubric_campaign_command_directory(
     expected_authorization = _authorization_record(
         plan=plan,
         preregistration=prereg,
+        accepted_calibration_parent=accepted_calibration_parent,
         archive_identity=authorization["archive_identity"],
         minutes=authorization["minutes"],
         parallel_workers=authorization["parallel_workers"],
@@ -1341,6 +1595,14 @@ def verify_object_bongard_panel_rubric_campaign_command_directory(
     if (
         precommit.get("authorization_digest") != authorization["authorization_digest"]
         or precommit.get("batch_plan_digest") != plan.record_digest
+        or precommit.get("accepted_calibration_parent")
+        != accepted_calibration_parent
+        or precommit.get("calibration_result_digest")
+        != accepted_calibration_parent["calibration_result_digest"]
+        or precommit.get("calibration_cold_replay_digest")
+        != accepted_calibration_parent["calibration_cold_replay_digest"]
+        or precommit.get("calibration_source_digest")
+        != accepted_calibration_parent["calibration_source_digest"]
     ):
         raise ObjectBongardPanelRubricCampaignCommandError("precommit parents differ")
     runtime = _runtime_from_precommit(precommit)
@@ -1395,6 +1657,18 @@ def verify_object_bongard_panel_rubric_campaign_command_directory(
             "campaign_digest": campaign["campaign_digest"],
             "authorization_digest": authorization["authorization_digest"],
             "execution_precommit_digest": precommit["precommit_digest"],
+            "accepted_calibration_parent_digest": accepted_calibration_parent[
+                "parent_digest"
+            ],
+            "calibration_result_digest": accepted_calibration_parent[
+                "calibration_result_digest"
+            ],
+            "calibration_cold_replay_digest": accepted_calibration_parent[
+                "calibration_cold_replay_digest"
+            ],
+            "calibration_source_digest": accepted_calibration_parent[
+                "calibration_source_digest"
+            ],
             "model_calls_during_replay": 0,
             "new_pixels_opened_during_replay": 0,
             "all_task_archives_cold_replayed": True,
@@ -1412,12 +1686,14 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="action", required=True)
     launch = subparsers.add_parser("launch")
     launch.add_argument("--output-root", required=True)
+    launch.add_argument("--calibration-root", required=True)
     launch.add_argument("--minutes", type=int, default=DEFAULT_MINUTES)
     launch.add_argument("--parallel-workers", type=int, default=DEFAULT_PARALLEL_WORKERS)
     launch.add_argument("--executable", default=DEFAULT_EXECUTABLE)
     launch.add_argument("--expected-launcher-sha256", default=DEFAULT_EXPECTED_LAUNCHER_SHA256)
     verify = subparsers.add_parser("verify")
     verify.add_argument("--output-root", required=True)
+    verify.add_argument("--calibration-root", required=True)
     return parser
 
 
@@ -1427,6 +1703,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         result = (
             run_object_bongard_panel_rubric_campaign_command(
                 args.output_root,
+                calibration_root=args.calibration_root,
                 minutes=args.minutes,
                 parallel_workers=args.parallel_workers,
                 executable=args.executable,
@@ -1434,7 +1711,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             if args.action == "launch"
             else verify_object_bongard_panel_rubric_campaign_command_directory(
-                args.output_root
+                args.output_root, calibration_root=args.calibration_root
             )
         )
     except Exception as exc:
