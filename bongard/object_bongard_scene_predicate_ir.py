@@ -31,6 +31,11 @@ from bongard.object_scene_visual_frontend import (
     ObjectSceneTranscriptMode,
     verify_object_scene_soft_tag_registry,
 )
+from bongard.object_scene_semantic_registry import (
+    ObjectSceneSemanticRegistryProposal,
+    ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    verify_object_scene_semantic_registry_proposal,
+)
 from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
@@ -46,6 +51,7 @@ SCENE_CALIBRATION_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bu
 SCENE_ALGORITHM_ID = "bongard.scene-predicate/typed-positive-version-space-v2"
 SCENE_MAX_RANK_SLATE = 64
 SCENE_MAX_ENUMERATED_FORMULAS = 250_000
+EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE = "exact_open_tag_frequency"
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,511}\Z")
@@ -1516,6 +1522,8 @@ class ScenePredicateCalibrationBundle:
     ir_source_digest: str
     algorithm_digest: str
     registry_digest: str
+    registry_derivation_mode: str
+    registry_derivation_digest: str
     coverage_gate: SceneGateRecord
     selectivity_gate: SceneGateRecord
     repeatability_gate: SceneGateRecord
@@ -1527,7 +1535,11 @@ class ScenePredicateCalibrationBundle:
     bundle_digest: str
 
     def __post_init__(self) -> None:
-        for item, label in ((self.ir_source_digest, "IR source digest"), (self.algorithm_digest, "algorithm digest"), (self.registry_digest, "bundle registry digest"), (self.bundle_digest, "bundle digest")): _digest(item, label)
+        for item, label in ((self.ir_source_digest, "IR source digest"), (self.algorithm_digest, "algorithm digest"), (self.registry_digest, "bundle registry digest"), (self.registry_derivation_digest, "registry derivation digest"), (self.bundle_digest, "bundle digest")): _digest(item, label)
+        if self.registry_derivation_mode not in (EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE, ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE): raise ObjectBongardScenePredicateIRError("registry derivation mode differs")
+        if self.registry_derivation_mode == EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE and self.registry_derivation_digest != self.registry_digest: raise ObjectBongardScenePredicateIRError("exact registry derivation digest differs")
+        version_derivation = _fields(self.version_space, {"schema", "algorithm_digest", "registry_derivation_mode", "registry_derivation_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "bundle embedded version space")
+        if version_derivation["registry_derivation_mode"] != self.registry_derivation_mode or version_derivation["registry_derivation_digest"] != self.registry_derivation_digest: raise ObjectBongardScenePredicateIRError("bundle registry derivation binding differs")
         if tuple(item.candidate_digest for item in self.candidates) != tuple(dict.fromkeys(item.candidate_digest for item in self.candidates)): raise ObjectBongardScenePredicateIRError("bundle candidate inventory repeats")
         if len(self.ranker_slate) > SCENE_MAX_RANK_SLATE: raise ObjectBongardScenePredicateIRError("ranker slate exceeds capacity")
         survivors = set(self.complete_survivor_digests)
@@ -1537,16 +1549,16 @@ class ScenePredicateCalibrationBundle:
         if self.bundle_digest != canonical_digest(self.content_data()): raise ObjectBongardScenePredicateIRError("calibration bundle digest differs")
 
     def content_data(self) -> dict[str, object]:
-        return {"schema": SCENE_CALIBRATION_BUNDLE_SCHEMA, "ir_source_digest": self.ir_source_digest, "algorithm_digest": self.algorithm_digest, "registry_digest": self.registry_digest, "coverage_gate": self.coverage_gate.to_data(), "selectivity_gate": self.selectivity_gate.to_data(), "repeatability_gate": self.repeatability_gate.to_data(), "version_space": dict(self.version_space), "candidates": [item.to_data() for item in self.candidates], "complete_survivor_digests": list(self.complete_survivor_digests), "ranker_slate": [dict(item) for item in self.ranker_slate], "omitted_survivors": [dict(item) for item in self.omitted_survivors]}
+        return {"schema": SCENE_CALIBRATION_BUNDLE_SCHEMA, "ir_source_digest": self.ir_source_digest, "algorithm_digest": self.algorithm_digest, "registry_digest": self.registry_digest, "registry_derivation_mode": self.registry_derivation_mode, "registry_derivation_digest": self.registry_derivation_digest, "coverage_gate": self.coverage_gate.to_data(), "selectivity_gate": self.selectivity_gate.to_data(), "repeatability_gate": self.repeatability_gate.to_data(), "version_space": dict(self.version_space), "candidates": [item.to_data() for item in self.candidates], "complete_survivor_digests": list(self.complete_survivor_digests), "ranker_slate": [dict(item) for item in self.ranker_slate], "omitted_survivors": [dict(item) for item in self.omitted_survivors]}
     def to_data(self) -> dict[str, object]: return {**self.content_data(), "bundle_digest": self.bundle_digest}
 
     @classmethod
     def from_data(cls, value: object) -> "ScenePredicateCalibrationBundle":
-        expected = {"schema", "ir_source_digest", "algorithm_digest", "registry_digest", "coverage_gate", "selectivity_gate", "repeatability_gate", "version_space", "candidates", "complete_survivor_digests", "ranker_slate", "omitted_survivors", "bundle_digest"}
+        expected = {"schema", "ir_source_digest", "algorithm_digest", "registry_digest", "registry_derivation_mode", "registry_derivation_digest", "coverage_gate", "selectivity_gate", "repeatability_gate", "version_space", "candidates", "complete_survivor_digests", "ranker_slate", "omitted_survivors", "bundle_digest"}
         raw = _fields(value, expected, "scene calibration bundle")
         if raw["schema"] != SCENE_CALIBRATION_BUNDLE_SCHEMA or not isinstance(raw["version_space"], Mapping) or any(not isinstance(raw[key], list) for key in ("candidates", "complete_survivor_digests", "ranker_slate", "omitted_survivors")):
             raise ObjectBongardScenePredicateIRError("scene calibration bundle policy differs")
-        version = _fields(raw["version_space"], {"schema", "algorithm_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "bundle embedded version space")
+        version = _fields(raw["version_space"], {"schema", "algorithm_digest", "registry_derivation_mode", "registry_derivation_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "bundle embedded version space")
         if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or any(not isinstance(version[key], list) for key in ("language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "orientation_spaces")): raise ObjectBongardScenePredicateIRError("bundle embedded version-space policy differs")
         language = ScenePredicateLanguage.from_data(version["language"])
         if language.registry_digest != raw["registry_digest"] or version["algorithm_digest"] != raw["algorithm_digest"] or version["language_source_mode"] != language.source_mode.value or version["language_source_observation_digests"] != list(language.support_observation_digests):
@@ -1570,7 +1582,7 @@ class ScenePredicateCalibrationBundle:
         expected_spaces = () if expected_resource is not None else tuple(SceneOrientation)
         if tuple(item.orientation for item in spaces) != expected_spaces or any(space.candidates != tuple(item for item in candidates if item.orientation is space.orientation) for space in spaces):
             raise ObjectBongardScenePredicateIRError("bundle orientation inventory is not complete")
-        result = cls(raw["ir_source_digest"], raw["algorithm_digest"], raw["registry_digest"], SceneGateRecord.from_data(raw["coverage_gate"]), SceneGateRecord.from_data(raw["selectivity_gate"]), SceneGateRecord.from_data(raw["repeatability_gate"]), dict(raw["version_space"]), candidates, tuple(raw["complete_survivor_digests"]), tuple(dict(item) for item in raw["ranker_slate"]), tuple(dict(item) for item in raw["omitted_survivors"]), raw["bundle_digest"])
+        result = cls(raw["ir_source_digest"], raw["algorithm_digest"], raw["registry_digest"], raw["registry_derivation_mode"], raw["registry_derivation_digest"], SceneGateRecord.from_data(raw["coverage_gate"]), SceneGateRecord.from_data(raw["selectivity_gate"]), SceneGateRecord.from_data(raw["repeatability_gate"]), dict(raw["version_space"]), candidates, tuple(raw["complete_survivor_digests"]), tuple(dict(item) for item in raw["ranker_slate"]), tuple(dict(item) for item in raw["omitted_survivors"]), raw["bundle_digest"])
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene calibration bundle is not canonical")
         return result
 
@@ -1587,6 +1599,8 @@ def build_object_bongard_scene_predicate_calibration_bundle(
     registered_a_artifacts: Sequence[ObjectSceneTranscriptArtifact],
     registered_b_artifacts: Sequence[ObjectSceneTranscriptArtifact],
     role_rows: Sequence[Mapping[str, object]],
+    *,
+    semantic_registry_proposal: object | None = None,
 ) -> ScenePredicateCalibrationBundle:
     """Build the complete two-orientation Python calibration result."""
     discovery, pass_a, pass_b, roles = tuple(discovery_artifacts), tuple(registered_a_artifacts), tuple(registered_b_artifacts), tuple(role_rows)
@@ -1610,11 +1624,23 @@ def build_object_bongard_scene_predicate_calibration_bundle(
         discovery_digests.append(discover.artifact_digest); pass_a_digests.append(first.artifact_digest); pass_b_digests.append(second.artifact_digest)
     if any(len({row[key] for row in roles}) != len(roles) for key in ("ordinal", "neutral_panel_digest", "blind_panel_id")):
         raise ObjectBongardScenePredicateIRError("role reveal identities are not unique")
-    verify_object_scene_soft_tag_registry(
-        registry,
-        tuple(item.transcript for item in discovery if item.transcript is not None),
-        expected_registry_digest=registry.registry_digest,
-    )
+    if semantic_registry_proposal is None:
+        registry_derivation_mode = EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE
+        registry_derivation_digest = registry.registry_digest
+        verify_object_scene_soft_tag_registry(
+            registry,
+            tuple(item.transcript for item in discovery if item.transcript is not None),
+            expected_registry_digest=registry.registry_digest,
+        )
+    else:
+        registry_derivation_mode = ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        registry_derivation_digest = _digest(getattr(semantic_registry_proposal, "proposal_digest", None), "semantic registry proposal digest")
+        verify_object_scene_semantic_registry_proposal(
+            semantic_registry_proposal,
+            registry,
+            discovery,
+            roles,
+        )
     group0 = tuple(item for role, item in merged_rows if role == 0); group1 = tuple(item for role, item in merged_rows if role == 1)
     pass_a_group0 = tuple(item for role, item in pass_a_rows if role == 0); pass_a_group1 = tuple(item for role, item in pass_a_rows if role == 1)
     pass_b_group0 = tuple(item for role, item in pass_b_rows if role == 0); pass_b_group1 = tuple(item for role, item in pass_b_rows if role == 1)
@@ -1643,9 +1669,9 @@ def build_object_bongard_scene_predicate_calibration_bundle(
     slate = tuple(_ranker_view(item, language, registry, evaluations[item.candidate_digest], coverage=True, selectivity=True, repeatability=True) for item in admitted)
     admitted_set = {item.candidate_digest for item in admitted}
     omitted = tuple({"candidate_digest": item.candidate_digest, "reason": "semantic_stratified_rank_slate_capacity_64_exceeded"} for item in survivor_candidates if item.candidate_digest not in admitted_set)
-    version_space = {"schema": SCENE_VERSION_SPACES_SCHEMA, "algorithm_digest": algorithm_digest, "language": language.to_data(), "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "support_observations": [item.to_data() for item in panels], "pass_a_observations": [item.to_data() for item in pass_a_panels], "pass_b_observations": [item.to_data() for item in pass_b_panels], "group0_count": len(group0), "discovery_artifact_digests": sorted(discovery_digests), "registered_a_artifact_digests": sorted(pass_a_digests), "registered_b_artifact_digests": sorted(pass_b_digests), "orientation_spaces": [item.to_data() for item in spaces], "resource_gap": resource_gap, "model_calls_during_build": 0, "full_candidate_space_persisted": resource_gap is None, "complete_space_accounted_by_typed_capacity_gap": resource_gap is not None, "candidate_enumeration_was_truncated": False, **_authority_data()}
+    version_space = {"schema": SCENE_VERSION_SPACES_SCHEMA, "algorithm_digest": algorithm_digest, "registry_derivation_mode": registry_derivation_mode, "registry_derivation_digest": registry_derivation_digest, "language": language.to_data(), "language_source_mode": language.source_mode.value, "language_source_observation_digests": list(language.support_observation_digests), "support_observations": [item.to_data() for item in panels], "pass_a_observations": [item.to_data() for item in pass_a_panels], "pass_b_observations": [item.to_data() for item in pass_b_panels], "group0_count": len(group0), "discovery_artifact_digests": sorted(discovery_digests), "registered_a_artifact_digests": sorted(pass_a_digests), "registered_b_artifact_digests": sorted(pass_b_digests), "orientation_spaces": [item.to_data() for item in spaces], "resource_gap": resource_gap, "model_calls_during_build": 0, "full_candidate_space_persisted": resource_gap is None, "complete_space_accounted_by_typed_capacity_gap": resource_gap is not None, "candidate_enumeration_was_truncated": False, **_authority_data()}
     provisional = object.__new__(ScenePredicateCalibrationBundle)
-    values = {"ir_source_digest": object_bongard_scene_predicate_ir_source_digest(), "algorithm_digest": algorithm_digest, "registry_digest": registry.registry_digest, "coverage_gate": coverage, "selectivity_gate": selectivity, "repeatability_gate": repeatability, "version_space": version_space, "candidates": tuple(candidates), "complete_survivor_digests": survivors, "ranker_slate": slate, "omitted_survivors": omitted}
+    values = {"ir_source_digest": object_bongard_scene_predicate_ir_source_digest(), "algorithm_digest": algorithm_digest, "registry_digest": registry.registry_digest, "registry_derivation_mode": registry_derivation_mode, "registry_derivation_digest": registry_derivation_digest, "coverage_gate": coverage, "selectivity_gate": selectivity, "repeatability_gate": repeatability, "version_space": version_space, "candidates": tuple(candidates), "complete_survivor_digests": survivors, "ranker_slate": slate, "omitted_survivors": omitted}
     for key, item in values.items(): object.__setattr__(provisional, key, item)
     return ScenePredicateCalibrationBundle(**values, bundle_digest=canonical_digest(provisional.content_data()))
 
@@ -1653,14 +1679,58 @@ def build_object_bongard_scene_predicate_calibration_bundle(
 def cold_replay_object_bongard_scene_predicate_calibration_bundle(
     value: ScenePredicateCalibrationBundle | Mapping[str, object],
     registry: ObjectSceneSoftTagRegistry,
+    *,
+    semantic_registry_proposal: object | None = None,
+    discovery_artifacts: Sequence[ObjectSceneTranscriptArtifact] | None = None,
+    role_rows: Sequence[Mapping[str, object]] | None = None,
 ) -> ScenePredicateCalibrationBundle:
     """Rebuild the complete grammar, three evaluation matrices, gates, and slate."""
     bundle = ScenePredicateCalibrationBundle.from_data(value.to_data() if isinstance(value, ScenePredicateCalibrationBundle) else value)
     if not isinstance(registry, ObjectSceneSoftTagRegistry) or bundle.registry_digest != registry.registry_digest:
         raise ObjectBongardScenePredicateIRError("cold replay registry differs")
-    version = _fields(bundle.version_space, {"schema", "algorithm_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "combined version space")
+    version = _fields(bundle.version_space, {"schema", "algorithm_digest", "registry_derivation_mode", "registry_derivation_digest", "language", "language_source_mode", "language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "group0_count", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces", "resource_gap", "model_calls_during_build", "full_candidate_space_persisted", "complete_space_accounted_by_typed_capacity_gap", "candidate_enumeration_was_truncated", *_authority_data()}, "combined version space")
     if version["schema"] != SCENE_VERSION_SPACES_SCHEMA or version["model_calls_during_build"] != 0 or version["candidate_enumeration_was_truncated"] is not False or any(version[key] != item for key, item in _authority_data().items()) or any(not isinstance(version[key], list) for key in ("language_source_observation_digests", "support_observations", "pass_a_observations", "pass_b_observations", "discovery_artifact_digests", "registered_a_artifact_digests", "registered_b_artifact_digests", "orientation_spaces")):
         raise ObjectBongardScenePredicateIRError("combined version-space policy differs")
+    if bundle.registry_derivation_mode == EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE:
+        if semantic_registry_proposal is not None or bundle.registry_derivation_digest != registry.registry_digest:
+            raise ObjectBongardScenePredicateIRError("cold replay exact registry derivation differs")
+    elif bundle.registry_derivation_mode == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE:
+        if (
+            not isinstance(
+                semantic_registry_proposal, ObjectSceneSemanticRegistryProposal
+            )
+            or discovery_artifacts is None
+            or role_rows is None
+        ):
+            raise ObjectBongardScenePredicateIRError("cold replay semantic registry proposal differs")
+        restored_semantic_proposal = ObjectSceneSemanticRegistryProposal.from_data(
+            semantic_registry_proposal.to_data()
+        )
+        if (
+            restored_semantic_proposal.proposal_digest
+            != bundle.registry_derivation_digest
+            or restored_semantic_proposal.registry_digest != registry.registry_digest
+            or tuple(
+                sorted(item.artifact_digest for item in discovery_artifacts)
+            )
+            != tuple(version["discovery_artifact_digests"])
+        ):
+            raise ObjectBongardScenePredicateIRError(
+                "cold replay semantic registry proposal differs"
+            )
+        try:
+            verify_object_scene_semantic_registry_proposal(
+                restored_semantic_proposal,
+                registry,
+                tuple(discovery_artifacts),
+                tuple(role_rows),
+            )
+        except Exception as exc:
+            raise ObjectBongardScenePredicateIRError(
+                "cold replay semantic registry companion differs"
+            ) from exc
+    else:
+        raise ObjectBongardScenePredicateIRError("cold replay registry derivation mode differs")
     panels = tuple(ScenePanelObservation.from_data(item) for item in version["support_observations"])
     pass_a = tuple(ScenePanelObservation.from_data(item) for item in version["pass_a_observations"])
     pass_b = tuple(ScenePanelObservation.from_data(item) for item in version["pass_b_observations"])

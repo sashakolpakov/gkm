@@ -141,7 +141,13 @@ def _source_identities() -> list[dict[str, str]]:
 
 
 def _visual_payload(
-    inventory: object, *, registered: bool, role: int, marker: str
+    inventory: object,
+    *,
+    registered: bool,
+    role: int,
+    marker: str,
+    panel_registered_tag_ids: tuple[str, ...] = (),
+    entity_registered_tag_ids: tuple[str, ...] = (),
 ) -> dict[str, object]:
     rows: list[dict[str, object]] = []
     for crop in inventory.objects:
@@ -185,17 +191,51 @@ def _visual_payload(
                 "registered_tags": (
                     [
                         {
-                            "tag_id": "tag_0000",
+                            "tag_id": tag_id,
                             "state": "present" if role == 0 else "absent",
                             "evidence": "the frozen phrase was checked directly",
                         }
+                        for tag_id in entity_registered_tag_ids
                     ]
                     if registered
                     else []
                 ),
             }
         )
-    return {"objects": rows}
+    panel_phrase = (
+        "bird-like object"
+        if role == 0
+        else "three-sided frame with distinct edge markers"
+    )
+    return {
+        "panel": {
+            "summary": f"complete visible composition {marker}",
+            "open_tags": (
+                []
+                if registered
+                else [
+                    {
+                        "tag": panel_phrase,
+                        "state": "present",
+                        "evidence": "the complete composition visibly supports the phrase",
+                    }
+                ]
+            ),
+            "registered_tags": (
+                [
+                    {
+                        "tag_id": tag_id,
+                        "state": "present" if role == 0 else "absent",
+                        "evidence": "the frozen whole-panel phrase was checked directly",
+                    }
+                    for tag_id in panel_registered_tag_ids
+                ]
+                if registered
+                else []
+            ),
+        },
+        "objects": rows,
+    }
 
 
 def _text_receipt(
@@ -262,7 +302,9 @@ def _text_receipt(
     )
 
 
-def _bundle(registry: object, *, accepted: bool) -> dict[str, object]:
+def _bundle(
+    registry: object, semantic_registry_proposal: object, *, accepted: bool
+) -> dict[str, object]:
     formula_digest = "3" * 64
     atom_digest = "4" * 64
     evidence_digest = "5" * 64
@@ -287,6 +329,8 @@ def _bundle(registry: object, *, accepted: bool) -> dict[str, object]:
         "ir_source_digest": "6" * 64,
         "algorithm_digest": "7" * 64,
         "registry_digest": registry.registry_digest,
+        "registry_derivation_mode": "role_aware_semantic_concept_proposal",
+        "registry_derivation_digest": semantic_registry_proposal.proposal_digest,
         "coverage_gate": {"passed": True, "covered_panel_count": 12},
         "selectivity_gate": {"passed": passed, "separated_panel_count": 12 if passed else 0},
         "repeatability_gate": {"passed": True, "repeat_tested_panel_count": 12},
@@ -377,7 +421,11 @@ def _install_offline_boundary(
     if accepted is not None:
         def derive(**kwargs: object) -> dict[str, object]:
             return command._validate_ir_bundle(
-                _bundle(kwargs["registry"], accepted=accepted)
+                _bundle(
+                    kwargs["registry"],
+                    kwargs["semantic_registry_proposal"],
+                    accepted=accepted,
+                )
             )
 
         monkeypatch.setattr(command, "_derive_ir_bundle", derive)
@@ -389,7 +437,13 @@ def _run(
     calibration_inputs: command._CalibrationInputs,
     *,
     accepted: bool | None,
-) -> tuple[command.VerifiedObjectBongardScenePredicateCalibration, list[str], list[str]]:
+    semantic_valid: bool = True,
+) -> tuple[
+    command.VerifiedObjectBongardScenePredicateCalibration,
+    list[str],
+    list[str],
+    list[str],
+]:
     _install_offline_boundary(
         monkeypatch, calibration_inputs, accepted=accepted
     )
@@ -400,6 +454,7 @@ def _run(
         )
     }
     visual_calls: list[str] = []
+    proposer_calls: list[str] = []
     ranker_calls: list[str] = []
     registered_prompts: dict[str, list[str]] = {
         "registered_a": [],
@@ -410,17 +465,19 @@ def _run(
     def named_transport(prompt, paths, names, schema, **_kwargs):
         assert (root / command.AUTHORIZATION_FILENAME).is_file()
         assert (root / command.PRECOMMIT_FILENAME).is_file()
-        assert not (root / command.ROLE_REVEAL_FILENAME).exists()
         panel_digest = hashlib.sha256(Path(paths[0]).read_bytes()).hexdigest()
         index, inventory = by_panel_digest[panel_digest]
-        registered = "open_tags must be empty" in prompt
+        registered = "All open_tags arrays must be empty" in prompt
         if not registered:
             stage = "discovery"
+            assert not (root / command.ROLE_REVEAL_FILENAME).exists()
             assert not (root / command.REGISTRY_FREEZE_FILENAME).exists()
         elif (root / command.EVALUATION_A_BATCH_FILENAME).exists():
             stage = "registered_b"
         else:
             stage = "registered_a"
+            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
+            assert (root / command.SEMANTIC_PROPOSAL_RESULT_FILENAME).is_file()
             assert (root / command.REGISTRY_FREEZE_FILENAME).is_file()
         envelope = prompt + json.dumps(schema, sort_keys=True) + " ".join(names)
         for panel in calibration_inputs.panels:
@@ -436,17 +493,62 @@ def _run(
             registered=registered,
             role=0 if index < 6 else 1,
             marker=f"{stage}-{call_ordinal:02d}",
+            panel_registered_tag_ids=tuple(
+                schema["properties"]["panel"]["properties"]["registered_tags"][
+                    "items"
+                ]["properties"]["tag_id"].get("enum", ())
+            ),
+            entity_registered_tag_ids=tuple(
+                schema["properties"]["objects"]["items"]["properties"]
+                ["registered_tags"]["items"]["properties"]["tag_id"].get(
+                    "enum", ()
+                )
+            ),
         )
         return CodexStructuredResult(
             payload, _receipt(prompt, paths, names, schema, payload)
         )
 
     def text_transport(prompt, schema, **_kwargs):
-        assert (root / command.RANK_INPUT_FREEZE_FILENAME).is_file()
-        assert (root / command.ROLE_REVEAL_FILENAME).is_file()
-        enum = schema["properties"]["selected_survivor_digest"]["enum"]
-        payload = {"selected_survivor_digest": enum[0]}
-        ranker_calls.append(prompt)
+        properties = schema["properties"]
+        if {"side0_positive", "side1_positive"}.issubset(properties):
+            assert (root / command.DISCOVERY_FREEZE_FILENAME).is_file()
+            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
+            assert not (root / command.REGISTRY_FREEZE_FILENAME).exists()
+            proposer_calls.append(prompt)
+            side0_aliases = properties["side0_positive"]["items"][
+                "properties"
+            ]["citations"]["items"]["enum"]
+            side1_aliases = properties["side1_positive"]["items"][
+                "properties"
+            ]["citations"]["items"]["enum"]
+            payload = {
+                "side0_positive": [
+                    {
+                        "scope": "panel",
+                        "phrase": "bird-like object",
+                        "citations": side0_aliases[:2],
+                    }
+                ],
+                "side1_positive": [
+                    {
+                        "scope": "panel",
+                        "phrase": (
+                            "three-sided frame with distinct edge markers"
+                            if semantic_valid
+                            else "not a valid affirmative concept"
+                        ),
+                        "citations": side1_aliases[:2],
+                    }
+                ],
+            }
+        else:
+            assert set(properties) == {"selected_survivor_digest"}
+            assert (root / command.RANK_INPUT_FREEZE_FILENAME).is_file()
+            assert (root / command.ROLE_REVEAL_FILENAME).is_file()
+            enum = properties["selected_survivor_digest"]["enum"]
+            payload = {"selected_survivor_digest": enum[0]}
+            ranker_calls.append(prompt)
         return CodexStructuredResult(payload, _text_receipt(prompt, schema, payload))
 
     verified = command.run_object_bongard_scene_predicate_calibration(
@@ -474,34 +576,45 @@ def _run(
     assert set(registered_prompts["registered_a"]) == set(
         registered_prompts["registered_b"]
     )
-    return verified, visual_calls, ranker_calls
+    for prompt in registered_prompts["registered_a"]:
+        if semantic_valid:
+            assert "bird-like object" in prompt
+            assert "three-sided frame with distinct edge markers" in prompt
+        assert "historical_role" not in prompt
+        assert "side0_positive" not in prompt
+        assert "side1_positive" not in prompt
+    return verified, visual_calls, proposer_calls, ranker_calls
 
 
-def test_accepted_run_makes_exactly_37_calls_then_zero_call_replay(
+def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     calibration_inputs: command._CalibrationInputs,
 ) -> None:
     root = tmp_path / "accepted_scene_calibration"
-    verified, visual_calls, ranker_calls = _run(
+    verified, visual_calls, proposer_calls, ranker_calls = _run(
         root, monkeypatch, calibration_inputs, accepted=True
     )
 
     assert verified.status == "accepted"
     assert verified.visual_fresh_call_count == 36
+    assert verified.semantic_proposer_fresh_call_count == 1
     assert verified.ranker_fresh_call_count == 1
     assert verified.selected_survivor_digest is not None
+    result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
+    assert result["physical_model_call_count"] == 38
     assert len(ranker_calls) == 1
+    assert len(proposer_calls) == 1
     prompt = ranker_calls[0]
     for hidden in ("3" * 64, "4" * 64, "5" * 64):
         assert hidden not in prompt
     assert verified.selected_survivor_digest in prompt
-    before = (len(visual_calls), len(ranker_calls))
+    before = (len(visual_calls), len(proposer_calls), len(ranker_calls))
     replayed = command.verify_object_bongard_scene_predicate_calibration(
         root, source_root="offline-source"
     )
     assert replayed == verified
-    assert (len(visual_calls), len(ranker_calls)) == before
+    assert (len(visual_calls), len(proposer_calls), len(ranker_calls)) == before
 
 
 def test_real_ir_builds_readable_digest_free_ranker_views(
@@ -510,12 +623,13 @@ def test_real_ir_builds_readable_digest_free_ranker_views(
     calibration_inputs: command._CalibrationInputs,
 ) -> None:
     root = tmp_path / "real_ir_scene_calibration"
-    verified, visual_calls, ranker_calls = _run(
+    verified, visual_calls, proposer_calls, ranker_calls = _run(
         root, monkeypatch, calibration_inputs, accepted=None
     )
 
     assert verified.status == "accepted"
     assert len(visual_calls) == 36
+    assert len(proposer_calls) == 1
     assert len(ranker_calls) == 1
     assessment = json.loads((root / command.ASSESSMENT_FILENAME).read_text("utf-8"))
     bundle = assessment["ir_bundle"]
@@ -597,15 +711,19 @@ def test_empty_survivor_is_typed_gap_and_never_calls_ranker(
     calibration_inputs: command._CalibrationInputs,
 ) -> None:
     root = tmp_path / "gap_scene_calibration"
-    verified, visual_calls, ranker_calls = _run(
+    verified, visual_calls, proposer_calls, ranker_calls = _run(
         root, monkeypatch, calibration_inputs, accepted=False
     )
 
     assert verified.status == "typed_empty_survivor_gap"
     assert verified.selected_survivor_digest is None
     assert verified.visual_fresh_call_count == 36
+    assert verified.semantic_proposer_fresh_call_count == 1
     assert verified.ranker_fresh_call_count == 0
+    result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
+    assert result["physical_model_call_count"] == 37
     assert ranker_calls == []
+    assert len(proposer_calls) == 1
     assert not (root / command.JOURNAL_DIRECTORY / "ranker").exists()
     before = len(visual_calls)
     replayed = command.verify_object_bongard_scene_predicate_calibration(
@@ -613,6 +731,42 @@ def test_empty_survivor_is_typed_gap_and_never_calls_ranker(
     )
     assert replayed == verified
     assert len(visual_calls) == before
+
+
+def test_semantic_invalid_payload_is_typed_gap_and_never_calls_ranker(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    calibration_inputs: command._CalibrationInputs,
+) -> None:
+    root = tmp_path / "semantic_gap_scene_calibration"
+    verified, visual_calls, proposer_calls, ranker_calls = _run(
+        root,
+        monkeypatch,
+        calibration_inputs,
+        accepted=True,
+        semantic_valid=False,
+    )
+
+    assert verified.status == "typed_semantic_proposal_gap"
+    assert verified.selected_survivor_digest is None
+    assert verified.visual_fresh_call_count == 36
+    assert verified.semantic_proposer_fresh_call_count == 1
+    assert verified.ranker_fresh_call_count == 0
+    result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
+    assert result["physical_model_call_count"] == 37
+    assert len(proposer_calls) == 1
+    assert ranker_calls == []
+    assert not (root / command.JOURNAL_DIRECTORY / "ranker").exists()
+    registry = json.loads(
+        (root / command.REGISTRY_FREEZE_FILENAME).read_text("utf-8")
+    )["registry"]
+    assert registry["tags"] == []
+    before = (len(visual_calls), len(proposer_calls), len(ranker_calls))
+    replayed = command.verify_object_bongard_scene_predicate_calibration(
+        root, source_root="offline-source"
+    )
+    assert replayed == verified
+    assert (len(visual_calls), len(proposer_calls), len(ranker_calls)) == before
 
 
 def test_ranker_privacy_rejects_formula_digest_leak(

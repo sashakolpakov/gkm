@@ -3,6 +3,7 @@ from __future__ import annotations
 from copy import deepcopy
 import hashlib
 from io import BytesIO
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
@@ -44,6 +45,11 @@ from bongard.object_scene_visual_frontend import (
     extract_object_scene_proposal_inventory,
     freeze_object_scene_soft_tag_registry,
     observe_object_scene_transcript,
+)
+from bongard.object_scene_semantic_registry import (
+    ObjectSceneSemanticRegistryProposal,
+    build_object_scene_semantic_registry_gap,
+    prepare_object_scene_semantic_registry_proposal,
 )
 from bongard.tests.test_object_scene_visual_frontend import _payload, _scene, _transport
 from bongard.tests.test_prototype_scene_observer import (
@@ -439,6 +445,10 @@ def test_panel_scoped_soft_tag_is_directly_decidable_with_zero_proposals():
 def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratified_slate(monkeypatch):
     registry, discovery, pass_a, pass_b, roles = _artifact_fixture()
     bundle = build_object_bongard_scene_predicate_calibration_bundle(registry, discovery, pass_a, pass_b, roles)
+    assert bundle.registry_derivation_mode == ir.EXACT_OPEN_TAG_FREQUENCY_REGISTRY_DERIVATION_MODE
+    assert bundle.registry_derivation_digest == registry.registry_digest
+    assert bundle.version_space["registry_derivation_mode"] == bundle.registry_derivation_mode
+    assert bundle.version_space["registry_derivation_digest"] == bundle.registry_derivation_digest
     assert len(bundle.candidates) == 1888
     assert len(canonical_json(bundle.to_data())) < 16 * 1024 * 1024
     restored = ir.ScenePredicateCalibrationBundle.from_data(bundle.to_data())
@@ -451,6 +461,17 @@ def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratifi
     tampered = deepcopy(bundle.to_data()); tampered["ranker_slate"] = []
     with pytest.raises(ObjectBongardScenePredicateIRError):
         ir.ScenePredicateCalibrationBundle.from_data(tampered)
+    tampered_derivation = deepcopy(bundle.to_data())
+    tampered_derivation["registry_derivation_digest"] = _raw_digest("not-the-registry")
+    tampered_derivation["version_space"]["registry_derivation_digest"] = tampered_derivation["registry_derivation_digest"]
+    tampered_derivation["bundle_digest"] = canonical_digest({key: value for key, value in tampered_derivation.items() if key != "bundle_digest"})
+    with pytest.raises(ObjectBongardScenePredicateIRError, match="exact registry derivation digest"):
+        ir.ScenePredicateCalibrationBundle.from_data(tampered_derivation)
+    split_derivation = deepcopy(bundle.to_data())
+    split_derivation["version_space"]["registry_derivation_mode"] = "role_aware_semantic_proposal"
+    split_derivation["bundle_digest"] = canonical_digest({key: value for key, value in split_derivation.items() if key != "bundle_digest"})
+    with pytest.raises(ObjectBongardScenePredicateIRError, match="derivation binding"):
+        ir.ScenePredicateCalibrationBundle.from_data(split_derivation)
     language = ir.ScenePredicateLanguage.from_data(bundle.version_space["language"])
     forbidden_boundary = next(item for item in language.boundaries if item.observable_id == "matching_entity_count" and item.comparison is SceneComparison.AT_MOST and item.value >= 1)
     body = ir.SceneFormula.atom_formula(ir.SceneAtom.create(SceneScope.ENTITY, SceneAtomKind.QUALITATIVE, "bird_like"))
@@ -476,3 +497,163 @@ def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratifi
     fake_complete["version_space"]["complete_space_accounted_by_typed_capacity_gap"] = False
     with pytest.raises(ObjectBongardScenePredicateIRError, match="capacity accounting"):
         ir.ScenePredicateCalibrationBundle.from_data(fake_complete)
+
+
+def test_semantic_registry_derivation_routes_only_to_companion_and_replays_by_proposal_digest(monkeypatch):
+    registry, discovery, pass_a, pass_b, roles = _artifact_fixture()
+    proposal = SimpleNamespace(proposal_digest=_raw_digest("semantic-proposal"))
+    semantic_calls = []
+
+    def semantic_verify(candidate, candidate_registry, candidate_discovery, candidate_roles):
+        semantic_calls.append((candidate, candidate_registry, candidate_discovery, candidate_roles))
+        return candidate_registry
+
+    def forbidden_exact_verify(*args, **kwargs):
+        raise AssertionError("semantic derivation must not invoke exact-frequency verification")
+
+    monkeypatch.setattr(ir, "verify_object_scene_soft_tag_registry", forbidden_exact_verify)
+    monkeypatch.setattr(ir, "verify_object_scene_semantic_registry_proposal", semantic_verify)
+    monkeypatch.setattr(ir, "SCENE_MAX_ENUMERATED_FORMULAS", 1)
+    bundle = build_object_bongard_scene_predicate_calibration_bundle(
+        registry,
+        discovery,
+        pass_a,
+        pass_b,
+        roles,
+        semantic_registry_proposal=proposal,
+    )
+    assert semantic_calls == [(proposal, registry, discovery, roles)]
+    assert bundle.registry_derivation_mode == ir.ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    assert bundle.registry_derivation_digest == proposal.proposal_digest
+    assert bundle.version_space["registry_derivation_mode"] == bundle.registry_derivation_mode
+    assert bundle.version_space["registry_derivation_digest"] == proposal.proposal_digest
+    with pytest.raises(ObjectBongardScenePredicateIRError, match="semantic registry proposal differs"):
+        cold_replay_object_bongard_scene_predicate_calibration_bundle(
+            bundle,
+            registry,
+            semantic_registry_proposal=proposal,
+            discovery_artifacts=discovery,
+            role_rows=roles,
+        )
+    with pytest.raises(ObjectBongardScenePredicateIRError, match="semantic registry proposal differs"):
+        cold_replay_object_bongard_scene_predicate_calibration_bundle(
+            bundle,
+            registry,
+            semantic_registry_proposal=SimpleNamespace(
+                proposal_digest=_raw_digest("different-semantic-proposal")
+            ),
+        )
+
+
+def test_real_semantic_typed_gap_empty_registry_build_round_trip_and_tamper(monkeypatch):
+    raws = tuple(_scene(index) for index in range(12))
+    inventories = tuple(extract_object_scene_proposal_inventory(raw) for raw in raws)
+    discovery = tuple(
+        _observe(
+            raw,
+            _payload(inventory, open_tags=("bird-like object",)),
+            scene_id=f"semantic_gap_panel_{index:02d}",
+            context=f"semantic-gap-discovery-{index}",
+            mode=ObjectSceneTranscriptMode.DISCOVERY,
+        )
+        for index, (raw, inventory) in enumerate(
+            zip(raws, inventories, strict=True)
+        )
+    )
+    roles = tuple(
+        {
+            "ordinal": index,
+            "neutral_panel_digest": _raw_digest(f"semantic-gap-neutral-{index}"),
+            "historical_role": 0 if index < 6 else 1,
+            "blind_panel_id": f"semantic_gap_panel_{index:02d}",
+        }
+        for index in range(12)
+    )
+    prepared = prepare_object_scene_semantic_registry_proposal(discovery, roles)
+    proposal, registry = build_object_scene_semantic_registry_gap(
+        prepared,
+        "insufficient_discovery_evidence",
+    )
+    assert proposal.status == "typed_proposal_gap"
+    assert registry.tags == ()
+
+    def registered_payload(index: int):
+        payload = _payload(inventories[index], registry=registry)
+        state = "present" if index < 6 else "absent"
+        for row in payload["objects"]:
+            for cell in row["observables"]:
+                if cell["observable_id"] == "bird_like":
+                    cell["state"] = state
+                    cell["evidence"] = (
+                        "bird silhouette visibly supported"
+                        if state == "present"
+                        else "bird silhouette is not visible"
+                    )
+        return payload
+
+    pass_a = tuple(
+        _observe(
+            raw,
+            registered_payload(index),
+            scene_id=f"semantic_gap_panel_{index:02d}",
+            context=f"semantic-gap-pass-a-{index}",
+            mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+            registry=registry,
+        )
+        for index, raw in enumerate(raws)
+    )
+    pass_b = tuple(
+        _observe(
+            raw,
+            registered_payload(index),
+            scene_id=f"semantic_gap_panel_{index:02d}",
+            context=f"semantic-gap-pass-b-{index}",
+            mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+            registry=registry,
+        )
+        for index, raw in enumerate(raws)
+    )
+    monkeypatch.setattr(ir, "SCENE_MAX_ENUMERATED_FORMULAS", 1)
+    bundle = build_object_bongard_scene_predicate_calibration_bundle(
+        registry,
+        discovery,
+        pass_a,
+        pass_b,
+        roles,
+        semantic_registry_proposal=proposal,
+    )
+    restored_proposal = ObjectSceneSemanticRegistryProposal.from_data(
+        proposal.to_data()
+    )
+    restored_bundle = ir.ScenePredicateCalibrationBundle.from_data(bundle.to_data())
+    assert bundle.registry_derivation_mode == ir.ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    assert bundle.registry_derivation_digest == proposal.proposal_digest
+    assert ir.ScenePredicateLanguage.from_data(
+        bundle.version_space["language"]
+    ).registered_tag_ids == ()
+    assert cold_replay_object_bongard_scene_predicate_calibration_bundle(
+        restored_bundle,
+        registry,
+        semantic_registry_proposal=restored_proposal,
+        discovery_artifacts=discovery,
+        role_rows=roles,
+    ) == bundle
+
+    tampered = deepcopy(bundle.to_data())
+    changed_digest = _raw_digest("different-real-semantic-proposal")
+    tampered["registry_derivation_digest"] = changed_digest
+    tampered["version_space"]["registry_derivation_digest"] = changed_digest
+    tampered["bundle_digest"] = canonical_digest(
+        {key: value for key, value in tampered.items() if key != "bundle_digest"}
+    )
+    with pytest.raises(
+        ObjectBongardScenePredicateIRError,
+        match="semantic registry proposal differs",
+    ):
+        cold_replay_object_bongard_scene_predicate_calibration_bundle(
+            tampered,
+            registry,
+            semantic_registry_proposal=proposal,
+            discovery_artifacts=discovery,
+            role_rows=roles,
+        )

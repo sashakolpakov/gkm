@@ -1,11 +1,12 @@
 """Sealed historical calibration for neutral scene-predicate discovery.
 
 The command uses only twelve already-exposed historical panels.  It freezes a
-predicate-independent object inventory, makes one group-blind discovery call
-per panel, freezes the union soft-tag registry, then makes one group-blind
-registered-evaluation call per panel in each of two independent passes.
-Historical roles are revealed only after all three twelve-artifact batches
-are durable and reloaded.
+predicate-independent object inventory and makes one group-blind discovery
+call per panel.  After that blind batch is durable, it reveals the committed
+support roles to one zero-image semantic proposer.  The proposer must supply
+affirmative scoped concepts for both support orientations in one turn.  Their
+union is frozen before two independent, role-blind registered-evaluation
+passes.
 
 Python constructs and verifies both support orientations.  An empty survivor
 set is a typed gap and makes no ranker call.  Otherwise one mandatory
@@ -70,22 +71,28 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/discover-register-rank-v1"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v1"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v1"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v1"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v1"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v1"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v1"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v1"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v1"
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v1"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v1"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v1"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v1"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v1"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v1"
-IR_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v1"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v2"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v2"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v2"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v2"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v2"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v2"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v2"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v2"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v2"
+SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
+    "gkm.bongard-scene-semantic-registry-proposal-input.v1"
+)
+SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
+    "gkm.bongard-scene-semantic-registry-proposal-result.v1"
+)
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v2"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v2"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v2"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v2"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v2"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v2"
+IR_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v2"
 
 AUTHORIZATION_FILENAME = "authorization.json"
 PRECOMMIT_FILENAME = "execution_precommit.json"
@@ -96,6 +103,8 @@ EVALUATION_A_BATCH_FILENAME = "registered_evaluation_a_batch.json"
 EVALUATION_B_BATCH_FILENAME = "registered_evaluation_b_batch.json"
 EVALUATION_FREEZE_FILENAME = "registered_evaluation_freeze.json"
 ROLE_REVEAL_FILENAME = "role_reveal.json"
+SEMANTIC_PROPOSAL_INPUT_FILENAME = "semantic_registry_proposal_input.json"
+SEMANTIC_PROPOSAL_RESULT_FILENAME = "semantic_registry_proposal_result.json"
 ASSESSMENT_FILENAME = "assessment.json"
 RANK_INPUT_FREEZE_FILENAME = "rank_input_freeze.json"
 RANK_RESULT_FILENAME = "rank_result.json"
@@ -119,8 +128,9 @@ REGISTERED_EVALUATION_VISUAL_CALL_COUNT_PER_PASS = 12
 REGISTERED_EVALUATION_PASS_COUNT = 2
 REGISTERED_EVALUATION_VISUAL_CALL_COUNT = 24
 VISUAL_CALL_COUNT = 36
+SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT = 1
 ACCEPTED_RANKER_CALL_COUNT = 1
-ACCEPTED_PHYSICAL_CALL_COUNT = 37
+ACCEPTED_PHYSICAL_CALL_COUNT = 38
 MAX_REGISTERED_SOFT_TAGS = 32
 
 _RAW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -145,6 +155,9 @@ def _authority_data() -> dict[str, object]:
         "discovery_then_two_independent_registered_evaluations": True,
         "historical_already_exposed_panel_count": PANEL_COUNT,
         "visual_observation_call_count": VISUAL_CALL_COUNT,
+        "semantic_registry_proposer_call_count": (
+            SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT
+        ),
         "accepted_ranker_call_count": ACCEPTED_RANKER_CALL_COUNT,
         "discovery_omission_means_absence": False,
         "registered_soft_tag_requires_explicit_cells_in_passes_a_and_b": True,
@@ -154,11 +167,19 @@ def _authority_data() -> dict[str, object]:
             "present-absent-or-any-indeterminate=indeterminate;any-error=error"
         ),
         "soft_tag_minimum_distinct_panel_frequency": 2,
-        "soft_tag_order": "descending-distinct-panel-frequency-then-lexical",
+        "soft_tag_order": (
+            "descending-distinct-cited-panel-frequency-then-scope-then-phrase"
+        ),
         "maximum_registered_soft_tags": MAX_REGISTERED_SOFT_TAGS,
         "all_dropped_tags_and_reasons_persisted": True,
         "fixed_typed_observables_always_registered": True,
-        "roles_revealed_only_after_all_three_visual_batch_freezes": True,
+        "blind_discovery_frozen_before_support_role_reveal": True,
+        "support_roles_revealed_before_semantic_synthesis": True,
+        "affirmative_concepts_for_both_orientations_proposed_in_one_call": True,
+        "semantic_invalid_payload_is_typed_proposal_gap_not_absence": True,
+        "one_scoped_union_registry_frozen_before_registered_evaluation": True,
+        "registered_evaluator_receives_support_roles": False,
+        "concept_or_formula_added_after_registered_evaluation": False,
         "both_support_orientations_built_by_python": True,
         "empty_survivor_set_is_typed_gap": True,
         "ranker_called_on_empty_survivor_set": False,
@@ -349,6 +370,7 @@ class VerifiedObjectBongardScenePredicateCalibration:
     evaluation_b_batch_digest: str
     evaluation_freeze_digest: str
     role_reveal_digest: str
+    semantic_proposal_digest: str
     assessment_digest: str
     rank_input_freeze_digest: str
     rank_result_digest: str
@@ -358,6 +380,7 @@ class VerifiedObjectBongardScenePredicateCalibration:
     status: str
     selected_survivor_digest: str | None
     visual_fresh_call_count: int
+    semantic_proposer_fresh_call_count: int
     ranker_fresh_call_count: int
 
     @property
@@ -391,7 +414,7 @@ def _role_commitment(rows: Sequence[Mapping[str, object]]) -> str:
         {
             "schema": "gkm.bongard-scene-predicate-role-commitment.v1",
             "rows": [dict(item) for item in rows],
-            "reveal_after_registered_evaluation_freeze": True,
+            "reveal_after_blind_discovery_freeze_before_semantic_synthesis": True,
         }
     )
 
@@ -468,6 +491,9 @@ def _source_identities() -> list[dict[str, str]]:
     from bongard.object_bongard_scene_predicate_ir import (
         object_bongard_scene_predicate_ir_source_digest,
     )
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_source_digest,
+    )
 
     rows = {
         "calibration_command_source_sha256": (
@@ -481,6 +507,9 @@ def _source_identities() -> list[dict[str, str]]:
         ),
         "scene_predicate_ir_source_sha256": (
             object_bongard_scene_predicate_ir_source_digest()
+        ),
+        "scene_semantic_registry_source_sha256": (
+            object_scene_semantic_registry_source_digest()
         ),
         "turn_journal_source_sha256": object_bongard_turn_journal_source_digest(),
         "transport_source_sha256": prototype_scene_transport_source_digest(),
@@ -526,6 +555,9 @@ def _authorization(
     from bongard.object_scene_visual_frontend import (
         object_scene_inventory_protocol_digest,
     )
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_protocol_digest,
+    )
 
     _validate_runtime_selectors(
         parallel_workers=parallel_workers,
@@ -560,16 +592,20 @@ def _authorization(
             "historical_plan_record_digest": inputs.source.historical_plan_record_digest,
             "neutral_panel_inventory": neutral_rows,
             "inventory_protocol_digest": object_scene_inventory_protocol_digest(),
+            "semantic_registry_protocol_digest": (
+                object_scene_semantic_registry_protocol_digest()
+            ),
             "role_commitment_digest": inputs.role_commitment_digest,
             "role_reveal_serialized": False,
             "phase_order": [
                 "discovery_12",
                 "discovery_freeze",
-                "registry_freeze",
+                "support_role_reveal",
+                "semantic_registry_proposer_1",
+                "scoped_union_registry_freeze",
                 "registered_evaluation_a_12",
                 "registered_evaluation_b_12",
                 "joint_registered_evaluation_freeze",
-                "role_reveal",
                 "python_version_spaces",
                 "conditional_survivor_rank",
                 "formula_freeze",
@@ -583,6 +619,9 @@ def _authorization(
                 REGISTERED_EVALUATION_PASS_COUNT
             ),
             "exact_visual_call_count": VISUAL_CALL_COUNT,
+            "exact_semantic_registry_proposer_call_count": (
+                SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT
+            ),
             "accepted_total_physical_call_count": ACCEPTED_PHYSICAL_CALL_COUNT,
             "parallel_workers": parallel_workers,
             "source_identities": _source_identities(),
@@ -672,6 +711,9 @@ def _precommit(
                 item.inventory_digest for item in inputs.inventories
             ],
             "role_commitment_digest": inputs.role_commitment_digest,
+            "semantic_registry_protocol_digest": authorization[
+                "semantic_registry_protocol_digest"
+            ],
             "role_reveal_serialized": False,
             "source_identities": authorization["source_identities"],
             "runtime_binding": runtime.binding,
@@ -685,7 +727,7 @@ def _precommit(
             ),
             "no_tools_attestation": runtime.no_tools_attestation.to_dict(),
             "launcher_fingerprint": dict(fingerprint),
-            "precommit_fsynced_before_any_visual_or_ranker_call": True,
+            "precommit_fsynced_before_any_visual_or_text_call": True,
             **_authority_data(),
         },
         "precommit_digest",
@@ -707,7 +749,9 @@ def _runtime_from_precommit(
         or raw.get("authorization_digest") != authorization["authorization_digest"]
         or raw.get("source_identities") != _source_identities()
         or raw.get("role_reveal_serialized") is not False
-        or raw.get("precommit_fsynced_before_any_visual_or_ranker_call") is not True
+        or raw.get("semantic_registry_protocol_digest")
+        != authorization["semantic_registry_protocol_digest"]
+        or raw.get("precommit_fsynced_before_any_visual_or_text_call") is not True
         or raw.get("launcher_fingerprint")
         != {
             "version": PINNED_CODEX_CLI_VERSION,
@@ -896,6 +940,7 @@ def _freeze_record(
     artifact_digests: Sequence[str],
     parent_digest: str,
     digest_field: str,
+    historical_roles_revealed: bool = False,
 ) -> dict[str, Any]:
     for digest in (*batch_digests, *artifact_digests):
         if not isinstance(digest, str) or (
@@ -914,7 +959,7 @@ def _freeze_record(
             "batch_digests": list(batch_digests),
             "artifact_digests": list(artifact_digests),
             "exact_canonical_bytes_fsynced_and_reloaded": True,
-            "historical_roles_revealed": False,
+            "historical_roles_revealed": historical_roles_revealed,
             "selection_or_formula_built": False,
             **_authority_data(),
         },
@@ -924,7 +969,7 @@ def _freeze_record(
 
 def _role_reveal_record(
     inputs: _CalibrationInputs,
-    evaluation_freeze: Mapping[str, Any],
+    discovery_freeze: Mapping[str, Any],
 ) -> dict[str, Any]:
     rows = [dict(item) for item in inputs.role_reveal_rows]
     if _role_commitment(rows) != inputs.role_commitment_digest:
@@ -935,17 +980,330 @@ def _role_reveal_record(
         {
             "schema": ROLE_REVEAL_SCHEMA,
             "command_id": COMMAND_ID,
-            "registered_evaluation_freeze_digest": evaluation_freeze[
+            "discovery_freeze_digest": discovery_freeze[
                 "freeze_digest"
             ],
             "role_commitment_digest": inputs.role_commitment_digest,
             "rows": rows,
-            "revealed_after_discovery_registry_and_two_registered_passes": True,
-            "model_calls_after_role_reveal_before_python_version_space": 0,
+            "revealed_after_blind_discovery_freeze_before_semantic_synthesis": True,
+            "semantic_registry_proposer_calls_after_reveal": 1,
+            "registered_visual_calls_after_reveal": 24,
             **_authority_data(),
         },
         "role_reveal_digest",
     )
+
+
+def _semantic_proposal_input_record(
+    *,
+    prepared: object,
+    discovery_freeze: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_protocol_digest,
+    )
+
+    return _durable._record(
+        {
+            "schema": SEMANTIC_PROPOSAL_INPUT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "discovery_freeze_digest": discovery_freeze["freeze_digest"],
+            "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "role_commitment_digest": role_reveal["role_commitment_digest"],
+            "semantic_registry_protocol_digest": (
+                object_scene_semantic_registry_protocol_digest()
+            ),
+            "prepared_input": prepared.to_data(),
+            "preparation_digest": prepared.preparation_digest,
+            "prepared_input_fsynced_before_semantic_proposer_call": True,
+            **_authority_data(),
+        },
+        "semantic_proposal_input_digest",
+    )
+
+
+def _restore_semantic_proposal_input(
+    record: Mapping[str, Any],
+    *,
+    discovery_freeze: Mapping[str, Any],
+    role_reveal: Mapping[str, Any],
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> object:
+    from bongard.object_scene_semantic_registry import (
+        ObjectScenePreparedSemanticRegistryProposal,
+        prepare_object_scene_semantic_registry_proposal,
+    )
+
+    raw = _durable._validate_record(
+        record,
+        schema=SEMANTIC_PROPOSAL_INPUT_SCHEMA,
+        digest_field="semantic_proposal_input_digest",
+        label="scene semantic registry proposal input",
+    )
+    prepared = ObjectScenePreparedSemanticRegistryProposal.from_data(
+        raw.get("prepared_input")
+    )
+    expected_prepared = prepare_object_scene_semantic_registry_proposal(
+        discovery_artifacts, role_rows
+    )
+    expected = _semantic_proposal_input_record(
+        prepared=expected_prepared,
+        discovery_freeze=discovery_freeze,
+        role_reveal=role_reveal,
+    )
+    if prepared != expected_prepared or raw != expected:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal input differs on replay"
+        )
+    return prepared
+
+
+def _semantic_proposal_result_record(
+    *,
+    semantic_proposal_input: Mapping[str, Any],
+    proposal: object,
+    registry: object,
+    payload: Mapping[str, Any],
+    receipt: object,
+    journal_directory: str,
+    journal_summary_digest: str,
+) -> dict[str, Any]:
+    status = getattr(proposal, "status", None)
+    if (
+        status not in ("proposed", "typed_proposal_gap")
+        or getattr(proposal, "preparation_digest", None)
+        != semantic_proposal_input["preparation_digest"]
+        or getattr(proposal, "registry_digest", None)
+        != getattr(registry, "registry_digest", None)
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal status differs"
+        )
+    return _durable._record(
+        {
+            "schema": SEMANTIC_PROPOSAL_RESULT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "semantic_proposal_input_digest": semantic_proposal_input[
+                "semantic_proposal_input_digest"
+            ],
+            "semantic_proposal": proposal.to_data(),
+            "semantic_proposal_digest": proposal.proposal_digest,
+            "semantic_proposal_status": status,
+            "semantic_proposal_valid": status == "proposed",
+            "semantic_registry": registry.to_data(),
+            "semantic_registry_digest": registry.registry_digest,
+            "proposer_payload": _canonical_mapping(payload, "semantic proposer payload"),
+            "proposer_receipt": receipt.to_dict(),
+            "proposer_receipt_digest": receipt.receipt_digest,
+            "proposer_journal_directory": journal_directory,
+            "proposer_journal_summary_digest": journal_summary_digest,
+            "proposer_fresh_call_count": 1,
+            "proposer_reused_call_count": 0,
+            **_authority_data(),
+        },
+        "semantic_proposal_result_digest",
+    )
+
+
+def _execute_semantic_proposal(
+    root: Path,
+    *,
+    authorization: Mapping[str, Any],
+    precommit: Mapping[str, Any],
+    runtime: ObjectBongardTurnRuntime,
+    semantic_proposal_input: Mapping[str, Any],
+    prepared: object,
+    text_transport: TextTransport,
+) -> tuple[object, object, dict[str, Any]]:
+    from bongard.object_scene_semantic_registry import (
+        ObjectSceneSemanticRegistryPayloadError,
+        build_object_scene_semantic_registry_gap,
+        build_object_scene_semantic_registry_proposal,
+    )
+
+    relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
+    journal = ObjectBongardTextTurnJournalTransport(
+        root / relative,
+        authorization_digest=authorization["authorization_digest"],
+        execution_precommit_digest=precommit["precommit_digest"],
+        task_id="bd_scene_calibration_semantic_registry_proposer",
+        turn_kind="semantic_registry_proposal",
+        expected_prompt=prepared.prompt,
+        expected_output_schema=prepared.output_schema,
+        runtime=runtime,
+        underlying_transport=text_transport,
+    )
+    result = journal(
+        prepared.prompt,
+        prepared.output_schema,
+        **_journal_runtime_kwargs(runtime),
+    )
+    payload = _canonical_mapping(result.payload, "semantic proposer payload")
+    try:
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            prepared, payload
+        )
+    except ObjectSceneSemanticRegistryPayloadError:
+        usable_by_role = {
+            role: sum(
+                item["usable"] is True and item["historical_role"] == role
+                for item in prepared.alias_bindings
+            )
+            for role in (0, 1)
+        }
+        gap_code = (
+            "insufficient_discovery_evidence"
+            if any(count < 2 for count in usable_by_role.values())
+            else "payload_rejected"
+        )
+        proposal, registry = build_object_scene_semantic_registry_gap(
+            prepared, gap_code, payload
+        )
+    if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposer journal did not make exactly one fresh call"
+        )
+    summary = verify_object_bongard_turn_journal(journal)
+    record = _semantic_proposal_result_record(
+        semantic_proposal_input=semantic_proposal_input,
+        proposal=proposal,
+        registry=registry,
+        payload=payload,
+        receipt=result.receipt,
+        journal_directory=str(relative),
+        journal_summary_digest=summary.record_digest,
+    )
+    return proposal, registry, record
+
+
+def _restore_semantic_proposal_result(
+    record: Mapping[str, Any],
+    *,
+    semantic_proposal_input: Mapping[str, Any],
+    prepared: object,
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> tuple[object, object]:
+    from bongard.object_bongard_turn_journal import _receipt_from_data
+    from bongard.object_scene_semantic_registry import (
+        ObjectSceneSemanticRegistryPayloadError,
+        ObjectSceneSemanticRegistryProposal,
+        build_object_scene_semantic_registry_gap,
+        build_object_scene_semantic_registry_proposal,
+        verify_object_scene_semantic_registry_proposal,
+    )
+    from bongard.object_scene_visual_frontend import ObjectSceneSoftTagRegistry
+
+    raw = _durable._validate_record(
+        record,
+        schema=SEMANTIC_PROPOSAL_RESULT_SCHEMA,
+        digest_field="semantic_proposal_result_digest",
+        label="scene semantic registry proposal result",
+    )
+    persisted_proposal = ObjectSceneSemanticRegistryProposal.from_data(
+        raw.get("semantic_proposal")
+    )
+    persisted_registry = ObjectSceneSoftTagRegistry.from_data(
+        raw.get("semantic_registry")
+    )
+    payload = _canonical_mapping(raw.get("proposer_payload"), "semantic proposer payload")
+    if raw.get("semantic_proposal_status") == "proposed":
+        proposal, registry = build_object_scene_semantic_registry_proposal(
+            prepared, payload
+        )
+    elif raw.get("semantic_proposal_status") == "typed_proposal_gap":
+        try:
+            build_object_scene_semantic_registry_proposal(prepared, payload)
+        except ObjectSceneSemanticRegistryPayloadError:
+            pass
+        else:
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "semantic proposal gap payload is valid"
+            )
+        proposal, registry = build_object_scene_semantic_registry_gap(
+            prepared, persisted_proposal.gap_code, payload
+        )
+    else:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal result status differs"
+        )
+    receipt = _receipt_from_data(raw.get("proposer_receipt"))
+    expected = _semantic_proposal_result_record(
+        semantic_proposal_input=semantic_proposal_input,
+        proposal=proposal,
+        registry=registry,
+        payload=payload,
+        receipt=receipt,
+        journal_directory=raw.get("proposer_journal_directory"),
+        journal_summary_digest=raw.get("proposer_journal_summary_digest"),
+    )
+    if (
+        proposal != persisted_proposal
+        or registry != persisted_registry
+        or raw != expected
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal result differs on reconstruction"
+        )
+    verify_object_scene_semantic_registry_proposal(
+        proposal, registry, discovery_artifacts, role_rows
+    )
+    return proposal, registry
+
+
+def _cold_replay_semantic_proposal(
+    root: Path,
+    *,
+    authorization: Mapping[str, Any],
+    precommit: Mapping[str, Any],
+    runtime: ObjectBongardTurnRuntime,
+    semantic_proposal_input: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
+    prepared: object,
+    discovery_artifacts: Sequence[object],
+    role_rows: Sequence[Mapping[str, object]],
+) -> tuple[object, object, str]:
+    relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
+    journal = ObjectBongardTextTurnJournalTransport(
+        root / relative,
+        authorization_digest=authorization["authorization_digest"],
+        execution_precommit_digest=precommit["precommit_digest"],
+        task_id="bd_scene_calibration_semantic_registry_proposer",
+        turn_kind="semantic_registry_proposal",
+        expected_prompt=prepared.prompt,
+        expected_output_schema=prepared.output_schema,
+        runtime=runtime,
+        underlying_transport=_forbidden_text_transport,
+    )
+    replayed = journal(
+        prepared.prompt,
+        prepared.output_schema,
+        **_journal_runtime_kwargs(runtime),
+    )
+    summary = verify_object_bongard_turn_journal(journal)
+    proposal, registry = _restore_semantic_proposal_result(
+        semantic_proposal_result,
+        semantic_proposal_input=semantic_proposal_input,
+        prepared=prepared,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=role_rows,
+    )
+    if (
+        _canonical_mapping(replayed.payload, "replayed semantic proposer payload")
+        != semantic_proposal_result["proposer_payload"]
+        or replayed.receipt.to_dict()
+        != semantic_proposal_result["proposer_receipt"]
+        or summary.record_digest
+        != semantic_proposal_result["proposer_journal_summary_digest"]
+        or journal.fresh_call_count != 0
+        or journal.reused_call_count != 1
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposer cold replay differs"
+        )
+    return proposal, registry, summary.record_digest
 
 
 def _ranker_output_schema(survivor_digests: Sequence[str]) -> dict[str, object]:
@@ -978,7 +1336,7 @@ def _forbidden_named_transport(*_args: object, **_kwargs: object) -> CodexStruct
 
 
 def _forbidden_text_transport(*_args: object, **_kwargs: object) -> CodexStructuredResult:
-    raise AssertionError("cold replay attempted a ranker model call")
+    raise AssertionError("cold replay attempted a text model call")
 
 
 def _execute_visual_batch(
@@ -1170,29 +1528,40 @@ def _restore_visual_batch(
 def _registry_freeze_record(
     *,
     discovery_freeze: Mapping[str, Any],
-    discovery_artifacts: Sequence[object],
+    role_reveal: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
+    semantic_registry_proposal: object,
+    registry: object,
 ) -> tuple[object, dict[str, Any]]:
-    from bongard.object_scene_visual_frontend import (
-        freeze_object_scene_soft_tag_registry,
+    from bongard.object_scene_semantic_registry import (
+        object_scene_semantic_registry_protocol_digest,
+        object_scene_semantic_registry_source_digest,
     )
-
-    transcripts = tuple(
-        item.transcript
-        for item in discovery_artifacts
-        if getattr(item, "transcript", None) is not None
-    )
-    registry = freeze_object_scene_soft_tag_registry(transcripts)
     record = _durable._record(
         {
             "schema": REGISTRY_FREEZE_SCHEMA,
             "command_id": COMMAND_ID,
             "discovery_freeze_digest": discovery_freeze["freeze_digest"],
+            "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": semantic_registry_proposal.proposal_digest,
+            "semantic_proposal_status": semantic_registry_proposal.status,
+            "semantic_registry_source_digest": (
+                object_scene_semantic_registry_source_digest()
+            ),
+            "semantic_registry_protocol_digest": (
+                object_scene_semantic_registry_protocol_digest()
+            ),
             "registry": registry.to_data(),
             "registry_digest": registry.registry_digest,
-            "successful_discovery_transcript_count": len(transcripts),
-            "discovery_error_or_parser_gap_count": PANEL_COUNT - len(transcripts),
-            "registry_built_without_historical_roles": True,
-            "exact_normalized_affirmative_tags_only": True,
+            "registry_built_from_revealed_roles_and_frozen_discovery": True,
+            "exact_normalized_affirmative_scoped_concepts_only": True,
+            "typed_proposal_gap_has_zero_registered_tags": (
+                semantic_registry_proposal.status != "typed_proposal_gap"
+                or not registry.tags
+            ),
             "registry_record_fsynced_and_reloaded_before_pass_a": True,
             **_authority_data(),
         },
@@ -1205,11 +1574,13 @@ def _restore_registry_freeze(
     record: Mapping[str, Any],
     *,
     discovery_freeze: Mapping[str, Any],
-    discovery_artifacts: Sequence[object],
+    role_reveal: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
+    semantic_registry_proposal: object,
+    semantic_registry: object,
 ) -> object:
     from bongard.object_scene_visual_frontend import (
         ObjectSceneSoftTagRegistry,
-        verify_object_scene_soft_tag_registry,
     )
 
     raw = _durable._validate_record(
@@ -1219,19 +1590,12 @@ def _restore_registry_freeze(
         label="scene-predicate soft-tag registry freeze",
     )
     registry = ObjectSceneSoftTagRegistry.from_data(raw.get("registry"))
-    discovery_transcripts = tuple(
-        item.transcript
-        for item in discovery_artifacts
-        if getattr(item, "transcript", None) is not None
-    )
-    verify_object_scene_soft_tag_registry(
-        registry,
-        discovery_transcripts,
-        expected_registry_digest=registry.registry_digest,
-    )
     expected_registry, expected = _registry_freeze_record(
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=discovery_artifacts,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=semantic_registry_proposal,
+        registry=semantic_registry,
     )
     if registry != expected_registry or raw != expected:
         raise ObjectBongardScenePredicateCalibrationCommandError(
@@ -1395,6 +1759,7 @@ def _assert_ranker_privacy(
 def _rank_input_freeze_record(
     *,
     assessment: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     complete_survivor_digests: Sequence[str],
     slate_rows: Sequence[Mapping[str, Any]],
     omitted_rows: Sequence[Mapping[str, Any]],
@@ -1405,6 +1770,16 @@ def _rank_input_freeze_record(
         _canonical_mapping(item, "ranker omitted survivor row")
         for item in omitted_rows
     )
+    semantic_eligible = semantic_proposal_result.get("semantic_proposal_valid") is True
+    if not semantic_eligible:
+        slate = ()
+        omitted = tuple(
+            {
+                "candidate_digest": digest,
+                "reason": "mandatory_semantic_proposal_gap",
+            }
+            for digest in complete
+        )
     slate_digests = tuple(item.get("candidate_digest") for item in slate)
     omitted_digests = tuple(item.get("candidate_digest") for item in omitted)
     if (
@@ -1420,7 +1795,7 @@ def _rank_input_freeze_record(
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "ranker slate does not account for the complete survivor space"
         )
-    if complete and not slate:
+    if complete and not slate and semantic_eligible:
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "nonempty survivor space produced an empty ranker slate"
         )
@@ -1432,6 +1807,10 @@ def _rank_input_freeze_record(
             "schema": RANK_INPUT_FREEZE_SCHEMA,
             "command_id": COMMAND_ID,
             "assessment_digest": assessment["assessment_digest"],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_valid": semantic_eligible,
             "complete_survivor_digests": list(complete),
             "complete_survivor_count": len(complete),
             "ranker_slate": list(slate),
@@ -1461,6 +1840,11 @@ def _rank_survivor_slate(
     slate_rows = rank_input["ranker_slate"]
     slate_digests = tuple(rank_input["ranker_slate_digests"])
     if not slate_digests:
+        gap_status = (
+            "typed_empty_survivor_gap"
+            if rank_input.get("semantic_proposal_valid") is True
+            else "typed_semantic_proposal_gap"
+        )
         return _durable._record(
             {
                 "schema": RANK_RESULT_SCHEMA,
@@ -1468,7 +1852,7 @@ def _rank_survivor_slate(
                 "rank_input_freeze_digest": rank_input[
                     "rank_input_freeze_digest"
                 ],
-                "status": "typed_empty_survivor_gap",
+                "status": gap_status,
                 "ranker_called": False,
                 "ranker_fresh_call_count": 0,
                 "ranker_reused_call_count": 0,
@@ -1576,8 +1960,13 @@ def _cold_replay_ranker(
     )
     slate_digests = tuple(raw_input["ranker_slate_digests"])
     if not slate_digests:
+        gap_status = (
+            "typed_empty_survivor_gap"
+            if raw_input.get("semantic_proposal_valid") is True
+            else "typed_semantic_proposal_gap"
+        )
         if (
-            raw_result.get("status") != "typed_empty_survivor_gap"
+            raw_result.get("status") != gap_status
             or raw_result.get("ranker_called") is not False
             or raw_result.get("ranker_fresh_call_count") != 0
             or raw_result.get("ranker_reused_call_count") != 0
@@ -1628,19 +2017,31 @@ def _cold_replay_ranker(
 def _formula_freeze_record(
     *,
     assessment: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     rank_input: Mapping[str, Any],
     rank_result: Mapping[str, Any],
     candidate_by_digest: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
     selected = rank_result.get("selected_survivor_digest")
+    semantic_eligible = semantic_proposal_result.get("semantic_proposal_valid") is True
     if selected is None:
-        if candidate_by_digest or rank_input.get("complete_survivor_digests"):
+        if semantic_eligible and (
+            candidate_by_digest or rank_input.get("complete_survivor_digests")
+        ):
             raise ObjectBongardScenePredicateCalibrationCommandError(
                 "typed gap disagrees with the complete survivor space"
             )
         candidate = None
-        status = "typed_empty_survivor_gap"
+        status = (
+            "typed_empty_survivor_gap"
+            if semantic_eligible
+            else "typed_semantic_proposal_gap"
+        )
     else:
+        if not semantic_eligible:
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "semantic proposal gap cannot select a survivor"
+            )
         if selected not in candidate_by_digest:
             raise ObjectBongardScenePredicateCalibrationCommandError(
                 "ranker selection is absent from the complete survivor space"
@@ -1658,6 +2059,9 @@ def _formula_freeze_record(
             "schema": FORMULA_FREEZE_SCHEMA,
             "command_id": COMMAND_ID,
             "assessment_digest": assessment["assessment_digest"],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
             "rank_input_freeze_digest": rank_input[
                 "rank_input_freeze_digest"
             ],
@@ -1675,11 +2079,17 @@ def _formula_freeze_record(
 
 
 def _validate_ir_bundle(value: object) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     expected = {
         "schema",
         "ir_source_digest",
         "algorithm_digest",
         "registry_digest",
+        "registry_derivation_mode",
+        "registry_derivation_digest",
         "coverage_gate",
         "selectivity_gate",
         "repeatability_gate",
@@ -1698,6 +2108,13 @@ def _validate_ir_bundle(value: object) -> dict[str, Any]:
     _raw_digest(raw["ir_source_digest"], "scene predicate IR source digest")
     _raw_digest(raw["algorithm_digest"], "scene predicate IR algorithm digest")
     _raw_digest(raw["registry_digest"], "IR registry digest")
+    _raw_digest(
+        raw["registry_derivation_digest"], "IR registry derivation digest"
+    )
+    if raw["registry_derivation_mode"] != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "IR registry derivation mode differs"
+        )
     gates: list[dict[str, Any]] = []
     for name in ("coverage_gate", "selectivity_gate", "repeatability_gate"):
         gate = _canonical_mapping(raw[name], name)
@@ -1758,6 +2175,7 @@ def _validate_ir_bundle(value: object) -> dict[str, Any]:
 def _derive_ir_bundle(
     *,
     registry: object,
+    semantic_registry_proposal: object,
     discovery_artifacts: Sequence[object],
     registered_a_artifacts: Sequence[object],
     registered_b_artifacts: Sequence[object],
@@ -1773,6 +2191,7 @@ def _derive_ir_bundle(
         tuple(registered_a_artifacts),
         tuple(registered_b_artifacts),
         tuple(dict(item) for item in role_rows),
+        semantic_registry_proposal=semantic_registry_proposal,
     )
     value = result.to_data() if hasattr(result, "to_data") else result
     return _validate_ir_bundle(value)
@@ -1783,12 +2202,15 @@ def _assessment_record(
     inputs: _CalibrationInputs,
     evaluation_freeze: Mapping[str, Any],
     role_reveal: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     registry: object,
     ir_bundle: Mapping[str, Any],
 ) -> dict[str, Any]:
     bundle = _validate_ir_bundle(ir_bundle)
     if (
         bundle["registry_digest"] != registry.registry_digest
+        or bundle["registry_derivation_digest"]
+        != semantic_proposal_result["semantic_proposal_digest"]
         or role_reveal["role_commitment_digest"] != inputs.role_commitment_digest
     ):
         raise ObjectBongardScenePredicateCalibrationCommandError(
@@ -1802,6 +2224,15 @@ def _assessment_record(
                 "freeze_digest"
             ],
             "role_reveal_digest": role_reveal["role_reveal_digest"],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": semantic_proposal_result[
+                "semantic_proposal_digest"
+            ],
+            "semantic_proposal_valid": semantic_proposal_result[
+                "semantic_proposal_valid"
+            ],
             "historical_source_digest": inputs.source.source_digest,
             "registry_digest": registry.registry_digest,
             "ir_bundle": bundle,
@@ -1812,7 +2243,19 @@ def _assessment_record(
             "complete_survivor_digests": bundle[
                 "complete_survivor_digests"
             ],
-            "typed_gap": not bool(bundle["complete_survivor_digests"]),
+            "typed_gap": (
+                not semantic_proposal_result["semantic_proposal_valid"]
+                or not bool(bundle["complete_survivor_digests"])
+            ),
+            "typed_gap_kind": (
+                "semantic_proposal_gap"
+                if not semantic_proposal_result["semantic_proposal_valid"]
+                else (
+                    "empty_survivor_gap"
+                    if not bundle["complete_survivor_digests"]
+                    else None
+                )
+            ),
             "model_calls_during_python_assessment": 0,
             **_authority_data(),
         },
@@ -1846,6 +2289,8 @@ def _replay_record(
     authorization: Mapping[str, Any],
     precommit: Mapping[str, Any],
     discovery_batch: Mapping[str, Any],
+    semantic_proposal_input: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     registry_record: Mapping[str, Any],
     evaluation_a_batch: Mapping[str, Any],
     evaluation_b_batch: Mapping[str, Any],
@@ -1854,6 +2299,7 @@ def _replay_record(
     rank_result: Mapping[str, Any],
     formula_freeze: Mapping[str, Any],
     visual_journal_summary_digests: Sequence[str],
+    semantic_proposer_journal_summary_digest: str,
     ranker_replay_selected_digest: str | None,
 ) -> dict[str, Any]:
     summaries = tuple(visual_journal_summary_digests)
@@ -1868,6 +2314,12 @@ def _replay_record(
             "authorization_digest": authorization["authorization_digest"],
             "execution_precommit_digest": precommit["precommit_digest"],
             "discovery_batch_digest": discovery_batch["batch_digest"],
+            "semantic_proposal_input_digest": semantic_proposal_input[
+                "semantic_proposal_input_digest"
+            ],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
             "registry_freeze_digest": registry_record[
                 "registry_freeze_digest"
             ],
@@ -1880,10 +2332,15 @@ def _replay_record(
             "rank_result_digest": rank_result["rank_result_digest"],
             "formula_freeze_digest": formula_freeze["formula_freeze_digest"],
             "visual_journal_summary_digests": list(summaries),
+            "semantic_proposer_journal_summary_digest": (
+                semantic_proposer_journal_summary_digest
+            ),
             "ranker_replay_selected_digest": ranker_replay_selected_digest,
             "model_calls_during_cold_replay": 0,
             "pixels_opened_outside_exact_historical_source_during_replay": 0,
             "all_36_visual_journals_cold_replayed": True,
+            "semantic_proposer_journal_cold_replayed": True,
+            "semantic_registry_companion_recomputed": True,
             "ranker_journal_cold_replayed_if_called": (
                 rank_result["ranker_called"] is True
             ),
@@ -1902,6 +2359,8 @@ def _result_record(
     precommit: Mapping[str, Any],
     discovery_batch: Mapping[str, Any],
     discovery_freeze: Mapping[str, Any],
+    semantic_proposal_input: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     registry_record: Mapping[str, Any],
     evaluation_a_batch: Mapping[str, Any],
     evaluation_b_batch: Mapping[str, Any],
@@ -1923,6 +2382,15 @@ def _result_record(
             "execution_precommit_digest": precommit["precommit_digest"],
             "discovery_batch_digest": discovery_batch["batch_digest"],
             "discovery_freeze_digest": discovery_freeze["freeze_digest"],
+            "semantic_proposal_input_digest": semantic_proposal_input[
+                "semantic_proposal_input_digest"
+            ],
+            "semantic_proposal_result_digest": semantic_proposal_result[
+                "semantic_proposal_result_digest"
+            ],
+            "semantic_proposal_digest": semantic_proposal_result[
+                "semantic_proposal_digest"
+            ],
             "registry_freeze_digest": registry_record[
                 "registry_freeze_digest"
             ],
@@ -1938,20 +2406,28 @@ def _result_record(
             "rank_result_digest": rank_result["rank_result_digest"],
             "formula_freeze_digest": formula_freeze["formula_freeze_digest"],
             "cold_replay_digest": replay["replay_digest"],
-            "status": "accepted" if accepted else "typed_empty_survivor_gap",
+            "status": formula_freeze["status"],
             "accepted": accepted,
             "selected_survivor_digest": formula_freeze[
                 "selected_survivor_digest"
             ],
             "visual_fresh_call_count": VISUAL_CALL_COUNT,
             "visual_reused_call_count": 0,
+            "semantic_proposer_fresh_call_count": 1,
+            "semantic_proposer_reused_call_count": 0,
             "ranker_fresh_call_count": 1 if accepted else 0,
             "ranker_reused_call_count": 0,
-            "physical_model_call_count": VISUAL_CALL_COUNT + (1 if accepted else 0),
+            "physical_model_call_count": (
+                VISUAL_CALL_COUNT
+                + SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT
+                + (1 if accepted else 0)
+            ),
             "physical_model_call_denominator_if_accepted": (
                 ACCEPTED_PHYSICAL_CALL_COUNT
             ),
-            "all_roles_hidden_until_three_visual_batches_frozen": True,
+            "roles_hidden_through_blind_discovery_freeze": True,
+            "roles_revealed_only_to_zero_image_semantic_proposer": True,
+            "registered_visual_evaluators_received_roles": False,
             "full_survivor_version_space_persisted": True,
             "formula_frozen_before_any_future_query": True,
             "query_pixels_used": False,
@@ -1969,6 +2445,7 @@ def _verified(
     precommit: Mapping[str, Any],
     discovery_batch: Mapping[str, Any],
     discovery_freeze: Mapping[str, Any],
+    semantic_proposal_result: Mapping[str, Any],
     registry_record: Mapping[str, Any],
     evaluation_a_batch: Mapping[str, Any],
     evaluation_b_batch: Mapping[str, Any],
@@ -1993,6 +2470,7 @@ def _verified(
         evaluation_b_batch["batch_digest"],
         evaluation_freeze["freeze_digest"],
         role_reveal["role_reveal_digest"],
+        semantic_proposal_result["semantic_proposal_digest"],
         assessment["assessment_digest"],
         rank_input["rank_input_freeze_digest"],
         rank_result["rank_result_digest"],
@@ -2002,6 +2480,7 @@ def _verified(
         result["status"],
         result["selected_survivor_digest"],
         result["visual_fresh_call_count"],
+        result["semantic_proposer_fresh_call_count"],
         result["ranker_fresh_call_count"],
     )
 
@@ -2031,7 +2510,11 @@ def run_object_bongard_scene_predicate_calibration(
         attest_codex_no_tools
     ),
 ) -> VerifiedObjectBongardScenePredicateCalibration:
-    """Run 36 blind visual turns and conditionally one survivor-only rank turn."""
+    """Run 36 visual turns, one proposer, and conditional survivor ranking."""
+
+    from bongard.object_scene_semantic_registry import (
+        prepare_object_scene_semantic_registry_proposal,
+    )
 
     inputs = _load_inputs(source_root)
     authorization = _authorization(
@@ -2098,9 +2581,61 @@ def run_object_bongard_scene_predicate_calibration(
         ),
         label="scene-predicate discovery freeze",
     )
+    role_reveal = _write_and_reload(
+        root / ROLE_REVEAL_FILENAME,
+        _role_reveal_record(inputs, discovery_freeze),
+        label="scene-predicate historical role reveal",
+    )
+    prepared_semantic_proposal = prepare_object_scene_semantic_registry_proposal(
+        discovery_artifacts, inputs.role_reveal_rows
+    )
+    semantic_proposal_input = _write_and_reload(
+        root / SEMANTIC_PROPOSAL_INPUT_FILENAME,
+        _semantic_proposal_input_record(
+            prepared=prepared_semantic_proposal,
+            discovery_freeze=discovery_freeze,
+            role_reveal=role_reveal,
+        ),
+        label="scene semantic registry proposal input",
+    )
+    prepared_semantic_proposal = _restore_semantic_proposal_input(
+        semantic_proposal_input,
+        discovery_freeze=discovery_freeze,
+        role_reveal=role_reveal,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=inputs.role_reveal_rows,
+    )
+    semantic_registry_proposal, semantic_registry, semantic_proposal_result = (
+        _execute_semantic_proposal(
+            root,
+            authorization=authorization,
+            precommit=precommit,
+            runtime=runtime,
+            semantic_proposal_input=semantic_proposal_input,
+            prepared=prepared_semantic_proposal,
+            text_transport=text_transport,
+        )
+    )
+    semantic_proposal_result = _write_and_reload(
+        root / SEMANTIC_PROPOSAL_RESULT_FILENAME,
+        semantic_proposal_result,
+        label="scene semantic registry proposal result",
+    )
+    semantic_registry_proposal, semantic_registry = (
+        _restore_semantic_proposal_result(
+            semantic_proposal_result,
+            semantic_proposal_input=semantic_proposal_input,
+            prepared=prepared_semantic_proposal,
+            discovery_artifacts=discovery_artifacts,
+            role_rows=inputs.role_reveal_rows,
+        )
+    )
     registry, registry_record = _registry_freeze_record(
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=discovery_artifacts,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=semantic_registry_proposal,
+        registry=semantic_registry,
     )
     registry_record = _write_and_reload(
         root / REGISTRY_FREEZE_FILENAME,
@@ -2110,7 +2645,10 @@ def run_object_bongard_scene_predicate_calibration(
     registry = _restore_registry_freeze(
         registry_record,
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=discovery_artifacts,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=semantic_registry_proposal,
+        semantic_registry=semantic_registry,
     )
 
     evaluation_a_artifacts, evaluation_a_batch = _execute_visual_batch(
@@ -2180,17 +2718,13 @@ def run_object_bongard_scene_predicate_calibration(
             ),
             parent_digest=registry_record["registry_freeze_digest"],
             digest_field="freeze_digest",
+            historical_roles_revealed=True,
         ),
         label="scene-predicate joint registered evaluation freeze",
     )
-    role_reveal = _write_and_reload(
-        root / ROLE_REVEAL_FILENAME,
-        _role_reveal_record(inputs, evaluation_freeze),
-        label="scene-predicate historical role reveal",
-    )
-
     ir_bundle = _derive_ir_bundle(
         registry=registry,
+        semantic_registry_proposal=semantic_registry_proposal,
         discovery_artifacts=discovery_artifacts,
         registered_a_artifacts=evaluation_a_artifacts,
         registered_b_artifacts=evaluation_b_artifacts,
@@ -2202,6 +2736,7 @@ def run_object_bongard_scene_predicate_calibration(
             inputs=inputs,
             evaluation_freeze=evaluation_freeze,
             role_reveal=role_reveal,
+            semantic_proposal_result=semantic_proposal_result,
             registry=registry,
             ir_bundle=ir_bundle,
         ),
@@ -2211,6 +2746,7 @@ def run_object_bongard_scene_predicate_calibration(
         root / RANK_INPUT_FREEZE_FILENAME,
         _rank_input_freeze_record(
             assessment=assessment,
+            semantic_proposal_result=semantic_proposal_result,
             complete_survivor_digests=ir_bundle[
                 "complete_survivor_digests"
             ],
@@ -2237,11 +2773,13 @@ def run_object_bongard_scene_predicate_calibration(
         item["candidate_digest"]: item
         for item in ir_bundle["candidates"]
         if item["candidate_digest"] in survivors
+        and semantic_proposal_result["semantic_proposal_valid"]
     }
     formula_freeze = _write_and_reload(
         root / FORMULA_FREEZE_FILENAME,
         _formula_freeze_record(
             assessment=assessment,
+            semantic_proposal_result=semantic_proposal_result,
             rank_input=rank_input,
             rank_result=rank_result,
             candidate_by_digest=candidate_by_digest,
@@ -2259,10 +2797,33 @@ def run_object_bongard_scene_predicate_calibration(
         registry=None,
         batch=discovery_batch,
     )
+    replay_prepared_semantic_proposal = _restore_semantic_proposal_input(
+        semantic_proposal_input,
+        discovery_freeze=discovery_freeze,
+        role_reveal=role_reveal,
+        discovery_artifacts=replay_discovery,
+        role_rows=inputs.role_reveal_rows,
+    )
+    replay_semantic_proposal, replay_semantic_registry, semantic_summary = (
+        _cold_replay_semantic_proposal(
+            root,
+            authorization=authorization,
+            precommit=precommit,
+            runtime=runtime,
+            semantic_proposal_input=semantic_proposal_input,
+            semantic_proposal_result=semantic_proposal_result,
+            prepared=replay_prepared_semantic_proposal,
+            discovery_artifacts=replay_discovery,
+            role_rows=inputs.role_reveal_rows,
+        )
+    )
     replay_registry = _restore_registry_freeze(
         registry_record,
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=replay_discovery,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=replay_semantic_proposal,
+        semantic_registry=replay_semantic_registry,
     )
     replay_a, a_summaries = _cold_replay_visual_batch(
         root,
@@ -2286,6 +2847,7 @@ def run_object_bongard_scene_predicate_calibration(
     )
     replay_bundle = _derive_ir_bundle(
         registry=replay_registry,
+        semantic_registry_proposal=replay_semantic_proposal,
         discovery_artifacts=replay_discovery,
         registered_a_artifacts=replay_a,
         registered_b_artifacts=replay_b,
@@ -2313,6 +2875,8 @@ def run_object_bongard_scene_predicate_calibration(
             authorization=authorization,
             precommit=precommit,
             discovery_batch=discovery_batch,
+            semantic_proposal_input=semantic_proposal_input,
+            semantic_proposal_result=semantic_proposal_result,
             registry_record=registry_record,
             evaluation_a_batch=evaluation_a_batch,
             evaluation_b_batch=evaluation_b_batch,
@@ -2325,6 +2889,7 @@ def run_object_bongard_scene_predicate_calibration(
                 *a_summaries,
                 *b_summaries,
             ),
+            semantic_proposer_journal_summary_digest=semantic_summary,
             ranker_replay_selected_digest=replay_selected,
         ),
         label="scene-predicate calibration cold replay",
@@ -2337,6 +2902,8 @@ def run_object_bongard_scene_predicate_calibration(
             precommit=precommit,
             discovery_batch=discovery_batch,
             discovery_freeze=discovery_freeze,
+            semantic_proposal_input=semantic_proposal_input,
+            semantic_proposal_result=semantic_proposal_result,
             registry_record=registry_record,
             evaluation_a_batch=evaluation_a_batch,
             evaluation_b_batch=evaluation_b_batch,
@@ -2357,6 +2924,7 @@ def run_object_bongard_scene_predicate_calibration(
         precommit,
         discovery_batch,
         discovery_freeze,
+        semantic_proposal_result,
         registry_record,
         evaluation_a_batch,
         evaluation_b_batch,
@@ -2387,6 +2955,8 @@ def verify_object_bongard_scene_predicate_calibration(
         PRECOMMIT_FILENAME,
         DISCOVERY_BATCH_FILENAME,
         DISCOVERY_FREEZE_FILENAME,
+        SEMANTIC_PROPOSAL_INPUT_FILENAME,
+        SEMANTIC_PROPOSAL_RESULT_FILENAME,
         REGISTRY_FREEZE_FILENAME,
         EVALUATION_A_BATCH_FILENAME,
         EVALUATION_B_BATCH_FILENAME,
@@ -2463,13 +3033,47 @@ def verify_object_bongard_scene_predicate_calibration(
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "discovery freeze differs on cold replay"
         )
+    role_reveal = _durable._read_record(
+        root / ROLE_REVEAL_FILENAME, "historical role reveal"
+    )
+    if role_reveal != _role_reveal_record(inputs, discovery_freeze):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "historical role reveal differs on replay"
+        )
+    semantic_proposal_input = _durable._read_record(
+        root / SEMANTIC_PROPOSAL_INPUT_FILENAME,
+        "semantic registry proposal input",
+    )
+    prepared_semantic_proposal = _restore_semantic_proposal_input(
+        semantic_proposal_input,
+        discovery_freeze=discovery_freeze,
+        role_reveal=role_reveal,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=inputs.role_reveal_rows,
+    )
+    semantic_proposal_result = _durable._read_record(
+        root / SEMANTIC_PROPOSAL_RESULT_FILENAME,
+        "semantic registry proposal result",
+    )
+    semantic_registry_proposal, semantic_registry = (
+        _restore_semantic_proposal_result(
+            semantic_proposal_result,
+            semantic_proposal_input=semantic_proposal_input,
+            prepared=prepared_semantic_proposal,
+            discovery_artifacts=discovery_artifacts,
+            role_rows=inputs.role_reveal_rows,
+        )
+    )
     registry_record = _durable._read_record(
         root / REGISTRY_FREEZE_FILENAME, "soft-tag registry freeze"
     )
     registry = _restore_registry_freeze(
         registry_record,
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=discovery_artifacts,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=semantic_registry_proposal,
+        semantic_registry=semantic_registry,
     )
     evaluation_a_batch = _durable._read_record(
         root / EVALUATION_A_BATCH_FILENAME, "registered evaluation A batch"
@@ -2513,19 +3117,12 @@ def verify_object_bongard_scene_predicate_calibration(
         ),
         parent_digest=registry_record["registry_freeze_digest"],
         digest_field="freeze_digest",
+        historical_roles_revealed=True,
     )
     if evaluation_freeze != expected_evaluation_freeze:
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "registered evaluation freeze differs on replay"
         )
-    role_reveal = _durable._read_record(
-        root / ROLE_REVEAL_FILENAME, "historical role reveal"
-    )
-    if role_reveal != _role_reveal_record(inputs, evaluation_freeze):
-        raise ObjectBongardScenePredicateCalibrationCommandError(
-            "historical role reveal differs on replay"
-        )
-
     replay_discovery, discovery_summaries = _cold_replay_visual_batch(
         root,
         stage="discovery",
@@ -2536,10 +3133,33 @@ def verify_object_bongard_scene_predicate_calibration(
         registry=None,
         batch=discovery_batch,
     )
+    replay_prepared_semantic_proposal = _restore_semantic_proposal_input(
+        semantic_proposal_input,
+        discovery_freeze=discovery_freeze,
+        role_reveal=role_reveal,
+        discovery_artifacts=replay_discovery,
+        role_rows=inputs.role_reveal_rows,
+    )
+    replay_semantic_proposal, replay_semantic_registry, semantic_summary = (
+        _cold_replay_semantic_proposal(
+            root,
+            authorization=authorization,
+            precommit=precommit,
+            runtime=runtime,
+            semantic_proposal_input=semantic_proposal_input,
+            semantic_proposal_result=semantic_proposal_result,
+            prepared=replay_prepared_semantic_proposal,
+            discovery_artifacts=replay_discovery,
+            role_rows=inputs.role_reveal_rows,
+        )
+    )
     replay_registry = _restore_registry_freeze(
         registry_record,
         discovery_freeze=discovery_freeze,
-        discovery_artifacts=replay_discovery,
+        role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
+        semantic_registry_proposal=replay_semantic_proposal,
+        semantic_registry=replay_semantic_registry,
     )
     replay_a, a_summaries = _cold_replay_visual_batch(
         root,
@@ -2563,6 +3183,7 @@ def verify_object_bongard_scene_predicate_calibration(
     )
     ir_bundle = _derive_ir_bundle(
         registry=replay_registry,
+        semantic_registry_proposal=replay_semantic_proposal,
         discovery_artifacts=replay_discovery,
         registered_a_artifacts=replay_a,
         registered_b_artifacts=replay_b,
@@ -2575,6 +3196,7 @@ def verify_object_bongard_scene_predicate_calibration(
         inputs=inputs,
         evaluation_freeze=evaluation_freeze,
         role_reveal=role_reveal,
+        semantic_proposal_result=semantic_proposal_result,
         registry=replay_registry,
         ir_bundle=ir_bundle,
     )
@@ -2587,6 +3209,7 @@ def verify_object_bongard_scene_predicate_calibration(
     )
     expected_rank_input = _rank_input_freeze_record(
         assessment=assessment,
+        semantic_proposal_result=semantic_proposal_result,
         complete_survivor_digests=ir_bundle["complete_survivor_digests"],
         slate_rows=ir_bundle["ranker_slate"],
         omitted_rows=ir_bundle["omitted_survivors"],
@@ -2611,12 +3234,14 @@ def verify_object_bongard_scene_predicate_calibration(
         item["candidate_digest"]: item
         for item in ir_bundle["candidates"]
         if item["candidate_digest"] in survivors
+        and semantic_proposal_result["semantic_proposal_valid"]
     }
     formula_freeze = _durable._read_record(
         root / FORMULA_FREEZE_FILENAME, "formula freeze"
     )
     expected_formula_freeze = _formula_freeze_record(
         assessment=assessment,
+        semantic_proposal_result=semantic_proposal_result,
         rank_input=rank_input,
         rank_result=rank_result,
         candidate_by_digest=candidate_by_digest,
@@ -2633,6 +3258,8 @@ def verify_object_bongard_scene_predicate_calibration(
         authorization=authorization,
         precommit=precommit,
         discovery_batch=discovery_batch,
+        semantic_proposal_input=semantic_proposal_input,
+        semantic_proposal_result=semantic_proposal_result,
         registry_record=registry_record,
         evaluation_a_batch=evaluation_a_batch,
         evaluation_b_batch=evaluation_b_batch,
@@ -2645,6 +3272,7 @@ def verify_object_bongard_scene_predicate_calibration(
             *a_summaries,
             *b_summaries,
         ),
+        semantic_proposer_journal_summary_digest=semantic_summary,
         ranker_replay_selected_digest=replay_selected,
     )
     if replay != expected_replay:
@@ -2658,6 +3286,8 @@ def verify_object_bongard_scene_predicate_calibration(
         precommit=precommit,
         discovery_batch=discovery_batch,
         discovery_freeze=discovery_freeze,
+        semantic_proposal_input=semantic_proposal_input,
+        semantic_proposal_result=semantic_proposal_result,
         registry_record=registry_record,
         evaluation_a_batch=evaluation_a_batch,
         evaluation_b_batch=evaluation_b_batch,
@@ -2680,6 +3310,7 @@ def verify_object_bongard_scene_predicate_calibration(
         precommit,
         discovery_batch,
         discovery_freeze,
+        semantic_proposal_result,
         registry_record,
         evaluation_a_batch,
         evaluation_b_batch,
@@ -2800,6 +3431,9 @@ def main(argv: Sequence[str] | None = None) -> int:
                 "status": verified.status,
                 "selected_survivor_digest": verified.selected_survivor_digest,
                 "visual_fresh_call_count": verified.visual_fresh_call_count,
+                "semantic_proposer_fresh_call_count": (
+                    verified.semantic_proposer_fresh_call_count
+                ),
                 "ranker_fresh_call_count": verified.ranker_fresh_call_count,
                 **_authority_data(),
             }
@@ -2819,6 +3453,7 @@ __all__ = (
     "FORMULA_FREEZE_FILENAME",
     "ObjectBongardScenePredicateCalibrationCommandError",
     "RESULT_FILENAME",
+    "SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT",
     "VISUAL_CALL_COUNT",
     "VerifiedObjectBongardScenePredicateCalibration",
     "audit_object_bongard_scene_predicate_calibration_source",
