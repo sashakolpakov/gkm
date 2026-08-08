@@ -62,7 +62,9 @@ def _authority_data() -> dict[str, object]:
         "python_is_canonical_authority": True,
         "model_emits_shared_witness_components_only": True,
         "python_renders_descriptions": True,
-        "same_individual_required": True,
+        "same_individual_required_within_panel": True,
+        "same_physical_individual_across_panels_required": False,
+        "same_entity_kind_across_panels_required": True,
         "single_visual_axis_required": True,
         "endpoints_are_alternative_axis_values": True,
         "explicit_or_morphological_absence_endpoint_allowed": False,
@@ -166,7 +168,7 @@ def render_shared_witness_description(
     axis = validate_visual_axis(visual_axis)
     value = validate_axis_endpoint(endpoint, label="axis endpoint")
     text = (
-        f"One individual {anchor} is the shared witness; "
+        f"The inventoried individual {anchor} is this witness; "
         f"its {axis} appears {value}."
     )
     try:
@@ -192,6 +194,9 @@ def _contrast_content(value: "ObjectBongardSharedWitnessContrast") -> dict[str, 
         "rendered_group_1_cue": value.rendered_group_1_cue.to_data(),
         "ordered_group_roles": ["group_0", "group_1"],
         "endpoint_relation": "alternative-values-of-one-axis-on-one-individual",
+        "panel_witness_policy": "inventory-all-top-level-anchor-instances",
+        "witness_cherry_pick_allowed": False,
+        "possible_opposite_endpoint_forces_indeterminate": True,
         "reverse_orientation_authorized": False,
         **_authority_data(),
     }
@@ -318,6 +323,9 @@ class ObjectBongardSharedWitnessContrast:
                 "rendered_group_1_cue",
                 "ordered_group_roles",
                 "endpoint_relation",
+                "panel_witness_policy",
+                "witness_cherry_pick_allowed",
+                "possible_opposite_endpoint_forces_indeterminate",
                 "reverse_orientation_authorized",
                 *_authority_data(),
                 "contrast_digest",
@@ -333,6 +341,10 @@ class ObjectBongardSharedWitnessContrast:
             or raw["ordered_group_roles"] != ["group_0", "group_1"]
             or raw["endpoint_relation"]
             != "alternative-values-of-one-axis-on-one-individual"
+            or raw["panel_witness_policy"]
+            != "inventory-all-top-level-anchor-instances"
+            or raw["witness_cherry_pick_allowed"] is not False
+            or raw["possible_opposite_endpoint_forces_indeterminate"] is not True
             or raw["reverse_orientation_authorized"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
         ):
@@ -363,12 +375,15 @@ def render_shared_witness_rubric(
         raise TypeError("contrast must be ObjectBongardSharedWitnessContrast")
     frozen = ObjectBongardSharedWitnessContrast.from_data(contrast.to_data())
     return (
-        f"Locate one individual {frozen.shared_anchor} as the shared witness. "
-        f"Inspect only that same individual's {frozen.visual_axis}. "
+        f"Inventory every top-level individual {frozen.shared_anchor} in the panel. "
+        f"For each inventoried individual, inspect only that same individual's "
+        f"{frozen.visual_axis}. "
         f"Description A endpoint is {frozen.group_0_endpoint}. "
         f"Description B endpoint is {frozen.group_1_endpoint}. "
         "Treat A and B only as alternative values of this one visual axis. "
-        "Do not use a different individual for either endpoint."
+        "Score both endpoints on each same individual. Do not select one favorable "
+        "individual or ignore any eligible individual. Any ambiguous eligible "
+        "individual or possible opposite endpoint makes the panel indeterminate."
     )
 
 
@@ -382,7 +397,11 @@ def _spec_content(value: "ObjectBongardSharedWitnessRubricSpec") -> dict[str, ob
         "contrast": value.contrast.to_data(),
         "rubric": value.rubric,
         "observer_must_persist_witness_locator": True,
+        "observer_must_inventory_all_top_level_anchor_instances": True,
+        "observer_may_select_one_favorable_witness": False,
         "observer_must_score_endpoints_separately": True,
+        "conservative_inventory_aggregation_required": True,
+        "possible_opposite_endpoint_forces_indeterminate": True,
         "direct_comparative_judgment_is_canonical_evidence": False,
         **_authority_data(),
     }
@@ -462,7 +481,11 @@ class ObjectBongardSharedWitnessRubricSpec:
                 "contrast",
                 "rubric",
                 "observer_must_persist_witness_locator",
+                "observer_must_inventory_all_top_level_anchor_instances",
+                "observer_may_select_one_favorable_witness",
                 "observer_must_score_endpoints_separately",
+                "conservative_inventory_aggregation_required",
+                "possible_opposite_endpoint_forces_indeterminate",
                 "direct_comparative_judgment_is_canonical_evidence",
                 *_authority_data(),
                 "spec_digest",
@@ -475,7 +498,12 @@ class ObjectBongardSharedWitnessRubricSpec:
             or raw["implementation_source_sha256"]
             != object_bongard_shared_witness_source_digest()
             or raw["observer_must_persist_witness_locator"] is not True
+            or raw["observer_must_inventory_all_top_level_anchor_instances"]
+            is not True
+            or raw["observer_may_select_one_favorable_witness"] is not False
             or raw["observer_must_score_endpoints_separately"] is not True
+            or raw["conservative_inventory_aggregation_required"] is not True
+            or raw["possible_opposite_endpoint_forces_indeterminate"] is not True
             or raw["direct_comparative_judgment_is_canonical_evidence"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
         ):

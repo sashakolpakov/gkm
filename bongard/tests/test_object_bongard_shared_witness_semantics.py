@@ -105,7 +105,7 @@ def test_proposer_persists_ir_and_python_rendered_same_witness_cues() -> None:
     assert first.shared_anchor == "decorated figure"
     assert first.visual_axis == "closed loop topology"
     common = (
-        "One individual decorated figure is the shared witness; "
+        "The inventoried individual decorated figure is this witness; "
         "its closed loop topology appears "
     )
     assert first.rendered_group_0_cue.text == (
@@ -149,6 +149,11 @@ def test_v2_rubric_specs_retain_full_ir_without_downcasting() -> None:
     assert first.foil_cue == first.contrast.rendered_group_1_cue
     assert "same individual's closed loop topology" in first.rubric
     assert first.to_data()["observer_must_persist_witness_locator"] is True
+    assert (
+        first.to_data()["observer_must_inventory_all_top_level_anchor_instances"]
+        is True
+    )
+    assert first.to_data()["observer_may_select_one_favorable_witness"] is False
     assert first.to_data()["observer_must_score_endpoints_separately"] is True
     assert (
         first.to_data()["direct_comparative_judgment_is_canonical_evidence"]
@@ -237,7 +242,8 @@ def test_protocol_states_observer_evidence_gap_explicitly() -> None:
     assert SHARED_WITNESS_SEMANTIC_PROTOCOL_ID.endswith(
         "single-entity-axis-contrasts-v1"
     )
-    assert "same individual witness" in prompt
+    assert "same entity kind, not one physical individual shared across panels" in prompt
+    assert "Within each panel, both endpoints" in prompt
     assert "must not be two separately coexisting features" in prompt
     assert "Python alone renders Description A and Description B" in prompt
     source = (

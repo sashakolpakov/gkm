@@ -72,7 +72,9 @@ def _authority_data() -> dict[str, object]:
         "model_emits_shared_anchor_axis_endpoints_only": True,
         "python_renders_both_descriptions": True,
         "independent_free_form_group_cues_representable": False,
-        "same_individual_required": True,
+        "same_individual_required_within_panel": True,
+        "same_physical_individual_across_panels_required": False,
+        "same_entity_kind_across_panels_required": True,
         "single_visual_axis_required": True,
         "explicit_semantic_negation_allowed": False,
         "model_can_choose_operator_threshold_or_polarity": False,
@@ -147,9 +149,11 @@ def object_bongard_shared_witness_semantics_prompt() -> str:
         "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
         "group_1_ref_05. Return exactly two ranked proposals named proposal_0 "
         "then proposal_1. For each proposal, identify one singular visible entity "
-        "kind that can serve as the same individual witness in every drawing. Put "
+        "kind that recurs across the drawings. This means the same entity kind, not "
+        "one physical individual shared across panels. Put "
         "that noun phrase in shared_anchor. Name exactly one visible attribute of "
-        "that individual in visual_axis. Put one positive value of that exact axis "
+        "each such individual in visual_axis. Within each panel, both endpoints must "
+        "be scored on the same individual instance. Put one positive value of that exact axis "
         "in group_0_endpoint and a different positive value of that same axis in "
         "group_1_endpoint. The endpoints must be alternative values on one entity; "
         "they must not be two separately coexisting features, full descriptions, "
