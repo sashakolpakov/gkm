@@ -1042,6 +1042,18 @@ class SceneCandidateEvaluation:
         return result
 
 
+def _compact_evaluation_data(value: SceneCandidateEvaluation) -> dict[str, object]:
+    return {"candidate_digest": value.candidate_digest, "dispositions": [item.value for item in value.dispositions], "evaluation_digest": value.evaluation_digest}
+
+
+def _evaluation_from_compact(value: object, panel_ids: tuple[str, ...], observation_digests: tuple[str, ...]) -> SceneCandidateEvaluation:
+    raw = _fields(value, {"candidate_digest", "dispositions", "evaluation_digest"}, "compact candidate evaluation")
+    if not isinstance(raw["dispositions"], list): raise ObjectBongardScenePredicateIRError("compact evaluation dispositions differ")
+    result = SceneCandidateEvaluation(raw["candidate_digest"], panel_ids, observation_digests, tuple(Disposition(item) for item in raw["dispositions"]), raw["evaluation_digest"])
+    if _compact_evaluation_data(result) != dict(raw): raise ObjectBongardScenePredicateIRError("compact evaluation is not canonical")
+    return result
+
+
 @dataclass(frozen=True, slots=True)
 class SceneGateRecord:
     gate_id: str
@@ -1121,7 +1133,7 @@ def _row_metrics(row: Sequence[Disposition], expected: Sequence[Disposition]) ->
 
 
 def _version_content(value: "SceneVersionSpace") -> dict[str, object]:
-    return {"schema": SCENE_VERSION_SPACE_SCHEMA, "algorithm_digest": value.algorithm_digest, "language_digest": value.language_digest, "orientation": value.orientation.value, "group0_count": value.group0_count, "support_panel_ids": list(value.support_panel_ids), "support_observation_digests": list(value.support_observation_digests), "pass_a_observation_digests": list(value.pass_a_observation_digests), "pass_b_observation_digests": list(value.pass_b_observation_digests), "candidates": [item.to_data() for item in value.candidates], "evaluations": [item.to_data() for item in value.evaluations], "pass_a_evaluations": [item.to_data() for item in value.pass_a_evaluations], "pass_b_evaluations": [item.to_data() for item in value.pass_b_evaluations], "survivor_candidate_digests": list(value.survivor_candidate_digests), "gap": None if value.gap is None else value.gap.to_data(), "coverage_gate": value.coverage_gate.to_data(), "selectivity_gate": value.selectivity_gate.to_data(), "repeatability_gate": value.repeatability_gate.to_data(), "complete_enumeration": True, "orientation_filters_same_label_blind_formula_inventory": True, "repeatability_rule": "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge", **_authority_data()}
+    return {"schema": SCENE_VERSION_SPACE_SCHEMA, "algorithm_digest": value.algorithm_digest, "language_digest": value.language_digest, "orientation": value.orientation.value, "group0_count": value.group0_count, "support_panel_ids": list(value.support_panel_ids), "support_observation_digests": list(value.support_observation_digests), "pass_a_observation_digests": list(value.pass_a_observation_digests), "pass_b_observation_digests": list(value.pass_b_observation_digests), "candidate_digests": [item.candidate_digest for item in value.candidates], "evaluations": [_compact_evaluation_data(item) for item in value.evaluations], "pass_a_evaluations": [_compact_evaluation_data(item) for item in value.pass_a_evaluations], "pass_b_evaluations": [_compact_evaluation_data(item) for item in value.pass_b_evaluations], "survivor_candidate_digests": list(value.survivor_candidate_digests), "gap": None if value.gap is None else value.gap.to_data(), "coverage_gate": value.coverage_gate.to_data(), "selectivity_gate": value.selectivity_gate.to_data(), "repeatability_gate": value.repeatability_gate.to_data(), "candidate_records_inherited_from_bundle_top": True, "evaluation_panel_bindings_inherited_from_space": True, "complete_enumeration": True, "orientation_filters_same_label_blind_formula_inventory": True, "repeatability_rule": "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge", **_authority_data()}
 
 
 @dataclass(frozen=True, slots=True)
@@ -1173,17 +1185,17 @@ class SceneVersionSpace:
     @classmethod
     def from_data(cls, value: object, *, language: ScenePredicateLanguage) -> "SceneVersionSpace":
         if not isinstance(language, ScenePredicateLanguage): raise TypeError("version-space decoding requires its frozen language")
-        expected = {"schema", "algorithm_digest", "language_digest", "orientation", "group0_count", "support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidates", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests", "gap", "coverage_gate", "selectivity_gate", "repeatability_gate", "complete_enumeration", "orientation_filters_same_label_blind_formula_inventory", "repeatability_rule", *_authority_data(), "version_space_digest"}
+        expected = {"schema", "algorithm_digest", "language_digest", "orientation", "group0_count", "support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests", "gap", "coverage_gate", "selectivity_gate", "repeatability_gate", "candidate_records_inherited_from_bundle_top", "evaluation_panel_bindings_inherited_from_space", "complete_enumeration", "orientation_filters_same_label_blind_formula_inventory", "repeatability_rule", *_authority_data(), "version_space_digest"}
         raw = _fields(value, expected, "scene version space")
-        if raw["schema"] != SCENE_VERSION_SPACE_SCHEMA or raw["complete_enumeration"] is not True or raw["orientation_filters_same_label_blind_formula_inventory"] is not True or raw["repeatability_rule"] != "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidates", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests")): raise ObjectBongardScenePredicateIRError("scene version policy differs")
-        candidates = tuple(ScenePredicateCandidate.from_data(item, language=language) for item in raw["candidates"])
+        if raw["schema"] != SCENE_VERSION_SPACE_SCHEMA or raw["candidate_records_inherited_from_bundle_top"] is not True or raw["evaluation_panel_bindings_inherited_from_space"] is not True or raw["complete_enumeration"] is not True or raw["orientation_filters_same_label_blind_formula_inventory"] is not True or raw["repeatability_rule"] != "same-frozen-candidate-exact-on-pass-a-pass-b-and-conservative-merge" or any(raw[k] != v for k, v in _authority_data().items()) or any(not isinstance(raw[k], list) for k in ("support_panel_ids", "support_observation_digests", "pass_a_observation_digests", "pass_b_observation_digests", "candidate_digests", "evaluations", "pass_a_evaluations", "pass_b_evaluations", "survivor_candidate_digests")): raise ObjectBongardScenePredicateIRError("scene version policy differs")
         try:
             complete_for_orientation = tuple(item for item in enumerate_object_scene_candidates(language) if item.orientation is SceneOrientation(raw["orientation"]))
         except SceneLanguageCapacityGap as exc:
             raise ObjectBongardScenePredicateIRError("a materialized orientation space cannot stand in for a typed capacity gap") from exc
-        if candidates != complete_for_orientation:
+        if tuple(raw["candidate_digests"]) != tuple(item.candidate_digest for item in complete_for_orientation):
             raise ObjectBongardScenePredicateIRError("orientation space omits or changes the complete candidate inventory")
-        result = cls(raw["algorithm_digest"], raw["language_digest"], SceneOrientation(raw["orientation"]), raw["group0_count"], tuple(raw["support_panel_ids"]), tuple(raw["support_observation_digests"]), tuple(raw["pass_a_observation_digests"]), tuple(raw["pass_b_observation_digests"]), candidates, tuple(SceneCandidateEvaluation.from_data(item) for item in raw["evaluations"]), tuple(SceneCandidateEvaluation.from_data(item) for item in raw["pass_a_evaluations"]), tuple(SceneCandidateEvaluation.from_data(item) for item in raw["pass_b_evaluations"]), tuple(raw["survivor_candidate_digests"]), None if raw["gap"] is None else SceneSupportGap.from_data(raw["gap"]), SceneGateRecord.from_data(raw["coverage_gate"]), SceneGateRecord.from_data(raw["selectivity_gate"]), SceneGateRecord.from_data(raw["repeatability_gate"]), raw["version_space_digest"])
+        panel_ids = tuple(raw["support_panel_ids"]); merged_digests = tuple(raw["support_observation_digests"]); pass_a_digests = tuple(raw["pass_a_observation_digests"]); pass_b_digests = tuple(raw["pass_b_observation_digests"])
+        result = cls(raw["algorithm_digest"], raw["language_digest"], SceneOrientation(raw["orientation"]), raw["group0_count"], panel_ids, merged_digests, pass_a_digests, pass_b_digests, complete_for_orientation, tuple(_evaluation_from_compact(item, panel_ids, merged_digests) for item in raw["evaluations"]), tuple(_evaluation_from_compact(item, panel_ids, pass_a_digests) for item in raw["pass_a_evaluations"]), tuple(_evaluation_from_compact(item, panel_ids, pass_b_digests) for item in raw["pass_b_evaluations"]), tuple(raw["survivor_candidate_digests"]), None if raw["gap"] is None else SceneSupportGap.from_data(raw["gap"]), SceneGateRecord.from_data(raw["coverage_gate"]), SceneGateRecord.from_data(raw["selectivity_gate"]), SceneGateRecord.from_data(raw["repeatability_gate"]), raw["version_space_digest"])
         if result.to_data() != dict(raw): raise ObjectBongardScenePredicateIRError("scene version is not canonical")
         return result
 

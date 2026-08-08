@@ -7,7 +7,7 @@ from io import BytesIO
 import pytest
 from PIL import Image
 
-from bongard.canonical import canonical_digest
+from bongard.canonical import canonical_digest, canonical_json
 from bongard.evidence import Disposition
 import bongard.object_bongard_scene_predicate_ir as ir
 from bongard.object_bongard_scene_predicate_ir import (
@@ -293,6 +293,8 @@ def test_zero_proposal_artifacts_are_error_and_one_entity_pair_quantifiers_are_n
 def test_bundle_round_trip_cold_replay_registry_provenance_capacity_and_stratified_slate(monkeypatch):
     registry, discovery, pass_a, pass_b, roles = _artifact_fixture()
     bundle = build_object_bongard_scene_predicate_calibration_bundle(registry, discovery, pass_a, pass_b, roles)
+    assert len(bundle.candidates) == 1888
+    assert len(canonical_json(bundle.to_data())) < 16 * 1024 * 1024
     restored = ir.ScenePredicateCalibrationBundle.from_data(bundle.to_data())
     assert cold_replay_object_bongard_scene_predicate_calibration_bundle(restored, registry) == bundle
     assert any("resembles a bird or flying bird silhouette" in str(item) for item in bundle.ranker_slate)
