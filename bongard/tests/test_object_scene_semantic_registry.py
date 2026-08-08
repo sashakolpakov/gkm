@@ -164,6 +164,10 @@ def test_prepare_is_order_invariant_opaque_text_only_and_strict(discovery_inputs
         "near_miss_boundaries",
         "citations",
     }
+    assert "near-miss boundaries are the sole exception" in prepared.prompt.lower()
+    assert "using 'does not qualify', 'is excluded', or 'falls outside'" in (
+        prepared.prompt
+    )
 
     lowered = prepared.prompt.lower()
     for forbidden in (
