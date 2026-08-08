@@ -51,7 +51,7 @@ from bongard.transport import (
 
 PANEL_RUBRIC_ARTIFACT_SCHEMA = "gkm.bongard-panel-rubric-observer-artifact.v2"
 PANEL_RUBRIC_OBSERVATION_SCHEMA = "gkm.bongard-panel-rubric-observation.v2"
-PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v2"
+PANEL_RUBRIC_PROTOCOL_ID = "bongard.panel-rubric-observer/one-panel-signed-ordinal-v3"
 PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS = RUBRIC_ORDINAL_LEVEL_ANCHORS
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -163,9 +163,16 @@ def object_bongard_panel_rubric_prompt(rubric_spec: ObjectBongardRubricSpec) -> 
         raise TypeError("rubric_spec must be ObjectBongardRubricSpec")
     anchors = "\n".join(f"{level}: {meaning}" for level, meaning in PANEL_RUBRIC_ORDINAL_LEVEL_ANCHORS)
     return (
-        "Inspect panel.png as one complete drawing. Treat every visible mark together; "
-        "the single supplied image is the entire visual evidence. Apply this exact "
-        "ordered target-versus-foil comparison to the complete panel:\n"
+        "Inspect panel.png as one complete drawing; the single supplied image is "
+        "the entire visual evidence. Honor each description's grammatical scope. "
+        "When a description refers to one or a figure or object, all claimed parts, "
+        "counts, and relations must belong to one spatially coherent figure, including "
+        "decorations that trace or attach to its outline. Never pool evidence across "
+        "spatially separate figures to manufacture one described figure. When both "
+        "descriptions refer to one figure or object, compare target and foil on the "
+        "same individual figure. If separate figures support the opposite descriptions "
+        "comparably, use level 2 rather than assigning each description its own figure. "
+        "Apply this exact ordered target-versus-foil comparison to the complete panel:\n"
         f"{rubric_spec.rubric}\n\n"
         "Use only this fixed ordinal scale:\n"
         f"{anchors}\n\n"

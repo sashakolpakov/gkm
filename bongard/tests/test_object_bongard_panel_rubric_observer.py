@@ -181,6 +181,11 @@ def test_prompt_is_whole_panel_only_and_has_no_experimental_role_words() -> None
         assert meaning in prompt
     assert "complete panel" in prompt
     lowered = prompt.lower()
+    assert "one spatially coherent figure" in lowered
+    assert "never pool evidence across spatially separate figures" in lowered
+    assert "same individual figure" in lowered
+    assert "use level 2 rather than assigning each description its own figure" in lowered
+    assert "treat every visible mark together" not in lowered
     for word in ("label", "query", "candidate", "formula", "predicate"):
         assert re.search(rf"\b{word}s?\b", lowered) is None
 
