@@ -9,15 +9,13 @@ import pytest
 from bongard.object_bongard_semantics import (
     GROUP_SIZE,
     SEMANTIC_PROTOCOL_ID,
+    SOFT_CUE_CANDIDATE_COUNT,
     ObjectBongardSemanticArtifact,
     ObjectBongardSemanticsError,
     describe_object_bongard_support,
+    object_bongard_semantics_output_schema,
     object_bongard_semantics_prompt,
     verify_object_bongard_semantic_artifact,
-)
-from bongard.object_bongard_rubric_observer import (
-    ObjectBongardRubricSpec,
-    object_bongard_catalog_contrast_rubric,
 )
 from bongard.prototype_scene_observer import PrototypeSceneObserverStatus
 from bongard.tests.test_prototype_scene_observer import (
@@ -46,18 +44,22 @@ def _images() -> dict[str, bytes]:
 
 def _payload() -> dict[str, object]:
     return {
-        "profiles": [
-            {
-                "group_id": "group_0",
-                "rubric": "A winged angular form with several slanted spans.",
-                "feature_ids": ["bird_like_support_ppm"],
-            },
-            {
-                "group_id": "group_1",
-                "rubric": "A rounded compact form with a curved boundary.",
-                "feature_ids": ["rounded_leaf_support_ppm"],
-            },
-        ]
+        "proposal_0": {
+            "group_0_cue_text": (
+                "Unequal sector-like subshapes joined at a common apex."
+            ),
+            "group_1_cue_text": (
+                "Rounded contour tapering toward a pointed junction."
+            ),
+        },
+        "proposal_1": {
+            "group_0_cue_text": (
+                "Unequal sector-like lobes sharing a central junction."
+            ),
+            "group_1_cue_text": (
+                "Three line-like spans forming a triangular arrangement."
+            ),
+        },
     }
 
 
@@ -73,6 +75,7 @@ def _describe(payload: dict[str, object] | None = None):
         assert names[-1] == "group_1_ref_05.png"
         assert TASK_ID not in prompt
         assert all(panel_id not in prompt for panel_id in (*GROUP_0, *GROUP_1))
+        assert schema == object_bongard_semantics_output_schema()
         return CodexStructuredResult(
             chosen, _receipt(prompt, paths, names, schema, chosen)
         )
@@ -92,39 +95,25 @@ def _describe(payload: dict[str, object] | None = None):
     return artifact, calls
 
 
-def test_semantic_turn_emits_audit_prose_and_one_catalog_cue_per_group() -> None:
+def test_semantic_turn_emits_two_ranked_positive_soft_cue_pairs() -> None:
     artifact, calls = _describe()
     assert calls == artifact.to_data()["physical_call_count"] == 1
     assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
-    assert artifact.rubrics == (
-        "A winged angular form with several slanted spans.",
-        "A rounded compact form with a curved boundary.",
-    )
-    assert artifact.feature_families == (
-        ("bird_like_support_ppm",),
-        ("rounded_leaf_support_ppm",),
-    )
-    prompt = object_bongard_semantics_prompt()
-    assert SEMANTIC_PROTOCOL_ID == (
-        "bongard.object-task-semantics/structure-first-joint-contrastive-v3"
-    )
-    assert "two neutral groups of six" in prompt
-    assert "Consider both groups jointly" in prompt
-    assert "First compare all twelve drawings without using the catalog" in prompt
-    assert "structurally precise sentence" in prompt
-    assert "bare resemblance term" in prompt
-    assert "Only after fixing both sentences" in prompt
-    assert "exactly one closest feature identifier" in prompt
-    assert "must both recur within its group" in prompt
-    assert "visibly more characteristic" in prompt
-    assert "merely typical" in prompt
-    assert "Group names are neutral" in prompt
-    assert "retained only as audit text" in prompt
-    assert "do not choose an operator, threshold" in prompt
-    assert "500000" not in prompt and "500_000" not in prompt
-    assert artifact.to_data()["model_can_choose_operator_threshold_or_polarity"] is False
+    assert len(artifact.soft_cue_candidates) == SOFT_CUE_CANDIDATE_COUNT == 2
+    first, second = artifact.soft_cue_candidates
+    assert (first.candidate_rank, second.candidate_rank) == (0, 1)
+    assert first.group_0_cue.text.startswith("Unequal sector-like")
+    assert second.group_1_cue.text.startswith("Three line-like spans")
+    assert first.pair_digest != second.pair_digest
+    data = artifact.to_data()
+    assert data["feature_catalog_used"] is False
+    assert data["vision_prose_defines_soft_cue_identity"] is True
+    assert data["model_can_choose_operator_threshold_or_polarity"] is False
+    assert data["python_is_canonical_authority"] is True
+    assert data["lean_required"] is False
+    assert data["lean_required_for_replay"] is False
     assert ObjectBongardSemanticArtifact.from_data(
-        artifact.to_data(), expected_artifact_digest=artifact.artifact_digest
+        data, expected_artifact_digest=artifact.artifact_digest
     ) == artifact
     assert verify_object_bongard_semantic_artifact(
         artifact,
@@ -135,13 +124,29 @@ def test_semantic_turn_emits_audit_prose_and_one_catalog_cue_per_group() -> None
     ) is artifact
 
 
-def test_parser_and_transport_failures_are_typed_not_empty_nominations() -> None:
+def test_prompt_and_schema_fix_exact_two_forward_proposals_without_catalog() -> None:
+    prompt = object_bongard_semantics_prompt()
+    schema = object_bongard_semantics_output_schema()
+    assert SEMANTIC_PROTOCOL_ID == (
+        "bongard.object-task-semantics/two-ranked-positive-soft-cue-pairs-v4"
+    )
+    assert "exactly two ranked forward visual proposals" in prompt
+    assert "proposal_0 is your strongest pair" in prompt
+    assert "proposal_1 is the strongest genuinely alternate pair" in prompt
+    assert "it may reuse one good group cue" in prompt
+    assert "Python alone supplies the fixed observer scale" in prompt
+    assert "catalog" not in prompt.lower()
+    assert set(schema["properties"]) == {"proposal_0", "proposal_1"}
+    assert schema["required"] == ["proposal_0", "proposal_1"]
+
+
+def test_parser_and_transport_failures_are_typed_empty_slates() -> None:
     malformed = _payload()
-    malformed["profiles"][0]["feature_ids"] = []  # type: ignore[index]
+    del malformed["proposal_1"]
     parser, calls = _describe(malformed)
     assert calls == 1
     assert parser.status is PrototypeSceneObserverStatus.PARSER_ERROR
-    assert parser.feature_families == ()
+    assert parser.soft_cue_candidates == ()
     assert parser.failure_code == "semantic_payload_rejected"
     verify_object_bongard_semantic_artifact(
         parser,
@@ -172,86 +177,52 @@ def test_parser_and_transport_failures_are_typed_not_empty_nominations() -> None
     )
     assert calls == 1
     assert failed.status is PrototypeSceneObserverStatus.TRANSPORT_ERROR
-    assert failed.feature_families == ()
+    assert failed.soft_cue_candidates == ()
     assert failed.failure_code == "semantic_transport_failed"
 
 
 @pytest.mark.parametrize(
-    "feature_ids",
+    "bad_text",
     (
-        [],
-        ["bird_like_support_ppm", "oblique_span_support_ppm"],
+        "No curved spans.",
+        "A circle and a triangle.",
+        "More oblique than the other group.",
+        "Target score >= 3.",
     ),
 )
-def test_zero_or_multiple_cues_fail_closed(feature_ids: list[str]) -> None:
-    payload = _payload()
-    payload["profiles"][0]["feature_ids"] = feature_ids  # type: ignore[index]
-    artifact, calls = _describe(payload)
-    assert calls == 1
-    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
-    assert artifact.feature_families == ()
-
-
-def test_same_cue_cannot_masquerade_as_a_contrast() -> None:
-    payload = _payload()
-    payload["profiles"][1]["feature_ids"] = [  # type: ignore[index]
-        "bird_like_support_ppm"
-    ]
-    artifact, calls = _describe(payload)
-    assert calls == 1
-    assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
-    assert artifact.feature_families == ()
-
-
-@pytest.mark.parametrize(
-    "audit_prose",
-    (
-        "A bird-like contour and several rounded appendages recur.",
-        "A figure distinct from compact rounded leaves recurs.",
-    ),
-)
-def test_audit_prose_cannot_conjoin_or_implicitly_complement_the_predicate(
-    audit_prose: str,
+def test_non_atomic_negated_or_executable_cue_text_fails_closed(
+    bad_text: str,
 ) -> None:
     payload = _payload()
-    payload["profiles"][0]["rubric"] = audit_prose  # type: ignore[index]
-    artifact, calls = _describe(payload)
-    assert calls == 1
-    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
-    assert artifact.rubrics[0] == audit_prose
-
-    spec = ObjectBongardRubricSpec.from_semantic_artifact(
-        artifact, expected_artifact_digest=artifact.artifact_digest
-    )
-    assert spec.feature_nominations == (
-        "bird_like_support_ppm",
-        "rounded_leaf_support_ppm",
-    )
-    assert spec.rubric == object_bongard_catalog_contrast_rubric(
-        "bird_like_support_ppm", "rounded_leaf_support_ppm"
-    )
-    assert audit_prose != spec.rubric
-
-
-@pytest.mark.parametrize(
-    "rubric",
-    (
-        "A figure without a curved boundary recurs.",
-        "A form lacking an enclosed region recurs.",
-        "No rounded appendage is visible.",
-    ),
-)
-def test_explicit_semantic_negation_cannot_smuggle_a_not_predicate(
-    rubric: str,
-) -> None:
-    payload = _payload()
-    payload["profiles"][0]["rubric"] = rubric  # type: ignore[index]
+    payload["proposal_0"]["group_0_cue_text"] = bad_text  # type: ignore[index]
     artifact, calls = _describe(payload)
     assert calls == 1
     assert artifact.status is PrototypeSceneObserverStatus.PARSER_ERROR
-    assert artifact.rubrics == ()
-    assert artifact.feature_families == ()
-    assert artifact.failure_code == "semantic_payload_rejected"
+    assert artifact.soft_cue_candidates == ()
+
+
+def test_identical_ordered_pairs_across_ranks_fail_closed_but_one_cue_may_repeat() -> None:
+    allowed, _ = _describe()
+    assert (
+        allowed.soft_cue_candidates[0].group_0_cue.cue_digest
+        != allowed.soft_cue_candidates[1].group_0_cue.cue_digest
+    )
+    payload = _payload()
+    payload["proposal_1"] = deepcopy(payload["proposal_0"])
+    failed, calls = _describe(payload)
+    assert calls == 1
+    assert failed.status is PrototypeSceneObserverStatus.PARSER_ERROR
+
+    repeated = _payload()
+    repeated["proposal_1"]["group_0_cue_text"] = (  # type: ignore[index]
+        repeated["proposal_0"]["group_0_cue_text"]  # type: ignore[index]
+    )
+    accepted, _ = _describe(repeated)
+    assert accepted.status is PrototypeSceneObserverStatus.SUCCESS
+    assert (
+        accepted.soft_cue_candidates[0].group_0_cue
+        == accepted.soft_cue_candidates[1].group_0_cue
+    )
 
 
 def test_semantic_replay_rejects_pixel_and_artifact_tamper() -> None:
@@ -267,7 +238,9 @@ def test_semantic_replay_rejects_pixel_and_artifact_tamper() -> None:
             expected_artifact_digest=artifact.artifact_digest,
         )
     changed = deepcopy(artifact.to_data())
-    changed["feature_families"][0] = ["straight_span_count"]
+    changed["soft_cue_candidates"][0]["group_0_cue"]["text"] = (  # type: ignore[index]
+        "A tampered visible arrangement."
+    )
     with pytest.raises(ObjectBongardSemanticsError):
         ObjectBongardSemanticArtifact.from_data(changed)
 
@@ -301,5 +274,5 @@ def test_semantic_module_constructs_no_profile_and_imports_no_lean() -> None:
             imported.append(node.module)
     assert not any("lean" in name.lower() for name in imported)
     assert "ObjectProfile" not in source
-    assert "DESCRIPTION_SUPPORT_TARGET" not in source
-    assert "parse_prototype_object_description_payload" not in source
+    assert "OBJECT_FEATURE_CATALOG" not in source
+    assert "feature_ids" not in source

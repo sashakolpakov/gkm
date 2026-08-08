@@ -1,12 +1,10 @@
-"""Profile-free visual prose and one frozen cue nomination per neutral group.
+"""Profile-free visual proposal of two frozen positive soft-cue pairs.
 
-The model sees two neutral groups of six support images.  It may emit prose
-and nominate exactly one identifier from the frozen feature catalog for each
-group, but it cannot pick operators, thresholds, polarity, formulas, or
-executable code.  The prose is audit evidence only.  The nominated identifier
-selects the frozen catalog entry whose operational description is the sole
-rubric used by the downstream observer; a later Python-only version-space
-stage remains the sole authority for thresholds and executable predicates.
+The model sees two neutral groups of six support images and emits exactly two
+ranked *forward* pairs of bounded positive visual phrases.  It cannot choose an
+operator, threshold, polarity, formula, or executable code.  Each phrase is
+typed and content-addressed; Python alone supplies the fixed ordinal observer,
+deadband, dispositions, finite candidate family, and later selection rule.
 """
 
 from __future__ import annotations
@@ -22,14 +20,10 @@ import re
 from typing import Any, Mapping, Sequence
 
 from bongard.canonical import canonical_digest
-from bongard import prototype_object_observer_protocol as _protocol
-from bongard.prototype_object_observer_protocol import (
-    OBJECT_FEATURE_IDS,
-    prototype_object_description_output_schema,
-)
-from bongard.prototype_object_profiles import (
-    OBJECT_FEATURE_CATALOG,
-    OBJECT_FEATURE_CATALOG_DIGEST,
+from bongard.object_bongard_soft_cues import (
+    ObjectBongardSoftCueError,
+    ObjectBongardSoftCuePair,
+    object_bongard_soft_cue_grammar_digest,
 )
 from bongard.prototype_object_scene_observer import (
     CloudPolicyCacheSnapshot,
@@ -44,21 +38,17 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.transport import run_codex_named_images_structured
 
 
-SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v1"
+SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v2"
 SEMANTIC_PROTOCOL_ID = (
-    "bongard.object-task-semantics/structure-first-joint-contrastive-v3"
+    "bongard.object-task-semantics/two-ranked-positive-soft-cue-pairs-v4"
 )
 GROUP_IDS = ("group_0", "group_1")
 GROUP_SIZE = 6
+SOFT_CUE_CANDIDATE_COUNT = 2
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _TASK_ID = re.compile(r"(?:bd|ff|hd)_[A-Za-z0-9_.-]+\Z")
-_EXPLICIT_NEGATION = re.compile(
-    r"\b(?:no|not|none|neither|nor|never|without|lacks?|lacking|"
-    r"absent|absence|missing|omits?|omitted|excludes?|excluding|except)\b",
-    re.IGNORECASE,
-)
 
 
 class ObjectBongardSemanticsError(ValueError):
@@ -69,13 +59,16 @@ def _authority_data() -> dict[str, object]:
     return {
         "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
         "python_is_canonical_authority": True,
-        "model_can_nominate_feature_ids_only": True,
+        "model_can_propose_positive_soft_cue_text_only": True,
         "model_can_choose_operator_threshold_or_polarity": False,
         "explicit_semantic_negation_allowed": False,
+        "feature_catalog_used": False,
+        "soft_cue_text_is_observed_not_executed": True,
         "lean_present": False,
         "lean_required": False,
         "lean_removable": True,
         "lean_affects_identity_or_decision": False,
+        "lean_required_for_replay": False,
     }
 
 
@@ -101,85 +94,82 @@ def object_bongard_semantics_source_digest() -> str:
     return verify_loaded_source(__name__, expected_source_sha256=_LOADED_SOURCE_SHA256)
 
 
-def _catalog_lines() -> str:
-    rows: list[str] = []
-    for item in OBJECT_FEATURE_CATALOG:
-        maximum = "unbounded" if item.maximum is None else str(item.maximum)
-        rows.append(
-            f"- {item.feature_id}; unit={item.unit}; range=0..{maximum}; "
-            f"meaning={item.operational_description}"
-        )
-    return "\n".join(rows)
-
-
 def object_bongard_semantics_prompt() -> str:
     return (
         "Inspect twelve drawings arranged as two neutral groups of six, named "
         "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
-        "group_1_ref_05. Consider both groups jointly and determine a "
-        "discriminative visual invariant for each group, not merely a salient "
-        "shape in one drawing. First compare all twelve drawings without using "
-        "the catalog: identify the property that recurs across all six members "
-        "of one group and is not similarly characteristic of the other six. "
-        "Describe that invariant in one concise, structurally precise sentence "
-        "that another vision observer could apply to an isolated drawing. "
-        "Prefer observable parts, counts, topology, angles, and relations. A "
-        "bare resemblance term such as bird-like or leaf-like is invalid "
-        "unless the sentence also states the recurring visible structure. "
-        "Only after fixing both sentences, nominate exactly one closest "
-        "feature identifier per group from the complete frozen measurement "
-        "catalog. The nominated cue must both recur within its group and be "
-        "visibly more characteristic of that group than of the other group. "
-        "Compare each catalog meaning across both groups before choosing; a "
-        "cue that is merely typical of one group but also similarly "
-        "characteristic of the other group is invalid. Group names are neutral "
-        "and do not indicate class polarity. "
-        "Ignore pose, scale, location, and incidental stroke variation. Return "
-        "group_0 then group_1. Emit prose and feature identifiers only: do not "
-        "choose an operator, threshold, number, polarity, weight, negation, "
-        "disjunction, executable text, or experimental role. Express only "
-        "positively visible cues; do not use constructions such as no, not, "
-        "without, lacking, absent, or missing. Python "
-        "alone uses that identifier to select the catalog entry's frozen "
-        "operational description as the observer rubric, and may later test "
-        "a finite predeclared operationalization. Your prose is retained only "
-        "as audit text and cannot add, remove, conjoin, or complement cues.\n\n"
-        "Frozen measurement catalog:\n"
-        + _catalog_lines()
+        "group_1_ref_05. Consider both groups jointly. Return exactly two "
+        "ranked forward visual proposals named proposal_0 then proposal_1. "
+        "Each proposal contains one cue for group_0 and one cue for group_1. "
+        "A cue must state a visible invariant that recurs across all six "
+        "members of its group and is not similarly characteristic of the six "
+        "members of the opposite group. proposal_0 is your strongest pair. "
+        "proposal_1 is the strongest genuinely alternate pair; it may reuse "
+        "one good group cue when the cue for the opposite group changes, but "
+        "the complete ordered pair must change. Inspect every drawing before "
+        "writing either proposal. Prefer concrete parts, spelled-out counts, "
+        "topology, angles, and relations over a bare resemblance term. Ignore "
+        "pose, scale, location, and incidental stroke variation. Each cue field "
+        "must contain one short positive atomic visible phrase that another "
+        "vision observer can apply to an isolated drawing. Do not put a "
+        "comparison or experimental role inside a cue. Cue text must not use "
+        "no, not, without, lacking, absent, missing, and, or, than, versus, "
+        "different, distinct, unlike, other, except, digits, or operator "
+        "symbols. Spelled-out visible counts are allowed. Do not choose a "
+        "threshold, polarity, weight, executable text, or hidden role. Python "
+        "alone supplies the fixed observer scale, uncertainty semantics, "
+        "finite executable family, and later selection procedure. Group names "
+        "are neutral and do not indicate class polarity."
     )
+
+
+def object_bongard_semantics_output_schema() -> dict[str, object]:
+    pair = {
+        "type": "object",
+        "properties": {
+            "group_0_cue_text": {"type": "string"},
+            "group_1_cue_text": {"type": "string"},
+        },
+        "required": ["group_0_cue_text", "group_1_cue_text"],
+        "additionalProperties": False,
+    }
+    return {
+        "type": "object",
+        "properties": {"proposal_0": pair, "proposal_1": pair},
+        "required": ["proposal_0", "proposal_1"],
+        "additionalProperties": False,
+    }
 
 
 def object_bongard_semantics_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-task-semantics-protocol.v2",
+            "schema": "gkm.bongard-object-task-semantics-protocol.v3",
             "protocol_id": SEMANTIC_PROTOCOL_ID,
             "source_digest": object_bongard_semantics_source_digest(),
             "prompt_sha256": hashlib.sha256(
                 object_bongard_semantics_prompt().encode("utf-8")
             ).hexdigest(),
             "output_schema_digest": canonical_digest(
-                prototype_object_description_output_schema()
+                object_bongard_semantics_output_schema()
             ),
-            "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
+            "soft_cue_grammar_digest": object_bongard_soft_cue_grammar_digest(),
             "group_ids": list(GROUP_IDS),
             "images_per_group": GROUP_SIZE,
-            "feature_ids_per_group": 1,
-            "distinct_group_feature_ids_required": True,
+            "ranked_forward_proposal_count": SOFT_CUE_CANDIDATE_COUNT,
+            "cue_pairs_are_ordered_group_0_over_group_1": True,
+            "ordered_pairs_must_be_distinct": True,
+            "one_group_cue_may_repeat_across_ranks": True,
+            "feature_catalog_used": False,
             "cross_group_comparison_required": True,
-            "cue_must_recur_within_nominated_group": True,
+            "cue_must_recur_within_named_group": True,
             "cue_must_be_more_characteristic_than_in_other_group": True,
-            "independently_typical_cue_nomination_allowed": False,
+            "independently_typical_cue_allowed": False,
             "group_names_encode_class_polarity": False,
-            "structure_first_before_catalog_mapping": True,
-            "bare_resemblance_without_visible_structure_allowed": False,
-            "rubric_must_be_applicable_to_an_isolated_drawing": True,
-            "vision_prose_authority": "audit-only",
-            "observer_rubric_derivation": (
-                "exact-frozen-catalog-operational-description-by-feature-id"
-            ),
+            "soft_cue_text_is_typed_and_content_addressed": True,
+            "observer_rubric_derivation": "exact-ordered-soft-cue-text-wrapper",
             "downstream_operationalization": (
-                "explicit-finite-python-version-space-only"
+                "four-predeclared-python-candidates-two-ranks-times-two-scopes"
             ),
             "semantic_parser_constructs_profiles": False,
             **_authority_data(),
@@ -189,53 +179,44 @@ def object_bongard_semantics_protocol_digest() -> str:
 
 def _parse_semantic_payload(
     payload: object,
-) -> tuple[tuple[str, str], tuple[tuple[str, ...], tuple[str, ...]]]:
-    """Parse prose/IDs directly, without constructing a thresholded profile."""
+) -> tuple[ObjectBongardSoftCuePair, ObjectBongardSoftCuePair]:
+    """Parse exactly two ranked cue pairs without constructing a predicate."""
 
-    if not isinstance(payload, Mapping) or set(payload) != {"profiles"}:
+    if not isinstance(payload, Mapping) or set(payload) != {
+        "proposal_0", "proposal_1"
+    }:
         raise ObjectBongardSemanticsError("semantic payload fields differ")
-    rows = payload["profiles"]
-    if not isinstance(rows, list) or len(rows) != 2:
-        raise ObjectBongardSemanticsError("semantic payload must exhaust two groups")
-    rubrics: list[str] = []
-    families: list[tuple[str, ...]] = []
-    for index, (row, group_id) in enumerate(zip(rows, GROUP_IDS, strict=True)):
+    values: list[ObjectBongardSoftCuePair] = []
+    for rank in range(SOFT_CUE_CANDIDATE_COUNT):
+        row = payload[f"proposal_{rank}"]
         if (
             not isinstance(row, Mapping)
-            or set(row) != {"group_id", "rubric", "feature_ids"}
-            or row["group_id"] != group_id
+            or set(row) != {"group_0_cue_text", "group_1_cue_text"}
         ):
             raise ObjectBongardSemanticsError(
-                f"semantic group {index} fields or identity differ"
+                f"semantic proposal {rank} fields differ"
             )
         try:
-            rubric = _protocol._audit_prose(row["rubric"], "semantic rubric")
-        except (TypeError, ValueError) as exc:
-            raise ObjectBongardSemanticsError("semantic rubric is invalid") from exc
-        if _EXPLICIT_NEGATION.search(rubric) is not None:
-            raise ObjectBongardSemanticsError(
-                "semantic rubric contains explicit negation"
+            values.append(
+                ObjectBongardSoftCuePair.create(
+                    rank,
+                    row["group_0_cue_text"],
+                    row["group_1_cue_text"],
+                )
             )
-        raw_ids = row["feature_ids"]
-        if (
-            not isinstance(raw_ids, list)
-            or len(raw_ids) != 1
-            or not isinstance(raw_ids[0], str)
-            or raw_ids[0] not in OBJECT_FEATURE_IDS
-        ):
-            raise ObjectBongardSemanticsError(
-                "semantic group must nominate exactly one frozen feature ID"
-            )
-        rubrics.append(rubric)
-        families.append((raw_ids[0],))
-    if families[0] == families[1]:
+        except (TypeError, ValueError, ObjectBongardSoftCueError) as exc:
+            raise ObjectBongardSemanticsError("semantic soft cue is invalid") from exc
+    if (
+        values[0].group_0_cue.cue_digest,
+        values[0].group_1_cue.cue_digest,
+    ) == (
+        values[1].group_0_cue.cue_digest,
+        values[1].group_1_cue.cue_digest,
+    ):
         raise ObjectBongardSemanticsError(
-            "semantic groups must nominate distinct frozen feature IDs"
+            "semantic proposals must contain distinct ordered cue pairs"
         )
-    return (
-        tuple(rubrics),  # type: ignore[return-value]
-        tuple(families),  # type: ignore[return-value]
-    )
+    return tuple(values)  # type: ignore[return-value]
 
 
 def _panel_groups(
@@ -293,7 +274,6 @@ def _artifact_preimage(value: "ObjectBongardSemanticArtifact") -> dict[str, obje
         "protocol_digest": value.protocol_digest,
         "source_digest": value.source_digest,
         "transport_source_digest": value.transport_source_digest,
-        "feature_catalog_digest": value.feature_catalog_digest,
         "model": value.model,
         "reasoning_effort": value.reasoning_effort,
         "model_digest": value.model_digest,
@@ -305,13 +285,15 @@ def _artifact_preimage(value: "ObjectBongardSemanticArtifact") -> dict[str, obje
         "model_payload": value.model_payload,
         "receipt": _observer._receipt_to_data(value.receipt),
         "receipt_identity": value.receipt_identity,
-        "rubrics": list(value.rubrics),
-        "feature_families": [list(group) for group in value.feature_families],
+        "soft_cue_candidates": [
+            item.to_data() for item in value.soft_cue_candidates
+        ],
         "failure_code": value.failure_code,
         "failure_type": value.failure_type,
         "physical_call_count": 1,
-        "vision_prose_is_audit_evidence": True,
-        "feature_nominations_constrain_version_space": True,
+        "vision_prose_defines_soft_cue_identity": True,
+        "feature_catalog_constrains_identity_or_decision": False,
+        "ranked_forward_candidate_count": SOFT_CUE_CANDIDATE_COUNT,
         **_authority_data(),
     }
 
@@ -328,7 +310,6 @@ class ObjectBongardSemanticArtifact:
     protocol_digest: str
     source_digest: str
     transport_source_digest: str
-    feature_catalog_digest: str
     model: str
     reasoning_effort: str
     model_digest: str
@@ -340,8 +321,7 @@ class ObjectBongardSemanticArtifact:
     model_payload: Mapping[str, Any] | None
     receipt: object | None
     receipt_identity: str | None
-    rubrics: tuple[str, ...]
-    feature_families: tuple[tuple[str, ...], ...]
+    soft_cue_candidates: tuple[ObjectBongardSoftCuePair, ...]
     failure_code: str | None
     failure_type: str | None
     artifact_digest: str
@@ -364,17 +344,16 @@ class ObjectBongardSemanticArtifact:
             raise ObjectBongardSemanticsError("semantic presentation differs")
         for name in (
             "prompt_digest", "output_schema_digest", "protocol_digest",
-            "source_digest", "transport_source_digest", "feature_catalog_digest",
+            "source_digest", "transport_source_digest",
             "model_digest", "model_catalog_digest", "no_tools_attestation_digest",
             "environment_digest", "artifact_digest",
         ):
             _digest(getattr(self, name), name)
         if (
-            self.feature_catalog_digest != OBJECT_FEATURE_CATALOG_DIGEST
-            or self.prompt_digest
+            self.prompt_digest
             != hashlib.sha256(object_bongard_semantics_prompt().encode("utf-8")).hexdigest()
             or self.output_schema_digest
-            != canonical_digest(prototype_object_description_output_schema())
+            != canonical_digest(object_bongard_semantics_output_schema())
             or self.protocol_digest != object_bongard_semantics_protocol_digest()
             or self.source_digest != object_bongard_semantics_source_digest()
         ):
@@ -391,25 +370,29 @@ class ObjectBongardSemanticArtifact:
             if (
                 self.model_payload is None
                 or self.receipt is None
-                or len(self.rubrics) != 2
-                or len(self.feature_families) != 2
-                or any(len(family) != 1 for family in self.feature_families)
-                or self.feature_families[0] == self.feature_families[1]
+                or len(self.soft_cue_candidates) != SOFT_CUE_CANDIDATE_COUNT
+                or tuple(
+                    item.candidate_rank for item in self.soft_cue_candidates
+                )
+                != (0, 1)
+                or len(
+                    {item.pair_digest for item in self.soft_cue_candidates}
+                )
+                != SOFT_CUE_CANDIDATE_COUNT
                 or self.failure_code is not None
                 or self.failure_type is not None
             ):
                 raise ObjectBongardSemanticsError("successful semantic artifact differs")
-            for family in self.feature_families:
-                if family[0] not in OBJECT_FEATURE_IDS:
-                    raise ObjectBongardSemanticsError(
-                        "semantic cue nomination is outside the frozen catalog"
-                    )
+            if any(
+                not isinstance(item, ObjectBongardSoftCuePair)
+                for item in self.soft_cue_candidates
+            ):
+                raise TypeError("semantic soft cue candidates have the wrong type")
         elif parser_error:
             if (
                 self.model_payload is None
                 or self.receipt is None
-                or self.rubrics
-                or self.feature_families
+                or self.soft_cue_candidates
                 or self.failure_code != "semantic_payload_rejected"
                 or self.failure_type is None
             ):
@@ -418,8 +401,7 @@ class ObjectBongardSemanticArtifact:
             if (
                 self.model_payload is not None
                 or self.receipt is not None
-                or self.rubrics
-                or self.feature_families
+                or self.soft_cue_candidates
                 or self.failure_code != "semantic_transport_failed"
                 or self.failure_type is None
             ):
@@ -440,14 +422,15 @@ class ObjectBongardSemanticArtifact:
             "schema", "status", "task_id", "observation_context_digest",
             "group_panel_ids", "presentation", "prompt_digest",
             "output_schema_digest", "protocol_digest", "source_digest",
-            "transport_source_digest", "feature_catalog_digest", "model",
+            "transport_source_digest", "model",
             "reasoning_effort", "model_digest", "expected_launcher_digest",
             "cloud_policy_cache_binding", "model_catalog_digest",
             "no_tools_attestation_digest", "environment_digest", "model_payload",
-            "receipt", "receipt_identity", "rubrics", "feature_families",
+            "receipt", "receipt_identity", "soft_cue_candidates",
             "failure_code", "failure_type", "physical_call_count",
-            "vision_prose_is_audit_evidence",
-            "feature_nominations_constrain_version_space", *_authority_data(),
+            "vision_prose_defines_soft_cue_identity",
+            "feature_catalog_constrains_identity_or_decision",
+            "ranked_forward_candidate_count", *_authority_data(),
             "artifact_digest",
         }
         if not isinstance(value, Mapping) or set(value) != fields:
@@ -455,16 +438,26 @@ class ObjectBongardSemanticArtifact:
         if (
             value["schema"] != SEMANTIC_ARTIFACT_SCHEMA
             or value["physical_call_count"] != 1
-            or value["vision_prose_is_audit_evidence"] is not True
-            or value["feature_nominations_constrain_version_space"] is not True
+            or value["vision_prose_defines_soft_cue_identity"] is not True
+            or value["feature_catalog_constrains_identity_or_decision"] is not False
+            or value["ranked_forward_candidate_count"]
+            != SOFT_CUE_CANDIDATE_COUNT
             or any(value[key] != item for key, item in _authority_data().items())
             or not isinstance(value["group_panel_ids"], list)
             or len(value["group_panel_ids"]) != 2
             or not isinstance(value["presentation"], list)
-            or not isinstance(value["rubrics"], list)
-            or not isinstance(value["feature_families"], list)
+            or not isinstance(value["soft_cue_candidates"], list)
         ):
             raise ObjectBongardSemanticsError("semantic artifact policy differs")
+        try:
+            soft_cue_candidates = tuple(
+                ObjectBongardSoftCuePair.from_data(item)
+                for item in value["soft_cue_candidates"]
+            )
+        except (TypeError, ValueError) as exc:
+            raise ObjectBongardSemanticsError(
+                "semantic soft cue slate is invalid"
+            ) from exc
         result = cls(
             status=PrototypeSceneObserverStatus(value["status"]),
             task_id=value["task_id"],
@@ -481,7 +474,6 @@ class ObjectBongardSemanticArtifact:
             protocol_digest=value["protocol_digest"],
             source_digest=value["source_digest"],
             transport_source_digest=value["transport_source_digest"],
-            feature_catalog_digest=value["feature_catalog_digest"],
             model=value["model"],
             reasoning_effort=value["reasoning_effort"],
             model_digest=value["model_digest"],
@@ -493,10 +485,7 @@ class ObjectBongardSemanticArtifact:
             model_payload=value["model_payload"],
             receipt=_observer._receipt_from_data(value["receipt"]),
             receipt_identity=value["receipt_identity"],
-            rubrics=tuple(value["rubrics"]),
-            feature_families=tuple(
-                tuple(group) for group in value["feature_families"]
-            ),
+            soft_cue_candidates=soft_cue_candidates,
             failure_code=value["failure_code"],
             failure_type=value["failure_type"],
             artifact_digest=value["artifact_digest"],
@@ -538,7 +527,7 @@ def describe_object_bongard_support(
     no_tools_attestation: CodexNoToolsAttestation,
     transport: object = run_codex_named_images_structured,
 ) -> ObjectBongardSemanticArtifact:
-    """Produce audit prose plus one cue ID per neutral group."""
+    """Produce exactly two ranked positive soft-cue pairs in one vision call."""
 
     task = _task_id(task_id)
     context = _address(observation_context_digest, "observation context digest")
@@ -556,7 +545,7 @@ def describe_object_bongard_support(
         no_tools_attestation=no_tools_attestation,
     )
     prompt = object_bongard_semantics_prompt()
-    schema = prototype_object_description_output_schema()
+    schema = object_bongard_semantics_output_schema()
     _observer._legacy.validate_codex_strict_output_schema(schema)
     _observer._legacy._assert_model_visible_boundary(
         prompt,
@@ -574,7 +563,6 @@ def describe_object_bongard_support(
         "protocol_digest": object_bongard_semantics_protocol_digest(),
         "source_digest": object_bongard_semantics_source_digest(),
         "transport_source_digest": _observer.prototype_scene_transport_source_digest(),
-        "feature_catalog_digest": OBJECT_FEATURE_CATALOG_DIGEST,
         "model": model,
         "reasoning_effort": reasoning_effort,
         "model_digest": _observer.prototype_scene_observer_model_digest(
@@ -616,13 +604,12 @@ def describe_object_bongard_support(
             model_payload=None,
             receipt=None,
             receipt_identity=None,
-            rubrics=(),
-            feature_families=(),
+            soft_cue_candidates=(),
             failure_code="semantic_transport_failed",
             failure_type=type(exc).__name__,
         )
     try:
-        rubrics, feature_families = _parse_semantic_payload(payload)
+        soft_cue_candidates = _parse_semantic_payload(payload)
     except (TypeError, ValueError):
         return _build_artifact(
             **common,
@@ -630,10 +617,9 @@ def describe_object_bongard_support(
             model_payload=payload,
             receipt=receipt,
             receipt_identity=receipt.receipt_digest,
-            rubrics=(),
-            feature_families=(),
+            soft_cue_candidates=(),
             failure_code="semantic_payload_rejected",
-            failure_type="PrototypeObjectProtocolError",
+            failure_type="ObjectBongardSoftCueError",
         )
     return _build_artifact(
         **common,
@@ -641,8 +627,7 @@ def describe_object_bongard_support(
         model_payload=payload,
         receipt=receipt,
         receipt_identity=receipt.receipt_digest,
-        rubrics=rubrics,
-        feature_families=feature_families,
+        soft_cue_candidates=soft_cue_candidates,
         failure_code=None,
         failure_type=None,
     )
@@ -656,7 +641,7 @@ def verify_object_bongard_semantic_artifact(
     expected_observation_context_digest: str,
     expected_artifact_digest: str,
 ) -> ObjectBongardSemanticArtifact:
-    """Cold-replay exact support bytes, receipt, audit prose, and cue IDs."""
+    """Cold-replay exact support bytes, receipt, and typed cue slate."""
 
     if not isinstance(artifact, ObjectBongardSemanticArtifact):
         raise TypeError("artifact must be ObjectBongardSemanticArtifact")
@@ -677,15 +662,12 @@ def verify_object_bongard_semantic_artifact(
             artifact.receipt,
             presentation,
             object_bongard_semantics_prompt(),
-            prototype_object_description_output_schema(),
+            object_bongard_semantics_output_schema(),
             artifact.model_payload,
         )
     if artifact.status is PrototypeSceneObserverStatus.SUCCESS:
-        rubrics, feature_families = _parse_semantic_payload(artifact.model_payload)
-        if (
-            rubrics != artifact.rubrics
-            or feature_families != artifact.feature_families
-        ):
+        soft_cue_candidates = _parse_semantic_payload(artifact.model_payload)
+        if soft_cue_candidates != artifact.soft_cue_candidates:
             raise ObjectBongardSemanticsError("semantic payload replay differs")
     restored = ObjectBongardSemanticArtifact.from_data(
         artifact.to_data(), expected_artifact_digest=expected_artifact_digest
@@ -698,11 +680,13 @@ def verify_object_bongard_semantic_artifact(
 __all__ = (
     "GROUP_IDS",
     "GROUP_SIZE",
+    "SOFT_CUE_CANDIDATE_COUNT",
     "ObjectBongardSemanticArtifact",
     "ObjectBongardSemanticsError",
     "SEMANTIC_ARTIFACT_SCHEMA",
     "describe_object_bongard_support",
     "object_bongard_semantics_prompt",
+    "object_bongard_semantics_output_schema",
     "object_bongard_semantics_protocol_digest",
     "object_bongard_semantics_source_digest",
     "verify_object_bongard_semantic_artifact",
