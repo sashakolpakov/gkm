@@ -146,9 +146,19 @@ def _visual_payload(
     registered: bool,
     role: int,
     marker: str,
-    panel_registered_tag_ids: tuple[str, ...] = (),
-    entity_registered_tag_ids: tuple[str, ...] = (),
+    panel_registered_witness_ids: Mapping[str, tuple[str, ...]] | None = None,
+    entity_registered_witness_ids: Mapping[str, tuple[str, ...]] | None = None,
 ) -> dict[str, object]:
+    panel_cards = (
+        ()
+        if panel_registered_witness_ids is None
+        else tuple(panel_registered_witness_ids.items())
+    )
+    entity_cards = (
+        ()
+        if entity_registered_witness_ids is None
+        else tuple(entity_registered_witness_ids.items())
+    )
     rows: list[dict[str, object]] = []
     for crop in inventory.objects:
         rows.append(
@@ -192,10 +202,20 @@ def _visual_payload(
                     [
                         {
                             "tag_id": tag_id,
-                            "state": "present" if role == 0 else "absent",
-                            "evidence": "the frozen phrase was checked directly",
+                            "witness_cells": [
+                                {
+                                    "witness_id": witness_id,
+                                    "state": (
+                                        "present" if role == 0 else "absent"
+                                    ),
+                                    "evidence": (
+                                        "the frozen witness was checked directly"
+                                    ),
+                                }
+                                for witness_id in witness_ids
+                            ],
                         }
-                        for tag_id in entity_registered_tag_ids
+                        for tag_id, witness_ids in entity_cards
                     ]
                     if registered
                     else []
@@ -225,10 +245,20 @@ def _visual_payload(
                 [
                     {
                         "tag_id": tag_id,
-                        "state": "present" if role == 0 else "absent",
-                        "evidence": "the frozen whole-panel phrase was checked directly",
+                        "witness_cells": [
+                            {
+                                "witness_id": witness_id,
+                                "state": (
+                                    "present" if role == 0 else "absent"
+                                ),
+                                "evidence": (
+                                    "the frozen whole-panel witness was checked directly"
+                                ),
+                            }
+                            for witness_id in witness_ids
+                        ],
                     }
-                    for tag_id in panel_registered_tag_ids
+                    for tag_id, witness_ids in panel_cards
                 ]
                 if registered
                 else []
@@ -323,7 +353,6 @@ def _bundle(
     }
     candidate_digest = canonical_digest(candidate_body)
     candidate = {**candidate_body, "candidate_digest": candidate_digest}
-    passed = accepted
     body: dict[str, object] = {
         "schema": command.IR_BUNDLE_SCHEMA,
         "ir_source_digest": "6" * 64,
@@ -332,8 +361,11 @@ def _bundle(
         "registry_derivation_mode": "role_aware_semantic_concept_proposal",
         "registry_derivation_digest": semantic_registry_proposal.proposal_digest,
         "coverage_gate": {"passed": True, "covered_panel_count": 12},
-        "selectivity_gate": {"passed": passed, "separated_panel_count": 12 if passed else 0},
-        "repeatability_gate": {"passed": True, "repeat_tested_panel_count": 12},
+        "selectivity_gate": {"passed": True, "separated_panel_count": 12},
+        "repeatability_gate": {
+            "passed": accepted,
+            "repeat_tested_panel_count": 12 if accepted else 0,
+        },
         "version_space": {
             "group0_positive": [candidate_digest] if accepted else [],
             "group1_positive": [],
@@ -368,6 +400,11 @@ def _bundle(
         ),
         "omitted_survivors": [],
     }
+    return {**body, "bundle_digest": canonical_digest(body)}
+
+
+def _redigest_bundle(value: Mapping[str, object]) -> dict[str, object]:
+    body = {key: item for key, item in value.items() if key != "bundle_digest"}
     return {**body, "bundle_digest": canonical_digest(body)}
 
 
@@ -489,22 +526,54 @@ def _run(
             visual_calls.append(stage)
             if registered:
                 registered_prompts[stage].append(prompt)
+        panel_tag_schema = schema["properties"]["panel"]["properties"][
+            "registered_tags"
+        ]["items"]
+        entity_tag_schema = schema["properties"]["objects"]["items"][
+            "properties"
+        ]["registered_tags"]["items"]
+        panel_ids = tuple(
+            panel_tag_schema["properties"]["tag_id"].get("enum", ())
+        )
+        entity_ids = tuple(
+            entity_tag_schema["properties"]["tag_id"].get("enum", ())
+        )
+        panel_cards: dict[str, tuple[str, ...]] = {}
+        entity_cards: dict[str, tuple[str, ...]] = {}
+        if registered:
+            assert set(panel_tag_schema["properties"]) == {
+                "tag_id",
+                "witness_cells",
+            }
+            assert set(entity_tag_schema["properties"]) == {
+                "tag_id",
+                "witness_cells",
+            }
+            frozen = json.loads(
+                (root / command.REGISTRY_FREEZE_FILENAME).read_text("utf-8")
+            )["registry"]
+            tags_by_id = {item["tag_id"]: item for item in frozen["tags"]}
+            panel_cards = {
+                tag_id: tuple(
+                    item["witness_id"]
+                    for item in tags_by_id[tag_id]["required_witnesses"]
+                )
+                for tag_id in panel_ids
+            }
+            entity_cards = {
+                tag_id: tuple(
+                    item["witness_id"]
+                    for item in tags_by_id[tag_id]["required_witnesses"]
+                )
+                for tag_id in entity_ids
+            }
         payload = _visual_payload(
             inventory,
             registered=registered,
             role=0 if index < 6 else 1,
             marker=f"{stage}-{call_ordinal:02d}",
-            panel_registered_tag_ids=tuple(
-                schema["properties"]["panel"]["properties"]["registered_tags"][
-                    "items"
-                ]["properties"]["tag_id"].get("enum", ())
-            ),
-            entity_registered_tag_ids=tuple(
-                schema["properties"]["objects"]["items"]["properties"]
-                ["registered_tags"]["items"]["properties"]["tag_id"].get(
-                    "enum", ()
-                )
-            ),
+            panel_registered_witness_ids=panel_cards,
+            entity_registered_witness_ids=entity_cards,
         )
         return CodexStructuredResult(
             payload, _receipt(prompt, paths, names, schema, payload)
@@ -528,6 +597,20 @@ def _run(
                     {
                         "scope": "panel",
                         "phrase": "bird-like object",
+                        "required_witnesses": [
+                            {
+                                "kind": "shape_appearance",
+                                "statement": (
+                                    "a compact body has two wing-like extensions"
+                                ),
+                            }
+                        ],
+                        "accepted_variants": [
+                            "rounded wing tips count as equivalent extensions"
+                        ],
+                        "near_miss_boundaries": [
+                            "a plain circular blob does not qualify"
+                        ],
                         "citations": side0_aliases[:2],
                     }
                 ],
@@ -539,6 +622,24 @@ def _run(
                             if semantic_valid
                             else "not a valid affirmative concept"
                         ),
+                        "required_witnesses": [
+                            {
+                                "kind": "shape_appearance",
+                                "statement": (
+                                    "the outer form has three long boundary segments"
+                                ),
+                            },
+                            {
+                                "kind": "marking_pattern",
+                                "statement": (
+                                    "distinct small markers appear along the outer boundary"
+                                ),
+                            },
+                        ],
+                        "accepted_variants": [],
+                        "near_miss_boundaries": [
+                            "an open two-segment angle does not qualify"
+                        ],
                         "citations": side1_aliases[:2],
                     }
                 ],
@@ -547,7 +648,15 @@ def _run(
                 payload["side0_positive"].append(
                     {
                         "scope": "entity",
-                        "phrase": "pointed and curved",
+                        "phrase": "pointed or curved",
+                        "required_witnesses": [
+                            {
+                                "kind": "shape_appearance",
+                                "statement": "the visible outline has one pointed end",
+                            }
+                        ],
+                        "accepted_variants": [],
+                        "near_miss_boundaries": [],
                         "citations": side0_aliases[1:3],
                     }
                 )
@@ -589,9 +698,15 @@ def _run(
         if semantic_valid:
             assert "bird-like object" in prompt
             assert "three-sided frame with distinct edge markers" in prompt
+            assert "witness_00 [shape_appearance]" in prompt
+            assert "witness_00 [marking_pattern]" in prompt
+            assert "witness_01 [shape_appearance]" in prompt
+            assert "a compact body has two wing-like extensions" in prompt
+            assert "distinct small markers appear along the outer boundary" in prompt
         assert "historical_role" not in prompt
         assert "side0_positive" not in prompt
         assert "side1_positive" not in prompt
+        assert "citations" not in prompt
     return verified, visual_calls, proposer_calls, ranker_calls
 
 
@@ -612,6 +727,57 @@ def test_accepted_run_makes_exactly_38_calls_then_zero_call_replay(
     assert verified.selected_survivor_digest is not None
     result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
     assert result["physical_model_call_count"] == 38
+    assert result["typed_gap_status"] is None
+    assert result["registry_derivation_mode"] == (
+        "role_aware_semantic_concept_proposal"
+    )
+    assert result["benchmark_acceptance_authorized_registry"] is True
+    assert result["exact_frequency_fallback_acceptance_authorized"] is False
+    expected_schemas = {
+        command.AUTHORIZATION_FILENAME: command.AUTHORIZATION_SCHEMA,
+        command.PRECOMMIT_FILENAME: command.PRECOMMIT_SCHEMA,
+        command.DISCOVERY_BATCH_FILENAME: command.DISCOVERY_BATCH_SCHEMA,
+        command.DISCOVERY_FREEZE_FILENAME: command.DISCOVERY_FREEZE_SCHEMA,
+        command.ROLE_REVEAL_FILENAME: command.ROLE_REVEAL_SCHEMA,
+        command.SEMANTIC_PROPOSAL_INPUT_FILENAME: (
+            command.SEMANTIC_PROPOSAL_INPUT_SCHEMA
+        ),
+        command.SEMANTIC_PROPOSAL_RESULT_FILENAME: (
+            command.SEMANTIC_PROPOSAL_RESULT_SCHEMA
+        ),
+        command.REGISTRY_FREEZE_FILENAME: command.REGISTRY_FREEZE_SCHEMA,
+        command.EVALUATION_A_BATCH_FILENAME: command.EVALUATION_BATCH_SCHEMA,
+        command.EVALUATION_B_BATCH_FILENAME: command.EVALUATION_BATCH_SCHEMA,
+        command.EVALUATION_FREEZE_FILENAME: command.EVALUATION_FREEZE_SCHEMA,
+        command.ASSESSMENT_FILENAME: command.ASSESSMENT_SCHEMA,
+        command.RANK_INPUT_FREEZE_FILENAME: command.RANK_INPUT_FREEZE_SCHEMA,
+        command.RANK_RESULT_FILENAME: command.RANK_RESULT_SCHEMA,
+        command.FORMULA_FREEZE_FILENAME: command.FORMULA_FREEZE_SCHEMA,
+        command.REPLAY_FILENAME: command.REPLAY_SCHEMA,
+        command.RESULT_FILENAME: command.RESULT_SCHEMA,
+    }
+    assert command.COMMAND_ID.endswith("-v4")
+    for filename, schema in expected_schemas.items():
+        assert json.loads((root / filename).read_text("utf-8"))["schema"] == schema
+    for filename in (
+        command.RANK_RESULT_FILENAME,
+        command.FORMULA_FREEZE_FILENAME,
+        command.REPLAY_FILENAME,
+        command.RESULT_FILENAME,
+    ):
+        assert json.loads((root / filename).read_text("utf-8"))[
+            "typed_gap_status"
+        ] is None
+    semantic_result = json.loads(
+        (root / command.SEMANTIC_PROPOSAL_RESULT_FILENAME).read_text("utf-8")
+    )
+    concepts = [
+        *semantic_result["semantic_proposal"]["side0_positive"],
+        *semantic_result["semantic_proposal"]["side1_positive"],
+    ]
+    assert all(concept["required_witnesses"] for concept in concepts)
+    assert all("accepted_variants" in concept for concept in concepts)
+    assert all("near_miss_boundaries" in concept for concept in concepts)
     assert len(ranker_calls) == 1
     assert len(proposer_calls) == 1
     prompt = ranker_calls[0]
@@ -642,10 +808,14 @@ def test_real_ir_builds_readable_digest_free_ranker_views(
     assert len(ranker_calls) == 1
     assessment = json.loads((root / command.ASSESSMENT_FILENAME).read_text("utf-8"))
     bundle = assessment["ir_bundle"]
+    rank_input = json.loads(
+        (root / command.RANK_INPUT_FREEZE_FILENAME).read_text("utf-8")
+    )
+    ranker_slate = rank_input["ranker_slate"]
     assert bundle["complete_survivor_digests"]
-    assert len(bundle["ranker_slate"]) <= 64
+    assert len(ranker_slate) <= 64
     assert {
-        row["candidate_digest"] for row in bundle["ranker_slate"]
+        row["candidate_digest"] for row in ranker_slate
     } | {
         row["candidate_digest"] for row in bundle["omitted_survivors"]
     } == set(bundle["complete_survivor_digests"])
@@ -656,21 +826,21 @@ def test_real_ir_builds_readable_digest_free_ranker_views(
     }
     minimum_complexity = min(survivor_complexities.values())
     if (
-        len(bundle["ranker_slate"]) < 64
+        len(ranker_slate) < 64
         and any(value > minimum_complexity for value in survivor_complexities.values())
     ):
         assert any(
             row["complexity"] > minimum_complexity
-            for row in bundle["ranker_slate"]
+            for row in ranker_slate
         )
-    visible = json.dumps(bundle["ranker_slate"], sort_keys=True)
+    visible = json.dumps(ranker_slate, sort_keys=True)
     assert "bird-like object" in visible
-    assert "resembles a bird or flying bird silhouette" in visible
+    assert "a compact body has two wing-like extensions" in visible
     # A zero/upper-bounded count of a positive soft predicate is merely NOT
     # EXISTS written sideways.  It must never manufacture the reverse
     # orientation as a "positive" survivor.
     assert {
-        row["orientation"] for row in bundle["ranker_slate"]
+        row["orientation"] for row in ranker_slate
     } == {"group0_positive"}
 
     def count_comparisons(value: object) -> list[dict[str, object]]:
@@ -688,7 +858,7 @@ def test_real_ir_builds_readable_digest_free_ranker_views(
 
     assert all(
         item["comparison"] in {"at_least", "equal"} and item["value"] >= 1
-        for item in count_comparisons(bundle["ranker_slate"])
+        for item in count_comparisons(ranker_slate)
     )
 
     def digest_paths(value: object, path: str = "") -> list[str]:
@@ -710,11 +880,11 @@ def test_real_ir_builds_readable_digest_free_ranker_views(
     assert all(
         path.endswith(".candidate_digest")
         or path == "candidate_digest"
-        for path in digest_paths(bundle["ranker_slate"])
+        for path in digest_paths(ranker_slate)
     )
 
 
-def test_empty_survivor_is_typed_gap_and_never_calls_ranker(
+def test_repeatability_failure_is_typed_grounding_gap_and_never_calls_ranker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     calibration_inputs: command._CalibrationInputs,
@@ -724,13 +894,22 @@ def test_empty_survivor_is_typed_gap_and_never_calls_ranker(
         root, monkeypatch, calibration_inputs, accepted=False
     )
 
-    assert verified.status == "typed_empty_survivor_gap"
+    assert verified.status == "typed_grounding_repeatability_gap"
     assert verified.selected_survivor_digest is None
     assert verified.visual_fresh_call_count == 36
     assert verified.semantic_proposer_fresh_call_count == 1
     assert verified.ranker_fresh_call_count == 0
     result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
     assert result["physical_model_call_count"] == 37
+    for filename in (
+        command.RANK_RESULT_FILENAME,
+        command.FORMULA_FREEZE_FILENAME,
+        command.REPLAY_FILENAME,
+        command.RESULT_FILENAME,
+    ):
+        assert json.loads((root / filename).read_text("utf-8"))[
+            "typed_gap_status"
+        ] == "typed_grounding_repeatability_gap"
     assert ranker_calls == []
     assert len(proposer_calls) == 1
     assert not (root / command.JOURNAL_DIRECTORY / "ranker").exists()
@@ -763,6 +942,15 @@ def test_semantic_invalid_payload_is_typed_gap_and_never_calls_ranker(
     assert verified.ranker_fresh_call_count == 0
     result = json.loads((root / command.RESULT_FILENAME).read_text("utf-8"))
     assert result["physical_model_call_count"] == 37
+    for filename in (
+        command.RANK_RESULT_FILENAME,
+        command.FORMULA_FREEZE_FILENAME,
+        command.REPLAY_FILENAME,
+        command.RESULT_FILENAME,
+    ):
+        assert json.loads((root / filename).read_text("utf-8"))[
+            "typed_gap_status"
+        ] == "typed_semantic_proposal_gap"
     assert len(proposer_calls) == 1
     assert ranker_calls == []
     assert not (root / command.JOURNAL_DIRECTORY / "ranker").exists()
@@ -776,6 +964,97 @@ def test_semantic_invalid_payload_is_typed_gap_and_never_calls_ranker(
     )
     assert replayed == verified
     assert (len(visual_calls), len(proposer_calls), len(ranker_calls)) == before
+
+
+@pytest.mark.parametrize(
+    (
+        "semantic_valid",
+        "accepted",
+        "coverage_passed",
+        "selectivity_passed",
+        "repeatability_passed",
+        "expected",
+    ),
+    (
+        (False, True, True, True, True, "typed_semantic_proposal_gap"),
+        (True, False, False, True, True, "typed_language_gap"),
+        (True, False, True, False, True, "typed_selectivity_gap"),
+        (
+            True,
+            False,
+            True,
+            True,
+            False,
+            "typed_grounding_repeatability_gap",
+        ),
+        (True, True, True, True, True, None),
+    ),
+)
+def test_typed_gap_status_names_the_failed_evidence_stage(
+    semantic_valid: bool,
+    accepted: bool,
+    coverage_passed: bool,
+    selectivity_passed: bool,
+    repeatability_passed: bool,
+    expected: str | None,
+) -> None:
+    registry = SimpleNamespace(registry_digest="a" * 64)
+    proposal = SimpleNamespace(proposal_digest="b" * 64)
+    bundle = json.loads(json.dumps(_bundle(registry, proposal, accepted=accepted)))
+    bundle["coverage_gate"]["passed"] = coverage_passed
+    bundle["selectivity_gate"]["passed"] = selectivity_passed
+    bundle["repeatability_gate"]["passed"] = repeatability_passed
+    bundle = _redigest_bundle(bundle)
+
+    assert command._typed_calibration_gap_status(
+        semantic_proposal_valid=semantic_valid,
+        ir_bundle=bundle,
+    ) == expected
+
+
+def test_exact_frequency_registry_cannot_authorize_benchmark_acceptance() -> None:
+    registry = SimpleNamespace(registry_digest="a" * 64)
+    proposal = SimpleNamespace(proposal_digest="b" * 64)
+    bundle = _bundle(registry, proposal, accepted=True)
+    bundle["registry_derivation_mode"] = "exact_open_tag_frequency"
+    bundle = _redigest_bundle(bundle)
+    with pytest.raises(
+        command.ObjectBongardScenePredicateCalibrationCommandError,
+        match="registry derivation mode differs",
+    ):
+        command._validate_ir_bundle(bundle)
+
+    exact_frequency = {
+        "semantic_proposal_valid": True,
+        "registry_derivation_mode": "exact_open_tag_frequency",
+        "benchmark_acceptance_authorized_registry": True,
+    }
+    with pytest.raises(
+        command.ObjectBongardScenePredicateCalibrationCommandError,
+        match="acceptance lacks a role-aware semantic registry",
+    ):
+        command._result_record(
+            inputs=SimpleNamespace(),
+            authorization={},
+            precommit={},
+            discovery_batch={},
+            discovery_freeze={},
+            semantic_proposal_input={},
+            semantic_proposal_result=exact_frequency,
+            registry_record=exact_frequency,
+            evaluation_a_batch={},
+            evaluation_b_batch={},
+            evaluation_freeze={},
+            role_reveal={},
+            assessment=exact_frequency,
+            rank_input={},
+            rank_result={},
+            formula_freeze={
+                "status": "accepted",
+                "benchmark_acceptance_authorized_registry": True,
+            },
+            replay={},
+        )
 
 
 def test_semantic_optional_bad_row_is_quarantined_and_valid_pipeline_continues(

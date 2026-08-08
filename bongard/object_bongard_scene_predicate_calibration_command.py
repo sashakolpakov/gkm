@@ -55,6 +55,9 @@ from bongard.object_bongard_turn_journal import (
     object_bongard_turn_journal_source_digest,
     verify_object_bongard_turn_journal,
 )
+from bongard.object_bongard_scene_predicate_ir import (
+    SCENE_CALIBRATION_BUNDLE_SCHEMA,
+)
 from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.transport import (
@@ -71,28 +74,28 @@ from bongard.transport import (
 )
 
 
-COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v3"
-AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v3"
-PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v3"
-DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v3"
-DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v3"
-REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v3"
-EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v3"
-EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v3"
-ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v3"
+COMMAND_ID = "bongard.scene-predicate-calibration/describe-propose-register-rank-v4"
+AUTHORIZATION_SCHEMA = "gkm.bongard-scene-predicate-calibration-authorization.v4"
+PRECOMMIT_SCHEMA = "gkm.bongard-scene-predicate-calibration-precommit.v4"
+DISCOVERY_BATCH_SCHEMA = "gkm.bongard-scene-predicate-discovery-batch.v4"
+DISCOVERY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-discovery-freeze.v4"
+REGISTRY_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-registry-freeze.v4"
+EVALUATION_BATCH_SCHEMA = "gkm.bongard-scene-predicate-evaluation-batch.v4"
+EVALUATION_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-evaluation-freeze.v4"
+ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-role-reveal.v4"
 SEMANTIC_PROPOSAL_INPUT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-input.v2"
+    "gkm.bongard-scene-semantic-registry-proposal-input.v3"
 )
 SEMANTIC_PROPOSAL_RESULT_SCHEMA = (
-    "gkm.bongard-scene-semantic-registry-proposal-result.v2"
+    "gkm.bongard-scene-semantic-registry-proposal-result.v3"
 )
-ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v3"
-RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v3"
-RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v3"
-FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v3"
-REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v3"
-RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v3"
-IR_BUNDLE_SCHEMA = "gkm.bongard-scene-predicate-calibration-ir-bundle.v2"
+ASSESSMENT_SCHEMA = "gkm.bongard-scene-predicate-calibration-assessment.v4"
+RANK_INPUT_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-rank-input-freeze.v4"
+RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-rank-result.v4"
+FORMULA_FREEZE_SCHEMA = "gkm.bongard-scene-predicate-formula-freeze.v4"
+REPLAY_SCHEMA = "gkm.bongard-scene-predicate-calibration-cold-replay.v4"
+RESULT_SCHEMA = "gkm.bongard-scene-predicate-calibration-result.v4"
+IR_BUNDLE_SCHEMA = SCENE_CALIBRATION_BUNDLE_SCHEMA
 
 AUTHORIZATION_FILENAME = "authorization.json"
 PRECOMMIT_FILENAME = "execution_precommit.json"
@@ -132,6 +135,16 @@ SEMANTIC_REGISTRY_PROPOSER_CALL_COUNT = 1
 ACCEPTED_RANKER_CALL_COUNT = 1
 ACCEPTED_PHYSICAL_CALL_COUNT = 38
 MAX_REGISTERED_SOFT_TAGS = 32
+TYPED_SEMANTIC_PROPOSAL_GAP = "typed_semantic_proposal_gap"
+TYPED_LANGUAGE_GAP = "typed_language_gap"
+TYPED_SELECTIVITY_GAP = "typed_selectivity_gap"
+TYPED_GROUNDING_REPEATABILITY_GAP = "typed_grounding_repeatability_gap"
+TYPED_CALIBRATION_GAP_STATUSES = (
+    TYPED_SEMANTIC_PROPOSAL_GAP,
+    TYPED_LANGUAGE_GAP,
+    TYPED_SELECTIVITY_GAP,
+    TYPED_GROUNDING_REPEATABILITY_GAP,
+)
 
 _RAW_DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -161,10 +174,14 @@ def _authority_data() -> dict[str, object]:
         "accepted_ranker_call_count": ACCEPTED_RANKER_CALL_COUNT,
         "discovery_omission_means_absence": False,
         "registered_soft_tag_requires_explicit_cells_in_passes_a_and_b": True,
+        "registered_soft_tag_cells_are_ordered_witness_cells": True,
+        "registered_macro_state_returned_by_model": False,
+        "registered_macro_compiled_by_python": True,
         "registered_soft_tag_requires_two_repeat_cells": True,
         "registered_cell_merge_rule": (
-            "present-present=present;absent-absent=absent;"
-            "present-absent-or-any-indeterminate=indeterminate;any-error=error"
+            "merge-corresponding-witnesses-first;then-error-dominant;"
+            "else-any-absent=absent;else-all-present=present;"
+            "else-indeterminate"
         ),
         "soft_tag_minimum_distinct_panel_frequency": 2,
         "soft_tag_order": (
@@ -175,6 +192,8 @@ def _authority_data() -> dict[str, object]:
         "fixed_typed_observables_always_registered": True,
         "blind_discovery_frozen_before_support_role_reveal": True,
         "support_roles_revealed_before_semantic_synthesis": True,
+        "benchmark_acceptance_requires_role_aware_semantic_registry": True,
+        "exact_frequency_registry_acceptance_authorized": False,
         "affirmative_concepts_for_both_orientations_proposed_in_one_call": True,
         "semantic_invalid_optional_rows_are_quarantined_with_provenance": True,
         "semantic_structural_or_zero_orientation_payload_is_typed_gap_not_absence": True,
@@ -1071,9 +1090,16 @@ def _semantic_proposal_result_record(
     journal_directory: str,
     journal_summary_digest: str,
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     status = getattr(proposal, "status", None)
+    proposal_data = proposal.to_data() if hasattr(proposal, "to_data") else {}
+    derivation_mode = proposal_data.get("derivation_mode")
     if (
         status not in ("proposed", "typed_proposal_gap")
+        or derivation_mode != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
         or getattr(proposal, "preparation_digest", None)
         != semantic_proposal_input["preparation_digest"]
         or getattr(proposal, "registry_digest", None)
@@ -1093,6 +1119,7 @@ def _semantic_proposal_result_record(
             "semantic_proposal_digest": proposal.proposal_digest,
             "semantic_proposal_status": status,
             "semantic_proposal_valid": status == "proposed",
+            "registry_derivation_mode": derivation_mode,
             "semantic_registry": registry.to_data(),
             "semantic_registry_digest": registry.registry_digest,
             "proposer_payload": _canonical_mapping(payload, "semantic proposer payload"),
@@ -1535,9 +1562,19 @@ def _registry_freeze_record(
     registry: object,
 ) -> tuple[object, dict[str, Any]]:
     from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
         object_scene_semantic_registry_protocol_digest,
         object_scene_semantic_registry_source_digest,
     )
+    if (
+        semantic_proposal_result.get("registry_derivation_mode")
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        or semantic_registry_proposal.to_data().get("derivation_mode")
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "registry freeze is not role-aware semantic synthesis"
+        )
     record = _durable._record(
         {
             "schema": REGISTRY_FREEZE_SCHEMA,
@@ -1549,6 +1586,9 @@ def _registry_freeze_record(
             ],
             "semantic_proposal_digest": semantic_registry_proposal.proposal_digest,
             "semantic_proposal_status": semantic_registry_proposal.status,
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+            ),
             "semantic_registry_source_digest": (
                 object_scene_semantic_registry_source_digest()
             ),
@@ -1558,6 +1598,10 @@ def _registry_freeze_record(
             "registry": registry.to_data(),
             "registry_digest": registry.registry_digest,
             "registry_built_from_revealed_roles_and_frozen_discovery": True,
+            "benchmark_acceptance_authorized_registry": (
+                semantic_registry_proposal.status == "proposed"
+            ),
+            "exact_frequency_fallback_acceptance_authorized": False,
             "exact_normalized_affirmative_scoped_concepts_only": True,
             "typed_proposal_gap_has_zero_registered_tags": (
                 semantic_registry_proposal.status != "typed_proposal_gap"
@@ -1715,6 +1759,38 @@ def _canonical_mapping(value: object, label: str) -> dict[str, Any]:
     return raw
 
 
+def _digest_free_ranker_value(value: object) -> object:
+    """Project bound IR metadata into a readable, lineage-free ranker view."""
+
+    if isinstance(value, Mapping):
+        return {
+            key: _digest_free_ranker_value(item)
+            for key, item in value.items()
+            if key == "candidate_digest" or not key.endswith("_digest")
+        }
+    if isinstance(value, (list, tuple)):
+        return [_digest_free_ranker_value(item) for item in value]
+    return value
+
+
+def _digest_free_ranker_row(value: Mapping[str, Any]) -> dict[str, Any]:
+    row = _canonical_mapping(value, "ranker slate row")
+    projected = _digest_free_ranker_value(row)
+    if not isinstance(projected, dict):  # pragma: no cover - structural guard
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "ranker slate projection differs"
+        )
+    candidate_digest = projected.get("candidate_digest")
+    if (
+        not isinstance(candidate_digest, str)
+        or _RAW_DIGEST.fullmatch(candidate_digest) is None
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "ranker slate projection lost candidate identity"
+        )
+    return projected
+
+
 def _ranker_prompt(slate_rows: Sequence[Mapping[str, Any]]) -> str:
     rows = tuple(_canonical_mapping(item, "ranker slate row") for item in slate_rows)
     digests = tuple(item.get("candidate_digest") for item in rows)
@@ -1765,13 +1841,26 @@ def _rank_input_freeze_record(
     slate_rows: Sequence[Mapping[str, Any]],
     omitted_rows: Sequence[Mapping[str, Any]],
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     complete = tuple(complete_survivor_digests)
-    slate = tuple(_canonical_mapping(item, "ranker slate row") for item in slate_rows)
+    slate = tuple(_digest_free_ranker_row(item) for item in slate_rows)
     omitted = tuple(
         _canonical_mapping(item, "ranker omitted survivor row")
         for item in omitted_rows
     )
-    semantic_eligible = semantic_proposal_result.get("semantic_proposal_valid") is True
+    semantic_eligible = (
+        semantic_proposal_result.get("semantic_proposal_valid") is True
+        and assessment.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    )
+    gap_status = assessment.get("typed_gap_status")
+    if gap_status is not None and gap_status not in TYPED_CALIBRATION_GAP_STATUSES:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "rank input typed gap status differs"
+        )
     if not semantic_eligible:
         slate = ()
         omitted = tuple(
@@ -1792,6 +1881,14 @@ def _rank_input_freeze_record(
         or set(slate_digests) | set(omitted_digests) != set(complete)
         or len(slate) > 64
         or any(item.get("reason") is None for item in omitted)
+        or (
+            (bool(complete) and semantic_eligible)
+            == (gap_status is not None)
+        )
+        or (
+            not semantic_eligible
+            and gap_status != TYPED_SEMANTIC_PROPOSAL_GAP
+        )
     ):
         raise ObjectBongardScenePredicateCalibrationCommandError(
             "ranker slate does not account for the complete survivor space"
@@ -1812,6 +1909,11 @@ def _rank_input_freeze_record(
                 "semantic_proposal_result_digest"
             ],
             "semantic_proposal_valid": semantic_eligible,
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+            ),
+            "benchmark_acceptance_authorized_registry": semantic_eligible,
+            "typed_gap_status": gap_status,
             "complete_survivor_digests": list(complete),
             "complete_survivor_count": len(complete),
             "ranker_slate": list(slate),
@@ -1841,11 +1943,11 @@ def _rank_survivor_slate(
     slate_rows = rank_input["ranker_slate"]
     slate_digests = tuple(rank_input["ranker_slate_digests"])
     if not slate_digests:
-        gap_status = (
-            "typed_empty_survivor_gap"
-            if rank_input.get("semantic_proposal_valid") is True
-            else "typed_semantic_proposal_gap"
-        )
+        gap_status = rank_input.get("typed_gap_status")
+        if gap_status not in TYPED_CALIBRATION_GAP_STATUSES:
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "empty ranker slate lacks an evidence-based typed gap"
+            )
         return _durable._record(
             {
                 "schema": RANK_RESULT_SCHEMA,
@@ -1854,6 +1956,7 @@ def _rank_survivor_slate(
                     "rank_input_freeze_digest"
                 ],
                 "status": gap_status,
+                "typed_gap_status": gap_status,
                 "ranker_called": False,
                 "ranker_fresh_call_count": 0,
                 "ranker_reused_call_count": 0,
@@ -1903,6 +2006,7 @@ def _rank_survivor_slate(
             "command_id": COMMAND_ID,
             "rank_input_freeze_digest": rank_input["rank_input_freeze_digest"],
             "status": "selected_frozen_survivor",
+            "typed_gap_status": None,
             "ranker_called": True,
             "ranker_fresh_call_count": 1,
             "ranker_reused_call_count": 0,
@@ -1961,13 +2065,11 @@ def _cold_replay_ranker(
     )
     slate_digests = tuple(raw_input["ranker_slate_digests"])
     if not slate_digests:
-        gap_status = (
-            "typed_empty_survivor_gap"
-            if raw_input.get("semantic_proposal_valid") is True
-            else "typed_semantic_proposal_gap"
-        )
+        gap_status = raw_input.get("typed_gap_status")
         if (
-            raw_result.get("status") != gap_status
+            gap_status not in TYPED_CALIBRATION_GAP_STATUSES
+            or raw_result.get("status") != gap_status
+            or raw_result.get("typed_gap_status") != gap_status
             or raw_result.get("ranker_called") is not False
             or raw_result.get("ranker_fresh_call_count") != 0
             or raw_result.get("ranker_reused_call_count") != 0
@@ -1999,6 +2101,7 @@ def _cold_replay_ranker(
     if (
         selected not in slate_digests
         or raw_result.get("status") != "selected_frozen_survivor"
+        or raw_result.get("typed_gap_status") is not None
         or raw_result.get("ranker_called") is not True
         or raw_result.get("ranker_fresh_call_count") != 1
         or raw_result.get("ranker_reused_call_count") != 0
@@ -2023,9 +2126,31 @@ def _formula_freeze_record(
     rank_result: Mapping[str, Any],
     candidate_by_digest: Mapping[str, Mapping[str, Any]],
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     selected = rank_result.get("selected_survivor_digest")
-    semantic_eligible = semantic_proposal_result.get("semantic_proposal_valid") is True
+    role_aware = (
+        assessment.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and semantic_proposal_result.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    )
+    semantic_eligible = (
+        semantic_proposal_result.get("semantic_proposal_valid") is True
+        and role_aware
+    )
+    gap_status = rank_input.get("typed_gap_status")
+    if rank_result.get("typed_gap_status") != gap_status:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "rank result and formula freeze typed gaps differ"
+        )
     if selected is None:
+        if rank_result.get("status") != gap_status:
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "rank result and formula freeze statuses differ"
+            )
         if semantic_eligible and (
             candidate_by_digest or rank_input.get("complete_survivor_digests")
         ):
@@ -2033,15 +2158,19 @@ def _formula_freeze_record(
                 "typed gap disagrees with the complete survivor space"
             )
         candidate = None
-        status = (
-            "typed_empty_survivor_gap"
-            if semantic_eligible
-            else "typed_semantic_proposal_gap"
-        )
-    else:
-        if not semantic_eligible:
+        if gap_status not in TYPED_CALIBRATION_GAP_STATUSES:
             raise ObjectBongardScenePredicateCalibrationCommandError(
-                "semantic proposal gap cannot select a survivor"
+                "formula freeze lacks an evidence-based typed gap"
+            )
+        status = gap_status
+    else:
+        if rank_result.get("status") != "selected_frozen_survivor":
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "rank result did not select a frozen survivor"
+            )
+        if not semantic_eligible or gap_status is not None:
+            raise ObjectBongardScenePredicateCalibrationCommandError(
+                "unauthorized registry or typed gap cannot select a survivor"
             )
         if selected not in candidate_by_digest:
             raise ObjectBongardScenePredicateCalibrationCommandError(
@@ -2068,6 +2197,12 @@ def _formula_freeze_record(
             ],
             "rank_result_digest": rank_result["rank_result_digest"],
             "status": status,
+            "typed_gap_status": gap_status,
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+            ),
+            "benchmark_acceptance_authorized_registry": semantic_eligible,
+            "exact_frequency_fallback_acceptance_authorized": False,
             "selected_survivor_digest": selected,
             "selected_candidate": candidate,
             "complete_python_formula_and_evidence_frozen": selected is not None,
@@ -2173,6 +2308,33 @@ def _validate_ir_bundle(value: object) -> dict[str, Any]:
     return raw
 
 
+def _typed_calibration_gap_status(
+    *,
+    semantic_proposal_valid: bool,
+    ir_bundle: Mapping[str, Any],
+) -> str | None:
+    """Name the first failed evidence gate without collapsing distinct holes."""
+
+    if type(semantic_proposal_valid) is not bool:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "semantic proposal decision is not Boolean"
+        )
+    if not semantic_proposal_valid:
+        return TYPED_SEMANTIC_PROPOSAL_GAP
+    bundle = _validate_ir_bundle(ir_bundle)
+    if bundle["complete_survivor_digests"]:
+        return None
+    if bundle["coverage_gate"]["passed"] is not True:
+        return TYPED_LANGUAGE_GAP
+    if bundle["selectivity_gate"]["passed"] is not True:
+        return TYPED_SELECTIVITY_GAP
+    if bundle["repeatability_gate"]["passed"] is not True:
+        return TYPED_GROUNDING_REPEATABILITY_GAP
+    raise ObjectBongardScenePredicateCalibrationCommandError(
+        "empty survivor space has no failed evidence gate"
+    )
+
+
 def _derive_ir_bundle(
     *,
     registry: object,
@@ -2207,11 +2369,24 @@ def _assessment_record(
     registry: object,
     ir_bundle: Mapping[str, Any],
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     bundle = _validate_ir_bundle(ir_bundle)
+    semantic_valid = semantic_proposal_result["semantic_proposal_valid"]
+    gap_status = _typed_calibration_gap_status(
+        semantic_proposal_valid=semantic_valid,
+        ir_bundle=bundle,
+    )
     if (
         bundle["registry_digest"] != registry.registry_digest
         or bundle["registry_derivation_digest"]
         != semantic_proposal_result["semantic_proposal_digest"]
+        or bundle["registry_derivation_mode"]
+        != semantic_proposal_result["registry_derivation_mode"]
+        or bundle["registry_derivation_mode"]
+        != ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
         or role_reveal["role_commitment_digest"] != inputs.role_commitment_digest
     ):
         raise ObjectBongardScenePredicateCalibrationCommandError(
@@ -2234,6 +2409,9 @@ def _assessment_record(
             "semantic_proposal_valid": semantic_proposal_result[
                 "semantic_proposal_valid"
             ],
+            "registry_derivation_mode": bundle["registry_derivation_mode"],
+            "role_aware_semantic_registry": True,
+            "exact_frequency_fallback_acceptance_authorized": False,
             "historical_source_digest": inputs.source.source_digest,
             "registry_digest": registry.registry_digest,
             "ir_bundle": bundle,
@@ -2244,19 +2422,8 @@ def _assessment_record(
             "complete_survivor_digests": bundle[
                 "complete_survivor_digests"
             ],
-            "typed_gap": (
-                not semantic_proposal_result["semantic_proposal_valid"]
-                or not bool(bundle["complete_survivor_digests"])
-            ),
-            "typed_gap_kind": (
-                "semantic_proposal_gap"
-                if not semantic_proposal_result["semantic_proposal_valid"]
-                else (
-                    "empty_survivor_gap"
-                    if not bundle["complete_survivor_digests"]
-                    else None
-                )
-            ),
+            "typed_gap": gap_status is not None,
+            "typed_gap_status": gap_status,
             "model_calls_during_python_assessment": 0,
             **_authority_data(),
         },
@@ -2303,10 +2470,36 @@ def _replay_record(
     semantic_proposer_journal_summary_digest: str,
     ranker_replay_selected_digest: str | None,
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     summaries = tuple(visual_journal_summary_digests)
-    if len(summaries) != VISUAL_CALL_COUNT:
+    role_aware = (
+        registry_record.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and assessment.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and formula_freeze.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+    )
+    if (
+        len(summaries) != VISUAL_CALL_COUNT
+        or not role_aware
+        or rank_result.get("typed_gap_status")
+        != rank_input.get("typed_gap_status")
+        or formula_freeze.get("typed_gap_status")
+        != rank_input.get("typed_gap_status")
+        or (
+            formula_freeze.get("status") == "accepted"
+            and formula_freeze.get(
+                "benchmark_acceptance_authorized_registry"
+            )
+            is not True
+        )
+    ):
         raise ObjectBongardScenePredicateCalibrationCommandError(
-            "cold replay visual journal inventory differs"
+            "cold replay inventory or registry authorization differs"
         )
     return _durable._record(
         {
@@ -2332,6 +2525,15 @@ def _replay_record(
             ],
             "rank_result_digest": rank_result["rank_result_digest"],
             "formula_freeze_digest": formula_freeze["formula_freeze_digest"],
+            "status": formula_freeze["status"],
+            "typed_gap_status": rank_input["typed_gap_status"],
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+            ),
+            "benchmark_acceptance_authorized_registry": formula_freeze[
+                "benchmark_acceptance_authorized_registry"
+            ],
+            "exact_frequency_fallback_acceptance_authorized": False,
             "visual_journal_summary_digests": list(summaries),
             "semantic_proposer_journal_summary_digest": (
                 semantic_proposer_journal_summary_digest
@@ -2373,7 +2575,38 @@ def _result_record(
     formula_freeze: Mapping[str, Any],
     replay: Mapping[str, Any],
 ) -> dict[str, Any]:
+    from bongard.object_scene_semantic_registry import (
+        ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE,
+    )
+
     accepted = formula_freeze["status"] == "accepted"
+    gap_status = rank_input.get("typed_gap_status")
+    role_aware_authorized = (
+        semantic_proposal_result.get("semantic_proposal_valid") is True
+        and semantic_proposal_result.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and registry_record.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and registry_record.get("benchmark_acceptance_authorized_registry")
+        is True
+        and assessment.get("registry_derivation_mode")
+        == ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+        and formula_freeze.get("benchmark_acceptance_authorized_registry")
+        is True
+    )
+    if accepted and not role_aware_authorized:
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "benchmark acceptance lacks a role-aware semantic registry"
+        )
+    if (
+        gap_status != rank_result.get("typed_gap_status")
+        or gap_status != formula_freeze.get("typed_gap_status")
+        or gap_status != replay.get("typed_gap_status")
+        or accepted == (gap_status is not None)
+    ):
+        raise ObjectBongardScenePredicateCalibrationCommandError(
+            "benchmark result typed gap trace differs"
+        )
     return _durable._record(
         {
             "schema": RESULT_SCHEMA,
@@ -2409,6 +2642,12 @@ def _result_record(
             "cold_replay_digest": replay["replay_digest"],
             "status": formula_freeze["status"],
             "accepted": accepted,
+            "typed_gap_status": gap_status,
+            "registry_derivation_mode": (
+                ROLE_AWARE_SEMANTIC_REGISTRY_DERIVATION_MODE
+            ),
+            "benchmark_acceptance_authorized_registry": role_aware_authorized,
+            "exact_frequency_fallback_acceptance_authorized": False,
             "selected_survivor_digest": formula_freeze[
                 "selected_survivor_digest"
             ],
