@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 import threading
 from typing import Any, Mapping, Sequence
@@ -13,6 +14,11 @@ from bongard.canonical import canonical_digest
 from bongard.crack_lab.object_bongard_panel_rubric_probe import (
     DEFAULT_REJECTED_V10_CALIBRATION_ROOT,
     DEFAULT_V10_NOMINATION_ROOT,
+    DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256,
+    DIAGNOSTIC_EXECUTABLE,
+    DIAGNOSTIC_MINUTES,
+    DIAGNOSTIC_MODEL,
+    DIAGNOSTIC_REASONING_EFFORT,
     ObjectBongardPanelRubricProbeError,
     PROBE_STATUS,
     REJECTED_V10_CALIBRATION_SOURCE_DIGEST,
@@ -21,6 +27,9 @@ from bongard.crack_lab.object_bongard_panel_rubric_probe import (
     _run_loaded_probe,
     _verify_loaded_probe,
 )
+from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
+from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
+from bongard.tests.no_tools_fixture import canonical_no_tools_runtime
 from bongard.object_bongard_rubric_calibration import (
     DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE,
 )
@@ -35,6 +44,7 @@ from bongard.transport import (
     PINNED_CODEX_CLI_VERSION,
     CodexReceipt,
     CodexStructuredResult,
+    CloudPolicyCacheSnapshot,
 )
 import pytest
 
@@ -161,10 +171,54 @@ def test_historical_only_probe_makes_twelve_blind_calls_and_cold_replays(
     group_a = {item.png_sha256 for item in inputs.source.group_a_panels}
     group_b = {item.png_sha256 for item in inputs.source.group_b_panels}
     allowed = group_a | group_b
+    fresh_cache = CloudPolicyCacheSnapshot(None)
+    fresh_catalog, fresh_attestation = canonical_no_tools_runtime(
+        DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256
+    )
+    fresh_runtime = ObjectBongardTurnRuntime(
+        model=DIAGNOSTIC_MODEL,
+        reasoning_effort=DIAGNOSTIC_REASONING_EFFORT,
+        minutes=DIAGNOSTIC_MINUTES,
+        verbose=False,
+        executable=DIAGNOSTIC_EXECUTABLE,
+        cloud_policy_cache_snapshot=fresh_cache,
+        model_catalog_snapshot=fresh_catalog,
+        expected_launcher_digest=DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256,
+        no_tools_attestation=fresh_attestation,
+        transport_source_digest=prototype_scene_transport_source_digest(),
+    )
+    preflight_calls: list[str] = []
+
+    def cache_snapshotter():
+        preflight_calls.append("cache")
+        return fresh_cache
+
+    def catalog_snapshotter():
+        preflight_calls.append("catalog")
+        return fresh_catalog
+
+    def fingerprinter(executable, *, expected_launcher_digest):
+        assert executable == DIAGNOSTIC_EXECUTABLE
+        assert expected_launcher_digest == DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256
+        preflight_calls.append("fingerprint")
+        return {
+            "version": PINNED_CODEX_CLI_VERSION,
+            "launcher_digest": expected_launcher_digest,
+        }
+
+    def attester(**kwargs):
+        assert kwargs["cloud_policy_cache_snapshot"] is fresh_cache
+        assert kwargs["model_catalog_snapshot"] is fresh_catalog
+        preflight_calls.append("attestation")
+        return fresh_attestation
+
     lock = threading.Lock()
     calls: list[str] = []
 
     def transport(prompt, paths, names, schema, **kwargs):
+        assert (root / "diagnostic_authorization.json").is_file()
+        assert (root / "diagnostic_execution_precommit.json").is_file()
+        assert (root / "manifest.json").is_file()
         assert names == ("panel.png",)
         assert len(paths) == 1
         lowered = prompt.lower()
@@ -187,18 +241,35 @@ def test_historical_only_probe_makes_twelve_blind_calls_and_cold_replays(
                 names,
                 schema,
                 payload,
-                inputs.precommit.runtime,
+                fresh_runtime,
             ),
         )
 
     root = tmp_path / "probe"
     launched = _run_loaded_probe(
-        root, inputs, parallel_workers=4, transport=transport
+        root,
+        inputs,
+        parallel_workers=4,
+        transport=transport,
+        cloud_policy_cache_snapshotter=cache_snapshotter,
+        model_catalog_snapshotter=catalog_snapshotter,
+        launcher_fingerprinter=fingerprinter,
+        runtime_attester=attester,
     )
+    assert preflight_calls == ["cache", "catalog", "fingerprint", "attestation"]
+    assert fresh_runtime.binding != inputs.precommit.runtime.binding
     assert launched.exact_survivor is True
     assert len(calls) == 12 and set(calls) == allowed
     assert len(tuple((root / "artifacts").iterdir())) == 12
     assert len(tuple((root / "replays").iterdir())) == 12
+    authorization = json.loads((root / "diagnostic_authorization.json").read_text())
+    precommit = json.loads(
+        (root / "diagnostic_execution_precommit.json").read_text()
+    )
+    assert authorization["runtime_policy"]["old_v10_runtime_objects_authorized"] is False
+    assert precommit["old_v10_runtime_objects_reused"] is False
+    assert precommit["fresh_runtime_snapshots_captured"] is True
+    assert precommit["runtime_binding"] == fresh_runtime.binding
     assert launched.summary_data()["status"] == PROBE_STATUS
     assert (
         launched.summary_data()[
@@ -212,5 +283,47 @@ def test_historical_only_probe_makes_twelve_blind_calls_and_cold_replays(
     assert len(calls) == 12  # disk replay made no transport/model call
 
     with pytest.raises(ObjectBongardPanelRubricProbeError, match="fresh"):
-        _run_loaded_probe(root, inputs, parallel_workers=4, transport=transport)
+        _run_loaded_probe(
+            root,
+            inputs,
+            parallel_workers=4,
+            transport=transport,
+            cloud_policy_cache_snapshotter=cache_snapshotter,
+            model_catalog_snapshotter=catalog_snapshotter,
+            launcher_fingerprinter=fingerprinter,
+            runtime_attester=attester,
+        )
+    assert len(calls) == 12
+
+    failed_root = tmp_path / "failed_preflight"
+
+    def failed_cache_snapshotter():
+        raise RuntimeError("synthetic fresh-cache failure")
+
+    with pytest.raises(RuntimeError, match="fresh-cache"):
+        _run_loaded_probe(
+            failed_root,
+            inputs,
+            parallel_workers=4,
+            transport=transport,
+            cloud_policy_cache_snapshotter=failed_cache_snapshotter,
+            model_catalog_snapshotter=catalog_snapshotter,
+            launcher_fingerprinter=fingerprinter,
+            runtime_attester=attester,
+        )
+    assert (failed_root / "diagnostic_authorization.json").is_file()
+    assert not (failed_root / "diagnostic_execution_precommit.json").exists()
+    assert not (failed_root / "manifest.json").exists()
+    assert len(calls) == 12
+    with pytest.raises(ObjectBongardPanelRubricProbeError, match="fresh"):
+        _run_loaded_probe(
+            failed_root,
+            inputs,
+            parallel_workers=4,
+            transport=transport,
+            cloud_policy_cache_snapshotter=cache_snapshotter,
+            model_catalog_snapshotter=catalog_snapshotter,
+            launcher_fingerprinter=fingerprinter,
+            runtime_attester=attester,
+        )
     assert len(calls) == 12

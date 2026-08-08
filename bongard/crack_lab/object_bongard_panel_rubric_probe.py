@@ -1,10 +1,12 @@
 """Diagnostic-only whole-panel probe for the rejected v10 rubric calibration.
 
-This command is deliberately *not* a calibration authorization.  It reuses the
-authenticated runtime objects frozen by the rejected v10 calibration, but that
-old authorization did not authorize these twelve new whole-panel calls.  The
-command therefore writes ``diagnostic_unsealed`` into every aggregate record
-and cannot open query, broad-cohort, or official-test pixels.
+This command is deliberately *not* a calibration or benchmark authorization.
+Every fresh output root first seals a diagnostic-only twelve-job authorization,
+then captures and persists a fresh policy cache, model catalog, authenticated
+launcher fingerprint, and no-tools attestation before any panel call.  The old
+v10 runtime is provenance only and is never reused for inference.  The command
+writes ``diagnostic_unsealed`` into every aggregate record and cannot open
+query, broad-cohort, or official-test pixels.
 
 The model-visible boundary contains exactly ``panel.png`` and the frozen rank-0
 rubric.  Group membership is consumed only after all twelve artifacts have
@@ -32,6 +34,10 @@ import sys
 from typing import Any, Callable, Mapping, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
+from bongard.codex_no_tools_preflight import (
+    CodexNoToolsAttestation,
+    attest_codex_no_tools,
+)
 from bongard.object_bongard_panel_rubric_observer import (
     ObjectBongardPanelRubricArtifact,
     PanelRubricDisposition,
@@ -52,12 +58,22 @@ from bongard.object_bongard_rubric_language import (
     ObjectBongardRubricSpec,
     object_bongard_rubric_language_source_digest,
 )
+from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
 from bongard.object_bongard_semantics import (
     ObjectBongardSemanticArtifact,
     verify_object_bongard_semantic_artifact,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
-from bongard.transport import run_codex_named_images_structured
+from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
+from bongard.transport import (
+    PINNED_CODEX_CLI_VERSION,
+    CloudPolicyCacheSnapshot,
+    CodexModelCatalogSnapshot,
+    codex_cli_authenticated_fingerprint,
+    run_codex_named_images_structured,
+    snapshot_cloud_policy_cache,
+    snapshot_pinned_model_catalog,
+)
 
 
 PROBE_MANIFEST_SCHEMA = "gkm.bongard-panel-rubric-probe-manifest.v1"
@@ -70,6 +86,16 @@ MANIFEST_FILENAME = "manifest.json"
 RESULT_FILENAME = "result.json"
 ARTIFACT_DIRECTORY = "artifacts"
 REPLAY_DIRECTORY = "replays"
+DIAGNOSTIC_AUTHORIZATION_FILENAME = "diagnostic_authorization.json"
+DIAGNOSTIC_PRECOMMIT_FILENAME = "diagnostic_execution_precommit.json"
+
+DIAGNOSTIC_MODEL = "gpt-5.6-sol"
+DIAGNOSTIC_REASONING_EFFORT = "medium"
+DIAGNOSTIC_MINUTES = 15
+DIAGNOSTIC_EXECUTABLE = "codex"
+DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256 = (
+    "19c4f144c5226a9f17c58e6f0fa854843b0f77a6eb420f40e2745a12f10f5d37"
+)
 
 DEFAULT_V10_NOMINATION_ROOT = Path(
     "downloads/ShapeBongard_V2_full/"
@@ -196,6 +222,21 @@ class _ProbeInputs:
 
 
 @dataclass(frozen=True, slots=True)
+class _FreshDiagnosticPrecommit:
+    record: Mapping[str, Any]
+    runtime: ObjectBongardTurnRuntime
+
+    @property
+    def precommit_digest(self) -> str:
+        value = self.record.get("record_digest")
+        if not isinstance(value, str) or _ADDRESS.fullmatch(value) is None:
+            raise ObjectBongardPanelRubricProbeError(
+                "diagnostic precommit digest is invalid"
+            )
+        return value
+
+
+@dataclass(frozen=True, slots=True)
 class _BlindPanelJob:
     probe_index: int
     panel_id: str
@@ -207,6 +248,8 @@ class _BlindPanelJob:
 @dataclass(frozen=True, slots=True)
 class VerifiedObjectBongardPanelRubricProbe:
     output_root: Path
+    diagnostic_authorization_digest: str
+    diagnostic_precommit_digest: str
     manifest_digest: str
     result_digest: str
     exact_survivor: bool
@@ -217,6 +260,10 @@ class VerifiedObjectBongardPanelRubricProbe:
             "schema": "gkm.bongard-panel-rubric-probe-summary.v1",
             "status": PROBE_STATUS,
             "output_root": str(self.output_root),
+            "diagnostic_authorization_digest": (
+                self.diagnostic_authorization_digest
+            ),
+            "diagnostic_precommit_digest": self.diagnostic_precommit_digest,
             "manifest_digest": self.manifest_digest,
             "result_digest": self.result_digest,
             "exact_survivor": self.exact_survivor,
@@ -636,13 +683,373 @@ def _load_probe_inputs(
     return _ProbeInputs(nomination, source, precommit, rubric_spec)
 
 
-def _runtime_binding(inputs: _ProbeInputs) -> dict[str, object]:
-    return json.loads(canonical_json(inputs.precommit.runtime.binding).decode("utf-8"))
+def _diagnostic_authorization(
+    inputs: _ProbeInputs,
+    *,
+    parallel_workers: int,
+    minutes: int,
+    verbose: bool,
+    executable: str,
+    expected_launcher_sha256: str,
+) -> dict[str, Any]:
+    if (
+        isinstance(parallel_workers, bool)
+        or not 1 <= parallel_workers <= PROBE_MAX_WORKERS
+        or isinstance(minutes, bool)
+        or not isinstance(minutes, int)
+        or not 1 <= minutes <= 120
+        or not isinstance(verbose, bool)
+        or not isinstance(executable, str)
+        or not executable
+        or not isinstance(expected_launcher_sha256, str)
+        or re.fullmatch(r"[0-9a-f]{64}", expected_launcher_sha256) is None
+    ):
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic runtime authorization selectors are invalid"
+        )
+    prompt = object_bongard_panel_rubric_prompt(inputs.rubric_spec)
+    schema = object_bongard_panel_rubric_output_schema()
+    return _record(
+        {
+            "schema": "gkm.bongard-panel-rubric-probe-authorization.v1",
+            "status": PROBE_STATUS,
+            "purpose": "fresh-runtime-whole-panel-diagnostic-on-exact-historical-v10-support",
+            "panel_call_count": PROBE_PANEL_COUNT,
+            "calls_per_panel": 1,
+            "parallel_workers": parallel_workers,
+            "rank": 0,
+            "rubric_spec": inputs.rubric_spec.to_data(),
+            "rubric_spec_digest": inputs.rubric_spec.spec_digest,
+            "prompt_digest": hashlib.sha256(prompt.encode("utf-8")).hexdigest(),
+            "output_schema_digest": canonical_digest(schema),
+            "panels": [
+                {
+                    "probe_index": index,
+                    "source_ordinal": panel.ordinal,
+                    "panel_id": panel.panel_id,
+                    "panel_sha256": panel.png_sha256,
+                    "released_record_file_sha256": panel.released_file_sha256,
+                    "released_record_digest": panel.released_record_digest,
+                }
+                for index, panel in enumerate(inputs.source.panels)
+            ],
+            "runtime_policy": {
+                "model": DIAGNOSTIC_MODEL,
+                "reasoning_effort": DIAGNOSTIC_REASONING_EFFORT,
+                "minutes": minutes,
+                "verbose": verbose,
+                "executable": executable,
+                "expected_launcher_sha256": expected_launcher_sha256,
+                "fresh_cloud_policy_cache_snapshot_required": True,
+                "fresh_model_catalog_snapshot_required": True,
+                "fresh_no_tools_attestation_required": True,
+                "authenticated_launcher_fingerprint_required": True,
+                "old_v10_runtime_objects_authorized": False,
+            },
+            "frozen_v10_parents": {
+                "nomination_source_digest": inputs.source.source_digest,
+                "nomination_artifact_digest": inputs.nomination.artifact.artifact_digest,
+                "nomination_precommit_digest": inputs.nomination.execution_precommit_digest,
+                "rejected_calibration_source_digest": (
+                    inputs.source.rejected_calibration_source_digest
+                ),
+                "rejected_calibration_precommit_digest": (
+                    inputs.precommit.precommit_digest
+                ),
+                "parent_file_sha256": dict(inputs.source.parent_file_sha256),
+            },
+            "probe_source_sha256": object_bongard_panel_rubric_probe_source_digest(),
+            "panel_observer_source_sha256": (
+                object_bongard_panel_rubric_observer_source_digest()
+            ),
+            "panel_observer_protocol_sha256": (
+                object_bongard_panel_rubric_protocol_digest()
+            ),
+            "query_pixels_authorized": False,
+            "broad_cohort_pixels_authorized": False,
+            "official_test_pixels_authorized": False,
+            "benchmark_or_calibration_claim_authorized": False,
+            "fresh_root_required": True,
+            "resume_of_prior_failed_root_authorized": False,
+            **_authority_data(),
+        }
+    )
 
 
-def _blind_jobs(inputs: _ProbeInputs) -> tuple[_BlindPanelJob, ...]:
+def _decode_snapshot(value: object, label: str) -> bytes | None:
+    if value is None:
+        return None
+    try:
+        return base64.b64decode(value, validate=True)
+    except (TypeError, ValueError, binascii.Error) as exc:
+        raise ObjectBongardPanelRubricProbeError(
+            f"diagnostic {label} snapshot is malformed"
+        ) from exc
+
+
+def _runtime_from_diagnostic_precommit(
+    record: Mapping[str, Any],
+    *,
+    expected_authorization_digest: str,
+) -> ObjectBongardTurnRuntime:
+    verified = _verify_record(
+        record,
+        schema="gkm.bongard-panel-rubric-probe-runtime-precommit.v1",
+        label="diagnostic runtime precommit",
+    )
+    expected_fields = {
+        "schema",
+        "status",
+        "diagnostic_authorization_digest",
+        "probe_source_sha256",
+        "runtime_binding",
+        "cloud_policy_cache_snapshot_base64",
+        "model_catalog_snapshot_base64",
+        "no_tools_attestation",
+        "launcher_fingerprint",
+        "fresh_runtime_snapshots_captured",
+        "old_v10_runtime_objects_reused",
+        "precommit_fsynced_before_panel_calls",
+        "query_pixels_opened",
+        "broad_cohort_pixels_opened",
+        "official_test_pixels_opened",
+        *_authority_data(),
+        "record_digest",
+    }
+    binding = verified.get("runtime_binding")
+    fingerprint = verified.get("launcher_fingerprint")
+    attestation_data = verified.get("no_tools_attestation")
+    if (
+        set(verified) != expected_fields
+        or verified.get("status") != PROBE_STATUS
+        or verified.get("diagnostic_authorization_digest")
+        != expected_authorization_digest
+        or verified.get("fresh_runtime_snapshots_captured") is not True
+        or verified.get("old_v10_runtime_objects_reused") is not False
+        or verified.get("precommit_fsynced_before_panel_calls") is not True
+        or verified.get("probe_source_sha256")
+        != object_bongard_panel_rubric_probe_source_digest()
+        or not isinstance(binding, Mapping)
+        or not isinstance(fingerprint, Mapping)
+        or set(fingerprint) != {"version", "launcher_digest"}
+        or fingerprint.get("version") != PINNED_CODEX_CLI_VERSION
+        or not isinstance(attestation_data, Mapping)
+    ):
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic runtime precommit policy differs"
+        )
+    cache = CloudPolicyCacheSnapshot(
+        _decode_snapshot(
+            verified.get("cloud_policy_cache_snapshot_base64"), "policy cache"
+        )
+    )
+    catalog_bytes = _decode_snapshot(
+        verified.get("model_catalog_snapshot_base64"), "model catalog"
+    )
+    if catalog_bytes is None:
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic model catalog snapshot is absent"
+        )
+    catalog = CodexModelCatalogSnapshot(catalog_bytes)
+    attestation = CodexNoToolsAttestation.from_mapping(attestation_data)
+    try:
+        runtime = ObjectBongardTurnRuntime(
+            model=binding["model"],
+            reasoning_effort=binding["reasoning_effort"],
+            minutes=binding["minutes"],
+            verbose=binding["verbose"],
+            executable=binding["executable"],
+            cloud_policy_cache_snapshot=cache,
+            model_catalog_snapshot=catalog,
+            expected_launcher_digest=binding["expected_launcher_digest"],
+            no_tools_attestation=attestation,
+            transport_source_digest=binding["transport_source_digest"],
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic runtime binding is malformed"
+        ) from exc
+    if (
+        runtime.binding != dict(binding)
+        or fingerprint.get("launcher_digest") != runtime.expected_launcher_digest
+        or runtime.transport_source_digest != prototype_scene_transport_source_digest()
+    ):
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic runtime objects differ from their precommit"
+        )
+    return runtime
+
+
+def _prepare_fresh_diagnostic_precommit(
+    authorization: Mapping[str, Any],
+    *,
+    cloud_policy_cache_snapshotter: Callable[[], CloudPolicyCacheSnapshot],
+    model_catalog_snapshotter: Callable[[], CodexModelCatalogSnapshot],
+    launcher_fingerprinter: Callable[..., Mapping[str, str]],
+    runtime_attester: Callable[..., CodexNoToolsAttestation],
+) -> _FreshDiagnosticPrecommit:
+    auth = _verify_record(
+        authorization,
+        schema="gkm.bongard-panel-rubric-probe-authorization.v1",
+        label="diagnostic authorization",
+    )
+    policy = auth.get("runtime_policy")
+    if not isinstance(policy, Mapping):
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic authorization runtime policy is malformed"
+        )
+    cache = cloud_policy_cache_snapshotter()
+    catalog = model_catalog_snapshotter()
+    if not isinstance(cache, CloudPolicyCacheSnapshot) or not isinstance(
+        catalog, CodexModelCatalogSnapshot
+    ):
+        raise ObjectBongardPanelRubricProbeError(
+            "fresh diagnostic runtime snapshot has the wrong type"
+        )
+    fingerprint = launcher_fingerprinter(
+        policy["executable"],
+        expected_launcher_digest=policy["expected_launcher_sha256"],
+    )
+    attestation = runtime_attester(
+        executable=policy["executable"],
+        expected_launcher_digest=policy["expected_launcher_sha256"],
+        model_catalog_snapshot=catalog,
+        cloud_policy_cache_snapshot=cache,
+    )
+    if not isinstance(attestation, CodexNoToolsAttestation):
+        raise ObjectBongardPanelRubricProbeError(
+            "fresh diagnostic no-tools attestation has the wrong type"
+        )
+    runtime = ObjectBongardTurnRuntime(
+        model=policy["model"],
+        reasoning_effort=policy["reasoning_effort"],
+        minutes=policy["minutes"],
+        verbose=policy["verbose"],
+        executable=policy["executable"],
+        cloud_policy_cache_snapshot=cache,
+        model_catalog_snapshot=catalog,
+        expected_launcher_digest=policy["expected_launcher_sha256"],
+        no_tools_attestation=attestation,
+        transport_source_digest=prototype_scene_transport_source_digest(),
+    )
+    precommit = _record(
+        {
+            "schema": "gkm.bongard-panel-rubric-probe-runtime-precommit.v1",
+            "status": PROBE_STATUS,
+            "diagnostic_authorization_digest": auth["record_digest"],
+            "probe_source_sha256": object_bongard_panel_rubric_probe_source_digest(),
+            "runtime_binding": runtime.binding,
+            "cloud_policy_cache_snapshot_base64": (
+                None
+                if cache.data is None
+                else base64.b64encode(cache.data).decode("ascii")
+            ),
+            "model_catalog_snapshot_base64": base64.b64encode(catalog.data).decode(
+                "ascii"
+            ),
+            "no_tools_attestation": attestation.to_dict(),
+            "launcher_fingerprint": dict(fingerprint),
+            "fresh_runtime_snapshots_captured": True,
+            "old_v10_runtime_objects_reused": False,
+            "precommit_fsynced_before_panel_calls": True,
+            "query_pixels_opened": False,
+            "broad_cohort_pixels_opened": False,
+            "official_test_pixels_opened": False,
+            **_authority_data(),
+        }
+    )
+    restored = _runtime_from_diagnostic_precommit(
+        precommit, expected_authorization_digest=auth["record_digest"]
+    )
+    if restored != runtime:
+        raise ObjectBongardPanelRubricProbeError(
+            "fresh diagnostic runtime failed typed round trip"
+        )
+    return _FreshDiagnosticPrecommit(precommit, restored)
+
+
+def _seal_fresh_diagnostic_runtime(
+    root: Path,
+    inputs: _ProbeInputs,
+    *,
+    parallel_workers: int,
+    minutes: int,
+    verbose: bool,
+    executable: str,
+    expected_launcher_sha256: str,
+    cloud_policy_cache_snapshotter: Callable[[], CloudPolicyCacheSnapshot],
+    model_catalog_snapshotter: Callable[[], CodexModelCatalogSnapshot],
+    launcher_fingerprinter: Callable[..., Mapping[str, str]],
+    runtime_attester: Callable[..., CodexNoToolsAttestation],
+) -> tuple[dict[str, Any], _FreshDiagnosticPrecommit]:
+    authorization = _diagnostic_authorization(
+        inputs,
+        parallel_workers=parallel_workers,
+        minutes=minutes,
+        verbose=verbose,
+        executable=executable,
+        expected_launcher_sha256=expected_launcher_sha256,
+    )
+    _write_once(
+        root / DIAGNOSTIC_AUTHORIZATION_FILENAME,
+        authorization,
+        "diagnostic authorization",
+    )
+    stored_authorization = _verify_record(
+        _read_json(
+            root / DIAGNOSTIC_AUTHORIZATION_FILENAME,
+            "diagnostic authorization",
+        ),
+        schema="gkm.bongard-panel-rubric-probe-authorization.v1",
+        label="diagnostic authorization",
+    )
+    if stored_authorization != authorization:
+        raise ObjectBongardPanelRubricProbeError(
+            "persisted diagnostic authorization differs"
+        )
+    precommit = _prepare_fresh_diagnostic_precommit(
+        stored_authorization,
+        cloud_policy_cache_snapshotter=cloud_policy_cache_snapshotter,
+        model_catalog_snapshotter=model_catalog_snapshotter,
+        launcher_fingerprinter=launcher_fingerprinter,
+        runtime_attester=runtime_attester,
+    )
+    _write_once(
+        root / DIAGNOSTIC_PRECOMMIT_FILENAME,
+        precommit.record,
+        "diagnostic runtime precommit",
+    )
+    stored_record = _verify_record(
+        _read_json(
+            root / DIAGNOSTIC_PRECOMMIT_FILENAME,
+            "diagnostic runtime precommit",
+        ),
+        schema="gkm.bongard-panel-rubric-probe-runtime-precommit.v1",
+        label="diagnostic runtime precommit",
+    )
+    if stored_record != precommit.record:
+        raise ObjectBongardPanelRubricProbeError(
+            "persisted diagnostic runtime precommit differs"
+        )
+    runtime = _runtime_from_diagnostic_precommit(
+        stored_record,
+        expected_authorization_digest=stored_authorization["record_digest"],
+    )
+    return stored_authorization, _FreshDiagnosticPrecommit(stored_record, runtime)
+
+
+def _runtime_binding(precommit: _FreshDiagnosticPrecommit) -> dict[str, object]:
+    return json.loads(canonical_json(precommit.runtime.binding).decode("utf-8"))
+
+
+def _blind_jobs(
+    inputs: _ProbeInputs, precommit: _FreshDiagnosticPrecommit
+) -> tuple[_BlindPanelJob, ...]:
     runtime_digest = canonical_digest(
-        {"schema": "gkm.bongard-panel-rubric-probe-runtime-binding.v1", **_runtime_binding(inputs)}
+        {
+            "schema": "gkm.bongard-panel-rubric-probe-runtime-binding.v1",
+            **_runtime_binding(precommit),
+        }
     )
     jobs: list[_BlindPanelJob] = []
     for index, panel in enumerate(inputs.source.panels):
@@ -656,7 +1063,7 @@ def _blind_jobs(inputs: _ProbeInputs) -> tuple[_BlindPanelJob, ...]:
                 "rubric_spec_digest": inputs.rubric_spec.spec_digest,
                 "runtime_binding_digest": runtime_digest,
                 "nomination_artifact_digest": inputs.nomination.artifact.artifact_digest,
-                "rejected_calibration_precommit_digest": inputs.precommit.precommit_digest,
+                "diagnostic_runtime_precommit_digest": precommit.precommit_digest,
             }
         )
         jobs.append(
@@ -671,22 +1078,33 @@ def _blind_jobs(inputs: _ProbeInputs) -> tuple[_BlindPanelJob, ...]:
     return tuple(jobs)
 
 
-def _manifest(inputs: _ProbeInputs, *, parallel_workers: int) -> dict[str, Any]:
+def _manifest(
+    inputs: _ProbeInputs,
+    authorization: Mapping[str, Any],
+    precommit: _FreshDiagnosticPrecommit,
+    *,
+    parallel_workers: int,
+) -> dict[str, Any]:
     if isinstance(parallel_workers, bool) or not 1 <= parallel_workers <= PROBE_MAX_WORKERS:
         raise ObjectBongardPanelRubricProbeError("parallel workers must lie in 1..4")
-    jobs = _blind_jobs(inputs)
+    jobs = _blind_jobs(inputs, precommit)
     prompt = object_bongard_panel_rubric_prompt(inputs.rubric_spec)
     schema = object_bongard_panel_rubric_output_schema()
-    runtime = _runtime_binding(inputs)
+    runtime = _runtime_binding(precommit)
     body = {
         "schema": PROBE_MANIFEST_SCHEMA,
         "status": PROBE_STATUS,
         "purpose": "rank-0-whole-panel-observer-diagnostic-on-already-exposed-calibration-only",
         "authorization": {
-            "rejected_calibration_authorization_digest": inputs.precommit.authorization_digest,
+            "diagnostic_authorization_digest": authorization["record_digest"],
+            "diagnostic_runtime_precommit_digest": precommit.precommit_digest,
+            "rejected_calibration_authorization_digest": (
+                inputs.precommit.authorization_digest
+            ),
             "rejected_calibration_precommit_digest": inputs.precommit.precommit_digest,
             "old_calibration_authorization_authorizes_probe_jobs": False,
-            "new_probe_authorization_present": False,
+            "new_probe_authorization_present": True,
+            "new_probe_authorization_is_diagnostic_only": True,
             "benchmark_or_calibration_claim_authorized": False,
         },
         "pixel_scope": {
@@ -726,7 +1144,8 @@ def _manifest(inputs: _ProbeInputs, *, parallel_workers: int) -> dict[str, Any]:
         "runtime_binding_digest": canonical_digest(
             {"schema": "gkm.bongard-panel-rubric-probe-runtime-binding.v1", **runtime}
         ),
-        "runtime_objects_reused_from_rejected_v10_precommit": True,
+        "fresh_diagnostic_runtime_precommit_fsynced_before_calls": True,
+        "runtime_objects_reused_from_rejected_v10_precommit": False,
         "source_identities": {
             "probe_source_sha256": object_bongard_panel_rubric_probe_source_digest(),
             "panel_observer_source_sha256": object_bongard_panel_rubric_observer_source_digest(),
@@ -735,7 +1154,9 @@ def _manifest(inputs: _ProbeInputs, *, parallel_workers: int) -> dict[str, Any]:
                 object_bongard_rubric_language_source_digest()
             ),
             "semantic_artifact_source_sha256": inputs.nomination.artifact.source_digest,
-            "runtime_transport_source_sha256": inputs.precommit.runtime.transport_source_digest,
+            "runtime_transport_source_sha256": (
+                precommit.runtime.transport_source_digest
+            ),
             "pinned_parent_file_sha256": dict(inputs.source.parent_file_sha256),
         },
         "panels": [
@@ -792,10 +1213,11 @@ def _run_blind_job(
     root: Path,
     manifest_digest: str,
     inputs: _ProbeInputs,
+    precommit: _FreshDiagnosticPrecommit,
     job: _BlindPanelJob,
     transport: Transport,
 ) -> ObjectBongardPanelRubricArtifact:
-    runtime = inputs.precommit.runtime
+    runtime = precommit.runtime
     artifact = observe_object_bongard_panel_rubric(
         job.exact_png_bytes,
         panel_id=job.panel_id,
@@ -906,6 +1328,8 @@ def _result_record(
             "labels_used_for_group_counts_after_all_calls_completed": True,
             "observer_received_group_labels_or_roles": False,
             "old_calibration_authorization_authorizes_probe_jobs": False,
+            "fresh_diagnostic_runtime_precommitted_before_calls": True,
+            "old_v10_runtime_objects_reused": False,
             "benchmark_or_calibration_claim_authorized": False,
             "artifacts": [
                 {
@@ -933,6 +1357,8 @@ def _verification(
         raise ObjectBongardPanelRubricProbeError("result group counts are malformed")
     return VerifiedObjectBongardPanelRubricProbe(
         root,
+        manifest["authorization"]["diagnostic_authorization_digest"],
+        manifest["authorization"]["diagnostic_runtime_precommit_digest"],
         manifest["record_digest"],
         result["record_digest"],
         result["exact_survivor"],
@@ -950,12 +1376,41 @@ def _run_loaded_probe(
     *,
     parallel_workers: int,
     transport: Transport,
+    minutes: int = DIAGNOSTIC_MINUTES,
+    verbose: bool = False,
+    executable: str = DIAGNOSTIC_EXECUTABLE,
+    expected_launcher_sha256: str = DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256,
+    cloud_policy_cache_snapshotter: Callable[[], CloudPolicyCacheSnapshot] = (
+        snapshot_cloud_policy_cache
+    ),
+    model_catalog_snapshotter: Callable[[], CodexModelCatalogSnapshot] = (
+        snapshot_pinned_model_catalog
+    ),
+    launcher_fingerprinter: Callable[..., Mapping[str, str]] = (
+        codex_cli_authenticated_fingerprint
+    ),
+    runtime_attester: Callable[..., CodexNoToolsAttestation] = attest_codex_no_tools,
 ) -> VerifiedObjectBongardPanelRubricProbe:
     root = _fresh_output_root(output_root)
-    manifest = _manifest(inputs, parallel_workers=parallel_workers)
+    authorization, precommit = _seal_fresh_diagnostic_runtime(
+        root,
+        inputs,
+        parallel_workers=parallel_workers,
+        minutes=minutes,
+        verbose=verbose,
+        executable=executable,
+        expected_launcher_sha256=expected_launcher_sha256,
+        cloud_policy_cache_snapshotter=cloud_policy_cache_snapshotter,
+        model_catalog_snapshotter=model_catalog_snapshotter,
+        launcher_fingerprinter=launcher_fingerprinter,
+        runtime_attester=runtime_attester,
+    )
+    manifest = _manifest(
+        inputs, authorization, precommit, parallel_workers=parallel_workers
+    )
     _write_once(root / MANIFEST_FILENAME, manifest, "pre-call manifest")
     manifest_digest = manifest["record_digest"]
-    jobs = _blind_jobs(inputs)
+    jobs = _blind_jobs(inputs, precommit)
 
     completed: dict[int, ObjectBongardPanelRubricArtifact] = {}
     with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
@@ -965,6 +1420,7 @@ def _run_loaded_probe(
                 root=root,
                 manifest_digest=manifest_digest,
                 inputs=inputs,
+                precommit=precommit,
                 job=job,
                 transport=transport,
             ): job.probe_index
@@ -994,6 +1450,10 @@ def run_object_bongard_panel_rubric_probe(
     ),
     source_directory: str | os.PathLike[str] = DEFAULT_OBJECT_RUBRIC_CALIBRATION_SOURCE,
     parallel_workers: int = PROBE_MAX_WORKERS,
+    minutes: int = DIAGNOSTIC_MINUTES,
+    verbose: bool = False,
+    executable: str = DIAGNOSTIC_EXECUTABLE,
+    expected_launcher_sha256: str = DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256,
     transport: Transport = run_codex_named_images_structured,
 ) -> VerifiedObjectBongardPanelRubricProbe:
     """Run twelve new diagnostic calls after cold-verifying every v10 parent."""
@@ -1007,6 +1467,10 @@ def run_object_bongard_panel_rubric_probe(
         output_root,
         inputs,
         parallel_workers=parallel_workers,
+        minutes=minutes,
+        verbose=verbose,
+        executable=executable,
+        expected_launcher_sha256=expected_launcher_sha256,
         transport=transport,
     )
 
@@ -1020,8 +1484,48 @@ def _verify_loaded_probe(
         RESULT_FILENAME,
         ARTIFACT_DIRECTORY,
         REPLAY_DIRECTORY,
+        DIAGNOSTIC_AUTHORIZATION_FILENAME,
+        DIAGNOSTIC_PRECOMMIT_FILENAME,
     }:
         raise ObjectBongardPanelRubricProbeError("probe root inventory differs")
+    stored_authorization = _verify_record(
+        _read_json(
+            root / DIAGNOSTIC_AUTHORIZATION_FILENAME,
+            "diagnostic authorization",
+        ),
+        schema="gkm.bongard-panel-rubric-probe-authorization.v1",
+        label="diagnostic authorization",
+    )
+    policy = stored_authorization.get("runtime_policy")
+    if not isinstance(policy, Mapping):
+        raise ObjectBongardPanelRubricProbeError(
+            "stored diagnostic runtime policy is malformed"
+        )
+    expected_authorization = _diagnostic_authorization(
+        inputs,
+        parallel_workers=stored_authorization.get("parallel_workers"),
+        minutes=policy.get("minutes"),
+        verbose=policy.get("verbose"),
+        executable=policy.get("executable"),
+        expected_launcher_sha256=policy.get("expected_launcher_sha256"),
+    )
+    if stored_authorization != expected_authorization:
+        raise ObjectBongardPanelRubricProbeError(
+            "diagnostic authorization differs on replay"
+        )
+    stored_precommit_record = _verify_record(
+        _read_json(
+            root / DIAGNOSTIC_PRECOMMIT_FILENAME,
+            "diagnostic runtime precommit",
+        ),
+        schema="gkm.bongard-panel-rubric-probe-runtime-precommit.v1",
+        label="diagnostic runtime precommit",
+    )
+    runtime = _runtime_from_diagnostic_precommit(
+        stored_precommit_record,
+        expected_authorization_digest=stored_authorization["record_digest"],
+    )
+    precommit = _FreshDiagnosticPrecommit(stored_precommit_record, runtime)
     stored_manifest = _verify_record(
         _read_json(root / MANIFEST_FILENAME, "probe manifest"),
         schema=PROBE_MANIFEST_SCHEMA,
@@ -1031,10 +1535,12 @@ def _verify_loaded_probe(
     if not isinstance(call_policy, Mapping):
         raise ObjectBongardPanelRubricProbeError("manifest call policy is malformed")
     workers = call_policy.get("parallel_workers")
-    expected_manifest = _manifest(inputs, parallel_workers=workers)
+    expected_manifest = _manifest(
+        inputs, stored_authorization, precommit, parallel_workers=workers
+    )
     if stored_manifest != expected_manifest:
         raise ObjectBongardPanelRubricProbeError("pre-call manifest differs on replay")
-    jobs = _blind_jobs(inputs)
+    jobs = _blind_jobs(inputs, precommit)
     expected_files = {_artifact_filename(index) for index in range(PROBE_PANEL_COUNT)}
     artifact_root = root / ARTIFACT_DIRECTORY
     replay_root = root / REPLAY_DIRECTORY
@@ -1060,7 +1566,17 @@ def _verify_loaded_probe(
             expected_artifact_digest=artifact.artifact_digest,
             expected_runtime_identity_digest=artifact.runtime_identity_digest,
         )
-        if replayed.observation_context_digest != job.observation_context_digest:
+        if (
+            replayed.observation_context_digest != job.observation_context_digest
+            or replayed.model != runtime.model
+            or replayed.reasoning_effort != runtime.reasoning_effort
+            or replayed.expected_launcher_digest != runtime.expected_launcher_digest
+            or replayed.cloud_policy_cache_binding != runtime.policy_cache_binding
+            or replayed.model_catalog_digest
+            != runtime.model_catalog_snapshot.raw_digest
+            or replayed.no_tools_attestation_digest
+            != runtime.no_tools_attestation.attestation_digest
+        ):
             raise ObjectBongardPanelRubricProbeError("artifact context differs")
         expected_replay = _artifact_replay_record(
             manifest_digest=stored_manifest["record_digest"],
@@ -1138,6 +1654,17 @@ def _parser() -> argparse.ArgumentParser:
     commands.choices["launch"].add_argument(
         "--parallel-workers", type=int, default=PROBE_MAX_WORKERS
     )
+    commands.choices["launch"].add_argument(
+        "--minutes", type=int, default=DIAGNOSTIC_MINUTES
+    )
+    commands.choices["launch"].add_argument("--verbose", action="store_true")
+    commands.choices["launch"].add_argument(
+        "--executable", default=DIAGNOSTIC_EXECUTABLE
+    )
+    commands.choices["launch"].add_argument(
+        "--expected-launcher-sha256",
+        default=DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256,
+    )
     return parser
 
 
@@ -1153,6 +1680,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             verified = run_object_bongard_panel_rubric_probe(
                 args.output_root,
                 parallel_workers=args.parallel_workers,
+                minutes=args.minutes,
+                verbose=args.verbose,
+                executable=args.executable,
+                expected_launcher_sha256=args.expected_launcher_sha256,
                 **common,
             )
         else:
@@ -1183,6 +1714,8 @@ if __name__ == "__main__":  # pragma: no cover
 __all__ = (
     "DEFAULT_REJECTED_V10_CALIBRATION_ROOT",
     "DEFAULT_V10_NOMINATION_ROOT",
+    "DIAGNOSTIC_EXPECTED_LAUNCHER_SHA256",
+    "DIAGNOSTIC_MODEL",
     "ObjectBongardPanelRubricProbeError",
     "PROBE_MAX_WORKERS",
     "PROBE_PANEL_COUNT",
