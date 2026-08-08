@@ -34,6 +34,7 @@ from bongard.codex_no_tools_preflight import (
     attest_codex_no_tools,
 )
 from bongard.object_bongard_semantics import (
+    GROUP_SIZE,
     SOFT_CUE_CANDIDATE_COUNT,
     ObjectBongardSemanticArtifact,
     describe_object_bongard_support,
@@ -70,11 +71,11 @@ from bongard.transport import (
 )
 
 
-AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v2"
-PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v2"
-REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v2"
-RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v2"
-COMMAND_ID = "bongard.object-rubric-nomination/seal-two-soft-cue-pairs-replay-v2"
+AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v3"
+PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v3"
+REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v3"
+RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v3"
+COMMAND_ID = "bongard.object-rubric-nomination/seal-fit-only-soft-cue-slate-v3"
 
 AUTHORIZATION_FILENAME = "authorization.json"
 PRECOMMIT_FILENAME = "execution_precommit.json"
@@ -115,6 +116,8 @@ def _authority_data() -> dict[str, object]:
         "soft_cue_text_defines_identity": True,
         "soft_cue_text_is_observed_not_executed": True,
         "feature_catalog_used": False,
+        "soft_cue_proposer_sees_fit_panels_only": True,
+        "confirmation_pixels_presented_to_proposer": False,
         "negation_allowed": False,
         "query_pixels_used": False,
         "fresh_broad_cohort_pixels_used": False,
@@ -355,11 +358,32 @@ def _source_digests() -> list[dict[str, str]]:
 
 
 def _groups(source: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    group_0 = tuple(sorted(item.panel_id for item in source.group_a_panels))
-    group_1 = tuple(sorted(item.panel_id for item in source.group_b_panels))
-    if len(group_0) != 6 or len(group_1) != 6 or set(group_0) & set(group_1):
+    from bongard.object_bongard_rubric_calibration import (
+        CALIBRATION_FIT_GROUP_A_ORDINALS,
+        CALIBRATION_FIT_GROUP_B_ORDINALS,
+    )
+
+    group_0 = tuple(
+        sorted(
+            item.panel_id
+            for item in source.group_a_panels
+            if item.ordinal in CALIBRATION_FIT_GROUP_A_ORDINALS
+        )
+    )
+    group_1 = tuple(
+        sorted(
+            item.panel_id
+            for item in source.group_b_panels
+            if item.ordinal in CALIBRATION_FIT_GROUP_B_ORDINALS
+        )
+    )
+    if (
+        len(group_0) != GROUP_SIZE
+        or len(group_1) != GROUP_SIZE
+        or set(group_0) & set(group_1)
+    ):
         raise ObjectBongardRubricNominationCommandError(
-            "calibration source does not provide exact disjoint 6+6 groups"
+            "calibration source does not provide the exact disjoint 3+3 fit groups"
         )
     return group_0, group_1
 

@@ -70,9 +70,9 @@ def _describe(payload: dict[str, object] | None = None):
     def transport(prompt, paths, names, schema, **_kwargs):
         nonlocal calls
         calls += 1
-        assert len(paths) == len(names) == 12
+        assert len(paths) == len(names) == 6
         assert names[0] == "group_0_ref_00.png"
-        assert names[-1] == "group_1_ref_05.png"
+        assert names[-1] == "group_1_ref_02.png"
         assert TASK_ID not in prompt
         assert all(panel_id not in prompt for panel_id in (*GROUP_0, *GROUP_1))
         assert schema == object_bongard_semantics_output_schema()
