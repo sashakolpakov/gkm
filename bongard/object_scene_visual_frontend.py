@@ -2005,11 +2005,16 @@ class ObjectSceneRegisteredTagCell:
                 raise ObjectSceneVisualFrontendError(
                     "registered witness payload order differs"
                 )
-            cells.append(
-                ObjectSceneRegisteredWitnessCell.create(
+            try:
+                cell = ObjectSceneRegisteredWitnessCell.create(
                     witness, raw["state"], raw["evidence"]
                 )
-            )
+            except ObjectSceneVisualFrontendError:
+                cell = ObjectSceneRegisteredWitnessCell.error(
+                    witness,
+                    "witness cell rejected by deterministic parser",
+                )
+            cells.append(cell)
         return cls.from_witness_cells(tag, cells)
 
     def to_data(self) -> dict[str, object]:

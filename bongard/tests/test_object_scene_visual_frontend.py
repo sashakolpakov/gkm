@@ -1505,6 +1505,51 @@ def test_missing_registered_cell_is_parser_error_never_absence():
     )
 
 
+def test_invalid_registered_witness_value_is_local_error_not_panel_error():
+    raw_a, raw_b = _scene(0), _scene(2)
+    inv_a = extract_object_scene_proposal_inventory(raw_a)
+    inv_b = extract_object_scene_proposal_inventory(raw_b)
+    first = _observe(raw_a, _payload(inv_a))
+    second = _observe(raw_b, _payload(inv_b), context=CONTEXT_B)
+    registry = freeze_object_scene_soft_tag_registry(
+        (first.transcript, second.transcript)
+    )
+    payload = _payload(inv_a, registry=registry)
+    rejected_evidence = (
+        "the candidate widened portions do not form a clear opposing pair"
+    )
+    payload["objects"][0]["registered_tags"][0]["witness_cells"][0][
+        "evidence"
+    ] = rejected_evidence
+
+    artifact = _observe(
+        raw_a,
+        payload,
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    assert artifact.model_payload["objects"][0]["registered_tags"][0][
+        "witness_cells"
+    ][0]["evidence"] == rejected_evidence
+    assert lookup_object_scene_soft_tag(
+        artifact, "object_0000", "bird-like object"
+    ).disposition is Disposition.ERROR
+    assert lookup_object_scene_soft_tag(
+        artifact, "object_0001", "bird-like object"
+    ).disposition is Disposition.PRESENT
+    verify_object_scene_transcript_artifact(
+        artifact,
+        raw_a,
+        expected_scene_id="opaque-scene",
+        expected_observation_context_digest=CONTEXT_A,
+        expected_panel_sha256=hashlib.sha256(raw_a).hexdigest(),
+        expected_artifact_digest=artifact.artifact_digest,
+    )
+
+
 def test_tampering_and_lean_import_are_rejected():
     raw = _scene()
     inventory = extract_object_scene_proposal_inventory(raw)
