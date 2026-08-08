@@ -601,6 +601,194 @@ def test_semantic_payload_error_seals_exact_rejected_payload(
     assert budget.snapshot().semantic_proposer_calls == 1
 
 
+def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import bongard.object_bongard_scene_predicate_campaign_command as campaign
+    from bongard.object_bongard_release_gate import ObjectBongardReleaseStore
+    from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
+    from bongard.object_scene_semantic_registry import (
+        prepare_object_scene_semantic_registry_proposal,
+    )
+    from bongard.prototype_scene_observer import (
+        prototype_scene_transport_source_digest,
+    )
+    from bongard.tests.test_object_bongard_scene_predicate_calibration_command import (
+        LAUNCHER_DIGEST,
+        MODEL_CATALOG,
+        NO_TOOLS_ATTESTATION,
+        _text_receipt,
+    )
+    from bongard.tests.test_object_scene_semantic_registry import (
+        _discovery_artifact,
+    )
+    from bongard.transport import (
+        CloudPolicyCacheSnapshot,
+        CodexStructuredResult,
+    )
+
+    discovery_artifacts = tuple(_discovery_artifact(index) for index in range(12))
+    role_rows = tuple(
+        {
+            "ordinal": index,
+            "neutral_panel_digest": artifact.panel_digest,
+            "historical_role": index // 6,
+            "blind_panel_id": artifact.scene_id,
+        }
+        for index, artifact in enumerate(discovery_artifacts)
+    )
+    semantic_prepared = prepare_object_scene_semantic_registry_proposal(
+        discovery_artifacts, role_rows
+    )
+    aliases = {
+        side: tuple(
+            row["alias"]
+            for row in semantic_prepared.alias_bindings
+            if row["historical_role"] == side and row["usable"] is True
+        )
+        for side in (0, 1)
+    }
+    payload = {
+        "side0_positive": [
+            {
+                "scope": "panel",
+                "phrase": "paired visible forms",
+                "citations": list(aliases[0][:2]),
+            },
+            {
+                "scope": "entity",
+                "phrase": "not pointed",
+                "citations": list(aliases[0][1:3]),
+            },
+        ],
+        "side1_positive": [
+            {
+                "scope": "entity",
+                "phrase": "unequal edge lengths",
+                "citations": list(aliases[1][:2]),
+            }
+        ],
+    }
+
+    runtime = ObjectBongardTurnRuntime(
+        model=campaign.MODEL,
+        reasoning_effort=campaign.REASONING_EFFORT,
+        minutes=3,
+        verbose=False,
+        executable="codex",
+        cloud_policy_cache_snapshot=CloudPolicyCacheSnapshot(None),
+        model_catalog_snapshot=MODEL_CATALOG,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        no_tools_attestation=NO_TOOLS_ATTESTATION,
+        transport_source_digest=prototype_scene_transport_source_digest(),
+    )
+    store = ObjectBongardReleaseStore((tmp_path / "release-store").absolute())
+    prepared = SimpleNamespace(
+        release=SimpleNamespace(
+            authorization=SimpleNamespace(record_digest=ADDRESS_1),
+            precommit=SimpleNamespace(record_digest=ADDRESS_2),
+            store=store,
+        )
+    )
+    task = SimpleNamespace(record_digest=ADDRESS_3, family="bd")
+    semantic_prepared_record = campaign._semantic_prepared_record(
+        task=task,
+        discovery_batch={"batch_digest": ADDRESS_4},
+        role_reveal={"role_reveal_digest": ADDRESS_1},
+        semantic_prepared=semantic_prepared,
+    )
+    semantic_prepared_record, semantic_prepared_receipt = campaign._persist_record(
+        store,
+        object_kind="scene-task-semantic-prepared",
+        record=semantic_prepared_record,
+        digest_field="semantic_prepared_digest",
+    )
+    assert dict(
+        store.verify(
+            semantic_prepared_receipt,
+            expected_data=semantic_prepared_record,
+        )
+    ) == semantic_prepared_record
+
+    physical_calls: list[str] = []
+
+    def offline_transport(prompt, schema, **_kwargs):
+        physical_calls.append("semantic-proposer")
+        return CodexStructuredResult(
+            payload, _text_receipt(prompt, schema, payload)
+        )
+
+    budget = _CallBudget()
+    proposal, registry, record, receipt = _execute_task_semantic_proposal(
+        tmp_path,
+        prepared=prepared,
+        task=task,
+        task_index=0,
+        runtime=runtime,
+        semantic_prepared_record=semantic_prepared_record,
+        semantic_prepared=semantic_prepared,
+        discovery_artifacts=discovery_artifacts,
+        role_rows=role_rows,
+        text_transport=offline_transport,
+        budget=budget,
+    )
+
+    assert physical_calls == ["semantic-proposer"]
+    assert budget.snapshot().semantic_proposer_calls == 1
+    assert proposal.status == "proposed"
+    assert len(registry.tags) == 2
+    assert {item.tag for item in registry.tags} == {
+        "paired visible forms",
+        "unequal edge lengths",
+    }
+    assert len(proposal.dropped_concepts) == 1
+    assert proposal.dropped_concepts[0].reason_code == "phrase_policy"
+    assert record["semantic_proposal_status"] == "proposed"
+    assert record["semantic_proposal_valid"] is True
+    assert record["quarantined_concept_count"] == 1
+    assert record["quarantined_concept_digests"] == [
+        proposal.dropped_concepts[0].drop_digest
+    ]
+    assert record["semantic_registry"]["tags"]
+    assert dict(store.verify(receipt, expected_data=record)) == record
+    journal_root = tmp_path / "journals" / "semantic_registry_proposer"
+    assert {path.name for path in journal_root.iterdir()} == {
+        "manifest.json",
+        "claim.json",
+        "result.json",
+        "outcome.json",
+    }
+
+    replay_calls: list[object] = []
+
+    def forbidden_replay_transport(*args, **kwargs):
+        replay_calls.append((args, kwargs))
+        raise AssertionError("cold replay attempted a physical proposer call")
+
+    monkeypatch.setattr(
+        campaign, "_forbidden_text_transport", forbidden_replay_transport
+    )
+    replayed_proposal, replayed_registry, replay_summary_digest = (
+        campaign._cold_replay_task_semantic_proposal(
+            tmp_path,
+            prepared=prepared,
+            task=task,
+            task_index=0,
+            runtime=runtime,
+            semantic_prepared_record=semantic_prepared_record,
+            semantic_prepared=semantic_prepared,
+            semantic_proposal_record=record,
+            discovery_artifacts=discovery_artifacts,
+            role_rows=role_rows,
+        )
+    )
+    assert replay_calls == []
+    assert physical_calls == ["semantic-proposer"]
+    assert replayed_proposal == proposal
+    assert replayed_registry == registry
+    assert replay_summary_digest == record["proposer_journal_summary_digest"]
+
+
 def _task_result_fixture(
     *, queried: bool, semantic_valid: bool = True
 ) -> dict[str, object]:
