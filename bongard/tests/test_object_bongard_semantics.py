@@ -106,11 +106,15 @@ def test_semantic_turn_emits_audit_prose_and_one_catalog_cue_per_group() -> None
     )
     prompt = object_bongard_semantics_prompt()
     assert SEMANTIC_PROTOCOL_ID == (
-        "bongard.object-task-semantics/joint-contrastive-two-neutral-groups-v2"
+        "bongard.object-task-semantics/structure-first-joint-contrastive-v3"
     )
     assert "two neutral groups of six" in prompt
     assert "Consider both groups jointly" in prompt
-    assert "exactly one matching feature identifier" in prompt
+    assert "First compare all twelve drawings without using the catalog" in prompt
+    assert "structurally precise sentence" in prompt
+    assert "bare resemblance term" in prompt
+    assert "Only after fixing both sentences" in prompt
+    assert "exactly one closest feature identifier" in prompt
     assert "must both recur within its group" in prompt
     assert "visibly more characteristic" in prompt
     assert "merely typical" in prompt

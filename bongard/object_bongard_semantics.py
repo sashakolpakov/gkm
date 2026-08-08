@@ -46,7 +46,7 @@ from bongard.transport import run_codex_named_images_structured
 
 SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v1"
 SEMANTIC_PROTOCOL_ID = (
-    "bongard.object-task-semantics/joint-contrastive-two-neutral-groups-v2"
+    "bongard.object-task-semantics/structure-first-joint-contrastive-v3"
 )
 GROUP_IDS = ("group_0", "group_1")
 GROUP_SIZE = 6
@@ -116,15 +116,24 @@ def object_bongard_semantics_prompt() -> str:
     return (
         "Inspect twelve drawings arranged as two neutral groups of six, named "
         "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
-        "group_1_ref_05. Consider both groups jointly. For each group, write "
-        "one concise sentence describing a recurring visible appearance and "
-        "nominate exactly one matching feature identifier from the complete "
-        "frozen measurement catalog. The nominated cue must both recur within "
-        "its group and be visibly more characteristic of that group than of "
-        "the other group. Compare each catalog meaning across both groups "
-        "before choosing; a cue that is merely typical of one group but also "
-        "similarly characteristic of the other group is invalid. Group names "
-        "are neutral and do not indicate class polarity. "
+        "group_1_ref_05. Consider both groups jointly and determine a "
+        "discriminative visual invariant for each group, not merely a salient "
+        "shape in one drawing. First compare all twelve drawings without using "
+        "the catalog: identify the property that recurs across all six members "
+        "of one group and is not similarly characteristic of the other six. "
+        "Describe that invariant in one concise, structurally precise sentence "
+        "that another vision observer could apply to an isolated drawing. "
+        "Prefer observable parts, counts, topology, angles, and relations. A "
+        "bare resemblance term such as bird-like or leaf-like is invalid "
+        "unless the sentence also states the recurring visible structure. "
+        "Only after fixing both sentences, nominate exactly one closest "
+        "feature identifier per group from the complete frozen measurement "
+        "catalog. The nominated cue must both recur within its group and be "
+        "visibly more characteristic of that group than of the other group. "
+        "Compare each catalog meaning across both groups before choosing; a "
+        "cue that is merely typical of one group but also similarly "
+        "characteristic of the other group is invalid. Group names are neutral "
+        "and do not indicate class polarity. "
         "Ignore pose, scale, location, and incidental stroke variation. Return "
         "group_0 then group_1. Emit prose and feature identifiers only: do not "
         "choose an operator, threshold, number, polarity, weight, negation, "
@@ -162,6 +171,9 @@ def object_bongard_semantics_protocol_digest() -> str:
             "cue_must_be_more_characteristic_than_in_other_group": True,
             "independently_typical_cue_nomination_allowed": False,
             "group_names_encode_class_polarity": False,
+            "structure_first_before_catalog_mapping": True,
+            "bare_resemblance_without_visible_structure_allowed": False,
+            "rubric_must_be_applicable_to_an_isolated_drawing": True,
             "vision_prose_authority": "audit-only",
             "observer_rubric_derivation": (
                 "exact-frozen-catalog-operational-description-by-feature-id"
