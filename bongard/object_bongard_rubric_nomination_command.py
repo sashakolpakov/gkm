@@ -71,11 +71,11 @@ from bongard.transport import (
 )
 
 
-AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v3"
-PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v3"
-REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v3"
-RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v3"
-COMMAND_ID = "bongard.object-rubric-nomination/seal-fit-only-soft-cue-slate-v3"
+AUTHORIZATION_SCHEMA = "gkm.bongard-object-rubric-nomination-authorization.v4"
+PRECOMMIT_SCHEMA = "gkm.bongard-object-rubric-nomination-precommit.v4"
+REPLAY_SCHEMA = "gkm.bongard-object-rubric-nomination-cold-replay.v4"
+RESULT_SCHEMA = "gkm.bongard-object-rubric-nomination-result.v4"
+COMMAND_ID = "bongard.object-rubric-nomination/seal-all-support-soft-cue-slate-v4"
 
 AUTHORIZATION_FILENAME = "authorization.json"
 PRECOMMIT_FILENAME = "execution_precommit.json"
@@ -116,8 +116,9 @@ def _authority_data() -> dict[str, object]:
         "soft_cue_text_defines_identity": True,
         "soft_cue_text_is_observed_not_executed": True,
         "feature_catalog_used": False,
-        "soft_cue_proposer_sees_fit_panels_only": True,
-        "confirmation_pixels_presented_to_proposer": False,
+        "soft_cue_proposer_sees_all_support_panels": True,
+        "support_panels_per_group": GROUP_SIZE,
+        "held_out_query_pixels_presented_to_proposer": False,
         "negation_allowed": False,
         "query_pixels_used": False,
         "fresh_broad_cohort_pixels_used": False,
@@ -358,32 +359,15 @@ def _source_digests() -> list[dict[str, str]]:
 
 
 def _groups(source: object) -> tuple[tuple[str, ...], tuple[str, ...]]:
-    from bongard.object_bongard_rubric_calibration import (
-        CALIBRATION_FIT_GROUP_A_ORDINALS,
-        CALIBRATION_FIT_GROUP_B_ORDINALS,
-    )
-
-    group_0 = tuple(
-        sorted(
-            item.panel_id
-            for item in source.group_a_panels
-            if item.ordinal in CALIBRATION_FIT_GROUP_A_ORDINALS
-        )
-    )
-    group_1 = tuple(
-        sorted(
-            item.panel_id
-            for item in source.group_b_panels
-            if item.ordinal in CALIBRATION_FIT_GROUP_B_ORDINALS
-        )
-    )
+    group_0 = tuple(sorted(item.panel_id for item in source.group_a_panels))
+    group_1 = tuple(sorted(item.panel_id for item in source.group_b_panels))
     if (
         len(group_0) != GROUP_SIZE
         or len(group_1) != GROUP_SIZE
         or set(group_0) & set(group_1)
     ):
         raise ObjectBongardRubricNominationCommandError(
-            "calibration source does not provide the exact disjoint 3+3 fit groups"
+            "calibration source does not provide exact disjoint 6+6 support groups"
         )
     return group_0, group_1
 
@@ -682,7 +666,7 @@ def _support(source: object) -> dict[str, bytes]:
     }
     if set(support) != admitted:
         raise ObjectBongardRubricNominationCommandError(
-            "fit-only support PNG inventory differs from the authorization"
+            "all-support PNG inventory differs from the authorization"
         )
     return support
 

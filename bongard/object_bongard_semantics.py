@@ -38,12 +38,12 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.transport import run_codex_named_images_structured
 
 
-SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v2"
+SEMANTIC_ARTIFACT_SCHEMA = "gkm.bongard-object-task-semantics.v3"
 SEMANTIC_PROTOCOL_ID = (
-    "bongard.object-task-semantics/two-ranked-positive-soft-cue-pairs-v4"
+    "bongard.object-task-semantics/two-ranked-positive-soft-cue-pairs-v5"
 )
 GROUP_IDS = ("group_0", "group_1")
-GROUP_SIZE = 3
+GROUP_SIZE = 6
 SOFT_CUE_CANDIDATE_COUNT = 2
 
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -96,13 +96,13 @@ def object_bongard_semantics_source_digest() -> str:
 
 def object_bongard_semantics_prompt() -> str:
     return (
-        "Inspect six drawings arranged as two neutral groups of three, named "
-        "group_0_ref_00 through group_0_ref_02 and group_1_ref_00 through "
-        "group_1_ref_02. Consider both groups jointly. Return exactly two "
+        "Inspect twelve drawings arranged as two neutral groups of six, named "
+        "group_0_ref_00 through group_0_ref_05 and group_1_ref_00 through "
+        "group_1_ref_05. Consider both groups jointly. Return exactly two "
         "ranked forward visual proposals named proposal_0 then proposal_1. "
         "Each proposal contains one cue for group_0 and one cue for group_1. "
-        "A cue must state a visible invariant that recurs across all three "
-        "members of its group and is not similarly characteristic of the three "
+        "A cue must state a visible invariant that recurs across all six "
+        "members of its group and is not similarly characteristic of the six "
         "members of the opposite group. proposal_0 is your strongest pair. "
         "proposal_1 is the strongest genuinely alternate pair; it may reuse "
         "one good group cue when the cue for the opposite group changes, but "
@@ -144,7 +144,7 @@ def object_bongard_semantics_output_schema() -> dict[str, object]:
 def object_bongard_semantics_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.bongard-object-task-semantics-protocol.v3",
+            "schema": "gkm.bongard-object-task-semantics-protocol.v4",
             "protocol_id": SEMANTIC_PROTOCOL_ID,
             "source_digest": object_bongard_semantics_source_digest(),
             "prompt_sha256": hashlib.sha256(
