@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import ast
 from copy import deepcopy
+from dataclasses import replace
 import hashlib
 from io import BytesIO
 import json
@@ -23,6 +24,7 @@ from bongard.object_scene_visual_frontend import (
     ObjectSceneVisualFrontendError,
     extract_object_scene_proposal_inventory,
     freeze_object_scene_soft_tag_registry,
+    lookup_object_scene_panel_soft_tag,
     lookup_object_scene_soft_tag,
     object_scene_transcript_output_schema,
     object_scene_transcript_prompt,
@@ -70,8 +72,31 @@ def _overlap_scene() -> bytes:
     return output.getvalue()
 
 
-def _payload(inventory, *, open_tags=("bird-like object",), registry=None):
+def _blank_scene(width: int = 96) -> bytes:
+    image = Image.new("RGB", (width, 64), "white")
+    output = BytesIO()
+    image.save(output, format="PNG", optimize=False)
+    return output.getvalue()
+
+
+def _payload(
+    inventory,
+    *,
+    open_tags=("bird-like object",),
+    panel_open_tags=(),
+    registry=None,
+):
     rows = []
+    panel_registry_tags = (
+        ()
+        if registry is None
+        else tuple(item for item in registry.tags if item.scope == "panel")
+    )
+    entity_registry_tags = (
+        ()
+        if registry is None
+        else tuple(item for item in registry.tags if item.scope == "entity")
+    )
     for crop in inventory.objects:
         rows.append(
             {
@@ -109,11 +134,32 @@ def _payload(inventory, *, open_tags=("bird-like object",), registry=None):
                         "state": "present" if tag.tag == "bird-like object" else "indeterminate",
                         "evidence": "visible silhouette supports phrase" if tag.tag == "bird-like object" else "visible detail is unresolved",
                     }
-                    for tag in registry.tags
+                    for tag in entity_registry_tags
                 ],
             }
         )
-    return {"objects": rows}
+    return {
+        "panel": {
+            "summary": "two visible forms occupy separated panel regions",
+            "open_tags": [
+                {
+                    "tag": tag,
+                    "state": "present",
+                    "evidence": "complete composition supports phrase",
+                }
+                for tag in sorted(panel_open_tags)
+            ] if registry is None else [],
+            "registered_tags": [] if registry is None else [
+                {
+                    "tag_id": tag.tag_id,
+                    "state": "present",
+                    "evidence": "complete composition supports phrase",
+                }
+                for tag in panel_registry_tags
+            ],
+        },
+        "objects": rows,
+    }
 
 
 def _transport(payload, calls, envelopes=None):
@@ -218,10 +264,59 @@ def test_discovery_is_one_call_typed_and_cold_replayable():
     ) == artifact
 
 
+def test_panel_discovery_is_typed_scoped_and_distinct_from_entity_discovery():
+    raw_a, raw_b = _scene(0), _scene(2)
+    inv_a = extract_object_scene_proposal_inventory(raw_a)
+    inv_b = extract_object_scene_proposal_inventory(raw_b)
+    phrase = "paired visible forms"
+    first = _observe(
+        raw_a,
+        _payload(inv_a, open_tags=(phrase,), panel_open_tags=(phrase,)),
+    )
+    second = _observe(
+        raw_b,
+        _payload(inv_b, open_tags=(phrase,), panel_open_tags=(phrase,)),
+        context=CONTEXT_B,
+    )
+
+    assert first.status is second.status is PrototypeSceneObserverStatus.SUCCESS
+    assert first.transcript is not None and second.transcript is not None
+    assert first.transcript.panel_summary == (
+        "two visible forms occupy separated panel regions"
+    )
+    assert first.transcript.panel_open_tags[0].tag == phrase
+    assert lookup_object_scene_panel_soft_tag(first, phrase).disposition is (
+        Disposition.PRESENT
+    )
+    assert lookup_object_scene_panel_soft_tag(
+        first, "diagonal arrangement"
+    ).disposition is Disposition.INDETERMINATE
+
+    registry = freeze_object_scene_soft_tag_registry(
+        (first.transcript, second.transcript)
+    )
+    assert tuple(
+        (item.tag_id, item.scope, item.tag, item.distinct_panel_count)
+        for item in registry.tags
+    ) == (
+        ("tag_0000", "entity", phrase, 2),
+        ("tag_0001", "panel", phrase, 2),
+    )
+    assert registry.tags[0].tag_digest != registry.tags[1].tag_digest
+
+
 def test_model_unicode_punctuation_is_normalized_before_persistence_and_replay():
     raw = _scene()
     inventory = extract_object_scene_proposal_inventory(raw)
     payload = _payload(inventory)
+    payload["panel"]["summary"] = "two forms—side by side"
+    payload["panel"]["open_tags"] = [
+        {
+            "tag": "side—by—side forms",
+            "state": "present",
+            "evidence": "forms appear—side by side",
+        }
+    ]
     for row in payload["objects"]:
         row["summary"] = "outlined form—leans left"
         row["counts"][0]["evidence"] = "visible marks–two"
@@ -239,6 +334,11 @@ def test_model_unicode_punctuation_is_normalized_before_persistence_and_replay()
     assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
     assert artifact.transcript is not None
     row = artifact.transcript.objects[0]
+    assert artifact.transcript.panel_summary == "two forms - side by side"
+    assert artifact.transcript.panel_open_tags[0].tag == "side - by - side forms"
+    assert artifact.transcript.panel_open_tags[0].evidence == (
+        "forms appear - side by side"
+    )
     assert row.summary == "outlined form - leans left"
     assert row.count_cells[0].evidence == "visible marks - two"
     assert row.qualitative_cells[0].evidence == "edge - clearly visible"
@@ -326,10 +426,10 @@ def test_registry_uses_distinct_panel_frequency_and_persists_every_drop():
     assert discovery_a.transcript is not None and discovery_b.transcript is not None
 
     registry = freeze_object_scene_soft_tag_registry((discovery_a.transcript, discovery_b.transcript))
-    assert tuple((item.tag_id, item.tag, item.distinct_panel_count) for item in registry.tags) == (("tag_0000", "bird-like object", 2),)
-    assert tuple((item.tag, item.reason) for item in registry.dropped_tags) == (
-        ("pointed form", "seen_on_fewer_than_2_panels"),
-        ("sector form", "seen_on_fewer_than_2_panels"),
+    assert tuple((item.tag_id, item.scope, item.tag, item.distinct_panel_count) for item in registry.tags) == (("tag_0000", "entity", "bird-like object", 2),)
+    assert tuple((item.scope, item.tag, item.reason) for item in registry.dropped_tags) == (
+        ("entity", "pointed form", "seen_on_fewer_than_2_panels"),
+        ("entity", "sector form", "seen_on_fewer_than_2_panels"),
     )
     assert ObjectSceneSoftTagRegistry.from_data(registry.to_data()) == registry
     assert verify_object_scene_soft_tag_registry(
@@ -357,6 +457,240 @@ def test_registered_passes_have_identical_visible_envelopes_and_distinct_context
     assert pass_a.artifact_digest != pass_b.artifact_digest
     assert pass_a.transcript.objects[0].registered_tag_cells[0].support.to_data() == {"lower": 1, "upper": 1}
     assert lookup_object_scene_soft_tag(pass_a, "object_0000", "unregistered form").disposition is Disposition.INDETERMINATE
+
+
+def test_registered_payload_and_schema_exhaust_the_scoped_partitions():
+    raw_a, raw_b = _scene(0), _scene(2)
+    inv_a = extract_object_scene_proposal_inventory(raw_a)
+    inv_b = extract_object_scene_proposal_inventory(raw_b)
+    discovery_a = _observe(
+        raw_a,
+        _payload(
+            inv_a,
+            open_tags=("bird-like object",),
+            panel_open_tags=("separated forms",),
+        ),
+    )
+    discovery_b = _observe(
+        raw_b,
+        _payload(
+            inv_b,
+            open_tags=("bird-like object",),
+            panel_open_tags=("separated forms",),
+        ),
+        context=CONTEXT_B,
+    )
+    assert discovery_a.transcript is not None
+    assert discovery_b.transcript is not None
+    registry = freeze_object_scene_soft_tag_registry(
+        (discovery_a.transcript, discovery_b.transcript)
+    )
+    assert tuple((item.tag_id, item.scope) for item in registry.tags) == (
+        ("tag_0000", "entity"),
+        ("tag_0001", "panel"),
+    )
+
+    schema = object_scene_transcript_output_schema(
+        inv_a, ObjectSceneTranscriptMode.REGISTERED_EVALUATION, registry
+    )
+    properties = schema["properties"]
+    panel_ids = properties["panel"]["properties"]["registered_tags"][
+        "items"
+    ]["properties"]["tag_id"]["enum"]
+    entity_ids = properties["objects"]["items"]["properties"][
+        "registered_tags"
+    ]["items"]["properties"]["tag_id"]["enum"]
+    assert panel_ids == ["tag_0001"]
+    assert entity_ids == ["tag_0000"]
+
+    artifact = _observe(
+        raw_a,
+        _payload(inv_a, registry=registry),
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    transcript = artifact.transcript
+    assert transcript.registered_panel_tag_ids == ("tag_0001",)
+    assert transcript.registered_entity_tag_ids == ("tag_0000",)
+    assert tuple(
+        cell.tag_id for cell in transcript.panel_registered_tag_cells
+    ) == ("tag_0001",)
+    assert all(
+        tuple(cell.tag_id for cell in row.registered_tag_cells)
+        == ("tag_0000",)
+        for row in transcript.objects
+    )
+    assert lookup_object_scene_panel_soft_tag(
+        artifact, "separated forms"
+    ).disposition is Disposition.PRESENT
+    assert lookup_object_scene_soft_tag(
+        artifact, "object_0000", "bird-like object"
+    ).disposition is Disposition.PRESENT
+
+    wrong_panel = _payload(inv_a, registry=registry)
+    wrong_panel["panel"]["registered_tags"] = deepcopy(
+        wrong_panel["objects"][0]["registered_tags"]
+    )
+    rejected = _observe(
+        raw_a,
+        wrong_panel,
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+    assert rejected.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert lookup_object_scene_panel_soft_tag(
+        rejected, "separated forms"
+    ).disposition is Disposition.ERROR
+
+
+def test_scope_partition_tampering_is_rejected_by_transcript_and_artifact():
+    raw_a, raw_b = _scene(0), _scene(2)
+    inv_a = extract_object_scene_proposal_inventory(raw_a)
+    inv_b = extract_object_scene_proposal_inventory(raw_b)
+    first = _observe(
+        raw_a,
+        _payload(
+            inv_a,
+            open_tags=("bird-like object",),
+            panel_open_tags=("separated forms",),
+        ),
+    )
+    second = _observe(
+        raw_b,
+        _payload(
+            inv_b,
+            open_tags=("bird-like object",),
+            panel_open_tags=("separated forms",),
+        ),
+        context=CONTEXT_B,
+    )
+    assert first.transcript is not None and second.transcript is not None
+    registry = freeze_object_scene_soft_tag_registry(
+        (first.transcript, second.transcript)
+    )
+    artifact = _observe(
+        raw_a,
+        _payload(inv_a, registry=registry),
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+    assert artifact.transcript is not None
+    transcript = artifact.transcript
+
+    with pytest.raises(ObjectSceneVisualFrontendError):
+        replace(
+            transcript,
+            registered_panel_tag_ids=transcript.registered_entity_tag_ids,
+        )
+
+    rows = []
+    for row in transcript.objects:
+        row_values = {
+            "object_id": row.object_id,
+            "crop_receipt_digest": row.crop_receipt_digest,
+            "summary": row.summary,
+            "count_cells": row.count_cells,
+            "qualitative_cells": row.qualitative_cells,
+            "open_tags": row.open_tags,
+            "registered_tag_cells": transcript.panel_registered_tag_cells,
+        }
+        provisional_row = object.__new__(type(row))
+        for name, value in row_values.items():
+            object.__setattr__(provisional_row, name, value)
+        rows.append(
+            type(row)(
+                **row_values,
+                row_digest=frontend.canonical_digest(
+                    frontend._row_content(provisional_row)
+                ),
+            )
+        )
+    transcript_values = {
+        "panel_digest": transcript.panel_digest,
+        "inventory_digest": transcript.inventory_digest,
+        "mode": transcript.mode,
+        "registry_digest": transcript.registry_digest,
+        "panel_summary": transcript.panel_summary,
+        "panel_open_tags": transcript.panel_open_tags,
+        "panel_registered_tag_cells": transcript.objects[
+            0
+        ].registered_tag_cells,
+        "registered_panel_tag_ids": transcript.registered_entity_tag_ids,
+        "registered_entity_tag_ids": transcript.registered_panel_tag_ids,
+        "objects": tuple(rows),
+    }
+    provisional_transcript = object.__new__(type(transcript))
+    for name, value in transcript_values.items():
+        object.__setattr__(provisional_transcript, name, value)
+    structurally_resealed = type(transcript)(
+        **transcript_values,
+        transcript_digest=frontend.canonical_digest(
+            frontend._transcript_content(provisional_transcript)
+        ),
+    )
+    with pytest.raises(
+        ObjectSceneVisualFrontendError,
+        match="registry scope partition",
+    ):
+        replace(artifact, transcript=structurally_resealed)
+
+
+def test_zero_proposal_panel_transcripts_replay_in_both_modes():
+    raw_a, raw_b = _blank_scene(96), _blank_scene(97)
+    inv_a = extract_object_scene_proposal_inventory(raw_a)
+    inv_b = extract_object_scene_proposal_inventory(raw_b)
+    assert inv_a.objects == inv_b.objects == ()
+
+    payload_a = _payload(
+        inv_a, open_tags=(), panel_open_tags=("uniform white field",)
+    )
+    payload_a["panel"]["summary"] = "uniform white field fills the panel"
+    calls = []
+    first = _observe(raw_a, payload_a, calls=calls)
+    payload_b = _payload(
+        inv_b, open_tags=(), panel_open_tags=("uniform white field",)
+    )
+    payload_b["panel"]["summary"] = "uniform white field fills the panel"
+    second = _observe(raw_b, payload_b, context=CONTEXT_B)
+    assert first.status is second.status is PrototypeSceneObserverStatus.SUCCESS
+    assert calls[0][0] == ("panel.png",)
+    assert first.transcript is not None and second.transcript is not None
+    assert first.transcript.objects == ()
+    assert lookup_object_scene_panel_soft_tag(
+        first, "uniform white field"
+    ).disposition is Disposition.PRESENT
+
+    registry = freeze_object_scene_soft_tag_registry(
+        (first.transcript, second.transcript)
+    )
+    assert tuple((item.scope, item.tag) for item in registry.tags) == (
+        ("panel", "uniform white field"),
+    )
+    registered_payload = _payload(inv_a, open_tags=(), registry=registry)
+    registered_payload["panel"]["summary"] = (
+        "uniform white field fills the panel"
+    )
+    registered = _observe(
+        raw_a,
+        registered_payload,
+        mode=ObjectSceneTranscriptMode.REGISTERED_EVALUATION,
+        registry=registry,
+    )
+    assert registered.status is PrototypeSceneObserverStatus.SUCCESS
+    assert registered.transcript is not None
+    assert registered.transcript.registered_panel_tag_ids == ("tag_0000",)
+    assert registered.transcript.registered_entity_tag_ids == ()
+    assert registered.transcript.objects == ()
+    assert verify_object_scene_transcript_artifact(
+        registered,
+        raw_a,
+        expected_scene_id="opaque-scene",
+        expected_observation_context_digest=CONTEXT_A,
+        expected_panel_sha256=hashlib.sha256(raw_a).hexdigest(),
+        expected_artifact_digest=registered.artifact_digest,
+    ) == registered
 
 
 def test_missing_registered_cell_is_parser_error_never_absence():
