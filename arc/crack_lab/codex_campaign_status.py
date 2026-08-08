@@ -1391,7 +1391,68 @@ def ranked_frontiers(frontiers: list[dict[str, Any]],
     )
 
 
-def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
+def _configured_transcript_roots(
+    transcript_roots: Optional[tuple[Path, ...]] = None,
+) -> tuple[Path, ...]:
+    """Return canonical plus explicitly configured transcript roots.
+
+    Historical turns remain under the repository scratch root, while a
+    scheduler may place a newer isolated generation under ``GKM_SCRATCH``.
+    Treat the environment root as additive rather than replacing canonical
+    history.  Lexical absolute normalization deliberately does not resolve
+    symlinks; physical-root checks happen before evidence is read.
+    """
+
+    canonical = HERE / "runs" / "scratch"
+    requested: list[Path] = [canonical]
+    if transcript_roots is None:
+        configured = os.environ.get("GKM_SCRATCH")
+        if configured:
+            requested.append(Path(configured))
+    else:
+        requested.extend(transcript_roots)
+
+    result: list[Path] = []
+    seen: set[str] = set()
+    for root in requested:
+        if not root.is_absolute():
+            raise ValueError(f"transcript root is not absolute: {root}")
+        normalized = Path(os.path.abspath(os.fspath(root)))
+        key = os.path.normcase(os.fspath(normalized))
+        if key in seen:
+            continue
+        seen.add(key)
+        result.append(normalized)
+    return tuple(result)
+
+
+def _physical_transcript_candidate(root: Path, path: Path) -> bool:
+    """Reject aliases anywhere below one trusted transcript root."""
+
+    try:
+        if (
+            any(ancestor.is_symlink() for ancestor in (root, *root.parents))
+            or not root.is_dir()
+        ):
+            return False
+        current = path.parent
+        while True:
+            if current.is_symlink() or not current.is_dir():
+                return False
+            if current == root:
+                return True
+            if current == current.parent or not current.is_relative_to(root):
+                return False
+            current = current.parent
+    except OSError:
+        return False
+
+
+def _transcript_counts(
+    record: dict[str, Any],
+    *,
+    transcript_roots: Optional[tuple[Path, ...]] = None,
+) -> dict[str, int]:
     workspace = record.get("workspace")
     transcript = record.get("transcript")
     result = {
@@ -1414,18 +1475,48 @@ def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
         or Path(transcript).name != transcript
     ):
         return result
-    scratch = HERE / "runs" / "scratch"
-    protected = scratch / ".proposer_transcripts" / workspace / transcript
-    live = scratch / workspace / transcript
-    path = protected if protected.exists() else live
-    if not path.exists():
-        return result
-    try:
-        raw_transcript = _read_stable_regular(path).decode(
-            "utf-8", errors="ignore"
+    roots = _configured_transcript_roots(transcript_roots)
+    canonical = roots[0]
+    raw_candidates: dict[str, bytes] = {}
+    for scratch in roots:
+        protected = (
+            scratch / ".proposer_transcripts" / workspace / transcript
         )
-    except OSError:
+        live = scratch / workspace / transcript
+        is_canonical = scratch == canonical
+        if protected.exists():
+            path = protected
+        elif is_canonical and live.exists():
+            # Backward compatibility for legacy canonical turns that predate
+            # protected transcript sealing.  Noncanonical evidence must always
+            # use the protected copy authenticated by the terminal ledger row.
+            path = live
+        else:
+            continue
+        if not _physical_transcript_candidate(scratch, path):
+            return result
+        try:
+            raw = _read_stable_regular(path)
+        except (OSError, ValueError):
+            return result
+        if not is_canonical:
+            expected_sha = record.get("protected_transcript_sha256")
+            if (
+                record.get("protected_transcript_status") != "sealed"
+                or not isinstance(expected_sha, str)
+                or len(expected_sha) != 64
+                or any(ch not in "0123456789abcdef" for ch in expected_sha)
+                or hashlib.sha256(raw).hexdigest() != expected_sha
+            ):
+                return result
+        raw_candidates[hashlib.sha256(raw).hexdigest()] = raw
+    if len(raw_candidates) != 1:
+        # Missing evidence and conflicting cross-root candidates are both
+        # noncounting.  In particular, never pick one root by precedence.
         return result
+    raw_transcript = next(iter(raw_candidates.values())).decode(
+        "utf-8", errors="ignore"
+    )
     for raw in raw_transcript.splitlines():
         try:
             event = json.loads(raw)
@@ -1443,7 +1534,11 @@ def _transcript_counts(record: dict[str, Any]) -> dict[str, int]:
     return result
 
 
-def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+def joined_turns(
+    records: list[dict[str, Any]],
+    *,
+    transcript_roots: Optional[tuple[Path, ...]] = None,
+) -> list[dict[str, Any]]:
     outcomes = {
         row.get("thread_id"): row
         for row in records
@@ -1486,7 +1581,13 @@ def joined_turns(records: list[dict[str, Any]]) -> list[dict[str, Any]]:
             or corrections_by_transcript.get(row.get("transcript"))
             or {}
         )
-        transcript = _transcript_counts(row)
+        transcript = (
+            _transcript_counts(row)
+            if transcript_roots is None
+            else _transcript_counts(
+                row, transcript_roots=transcript_roots
+            )
+        )
         failure_class = correction.get(
             "failure_class", row.get("failure_class")
         )

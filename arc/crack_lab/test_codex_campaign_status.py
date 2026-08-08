@@ -489,6 +489,181 @@ def test_completed_clean_failure_uses_protected_transcript_after_cleanup(
     assert turn["retry_increment"] == 1
 
 
+def test_private_sealed_transcript_extends_canonical_retry_history(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    private = tmp_path / "private-scratch"
+    private.mkdir()
+    monkeypatch.setenv("GKM_SCRATCH", str(private))
+    frontier = _frontier(
+        "lf52", 8, incumbent_kind="promoted", priority_score=10.0
+    )
+    records = []
+    for index in range(10):
+        workspace = f"clean-ws-{index}"
+        transcript = f"clean-{index}.jsonl"
+        scratch = tmp_path / "runs" / "scratch" if index < 9 else private
+        protected = scratch / ".proposer_transcripts" / workspace
+        protected.mkdir(parents=True)
+        raw = (
+            json.dumps({"type": "thread.started", "thread_id": workspace})
+            + "\n"
+            + json.dumps({"type": "turn.completed", "usage": {}})
+            + "\n"
+        ).encode("utf-8")
+        (protected / transcript).write_bytes(raw)
+        records.extend([
+            _turn_on(
+                frontier,
+                event="codex_exec",
+                thread_id=workspace,
+                workspace=workspace,
+                transcript=transcript,
+                run_label="lf52:L9:propose",
+                reasoning_effort="max",
+                timed_out=False,
+                interrupted=False,
+                failure_class=None,
+                protected_transcript_status="sealed",
+                protected_transcript_sha256=hashlib.sha256(raw).hexdigest(),
+            ),
+            _turn_on(
+                frontier,
+                event="codex_level_outcome",
+                thread_id=workspace,
+                solved_target=False,
+                taint_verdict="clean",
+            ),
+        ])
+    turns = S.joined_turns(records)
+    assert len(turns) == 10
+    assert all(turn["transcript_complete"] for turn in turns)
+    row = S.ranked_frontiers([frontier], turns)[0]
+    assert row["failed_attempts_at_frontier"] == 10
+    assert row["retry_complexity_n"] == 10
+
+
+def test_private_transcript_hash_mismatch_is_noncounting(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    private = tmp_path / "private-scratch"
+    protected = private / ".proposer_transcripts" / "private-ws"
+    protected.mkdir(parents=True)
+    monkeypatch.setenv("GKM_SCRATCH", str(private))
+    raw = (json.dumps({"type": "turn.completed", "usage": {}}) + "\n").encode()
+    (protected / "private.jsonl").write_bytes(raw)
+    records = [
+        {
+            "event": "codex_exec",
+            "thread_id": "private",
+            "workspace": "private-ws",
+            "transcript": "private.jsonl",
+            "game": "lf52",
+            "target_level": 9,
+            "failure_class": None,
+            "timed_out": False,
+            "interrupted": False,
+            "protected_transcript_status": "sealed",
+            "protected_transcript_sha256": "0" * 64,
+        },
+        {
+            "event": "codex_level_outcome",
+            "thread_id": "private",
+            "game": "lf52",
+            "target_level": 9,
+            "solved_target": False,
+            "taint_verdict": "clean",
+        },
+    ]
+    turn = S.joined_turns(records)[0]
+    assert turn["transcript_complete"] is False
+    assert turn["clean_no_progress"] is False
+    assert turn["retry_increment"] == 0
+
+
+def test_symlinked_private_transcript_root_is_noncounting(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    physical = tmp_path / "physical-scratch"
+    protected = physical / ".proposer_transcripts" / "private-ws"
+    protected.mkdir(parents=True)
+    linked = tmp_path / "linked-scratch"
+    linked.symlink_to(physical, target_is_directory=True)
+    monkeypatch.setenv("GKM_SCRATCH", str(linked))
+    raw = (json.dumps({"type": "turn.completed", "usage": {}}) + "\n").encode()
+    (protected / "private.jsonl").write_bytes(raw)
+    records = [{
+        "event": "codex_exec",
+        "thread_id": "private",
+        "workspace": "private-ws",
+        "transcript": "private.jsonl",
+        "game": "lf52",
+        "target_level": 9,
+        "protected_transcript_status": "sealed",
+        "protected_transcript_sha256": hashlib.sha256(raw).hexdigest(),
+    }]
+    turn = S.joined_turns(records)[0]
+    assert turn["transcript_complete"] is False
+
+
+def test_conflicting_cross_root_transcripts_are_noncounting(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    private = tmp_path / "private-scratch"
+    monkeypatch.setenv("GKM_SCRATCH", str(private))
+    relative = Path(".proposer_transcripts") / "same-ws" / "same.jsonl"
+    canonical_path = tmp_path / "runs" / "scratch" / relative
+    private_path = private / relative
+    canonical_path.parent.mkdir(parents=True)
+    private_path.parent.mkdir(parents=True)
+    canonical_raw = (
+        json.dumps({"type": "turn.completed", "usage": {}}) + "\n"
+    ).encode()
+    private_raw = (
+        json.dumps({"type": "turn.completed", "usage": {"x": 1}}) + "\n"
+    ).encode()
+    canonical_path.write_bytes(canonical_raw)
+    private_path.write_bytes(private_raw)
+    records = [{
+        "event": "codex_exec",
+        "thread_id": "same",
+        "workspace": "same-ws",
+        "transcript": "same.jsonl",
+        "game": "lf52",
+        "target_level": 9,
+        "protected_transcript_status": "sealed",
+        "protected_transcript_sha256": hashlib.sha256(private_raw).hexdigest(),
+    }]
+    turn = S.joined_turns(records)[0]
+    assert turn["transcript_complete"] is False
+
+
+def test_duplicate_configured_canonical_root_is_deduplicated(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(S, "HERE", tmp_path)
+    scratch = tmp_path / "runs" / "scratch"
+    protected = scratch / ".proposer_transcripts" / "same-ws"
+    protected.mkdir(parents=True)
+    monkeypatch.setenv("GKM_SCRATCH", str(scratch))
+    (protected / "same.jsonl").write_text(
+        json.dumps({"type": "turn.completed", "usage": {}}) + "\n"
+    )
+    turn = S.joined_turns([{
+        "event": "codex_exec",
+        "thread_id": "same",
+        "workspace": "same-ws",
+        "transcript": "same.jsonl",
+        "game": "lf52",
+        "target_level": 9,
+    }])[0]
+    assert turn["transcript_complete"] is True
+
+
 def test_audited_legacy_binding_correction_can_authorize_one_retry(
     tmp_path, monkeypatch
 ):
