@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import replace
+import hashlib
+import json
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -90,11 +92,11 @@ def _semantic_concept(
     }
 
 
-def test_campaign_v4_cascade_bumps_only_semantically_affected_wrappers() -> None:
-    assert COMMAND_ID.endswith("-v4")
+def test_campaign_v5_binds_drill_cohort_and_multimodal_semantic_wrappers() -> None:
+    assert COMMAND_ID.endswith("-v5")
     assert TASK_BATCH_SCHEMA.endswith(".v3")
-    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v4")
-    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v4")
+    assert TASK_SEMANTIC_PREPARED_SCHEMA.endswith(".v5")
+    assert TASK_SEMANTIC_PROPOSAL_SCHEMA.endswith(".v5")
     assert TASK_REGISTRY_SCHEMA.endswith(".v4")
     assert TASK_IR_SCHEMA.endswith(".v4")
     assert TASK_RANK_INPUT_SCHEMA.endswith(".v4")
@@ -103,8 +105,8 @@ def test_campaign_v4_cascade_bumps_only_semantically_affected_wrappers() -> None
     assert CAMPAIGN_RESULT_SCHEMA.endswith(".v4")
     assert CAMPAIGN_REPLAY_SCHEMA.endswith(".v4")
 
-    # These wrappers did not change shape or meaning.  The command ID and
-    # parent digests still bind them transitively to this campaign generation.
+    # These non-semantic wrappers did not change shape or meaning. The command
+    # ID and parent digests bind them transitively to this campaign generation.
     assert TASK_ROLE_REVEAL_SCHEMA.endswith(".v1")
     assert CAMPAIGN_RUNTIME_SCHEMA.endswith(".v1")
     assert CAMPAIGN_RUNTIME_CUSTODY_SCHEMA.endswith(".v1")
@@ -516,24 +518,25 @@ def test_query_scoring_uses_certified_absence_in_both_orientations(
     assert all(row["correct"] for row in (*rows0, *rows1))
 
 
-def test_semantic_gap_code_is_determined_by_usable_discovery_evidence() -> None:
+def test_multimodal_semantic_gap_is_not_caused_by_missing_discovery_prose() -> None:
     enough = SimpleNamespace(
         alias_bindings=tuple(
-            {"historical_role": role, "usable": True}
-            for role in (0, 0, 1, 1)
+            {"historical_role": role, "usable": False}
+            for role in ((0,) * 6 + (1,) * 6)
         )
     )
     insufficient = SimpleNamespace(
         alias_bindings=tuple(
             {"historical_role": role, "usable": True}
-            for role in (0, 0, 1)
+            for role in ((0,) * 5 + (1,) * 6)
         )
     )
     assert _semantic_payload_gap_code(enough) == "payload_rejected"
-    assert (
+    with pytest.raises(
+        ObjectBongardScenePredicateCampaignCommandError,
+        match="support role inventory",
+    ):
         _semantic_payload_gap_code(insufficient)
-        == "insufficient_discovery_evidence"
-    )
 
 
 def test_semantic_proposal_gap_never_calls_ranker(
@@ -870,7 +873,7 @@ def test_semantic_payload_error_seals_exact_rejected_payload(
 
     monkeypatch.setattr(calibration, "_journal_runtime_kwargs", lambda _runtime: {})
     monkeypatch.setattr(
-        journal_module, "ObjectBongardTextTurnJournalTransport", FakeJournal
+        journal_module, "ObjectBongardNamedImageTurnJournalTransport", FakeJournal
     )
     monkeypatch.setattr(
         journal_module,
@@ -896,12 +899,17 @@ def test_semantic_payload_error_seals_exact_rejected_payload(
         "_restore_task_semantic_proposal",
         lambda *_args, **_kwargs: (proposal, registry),
     )
+    monkeypatch.setattr(
+        campaign,
+        "_task_semantic_proposer_presentation",
+        lambda *_args, **_kwargs: (("panel_000.png", b"support"),),
+    )
     prepared_input = SimpleNamespace(
         prompt="both frozen support buckets",
         output_schema={"type": "object"},
         alias_bindings=tuple(
             {"historical_role": role, "usable": True}
-            for role in (0, 0, 1, 1)
+            for role in ((0,) * 6 + (1,) * 6)
         ),
     )
     budget = _CallBudget()
@@ -925,7 +933,8 @@ def test_semantic_payload_error_seals_exact_rejected_payload(
             semantic_prepared=prepared_input,
             discovery_artifacts=(),
             role_rows=(),
-            text_transport=lambda *_args, **_kwargs: object(),
+            panels=(),
+            named_image_transport=lambda *_args, **_kwargs: object(),
             budget=budget,
         )
     )
@@ -953,11 +962,12 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         LAUNCHER_DIGEST,
         MODEL_CATALOG,
         NO_TOOLS_ATTESTATION,
-        _text_receipt,
     )
     from bongard.tests.test_object_scene_semantic_registry import (
         _discovery_artifact,
     )
+    from bongard.tests.test_object_scene_visual_frontend import _scene
+    from bongard.tests.test_prototype_scene_observer import _receipt
     from bongard.transport import (
         CloudPolicyCacheSnapshot,
         CodexStructuredResult,
@@ -989,7 +999,7 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             _semantic_concept(
                 "panel",
                 "paired visible forms",
-                aliases[0][:2],
+                aliases[0],
                 witness_kind="spatial_relation",
                 witness_statement=(
                     "two visible forms occupy distinct regions of the panel"
@@ -1004,7 +1014,7 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             _semantic_concept(
                 "entity",
                 "not pointed",
-                aliases[0][1:3],
+                aliases[0],
                 witness_statement="the entity has one visibly sharp terminal tip",
             ),
         ],
@@ -1012,7 +1022,7 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             _semantic_concept(
                 "entity",
                 "unequal edge lengths",
-                aliases[1][:2],
+                aliases[1],
                 witness_kind="count_relation",
                 witness_statement=(
                     "two corresponding straight edges visibly differ in length"
@@ -1045,11 +1055,34 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         )
     )
     task = SimpleNamespace(record_digest=ADDRESS_3, family="bd")
+    panels = tuple(
+        campaign._TaskSupportPanel(
+            index,
+            artifact.scene_id,
+            f"bd_scene_00_{index:02d}",
+            index // 6,
+            SimpleNamespace(
+                exact_png_bytes=_scene(index),
+                exact_png_digest=(
+                    "sha256:"
+                    + hashlib.sha256(_scene(index)).hexdigest()
+                ),
+            ),
+            object(),
+            artifact.inventory,
+            role_rows[index]["neutral_panel_digest"],
+        )
+        for index, artifact in enumerate(discovery_artifacts)
+    )
+    presentation = campaign._task_semantic_proposer_presentation(
+        panels, semantic_prepared
+    )
     semantic_prepared_record = campaign._semantic_prepared_record(
         task=task,
         discovery_batch={"batch_digest": ADDRESS_4},
         role_reveal={"role_reveal_digest": ADDRESS_1},
         semantic_prepared=semantic_prepared,
+        presentation=presentation,
     )
     semantic_prepared_record, semantic_prepared_receipt = campaign._persist_record(
         store,
@@ -1063,13 +1096,26 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             expected_data=semantic_prepared_record,
         )
     ) == semantic_prepared_record
+    assert len(presentation) == 24
+    assert semantic_prepared_record["named_image_count"] == len(presentation)
+    assert semantic_prepared_record["named_image_commitments"] == [
+        {
+            "name": name,
+            "byte_count": len(data),
+            "sha256": hashlib.sha256(data).hexdigest(),
+        }
+        for name, data in presentation
+    ]
 
     physical_calls: list[str] = []
 
-    def offline_transport(prompt, schema, **_kwargs):
+    seen_names: list[str] = []
+
+    def offline_transport(prompt, paths, names, schema, **_kwargs):
         physical_calls.append("semantic-proposer")
+        seen_names.extend(names)
         return CodexStructuredResult(
-            payload, _text_receipt(prompt, schema, payload)
+            payload, _receipt(prompt, paths, names, schema, payload)
         )
 
     budget = _CallBudget()
@@ -1083,11 +1129,15 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         semantic_prepared=semantic_prepared,
         discovery_artifacts=discovery_artifacts,
         role_rows=role_rows,
-        text_transport=offline_transport,
+        panels=panels,
+        named_image_transport=offline_transport,
         budget=budget,
     )
 
     assert physical_calls == ["semantic-proposer"]
+    assert seen_names == [name for name, _ in presentation]
+    assert all(name.startswith("panel_") for name in seen_names)
+    assert all("query" not in name for name in seen_names)
     assert budget.snapshot().semantic_proposer_calls == 1
     assert proposal.status == "proposed"
     assert len(registry.tags) == 2
@@ -1112,6 +1162,19 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         "result.json",
         "outcome.json",
     }
+    manifest = json.loads((journal_root / "manifest.json").read_text("utf-8"))
+    assert manifest["modality"] == "named_image_structured"
+    assert manifest["named_images"] == semantic_prepared_record[
+        "named_image_commitments"
+    ]
+    required_bindings = semantic_prepared.model_view[
+        "required_positive_bindings"
+    ]
+    for orientation in ("side0_positive", "side1_positive"):
+        assert all(
+            set(item.citations) == set(required_bindings[orientation])
+            for item in getattr(proposal, orientation)
+        )
 
     replay_calls: list[object] = []
 
@@ -1120,7 +1183,7 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
         raise AssertionError("cold replay attempted a physical proposer call")
 
     monkeypatch.setattr(
-        campaign, "_forbidden_text_transport", forbidden_replay_transport
+        campaign, "_forbidden_named_transport", forbidden_replay_transport
     )
     replayed_proposal, replayed_registry, replay_summary_digest = (
         campaign._cold_replay_task_semantic_proposal(
@@ -1134,6 +1197,7 @@ def test_mixed_semantic_payload_is_persisted_and_cold_replayed_without_calls(
             semantic_proposal_record=record,
             discovery_artifacts=discovery_artifacts,
             role_rows=role_rows,
+            panels=panels,
         )
     )
     assert replay_calls == []

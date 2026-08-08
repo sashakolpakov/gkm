@@ -6,8 +6,9 @@ panel bytes, or call a model.  The official release gate durably appends one
 12-task exposure event before support bytes can be released.
 
 For every task, twelve support panels receive one blind discovery observation.
-After that batch is durable, one zero-image proposer sees the frozen prose in
-both revealed support buckets and proposes an affirmative soft-tag union.  Two
+After that batch is durable, one multimodal proposer sees the frozen prose and
+all twelve already-released support panels and atlases under opaque aliases in
+both revealed support buckets.  It proposes an affirmative soft-tag union. Two
 independent role-blind registered-evaluation observations ground those tags,
 then Python constructs a closed, conservative predicate version space.  A
 typed gap makes no ranker or query calls; otherwise one zero-image ranker may
@@ -34,19 +35,25 @@ import os
 from pathlib import Path
 import re
 import sys
+import tempfile
 import time
 from threading import Lock
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
 from bongard.canonical import canonical_digest, canonical_json
-from bongard.object_bongard_batch import (
-    ObjectBongardBatchPlan,
-    object_bongard_batch_source_digest,
+from bongard.object_bongard_drill_batch import (
+    FREEFORM_POLICY as DRILL_FREEFORM_POLICY,
+    ObjectBongardDrillBatchPlan,
+    object_bongard_drill_batch_source_digest,
+    verify_object_bongard_drill_batch_plan,
 )
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
-COMMAND_ID = "bongard.scene-predicate-campaign/exact-unused-train-12-v4"
+COMMAND_ID = (
+    "bongard.scene-predicate-campaign/"
+    "exact-unused-train-semantic-drill-12-v5"
+)
 TASK_COUNT = 12
 SUPPORT_PANEL_COUNT_PER_TASK = 12
 DISCOVERY_CALLS_PER_TASK = 12
@@ -76,10 +83,10 @@ TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v3"
 TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v4"
 TASK_ROLE_REVEAL_SCHEMA = "gkm.bongard-scene-predicate-task-role-reveal.v1"
 TASK_SEMANTIC_PREPARED_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-prepared.v4"
+    "gkm.bongard-scene-predicate-task-semantic-prepared.v5"
 )
 TASK_SEMANTIC_PROPOSAL_SCHEMA = (
-    "gkm.bongard-scene-predicate-task-semantic-proposal.v4"
+    "gkm.bongard-scene-predicate-task-semantic-proposal.v5"
 )
 TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v4"
 TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v4"
@@ -99,10 +106,12 @@ JOURNAL_DIRECTORY = "journals"
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PREREGISTRATION = (
-    _REPOSITORY_ROOT / "bongard/data/object_bongard_rubric_train_20260808.prereg.json"
+    _REPOSITORY_ROOT
+    / "bongard/data/object_bongard_scene_drill_train_20260808.prereg.json"
 )
 DEFAULT_PLAN = (
-    _REPOSITORY_ROOT / "bongard/data/object_bongard_rubric_train_20260808.plan.json"
+    _REPOSITORY_ROOT
+    / "bongard/data/object_bongard_scene_drill_train_20260808.plan.json"
 )
 DEFAULT_DESCRIPTOR = (
     _REPOSITORY_ROOT / "bongard/data/shape_bongard_v2_release_v1.json"
@@ -121,13 +130,13 @@ DEFAULT_EXPOSURE_PREDECESSOR = (
 )
 
 PREREGISTRATION_FILE_SHA256 = (
-    "10d52f9eec047063e1861cd7c151fa6600cf2c4ef4ad6423784cc419db0fb76e"
+    "8280a65ad001bd64ab46f4f7d7b7f80f1e7d8c3cd69a9d9d3b396fb0bfcb8cac"
 )
-PLAN_FILE_SHA256 = "c2f07c7885a42f4125f397ddf5bf7f8827b3ef1a6c1fb77e82f08a6ab2b3d523"
+PLAN_FILE_SHA256 = "f3417fb4d056781c85961c0b771a73630c97193384f90216862c8af8d7a3ad3e"
 PREREGISTRATION_DIGEST = (
-    "sha256:b4e29960a9524f5785139a3ddf462d5ddec784d52eb0f2678cb1674820dd8107"
+    "sha256:6f2d044c5dbd8b4b17ee476a48872cfcffc797e6a4d0e5d92edf256d0ebbbf19"
 )
-PLAN_DIGEST = "sha256:760edd40d91c67fd3c5e3b6f94119754f5368441b479f0940c2c7bd77c17b941"
+PLAN_DIGEST = "sha256:56b7ef40584ad3bbfb9800b6f58778d15d227eac871d354c492293e4787d3ab8"
 EXPOSURE_PREDECESSOR_FILE_SHA256 = (
     "1bcde18e387539f13c4006b4a147e61c75feacb86bb031f10a6e8ba3412fe48d"
 )
@@ -177,7 +186,7 @@ def _automatic_release_source_bindings() -> dict[str, str]:
     )
 
     return {
-        "batch_source": "sha256:" + object_bongard_batch_source_digest(),
+        "batch_source": "sha256:" + object_bongard_drill_batch_source_digest(),
         "release_gate_source": "sha256:"
         + object_bongard_release_gate_source_digest(),
     }
@@ -225,11 +234,11 @@ def _read_exact_json(path: Path, expected_sha256: str, label: str) -> dict[str, 
 
 def _load_exact_cohort(
     preregistration_path: Path, plan_path: Path
-) -> tuple[dict[str, Any], ObjectBongardBatchPlan]:
+) -> tuple[dict[str, Any], ObjectBongardDrillBatchPlan]:
     preregistration = _read_exact_json(
         preregistration_path, PREREGISTRATION_FILE_SHA256, "preregistration"
     )
-    plan = ObjectBongardBatchPlan.from_data(
+    plan = ObjectBongardDrillBatchPlan.from_data(
         _read_exact_json(plan_path, PLAN_FILE_SHA256, "batch plan")
     )
     body = {key: item for key, item in preregistration.items() if key != "record_digest"}
@@ -242,8 +251,13 @@ def _load_exact_cohort(
         or preregistration.get("query_identities_sealed_before_support_pixels") is not True
         or preregistration.get("panel_bytes_opened_before_preregistration") is not False
         or preregistration.get("official_test_authorized") is not False
+        or preregistration.get("families") != ["bd", "hd"]
+        or preregistration.get("semantic_cohort") != "drill"
+        or preregistration.get("freeform_policy") != DRILL_FREEFORM_POLICY
+        or plan.requested_per_family != 6
         or len(plan.tasks) != TASK_COUNT
-        or any(families.count(family) != 4 for family in ("bd", "ff", "hd"))
+        or any(families.count(family) != 6 for family in ("bd", "hd"))
+        or any(family not in {"bd", "hd"} for family in families)
     ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "preregistered TRAIN cohort differs"
@@ -893,7 +907,7 @@ class PreparedObjectBongardScenePredicateCampaign:
     output_root: Path
     calibration: object
     preregistration: Mapping[str, Any]
-    plan: ObjectBongardBatchPlan
+    plan: ObjectBongardDrillBatchPlan
     descriptor: object
     archive: object
     release: object
@@ -1092,6 +1106,13 @@ def prepare_object_bongard_scene_predicate_campaign(
         raise ObjectBongardScenePredicateCampaignCommandError(
             "official split identity differs"
         )
+    verify_object_bongard_drill_batch_plan(
+        plan,
+        task_ids=task_ids,
+        train_task_ids=train_task_ids,
+        predecessor=predecessor,
+        selection_seed=preregistration.get("selection_seed"),
+    )
     root = _fresh_output_root(output_root)
     store = ObjectBongardReleaseStore(root)
     timestamp = exposure_observed_at or datetime.now(timezone.utc).isoformat().replace(
@@ -1445,6 +1466,79 @@ def _release_task_support_panels(
             "released support inventory differs"
         )
     return tuple(rows)
+
+
+def _task_semantic_proposer_presentation(
+    panels: Sequence[_TaskSupportPanel],
+    semantic_prepared: object,
+) -> tuple[tuple[str, bytes], ...]:
+    """Bind support-only panel/atlas bytes to the prepared opaque aliases."""
+
+    from bongard.object_scene_visual_frontend import (
+        render_object_scene_proposal_atlas,
+    )
+
+    panel_rows = tuple(panels)
+    if len(panel_rows) != SUPPORT_PANEL_COUNT_PER_TASK:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic support presentation panel count differs"
+        )
+    by_scene = {panel.blind_panel_id: panel for panel in panel_rows}
+    visible_rows = {
+        item.get("panel_alias"): item
+        for key in (
+            "side0_support_descriptions",
+            "side1_support_descriptions",
+        )
+        for item in getattr(semantic_prepared, "model_view").get(key, ())
+        if isinstance(item, Mapping)
+    }
+    presentation: list[tuple[str, bytes]] = []
+    for binding in getattr(semantic_prepared, "alias_bindings"):
+        alias = binding.get("alias")
+        panel = by_scene.get(binding.get("scene_id"))
+        if (
+            not isinstance(alias, str)
+            or panel is None
+            or panel.png_sha256 != binding.get("panel_digest")
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "task semantic support alias binding differs"
+            )
+        atlas = render_object_scene_proposal_atlas(
+            panel.inventory, panel.exact_png_bytes
+        )
+        images = [(f"{alias}.png", panel.exact_png_bytes)]
+        images.extend(
+            (f"{alias}_{source_name}", payload)
+            for source_name, payload in atlas
+        )
+        visible_row = visible_rows.get(alias)
+        if (
+            visible_row is None
+            or visible_row.get("panel_image") != images[0][0]
+            or visible_row.get("attached_images")
+            != [name for name, _ in images]
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "task semantic model-visible image manifest differs"
+            )
+        presentation.extend(images)
+    names = tuple(name for name, _ in presentation)
+    if (
+        len(presentation) < SUPPORT_PANEL_COUNT_PER_TASK * 2
+        or len(presentation) > 64
+        or len(names) != len(set(names))
+        or set(visible_rows)
+        != {
+            item.get("alias")
+            for item in getattr(semantic_prepared, "alias_bindings")
+        }
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic support presentation inventory differs"
+        )
+    return tuple(presentation)
 
 
 def _observation_context_digest(
@@ -1878,6 +1972,7 @@ def _semantic_prepared_record(
     discovery_batch: Mapping[str, Any],
     role_reveal: Mapping[str, Any],
     semantic_prepared: object,
+    presentation: Sequence[tuple[str, bytes]],
 ) -> dict[str, Any]:
     return _record(
         {
@@ -1888,7 +1983,24 @@ def _semantic_prepared_record(
             "role_reveal_digest": role_reveal["role_reveal_digest"],
             "prepared_input": semantic_prepared.to_data(),
             "preparation_digest": semantic_prepared.preparation_digest,
-            "prepared_input_persisted_before_zero_image_proposer_call": True,
+            "named_image_commitments": [
+                {
+                    "name": name,
+                    "byte_count": len(payload),
+                    "sha256": hashlib.sha256(payload).hexdigest(),
+                }
+                for name, payload in presentation
+            ],
+            "named_image_count": len(presentation),
+            "semantic_registry_proposer_modality": "named_image_structured",
+            "semantic_registry_proposer_support_panel_count": (
+                SUPPORT_PANEL_COUNT_PER_TASK
+            ),
+            "semantic_registry_proposer_receives_all_support_atlases": True,
+            "semantic_registry_proposer_receives_query_pixels": False,
+            "every_semantic_card_cites_all_positive_support_panels": True,
+            "prepared_input_persisted_before_named_image_proposer_call": True,
+            "all_named_image_bytes_committed_before_semantic_proposer_call": True,
             **_authority_data(),
         },
         "semantic_prepared_digest",
@@ -1903,6 +2015,7 @@ def _freeze_task_semantic_prepared(
     role_reveal: Mapping[str, Any],
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
+    panels: Sequence[_TaskSupportPanel],
 ) -> tuple[object, dict[str, Any], object]:
     from bongard.object_scene_semantic_registry import (
         ObjectScenePreparedSemanticRegistryProposal,
@@ -1912,11 +2025,15 @@ def _freeze_task_semantic_prepared(
     semantic_prepared = prepare_object_scene_semantic_registry_proposal(
         tuple(discovery_artifacts), tuple(role_rows)
     )
+    presentation = _task_semantic_proposer_presentation(
+        panels, semantic_prepared
+    )
     record = _semantic_prepared_record(
         task=task,
         discovery_batch=discovery_batch,
         role_reveal=role_reveal,
         semantic_prepared=semantic_prepared,
+        presentation=presentation,
     )
     raw, receipt = _persist_record(
         prepared.release.store,
@@ -1930,7 +2047,21 @@ def _freeze_task_semantic_prepared(
     expected = prepare_object_scene_semantic_registry_proposal(
         tuple(discovery_artifacts), tuple(role_rows)
     )
-    if restored != semantic_prepared or expected != semantic_prepared:
+    expected_presentation = _task_semantic_proposer_presentation(
+        panels, expected
+    )
+    if (
+        restored != semantic_prepared
+        or expected != semantic_prepared
+        or raw
+        != _semantic_prepared_record(
+            task=task,
+            discovery_batch=discovery_batch,
+            role_reveal=role_reveal,
+            semantic_prepared=expected,
+            presentation=expected_presentation,
+        )
+    ):
         raise ObjectBongardScenePredicateCampaignCommandError(
             "task semantic prepared input durable replay differs"
         )
@@ -1982,6 +2113,9 @@ def _semantic_proposal_result_record(
             "proposer_journal_summary_digest": journal_summary_digest,
             "proposer_fresh_call_count": 1,
             "proposer_reused_call_count": 0,
+            "semantic_registry_proposer_modality": "named_image_structured",
+            "semantic_registry_proposer_receives_query_pixels": False,
+            "every_semantic_card_cites_all_positive_support_panels": True,
             "quarantined_concept_count": len(
                 semantic_proposal.dropped_concepts
             ),
@@ -1998,18 +2132,17 @@ def _semantic_proposal_result_record(
 
 
 def _semantic_payload_gap_code(semantic_prepared: object) -> str:
-    usable_by_role = {
-        role: sum(
-            item["usable"] is True and item["historical_role"] == role
-            for item in getattr(semantic_prepared, "alias_bindings")
-        )
+    bindings = tuple(getattr(semantic_prepared, "alias_bindings"))
+    if any(
+        sum(item["historical_role"] == role for item in bindings) != 6
         for role in (0, 1)
-    }
-    return (
-        "insufficient_discovery_evidence"
-        if any(count < 2 for count in usable_by_role.values())
-        else "payload_rejected"
-    )
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task semantic support role inventory differs"
+        )
+    # Frozen support pixels remain usable even when blind discovery prose is
+    # unavailable, so a malformed multimodal response is a payload gap.
+    return "payload_rejected"
 
 
 def _restore_task_semantic_proposal(
@@ -2110,14 +2243,15 @@ def _execute_task_semantic_proposal(
     semantic_prepared: object,
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
-    text_transport: Callable[..., object],
+    panels: Sequence[_TaskSupportPanel],
+    named_image_transport: Callable[..., object],
     budget: _CallBudget,
 ) -> tuple[object, object, dict[str, Any], object]:
     from bongard.object_bongard_scene_predicate_calibration_command import (
         _journal_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
-        ObjectBongardTextTurnJournalTransport,
+        ObjectBongardNamedImageTurnJournalTransport,
         verify_object_bongard_turn_journal,
     )
     from bongard.object_scene_semantic_registry import (
@@ -2127,27 +2261,41 @@ def _execute_task_semantic_proposal(
     )
 
     relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
+    presentation = _task_semantic_proposer_presentation(
+        panels, semantic_prepared
+    )
 
     def counted_transport(*args: object, **kwargs: object) -> object:
         budget.count("semantic_proposer", _stage_limit("semantic_proposer"))
-        return text_transport(*args, **kwargs)
+        return named_image_transport(*args, **kwargs)
 
-    journal = ObjectBongardTextTurnJournalTransport(
+    journal = ObjectBongardNamedImageTurnJournalTransport(
         task_root / relative,
         authorization_digest=prepared.release.authorization.record_digest,
         execution_precommit_digest=prepared.release.precommit.record_digest,
         task_id=f"{getattr(task, 'family')}_scene_semantic_{task_index:02d}",
         turn_kind="semantic_registry_proposal",
         expected_prompt=semantic_prepared.prompt,
+        expected_images=presentation,
         expected_output_schema=semantic_prepared.output_schema,
         runtime=runtime,
         underlying_transport=counted_transport,
     )
-    result = journal(
-        semantic_prepared.prompt,
-        semantic_prepared.output_schema,
-        **_journal_runtime_kwargs(runtime),
-    )
+    with tempfile.TemporaryDirectory(prefix="bongard-task-semantic-") as raw:
+        image_paths: list[str] = []
+        image_names: list[str] = []
+        for name, payload in presentation:
+            path = Path(raw) / name
+            path.write_bytes(payload)
+            image_paths.append(str(path.resolve()))
+            image_names.append(name)
+        result = journal(
+            semantic_prepared.prompt,
+            image_paths,
+            image_names,
+            semantic_prepared.output_schema,
+            **_journal_runtime_kwargs(runtime),
+        )
     budget.assert_within_deadline()
     payload = _canonical_mapping(result.payload, "task semantic proposer payload")
     try:
@@ -2206,32 +2354,47 @@ def _cold_replay_task_semantic_proposal(
     semantic_proposal_record: Mapping[str, Any],
     discovery_artifacts: Sequence[object],
     role_rows: Sequence[Mapping[str, object]],
+    panels: Sequence[_TaskSupportPanel],
 ) -> tuple[object, object, str]:
     from bongard.object_bongard_scene_predicate_calibration_command import (
         _journal_runtime_kwargs,
     )
     from bongard.object_bongard_turn_journal import (
-        ObjectBongardTextTurnJournalTransport,
+        ObjectBongardNamedImageTurnJournalTransport,
         verify_object_bongard_turn_journal,
     )
 
     relative = Path(JOURNAL_DIRECTORY) / "semantic_registry_proposer"
-    journal = ObjectBongardTextTurnJournalTransport(
+    presentation = _task_semantic_proposer_presentation(
+        panels, semantic_prepared
+    )
+    journal = ObjectBongardNamedImageTurnJournalTransport(
         task_root / relative,
         authorization_digest=prepared.release.authorization.record_digest,
         execution_precommit_digest=prepared.release.precommit.record_digest,
         task_id=f"{getattr(task, 'family')}_scene_semantic_{task_index:02d}",
         turn_kind="semantic_registry_proposal",
         expected_prompt=semantic_prepared.prompt,
+        expected_images=presentation,
         expected_output_schema=semantic_prepared.output_schema,
         runtime=runtime,
-        underlying_transport=_forbidden_text_transport,
+        underlying_transport=_forbidden_named_transport,
     )
-    replayed = journal(
-        semantic_prepared.prompt,
-        semantic_prepared.output_schema,
-        **_journal_runtime_kwargs(runtime),
-    )
+    with tempfile.TemporaryDirectory(prefix="bongard-task-semantic-replay-") as raw:
+        image_paths: list[str] = []
+        image_names: list[str] = []
+        for name, payload in presentation:
+            path = Path(raw) / name
+            path.write_bytes(payload)
+            image_paths.append(str(path.resolve()))
+            image_names.append(name)
+        replayed = journal(
+            semantic_prepared.prompt,
+            image_paths,
+            image_names,
+            semantic_prepared.output_schema,
+            **_journal_runtime_kwargs(runtime),
+        )
     summary = verify_object_bongard_turn_journal(journal)
     proposal, registry = _restore_task_semantic_proposal(
         semantic_proposal_record,
@@ -3180,6 +3343,7 @@ def _execute_task(
             role_reveal=role_reveal,
             discovery_artifacts=discovery,
             role_rows=role_rows,
+            panels=panels,
         )
     )
     semantic_proposal, semantic_registry, semantic_proposal_record, semantic_proposal_receipt = (
@@ -3193,7 +3357,8 @@ def _execute_task(
             semantic_prepared=semantic_prepared,
             discovery_artifacts=discovery,
             role_rows=role_rows,
-            text_transport=text_transport,
+            panels=panels,
+            named_image_transport=named_image_transport,
             budget=budget,
         )
     )
@@ -3409,6 +3574,7 @@ def _execute_task(
             semantic_proposal_record=semantic_proposal_record,
             discovery_artifacts=discovery,
             role_rows=role_rows,
+            panels=panels,
         )
     )
     if (
@@ -4404,7 +4570,15 @@ def _verify_task_from_store(
         "role_reveal_digest",
         "prepared_input",
         "preparation_digest",
-        "prepared_input_persisted_before_zero_image_proposer_call",
+        "named_image_commitments",
+        "named_image_count",
+        "semantic_registry_proposer_modality",
+        "semantic_registry_proposer_support_panel_count",
+        "semantic_registry_proposer_receives_all_support_atlases",
+        "semantic_registry_proposer_receives_query_pixels",
+        "every_semantic_card_cites_all_positive_support_panels",
+        "prepared_input_persisted_before_named_image_proposer_call",
+        "all_named_image_bytes_committed_before_semantic_proposer_call",
         *_authority_data(),
         "semantic_prepared_digest",
     }
@@ -4426,6 +4600,9 @@ def _verify_task_from_store(
         "proposer_journal_summary_digest",
         "proposer_fresh_call_count",
         "proposer_reused_call_count",
+        "semantic_registry_proposer_modality",
+        "semantic_registry_proposer_receives_query_pixels",
+        "every_semantic_card_cites_all_positive_support_panels",
         "quarantined_concept_count",
         "quarantined_concept_digests",
         "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one",
@@ -4543,11 +4720,43 @@ def _verify_task_from_store(
         != REGISTERED_A_CALLS_PER_TASK + REGISTERED_B_CALLS_PER_TASK
         or role_reveal.get("registered_visual_evaluators_receive_roles") is not False
         or semantic_prepared_record.get(
-            "prepared_input_persisted_before_zero_image_proposer_call"
+            "prepared_input_persisted_before_named_image_proposer_call"
+        )
+        is not True
+        or semantic_prepared_record.get(
+            "all_named_image_bytes_committed_before_semantic_proposer_call"
+        )
+        is not True
+        or semantic_prepared_record.get("semantic_registry_proposer_modality")
+        != "named_image_structured"
+        or semantic_prepared_record.get(
+            "semantic_registry_proposer_support_panel_count"
+        )
+        != SUPPORT_PANEL_COUNT_PER_TASK
+        or semantic_prepared_record.get(
+            "semantic_registry_proposer_receives_all_support_atlases"
+        )
+        is not True
+        or semantic_prepared_record.get(
+            "semantic_registry_proposer_receives_query_pixels"
+        )
+        is not False
+        or semantic_prepared_record.get(
+            "every_semantic_card_cites_all_positive_support_panels"
         )
         is not True
         or semantic_proposal_record.get("proposer_fresh_call_count") != 1
         or semantic_proposal_record.get("proposer_reused_call_count") != 0
+        or semantic_proposal_record.get("semantic_registry_proposer_modality")
+        != "named_image_structured"
+        or semantic_proposal_record.get(
+            "semantic_registry_proposer_receives_query_pixels"
+        )
+        is not False
+        or semantic_proposal_record.get(
+            "every_semantic_card_cites_all_positive_support_panels"
+        )
+        is not True
         or semantic_proposal_record.get(
             "invalid_optional_rows_do_not_discard_valid_concepts_when_each_orientation_retains_one"
         )
@@ -4627,6 +4836,9 @@ def _verify_task_from_store(
     rebuilt_semantic_prepared = prepare_object_scene_semantic_registry_proposal(
         discovery_artifacts, expected_roles
     )
+    rebuilt_semantic_presentation = _task_semantic_proposer_presentation(
+        panels, rebuilt_semantic_prepared
+    )
     semantic_proposal, semantic_registry = _restore_task_semantic_proposal(
         semantic_proposal_record,
         task=task,
@@ -4661,6 +4873,7 @@ def _verify_task_from_store(
             discovery_batch=discovery,
             role_reveal=role_reveal,
             semantic_prepared=rebuilt_semantic_prepared,
+            presentation=rebuilt_semantic_presentation,
         )
         or role_reveal.get("task_plan_digest") != getattr(task, "record_digest")
         or role_reveal.get("discovery_batch_digest") != discovery["batch_digest"]
@@ -4757,6 +4970,7 @@ def _verify_task_from_store(
             semantic_proposal_record=semantic_proposal_record,
             discovery_artifacts=discovery_artifacts,
             role_rows=expected_roles,
+            panels=panels,
         )
     )
     if (
@@ -5342,7 +5556,7 @@ def verify_object_bongard_scene_predicate_campaign(
         "batch plan",
         expected_object_kind="batch-plan",
     )
-    plan = ObjectBongardBatchPlan.from_data(plan_raw)
+    plan = ObjectBongardDrillBatchPlan.from_data(plan_raw)
     precommit_raw, precommit_receipt = _load_stored_record(
         store,
         release_receipts["precommit"],

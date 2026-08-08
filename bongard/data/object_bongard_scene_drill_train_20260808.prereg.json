@@ -1,0 +1,83 @@
+{
+  "batch_plan_digest": "sha256:56b7ef40584ad3bbfb9800b6f58778d15d227eac871d354c492293e4787d3ab8",
+  "blocked_basic_morphology_clusters_digest": "sha256:d0f22e104ea00c5e3fa6299fa13750b98a31597d4773110e0eeb86a2f18623c8",
+  "candidate_counts": [
+    [
+      "bd",
+      114
+    ],
+    [
+      "hd",
+      1148
+    ]
+  ],
+  "clean_cohort_whitelist_digest": "sha256:74e47f03ca4f9f13147be4025ea6d7a0e839aaeb3389e88bac0146df8ff37896",
+  "created_at": "2026-08-08T20:33:32Z",
+  "eligible_task_ids_digest": "sha256:009fb45160d80f7d90f6d775953b287742b0d325e32d7f3a0b9513ee9ce0d4da",
+  "exact_used_task_ids_digest": "sha256:73c8833ce76d92751f319d79e759ecbf6ab422aa862d5bda0ddecdb872904e0e",
+  "execution_precommit_pending": true,
+  "exposure_predecessor_digest": "sha256:73f4f6ad2cdb5413456b4298722cc26cd8de9e733e80e7b178d97b87d11fd276",
+  "families": [
+    "bd",
+    "hd"
+  ],
+  "freeform_policy": "excluded-no-certified-unused-semantic-partition",
+  "generator_cluster_counts": [
+    [
+      "bd",
+      105
+    ],
+    [
+      "hd",
+      67
+    ]
+  ],
+  "historical_exposure_digest": "sha256:0dfa94ada526e47cfe41745125609b7b4e669e1e003d2f5366f740ff50e02ebf",
+  "lean_affects_selection_or_decision": false,
+  "lean_present": false,
+  "lean_removable": true,
+  "lean_required": false,
+  "morphology_excluded_counts": [
+    [
+      "bd",
+      660
+    ],
+    [
+      "hd",
+      0
+    ]
+  ],
+  "official_test_authorized": false,
+  "panel_bytes_opened_before_preregistration": false,
+  "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+  "prepolicy_candidate_counts": [
+    [
+      "bd",
+      774
+    ],
+    [
+      "hd",
+      1148
+    ]
+  ],
+  "python_is_canonical_authority": true,
+  "qualification": "semantic cleanliness and absence of an exact-task record do not certify that official panel bytes were unseen",
+  "query_identities_sealed_before_support_pixels": true,
+  "record_digest": "sha256:6f2d044c5dbd8b4b17ee476a48872cfcffc797e6a4d0e5d92edf256d0ebbbf19",
+  "release_descriptor_digest": "sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b",
+  "requested_per_family": 6,
+  "schema": "gkm.bongard-object-drill-batch-preregistration.v1",
+  "scope": "exact-unused-train-semantic-drill-targeted-engineering-not-official-benchmark",
+  "sealed_query_panel_ids_digest": "sha256:435f2a235e4685c69443dfd7fd02fe0bdf5a978ab00eaeadff36038cdb73f52c",
+  "selected_task_ids_digest": "sha256:a6f35a89aedfe9e6a72f89c9c0bfbc440895c28d5fdf38e9462507f335b1d805",
+  "selection_inputs_include_action_programs": false,
+  "selection_inputs_include_pixels": false,
+  "selection_seed": "source-commit-f9b7cc64-object-rubric-broad-v1",
+  "selection_seed_digest": "sha256:a6ebea820ce025450f70de1f389a6deb2bb42798e8be98370b30c9c37147cfbe",
+  "semantic_cohort": "drill",
+  "semantic_policy_replay_required_before_output_root": true,
+  "semantic_resolver_policy_digest": "sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a",
+  "split_source_digest": "sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230",
+  "task_inventory_digest": "sha256:4503ae6b40dc7b34520eb5b8a4cca6ff8153635df0f42db5f6715cc349602dd0",
+  "train_task_ids_digest": "sha256:55286d0dded27fb308fae5067cb173169031d1f3ece5df73af0a4faea7fe7b2c"
+}

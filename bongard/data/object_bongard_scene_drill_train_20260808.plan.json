@@ -1,0 +1,506 @@
+{
+  "algorithm_digest": "sha256:fac43cf00392329f3318dc5207130fd25c6b627942f0e31d2f7d511364134799",
+  "algorithm_id": "bongard.object-pipeline/exact-unused-train-semantic-drill-bd-hd-disjoint-v1",
+  "algorithm_source_sha256": "5ba735333eb7b54bf13c20c2a44e7ca3f6608ed18e646617e1a9f47215f1693c",
+  "blocked_basic_morphology_clusters_digest": "sha256:d0f22e104ea00c5e3fa6299fa13750b98a31597d4773110e0eeb86a2f18623c8",
+  "candidate_counts": [
+    [
+      "bd",
+      114
+    ],
+    [
+      "hd",
+      1148
+    ]
+  ],
+  "claim": "exact-unused-train-semantic-drill-targeted-engineering-not-official-benchmark",
+  "clean_cohort_whitelist_digest": "sha256:74e47f03ca4f9f13147be4025ea6d7a0e839aaeb3389e88bac0146df8ff37896",
+  "eligible_task_ids_digest": "sha256:009fb45160d80f7d90f6d775953b287742b0d325e32d7f3a0b9513ee9ce0d4da",
+  "exact_used_task_ids_digest": "sha256:73c8833ce76d92751f319d79e759ecbf6ab422aa862d5bda0ddecdb872904e0e",
+  "exposure_predecessor_digest": "sha256:73f4f6ad2cdb5413456b4298722cc26cd8de9e733e80e7b178d97b87d11fd276",
+  "families": [
+    "bd",
+    "hd"
+  ],
+  "freeform_policy": "excluded-no-certified-unused-semantic-partition",
+  "generator_cluster_counts": [
+    [
+      "bd",
+      105
+    ],
+    [
+      "hd",
+      67
+    ]
+  ],
+  "historical_exposure_digest": "sha256:0dfa94ada526e47cfe41745125609b7b4e669e1e003d2f5366f740ff50e02ebf",
+  "lean_affects_selection_or_decision": false,
+  "lean_present": false,
+  "lean_removable": true,
+  "lean_required": false,
+  "morphology_excluded_counts": [
+    [
+      "bd",
+      660
+    ],
+    [
+      "hd",
+      0
+    ]
+  ],
+  "official_test_authorized": false,
+  "panel_bytes_opened_during_selection": false,
+  "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+  "prepolicy_candidate_counts": [
+    [
+      "bd",
+      774
+    ],
+    [
+      "hd",
+      1148
+    ]
+  ],
+  "python_is_canonical_authority": true,
+  "qualification": "semantic cleanliness and absence of an exact-task record do not certify that official panel bytes were unseen",
+  "query_identities_sealed_before_support_pixels": true,
+  "record_digest": "sha256:56b7ef40584ad3bbfb9800b6f58778d15d227eac871d354c492293e4787d3ab8",
+  "release_descriptor_digest": "sha256:4d5fb0ad6093ab32e8a8ac0ca5a3405482e1218994f9d257238e4a09fc56cd2b",
+  "requested_per_family": 6,
+  "schema": "gkm.bongard-object-drill-batch-plan.v1",
+  "sealed_query_panel_ids_digest": "sha256:435f2a235e4685c69443dfd7fd02fe0bdf5a978ab00eaeadff36038cdb73f52c",
+  "selected_task_ids_digest": "sha256:a6f35a89aedfe9e6a72f89c9c0bfbc440895c28d5fdf38e9462507f335b1d805",
+  "selection_inputs_include_action_programs": false,
+  "selection_inputs_include_pixels": false,
+  "selection_order_task_ids": [
+    "bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000",
+    "hd_exist_regular-exist_triangle_0014",
+    "bd_symmetric_clamp-irregular_arc_cup_0000",
+    "hd_unbalanced_two-exist_sector_0012",
+    "bd_inverse_trapez_parallel_0000",
+    "hd_has_five_straight_lines-thin_shape_0013",
+    "bd_asymm_unbala_goldfish-regular_x_0000",
+    "hd_has_six_straight_lines-has_acute_angle_0002",
+    "bd_thin_rec_down_right_triangle_0000",
+    "hd_exist_quadrangle-symmetric_transposed_0016",
+    "bd_asymm_trap_bridge_0000",
+    "hd_has_obtuse_angle-has_line_crossing_0011"
+  ],
+  "selection_order_task_ids_digest": "sha256:431119940090f415d26c1217547e177f63aef2bb1cb323af2404057bf551e528",
+  "selection_seed_digest": "sha256:a6ebea820ce025450f70de1f389a6deb2bb42798e8be98370b30c9c37147cfbe",
+  "semantic_cohort": "drill",
+  "semantic_resolver_policy_digest": "sha256:48598ae580a2f88aee7652d36fd386d54a8e4265b040bf1313f558508f47af9a",
+  "split_source_digest": "sha256:ebb9cd474478e0776dff539951070db2c96b9b312c4b0b073689d20792ed7230",
+  "task_inventory_digest": "sha256:4503ae6b40dc7b34520eb5b8a4cca6ff8153635df0f42db5f6715cc349602dd0",
+  "tasks": [
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:4c0d61faae76881be5e71bd35c0d8e4d478b142f2962e70a51e70f85cc8f7455",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_asymm_trap_bridge_0000/1/4.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_asymm_trap_bridge_0000/1/0.png",
+        "bd/bd_asymm_trap_bridge_0000/1/1.png",
+        "bd/bd_asymm_trap_bridge_0000/1/2.png",
+        "bd/bd_asymm_trap_bridge_0000/1/3.png",
+        "bd/bd_asymm_trap_bridge_0000/1/5.png",
+        "bd/bd_asymm_trap_bridge_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_asymm_trap_bridge_0000/0/2.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_asymm_trap_bridge_0000/0/0.png",
+        "bd/bd_asymm_trap_bridge_0000/0/1.png",
+        "bd/bd_asymm_trap_bridge_0000/0/3.png",
+        "bd/bd_asymm_trap_bridge_0000/0/4.png",
+        "bd/bd_asymm_trap_bridge_0000/0/5.png",
+        "bd/bd_asymm_trap_bridge_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_asymm_trap_bridge_0000"
+    },
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:0448e36f9410874a5cbbd11481da623d86bcf11820912d2e8170c461a1bc8762",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/3.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/0.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/1.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/2.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/4.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/5.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/1.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/0.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/2.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/3.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/4.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/5.png",
+        "bd/bd_asymm_unbala_goldfish-regular_x_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_asymm_unbala_goldfish-regular_x_0000"
+    },
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:7d30d1ae46819f9d8adf6643865e2e1275a1064902ef793b976ab44c30649fb8",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_inverse_trapez_parallel_0000/1/4.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_inverse_trapez_parallel_0000/1/0.png",
+        "bd/bd_inverse_trapez_parallel_0000/1/1.png",
+        "bd/bd_inverse_trapez_parallel_0000/1/2.png",
+        "bd/bd_inverse_trapez_parallel_0000/1/3.png",
+        "bd/bd_inverse_trapez_parallel_0000/1/5.png",
+        "bd/bd_inverse_trapez_parallel_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_inverse_trapez_parallel_0000/0/1.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_inverse_trapez_parallel_0000/0/0.png",
+        "bd/bd_inverse_trapez_parallel_0000/0/2.png",
+        "bd/bd_inverse_trapez_parallel_0000/0/3.png",
+        "bd/bd_inverse_trapez_parallel_0000/0/4.png",
+        "bd/bd_inverse_trapez_parallel_0000/0/5.png",
+        "bd/bd_inverse_trapez_parallel_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_inverse_trapez_parallel_0000"
+    },
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:f53cd3c780cabee76f2898e581a146720e9cd885a01355bdf83c539a8121b3e5",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/6.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/0.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/1.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/2.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/3.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/4.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/1/5.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/5.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/0.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/1.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/2.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/3.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/4.png",
+        "bd/bd_symmetric_clamp-irregular_arc_cup_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_symmetric_clamp-irregular_arc_cup_0000"
+    },
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:b515982979d50c58361a300f70e8b345fb0b56bd86838f5617e66cc01b8a6385",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_thin_rec_down_right_triangle_0000/1/2.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_thin_rec_down_right_triangle_0000/1/0.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/1/1.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/1/3.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/1/4.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/1/5.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_thin_rec_down_right_triangle_0000/0/0.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_thin_rec_down_right_triangle_0000/0/1.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/0/2.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/0/3.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/0/4.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/0/5.png",
+        "bd/bd_thin_rec_down_right_triangle_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_thin_rec_down_right_triangle_0000"
+    },
+    {
+      "family": "bd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:ca6a88d056fad7897d624d34a800386a2f8c3f9be3bdb86cb4aa82f28b3cf89b",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/3.png",
+      "side_0_support_panel_ids": [
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/0.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/1.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/2.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/4.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/5.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/1/6.png"
+      ],
+      "side_1_query_panel_id": "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/1.png",
+      "side_1_support_panel_ids": [
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/0.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/2.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/3.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/4.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/5.png",
+        "bd/bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:e690199333913d6915d2d161ac990367532309c23f43f1f3ad7298f9a583f2a6",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/5.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/0.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/1.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/2.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/3.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/4.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/1/6.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/6.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/0.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/1.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/2.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/3.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/4.png",
+        "hd/hd_exist_quadrangle-symmetric_transposed_0016/0/5.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_exist_quadrangle-symmetric_transposed_0016"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:2b0532297d5b98f8ae0df4c1086cc6a76f95a0b1fac66b7f37dbb8f0d0c7471a",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_exist_regular-exist_triangle_0014/1/6.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_exist_regular-exist_triangle_0014/1/0.png",
+        "hd/hd_exist_regular-exist_triangle_0014/1/1.png",
+        "hd/hd_exist_regular-exist_triangle_0014/1/2.png",
+        "hd/hd_exist_regular-exist_triangle_0014/1/3.png",
+        "hd/hd_exist_regular-exist_triangle_0014/1/4.png",
+        "hd/hd_exist_regular-exist_triangle_0014/1/5.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_exist_regular-exist_triangle_0014/0/2.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_exist_regular-exist_triangle_0014/0/0.png",
+        "hd/hd_exist_regular-exist_triangle_0014/0/1.png",
+        "hd/hd_exist_regular-exist_triangle_0014/0/3.png",
+        "hd/hd_exist_regular-exist_triangle_0014/0/4.png",
+        "hd/hd_exist_regular-exist_triangle_0014/0/5.png",
+        "hd/hd_exist_regular-exist_triangle_0014/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_exist_regular-exist_triangle_0014"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:7feb163ef2ddae2152f4c2e36a42d398dde7e4ecd4ce2126da3e4c13f8cc35ce",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_has_five_straight_lines-thin_shape_0013/1/2.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/0.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/1.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/3.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/4.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/5.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/1/6.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_has_five_straight_lines-thin_shape_0013/0/5.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/0.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/1.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/2.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/3.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/4.png",
+        "hd/hd_has_five_straight_lines-thin_shape_0013/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_has_five_straight_lines-thin_shape_0013"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:38c17dfd2f9065159622dfe2ae14852def34f1dbcfbfd61fffb572ec1efe57bc",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/1.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/0.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/2.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/3.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/4.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/5.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/1/6.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/4.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/0.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/1.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/2.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/3.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/5.png",
+        "hd/hd_has_obtuse_angle-has_line_crossing_0011/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_has_obtuse_angle-has_line_crossing_0011"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:7ac9a1be2700ad332cf509871d10a6530a692cc66a957ff92c62b072cd7ec691",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/6.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/0.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/1.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/2.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/3.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/4.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/1/5.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/5.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/0.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/1.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/2.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/3.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/4.png",
+        "hd/hd_has_six_straight_lines-has_acute_angle_0002/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_has_six_straight_lines-has_acute_angle_0002"
+    },
+    {
+      "family": "hd",
+      "lean_affects_selection_or_decision": false,
+      "lean_present": false,
+      "lean_removable": true,
+      "lean_required": false,
+      "predicate_authority_id": "bongard.grounded-multimodal-predicate-authority/python-v1",
+      "python_is_canonical_authority": true,
+      "query_identities_sealed_before_support_pixels": true,
+      "query_labels_hidden_until_scoring": true,
+      "record_digest": "sha256:acfebb3dfef7bb33b4ca24abc0c3d3881da8a832872fedf4939f566c686cb435",
+      "schema": "gkm.bongard-object-batch-task.v1",
+      "side_0_query_panel_id": "hd/hd_unbalanced_two-exist_sector_0012/1/4.png",
+      "side_0_support_panel_ids": [
+        "hd/hd_unbalanced_two-exist_sector_0012/1/0.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/1/1.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/1/2.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/1/3.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/1/5.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/1/6.png"
+      ],
+      "side_1_query_panel_id": "hd/hd_unbalanced_two-exist_sector_0012/0/0.png",
+      "side_1_support_panel_ids": [
+        "hd/hd_unbalanced_two-exist_sector_0012/0/1.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/0/2.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/0/3.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/0/4.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/0/5.png",
+        "hd/hd_unbalanced_two-exist_sector_0012/0/6.png"
+      ],
+      "split": "train",
+      "support_labels_available_to_python_only": true,
+      "task_id": "hd_unbalanced_two-exist_sector_0012"
+    }
+  ],
+  "train_task_ids_digest": "sha256:55286d0dded27fb308fae5067cb173169031d1f3ece5df73af0a4faea7fe7b2c"
+}

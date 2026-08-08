@@ -15,6 +15,11 @@ from bongard.object_bongard_batch import (
     object_bongard_task_inventory_digest,
     plan_object_bongard_batch,
 )
+from bongard.object_bongard_drill_batch import (
+    object_bongard_drill_batch_algorithm_digest,
+    object_bongard_drill_batch_source_digest,
+    plan_object_bongard_drill_batch,
+)
 from bongard.object_bongard_release_gate import (
     ObjectBongardExecutionPrecommit,
     ObjectBongardReleaseAuthorization,
@@ -230,6 +235,93 @@ def test_prepare_records_one_cross_family_exposure_before_any_panel_read(
     )
     assert calls == [released.panel_id]
     assert receipt.object_kind == "released-support-panel"
+
+
+def test_execution_precommit_accepts_the_strict_drill_plan_type(
+    tmp_path: Path,
+) -> None:
+    task_ids = tuple(
+        sorted(
+            (
+                "bd_asymm_trap_bridge_0000",
+                "bd_asymm_unbala_goldfish-regular_x_0000",
+                "bd_inverse_trapez_parallel_0000",
+                "bd_symmetric_clamp-irregular_arc_cup_0000",
+                "bd_thin_rec_down_right_triangle_0000",
+                "bd_three_mismatch_sectors2-mismatch_triangle_rec3_0000",
+                "hd_exist_quadrangle-symmetric_transposed_0016",
+                "hd_exist_regular-exist_triangle_0014",
+                "hd_has_five_straight_lines-thin_shape_0013",
+                "hd_has_obtuse_angle-has_line_crossing_0011",
+                "hd_has_six_straight_lines-has_acute_angle_0002",
+                "hd_unbalanced_two-exist_sector_0012",
+            )
+        )
+    )
+    inventory_digest = object_bongard_task_inventory_digest(task_ids)
+    corpus_digest = _address({"synthetic": "strict-drill-corpus"})
+    predecessor = ExposureLedger.create(corpus_digest)
+    archive_path = tmp_path / "ShapeBongard_V2-drill.zip"
+    png = b"\x89PNG\r\n\x1a\nsynthetic-strict-drill-panel"
+    with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        for task_id in task_ids:
+            family = task_id.split("_", 1)[0]
+            for side in ("0", "1"):
+                for index in range(7):
+                    bundle.writestr(
+                        f"ShapeBongard_V2/{family}/images/{task_id}/{side}/{index}.png",
+                        png,
+                    )
+    archive_bytes = archive_path.read_bytes()
+    descriptor = OfficialReleaseDescriptor(
+        release_id="ShapeBongard_V2-strict-drill-release-gate-test",
+        archive_filename=archive_path.name,
+        archive_sha256="sha256:" + hashlib.sha256(archive_bytes).hexdigest(),
+        archive_size_bytes=len(archive_bytes),
+        split_filename="ShapeBongard_V2_split.json",
+        split_sha256=_address({"split": "strict-drill-train"}),
+        split_size_bytes=1,
+        upstream_repository="https://github.com/NVlabs/Bongard-LOGO",
+        upstream_commit="2" * 40,
+        family_counts=(("bd", 6), ("ff", 0), ("hd", 6)),
+        primary_split_counts=(("test", 0), ("train", 12), ("val", 0)),
+        regime_counts=(("BA", 0), ("CM", 0), ("FF", 0), ("NV", 0)),
+        task_ids_sha256=inventory_digest,
+        corpus_manifest_sha256=corpus_digest,
+    )
+    plan = plan_object_bongard_drill_batch(
+        task_ids=task_ids,
+        train_task_ids=task_ids,
+        predecessor=predecessor,
+        selection_seed="release-gate-strict-drill-test",
+        requested_per_family=6,
+        release_descriptor_digest=descriptor.digest,
+        split_source_digest=descriptor.split_sha256,
+        task_inventory_digest=inventory_digest,
+    )
+    archive = OfficialPanelArchive.load(
+        descriptor,
+        archive_path,
+        expected_release_descriptor_digest=descriptor.digest,
+    )
+    precommit = create_object_bongard_execution_precommit(
+        plan=plan,
+        predecessor=predecessor,
+        descriptor=descriptor,
+        archive=archive,
+        task_ids=task_ids,
+        train_task_ids=task_ids,
+        exact_used_task_ids=(),
+        runtime_source_bindings={"runner_source": _address({"runner": 2})},
+        configuration={"model": "gpt-5", "minutes": 15, "headless": True},
+        exposure_observed_at="2026-08-08T12:00:00Z",
+    )
+    assert precommit.batch_algorithm_digest == (
+        object_bongard_drill_batch_algorithm_digest()
+    )
+    assert precommit.batch_source_digest == (
+        "sha256:" + object_bongard_drill_batch_source_digest()
+    )
 
 
 def test_query_is_closed_until_exact_freeze_and_commit_are_durable(tmp_path: Path) -> None:

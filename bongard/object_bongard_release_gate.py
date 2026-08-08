@@ -37,6 +37,11 @@ from bongard.object_bongard_batch import (
     object_bongard_batch_source_digest,
     object_bongard_task_inventory_digest,
 )
+from bongard.object_bongard_drill_batch import (
+    ObjectBongardDrillBatchPlan,
+    object_bongard_drill_batch_algorithm_digest,
+    object_bongard_drill_batch_source_digest,
+)
 from bongard.official_panel_archive import OfficialPanelArchive, ReleasedOfficialPanel
 from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 from bongard.release import OfficialReleaseDescriptor
@@ -139,7 +144,26 @@ def _freeze_configuration(
     return result
 
 
-def _all_panels(plan: ObjectBongardBatchPlan) -> tuple[tuple[str, ...], tuple[str, ...]]:
+ObjectBongardReleasePlan = ObjectBongardBatchPlan | ObjectBongardDrillBatchPlan
+
+
+def _plan_algorithm_digest(plan: ObjectBongardReleasePlan) -> str:
+    if isinstance(plan, ObjectBongardDrillBatchPlan):
+        return object_bongard_drill_batch_algorithm_digest()
+    if isinstance(plan, ObjectBongardBatchPlan):
+        return object_bongard_batch_algorithm_digest()
+    raise TypeError("plan must be an object Bongard release plan")
+
+
+def _plan_source_digest(plan: ObjectBongardReleasePlan) -> str:
+    if isinstance(plan, ObjectBongardDrillBatchPlan):
+        return object_bongard_drill_batch_source_digest()
+    if isinstance(plan, ObjectBongardBatchPlan):
+        return object_bongard_batch_source_digest()
+    raise TypeError("plan must be an object Bongard release plan")
+
+
+def _all_panels(plan: ObjectBongardReleasePlan) -> tuple[tuple[str, ...], tuple[str, ...]]:
     support = tuple(
         sorted(
             panel_id
@@ -311,7 +335,7 @@ class ObjectBongardExecutionPrecommit:
 
 def create_object_bongard_execution_precommit(
     *,
-    plan: ObjectBongardBatchPlan,
+    plan: ObjectBongardReleasePlan,
     predecessor: ExposureLedger,
     descriptor: OfficialReleaseDescriptor,
     archive: OfficialPanelArchive,
@@ -325,8 +349,8 @@ def create_object_bongard_execution_precommit(
     exposure_purpose: str = "broad-object-predicate-support-and-sealed-query",
     exposure_source: str = "official-shapebongard-v2-archive",
 ) -> ObjectBongardExecutionPrecommit:
-    if not isinstance(plan, ObjectBongardBatchPlan):
-        raise TypeError("plan must be ObjectBongardBatchPlan")
+    if not isinstance(plan, (ObjectBongardBatchPlan, ObjectBongardDrillBatchPlan)):
+        raise TypeError("plan must be an object Bongard release plan")
     if not isinstance(predecessor, ExposureLedger):
         raise TypeError("predecessor must be ExposureLedger")
     inventory = _sorted_ids(task_ids, "official task inventory")
@@ -363,7 +387,7 @@ def create_object_bongard_execution_precommit(
         raise ObjectBongardReleaseGateError("selected panel is absent from archive inventory")
     bindings = dict(runtime_source_bindings)
     automatic = {
-        "batch_source": "sha256:" + object_bongard_batch_source_digest(),
+        "batch_source": "sha256:" + _plan_source_digest(plan),
         "release_gate_source": "sha256:" + object_bongard_release_gate_source_digest(),
     }
     for key, value in automatic.items():
@@ -372,7 +396,7 @@ def create_object_bongard_execution_precommit(
         bindings[key] = value
     values: dict[str, object] = {
         "batch_plan_digest": plan.record_digest,
-        "batch_algorithm_digest": object_bongard_batch_algorithm_digest(),
+        "batch_algorithm_digest": _plan_algorithm_digest(plan),
         "batch_source_digest": automatic["batch_source"],
         "release_gate_source_digest": automatic["release_gate_source"],
         "release_descriptor_digest": descriptor.digest,
@@ -719,7 +743,7 @@ class ObjectBongardReleaseAuthorization:
 @dataclass(frozen=True, slots=True)
 class PreparedObjectBongardRelease:
     store: ObjectBongardReleaseStore = field(compare=False, repr=False)
-    plan: ObjectBongardBatchPlan
+    plan: ObjectBongardReleasePlan
     precommit: ObjectBongardExecutionPrecommit
     predecessor: ExposureLedger
     successor: ExposureLedger
@@ -733,15 +757,15 @@ class PreparedObjectBongardRelease:
 def prepare_object_bongard_release(
     *,
     store: ObjectBongardReleaseStore,
-    plan: ObjectBongardBatchPlan,
+    plan: ObjectBongardReleasePlan,
     precommit: ObjectBongardExecutionPrecommit,
     predecessor: ExposureLedger,
 ) -> PreparedObjectBongardRelease:
     if (
         precommit.batch_plan_digest != plan.record_digest
         or precommit.exposure_predecessor_digest != predecessor.digest
-        or precommit.batch_algorithm_digest != object_bongard_batch_algorithm_digest()
-        or precommit.batch_source_digest != "sha256:" + object_bongard_batch_source_digest()
+        or precommit.batch_algorithm_digest != _plan_algorithm_digest(plan)
+        or precommit.batch_source_digest != "sha256:" + _plan_source_digest(plan)
         or precommit.release_gate_source_digest
         != "sha256:" + object_bongard_release_gate_source_digest()
     ):
@@ -829,7 +853,7 @@ def verify_prepared_object_bongard_release(prepared: PreparedObjectBongardReleas
         raise ObjectBongardReleaseGateError("prepared release cold replay differs")
 
 
-def _task_for_panel(plan: ObjectBongardBatchPlan, panel_id: str) -> ObjectBongardTaskPlan:
+def _task_for_panel(plan: ObjectBongardReleasePlan, panel_id: str) -> ObjectBongardTaskPlan:
     matches = tuple(
         task for task in plan.tasks
         if panel_id in (*task.side_0_support_panel_ids, *task.side_1_support_panel_ids,
