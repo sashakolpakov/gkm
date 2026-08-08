@@ -16,6 +16,14 @@ the sole decision and replay authority.
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
+import argparse
+import base64
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import hashlib
@@ -23,6 +31,8 @@ import json
 import os
 from pathlib import Path
 import re
+import sys
+import time
 from threading import Lock
 from typing import Any, Callable, Mapping, Protocol, Sequence
 
@@ -43,6 +53,29 @@ QUERY_CALLS_PER_TASK = 2
 QUERY_DENOMINATOR = TASK_COUNT * QUERY_CALLS_PER_TASK
 MAX_VISUAL_CALLS = TASK_COUNT * (SUPPORT_VISUAL_CALLS_PER_TASK + QUERY_CALLS_PER_TASK)
 MAX_RANKER_CALLS = TASK_COUNT
+
+MODEL = "gpt-5.6-sol"
+REASONING_EFFORT = "medium"
+DEFAULT_MINUTES = 15
+DEFAULT_EXECUTABLE = "codex"
+DEFAULT_EXPECTED_LAUNCHER_SHA256 = (
+    "19c4f144c5226a9f17c58e6f0fa854843b0f77a6eb420f40e2745a12f10f5d37"
+)
+DEFAULT_PARALLEL_WORKERS = 4
+MAX_PARALLEL_WORKERS = 4
+DEFAULT_CAMPAIGN_MINUTES = 480
+
+TASK_BATCH_SCHEMA = "gkm.bongard-scene-predicate-task-visual-batch.v1"
+TASK_REGISTRY_SCHEMA = "gkm.bongard-scene-predicate-task-registry-freeze.v1"
+TASK_IR_SCHEMA = "gkm.bongard-scene-predicate-task-ir-freeze.v1"
+TASK_RANK_INPUT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-input.v1"
+TASK_RANK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-rank-result.v1"
+TASK_RESULT_SCHEMA = "gkm.bongard-scene-predicate-task-result.v1"
+CAMPAIGN_RUNTIME_SCHEMA = "gkm.bongard-scene-predicate-campaign-runtime.v1"
+CAMPAIGN_RESULT_SCHEMA = "gkm.bongard-scene-predicate-campaign-result.v1"
+CAMPAIGN_REPLAY_SCHEMA = "gkm.bongard-scene-predicate-campaign-replay.v1"
+RESULT_FILENAME = "campaign_result.json"
+JOURNAL_DIRECTORY = "journals"
 
 _REPOSITORY_ROOT = Path(__file__).resolve().parent.parent
 DEFAULT_PREREGISTRATION = (
@@ -88,6 +121,10 @@ _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
 
 class ObjectBongardScenePredicateCampaignCommandError(RuntimeError):
     """Calibration, custody, budget, formula freeze, or replay failed closed."""
+
+
+def object_bongard_scene_predicate_campaign_command_source_digest() -> str:
+    return verify_loaded_source(__name__, expected_source_sha256=_LOADED_SOURCE_SHA256)
 
 
 def _authority_data() -> dict[str, object]:
@@ -254,19 +291,30 @@ class ObjectBongardScenePredicateCampaignBudget:
 
 
 class _CallBudget:
-    def __init__(self) -> None:
+    def __init__(self, *, deadline_monotonic: float | None = None) -> None:
         self._lock = Lock()
+        self._deadline_monotonic = deadline_monotonic
         self._counts = {stage: 0 for stage in (
             "discovery", "registered_a", "registered_b", "ranker", "query"
         )}
 
     def count(self, stage: str, limit: int) -> None:
         with self._lock:
+            self.assert_within_deadline()
             if stage not in self._counts or self._counts[stage] >= limit:
                 raise ObjectBongardScenePredicateCampaignCommandError(
                     f"{stage} physical-call budget exhausted"
                 )
             self._counts[stage] += 1
+
+    def assert_within_deadline(self) -> None:
+        if (
+            self._deadline_monotonic is not None
+            and time.monotonic() >= self._deadline_monotonic
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "campaign wall-clock deadline exhausted"
+            )
 
     def snapshot(self) -> ObjectBongardScenePredicateCampaignBudget:
         with self._lock:
@@ -300,6 +348,7 @@ def _freeze_content(value: "ObjectBongardScenePredicateTaskFreeze") -> dict[str,
         "version_space_digest": value.version_space_digest,
         "support_version_space_digest": value.support_version_space_digest,
         "rank_response_digest": value.rank_response_digest,
+        "selected_survivor_digest": value.selected_survivor_digest,
         "selected_predicate_digest": value.selected_predicate_digest,
         "selected_predicate": dict(value.selected_predicate),
         "formula_frozen_before_query_release": True,
@@ -318,6 +367,7 @@ class ObjectBongardScenePredicateTaskFreeze:
     version_space_digest: str
     support_version_space_digest: str
     rank_response_digest: str
+    selected_survivor_digest: str
     selected_predicate_digest: str
     selected_predicate: Mapping[str, Any]
     record_digest: str
@@ -331,6 +381,7 @@ class ObjectBongardScenePredicateTaskFreeze:
             "version_space_digest",
             "support_version_space_digest",
             "rank_response_digest",
+            "selected_survivor_digest",
             "selected_predicate_digest",
         ):
             _raw_digest(getattr(self, name), name)
@@ -342,6 +393,10 @@ class ObjectBongardScenePredicateTaskFreeze:
         if canonical_digest(selected) != self.selected_predicate_digest:
             raise ObjectBongardScenePredicateCampaignCommandError(
                 "selected predicate digest differs"
+            )
+        if selected.get("candidate_digest") != self.selected_survivor_digest:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "selected survivor/formula binding differs"
             )
         if self.record_digest != "sha256:" + canonical_digest(_freeze_content(self)):
             raise ObjectBongardScenePredicateCampaignCommandError(
@@ -360,6 +415,9 @@ class ObjectBongardScenePredicateTaskFreeze:
         selected_predicate: Mapping[str, Any],
     ) -> "ObjectBongardScenePredicateTaskFreeze":
         selected = _canonical_mapping(selected_predicate, "selected predicate")
+        selected_survivor = _raw_digest(
+            selected.get("candidate_digest"), "selected survivor digest"
+        )
         values: dict[str, Any] = {
             "task_id": task_id,
             "task_plan_digest": task_plan_digest,
@@ -371,6 +429,7 @@ class ObjectBongardScenePredicateTaskFreeze:
             "rank_response_digest": _raw_digest(
                 rank_response_digest, "rank response digest"
             ),
+            "selected_survivor_digest": selected_survivor,
             "selected_predicate_digest": canonical_digest(selected),
             "selected_predicate": selected,
         }
@@ -391,7 +450,8 @@ class ObjectBongardScenePredicateTaskFreeze:
         expected = {
             "schema", "task_id", "task_plan_digest", "execution_precommit_digest",
             "version_space_digest", "support_version_space_digest",
-            "rank_response_digest", "selected_predicate_digest",
+            "rank_response_digest", "selected_survivor_digest",
+            "selected_predicate_digest",
             "selected_predicate", "formula_frozen_before_query_release",
             "query_panel_ids_or_pixels_serialized", *_authority_data(), "record_digest",
         }
@@ -406,6 +466,7 @@ class ObjectBongardScenePredicateTaskFreeze:
             version_space_digest=raw["version_space_digest"],
             support_version_space_digest=raw["support_version_space_digest"],
             rank_response_digest=raw["rank_response_digest"],
+            selected_survivor_digest=raw["selected_survivor_digest"],
             selected_predicate_digest=raw["selected_predicate_digest"],
             selected_predicate=raw["selected_predicate"],
             record_digest=raw["record_digest"],
@@ -426,6 +487,7 @@ def _commit_content(value: "ObjectBongardScenePredicateTaskCommit") -> dict[str,
         "version_space_digest": value.version_space_digest,
         "support_version_space_digest": value.support_version_space_digest,
         "rank_response_digest": value.rank_response_digest,
+        "selected_survivor_digest": value.selected_survivor_digest,
         "selected_predicate_digest": value.selected_predicate_digest,
         "task_freeze_digest": value.task_freeze_digest,
         "exact_freeze_payload_digest": value.exact_freeze_payload_digest,
@@ -445,6 +507,7 @@ class ObjectBongardScenePredicateTaskCommit:
     version_space_digest: str
     support_version_space_digest: str
     rank_response_digest: str
+    selected_survivor_digest: str
     selected_predicate_digest: str
     task_freeze_digest: str
     exact_freeze_payload_digest: str
@@ -463,6 +526,7 @@ class ObjectBongardScenePredicateTaskCommit:
         for name in (
             "version_space_digest", "support_version_space_digest",
             "rank_response_digest", "selected_predicate_digest",
+            "selected_survivor_digest",
         ):
             _raw_digest(getattr(self, name), name)
         if self.version_space_digest != self.support_version_space_digest:
@@ -489,6 +553,7 @@ class ObjectBongardScenePredicateTaskCommit:
             "version_space_digest": freeze.version_space_digest,
             "support_version_space_digest": freeze.support_version_space_digest,
             "rank_response_digest": freeze.rank_response_digest,
+            "selected_survivor_digest": freeze.selected_survivor_digest,
             "selected_predicate_digest": freeze.selected_predicate_digest,
             "task_freeze_digest": freeze.record_digest,
             "exact_freeze_payload_digest": _address(
@@ -516,6 +581,7 @@ class ObjectBongardScenePredicateTaskCommit:
             "schema", "task_id", "task_plan_digest", "execution_precommit_digest",
             "version_space_digest", "support_version_space_digest",
             "rank_response_digest", "selected_predicate_digest",
+            "selected_survivor_digest",
             "task_freeze_digest", "exact_freeze_payload_digest",
             "task_freeze_store_receipt_digest",
             "exact_durable_formula_bytes_committed_before_query_release",
@@ -538,6 +604,7 @@ class ObjectBongardScenePredicateTaskCommit:
             version_space_digest=raw["version_space_digest"],
             support_version_space_digest=raw["support_version_space_digest"],
             rank_response_digest=raw["rank_response_digest"],
+            selected_survivor_digest=raw["selected_survivor_digest"],
             selected_predicate_digest=raw["selected_predicate_digest"],
             task_freeze_digest=raw["task_freeze_digest"],
             exact_freeze_payload_digest=raw["exact_freeze_payload_digest"],
@@ -650,6 +717,7 @@ def replay_object_bongard_scene_predicate_query_phase(
         or commit.execution_precommit_digest != freeze.execution_precommit_digest
         or commit.version_space_digest != freeze.version_space_digest
         or commit.rank_response_digest != freeze.rank_response_digest
+        or commit.selected_survivor_digest != freeze.selected_survivor_digest
         or commit.selected_predicate_digest != freeze.selected_predicate_digest
         or commit.task_freeze_digest != freeze.record_digest
         or commit.exact_freeze_payload_digest
@@ -765,6 +833,10 @@ def prepare_object_bongard_scene_predicate_campaign(
     split_path: str | os.PathLike[str] = DEFAULT_SPLIT,
     exposure_predecessor_path: str | os.PathLike[str] = DEFAULT_EXPOSURE_PREDECESSOR,
     exposure_observed_at: str | None = None,
+    runtime_record_digest: str | None = None,
+    runtime_record: Mapping[str, Any] | None = None,
+    parallel_workers: int = DEFAULT_PARALLEL_WORKERS,
+    campaign_minutes: int = DEFAULT_CAMPAIGN_MINUTES,
 ) -> PreparedObjectBongardScenePredicateCampaign:
     """Verify calibration, bind metadata, and persist exposure before pixels."""
 
@@ -772,6 +844,28 @@ def prepare_object_bongard_scene_predicate_campaign(
     calibration = _verify_accepted_calibration_first(
         calibration_root, calibration_verifier
     )
+    if runtime_record_digest is None or runtime_record is None:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "authenticated no-tools runtime must be durable before campaign exposure"
+        )
+    runtime_record_digest = _address(
+        runtime_record_digest, "authenticated runtime digest"
+    )
+    runtime_raw = _canonical_mapping(runtime_record, "authenticated runtime")
+    if runtime_raw.get("runtime_digest") != runtime_record_digest:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "authenticated runtime content/digest binding differs"
+        )
+    authenticated_runtime = _restore_campaign_runtime(runtime_raw)
+    from bongard.transport import PINNED_CODEX_CLI_VERSION
+
+    if runtime_raw.get("launcher_fingerprint") != {
+        "version": PINNED_CODEX_CLI_VERSION,
+        "launcher_digest": authenticated_runtime.expected_launcher_digest,
+    }:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "authenticated runtime launcher fingerprint differs"
+        )
 
     from bongard.corpus import SplitIndex
     from bongard.exposure import ExposureLedger
@@ -783,7 +877,30 @@ def prepare_object_bongard_scene_predicate_campaign(
     )
     from bongard.official_panel_archive import OfficialPanelArchive
     from bongard.release import OfficialReleaseDescriptor
-
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        object_bongard_scene_predicate_calibration_command_source_digest,
+    )
+    from bongard.object_bongard_scene_predicate_ir import (
+        object_bongard_scene_predicate_ir_source_digest,
+    )
+    from bongard.object_bongard_turn_journal import (
+        object_bongard_turn_journal_source_digest,
+    )
+    from bongard.object_scene_visual_frontend import (
+        object_scene_visual_frontend_source_digest,
+    )
+    from bongard.prototype_scene_observer import (
+        prototype_scene_transport_source_digest,
+    )
+    if (
+        type(parallel_workers) is not int
+        or not 1 <= parallel_workers <= MAX_PARALLEL_WORKERS
+        or type(campaign_minutes) is not int
+        or not 1 <= campaign_minutes <= 24 * 60
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign execution envelope differs"
+        )
     preregistration, plan = _load_exact_cohort(
         Path(preregistration_path), Path(plan_path)
     )
@@ -822,6 +939,22 @@ def prepare_object_bongard_scene_predicate_campaign(
     calibration_result = _address(
         getattr(calibration, "result_digest", None), "calibration result digest"
     )
+    bindings = {
+        "campaign_command": "sha256:"
+        + object_bongard_scene_predicate_campaign_command_source_digest(),
+        "calibration_command": "sha256:"
+        + object_bongard_scene_predicate_calibration_command_source_digest(),
+        "calibration_result": calibration_result,
+        "scene_visual_frontend": "sha256:"
+        + object_scene_visual_frontend_source_digest(),
+        "scene_predicate_ir": "sha256:"
+        + object_bongard_scene_predicate_ir_source_digest(),
+        "turn_journal": "sha256:" + object_bongard_turn_journal_source_digest(),
+        "transport": "sha256:" + prototype_scene_transport_source_digest(),
+    }
+    bindings["authenticated_runtime_record"] = _address(
+        runtime_record_digest, "runtime record digest"
+    )
     precommit = create_object_bongard_execution_precommit(
         plan=plan,
         predecessor=predecessor,
@@ -830,10 +963,7 @@ def prepare_object_bongard_scene_predicate_campaign(
         task_ids=task_ids,
         train_task_ids=train_task_ids,
         exact_used_task_ids=exact_used_task_ids,
-        runtime_source_bindings={
-            "campaign_command": "sha256:" + hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
-            "calibration_result": calibration_result,
-        },
+        runtime_source_bindings=bindings,
         configuration={
             "task_count": TASK_COUNT,
             "discovery_calls_per_task": DISCOVERY_CALLS_PER_TASK,
@@ -842,6 +972,11 @@ def prepare_object_bongard_scene_predicate_campaign(
             "ranker_calls_max_per_task": MAX_RANKER_CALLS_PER_TASK,
             "query_calls_per_task": QUERY_CALLS_PER_TASK,
             "score_denominator": QUERY_DENOMINATOR,
+            "parallel_workers": parallel_workers,
+            "campaign_wall_clock_minutes": campaign_minutes,
+            "maximum_visual_calls": MAX_VISUAL_CALLS,
+            "maximum_ranker_calls": MAX_RANKER_CALLS,
+            "authenticated_runtime_persisted_before_exposure": True,
             "python_canonical": True,
             "lean_required": False,
         },
@@ -849,6 +984,14 @@ def prepare_object_bongard_scene_predicate_campaign(
         exposure_actor="headless-codex-scene-predicate-campaign",
         exposure_purpose="prose-grounded-python-predicate-support-and-sealed-query",
         exposure_source=f"{COMMAND_ID}:{plan.record_digest}",
+    )
+    # The runtime object is durable before prepare_object... appends and
+    # persists the one irreversible cohort exposure event.
+    _persist_record(
+        store,
+        object_kind="scene-campaign-runtime",
+        record=runtime_raw,
+        digest_field="runtime_digest",
     )
     prepared = prepare_object_bongard_release(
         store=store,
@@ -876,9 +1019,3331 @@ def _read_exact_json_unpinned(path: Path, label: str) -> dict[str, Any]:
     return _canonical_mapping(value, label)
 
 
-def run_object_bongard_scene_predicate_campaign_command(*args: object, **kwargs: object) -> object:
-    """Run the sealed campaign; task execution binds after the frozen IR lands."""
+def _persist_record(
+    store: object,
+    *,
+    object_kind: str,
+    record: Mapping[str, Any],
+    digest_field: str,
+) -> tuple[dict[str, Any], object]:
+    raw = _canonical_mapping(record, object_kind)
+    digest = _address(raw.get(digest_field), f"{object_kind} digest")
+    receipt = store.persist(object_kind=object_kind, object_digest=digest, data=raw)
+    restored = store.verify(receipt, expected_data=raw)
+    if dict(restored) != raw:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"{object_kind} durable reload differs"
+        )
+    return raw, receipt
 
-    raise ObjectBongardScenePredicateCampaignCommandError(
-        "scene-predicate campaign execution is not yet bound to the frozen IR API"
+
+def _runtime_record(runtime: object, fingerprint: Mapping[str, str]) -> dict[str, Any]:
+    cache = getattr(runtime, "cloud_policy_cache_snapshot", None)
+    catalog = getattr(runtime, "model_catalog_snapshot", None)
+    attestation = getattr(runtime, "no_tools_attestation", None)
+    if catalog is None or attestation is None or not hasattr(attestation, "to_dict"):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign runtime cannot be serialized"
+        )
+    return _record(
+        {
+            "schema": CAMPAIGN_RUNTIME_SCHEMA,
+            "command_id": COMMAND_ID,
+            "runtime_binding": dict(getattr(runtime, "binding")),
+            "cloud_policy_cache_snapshot_base64": (
+                None
+                if cache is None or cache.data is None
+                else base64.b64encode(cache.data).decode("ascii")
+            ),
+            "model_catalog_snapshot_base64": base64.b64encode(catalog.data).decode(
+                "ascii"
+            ),
+            "no_tools_attestation": attestation.to_dict(),
+            "launcher_fingerprint": dict(fingerprint),
+            "persisted_before_support_release": True,
+            **_authority_data(),
+        },
+        "runtime_digest",
     )
+
+
+def _create_campaign_runtime(
+    *,
+    minutes: int,
+    executable: str,
+    expected_launcher_sha256: str,
+    cache_snapshotter: Callable[[], object],
+    catalog_snapshotter: Callable[[], object],
+    launcher_fingerprinter: Callable[..., Mapping[str, str]],
+    runtime_attester: Callable[..., object],
+) -> tuple[object, Mapping[str, str]]:
+    if (
+        type(minutes) is not int
+        or not 1 <= minutes <= 120
+        or not isinstance(executable, str)
+        or not executable
+        or _RAW_DIGEST.fullmatch(expected_launcher_sha256) is None
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign runtime selectors differ"
+        )
+    # This is the same authenticated no-tools runtime constructor used by the
+    # accepted calibration.  Campaign custody remains owned by this command.
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _create_runtime,
+    )
+
+    authorization = {
+        "runtime_policy": {
+            "model": MODEL,
+            "reasoning_effort": REASONING_EFFORT,
+            "minutes": minutes,
+            "verbose": False,
+            "executable": executable,
+            "expected_launcher_sha256": expected_launcher_sha256,
+        }
+    }
+    return _create_runtime(
+        authorization,
+        cache_snapshotter=cache_snapshotter,
+        catalog_snapshotter=catalog_snapshotter,
+        launcher_fingerprinter=launcher_fingerprinter,
+        runtime_attester=runtime_attester,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class _TaskSupportPanel:
+    ordinal: int
+    blind_panel_id: str
+    journal_task_id: str
+    support_role: int
+    released: object
+    release_store_receipt: object
+    inventory: object
+    neutral_panel_digest: str
+
+    @property
+    def exact_png_bytes(self) -> bytes:
+        return getattr(self.released, "exact_png_bytes")
+
+    @property
+    def png_sha256(self) -> str:
+        return _address(
+            getattr(self.released, "exact_png_digest"), "released PNG digest"
+        )[7:]
+
+
+def _support_commitment(
+    *, ordinal: int, blind_panel_id: str, released: object, inventory: object
+) -> str:
+    return canonical_digest(
+        {
+            "schema": "gkm.bongard-scene-predicate-neutral-support-panel.v1",
+            "ordinal": ordinal,
+            "blind_panel_id": blind_panel_id,
+            "released_record_digest": getattr(released, "record_digest", None),
+            "png_digest": getattr(released, "exact_png_digest", None),
+            "proposal_inventory_digest": getattr(inventory, "inventory_digest", None),
+            "support_role_serialized": False,
+        }
+    )
+
+
+def _release_task_support_panels(
+    *, prepared: PreparedObjectBongardScenePredicateCampaign, task: object, task_index: int
+) -> tuple[_TaskSupportPanel, ...]:
+    from bongard.object_bongard_release_gate import (
+        release_object_bongard_support_panel,
+    )
+    from bongard.object_scene_visual_frontend import (
+        extract_object_scene_proposal_inventory,
+    )
+
+    rows: list[_TaskSupportPanel] = []
+    inventory = (
+        (0, *tuple(getattr(task, "side_0_support_panel_ids"))),
+        (1, *tuple(getattr(task, "side_1_support_panel_ids"))),
+    )
+    ordinal = 0
+    for role_and_ids in inventory:
+        role, *panel_ids = role_and_ids
+        for panel_id in panel_ids:
+            released, receipt = release_object_bongard_support_panel(
+                prepared=prepared.release,
+                archive=prepared.archive,
+                panel_id=panel_id,
+            )
+            proposals = extract_object_scene_proposal_inventory(
+                released.exact_png_bytes
+            )
+            blind = f"support_panel_{ordinal:02d}"
+            neutral = _support_commitment(
+                ordinal=ordinal,
+                blind_panel_id=blind,
+                released=released,
+                inventory=proposals,
+            )
+            rows.append(
+                _TaskSupportPanel(
+                    ordinal,
+                    blind,
+                    f"{getattr(task, 'family')}_scene_{task_index:02d}_{ordinal:02d}",
+                    int(role),
+                    released,
+                    receipt,
+                    proposals,
+                    neutral,
+                )
+            )
+            ordinal += 1
+    if (
+        len(rows) != SUPPORT_PANEL_COUNT_PER_TASK
+        or len({item.neutral_panel_digest for item in rows}) != len(rows)
+        or tuple(item.support_role for item in rows) != (0,) * 6 + (1,) * 6
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "released support inventory differs"
+        )
+    return tuple(rows)
+
+
+def _observation_context_digest(
+    *, task_plan_digest: str, neutral_panel_digest: str, stage: str
+) -> str:
+    if stage not in ("discovery", "registered_a", "registered_b", "query_side_0", "query_side_1"):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign observation stage differs"
+        )
+    return "sha256:" + canonical_digest(
+        {
+            "schema": "gkm.bongard-scene-predicate-campaign-observation-context.v1",
+            "task_plan_digest": task_plan_digest,
+            "neutral_panel_digest": neutral_panel_digest,
+            "stage": stage,
+            "support_role_visible_to_model": False,
+            "candidate_or_formula_visible_to_visual_model": False,
+        }
+    )
+
+
+def _stage_limit(stage: str) -> int:
+    return {
+        "discovery": TASK_COUNT * DISCOVERY_CALLS_PER_TASK,
+        "registered_a": TASK_COUNT * REGISTERED_A_CALLS_PER_TASK,
+        "registered_b": TASK_COUNT * REGISTERED_B_CALLS_PER_TASK,
+        "query": TASK_COUNT * QUERY_CALLS_PER_TASK,
+        "ranker": MAX_RANKER_CALLS,
+    }[stage]
+
+
+def _execute_task_visual_batch(
+    task_root: Path,
+    *,
+    stage: str,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    panels: Sequence[_TaskSupportPanel],
+    registry: object | None,
+    runtime: object,
+    parallel_workers: int,
+    transport: Callable[..., object],
+    budget: _CallBudget,
+) -> tuple[tuple[object, ...], dict[str, Any], object]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _frontend_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardNamedImageTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneTranscriptMode,
+        observe_object_scene_transcript,
+        prepare_object_scene_transcript_inputs,
+    )
+
+    if stage == "discovery":
+        mode = ObjectSceneTranscriptMode.DISCOVERY
+        if registry is not None:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "discovery received a soft-tag registry"
+            )
+    elif stage in ("registered_a", "registered_b"):
+        mode = ObjectSceneTranscriptMode.REGISTERED_EVALUATION
+        if registry is None:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "registered pass lacks its frozen registry"
+            )
+    else:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "support visual batch stage differs"
+        )
+    task_plan_digest = getattr(task, "record_digest")
+
+    def one(index: int) -> tuple[object, str, str]:
+        panel = panels[index]
+        context = _observation_context_digest(
+            task_plan_digest=task_plan_digest,
+            neutral_panel_digest=panel.neutral_panel_digest,
+            stage=stage,
+        )
+        model_inputs = prepare_object_scene_transcript_inputs(
+            panel.exact_png_bytes, panel.inventory, mode, registry
+        )
+        relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
+        def counted_transport(*args: object, **kwargs: object) -> object:
+            budget.count(stage, _stage_limit(stage))
+            return transport(*args, **kwargs)
+
+        journal = ObjectBongardNamedImageTurnJournalTransport(
+            task_root / relative,
+            authorization_digest=prepared.release.authorization.record_digest,
+            execution_precommit_digest=prepared.release.precommit.record_digest,
+            task_id=panel.journal_task_id,
+            turn_kind=stage,
+            expected_prompt=model_inputs.prompt,
+            expected_images=model_inputs.presentation,
+            expected_output_schema=model_inputs.output_schema,
+            runtime=runtime,
+            underlying_transport=counted_transport,
+        )
+        artifact = observe_object_scene_transcript(
+            panel.exact_png_bytes,
+            scene_id=panel.blind_panel_id,
+            observation_context_digest=context,
+            mode=mode,
+            registry=registry,
+            inventory=panel.inventory,
+            expected_panel_sha256=panel.png_sha256,
+            **_frontend_runtime_kwargs(runtime),
+            transport=journal,
+        )
+        budget.assert_within_deadline()
+        if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "support visual journal call accounting differs"
+            )
+        summary = verify_object_bongard_turn_journal(journal)
+        return artifact, str(relative), summary.record_digest
+
+    with ThreadPoolExecutor(max_workers=parallel_workers) as executor:
+        outcomes = tuple(executor.map(one, range(len(panels))))
+    artifacts = tuple(item[0] for item in outcomes)
+    rows = [
+        {
+            "ordinal": panel.ordinal,
+            "blind_panel_id": panel.blind_panel_id,
+            "neutral_panel_digest": panel.neutral_panel_digest,
+            "proposal_inventory_digest": getattr(panel.inventory, "inventory_digest"),
+            "observation_context_digest": getattr(artifact, "observation_context_digest"),
+            "artifact": artifact.to_data(),
+            "artifact_digest": getattr(artifact, "artifact_digest"),
+            "journal_directory": outcome[1],
+            "journal_summary_digest": outcome[2],
+        }
+        for panel, artifact, outcome in zip(panels, artifacts, outcomes, strict=True)
+    ]
+    record = _record(
+        {
+            "schema": TASK_BATCH_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": task_plan_digest,
+            "stage": stage,
+            "rows": rows,
+            "support_roles_serialized": False,
+            "candidate_or_formula_serialized": False,
+            "fresh_visual_call_count": len(rows),
+            "reused_visual_call_count": 0,
+            **_authority_data(),
+        },
+        "batch_digest",
+    )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind=f"scene-{stage.replace('_', '-')}-batch",
+        record=record,
+        digest_field="batch_digest",
+    )
+    restored = _restore_task_visual_batch(
+        raw,
+        stage=stage,
+        task=task,
+        panels=panels,
+        registry=registry,
+    )
+    return restored, raw, receipt
+
+
+def _restore_task_visual_batch(
+    batch: Mapping[str, Any],
+    *,
+    stage: str,
+    task: object,
+    panels: Sequence[_TaskSupportPanel],
+    registry: object | None,
+) -> tuple[object, ...]:
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneTranscriptArtifact,
+        ObjectSceneTranscriptMode,
+        verify_object_scene_transcript_artifact,
+    )
+
+    raw = _canonical_mapping(batch, f"{stage} durable batch")
+    body = {key: item for key, item in raw.items() if key != "batch_digest"}
+    rows = raw.get("rows")
+    expected_mode = (
+        ObjectSceneTranscriptMode.DISCOVERY
+        if stage == "discovery"
+        else ObjectSceneTranscriptMode.REGISTERED_EVALUATION
+    )
+    expected_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "stage",
+        "rows",
+        "support_roles_serialized",
+        "candidate_or_formula_serialized",
+        "fresh_visual_call_count",
+        "reused_visual_call_count",
+        *_authority_data(),
+        "batch_digest",
+    }
+    expected_row_fields = {
+        "ordinal",
+        "blind_panel_id",
+        "neutral_panel_digest",
+        "proposal_inventory_digest",
+        "observation_context_digest",
+        "artifact",
+        "artifact_digest",
+        "journal_directory",
+        "journal_summary_digest",
+    }
+    if (
+        set(raw) != expected_fields
+        or raw.get("schema") != TASK_BATCH_SCHEMA
+        or raw.get("command_id") != COMMAND_ID
+        or raw.get("task_plan_digest") != getattr(task, "record_digest")
+        or raw.get("stage") != stage
+        or raw.get("batch_digest") != "sha256:" + canonical_digest(body)
+        or not isinstance(rows, list)
+        or len(rows) != SUPPORT_PANEL_COUNT_PER_TASK
+        or raw.get("support_roles_serialized") is not False
+        or raw.get("candidate_or_formula_serialized") is not False
+        or raw.get("fresh_visual_call_count") != SUPPORT_PANEL_COUNT_PER_TASK
+        or raw.get("reused_visual_call_count") != 0
+        or any(raw.get(key) != value for key, value in _authority_data().items())
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"{stage} durable batch policy differs"
+        )
+    result: list[object] = []
+    for index, (panel, row) in enumerate(zip(panels, rows, strict=True)):
+        if not isinstance(row, Mapping) or set(row) != expected_row_fields:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{stage} durable batch row differs"
+            )
+        context = _observation_context_digest(
+            task_plan_digest=getattr(task, "record_digest"),
+            neutral_panel_digest=panel.neutral_panel_digest,
+            stage=stage,
+        )
+        artifact = ObjectSceneTranscriptArtifact.from_data(
+            row.get("artifact"), expected_artifact_digest=row.get("artifact_digest")
+        )
+        verify_object_scene_transcript_artifact(
+            artifact,
+            panel.exact_png_bytes,
+            expected_scene_id=panel.blind_panel_id,
+            expected_observation_context_digest=context,
+            expected_panel_sha256=panel.png_sha256,
+            expected_artifact_digest=artifact.artifact_digest,
+        )
+        if (
+            row.get("ordinal") != panel.ordinal
+            or row.get("blind_panel_id") != panel.blind_panel_id
+            or row.get("neutral_panel_digest") != panel.neutral_panel_digest
+            or row.get("proposal_inventory_digest")
+            != getattr(panel.inventory, "inventory_digest")
+            or row.get("observation_context_digest") != context
+            or artifact.inventory != panel.inventory
+            or artifact.mode is not expected_mode
+            or artifact.registry != registry
+            or row.get("journal_directory")
+            != str(Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}")
+            or _ADDRESS.fullmatch(str(row.get("journal_summary_digest", ""))) is None
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{stage} durable artifact binding differs"
+            )
+        result.append(artifact)
+    return tuple(result)
+
+
+def _forbidden_named_transport(*_args: object, **_kwargs: object) -> object:
+    raise AssertionError("campaign cold replay attempted a visual model call")
+
+
+def _forbidden_text_transport(*_args: object, **_kwargs: object) -> object:
+    raise AssertionError("campaign cold replay attempted a ranker model call")
+
+
+def _cold_replay_task_visual_batch(
+    task_root: Path,
+    *,
+    stage: str,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    panels: Sequence[_TaskSupportPanel],
+    registry: object | None,
+    runtime: object,
+    batch: Mapping[str, Any],
+) -> tuple[str, ...]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _frontend_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardNamedImageTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneTranscriptMode,
+        observe_object_scene_transcript,
+        prepare_object_scene_transcript_inputs,
+    )
+
+    artifacts = _restore_task_visual_batch(
+        batch, stage=stage, task=task, panels=panels, registry=registry
+    )
+    mode = (
+        ObjectSceneTranscriptMode.DISCOVERY
+        if stage == "discovery"
+        else ObjectSceneTranscriptMode.REGISTERED_EVALUATION
+    )
+    summaries: list[str] = []
+    for index, (panel, artifact, row) in enumerate(
+        zip(panels, artifacts, batch["rows"], strict=True)
+    ):
+        context = _observation_context_digest(
+            task_plan_digest=getattr(task, "record_digest"),
+            neutral_panel_digest=panel.neutral_panel_digest,
+            stage=stage,
+        )
+        model_inputs = prepare_object_scene_transcript_inputs(
+            panel.exact_png_bytes, panel.inventory, mode, registry
+        )
+        relative = Path(JOURNAL_DIRECTORY) / stage / f"panel_{index:02d}"
+        journal = ObjectBongardNamedImageTurnJournalTransport(
+            task_root / relative,
+            authorization_digest=prepared.release.authorization.record_digest,
+            execution_precommit_digest=prepared.release.precommit.record_digest,
+            task_id=panel.journal_task_id,
+            turn_kind=stage,
+            expected_prompt=model_inputs.prompt,
+            expected_images=model_inputs.presentation,
+            expected_output_schema=model_inputs.output_schema,
+            runtime=runtime,
+            underlying_transport=_forbidden_named_transport,
+        )
+        replayed = observe_object_scene_transcript(
+            panel.exact_png_bytes,
+            scene_id=panel.blind_panel_id,
+            observation_context_digest=context,
+            mode=mode,
+            registry=registry,
+            inventory=panel.inventory,
+            expected_panel_sha256=panel.png_sha256,
+            **_frontend_runtime_kwargs(runtime),
+            transport=journal,
+        )
+        summary = verify_object_bongard_turn_journal(journal)
+        if (
+            replayed != artifact
+            or journal.fresh_call_count != 0
+            or journal.reused_call_count != 1
+            or summary.record_digest != row["journal_summary_digest"]
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{stage} visual journal cold replay differs"
+            )
+        summaries.append(summary.record_digest)
+    return tuple(summaries)
+
+
+def _freeze_task_registry(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    discovery_batch: Mapping[str, Any],
+    discovery_artifacts: Sequence[object],
+) -> tuple[object, dict[str, Any], object]:
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneSoftTagRegistry,
+        freeze_object_scene_soft_tag_registry,
+        verify_object_scene_soft_tag_registry,
+    )
+
+    transcripts = tuple(
+        item.transcript
+        for item in discovery_artifacts
+        if getattr(item, "transcript", None) is not None
+    )
+    registry = freeze_object_scene_soft_tag_registry(transcripts)
+    record = _record(
+        {
+            "schema": TASK_REGISTRY_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "discovery_batch_digest": discovery_batch["batch_digest"],
+            "registry": registry.to_data(),
+            "registry_digest": registry.registry_digest,
+            "successful_discovery_transcript_count": len(transcripts),
+            "discovery_error_or_parser_gap_count": (
+                SUPPORT_PANEL_COUNT_PER_TASK - len(transcripts)
+            ),
+            "support_roles_used": False,
+            "persisted_and_reloaded_before_registered_pass_a": True,
+            **_authority_data(),
+        },
+        "registry_freeze_digest",
+    )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-registry",
+        record=record,
+        digest_field="registry_freeze_digest",
+    )
+    restored = ObjectSceneSoftTagRegistry.from_data(raw["registry"])
+    verify_object_scene_soft_tag_registry(
+        restored, transcripts, expected_registry_digest=raw["registry_digest"]
+    )
+    if restored != registry:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task soft-tag registry durable replay differs"
+        )
+    return restored, raw, receipt
+
+
+def _registered_envelopes_match(
+    artifacts_a: Sequence[object], artifacts_b: Sequence[object]
+) -> bool:
+    if len(artifacts_a) != SUPPORT_PANEL_COUNT_PER_TASK or len(artifacts_b) != len(
+        artifacts_a
+    ):
+        return False
+    fields = (
+        "panel_digest",
+        "inventory_digest",
+        "registry_digest",
+        "preparation_digest",
+        "prompt_digest",
+        "output_schema_digest",
+        "presentation",
+    )
+    return all(
+        all(getattr(first, name) == getattr(second, name) for name in fields)
+        and first.observation_context_digest != second.observation_context_digest
+        for first, second in zip(artifacts_a, artifacts_b, strict=True)
+    )
+
+
+def _freeze_task_ir(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    panels: Sequence[_TaskSupportPanel],
+    registry: object,
+    discovery_artifacts: Sequence[object],
+    registered_a_artifacts: Sequence[object],
+    registered_b_artifacts: Sequence[object],
+    discovery_batch: Mapping[str, Any],
+    registered_a_batch: Mapping[str, Any],
+    registered_b_batch: Mapping[str, Any],
+) -> tuple[object, dict[str, Any], object]:
+    from bongard.object_bongard_scene_predicate_ir import (
+        ScenePredicateCalibrationBundle,
+        build_object_bongard_scene_predicate_calibration_bundle,
+        cold_replay_object_bongard_scene_predicate_calibration_bundle,
+    )
+
+    if not _registered_envelopes_match(
+        registered_a_artifacts, registered_b_artifacts
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task registered pass A/B model-visible envelopes differ"
+        )
+    # This is the first point where support roles exist in the version-space
+    # construction.  Every visual artifact and both registered batches are
+    # already durable and reloaded.
+    role_rows = tuple(
+        {
+            "ordinal": panel.ordinal,
+            "neutral_panel_digest": panel.neutral_panel_digest,
+            "historical_role": panel.support_role,
+            "blind_panel_id": panel.blind_panel_id,
+        }
+        for panel in panels
+    )
+    bundle = build_object_bongard_scene_predicate_calibration_bundle(
+        registry,
+        tuple(discovery_artifacts),
+        tuple(registered_a_artifacts),
+        tuple(registered_b_artifacts),
+        role_rows,
+    )
+    data = bundle.to_data()
+    decoded = ScenePredicateCalibrationBundle.from_data(data)
+    replayed = cold_replay_object_bongard_scene_predicate_calibration_bundle(
+        decoded, registry
+    )
+    if replayed != decoded:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task Python IR cold replay differs"
+        )
+    record = _record(
+        {
+            "schema": TASK_IR_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "discovery_batch_digest": discovery_batch["batch_digest"],
+            "registered_a_batch_digest": registered_a_batch["batch_digest"],
+            "registered_b_batch_digest": registered_b_batch["batch_digest"],
+            "role_rows": [dict(item) for item in role_rows],
+            "roles_revealed_after_all_three_support_batches": True,
+            "bundle": data,
+            "bundle_digest": bundle.bundle_digest,
+            "model_calls_during_python_build_or_replay": 0,
+            **_authority_data(),
+        },
+        "ir_freeze_digest",
+    )
+    encoded_size = len(canonical_json(record)) + 1
+    if encoded_size > 64 * 1024 * 1024:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task IR freeze exceeds the explicit 64 MiB durable-store envelope"
+        )
+    raw, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-ir",
+        record=record,
+        digest_field="ir_freeze_digest",
+    )
+    durable_bundle = ScenePredicateCalibrationBundle.from_data(raw["bundle"])
+    if durable_bundle != bundle:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task IR durable reload differs"
+        )
+    return durable_bundle, raw, receipt
+
+
+def _ranker_output_schema(survivors: Sequence[str]) -> dict[str, object]:
+    from bongard.transport import validate_codex_strict_output_schema
+
+    values = tuple(survivors)
+    if (
+        not 1 <= len(values) <= 64
+        or len(set(values)) != len(values)
+        or any(_RAW_DIGEST.fullmatch(item) is None for item in values)
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker slate differs"
+        )
+    schema: dict[str, object] = {
+        "type": "object",
+        "properties": {
+            "selected_survivor_digest": {"type": "string", "enum": list(values)}
+        },
+        "required": ["selected_survivor_digest"],
+        "additionalProperties": False,
+    }
+    validate_codex_strict_output_schema(schema)
+    return schema
+
+
+def _ranker_prompt(rows: Sequence[Mapping[str, Any]]) -> str:
+    slate = tuple(_canonical_mapping(item, "task ranker row") for item in rows)
+    _ranker_output_schema(tuple(item["candidate_digest"] for item in slate))
+    return (
+        "Choose exactly one already-verified frozen Python predicate. Compare "
+        "only the displayed affirmative formula meaning, orientation, "
+        "complexity, and complete repeat-tested support result. Do not create, "
+        "edit, combine, negate, or repair a predicate. Return only "
+        "selected_survivor_digest.\n\nFrozen survivor slate:\n"
+        + canonical_json(list(slate)).decode("utf-8")
+    )
+
+
+def _assert_task_ranker_privacy(
+    rows: Sequence[Mapping[str, Any]], *, task: object, prompt: str
+) -> None:
+    def visit(value: object, key: str | None = None) -> None:
+        if isinstance(value, Mapping):
+            for child_key, child in value.items():
+                visit(child, str(child_key))
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                visit(child, key)
+        elif isinstance(value, str) and (
+            _RAW_DIGEST.fullmatch(value) is not None
+            or _ADDRESS.fullmatch(value) is not None
+        ):
+            if key != "candidate_digest" or _RAW_DIGEST.fullmatch(value) is None:
+                raise ObjectBongardScenePredicateCampaignCommandError(
+                    "ranker slate leaks a non-candidate lineage digest"
+                )
+
+    for row in rows:
+        visit(row)
+    hidden = {
+        getattr(task, "task_id", None),
+        getattr(task, "record_digest", None),
+        *tuple(getattr(task, "side_0_support_panel_ids", ())),
+        *tuple(getattr(task, "side_1_support_panel_ids", ())),
+        getattr(task, "side_0_query_panel_id", None),
+        getattr(task, "side_1_query_panel_id", None),
+    }
+    if any(isinstance(item, str) and item and item in prompt for item in hidden):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "ranker prompt leaks task or panel identity"
+        )
+    if len(prompt.encode("utf-8")) > 256_000:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "ranker prompt exceeds its bounded semantic envelope"
+        )
+
+
+def _rank_task_bundle(
+    task_root: Path,
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    bundle: object,
+    ir_record: Mapping[str, Any],
+    runtime: object,
+    text_transport: Callable[..., object],
+    budget: _CallBudget,
+) -> tuple[dict[str, Any], object, dict[str, Any], object, str | None]:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _journal_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardTextTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+
+    survivors = tuple(getattr(bundle, "complete_survivor_digests"))
+    slate = tuple(dict(item) for item in getattr(bundle, "ranker_slate"))
+    omitted = tuple(dict(item) for item in getattr(bundle, "omitted_survivors"))
+    rank_input_record = _record(
+        {
+            "schema": TASK_RANK_INPUT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "ir_freeze_digest": ir_record["ir_freeze_digest"],
+            "bundle_digest": getattr(bundle, "bundle_digest"),
+            "complete_survivor_digests": list(survivors),
+            "ranker_slate": list(slate),
+            "omitted_survivors": list(omitted),
+            "ranker_input_frozen_before_call": True,
+            **_authority_data(),
+        },
+        "rank_input_digest",
+    )
+    rank_input, rank_input_receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-rank-input",
+        record=rank_input_record,
+        digest_field="rank_input_digest",
+    )
+    if not survivors:
+        if slate:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "typed gap carries a ranker slate"
+            )
+        result_record = _record(
+            {
+                "schema": TASK_RANK_RESULT_SCHEMA,
+                "command_id": COMMAND_ID,
+                "task_plan_digest": getattr(task, "record_digest"),
+                "rank_input_digest": rank_input["rank_input_digest"],
+                "status": "typed_gap",
+                "ranker_called": False,
+                "ranker_fresh_call_count": 0,
+                "selected_survivor_digest": None,
+                "ranker_payload": None,
+                "ranker_journal_directory": None,
+                **_authority_data(),
+            },
+            "rank_result_digest",
+        )
+        result, receipt = _persist_record(
+            prepared.release.store,
+            object_kind="scene-task-rank-result",
+            record=result_record,
+            digest_field="rank_result_digest",
+        )
+        return rank_input, rank_input_receipt, result, receipt, None
+
+    slate_digests = tuple(item["candidate_digest"] for item in slate)
+    if set(slate_digests) | {item["candidate_digest"] for item in omitted} != set(
+        survivors
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "ranker input does not account for every survivor"
+        )
+    prompt = _ranker_prompt(slate)
+    _assert_task_ranker_privacy(slate, task=task, prompt=prompt)
+    schema = _ranker_output_schema(slate_digests)
+    relative = Path(JOURNAL_DIRECTORY) / "ranker"
+    def counted_transport(*args: object, **kwargs: object) -> object:
+        budget.count("ranker", _stage_limit("ranker"))
+        return text_transport(*args, **kwargs)
+
+    journal = ObjectBongardTextTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_rank_{task_index:02d}",
+        turn_kind="survivor_rank",
+        expected_prompt=prompt,
+        expected_output_schema=schema,
+        runtime=runtime,
+        underlying_transport=counted_transport,
+    )
+    transport_result = journal(prompt, schema, **_journal_runtime_kwargs(runtime))
+    budget.assert_within_deadline()
+    payload = _canonical_mapping(transport_result.payload, "task ranker payload")
+    selected = payload.get("selected_survivor_digest")
+    if set(payload) != {"selected_survivor_digest"} or selected not in slate_digests:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker escaped the frozen survivor slate"
+        )
+    if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker journal call accounting differs"
+        )
+    summary = verify_object_bongard_turn_journal(journal)
+    result_record = _record(
+        {
+            "schema": TASK_RANK_RESULT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_plan_digest": getattr(task, "record_digest"),
+            "rank_input_digest": rank_input["rank_input_digest"],
+            "status": "selected_frozen_survivor",
+            "ranker_called": True,
+            "ranker_fresh_call_count": 1,
+            "selected_survivor_digest": selected,
+            "ranker_payload": payload,
+            "ranker_journal_directory": str(relative),
+            "ranker_journal_summary_digest": summary.record_digest,
+            **_authority_data(),
+        },
+        "rank_result_digest",
+    )
+    result, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-rank-result",
+        record=result_record,
+        digest_field="rank_result_digest",
+    )
+    return rank_input, rank_input_receipt, result, receipt, str(selected)
+
+
+def _cold_replay_task_ranker(
+    task_root: Path,
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    runtime: object,
+    rank_input: Mapping[str, Any],
+    rank_result: Mapping[str, Any],
+) -> str | None:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _journal_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardTextTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+
+    slate = tuple(rank_input["ranker_slate"])
+    if not slate:
+        if (
+            rank_input["complete_survivor_digests"]
+            or rank_result["ranker_called"] is not False
+            or rank_result["selected_survivor_digest"] is not None
+            or (task_root / JOURNAL_DIRECTORY / "ranker").exists()
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "typed gap forged a ranker journal"
+            )
+        return None
+    prompt = _ranker_prompt(slate)
+    _assert_task_ranker_privacy(slate, task=task, prompt=prompt)
+    schema = _ranker_output_schema(
+        tuple(item["candidate_digest"] for item in slate)
+    )
+    relative = Path(JOURNAL_DIRECTORY) / "ranker"
+    journal = ObjectBongardTextTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_rank_{task_index:02d}",
+        turn_kind="survivor_rank",
+        expected_prompt=prompt,
+        expected_output_schema=schema,
+        runtime=runtime,
+        underlying_transport=_forbidden_text_transport,
+    )
+    replayed = journal(prompt, schema, **_journal_runtime_kwargs(runtime))
+    payload = _canonical_mapping(replayed.payload, "cold-replayed task ranker")
+    summary = verify_object_bongard_turn_journal(journal)
+    selected = payload.get("selected_survivor_digest")
+    if (
+        payload != rank_result["ranker_payload"]
+        or selected != rank_result["selected_survivor_digest"]
+        or summary.record_digest != rank_result["ranker_journal_summary_digest"]
+        or journal.fresh_call_count != 0
+        or journal.reused_call_count != 1
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task ranker journal cold replay differs"
+        )
+    return str(selected)
+
+
+def _observe_task_query(
+    task_root: Path,
+    *,
+    side: str,
+    released: object,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    registry: object,
+    runtime: object,
+    transport: Callable[..., object],
+    budget: _CallBudget,
+) -> object:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _frontend_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardNamedImageTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneTranscriptMode,
+        extract_object_scene_proposal_inventory,
+        observe_object_scene_transcript,
+        prepare_object_scene_transcript_inputs,
+    )
+
+    if side not in ("side_0", "side_1"):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query side differs"
+        )
+    png = getattr(released, "exact_png_bytes")
+    inventory = extract_object_scene_proposal_inventory(png)
+    blind = f"query_panel_{int(side[-1]):02d}"
+    neutral = canonical_digest(
+        {
+            "schema": "gkm.bongard-scene-predicate-neutral-query-panel.v1",
+            "blind_panel_id": blind,
+            "released_record_digest": getattr(released, "record_digest"),
+            "png_digest": getattr(released, "exact_png_digest"),
+            "proposal_inventory_digest": inventory.inventory_digest,
+            "sealed_query_side_serialized_to_model": False,
+        }
+    )
+    stage = f"query_{side}"
+    context = _observation_context_digest(
+        task_plan_digest=getattr(task, "record_digest"),
+        neutral_panel_digest=neutral,
+        stage=stage,
+    )
+    mode = ObjectSceneTranscriptMode.REGISTERED_EVALUATION
+    model_inputs = prepare_object_scene_transcript_inputs(
+        png, inventory, mode, registry
+    )
+    relative = Path(JOURNAL_DIRECTORY) / "query" / side
+
+    def counted_transport(*args: object, **kwargs: object) -> object:
+        budget.count("query", _stage_limit("query"))
+        return transport(*args, **kwargs)
+
+    journal = ObjectBongardNamedImageTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_query_{task_index:02d}",
+        turn_kind=stage,
+        expected_prompt=model_inputs.prompt,
+        expected_images=model_inputs.presentation,
+        expected_output_schema=model_inputs.output_schema,
+        runtime=runtime,
+        underlying_transport=counted_transport,
+    )
+    artifact = observe_object_scene_transcript(
+        png,
+        scene_id=blind,
+        observation_context_digest=context,
+        mode=mode,
+        registry=registry,
+        inventory=inventory,
+        expected_panel_sha256=_address(
+            getattr(released, "exact_png_digest"), "query PNG digest"
+        )[7:],
+        **_frontend_runtime_kwargs(runtime),
+        transport=journal,
+    )
+    budget.assert_within_deadline()
+    if journal.fresh_call_count != 1 or journal.reused_call_count != 0:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query visual journal call accounting differs"
+        )
+    verify_object_bongard_turn_journal(journal)
+    return artifact
+
+
+def _cold_replay_task_query(
+    task_root: Path,
+    *,
+    side: str,
+    released: object,
+    expected_artifact: object,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    registry: object,
+    runtime: object,
+) -> str:
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        _frontend_runtime_kwargs,
+    )
+    from bongard.object_bongard_turn_journal import (
+        ObjectBongardNamedImageTurnJournalTransport,
+        verify_object_bongard_turn_journal,
+    )
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneTranscriptMode,
+        extract_object_scene_proposal_inventory,
+        observe_object_scene_transcript,
+        prepare_object_scene_transcript_inputs,
+    )
+
+    png = getattr(released, "exact_png_bytes")
+    inventory = extract_object_scene_proposal_inventory(png)
+    blind = f"query_panel_{int(side[-1]):02d}"
+    neutral = canonical_digest(
+        {
+            "schema": "gkm.bongard-scene-predicate-neutral-query-panel.v1",
+            "blind_panel_id": blind,
+            "released_record_digest": getattr(released, "record_digest"),
+            "png_digest": getattr(released, "exact_png_digest"),
+            "proposal_inventory_digest": inventory.inventory_digest,
+            "sealed_query_side_serialized_to_model": False,
+        }
+    )
+    stage = f"query_{side}"
+    context = _observation_context_digest(
+        task_plan_digest=getattr(task, "record_digest"),
+        neutral_panel_digest=neutral,
+        stage=stage,
+    )
+    mode = ObjectSceneTranscriptMode.REGISTERED_EVALUATION
+    model_inputs = prepare_object_scene_transcript_inputs(
+        png, inventory, mode, registry
+    )
+    relative = Path(JOURNAL_DIRECTORY) / "query" / side
+    journal = ObjectBongardNamedImageTurnJournalTransport(
+        task_root / relative,
+        authorization_digest=prepared.release.authorization.record_digest,
+        execution_precommit_digest=prepared.release.precommit.record_digest,
+        task_id=f"{getattr(task, 'family')}_scene_query_{task_index:02d}",
+        turn_kind=stage,
+        expected_prompt=model_inputs.prompt,
+        expected_images=model_inputs.presentation,
+        expected_output_schema=model_inputs.output_schema,
+        runtime=runtime,
+        underlying_transport=_forbidden_named_transport,
+    )
+    replayed = observe_object_scene_transcript(
+        png,
+        scene_id=blind,
+        observation_context_digest=context,
+        mode=mode,
+        registry=registry,
+        inventory=inventory,
+        expected_panel_sha256=_address(
+            getattr(released, "exact_png_digest"), "query PNG digest"
+        )[7:],
+        **_frontend_runtime_kwargs(runtime),
+        transport=journal,
+    )
+    summary = verify_object_bongard_turn_journal(journal)
+    if (
+        replayed != expected_artifact
+        or journal.fresh_call_count != 0
+        or journal.reused_call_count != 1
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query visual journal cold replay differs"
+        )
+    return summary.record_digest
+
+
+def _query_score_rows(
+    *, bundle: object, selected_candidate_data: Mapping[str, Any], artifacts: Sequence[object]
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    from bongard.evidence import Disposition
+    from bongard.object_bongard_scene_predicate_ir import (
+        SceneOrientation,
+        ScenePredicateCandidate,
+        ScenePredicateLanguage,
+        adapt_object_scene_registered_single,
+        evaluate_object_scene_candidate,
+    )
+
+    version = getattr(bundle, "version_space")
+    language = ScenePredicateLanguage.from_data(version["language"])
+    candidate = ScenePredicateCandidate.from_data(
+        selected_candidate_data, language=language
+    )
+    if len(artifacts) != QUERY_CALLS_PER_TASK:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query artifact inventory differs"
+        )
+    expected = (
+        (Disposition.PRESENT, Disposition.CERTIFIED_ABSENT)
+        if candidate.orientation is SceneOrientation.GROUP0_POSITIVE
+        else (Disposition.CERTIFIED_ABSENT, Disposition.PRESENT)
+    )
+    rows: list[dict[str, Any]] = []
+    for index, (artifact, wanted) in enumerate(zip(artifacts, expected, strict=True)):
+        panel = adapt_object_scene_registered_single(
+            f"query_panel_{index:02d}", artifact
+        )
+        actual = evaluate_object_scene_candidate(candidate, language, panel)
+        rows.append(
+            {
+                "side": f"side_{index}",
+                "query_artifact_digest": getattr(artifact, "artifact_digest"),
+                "query_observation_digest": panel.observation_digest,
+                "expected_disposition": wanted.value,
+                "actual_disposition": actual.value,
+                "correct": actual is wanted,
+                "indeterminate_or_error_scores_incorrect": actual
+                in (Disposition.INDETERMINATE, Disposition.ERROR),
+            }
+        )
+    return rows[0], rows[1]
+
+
+@dataclass(frozen=True, slots=True)
+class _TaskOutcome:
+    result: Mapping[str, Any]
+    result_receipt: object
+    scored_correct: int
+    queried: bool
+
+
+def _budget_delta(
+    before: ObjectBongardScenePredicateCampaignBudget,
+    after: ObjectBongardScenePredicateCampaignBudget,
+) -> dict[str, int]:
+    return {
+        name: getattr(after, name) - getattr(before, name)
+        for name in (
+            "discovery_calls",
+            "registered_a_calls",
+            "registered_b_calls",
+            "ranker_calls",
+            "query_calls",
+        )
+    }
+
+
+def _execute_task(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    runtime: object,
+    named_image_transport: Callable[..., object],
+    text_transport: Callable[..., object],
+    parallel_workers: int,
+    budget: _CallBudget,
+) -> _TaskOutcome:
+    from bongard.object_bongard_scene_predicate_ir import (
+        cold_replay_object_bongard_scene_predicate_calibration_bundle,
+    )
+
+    task_root = prepared.output_root / "tasks" / f"task_{task_index:02d}"
+    task_root.mkdir(parents=True, exist_ok=False)
+    before = budget.snapshot()
+    panels = _release_task_support_panels(
+        prepared=prepared, task=task, task_index=task_index
+    )
+    discovery, discovery_batch, discovery_receipt = _execute_task_visual_batch(
+        task_root,
+        stage="discovery",
+        prepared=prepared,
+        task=task,
+        panels=panels,
+        registry=None,
+        runtime=runtime,
+        parallel_workers=parallel_workers,
+        transport=named_image_transport,
+        budget=budget,
+    )
+    registry, registry_record, registry_receipt = _freeze_task_registry(
+        prepared=prepared,
+        task=task,
+        discovery_batch=discovery_batch,
+        discovery_artifacts=discovery,
+    )
+    pass_a, pass_a_batch, pass_a_receipt = _execute_task_visual_batch(
+        task_root,
+        stage="registered_a",
+        prepared=prepared,
+        task=task,
+        panels=panels,
+        registry=registry,
+        runtime=runtime,
+        parallel_workers=parallel_workers,
+        transport=named_image_transport,
+        budget=budget,
+    )
+    pass_b, pass_b_batch, pass_b_receipt = _execute_task_visual_batch(
+        task_root,
+        stage="registered_b",
+        prepared=prepared,
+        task=task,
+        panels=panels,
+        registry=registry,
+        runtime=runtime,
+        parallel_workers=parallel_workers,
+        transport=named_image_transport,
+        budget=budget,
+    )
+    bundle, ir_record, ir_receipt = _freeze_task_ir(
+        prepared=prepared,
+        task=task,
+        panels=panels,
+        registry=registry,
+        discovery_artifacts=discovery,
+        registered_a_artifacts=pass_a,
+        registered_b_artifacts=pass_b,
+        discovery_batch=discovery_batch,
+        registered_a_batch=pass_a_batch,
+        registered_b_batch=pass_b_batch,
+    )
+    rank_input, rank_input_receipt, rank_result, rank_result_receipt, selected = (
+        _rank_task_bundle(
+            task_root,
+            prepared=prepared,
+            task=task,
+            task_index=task_index,
+            bundle=bundle,
+            ir_record=ir_record,
+            runtime=runtime,
+            text_transport=text_transport,
+            budget=budget,
+        )
+    )
+
+    candidate_by_digest = {
+        item.candidate_digest: item.to_data() for item in bundle.candidates
+    }
+    query_phase: ObjectBongardScenePredicateQueryPhase | None = None
+    query_released: list[object] = []
+    query_journal_summaries: tuple[str, ...] = ()
+    query_batch: dict[str, Any] | None = None
+    query_batch_receipt: object | None = None
+    score_rows: tuple[dict[str, Any], dict[str, Any]]
+    if selected is None:
+        if bundle.complete_survivor_digests:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "nonempty task version space was converted to a gap"
+            )
+        score_rows = (
+            {
+                "side": "side_0",
+                "query_artifact_digest": None,
+                "query_observation_digest": None,
+                "expected_disposition": None,
+                "actual_disposition": "typed_gap_no_query",
+                "correct": False,
+                "indeterminate_or_error_scores_incorrect": True,
+            },
+            {
+                "side": "side_1",
+                "query_artifact_digest": None,
+                "query_observation_digest": None,
+                "expected_disposition": None,
+                "actual_disposition": "typed_gap_no_query",
+                "correct": False,
+                "indeterminate_or_error_scores_incorrect": True,
+            },
+        )
+    else:
+        selected_data = candidate_by_digest.get(selected)
+        if selected_data is None:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "ranker selection is absent from the complete Python inventory"
+            )
+        rank_payload_digest = _address(
+            getattr(rank_result_receipt, "payload_digest"),
+            "persisted rank result payload digest",
+        )[7:]
+        freeze = ObjectBongardScenePredicateTaskFreeze.seal(
+            task_id=getattr(task, "task_id"),
+            task_plan_digest=getattr(task, "record_digest"),
+            execution_precommit_digest=prepared.release.precommit.record_digest,
+            version_space_digest=bundle.bundle_digest,
+            rank_response_digest=rank_payload_digest,
+            selected_predicate=selected_data,
+        )
+
+        def query_observer(side: str, released: object) -> object:
+            query_released.append(released)
+            return _observe_task_query(
+                task_root,
+                side=side,
+                released=released,
+                prepared=prepared,
+                task=task,
+                task_index=task_index,
+                registry=registry,
+                runtime=runtime,
+                transport=named_image_transport,
+                budget=budget,
+            )
+
+        query_phase = commit_and_release_object_bongard_scene_predicate_queries(
+            prepared=prepared.release,
+            archive=prepared.archive,
+            task=task,
+            freeze=freeze,
+            query_observer=query_observer,
+        )
+        replay_object_bongard_scene_predicate_query_phase(query_phase)
+        score_rows = _query_score_rows(
+            bundle=bundle,
+            selected_candidate_data=selected_data,
+            artifacts=query_phase.query_artifacts,
+        )
+        if len(query_released) != QUERY_CALLS_PER_TASK:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "query release inventory differs"
+            )
+        query_journal_summaries = tuple(
+            _cold_replay_task_query(
+                task_root,
+                side=side,
+                released=released,
+                expected_artifact=artifact,
+                prepared=prepared,
+                task=task,
+                task_index=task_index,
+                registry=registry,
+                runtime=runtime,
+            )
+            for side, released, artifact in zip(
+                ("side_0", "side_1"),
+                query_released,
+                query_phase.query_artifacts,
+                strict=True,
+            )
+        )
+        query_batch_record = _record(
+            {
+                "schema": TASK_BATCH_SCHEMA,
+                "command_id": COMMAND_ID,
+                "task_plan_digest": getattr(task, "record_digest"),
+                "stage": "query",
+                "formula_freeze": query_phase.freeze.to_data(),
+                "formula_freeze_receipt": query_phase.freeze_receipt.to_data(),
+                "decision_commit": query_phase.commit.to_data(),
+                "decision_commit_receipt": query_phase.commit_receipt.to_data(),
+                "artifacts": [item.to_data() for item in query_phase.query_artifacts],
+                "release_receipts": [
+                    item.to_data() for item in query_phase.query_release_receipts
+                ],
+                "journal_summary_digests": list(query_journal_summaries),
+                "score_rows": [dict(item) for item in score_rows],
+                "fresh_visual_call_count": QUERY_CALLS_PER_TASK,
+                "formula_frozen_and_committed_before_query_release": True,
+                **_authority_data(),
+            },
+            "batch_digest",
+        )
+        query_batch, query_batch_receipt = _persist_record(
+            prepared.release.store,
+            object_kind="scene-task-query-batch",
+            record=query_batch_record,
+            digest_field="batch_digest",
+        )
+
+    replayed_bundle = cold_replay_object_bongard_scene_predicate_calibration_bundle(
+        bundle, registry
+    )
+    if replayed_bundle != bundle:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task version space changed during terminal replay"
+        )
+    support_journal_summaries = (
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="discovery",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=None,
+            runtime=runtime,
+            batch=discovery_batch,
+        ),
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="registered_a",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=registry,
+            runtime=runtime,
+            batch=pass_a_batch,
+        ),
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="registered_b",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=registry,
+            runtime=runtime,
+            batch=pass_b_batch,
+        ),
+    )
+    replayed_rank_selection = _cold_replay_task_ranker(
+        task_root,
+        prepared=prepared,
+        task=task,
+        task_index=task_index,
+        runtime=runtime,
+        rank_input=rank_input,
+        rank_result=rank_result,
+    )
+    if replayed_rank_selection != selected:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "terminal rank selection replay differs"
+        )
+    after = budget.snapshot()
+    delta = _budget_delta(before, after)
+    queried = selected is not None
+    expected_delta = {
+        "discovery_calls": DISCOVERY_CALLS_PER_TASK,
+        "registered_a_calls": REGISTERED_A_CALLS_PER_TASK,
+        "registered_b_calls": REGISTERED_B_CALLS_PER_TASK,
+        "ranker_calls": int(queried),
+        "query_calls": QUERY_CALLS_PER_TASK if queried else 0,
+    }
+    if delta != expected_delta:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task physical-call budget differs"
+        )
+    dependencies = {
+        "discovery_batch": discovery_receipt.to_data(),
+        "registry_freeze": registry_receipt.to_data(),
+        "registered_a_batch": pass_a_receipt.to_data(),
+        "registered_b_batch": pass_b_receipt.to_data(),
+        "ir_freeze": ir_receipt.to_data(),
+        "rank_input": rank_input_receipt.to_data(),
+        "rank_result": rank_result_receipt.to_data(),
+        "query_batch": (
+            None if query_batch_receipt is None else query_batch_receipt.to_data()
+        ),
+    }
+    task_record = _record(
+        {
+            "schema": TASK_RESULT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "task_ordinal": task_index,
+            "task_id": getattr(task, "task_id"),
+            "task_plan_digest": getattr(task, "record_digest"),
+            "execution_precommit_digest": prepared.release.precommit.record_digest,
+            "support_release_receipts": [
+                item.release_store_receipt.to_data() for item in panels
+            ],
+            "dependencies": dependencies,
+            "status": "evaluated" if queried else "typed_gap",
+            "selected_survivor_digest": selected,
+            "bundle_digest": bundle.bundle_digest,
+            "rank_result_digest": rank_result["rank_result_digest"],
+            "task_formula_freeze_digest": (
+                None if query_phase is None else query_phase.freeze.record_digest
+            ),
+            "task_decision_commit_digest": (
+                None if query_phase is None else query_phase.commit.record_digest
+            ),
+            "score_rows": [dict(item) for item in score_rows],
+            "correct_count": sum(bool(item["correct"]) for item in score_rows),
+            "score_denominator_contribution": QUERY_CALLS_PER_TASK,
+            "physical_call_delta": delta,
+            "support_pixels_released_only_through_official_gate": True,
+            "query_pixels_released_only_after_exact_formula_commit": queried,
+            "typed_gap_makes_no_ranker_or_query_calls": not queried,
+            "terminal_python_ir_cold_replayed": True,
+            "support_journal_summary_digests": list(support_journal_summaries),
+            "query_journal_summary_digests": list(query_journal_summaries),
+            "ranker_journal_cold_replayed_if_called": queried,
+            "all_task_journals_cold_replayed_without_model_calls": True,
+            **_authority_data(),
+        },
+        "task_result_digest",
+    )
+    result, receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-task-result",
+        record=task_record,
+        digest_field="task_result_digest",
+    )
+    return _TaskOutcome(
+        result,
+        receipt,
+        int(result["correct_count"]),
+        queried,
+    )
+
+
+@dataclass(frozen=True, slots=True)
+class VerifiedObjectBongardScenePredicateCampaign:
+    output_root: Path
+    result_digest: str
+    replay_digest: str
+    exposure_successor_digest: str
+    task_result_digests: tuple[str, ...]
+    correct_count: int
+    denominator: int
+    typed_gap_count: int
+    evaluated_task_count: int
+    visual_fresh_call_count: int
+    ranker_fresh_call_count: int
+
+
+def _write_campaign_result(root: Path, value: Mapping[str, Any]) -> dict[str, Any]:
+    from bongard import object_bongard_rubric_nomination_command as _durable
+
+    raw = _canonical_mapping(value, "campaign result")
+    _durable._write_once(root / RESULT_FILENAME, raw, "scene-predicate campaign result")
+    restored = _durable._read_record(
+        root / RESULT_FILENAME, "scene-predicate campaign result"
+    )
+    if restored != raw:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign result durable reload differs"
+        )
+    return restored
+
+
+def _verified_campaign(root: Path, result: Mapping[str, Any]) -> VerifiedObjectBongardScenePredicateCampaign:
+    return VerifiedObjectBongardScenePredicateCampaign(
+        root,
+        _address(result["result_digest"], "campaign result digest"),
+        _address(result["replay"]["replay_digest"], "campaign replay digest"),
+        _address(
+            result["exposure_successor_digest"], "campaign exposure successor"
+        ),
+        tuple(result["task_result_digests"]),
+        int(result["score"]["correct_count"]),
+        int(result["score"]["denominator"]),
+        int(result["typed_gap_count"]),
+        int(result["evaluated_task_count"]),
+        int(result["physical_calls"]["visual_calls"]),
+        int(result["physical_calls"]["ranker_calls"]),
+    )
+
+
+def run_object_bongard_scene_predicate_campaign_command(
+    output_root: str | os.PathLike[str],
+    *,
+    calibration_root: str | os.PathLike[str],
+    parallel_workers: int = DEFAULT_PARALLEL_WORKERS,
+    campaign_minutes: int = DEFAULT_CAMPAIGN_MINUTES,
+    minutes: int = DEFAULT_MINUTES,
+    executable: str = DEFAULT_EXECUTABLE,
+    expected_launcher_sha256: str = DEFAULT_EXPECTED_LAUNCHER_SHA256,
+    calibration_verifier: CalibrationVerifier = _default_calibration_verifier,
+    named_image_transport: Callable[..., object] | None = None,
+    text_transport: Callable[..., object] | None = None,
+    cache_snapshotter: Callable[[], object] | None = None,
+    catalog_snapshotter: Callable[[], object] | None = None,
+    launcher_fingerprinter: Callable[..., Mapping[str, str]] | None = None,
+    runtime_attester: Callable[..., object] | None = None,
+    preregistration_path: str | os.PathLike[str] = DEFAULT_PREREGISTRATION,
+    plan_path: str | os.PathLike[str] = DEFAULT_PLAN,
+    descriptor_path: str | os.PathLike[str] = DEFAULT_DESCRIPTOR,
+    archive_path: str | os.PathLike[str] = DEFAULT_ARCHIVE,
+    split_path: str | os.PathLike[str] = DEFAULT_SPLIT,
+    exposure_predecessor_path: str | os.PathLike[str] = DEFAULT_EXPOSURE_PREDECESSOR,
+    exposure_observed_at: str | None = None,
+) -> VerifiedObjectBongardScenePredicateCampaign:
+    """Run the exact 12-task release-gated TRAIN campaign."""
+
+    if (
+        type(parallel_workers) is not int
+        or not 1 <= parallel_workers <= MAX_PARALLEL_WORKERS
+        or type(campaign_minutes) is not int
+        or not 1 <= campaign_minutes <= 24 * 60
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign parallel worker count differs"
+        )
+    from bongard.codex_no_tools_preflight import attest_codex_no_tools
+    from bongard.transport import (
+        codex_cli_authenticated_fingerprint,
+        run_codex_named_images_structured,
+        run_codex_text_structured,
+        snapshot_cloud_policy_cache,
+        snapshot_pinned_model_catalog,
+    )
+
+    # Calibration is the only dependency touched first. Runtime attestation is
+    # completed before the cohort exposure successor or output root exists.
+    calibration = _verify_accepted_calibration_first(
+        calibration_root, calibration_verifier
+    )
+    runtime, fingerprint = _create_campaign_runtime(
+        minutes=minutes,
+        executable=executable,
+        expected_launcher_sha256=expected_launcher_sha256,
+        cache_snapshotter=cache_snapshotter or snapshot_cloud_policy_cache,
+        catalog_snapshotter=catalog_snapshotter or snapshot_pinned_model_catalog,
+        launcher_fingerprinter=(
+            launcher_fingerprinter or codex_cli_authenticated_fingerprint
+        ),
+        runtime_attester=runtime_attester or attest_codex_no_tools,
+    )
+    runtime_record = _runtime_record(runtime, fingerprint)
+
+    def already_verified(_root: object, **_kwargs: object) -> object:
+        return calibration
+
+    prepared = prepare_object_bongard_scene_predicate_campaign(
+        output_root,
+        calibration_root=calibration_root,
+        calibration_verifier=already_verified,
+        preregistration_path=preregistration_path,
+        plan_path=plan_path,
+        descriptor_path=descriptor_path,
+        archive_path=archive_path,
+        split_path=split_path,
+        exposure_predecessor_path=exposure_predecessor_path,
+        exposure_observed_at=exposure_observed_at,
+        runtime_record_digest=runtime_record["runtime_digest"],
+        runtime_record=runtime_record,
+        parallel_workers=parallel_workers,
+        campaign_minutes=campaign_minutes,
+    )
+    runtime_record, runtime_receipt = _persist_record(
+        prepared.release.store,
+        object_kind="scene-campaign-runtime",
+        record=runtime_record,
+        digest_field="runtime_digest",
+    )
+    bindings = dict(prepared.release.precommit.runtime_source_bindings)
+    if bindings.get("authenticated_runtime_record") != runtime_record["runtime_digest"]:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "execution precommit does not bind the authenticated runtime"
+        )
+
+    budget = _CallBudget(
+        deadline_monotonic=time.monotonic() + campaign_minutes * 60
+    )
+    visual_transport = named_image_transport or run_codex_named_images_structured
+    rank_transport = text_transport or run_codex_text_structured
+    outcomes = tuple(
+        _execute_task(
+            prepared=prepared,
+            task=task,
+            task_index=index,
+            runtime=runtime,
+            named_image_transport=visual_transport,
+            text_transport=rank_transport,
+            parallel_workers=parallel_workers,
+            budget=budget,
+        )
+        for index, task in enumerate(prepared.plan.tasks)
+    )
+    queried_count = sum(item.queried for item in outcomes)
+    final_budget = budget.snapshot()
+    final_budget.validate_terminal(
+        task_count=TASK_COUNT, completed_tasks=queried_count
+    )
+    if final_budget.ranker_calls != queried_count:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign ranker/query task accounting differs"
+        )
+    correct = sum(item.scored_correct for item in outcomes)
+    replay = _record(
+        {
+            "schema": CAMPAIGN_REPLAY_SCHEMA,
+            "command_id": COMMAND_ID,
+            "execution_precommit_digest": prepared.release.precommit.record_digest,
+            "exposure_successor_digest": prepared.release.successor.digest,
+            "task_result_digests": [
+                item.result["task_result_digest"] for item in outcomes
+            ],
+            "task_python_version_spaces_cold_replayed": TASK_COUNT,
+            "query_formula_evaluations_recomputed": queried_count * 2,
+            "support_visual_journals_cold_replayed": (
+                TASK_COUNT * SUPPORT_VISUAL_CALLS_PER_TASK
+            ),
+            "query_visual_journals_cold_replayed": queried_count * 2,
+            "ranker_journals_cold_replayed": queried_count,
+            "model_calls_during_replay": 0,
+            "query_pixels_created_during_replay": 0,
+            **_authority_data(),
+        },
+        "replay_digest",
+    )
+    result = _record(
+        {
+            "schema": CAMPAIGN_RESULT_SCHEMA,
+            "command_id": COMMAND_ID,
+            "campaign_command_source_sha256": (
+                object_bongard_scene_predicate_campaign_command_source_digest()
+            ),
+            "calibration_result_digest": getattr(calibration, "result_digest"),
+            "batch_plan_digest": prepared.plan.record_digest,
+            "execution_precommit_digest": prepared.release.precommit.record_digest,
+            "exposure_predecessor_digest": prepared.release.predecessor.digest,
+            "exposure_successor_digest": prepared.release.successor.digest,
+            "runtime_record_receipt": runtime_receipt.to_data(),
+            "release_receipts": {
+                "plan": prepared.release.plan_receipt.to_data(),
+                "precommit": prepared.release.precommit_receipt.to_data(),
+                "exposure_successor": prepared.release.exposure_receipt.to_data(),
+                "authorization": prepared.release.authorization_receipt.to_data(),
+            },
+            "task_result_receipts": [
+                item.result_receipt.to_data() for item in outcomes
+            ],
+            "task_result_digests": [
+                item.result["task_result_digest"] for item in outcomes
+            ],
+            "evaluated_task_count": queried_count,
+            "typed_gap_count": TASK_COUNT - queried_count,
+            "score": {
+                "correct_count": correct,
+                "denominator": QUERY_DENOMINATOR,
+                "accuracy": correct / QUERY_DENOMINATOR,
+                "typed_gap_query_items_scored_incorrect_without_release": (
+                    (TASK_COUNT - queried_count) * QUERY_CALLS_PER_TASK
+                ),
+            },
+            "physical_calls": {
+                "discovery_calls": final_budget.discovery_calls,
+                "registered_a_calls": final_budget.registered_a_calls,
+                "registered_b_calls": final_budget.registered_b_calls,
+                "ranker_calls": final_budget.ranker_calls,
+                "query_calls": final_budget.query_calls,
+                "visual_calls": final_budget.visual_calls,
+            },
+            "execution_envelope": {
+                "parallel_workers": parallel_workers,
+                "campaign_wall_clock_minutes": campaign_minutes,
+                "per_turn_timeout_minutes": minutes,
+                "deadline_checked_before_and_after_every_physical_turn": True,
+                "maximum_deadline_overrun_is_one_per_turn_timeout": True,
+            },
+            "replay": replay,
+            "exact_denominator_includes_typed_gaps": True,
+            "all_support_and_query_pixels_release_gated": True,
+            **_authority_data(),
+        },
+        "result_digest",
+    )
+    result = _write_campaign_result(prepared.output_root, result)
+    # Launch is successful only after a fresh reconstruction from disk replays
+    # the complete release, runtime, visual journals, rankers, predicates, and
+    # query scores with every physical transport forbidden.
+    return verify_object_bongard_scene_predicate_campaign(
+        prepared.output_root,
+        calibration_root=calibration_root,
+        calibration_verifier=already_verified,
+        preregistration_path=preregistration_path,
+        plan_path=plan_path,
+        descriptor_path=descriptor_path,
+        archive_path=archive_path,
+        exposure_predecessor_path=exposure_predecessor_path,
+    )
+
+
+def _existing_campaign_root(value: str | os.PathLike[str]) -> Path:
+    candidate = Path(value).expanduser()
+    if candidate.is_symlink():
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign root cannot be a symlink"
+        )
+    try:
+        root = candidate.resolve(strict=True)
+    except OSError as exc:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign root is unavailable"
+        ) from exc
+    if not root.is_dir():
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign root is not a directory"
+        )
+    return root
+
+
+def _load_stored_record(
+    store: object,
+    receipt_data: object,
+    label: str,
+    *,
+    expected_object_kind: str | None = None,
+) -> tuple[dict[str, Any], object]:
+    from bongard.object_bongard_release_gate import ObjectBongardWriteOnceReceipt
+
+    receipt = ObjectBongardWriteOnceReceipt.from_data(
+        _canonical_mapping(receipt_data, f"{label} receipt")
+    )
+    if expected_object_kind is not None and receipt.object_kind != expected_object_kind:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"stored {label} object kind differs"
+        )
+    path = getattr(store, "root") / receipt.relative_path
+    try:
+        payload = path.read_bytes()
+        decoded = json.loads(payload.decode("utf-8", errors="strict"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"stored {label} is unavailable or malformed"
+        ) from exc
+    raw = _canonical_mapping(decoded, label)
+    if canonical_json(raw) + b"\n" != payload:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"stored {label} is not canonical"
+        )
+    restored = store.verify(receipt, expected_data=raw)
+    top_level_identities = {
+        raw.get(name)
+        for name in (
+            "record_digest",
+            "ledger_digest",
+            "runtime_digest",
+            "batch_digest",
+            "registry_freeze_digest",
+            "ir_freeze_digest",
+            "rank_input_digest",
+            "rank_result_digest",
+            "task_result_digest",
+        )
+        if isinstance(raw.get(name), str)
+    }
+    if dict(restored) != raw or receipt.object_digest not in top_level_identities:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"stored {label} receipt replay or object identity differs"
+        )
+    return raw, receipt
+
+
+def _validate_self_sealed_record(
+    raw: Mapping[str, Any],
+    *,
+    schema: str,
+    digest_field: str,
+    label: str,
+) -> None:
+    body = {key: item for key, item in raw.items() if key != digest_field}
+    if (
+        raw.get("schema") != schema
+        or raw.get(digest_field) != "sha256:" + canonical_digest(body)
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            f"{label} self-seal differs"
+        )
+
+
+def _restore_campaign_runtime(record: Mapping[str, Any]) -> object:
+    from bongard.codex_no_tools_preflight import CodexNoToolsAttestation
+    from bongard.object_bongard_turn_journal import ObjectBongardTurnRuntime
+    from bongard.prototype_scene_observer import prototype_scene_transport_source_digest
+    from bongard.transport import CloudPolicyCacheSnapshot, CodexModelCatalogSnapshot
+
+    raw = _canonical_mapping(record, "campaign runtime")
+    _validate_self_sealed_record(
+        raw,
+        schema=CAMPAIGN_RUNTIME_SCHEMA,
+        digest_field="runtime_digest",
+        label="campaign runtime",
+    )
+    expected_fields = {
+        "schema",
+        "command_id",
+        "runtime_binding",
+        "cloud_policy_cache_snapshot_base64",
+        "model_catalog_snapshot_base64",
+        "no_tools_attestation",
+        "launcher_fingerprint",
+        "persisted_before_support_release",
+        *_authority_data(),
+        "runtime_digest",
+    }
+    if (
+        set(raw) != expected_fields
+        or raw.get("command_id") != COMMAND_ID
+        or raw.get("persisted_before_support_release") is not True
+        or any(raw.get(key) != item for key, item in _authority_data().items())
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign runtime policy differs"
+        )
+
+    def decode(value: object, label: str) -> bytes | None:
+        if value is None:
+            return None
+        if not isinstance(value, str):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{label} snapshot differs"
+            )
+        try:
+            result = base64.b64decode(value.encode("ascii"), validate=True)
+        except (UnicodeError, ValueError) as exc:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{label} snapshot differs"
+            ) from exc
+        if base64.b64encode(result).decode("ascii") != value:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                f"{label} snapshot is not canonical"
+            )
+        return result
+
+    binding = _canonical_mapping(raw.get("runtime_binding"), "runtime binding")
+    catalog_bytes = decode(raw.get("model_catalog_snapshot_base64"), "model catalog")
+    if catalog_bytes is None:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign model catalog is absent"
+        )
+    cache_bytes = decode(
+        raw.get("cloud_policy_cache_snapshot_base64"), "policy cache"
+    )
+    cache_present = binding.get("cloud_policy_cache_snapshot_present")
+    if type(cache_present) is not bool:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign policy-cache presence binding differs"
+        )
+    runtime = ObjectBongardTurnRuntime(
+        model=binding["model"],
+        reasoning_effort=binding["reasoning_effort"],
+        minutes=binding["minutes"],
+        verbose=binding["verbose"],
+        executable=binding["executable"],
+        cloud_policy_cache_snapshot=(
+            CloudPolicyCacheSnapshot(cache_bytes) if cache_present else None
+        ),
+        model_catalog_snapshot=CodexModelCatalogSnapshot(catalog_bytes),
+        expected_launcher_digest=binding["expected_launcher_digest"],
+        no_tools_attestation=CodexNoToolsAttestation.from_mapping(
+            raw["no_tools_attestation"]
+        ),
+        transport_source_digest=prototype_scene_transport_source_digest(),
+    )
+    if runtime.binding != binding:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign runtime binding differs on reconstruction"
+        )
+    return runtime
+
+
+def _reachable_store_object_paths(store: object, root_value: object) -> set[str]:
+    """Follow every typed write-once receipt reachable from the result graph."""
+
+    from bongard.object_bongard_release_gate import ObjectBongardWriteOnceReceipt
+
+    found: set[str] = set()
+
+    def visit(value: object) -> None:
+        if isinstance(value, Mapping):
+            try:
+                receipt = ObjectBongardWriteOnceReceipt.from_data(value)
+            except Exception:
+                for child in value.values():
+                    visit(child)
+                return
+            if receipt.relative_path in found:
+                return
+            found.add(receipt.relative_path)
+            raw, _ = _load_stored_record(
+                store, value, f"reachable object {receipt.object_kind}"
+            )
+            visit(raw)
+        elif isinstance(value, (list, tuple)):
+            for child in value:
+                visit(child)
+
+    visit(root_value)
+    return found
+
+
+def _validate_task_result_record(value: object) -> dict[str, Any]:
+    raw = _canonical_mapping(value, "task result")
+    expected_fields = {
+        "schema",
+        "command_id",
+        "task_ordinal",
+        "task_id",
+        "task_plan_digest",
+        "execution_precommit_digest",
+        "support_release_receipts",
+        "dependencies",
+        "status",
+        "selected_survivor_digest",
+        "bundle_digest",
+        "rank_result_digest",
+        "task_formula_freeze_digest",
+        "task_decision_commit_digest",
+        "score_rows",
+        "correct_count",
+        "score_denominator_contribution",
+        "physical_call_delta",
+        "support_pixels_released_only_through_official_gate",
+        "query_pixels_released_only_after_exact_formula_commit",
+        "typed_gap_makes_no_ranker_or_query_calls",
+        "terminal_python_ir_cold_replayed",
+        "support_journal_summary_digests",
+        "query_journal_summary_digests",
+        "ranker_journal_cold_replayed_if_called",
+        "all_task_journals_cold_replayed_without_model_calls",
+        *_authority_data(),
+        "task_result_digest",
+    }
+    body = {key: item for key, item in raw.items() if key != "task_result_digest"}
+    rows = raw.get("score_rows")
+    delta = raw.get("physical_call_delta")
+    dependencies = raw.get("dependencies")
+    support_summaries = raw.get("support_journal_summary_digests")
+    query_summaries = raw.get("query_journal_summary_digests")
+    selected = raw.get("selected_survivor_digest")
+    queried = selected is not None
+    expected_delta = {
+        "discovery_calls": DISCOVERY_CALLS_PER_TASK,
+        "registered_a_calls": REGISTERED_A_CALLS_PER_TASK,
+        "registered_b_calls": REGISTERED_B_CALLS_PER_TASK,
+        "ranker_calls": int(queried),
+        "query_calls": QUERY_CALLS_PER_TASK if queried else 0,
+    }
+    expected_score_row_fields = {
+        "side",
+        "query_artifact_digest",
+        "query_observation_digest",
+        "expected_disposition",
+        "actual_disposition",
+        "correct",
+        "indeterminate_or_error_scores_incorrect",
+    }
+    if (
+        set(raw) != expected_fields
+        or raw.get("schema") != TASK_RESULT_SCHEMA
+        or raw.get("command_id") != COMMAND_ID
+        or raw.get("task_result_digest") != "sha256:" + canonical_digest(body)
+        or type(raw.get("task_ordinal")) is not int
+        or not 0 <= raw["task_ordinal"] < TASK_COUNT
+        or not isinstance(rows, list)
+        or len(rows) != QUERY_CALLS_PER_TASK
+        or any(not isinstance(item, Mapping) for item in rows)
+        or any(set(item) != expected_score_row_fields for item in rows)
+        or [item.get("side") for item in rows] != ["side_0", "side_1"]
+        or any(type(item.get("correct")) is not bool for item in rows)
+        or any(
+            type(item.get("indeterminate_or_error_scores_incorrect")) is not bool
+            for item in rows
+        )
+        or type(raw.get("correct_count")) is not int
+        or raw.get("correct_count") != sum(item["correct"] for item in rows)
+        or type(raw.get("score_denominator_contribution")) is not int
+        or raw["score_denominator_contribution"] != QUERY_CALLS_PER_TASK
+        or raw.get("status") != ("evaluated" if queried else "typed_gap")
+        or not isinstance(delta, Mapping)
+        or set(delta) != set(expected_delta)
+        or any(type(delta.get(key)) is not int for key in expected_delta)
+        or dict(delta) != expected_delta
+        or not isinstance(dependencies, Mapping)
+        or not isinstance(support_summaries, list)
+        or len(support_summaries) != SUPPORT_VISUAL_CALLS_PER_TASK
+        or any(_ADDRESS.fullmatch(str(item)) is None for item in support_summaries)
+        or not isinstance(query_summaries, list)
+        or len(query_summaries) != (QUERY_CALLS_PER_TASK if queried else 0)
+        or any(_ADDRESS.fullmatch(str(item)) is None for item in query_summaries)
+        or set(dependencies)
+        != {
+            "discovery_batch",
+            "registry_freeze",
+            "registered_a_batch",
+            "registered_b_batch",
+            "ir_freeze",
+            "rank_input",
+            "rank_result",
+            "query_batch",
+        }
+        or (dependencies["query_batch"] is None) is queried
+        or (raw.get("task_formula_freeze_digest") is None) is queried
+        or (raw.get("task_decision_commit_digest") is None) is queried
+        or raw.get("typed_gap_makes_no_ranker_or_query_calls") is queried
+        or raw.get("ranker_journal_cold_replayed_if_called") is not queried
+        or raw.get("all_task_journals_cold_replayed_without_model_calls") is not True
+        or raw.get("support_pixels_released_only_through_official_gate") is not True
+        or raw.get("query_pixels_released_only_after_exact_formula_commit")
+        is not queried
+        or raw.get("terminal_python_ir_cold_replayed") is not True
+        or any(raw.get(key) != item for key, item in _authority_data().items())
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task result policy or budget differs"
+        )
+    if queried:
+        _raw_digest(selected, "task selected survivor")
+        _address(raw["task_formula_freeze_digest"], "task formula freeze")
+        _address(raw["task_decision_commit_digest"], "task decision commit")
+    elif any(item["correct"] for item in rows) or any(
+        item.get("actual_disposition") != "typed_gap_no_query" for item in rows
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "typed gap received query credit"
+        )
+    return raw
+
+
+def _verify_task_from_store(
+    *,
+    prepared: PreparedObjectBongardScenePredicateCampaign,
+    task: object,
+    task_index: int,
+    runtime: object,
+    task_result: Mapping[str, Any],
+) -> tuple[int, bool]:
+    from bongard.object_bongard_scene_predicate_ir import (
+        ScenePredicateCalibrationBundle,
+        ScenePredicateCandidate,
+        ScenePredicateLanguage,
+        build_object_bongard_scene_predicate_calibration_bundle,
+        cold_replay_object_bongard_scene_predicate_calibration_bundle,
+    )
+    from bongard.object_bongard_release_gate import ObjectBongardWriteOnceReceipt
+    from bongard.object_scene_visual_frontend import (
+        ObjectSceneSoftTagRegistry,
+        ObjectSceneTranscriptArtifact,
+        extract_object_scene_proposal_inventory,
+        verify_object_scene_soft_tag_registry,
+    )
+    from bongard.official_panel_archive import ReleasedOfficialPanel
+
+    store = prepared.release.store
+    if (
+        task_result["task_ordinal"] != task_index
+        or task_result["task_id"] != getattr(task, "task_id")
+        or task_result["task_plan_digest"] != getattr(task, "record_digest")
+        or task_result["execution_precommit_digest"]
+        != prepared.release.precommit.record_digest
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task result does not bind the exact preregistered task"
+        )
+
+    expected_support_ids = (
+        *tuple(getattr(task, "side_0_support_panel_ids")),
+        *tuple(getattr(task, "side_1_support_panel_ids")),
+    )
+    support_receipts = task_result.get("support_release_receipts")
+    if not isinstance(support_receipts, list) or len(support_receipts) != len(
+        expected_support_ids
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task support release inventory differs"
+        )
+    panel_rows: list[_TaskSupportPanel] = []
+    for ordinal, (receipt_data, expected_panel_id) in enumerate(
+        zip(support_receipts, expected_support_ids, strict=True)
+    ):
+        released_raw, released_store_receipt = _load_stored_record(
+            store,
+            receipt_data,
+            f"released support panel {task_index}:{ordinal}",
+            expected_object_kind="released-support-panel",
+        )
+        released = ReleasedOfficialPanel.from_data(released_raw)
+        released.cold_verify(
+            prepared.archive,
+            expected_execution_precommit_digest=(
+                prepared.release.precommit.record_digest
+            ),
+            expected_exposure_successor_digest=prepared.release.successor.digest,
+        )
+        if (
+            released.panel_id != expected_panel_id
+            or released_store_receipt.object_digest != released.record_digest
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "released support panel differs from the exact task plan"
+            )
+        inventory = extract_object_scene_proposal_inventory(
+            released.exact_png_bytes
+        )
+        blind = f"support_panel_{ordinal:02d}"
+        panel_rows.append(
+            _TaskSupportPanel(
+                ordinal,
+                blind,
+                f"{getattr(task, 'family')}_scene_{task_index:02d}_{ordinal:02d}",
+                0 if ordinal < 6 else 1,
+                released,
+                released_store_receipt,
+                inventory,
+                _support_commitment(
+                    ordinal=ordinal,
+                    blind_panel_id=blind,
+                    released=released,
+                    inventory=inventory,
+                ),
+            )
+        )
+    panels = tuple(panel_rows)
+    task_root = prepared.output_root / "tasks" / f"task_{task_index:02d}"
+
+    dependencies = task_result["dependencies"]
+    dependency_specs = (
+        ("discovery_batch", "discovery batch", "scene-discovery-batch"),
+        ("registry_freeze", "registry freeze", "scene-task-registry"),
+        ("registered_a_batch", "registered A batch", "scene-registered-a-batch"),
+        ("registered_b_batch", "registered B batch", "scene-registered-b-batch"),
+        ("ir_freeze", "IR freeze", "scene-task-ir"),
+        ("rank_input", "rank input", "scene-task-rank-input"),
+        ("rank_result", "rank result", "scene-task-rank-result"),
+    )
+    loaded: dict[str, tuple[dict[str, Any], object]] = {}
+    for key, label, kind in dependency_specs:
+        loaded[key] = _load_stored_record(
+            store,
+            dependencies[key],
+            label,
+            expected_object_kind=kind,
+        )
+    discovery = loaded["discovery_batch"][0]
+    registry_record = loaded["registry_freeze"][0]
+    pass_a = loaded["registered_a_batch"][0]
+    pass_b = loaded["registered_b_batch"][0]
+    ir_record = loaded["ir_freeze"][0]
+    rank_input = loaded["rank_input"][0]
+    rank_result, rank_result_receipt = loaded["rank_result"]
+    for batch, stage in (
+        (discovery, "discovery"),
+        (pass_a, "registered_a"),
+        (pass_b, "registered_b"),
+    ):
+        _validate_self_sealed_record(
+            batch,
+            schema=TASK_BATCH_SCHEMA,
+            digest_field="batch_digest",
+            label=f"{stage} batch",
+        )
+    for raw, schema, field, label in (
+        (registry_record, TASK_REGISTRY_SCHEMA, "registry_freeze_digest", "registry freeze"),
+        (ir_record, TASK_IR_SCHEMA, "ir_freeze_digest", "IR freeze"),
+        (rank_input, TASK_RANK_INPUT_SCHEMA, "rank_input_digest", "rank input"),
+        (rank_result, TASK_RANK_RESULT_SCHEMA, "rank_result_digest", "rank result"),
+    ):
+        _validate_self_sealed_record(
+            raw, schema=schema, digest_field=field, label=label
+        )
+    registry_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "discovery_batch_digest",
+        "registry",
+        "registry_digest",
+        "successful_discovery_transcript_count",
+        "discovery_error_or_parser_gap_count",
+        "support_roles_used",
+        "persisted_and_reloaded_before_registered_pass_a",
+        *_authority_data(),
+        "registry_freeze_digest",
+    }
+    ir_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "discovery_batch_digest",
+        "registered_a_batch_digest",
+        "registered_b_batch_digest",
+        "role_rows",
+        "roles_revealed_after_all_three_support_batches",
+        "bundle",
+        "bundle_digest",
+        "model_calls_during_python_build_or_replay",
+        *_authority_data(),
+        "ir_freeze_digest",
+    }
+    rank_input_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "ir_freeze_digest",
+        "bundle_digest",
+        "complete_survivor_digests",
+        "ranker_slate",
+        "omitted_survivors",
+        "ranker_input_frozen_before_call",
+        *_authority_data(),
+        "rank_input_digest",
+    }
+    gap_rank_result_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "rank_input_digest",
+        "status",
+        "ranker_called",
+        "ranker_fresh_call_count",
+        "selected_survivor_digest",
+        "ranker_payload",
+        "ranker_journal_directory",
+        *_authority_data(),
+        "rank_result_digest",
+    }
+    selected_rank_result_fields = gap_rank_result_fields | {
+        "ranker_journal_summary_digest"
+    }
+    if (
+        set(registry_record) != registry_fields
+        or set(ir_record) != ir_fields
+        or set(rank_input) != rank_input_fields
+        or set(rank_result)
+        != (
+            selected_rank_result_fields
+            if rank_result.get("ranker_called") is True
+            else gap_rank_result_fields
+        )
+        or registry_record.get("support_roles_used") is not False
+        or registry_record.get(
+            "persisted_and_reloaded_before_registered_pass_a"
+        )
+        is not True
+        or ir_record.get("roles_revealed_after_all_three_support_batches")
+        is not True
+        or ir_record.get("model_calls_during_python_build_or_replay") != 0
+        or rank_input.get("ranker_input_frozen_before_call") is not True
+        or any(
+            record.get("command_id") != COMMAND_ID
+            for record in (registry_record, ir_record, rank_input, rank_result)
+        )
+        or any(
+            record.get(key) != value
+            for record in (registry_record, ir_record, rank_input, rank_result)
+            for key, value in _authority_data().items()
+        )
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task registry/IR/rank wrapper fields differ"
+        )
+    registry = ObjectSceneSoftTagRegistry.from_data(registry_record["registry"])
+    artifacts = (
+        _restore_task_visual_batch(
+            discovery,
+            stage="discovery",
+            task=task,
+            panels=panels,
+            registry=None,
+        ),
+        _restore_task_visual_batch(
+            pass_a,
+            stage="registered_a",
+            task=task,
+            panels=panels,
+            registry=registry,
+        ),
+        _restore_task_visual_batch(
+            pass_b,
+            stage="registered_b",
+            task=task,
+            panels=panels,
+            registry=registry,
+        ),
+    )
+    successful_discovery_count = sum(
+        item.transcript is not None for item in artifacts[0]
+    )
+    if (
+        type(registry_record.get("successful_discovery_transcript_count")) is not int
+        or registry_record["successful_discovery_transcript_count"]
+        != successful_discovery_count
+        or type(registry_record.get("discovery_error_or_parser_gap_count")) is not int
+        or registry_record["discovery_error_or_parser_gap_count"]
+        != SUPPORT_PANEL_COUNT_PER_TASK - successful_discovery_count
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task discovery/registry accounting differs"
+        )
+    verify_object_scene_soft_tag_registry(
+        registry,
+        tuple(
+            item.transcript for item in artifacts[0] if item.transcript is not None
+        ),
+        expected_registry_digest=registry.registry_digest,
+    )
+    if (
+        registry_record["task_plan_digest"] != getattr(task, "record_digest")
+        or registry_record["discovery_batch_digest"] != discovery["batch_digest"]
+        or registry_record["registry_digest"] != registry.registry_digest
+        or ir_record["task_plan_digest"] != getattr(task, "record_digest")
+        or ir_record["discovery_batch_digest"] != discovery["batch_digest"]
+        or ir_record["registered_a_batch_digest"] != pass_a["batch_digest"]
+        or ir_record["registered_b_batch_digest"] != pass_b["batch_digest"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task visual/registry/IR parent binding differs"
+        )
+    expected_roles = [
+        {
+            "ordinal": panel.ordinal,
+            "neutral_panel_digest": panel.neutral_panel_digest,
+            "historical_role": panel.support_role,
+            "blind_panel_id": panel.blind_panel_id,
+        }
+        for panel in panels
+    ]
+    if ir_record["role_rows"] != expected_roles:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task support role reveal differs"
+        )
+    persisted_support_summaries = [
+        row["journal_summary_digest"]
+        for batch in (discovery, pass_a, pass_b)
+        for row in batch["rows"]
+    ]
+    replayed_support_summaries = [
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="discovery",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=None,
+            runtime=runtime,
+            batch=discovery,
+        ),
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="registered_a",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=registry,
+            runtime=runtime,
+            batch=pass_a,
+        ),
+        *_cold_replay_task_visual_batch(
+            task_root,
+            stage="registered_b",
+            prepared=prepared,
+            task=task,
+            panels=panels,
+            registry=registry,
+            runtime=runtime,
+            batch=pass_b,
+        ),
+    ]
+    if (
+        persisted_support_summaries != replayed_support_summaries
+        or replayed_support_summaries
+        != task_result["support_journal_summary_digests"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "support journals differ on disk cold replay"
+        )
+
+    bundle = ScenePredicateCalibrationBundle.from_data(ir_record["bundle"])
+    replayed_bundle = cold_replay_object_bongard_scene_predicate_calibration_bundle(
+        bundle, registry
+    )
+    rebuilt_bundle = build_object_bongard_scene_predicate_calibration_bundle(
+        registry, artifacts[0], artifacts[1], artifacts[2], ir_record["role_rows"]
+    )
+    if (
+        replayed_bundle != bundle
+        or rebuilt_bundle != bundle
+        or ir_record["bundle_digest"] != bundle.bundle_digest
+        or task_result["bundle_digest"] != bundle.bundle_digest
+        or rank_input["task_plan_digest"] != getattr(task, "record_digest")
+        or rank_input["ir_freeze_digest"] != ir_record["ir_freeze_digest"]
+        or rank_input["bundle_digest"] != bundle.bundle_digest
+        or rank_input["complete_survivor_digests"]
+        != list(bundle.complete_survivor_digests)
+        or rank_input["ranker_slate"] != [dict(item) for item in bundle.ranker_slate]
+        or rank_input["omitted_survivors"]
+        != [dict(item) for item in bundle.omitted_survivors]
+        or rank_result["task_plan_digest"] != getattr(task, "record_digest")
+        or rank_result["rank_input_digest"] != rank_input["rank_input_digest"]
+        or task_result["rank_result_digest"] != rank_result["rank_result_digest"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task Python version-space/rank lineage differs"
+        )
+    replayed_selected = _cold_replay_task_ranker(
+        task_root,
+        prepared=prepared,
+        task=task,
+        task_index=task_index,
+        runtime=runtime,
+        rank_input=rank_input,
+        rank_result=rank_result,
+    )
+    selected = task_result["selected_survivor_digest"]
+    if replayed_selected != selected:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "task rank selection differs on disk cold replay"
+        )
+    if selected is None:
+        if (
+            bundle.complete_survivor_digests
+            or rank_result.get("ranker_called") is not False
+            or rank_result.get("status") != "typed_gap"
+            or rank_result.get("ranker_fresh_call_count") != 0
+            or rank_result.get("ranker_payload") is not None
+            or rank_result.get("ranker_journal_directory") is not None
+            or dependencies["query_batch"] is not None
+            or (task_root / JOURNAL_DIRECTORY / "ranker").exists()
+            or (task_root / JOURNAL_DIRECTORY / "query").exists()
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "typed gap rank/query custody differs"
+            )
+        return int(task_result["correct_count"]), False
+
+    query_batch, _ = _load_stored_record(
+        store,
+        dependencies["query_batch"],
+        "query batch",
+        expected_object_kind="scene-task-query-batch",
+    )
+    _validate_self_sealed_record(
+        query_batch,
+        schema=TASK_BATCH_SCHEMA,
+        digest_field="batch_digest",
+        label="query batch",
+    )
+    query_batch_fields = {
+        "schema",
+        "command_id",
+        "task_plan_digest",
+        "stage",
+        "formula_freeze",
+        "formula_freeze_receipt",
+        "decision_commit",
+        "decision_commit_receipt",
+        "artifacts",
+        "release_receipts",
+        "journal_summary_digests",
+        "score_rows",
+        "fresh_visual_call_count",
+        "formula_frozen_and_committed_before_query_release",
+        *_authority_data(),
+        "batch_digest",
+    }
+    if (
+        set(query_batch) != query_batch_fields
+        or query_batch.get("command_id") != COMMAND_ID
+        or query_batch["task_plan_digest"] != getattr(task, "record_digest")
+        or query_batch["stage"] != "query"
+        or query_batch["fresh_visual_call_count"] != QUERY_CALLS_PER_TASK
+        or query_batch.get("formula_frozen_and_committed_before_query_release")
+        is not True
+        or any(
+            query_batch.get(key) != value
+            for key, value in _authority_data().items()
+        )
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query batch policy differs"
+        )
+    freeze = ObjectBongardScenePredicateTaskFreeze.from_data(
+        query_batch["formula_freeze"]
+    )
+    commit = ObjectBongardScenePredicateTaskCommit.from_data(
+        query_batch["decision_commit"]
+    )
+    freeze_raw, freeze_receipt = _load_stored_record(
+        store,
+        query_batch["formula_freeze_receipt"],
+        "task formula freeze",
+        expected_object_kind="task-freeze",
+    )
+    commit_raw, commit_receipt = _load_stored_record(
+        store,
+        query_batch["decision_commit_receipt"],
+        "task decision commit",
+        expected_object_kind="task-decision-commit",
+    )
+    if freeze_raw != freeze.to_data() or commit_raw != commit.to_data():
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "durable formula freeze/commit bytes differ"
+        )
+    expected_query_ids = (
+        getattr(task, "side_0_query_panel_id"),
+        getattr(task, "side_1_query_panel_id"),
+    )
+    release_receipt_data = query_batch.get("release_receipts")
+    artifact_data = query_batch.get("artifacts")
+    if (
+        not isinstance(release_receipt_data, list)
+        or len(release_receipt_data) != QUERY_CALLS_PER_TASK
+        or not isinstance(artifact_data, list)
+        or len(artifact_data) != QUERY_CALLS_PER_TASK
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query release/artifact inventory differs"
+        )
+    query_released: list[object] = []
+    query_release_receipts: list[object] = []
+    for index, (receipt_data, expected_panel_id) in enumerate(
+        zip(release_receipt_data, expected_query_ids, strict=True)
+    ):
+        released_raw, released_receipt = _load_stored_record(
+            store,
+            receipt_data,
+            f"released query panel {task_index}:{index}",
+            expected_object_kind="released-query-panel",
+        )
+        released = ReleasedOfficialPanel.from_data(released_raw)
+        released.cold_verify(
+            prepared.archive,
+            expected_execution_precommit_digest=(
+                prepared.release.precommit.record_digest
+            ),
+            expected_exposure_successor_digest=prepared.release.successor.digest,
+        )
+        if released.panel_id != expected_panel_id:
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "released query panel differs from sealed task query"
+            )
+        query_released.append(released)
+        query_release_receipts.append(released_receipt)
+    query_artifacts = tuple(
+        ObjectSceneTranscriptArtifact.from_data(item) for item in artifact_data
+    )
+    query_summary_digests = tuple(
+        _cold_replay_task_query(
+            task_root,
+            side=side,
+            released=released,
+            expected_artifact=artifact,
+            prepared=prepared,
+            task=task,
+            task_index=task_index,
+            registry=registry,
+            runtime=runtime,
+        )
+        for side, released, artifact in zip(
+            ("side_0", "side_1"),
+            query_released,
+            query_artifacts,
+            strict=True,
+        )
+    )
+    if list(query_summary_digests) != query_batch["journal_summary_digests"]:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query journals differ on disk cold replay"
+        )
+    phase = ObjectBongardScenePredicateQueryPhase(
+        freeze,
+        freeze_receipt,
+        commit,
+        commit_receipt,
+        (query_artifacts[0], query_artifacts[1]),
+        (query_release_receipts[0], query_release_receipts[1]),
+    )
+    replay_object_bongard_scene_predicate_query_phase(phase)
+    language = ScenePredicateLanguage.from_data(bundle.version_space["language"])
+    candidate = ScenePredicateCandidate.from_data(
+        freeze.selected_predicate, language=language
+    )
+    expected_rank_payload_digest = _address(
+        getattr(rank_result_receipt, "payload_digest"), "rank result payload digest"
+    )[7:]
+    if (
+        selected not in bundle.complete_survivor_digests
+        or rank_result.get("ranker_called") is not True
+        or rank_result.get("status") != "selected_frozen_survivor"
+        or rank_result.get("ranker_fresh_call_count") != 1
+        or rank_result.get("ranker_journal_directory")
+        != str(Path(JOURNAL_DIRECTORY) / "ranker")
+        or rank_result.get("selected_survivor_digest") != selected
+        or freeze.selected_survivor_digest != selected
+        or candidate.candidate_digest != selected
+        or freeze.version_space_digest != bundle.bundle_digest
+        or freeze.rank_response_digest != expected_rank_payload_digest
+        or freeze.record_digest != task_result["task_formula_freeze_digest"]
+        or commit.record_digest != task_result["task_decision_commit_digest"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "rank result/formula/query commitment differs"
+        )
+    score_rows = _query_score_rows(
+        bundle=bundle,
+        selected_candidate_data=freeze.selected_predicate,
+        artifacts=query_artifacts,
+    )
+    if (
+        query_batch["score_rows"] != [dict(item) for item in score_rows]
+        or task_result["score_rows"] != [dict(item) for item in score_rows]
+        or query_batch["journal_summary_digests"]
+        != task_result["query_journal_summary_digests"]
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "query score differs on model-free replay"
+        )
+    return int(task_result["correct_count"]), True
+
+
+def verify_object_bongard_scene_predicate_campaign(
+    output_root: str | os.PathLike[str],
+    *,
+    calibration_root: str | os.PathLike[str],
+    calibration_verifier: CalibrationVerifier = _default_calibration_verifier,
+    preregistration_path: str | os.PathLike[str] = DEFAULT_PREREGISTRATION,
+    plan_path: str | os.PathLike[str] = DEFAULT_PLAN,
+    descriptor_path: str | os.PathLike[str] = DEFAULT_DESCRIPTOR,
+    archive_path: str | os.PathLike[str] = DEFAULT_ARCHIVE,
+    exposure_predecessor_path: str | os.PathLike[str] = DEFAULT_EXPOSURE_PREDECESSOR,
+) -> VerifiedObjectBongardScenePredicateCampaign:
+    """Cold, model-free verification of the persisted 12-task result."""
+
+    # Preserve the same first-touch rule as launch: rejected calibration means
+    # campaign artifacts, metadata, and pixels are not inspected.
+    calibration = _verify_accepted_calibration_first(
+        calibration_root, calibration_verifier
+    )
+
+    from bongard import object_bongard_rubric_nomination_command as _durable
+    from bongard.exposure import ExposureLedger
+    from bongard.object_bongard_release_gate import (
+        ObjectBongardExecutionPrecommit,
+        ObjectBongardReleaseAuthorization,
+        ObjectBongardReleaseStore,
+        ObjectBongardWriteOnceReceipt,
+        PreparedObjectBongardRelease,
+        verify_prepared_object_bongard_release,
+    )
+    from bongard.official_panel_archive import OfficialPanelArchive
+    from bongard.release import OfficialReleaseDescriptor
+
+    root = _existing_campaign_root(output_root)
+    result = _durable._read_record(
+        root / RESULT_FILENAME, "scene-predicate campaign result"
+    )
+    body = {key: item for key, item in result.items() if key != "result_digest"}
+    task_receipts = result.get("task_result_receipts")
+    task_digests = result.get("task_result_digests")
+    calls = result.get("physical_calls")
+    score = result.get("score")
+    replay = result.get("replay")
+    envelope = result.get("execution_envelope")
+    release_receipts = result.get("release_receipts")
+    result_fields = {
+        "schema",
+        "command_id",
+        "campaign_command_source_sha256",
+        "calibration_result_digest",
+        "batch_plan_digest",
+        "execution_precommit_digest",
+        "exposure_predecessor_digest",
+        "exposure_successor_digest",
+        "runtime_record_receipt",
+        "release_receipts",
+        "task_result_receipts",
+        "task_result_digests",
+        "evaluated_task_count",
+        "typed_gap_count",
+        "score",
+        "physical_calls",
+        "execution_envelope",
+        "replay",
+        "exact_denominator_includes_typed_gaps",
+        "all_support_and_query_pixels_release_gated",
+        *_authority_data(),
+        "result_digest",
+    }
+    replay_fields = {
+        "schema",
+        "command_id",
+        "execution_precommit_digest",
+        "exposure_successor_digest",
+        "task_result_digests",
+        "task_python_version_spaces_cold_replayed",
+        "query_formula_evaluations_recomputed",
+        "support_visual_journals_cold_replayed",
+        "query_visual_journals_cold_replayed",
+        "ranker_journals_cold_replayed",
+        "model_calls_during_replay",
+        "query_pixels_created_during_replay",
+        *_authority_data(),
+        "replay_digest",
+    }
+    if (
+        set(result) != result_fields
+        or result.get("schema") != CAMPAIGN_RESULT_SCHEMA
+        or result.get("command_id") != COMMAND_ID
+        or result.get("result_digest") != "sha256:" + canonical_digest(body)
+        or result.get("campaign_command_source_sha256")
+        != object_bongard_scene_predicate_campaign_command_source_digest()
+        or result.get("calibration_result_digest")
+        != getattr(calibration, "result_digest", None)
+        or not isinstance(task_receipts, list)
+        or len(task_receipts) != TASK_COUNT
+        or not isinstance(task_digests, list)
+        or len(task_digests) != TASK_COUNT
+        or any(_ADDRESS.fullmatch(str(item)) is None for item in task_digests)
+        or len(set(task_digests)) != TASK_COUNT
+        or not isinstance(calls, Mapping)
+        or not isinstance(score, Mapping)
+        or set(score)
+        != {
+            "correct_count",
+            "denominator",
+            "accuracy",
+            "typed_gap_query_items_scored_incorrect_without_release",
+        }
+        or set(calls)
+        != {
+            "discovery_calls",
+            "registered_a_calls",
+            "registered_b_calls",
+            "ranker_calls",
+            "query_calls",
+            "visual_calls",
+        }
+        or any(type(calls.get(key)) is not int for key in calls)
+        or type(score.get("correct_count")) is not int
+        or type(score.get("denominator")) is not int
+        or type(score.get("accuracy")) is not float
+        or type(
+            score.get("typed_gap_query_items_scored_incorrect_without_release")
+        )
+        is not int
+        or not isinstance(replay, Mapping)
+        or set(replay) != replay_fields
+        or replay.get("schema") != CAMPAIGN_REPLAY_SCHEMA
+        or replay.get("command_id") != COMMAND_ID
+        or replay.get("execution_precommit_digest")
+        != result.get("execution_precommit_digest")
+        or replay.get("exposure_successor_digest")
+        != result.get("exposure_successor_digest")
+        or replay.get("task_python_version_spaces_cold_replayed") != TASK_COUNT
+        or any(
+            type(replay.get(key)) is not int
+            for key in (
+                "task_python_version_spaces_cold_replayed",
+                "query_formula_evaluations_recomputed",
+                "support_visual_journals_cold_replayed",
+                "query_visual_journals_cold_replayed",
+                "ranker_journals_cold_replayed",
+                "model_calls_during_replay",
+                "query_pixels_created_during_replay",
+            )
+        )
+        or any(replay.get(key) != item for key, item in _authority_data().items())
+        or not isinstance(envelope, Mapping)
+        or set(envelope)
+        != {
+            "parallel_workers",
+            "campaign_wall_clock_minutes",
+            "per_turn_timeout_minutes",
+            "deadline_checked_before_and_after_every_physical_turn",
+            "maximum_deadline_overrun_is_one_per_turn_timeout",
+        }
+        or not isinstance(release_receipts, Mapping)
+        or set(release_receipts)
+        != {"plan", "precommit", "exposure_successor", "authorization"}
+        or type(envelope.get("parallel_workers")) is not int
+        or not 1 <= envelope["parallel_workers"] <= MAX_PARALLEL_WORKERS
+        or type(envelope.get("campaign_wall_clock_minutes")) is not int
+        or not 1 <= envelope["campaign_wall_clock_minutes"] <= 24 * 60
+        or type(envelope.get("per_turn_timeout_minutes")) is not int
+        or not 1 <= envelope["per_turn_timeout_minutes"] <= 120
+        or envelope.get("deadline_checked_before_and_after_every_physical_turn")
+        is not True
+        or envelope.get("maximum_deadline_overrun_is_one_per_turn_timeout") is not True
+        or score.get("denominator") != QUERY_DENOMINATOR
+        or type(result.get("evaluated_task_count")) is not int
+        or type(result.get("typed_gap_count")) is not int
+        or result["evaluated_task_count"] + result["typed_gap_count"]
+        != TASK_COUNT
+        or replay.get("task_result_digests") != task_digests
+        or replay.get("model_calls_during_replay") != 0
+        or replay.get("query_pixels_created_during_replay") != 0
+        or result.get("exact_denominator_includes_typed_gaps") is not True
+        or result.get("all_support_and_query_pixels_release_gated") is not True
+        or any(result.get(key) != item for key, item in _authority_data().items())
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign result policy differs"
+        )
+    replay_body = {key: item for key, item in replay.items() if key != "replay_digest"}
+    if replay.get("replay_digest") != "sha256:" + canonical_digest(replay_body):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign replay digest differs"
+        )
+    store = ObjectBongardReleaseStore(root)
+    preregistration, exact_plan = _load_exact_cohort(
+        Path(preregistration_path), Path(plan_path)
+    )
+    plan_raw, plan_receipt = _load_stored_record(
+        store,
+        release_receipts["plan"],
+        "batch plan",
+        expected_object_kind="batch-plan",
+    )
+    plan = ObjectBongardBatchPlan.from_data(plan_raw)
+    precommit_raw, precommit_receipt = _load_stored_record(
+        store,
+        release_receipts["precommit"],
+        "execution precommit",
+        expected_object_kind="execution-precommit",
+    )
+    precommit = ObjectBongardExecutionPrecommit.from_data(precommit_raw)
+    predecessor = ExposureLedger.from_dict(
+        _read_exact_json(
+            Path(exposure_predecessor_path),
+            EXPOSURE_PREDECESSOR_FILE_SHA256,
+            "exposure predecessor",
+        )
+    )
+    if predecessor.digest != EXPOSURE_PREDECESSOR_DIGEST:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "exposure predecessor digest differs during replay"
+        )
+    successor_raw, exposure_receipt = _load_stored_record(
+        store,
+        release_receipts["exposure_successor"],
+        "exposure successor",
+        expected_object_kind="exposure-successor",
+    )
+    successor = ExposureLedger.from_dict(successor_raw)
+    authorization_raw, authorization_receipt = _load_stored_record(
+        store,
+        release_receipts["authorization"],
+        "release authorization",
+        expected_object_kind="release-authorization",
+    )
+    authorization = ObjectBongardReleaseAuthorization.from_data(authorization_raw)
+    if plan != exact_plan:
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "persisted plan differs from the exact preregistered cohort"
+        )
+    descriptor = OfficialReleaseDescriptor.from_dict(
+        _read_exact_json_unpinned(
+            Path(descriptor_path), "official release descriptor"
+        )
+    )
+    archive = OfficialPanelArchive.load(
+        descriptor,
+        archive_path,
+        expected_release_descriptor_digest=descriptor.digest,
+    )
+    release = PreparedObjectBongardRelease(
+        store,
+        plan,
+        precommit,
+        predecessor,
+        successor,
+        authorization,
+        plan_receipt,
+        precommit_receipt,
+        exposure_receipt,
+        authorization_receipt,
+    )
+    verify_prepared_object_bongard_release(release)
+    verify_object_bongard_scene_predicate_exposure_transition(
+        predecessor=predecessor, plan=plan, prepared=release
+    )
+    if (
+        descriptor.digest != plan.release_descriptor_digest
+        or archive.record_digest != authorization.archive_record_digest
+        or result["batch_plan_digest"] != plan.record_digest
+        or result["execution_precommit_digest"] != precommit.record_digest
+        or result["exposure_predecessor_digest"] != predecessor.digest
+        or result["exposure_successor_digest"] != successor.digest
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign official release lineage differs"
+        )
+    runtime_record, runtime_receipt = _load_stored_record(
+        store,
+        result["runtime_record_receipt"],
+        "campaign runtime",
+        expected_object_kind="scene-campaign-runtime",
+    )
+    runtime_body = {
+        key: item for key, item in runtime_record.items() if key != "runtime_digest"
+    }
+    runtime = _restore_campaign_runtime(runtime_record)
+    configuration = dict(precommit.configuration)
+    source_bindings = dict(precommit.runtime_source_bindings)
+    from bongard.object_bongard_scene_predicate_calibration_command import (
+        object_bongard_scene_predicate_calibration_command_source_digest,
+    )
+    from bongard.object_bongard_scene_predicate_ir import (
+        object_bongard_scene_predicate_ir_source_digest,
+    )
+    from bongard.object_bongard_turn_journal import (
+        object_bongard_turn_journal_source_digest,
+    )
+    from bongard.object_scene_visual_frontend import (
+        object_scene_visual_frontend_source_digest,
+    )
+    from bongard.prototype_scene_observer import (
+        prototype_scene_transport_source_digest,
+    )
+    from bongard.transport import PINNED_CODEX_CLI_VERSION
+
+    expected_source_bindings = {
+        "campaign_command": "sha256:"
+        + object_bongard_scene_predicate_campaign_command_source_digest(),
+        "calibration_command": "sha256:"
+        + object_bongard_scene_predicate_calibration_command_source_digest(),
+        "calibration_result": getattr(calibration, "result_digest"),
+        "scene_visual_frontend": "sha256:"
+        + object_scene_visual_frontend_source_digest(),
+        "scene_predicate_ir": "sha256:"
+        + object_bongard_scene_predicate_ir_source_digest(),
+        "turn_journal": "sha256:" + object_bongard_turn_journal_source_digest(),
+        "transport": "sha256:" + prototype_scene_transport_source_digest(),
+        "authenticated_runtime_record": runtime_record["runtime_digest"],
+    }
+    expected_configuration = {
+        "task_count": TASK_COUNT,
+        "discovery_calls_per_task": DISCOVERY_CALLS_PER_TASK,
+        "registered_a_calls_per_task": REGISTERED_A_CALLS_PER_TASK,
+        "registered_b_calls_per_task": REGISTERED_B_CALLS_PER_TASK,
+        "ranker_calls_max_per_task": MAX_RANKER_CALLS_PER_TASK,
+        "query_calls_per_task": QUERY_CALLS_PER_TASK,
+        "score_denominator": QUERY_DENOMINATOR,
+        "parallel_workers": envelope["parallel_workers"],
+        "campaign_wall_clock_minutes": envelope["campaign_wall_clock_minutes"],
+        "maximum_visual_calls": MAX_VISUAL_CALLS,
+        "maximum_ranker_calls": MAX_RANKER_CALLS,
+        "authenticated_runtime_persisted_before_exposure": True,
+        "python_canonical": True,
+        "lean_required": False,
+    }
+    if (
+        runtime_record.get("schema") != CAMPAIGN_RUNTIME_SCHEMA
+        or runtime_record.get("runtime_digest")
+        != "sha256:" + canonical_digest(runtime_body)
+        or runtime_receipt.object_digest != runtime_record["runtime_digest"]
+        or source_bindings.get("authenticated_runtime_record")
+        != runtime_record["runtime_digest"]
+        or source_bindings != expected_source_bindings
+        or configuration != expected_configuration
+        or precommit.record_digest != result["execution_precommit_digest"]
+        or runtime.binding != runtime_record["runtime_binding"]
+        or runtime.minutes != envelope["per_turn_timeout_minutes"]
+        or runtime.model != MODEL
+        or runtime.reasoning_effort != REASONING_EFFORT
+        or runtime_record.get("launcher_fingerprint")
+        != {
+            "version": PINNED_CODEX_CLI_VERSION,
+            "launcher_digest": runtime.expected_launcher_digest,
+        }
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign runtime/precommit binding differs"
+        )
+    prepared = PreparedObjectBongardScenePredicateCampaign(
+        root,
+        calibration,
+        preregistration,
+        plan,
+        descriptor,
+        archive,
+        release,
+    )
+    correct = 0
+    queried = 0
+    expected_journal_roots: set[str] = set()
+    for index, (receipt_data, expected_digest) in enumerate(
+        zip(task_receipts, task_digests, strict=True)
+    ):
+        task_raw, receipt = _load_stored_record(
+            store,
+            receipt_data,
+            f"task result {index}",
+            expected_object_kind="scene-task-result",
+        )
+        task_result = _validate_task_result_record(task_raw)
+        if (
+            task_result["task_ordinal"] != index
+            or task_result["task_result_digest"] != expected_digest
+            or receipt.object_digest != expected_digest
+        ):
+            raise ObjectBongardScenePredicateCampaignCommandError(
+                "campaign task result ordering differs"
+            )
+        for stage in ("discovery", "registered_a", "registered_b"):
+            for panel_index in range(SUPPORT_PANEL_COUNT_PER_TASK):
+                expected_journal_roots.add(
+                    (
+                        Path("tasks")
+                        / f"task_{index:02d}"
+                        / JOURNAL_DIRECTORY
+                        / stage
+                        / f"panel_{panel_index:02d}"
+                    ).as_posix()
+                )
+        if task_result["selected_survivor_digest"] is not None:
+            expected_journal_roots.add(
+                (
+                    Path("tasks")
+                    / f"task_{index:02d}"
+                    / JOURNAL_DIRECTORY
+                    / "ranker"
+                ).as_posix()
+            )
+            for side in ("side_0", "side_1"):
+                expected_journal_roots.add(
+                    (
+                        Path("tasks")
+                        / f"task_{index:02d}"
+                        / JOURNAL_DIRECTORY
+                        / "query"
+                        / side
+                    ).as_posix()
+                )
+        task_correct, task_queried = _verify_task_from_store(
+            prepared=prepared,
+            task=plan.tasks[index],
+            task_index=index,
+            runtime=runtime,
+            task_result=task_result,
+        )
+        correct += task_correct
+        queried += int(task_queried)
+    object_entries = tuple((root / "objects").rglob("*"))
+    task_entries = tuple((root / "tasks").rglob("*"))
+    if any(path.is_symlink() for path in (*object_entries, *task_entries)):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign store or journal tree contains a symlink"
+        )
+    actual_object_paths = {
+        path.relative_to(root).as_posix() for path in object_entries if path.is_file()
+    }
+    reachable_object_paths = _reachable_store_object_paths(store, result)
+    actual_journal_roots = {
+        path.parent.relative_to(root).as_posix()
+        for path in (root / "tasks").glob("task_*/journals/**/manifest.json")
+        if path.is_file()
+    }
+    if (
+        actual_object_paths != reachable_object_paths
+        or actual_journal_roots != expected_journal_roots
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign contains unreferenced store objects or journal turns"
+        )
+    expected_calls = {
+        "discovery_calls": TASK_COUNT * DISCOVERY_CALLS_PER_TASK,
+        "registered_a_calls": TASK_COUNT * REGISTERED_A_CALLS_PER_TASK,
+        "registered_b_calls": TASK_COUNT * REGISTERED_B_CALLS_PER_TASK,
+        "ranker_calls": queried,
+        "query_calls": queried * QUERY_CALLS_PER_TASK,
+        "visual_calls": TASK_COUNT * SUPPORT_VISUAL_CALLS_PER_TASK
+        + queried * QUERY_CALLS_PER_TASK,
+    }
+    if (
+        dict(calls) != expected_calls
+        or result["evaluated_task_count"] != queried
+        or result["typed_gap_count"] != TASK_COUNT - queried
+        or score["correct_count"] != correct
+        or score["typed_gap_query_items_scored_incorrect_without_release"]
+        != (TASK_COUNT - queried) * QUERY_CALLS_PER_TASK
+        or score["accuracy"] != correct / QUERY_DENOMINATOR
+        or replay.get("support_visual_journals_cold_replayed")
+        != TASK_COUNT * SUPPORT_VISUAL_CALLS_PER_TASK
+        or replay.get("query_visual_journals_cold_replayed")
+        != queried * QUERY_CALLS_PER_TASK
+        or replay.get("ranker_journals_cold_replayed") != queried
+        or replay.get("query_formula_evaluations_recomputed")
+        != queried * QUERY_CALLS_PER_TASK
+    ):
+        raise ObjectBongardScenePredicateCampaignCommandError(
+            "campaign aggregate score or budget differs"
+        )
+    return _verified_campaign(root, result)
+
+
+def _parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Release-gated Python scene-predicate Bongard campaign"
+    )
+    sub = parser.add_subparsers(dest="command", required=True)
+    launch = sub.add_parser("launch")
+    launch.add_argument("--output-root", required=True)
+    launch.add_argument("--calibration-root", required=True)
+    launch.add_argument("--parallel-workers", type=int, default=DEFAULT_PARALLEL_WORKERS)
+    launch.add_argument("--campaign-minutes", type=int, default=DEFAULT_CAMPAIGN_MINUTES)
+    launch.add_argument("--minutes", type=int, default=DEFAULT_MINUTES)
+    launch.add_argument("--executable", default=DEFAULT_EXECUTABLE)
+    launch.add_argument(
+        "--expected-launcher-sha256", default=DEFAULT_EXPECTED_LAUNCHER_SHA256
+    )
+    verify = sub.add_parser("verify")
+    verify.add_argument("--output-root", required=True)
+    verify.add_argument("--calibration-root", required=True)
+    return parser
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    args = _parser().parse_args(argv)
+    try:
+        if args.command == "launch":
+            verified = run_object_bongard_scene_predicate_campaign_command(
+                args.output_root,
+                calibration_root=args.calibration_root,
+                parallel_workers=args.parallel_workers,
+                campaign_minutes=args.campaign_minutes,
+                minutes=args.minutes,
+                executable=args.executable,
+                expected_launcher_sha256=args.expected_launcher_sha256,
+            )
+        else:
+            verified = verify_object_bongard_scene_predicate_campaign(
+                args.output_root, calibration_root=args.calibration_root
+            )
+    except Exception as exc:
+        print(f"scene-predicate campaign failed: {exc}", file=sys.stderr)
+        return 1
+    print(
+        canonical_json(
+            {
+                "result_digest": verified.result_digest,
+                "correct_count": verified.correct_count,
+                "denominator": verified.denominator,
+                "typed_gap_count": verified.typed_gap_count,
+                "evaluated_task_count": verified.evaluated_task_count,
+                "visual_fresh_call_count": verified.visual_fresh_call_count,
+                "ranker_fresh_call_count": verified.ranker_fresh_call_count,
+            }
+        ).decode("utf-8")
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
