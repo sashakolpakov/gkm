@@ -218,6 +218,105 @@ def test_discovery_is_one_call_typed_and_cold_replayable():
     ) == artifact
 
 
+def test_model_unicode_punctuation_is_normalized_before_persistence_and_replay():
+    raw = _scene()
+    inventory = extract_object_scene_proposal_inventory(raw)
+    payload = _payload(inventory)
+    for row in payload["objects"]:
+        row["summary"] = "outlined form—leans left"
+        row["counts"][0]["evidence"] = "visible marks–two"
+        row["observables"][0]["evidence"] = "edge—clearly visible"
+        row["open_tags"] = [
+            {
+                "tag": "wing—like form",
+                "state": "present",
+                "evidence": "wing—like contour is visible",
+            }
+        ]
+
+    artifact = _observe(raw, payload)
+
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    row = artifact.transcript.objects[0]
+    assert row.summary == "outlined form - leans left"
+    assert row.count_cells[0].evidence == "visible marks - two"
+    assert row.qualitative_cells[0].evidence == "edge - clearly visible"
+    assert row.open_tags[0].tag == "wing - like form"
+    assert row.open_tags[0].evidence == "wing - like contour is visible"
+    assert "–" not in str(artifact.transcript.to_data())
+    assert "—" not in str(artifact.transcript.to_data())
+    assert ObjectSceneTranscriptArtifact.from_data(artifact.to_data()) == artifact
+    assert verify_object_scene_transcript_artifact(
+        artifact,
+        raw,
+        expected_scene_id="opaque-scene",
+        expected_observation_context_digest=CONTEXT_A,
+        expected_panel_sha256=hashlib.sha256(raw).hexdigest(),
+        expected_artifact_digest=artifact.artifact_digest,
+    ) == artifact
+
+
+def test_ordinary_leans_inflection_passes_but_standalone_lean_remains_forbidden():
+    raw = _scene()
+    inventory = extract_object_scene_proposal_inventory(raw)
+    accepted = _payload(inventory)
+    for row in accepted["objects"]:
+        row["summary"] = "outlined form leans left"
+    artifact = _observe(raw, accepted)
+    assert artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert artifact.transcript is not None
+    assert artifact.transcript.objects[0].summary == "outlined form leans left"
+
+    forbidden = _payload(inventory)
+    forbidden["objects"][0]["summary"] = "Lean proof appears here"
+    rejected = _observe(raw, forbidden)
+    assert rejected.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert rejected.transcript is None
+
+
+def test_discovery_open_tags_are_sorted_after_normalization_and_duplicates_reject():
+    raw = _scene()
+    inventory = extract_object_scene_proposal_inventory(raw)
+    payload = _payload(inventory, open_tags=("arched form", "wing-like form"))
+    for row in payload["objects"]:
+        row["open_tags"].reverse()
+    reversed_artifact = _observe(raw, payload)
+    assert reversed_artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert reversed_artifact.transcript is not None
+    assert tuple(item.tag for item in reversed_artifact.transcript.objects[0].open_tags) == (
+        "arched form",
+        "wing-like form",
+    )
+
+    ordered_payload = _payload(
+        inventory, open_tags=("arched form", "wing-like form")
+    )
+    ordered_artifact = _observe(raw, ordered_payload)
+    assert ordered_artifact.status is PrototypeSceneObserverStatus.SUCCESS
+    assert ordered_artifact.transcript == reversed_artifact.transcript
+    assert ObjectSceneTranscriptArtifact.from_data(
+        reversed_artifact.to_data()
+    ) == reversed_artifact
+
+    duplicate = deepcopy(payload)
+    duplicate["objects"][0]["open_tags"] = [
+        {
+            "tag": "wing—like form",
+            "state": "present",
+            "evidence": "visible wing contour",
+        },
+        {
+            "tag": "wing - like form",
+            "state": "present",
+            "evidence": "same visible wing contour",
+        },
+    ]
+    rejected = _observe(raw, duplicate)
+    assert rejected.status is PrototypeSceneObserverStatus.PARSER_ERROR
+    assert rejected.transcript is None
+
+
 def test_registry_uses_distinct_panel_frequency_and_persists_every_drop():
     raw_a, raw_b = _scene(0), _scene(2)
     inventory_a = extract_object_scene_proposal_inventory(raw_a)

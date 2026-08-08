@@ -122,15 +122,29 @@ _CODE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}\Z")
 _POSITIVE_TAG = re.compile(r"[a-z][a-z' -]{1,47}\Z")
 _PROSE = re.compile(r"[ -~]+\Z")
 _FORBIDDEN_VISIBLE = re.compile(
-    r"\b(?:candidate|group|class|label|target|foil|positive|negative|"
+    r"\b(?:(?:candidate|group|class|label|target|foil|positive|negative|"
     r"predicate|formula|task|query|answer|prompt|instruction|system|assistant|"
-    r"user|tool|code|python|lean|theorem)s?\b",
+    r"user|tool|code|python|theorem)s?|lean)\b",
     re.IGNORECASE,
 )
 _FORBIDDEN_TAG_LOGIC = re.compile(
     r"\b(?:no|not|none|neither|without|lacks?|lacking|absent|missing|"
     r"except|and|or|versus|unlike|different|other|than)\b",
     re.IGNORECASE,
+)
+_UNICODE_DASH = re.compile(r"[ \t]*[\u2013\u2014][ \t]*")
+_UNICODE_VISIBLE_TRANSLATION = str.maketrans(
+    {
+        "\u00a0": " ",
+        "\u2010": "-",
+        "\u2011": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2026": "...",
+        "\u2212": "-",
+    }
 )
 
 
@@ -239,6 +253,19 @@ def _bounded_prose(value: object, label: str, maximum: int) -> str:
     return value
 
 
+def _normalize_model_visible_text(value: object) -> object:
+    """Normalize a closed set of ordinary model punctuation before parsing."""
+
+    if not isinstance(value, str):
+        return value
+    normalized = _UNICODE_DASH.sub(" - ", value)
+    return normalized.translate(_UNICODE_VISIBLE_TRANSLATION)
+
+
+def _normalized_bounded_prose(value: object, label: str, maximum: int) -> str:
+    return _bounded_prose(_normalize_model_visible_text(value), label, maximum)
+
+
 def _positive_tag(value: object) -> str:
     if (
         not isinstance(value, str)
@@ -250,6 +277,10 @@ def _positive_tag(value: object) -> str:
     ):
         raise ObjectSceneVisualFrontendError("open visual tag is not atomic affirmative prose")
     return value
+
+
+def _normalized_positive_tag(value: object) -> str:
+    return _positive_tag(_normalize_model_visible_text(value))
 
 
 def _canonical_payload(value: object) -> dict[str, Any]:
@@ -981,13 +1012,16 @@ class ObjectSceneQualitativeCell:
     def create(cls, observable_id: str, state: object, evidence: object) -> "ObjectSceneQualitativeCell":
         disposition = _disposition_from_state(state)
         support = UnitSupportInterval.from_state(state)
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "qualitative evidence", 240
+        )
         provisional = object.__new__(cls)
         for name, item in (
             ("observable_id", observable_id), ("disposition", disposition),
-            ("support", support), ("evidence", evidence),
+            ("support", support), ("evidence", normalized_evidence),
         ):
             object.__setattr__(provisional, name, item)
-        return cls(observable_id, disposition, support, evidence, canonical_digest(_qualitative_content(provisional)))
+        return cls(observable_id, disposition, support, normalized_evidence, canonical_digest(_qualitative_content(provisional)))
 
     def to_data(self) -> dict[str, object]:
         return {**_qualitative_content(self), "cell_digest": self.cell_digest}
@@ -1041,10 +1075,13 @@ class ObjectSceneCountCell:
             interval = None
         else:
             raise ObjectSceneVisualFrontendError("count payload state differs")
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "count evidence", 240
+        )
         provisional = object.__new__(cls)
-        for name, item in (("observable_id", observable_id), ("state", state), ("interval", interval), ("evidence", evidence)):
+        for name, item in (("observable_id", observable_id), ("state", state), ("interval", interval), ("evidence", normalized_evidence)):
             object.__setattr__(provisional, name, item)
-        return cls(observable_id, state, interval, evidence, canonical_digest(_count_content(provisional)))
+        return cls(observable_id, state, interval, normalized_evidence, canonical_digest(_count_content(provisional)))
 
     def to_data(self) -> dict[str, object]:
         return {**_count_content(self), "cell_digest": self.cell_digest}
@@ -1090,13 +1127,16 @@ class ObjectSceneOpenTag:
 
     @classmethod
     def create(cls, tag: object, state: object, evidence: object) -> "ObjectSceneOpenTag":
-        phrase = _positive_tag(tag)
+        phrase = _normalized_positive_tag(tag)
         disposition = _disposition_from_state(state)
         support = UnitSupportInterval.from_state(state)
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "open tag evidence", 240
+        )
         provisional = object.__new__(cls)
-        for name, item in (("tag", phrase), ("disposition", disposition), ("support", support), ("evidence", evidence)):
+        for name, item in (("tag", phrase), ("disposition", disposition), ("support", support), ("evidence", normalized_evidence)):
             object.__setattr__(provisional, name, item)
-        return cls(phrase, disposition, support, evidence, canonical_digest(_open_tag_content(provisional)))
+        return cls(phrase, disposition, support, normalized_evidence, canonical_digest(_open_tag_content(provisional)))
 
     def to_data(self) -> dict[str, object]:
         return {**_open_tag_content(self), "tag_observation_digest": self.tag_observation_digest}
@@ -1142,10 +1182,13 @@ class ObjectSceneRegisteredTagCell:
     def create(cls, tag_id: object, state: object, evidence: object) -> "ObjectSceneRegisteredTagCell":
         disposition = _disposition_from_state(state)
         support = UnitSupportInterval.from_state(state)
+        normalized_evidence = _normalized_bounded_prose(
+            evidence, "registered tag evidence", 240
+        )
         provisional = object.__new__(cls)
-        for name, item in (("tag_id", tag_id), ("disposition", disposition), ("support", support), ("evidence", evidence)):
+        for name, item in (("tag_id", tag_id), ("disposition", disposition), ("support", support), ("evidence", normalized_evidence)):
             object.__setattr__(provisional, name, item)
-        return cls(tag_id, disposition, support, evidence, canonical_digest(_registered_cell_content(provisional)))  # type: ignore[arg-type]
+        return cls(tag_id, disposition, support, normalized_evidence, canonical_digest(_registered_cell_content(provisional)))  # type: ignore[arg-type]
 
     def to_data(self) -> dict[str, object]:
         return {**_registered_cell_content(self), "cell_digest": self.cell_digest}
@@ -1732,8 +1775,9 @@ def _parse_object_scene_transcript_payload(
             for value in row["open_tags"]:
                 tag = _fields(value, {"tag", "state", "evidence"}, "open tag payload")
                 open_tags.append(ObjectSceneOpenTag.create(tag["tag"], tag["state"], tag["evidence"]))
-            if tuple(item.tag for item in open_tags) != tuple(sorted(set(item.tag for item in open_tags))):
-                raise ObjectSceneVisualFrontendError("open tag payload order differs")
+            if len({item.tag for item in open_tags}) != len(open_tags):
+                raise ObjectSceneVisualFrontendError("open tag payload repeats a normalized tag")
+            open_tags.sort(key=lambda item: item.tag)
         else:
             if row["open_tags"] or len(row["registered_tags"]) != len(registry_ids):
                 raise ObjectSceneVisualFrontendError("registered payload tag bounds differ")
@@ -1745,7 +1789,7 @@ def _parse_object_scene_transcript_payload(
         row_values = {
             "object_id": crop.object_id,
             "crop_receipt_digest": crop.receipt_digest,
-            "summary": _bounded_prose(row["summary"], "object summary", 240),
+            "summary": _normalized_bounded_prose(row["summary"], "object summary", 240),
             "count_cells": tuple(counts),
             "qualitative_cells": tuple(qualities),
             "open_tags": tuple(open_tags),
@@ -1780,6 +1824,12 @@ def object_scene_transcript_protocol_digest() -> str:
         "fixed_count_observable_ids": list(OBJECT_SCENE_COUNT_OBSERVABLE_IDS),
         "fixed_qualitative_observable_ids": list(OBJECT_SCENE_QUALITATIVE_OBSERVABLE_IDS),
         "discovery_tag_cap_per_proposal": OBJECT_SCENE_MAX_TAGS_PER_OBJECT,
+        "model_visible_unicode_normalization": (
+            "predeclared-ordinary-punctuation-to-canonical-ascii-before-validation"
+        ),
+        "discovery_open_tag_input_order": (
+            "unordered-normalize-reject-duplicates-sort-lexically"
+        ),
         "registry_minimum_distinct_panel_frequency": OBJECT_SCENE_MIN_TAG_PANEL_FREQUENCY,
         "registry_capacity": OBJECT_SCENE_MAX_REGISTERED_TAGS,
         "omitted_or_unregistered_tag": "indeterminate-never-absence",
