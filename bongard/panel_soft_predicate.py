@@ -53,7 +53,7 @@ PANEL_SOFT_ENGINEERING_VERSION_SPACE_SCHEMA = (
     "gkm.bongard-panel-soft-engineering-version-space.v1"
 )
 PANEL_SOFT_ENGINEERING_PREDICATE_PAIR_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-predicate-pair.v1"
+    "gkm.bongard-panel-soft-engineering-predicate-pair.v2"
 )
 PANEL_SOFT_ENGINEERING_QUERY_DECISION_SCHEMA = (
     "gkm.bongard-panel-soft-engineering-query-decision.v1"
@@ -66,6 +66,10 @@ PANEL_SOFT_ENGINEERING_ALGORITHM_ID = (
 )
 
 PANEL_SOFT_ORIENTATIONS = ("side0_positive", "side1_positive")
+PANEL_SOFT_PAIR_SELECTION_MODES = (
+    "support_only_codex_ranker",
+    "deterministic_baseline",
+)
 PANEL_SOFT_RAW_VERDICTS = ("present", "mismatch", "indeterminate", "error")
 PANEL_SOFT_MAX_ATOMS = 16
 PANEL_SOFT_MAX_WITNESSES = 4
@@ -82,7 +86,7 @@ _PANEL_SOFT_PROMPT_CONTROL = re.compile(
     r"inspect|evaluate|consider|read|return|output|answer|respond|response|"
     r"emit|write|say|choose|select|classify|rate|score|assign|"
     r"instruction|prompt|system|developer|assistant|user|model|tool|code|"
-    r"python|lean|schema|json|alias|criterion|verdict|"
+    r"python|schema|json|alias|criterion|verdict|"
     r"present|mismatch|indeterminate|error|previous|always"
     r")s?\b",
     re.IGNORECASE,
@@ -1567,19 +1571,28 @@ def _selected_engineering_formula(
 def _engineering_predicate_pair_content(
     value: "PanelSoftEngineeringPredicatePair",
 ) -> dict[str, object]:
+    selection_rule = (
+        "first-ranked-survivor-per-hidden-native-orientation"
+        if value.selection_mode == "support_only_codex_ranker"
+        else "minimum-atom-count-then-formula-digest"
+    )
     return {
         "schema": PANEL_SOFT_ENGINEERING_PREDICATE_PAIR_SCHEMA,
         "engineering_version_space": value.engineering_version_space.to_data(),
         "engineering_version_space_digest": (
             value.engineering_version_space.engineering_version_space_digest
         ),
+        "selection_mode": value.selection_mode,
         "side0_formula_digest": value.side0_formula_digest,
         "side1_formula_digest": value.side1_formula_digest,
         "selected_formula_count_by_orientation": {
             "side0_positive": 1,
             "side1_positive": 1,
         },
-        "selection_rule": "minimum-atom-count-then-formula-digest",
+        "selection_rule": selection_rule,
+        "selection_mode_was_explicit": True,
+        "silent_ranker_fallback_allowed": False,
+        "rank_artifact_required_for_ranked_mode": True,
         "selected_formulas_must_be_support_survivors": True,
         "uses_scientific_dispositions": False,
         **_engineering_only_data(),
@@ -1589,9 +1602,15 @@ def _engineering_predicate_pair_content(
 
 @dataclass(frozen=True, slots=True)
 class PanelSoftEngineeringPredicatePair:
-    """Deterministically selected, uncalibrated formula pair for a drill."""
+    """Explicitly selected, uncalibrated formula pair for a drill.
+
+    The ranked constructor accepts only exact native-orientation support
+    survivors.  The deterministic rule remains available solely through the
+    explicitly named baseline mode; it is never an implicit ranker fallback.
+    """
 
     engineering_version_space: PanelSoftEngineeringVersionSpace
+    selection_mode: str
     side0_formula_digest: str
     side1_formula_digest: str
     predicate_pair_digest: str
@@ -1603,19 +1622,42 @@ class PanelSoftEngineeringPredicatePair:
             raise TypeError("predicate pair version space has the wrong type")
         _digest(self.side0_formula_digest, "selected side0 formula digest")
         _digest(self.side1_formula_digest, "selected side1 formula digest")
-        expected_side0 = _selected_engineering_formula(
-            self.engineering_version_space, "side0_positive"
-        )
-        expected_side1 = _selected_engineering_formula(
-            self.engineering_version_space, "side1_positive"
-        )
+        if self.selection_mode not in PANEL_SOFT_PAIR_SELECTION_MODES:
+            raise PanelSoftPredicateError(
+                "engineering predicate pair selection mode differs"
+            )
+        survivors = {
+            item.formula_digest: item
+            for item in self.engineering_version_space.survivor_formulas
+        }
+        try:
+            side0 = survivors[self.side0_formula_digest]
+            side1 = survivors[self.side1_formula_digest]
+        except KeyError as exc:
+            raise PanelSoftPredicateError(
+                "engineering predicate pair selects a non-survivor"
+            ) from exc
         if (
-            self.side0_formula_digest != expected_side0.formula_digest
-            or self.side1_formula_digest != expected_side1.formula_digest
+            side0.orientation != "side0_positive"
+            or side1.orientation != "side1_positive"
         ):
             raise PanelSoftPredicateError(
-                "engineering predicate pair selection differs"
+                "engineering predicate pair selection is not native orientation"
             )
+        if self.selection_mode == "deterministic_baseline":
+            expected_side0 = _selected_engineering_formula(
+                self.engineering_version_space, "side0_positive"
+            )
+            expected_side1 = _selected_engineering_formula(
+                self.engineering_version_space, "side1_positive"
+            )
+            if (
+                self.side0_formula_digest != expected_side0.formula_digest
+                or self.side1_formula_digest != expected_side1.formula_digest
+            ):
+                raise PanelSoftPredicateError(
+                    "deterministic baseline predicate pair selection differs"
+                )
         _digest(self.predicate_pair_digest, "engineering predicate pair digest")
         if self.predicate_pair_digest != canonical_digest(
             _engineering_predicate_pair_content(self)
@@ -1626,21 +1668,39 @@ class PanelSoftEngineeringPredicatePair:
     def create(
         cls,
         engineering_version_space: PanelSoftEngineeringVersionSpace,
+        *,
+        selection_mode: str,
+        side0_formula_digest: str | None = None,
+        side1_formula_digest: str | None = None,
     ) -> "PanelSoftEngineeringPredicatePair":
         if not isinstance(
             engineering_version_space, PanelSoftEngineeringVersionSpace
         ):
             raise TypeError("version space must be an engineering version space")
-        side0 = _selected_engineering_formula(
-            engineering_version_space, "side0_positive"
-        )
-        side1 = _selected_engineering_formula(
-            engineering_version_space, "side1_positive"
-        )
+        if selection_mode not in PANEL_SOFT_PAIR_SELECTION_MODES:
+            raise PanelSoftPredicateError(
+                "engineering predicate pair selection mode differs"
+            )
+        if selection_mode == "deterministic_baseline":
+            if side0_formula_digest is not None or side1_formula_digest is not None:
+                raise PanelSoftPredicateError(
+                    "deterministic baseline does not accept ranked selections"
+                )
+            side0_formula_digest = _selected_engineering_formula(
+                engineering_version_space, "side0_positive"
+            ).formula_digest
+            side1_formula_digest = _selected_engineering_formula(
+                engineering_version_space, "side1_positive"
+            ).formula_digest
+        elif side0_formula_digest is None or side1_formula_digest is None:
+            raise PanelSoftPredicateError(
+                "ranked selection requires both explicit formula digests"
+            )
         values = {
             "engineering_version_space": engineering_version_space,
-            "side0_formula_digest": side0.formula_digest,
-            "side1_formula_digest": side1.formula_digest,
+            "selection_mode": selection_mode,
+            "side0_formula_digest": side0_formula_digest,
+            "side1_formula_digest": side1_formula_digest,
         }
         provisional = object.__new__(cls)
         for name, item in values.items():
@@ -1650,6 +1710,31 @@ class PanelSoftEngineeringPredicatePair:
             predicate_pair_digest=canonical_digest(
                 _engineering_predicate_pair_content(provisional)
             ),
+        )
+
+    @classmethod
+    def create_deterministic_baseline(
+        cls,
+        engineering_version_space: PanelSoftEngineeringVersionSpace,
+    ) -> "PanelSoftEngineeringPredicatePair":
+        return cls.create(
+            engineering_version_space,
+            selection_mode="deterministic_baseline",
+        )
+
+    @classmethod
+    def create_ranked(
+        cls,
+        engineering_version_space: PanelSoftEngineeringVersionSpace,
+        *,
+        side0_formula_digest: str,
+        side1_formula_digest: str,
+    ) -> "PanelSoftEngineeringPredicatePair":
+        return cls.create(
+            engineering_version_space,
+            selection_mode="support_only_codex_ranker",
+            side0_formula_digest=side0_formula_digest,
+            side1_formula_digest=side1_formula_digest,
         )
 
     @property
@@ -1675,9 +1760,12 @@ class PanelSoftEngineeringPredicatePair:
             value,
             {
                 "schema", "engineering_version_space",
-                "engineering_version_space_digest", "side0_formula_digest",
+                "engineering_version_space_digest", "selection_mode",
+                "side0_formula_digest",
                 "side1_formula_digest", "selected_formula_count_by_orientation",
                 "selection_rule", "selected_formulas_must_be_support_survivors",
+                "selection_mode_was_explicit", "silent_ranker_fallback_allowed",
+                "rank_artifact_required_for_ranked_mode",
                 "uses_scientific_dispositions", *_engineering_only_data(),
                 *_authority_data(), "predicate_pair_digest",
             },
@@ -1692,8 +1780,16 @@ class PanelSoftEngineeringPredicatePair:
             != version_space.engineering_version_space_digest
             or raw["selected_formula_count_by_orientation"]
             != {"side0_positive": 1, "side1_positive": 1}
+            or raw["selection_mode"] not in PANEL_SOFT_PAIR_SELECTION_MODES
             or raw["selection_rule"]
-            != "minimum-atom-count-then-formula-digest"
+            != (
+                "first-ranked-survivor-per-hidden-native-orientation"
+                if raw["selection_mode"] == "support_only_codex_ranker"
+                else "minimum-atom-count-then-formula-digest"
+            )
+            or raw["selection_mode_was_explicit"] is not True
+            or raw["silent_ranker_fallback_allowed"] is not False
+            or raw["rank_artifact_required_for_ranked_mode"] is not True
             or raw["selected_formulas_must_be_support_survivors"] is not True
             or raw["uses_scientific_dispositions"] is not False
             or any(raw[key] != item for key, item in _engineering_only_data().items())
@@ -1704,6 +1800,7 @@ class PanelSoftEngineeringPredicatePair:
             )
         result = cls(
             version_space,
+            raw["selection_mode"],
             raw["side0_formula_digest"],
             raw["side1_formula_digest"],
             raw["predicate_pair_digest"],
@@ -1937,6 +2034,7 @@ __all__ = (
     "PANEL_SOFT_MAX_ATOMS",
     "PANEL_SOFT_MAX_CONJUNCTION",
     "PANEL_SOFT_ORIENTATIONS",
+    "PANEL_SOFT_PAIR_SELECTION_MODES",
     "PanelSoftAtom",
     "PanelSoftAtomTextRejected",
     "PanelSoftEngineeringPredicatePair",

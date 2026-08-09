@@ -2,11 +2,14 @@
 
 The runner owns no archive or model transport.  It receives exact support PNG
 bytes and already receipted proposer/observer artifacts, verifies those bytes,
-builds the deterministic positive-conjunction version space, and commits the
-selected two-orientation predicate pair.  Only after the exact canonical
-freeze bytes have been durably committed and reloaded does it invoke a query
-callback.  The callback must return both exact query PNGs and their observations
-under the same complete vocabulary and observer contract.
+builds the deterministic positive-conjunction version space, applies one
+explicit selection mode (receipted support-only ranking or named deterministic
+baseline), and commits the selected two-orientation predicate pair.  Only after
+the commit callback has returned and the exact canonical freeze bytes have been
+reloaded does it invoke a query callback.  This runner proves callback order;
+the enclosing campaign must authenticate external storage durability.  The
+query callback must return both exact query PNGs and their observations under
+the same complete vocabulary and observer contract.
 
 This is explicitly an engineering diagnostic, not a scientific benchmark.
 Same-model repeat consensus remains uncalibrated.  Python is the sole
@@ -38,14 +41,18 @@ from bongard.panel_soft_observer import (
 )
 from bongard.panel_soft_predicate import (
     PANEL_SOFT_ORIENTATIONS,
+    PANEL_SOFT_PAIR_SELECTION_MODES,
     PanelSoftEngineeringPredicatePair,
     PanelSoftEngineeringQueryDecision,
     PanelSoftEngineeringQueryOutcome,
     PanelSoftEngineeringVersionSpace,
     PanelSoftObservationTable,
     PanelSoftOperationalConsensus,
-    PanelSoftPredicateError,
     PanelSoftVocabulary,
+)
+from bongard.panel_soft_ranker import (
+    PanelSoftRankArtifact,
+    PanelSoftRankInput,
 )
 from bongard.panel_soft_proposer import (
     PanelSoftProposerArtifact,
@@ -56,22 +63,22 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 PANEL_SOFT_ENGINEERING_TASK_RUNNER_ID = (
-    "bongard.panel-soft-engineering-task/support-freeze-query-v1"
+    "bongard.panel-soft-engineering-task/support-rank-freeze-query-v3"
 )
 PANEL_SOFT_ENGINEERING_SUPPORT_GAP_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-support-gap.v1"
+    "gkm.bongard-panel-soft-engineering-support-gap.v3"
 )
 PANEL_SOFT_ENGINEERING_TASK_FREEZE_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-task-freeze.v1"
+    "gkm.bongard-panel-soft-engineering-task-freeze.v3"
 )
 PANEL_SOFT_ENGINEERING_TASK_FREEZE_COMMIT_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-task-freeze-commit.v1"
+    "gkm.bongard-panel-soft-engineering-task-freeze-commit.v3"
 )
 PANEL_SOFT_ENGINEERING_TASK_ARCHIVE_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-task-archive.v1"
+    "gkm.bongard-panel-soft-engineering-task-archive.v3"
 )
 PANEL_SOFT_ENGINEERING_PROPOSER_TERMINAL_SCHEMA = (
-    "gkm.bongard-panel-soft-engineering-proposer-terminal.v1"
+    "gkm.bongard-panel-soft-engineering-proposer-terminal.v3"
 )
 PANEL_SOFT_ENGINEERING_QUERY_DENOMINATOR = 2
 PANEL_SOFT_ENGINEERING_SUPPORT_PANEL_COUNT = 12
@@ -103,8 +110,17 @@ def _authority_data() -> dict[str, object]:
         "negation_allowed": False,
         "polarity_flip_allowed": False,
         "arbitrary_predicate_code_allowed": False,
-        "support_only_codex_ranker_present": False,
-        "predicate_pair_selection": "minimum-atom-count-then-formula-digest",
+        "support_only_codex_ranker_supported": True,
+        "predicate_pair_selection_mode_explicit": True,
+        "ranked_mode_requires_receipted_rank_artifact": True,
+        "deterministic_baseline_is_explicit_mode_only": True,
+        "silent_ranker_fallback_allowed": False,
+        "default_rejects_unsealable_rank_artifact": True,
+        "unverified_rank_artifact_override_is_engineering_only": True,
+        "rank_override_authenticates_provenance_or_runtime": False,
+        "campaign_external_runtime_and_journal_custody_verification_required": True,
+        "ranker_callback_invocations_count_callbacks_only": True,
+        "physical_rank_model_calls_require_external_journal_evidence": True,
         "python_predicate_pair_frozen_before_query_callback": True,
         "sealed_proposer_and_observer_artifacts_required": True,
         "lean_present": False,
@@ -190,6 +206,40 @@ def _canonical_observer(value: PanelSoftObserverArtifact) -> PanelSoftObserverAr
     restored = PanelSoftObserverArtifact.from_data(value.to_data())
     if restored != value:
         raise PanelSoftEngineeringTaskRunnerError("observer artifact round trip differs")
+    return restored
+
+
+def _selection_mode(value: object) -> str:
+    if value not in PANEL_SOFT_PAIR_SELECTION_MODES:
+        raise PanelSoftEngineeringTaskRunnerError(
+            "predicate-pair selection mode differs"
+        )
+    return value  # type: ignore[return-value]
+
+
+def _rank_override(selection_mode: str, value: object) -> bool:
+    mode = _selection_mode(selection_mode)
+    if type(value) is not bool:
+        raise TypeError("allow_unverified_rank_artifact must be bool")
+    if value and mode != "support_only_codex_ranker":
+        raise PanelSoftEngineeringTaskRunnerError(
+            "unverified rank-artifact override is valid only in ranked mode"
+        )
+    return value
+
+
+def _canonical_rank_artifact(
+    value: PanelSoftRankArtifact,
+    version_space: PanelSoftEngineeringVersionSpace,
+) -> PanelSoftRankArtifact:
+    if not isinstance(value, PanelSoftRankArtifact):
+        raise TypeError("ranker callback must return PanelSoftRankArtifact")
+    restored = PanelSoftRankArtifact.from_data(value.to_data())
+    expected_input = PanelSoftRankInput.freeze(version_space)
+    if restored != value or restored.rank_input != expected_input:
+        raise PanelSoftEngineeringTaskRunnerError(
+            "rank artifact differs from the exact support version space"
+        )
     return restored
 
 
@@ -356,6 +406,9 @@ def _proposer_terminal_content(
         "runner_source_digest": value.runner_source_digest,
         "task_plan": value.task_plan.to_data(),
         "execution_precommit_digest": value.execution_precommit_digest,
+        "selection_mode": value.selection_mode,
+        "allow_unverified_rank_artifact": value.allow_unverified_rank_artifact,
+        "rank_artifact_benchmark_sealable": value.rank_artifact_benchmark_sealable,
         "proposer_artifact": value.proposer_artifact.to_data(),
         "proposer_status": value.proposer_artifact.status.value,
         "proposer_failure_code": value.proposer_artifact.failure_code,
@@ -367,6 +420,7 @@ def _proposer_terminal_content(
         "status": PanelSoftEngineeringTaskRunStatus.SUPPORT_ERROR.value,
         "terminal_stage": "proposer",
         "support_observer_artifact_count": 0,
+        "ranker_callback_invocations": 0,
         "freeze_commit_calls_made": 0,
         "freeze_reload_calls_made": 0,
         "query_source_calls_made": 0,
@@ -392,6 +446,9 @@ class PanelSoftEngineeringProposerTerminal:
     runner_source_digest: str
     task_plan: ObjectBongardTaskPlan
     execution_precommit_digest: str
+    selection_mode: str
+    allow_unverified_rank_artifact: bool
+    rank_artifact_benchmark_sealable: bool | None
     proposer_artifact: PanelSoftProposerArtifact
     support_png_base64_by_panel_id: tuple[tuple[str, str], ...]
     record_digest: str
@@ -402,8 +459,12 @@ class PanelSoftEngineeringProposerTerminal:
         _raw_digest(self.record_digest, "proposer terminal digest")
         task = _canonical_task(self.task_plan)
         proposer = _canonical_proposer(self.proposer_artifact)
+        _rank_override(
+            self.selection_mode, self.allow_unverified_rank_artifact
+        )
         if (
-            self.runner_source_digest
+            self.rank_artifact_benchmark_sealable is not None
+            or self.runner_source_digest
             != panel_soft_engineering_task_runner_source_digest()
             or task != self.task_plan
             or proposer != self.proposer_artifact
@@ -427,10 +488,13 @@ class PanelSoftEngineeringProposerTerminal:
             value,
             {
                 "schema", "runner_id", "runner_source_digest", "task_plan",
-                "execution_precommit_digest", "proposer_artifact",
+                "execution_precommit_digest", "selection_mode",
+                "allow_unverified_rank_artifact",
+                "rank_artifact_benchmark_sealable", "proposer_artifact",
                 "proposer_status", "proposer_failure_code",
                 "proposer_failure_type", "support_png_base64_by_panel_id",
                 "status", "terminal_stage", "support_observer_artifact_count",
+                "ranker_callback_invocations",
                 "freeze_commit_calls_made", "freeze_reload_calls_made",
                 "query_source_calls_made", "correct_count", "determinate_count",
                 "abstain_count", "error_count", "query_denominator",
@@ -447,6 +511,9 @@ class PanelSoftEngineeringProposerTerminal:
             or raw["status"] != PanelSoftEngineeringTaskRunStatus.SUPPORT_ERROR.value
             or raw["terminal_stage"] != "proposer"
             or raw["support_observer_artifact_count"] != 0
+            or type(raw["allow_unverified_rank_artifact"]) is not bool
+            or raw["rank_artifact_benchmark_sealable"] is not None
+            or raw["ranker_callback_invocations"] != 0
             or (raw["freeze_commit_calls_made"], raw["freeze_reload_calls_made"], raw["query_source_calls_made"]) != (0, 0, 0)
             or (raw["correct_count"], raw["determinate_count"], raw["abstain_count"], raw["error_count"]) != (0, 0, 0, 2)
             or raw["query_denominator"] != PANEL_SOFT_ENGINEERING_QUERY_DENOMINATOR
@@ -477,7 +544,9 @@ class PanelSoftEngineeringProposerTerminal:
             )
         result = cls(
             raw["runner_source_digest"], task, raw["execution_precommit_digest"],
-            proposer, tuple((item, encoded[item]) for item in ids),
+            raw["selection_mode"], raw["allow_unverified_rank_artifact"],
+            raw["rank_artifact_benchmark_sealable"], proposer,
+            tuple((item, encoded[item]) for item in ids),
             raw["record_digest"],
         )
         if result.to_data() != dict(raw):
@@ -507,6 +576,12 @@ def _freeze_content(value: "PanelSoftEngineeringTaskFreeze") -> dict[str, object
         ),
         "support_table_digest": value.support_table_digest,
         "engineering_version_space_digest": value.engineering_version_space_digest,
+        "selection_mode": value.selection_mode,
+        "allow_unverified_rank_artifact": value.allow_unverified_rank_artifact,
+        "rank_artifact_benchmark_sealable": value.rank_artifact_benchmark_sealable,
+        "rank_artifact_digest": value.rank_artifact_digest,
+        "rank_input_digest": value.rank_input_digest,
+        "rank_receipt_digest": value.rank_receipt_digest,
         "predicate_pair": pair.to_data(),
         "predicate_pair_digest": pair.predicate_pair_digest,
         "version_space_digest": value.version_space_digest,
@@ -538,6 +613,12 @@ class PanelSoftEngineeringTaskFreeze:
     support_observer_artifact_digests: tuple[str, ...]
     support_table_digest: str
     engineering_version_space_digest: str
+    selection_mode: str
+    allow_unverified_rank_artifact: bool
+    rank_artifact_benchmark_sealable: bool | None
+    rank_artifact_digest: str | None
+    rank_input_digest: str | None
+    rank_receipt_digest: str | None
     predicate_pair: PanelSoftEngineeringPredicatePair
     version_space_digest: str
     support_version_space_digest: str
@@ -558,6 +639,42 @@ class PanelSoftEngineeringTaskFreeze:
             "selected_predicate_digest",
         ):
             _raw_digest(getattr(self, name), name)
+        mode = _selection_mode(self.selection_mode)
+        _rank_override(mode, self.allow_unverified_rank_artifact)
+        rank_digests = (
+            self.rank_artifact_digest,
+            self.rank_input_digest,
+            self.rank_receipt_digest,
+        )
+        if mode == "support_only_codex_ranker":
+            if type(self.rank_artifact_benchmark_sealable) is not bool:
+                raise PanelSoftEngineeringTaskRunnerError(
+                    "ranked freeze lacks a benchmark-sealability disposition"
+                )
+            if (
+                not self.rank_artifact_benchmark_sealable
+                and not self.allow_unverified_rank_artifact
+            ):
+                raise PanelSoftEngineeringTaskRunnerError(
+                    "unsealable rank artifact lacks the engineering override"
+                )
+            if any(item is None for item in rank_digests):
+                raise PanelSoftEngineeringTaskRunnerError(
+                    "ranked freeze lacks a rank artifact commitment"
+                )
+            for label, item in zip(
+                ("rank artifact digest", "rank input digest", "rank receipt digest"),
+                rank_digests,
+                strict=True,
+            ):
+                _raw_digest(item, label)
+        elif (
+            self.rank_artifact_benchmark_sealable is not None
+            or any(item is not None for item in rank_digests)
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "baseline freeze contains a rank artifact commitment"
+            )
         _address(self.record_digest, "freeze record digest")
         if not isinstance(self.predicate_pair, PanelSoftEngineeringPredicatePair):
             raise TypeError("freeze predicate pair has the wrong type")
@@ -581,6 +698,7 @@ class PanelSoftEngineeringTaskFreeze:
             or any(_RAW_DIGEST.fullmatch(item) is None for item in self.support_panel_png_digests)
             or any(_RAW_DIGEST.fullmatch(item) is None for item in self.support_observer_artifact_digests)
             or pair != self.predicate_pair
+            or pair.selection_mode != mode
             or self.vocabulary_digest != table.vocabulary.vocabulary_digest
             or self.observer_contract_digest != table.contract.contract_digest
             or self.support_panel_ids != table.panel_ids
@@ -608,6 +726,8 @@ class PanelSoftEngineeringTaskFreeze:
         proposer_artifact: PanelSoftProposerArtifact,
         support_artifacts: Sequence[PanelSoftObserverArtifact],
         predicate_pair: PanelSoftEngineeringPredicatePair,
+        rank_artifact: PanelSoftRankArtifact | None,
+        allow_unverified_rank_artifact: bool,
     ) -> "PanelSoftEngineeringTaskFreeze":
         task = _canonical_task(task_plan)
         proposer = _canonical_proposer(proposer_artifact)
@@ -615,12 +735,38 @@ class PanelSoftEngineeringTaskFreeze:
         if not isinstance(predicate_pair, PanelSoftEngineeringPredicatePair):
             raise TypeError("predicate_pair must be PanelSoftEngineeringPredicatePair")
         pair = PanelSoftEngineeringPredicatePair.from_data(predicate_pair.to_data())
+        _rank_override(pair.selection_mode, allow_unverified_rank_artifact)
         if pair != predicate_pair:
             raise PanelSoftEngineeringTaskRunnerError(
                 "freeze predicate pair round trip differs"
             )
         space = pair.engineering_version_space
         table = space.support_table
+        rank = (
+            None
+            if rank_artifact is None
+            else _canonical_rank_artifact(rank_artifact, space)
+        )
+        if pair.selection_mode == "support_only_codex_ranker":
+            if (
+                rank is None
+                or rank.selected_formula_digests
+                != (pair.side0_formula_digest, pair.side1_formula_digest)
+            ):
+                raise PanelSoftEngineeringTaskRunnerError(
+                    "ranked predicate pair differs from its rank artifact"
+                )
+            if (
+                not rank.transport_provenance.benchmark_sealable
+                and not allow_unverified_rank_artifact
+            ):
+                raise PanelSoftEngineeringTaskRunnerError(
+                    "unsealable rank artifact lacks the engineering override"
+                )
+        elif rank is not None:
+            raise PanelSoftEngineeringTaskRunnerError(
+                "deterministic baseline cannot carry a rank artifact"
+            )
         expected_support_ids = _expected_support_ids(task)
         query_ids = (task.side_0_query_panel_id, task.side_1_query_panel_id)
         panel_commitments = tuple(
@@ -681,6 +827,22 @@ class PanelSoftEngineeringTaskFreeze:
             "engineering_version_space_digest": (
                 space.engineering_version_space_digest
             ),
+            "selection_mode": pair.selection_mode,
+            "allow_unverified_rank_artifact": allow_unverified_rank_artifact,
+            "rank_artifact_benchmark_sealable": (
+                None
+                if rank is None
+                else rank.transport_provenance.benchmark_sealable
+            ),
+            "rank_artifact_digest": (
+                None if rank is None else rank.artifact_digest
+            ),
+            "rank_input_digest": (
+                None if rank is None else rank.rank_input.rank_input_digest
+            ),
+            "rank_receipt_digest": (
+                None if rank is None else rank.receipt.receipt_digest
+            ),
             "predicate_pair": pair,
             "version_space_digest": (
                 space.engineering_version_space_digest
@@ -710,7 +872,11 @@ class PanelSoftEngineeringTaskFreeze:
                 "vocabulary_digest", "observer_contract_digest",
                 "support_panel_ids", "support_panel_png_digests",
                 "support_observer_artifact_digests", "support_table_digest",
-                "engineering_version_space_digest", "predicate_pair",
+                "engineering_version_space_digest", "selection_mode",
+                "allow_unverified_rank_artifact",
+                "rank_artifact_benchmark_sealable",
+                "rank_artifact_digest", "rank_input_digest",
+                "rank_receipt_digest", "predicate_pair",
                 "predicate_pair_digest", "version_space_digest",
                 "support_version_space_digest",
                 "selected_predicate_digest",
@@ -752,7 +918,11 @@ class PanelSoftEngineeringTaskFreeze:
             tuple(raw["support_panel_png_digests"]),
             tuple(raw["support_observer_artifact_digests"]),
             raw["support_table_digest"], raw["engineering_version_space_digest"],
-            pair, raw["version_space_digest"], raw["support_version_space_digest"],
+            raw["selection_mode"], raw["allow_unverified_rank_artifact"],
+            raw["rank_artifact_benchmark_sealable"],
+            raw["rank_artifact_digest"],
+            raw["rank_input_digest"], raw["rank_receipt_digest"], pair,
+            raw["version_space_digest"], raw["support_version_space_digest"],
             raw["selected_predicate_digest"],
             tuple(raw["sealed_query_panel_ids"]), raw["record_digest"],
         )
@@ -767,6 +937,9 @@ def _commit_content(value: "PanelSoftEngineeringTaskFreezeCommit") -> dict[str, 
         "task_id": value.task_id,
         "task_plan_digest": value.task_plan_digest,
         "execution_precommit_digest": value.execution_precommit_digest,
+        "selection_mode": value.selection_mode,
+        "allow_unverified_rank_artifact": value.allow_unverified_rank_artifact,
+        "rank_artifact_benchmark_sealable": value.rank_artifact_benchmark_sealable,
         "predicate_pair_digest": value.predicate_pair_digest,
         "version_space_digest": value.version_space_digest,
         "support_version_space_digest": value.support_version_space_digest,
@@ -774,7 +947,8 @@ def _commit_content(value: "PanelSoftEngineeringTaskFreezeCommit") -> dict[str, 
         "task_freeze_digest": value.task_freeze_digest,
         "exact_freeze_payload_digest": value.exact_freeze_payload_digest,
         "task_freeze_store_receipt_digest": value.task_freeze_store_receipt_digest,
-        "durably_persisted_before_query_source": True,
+        "commit_callback_completed_before_query_source": True,
+        "external_storage_durability_authenticated_by_runner": False,
         **_authority_data(),
     }
 
@@ -784,6 +958,9 @@ class PanelSoftEngineeringTaskFreezeCommit:
     task_id: str
     task_plan_digest: str
     execution_precommit_digest: str
+    selection_mode: str
+    allow_unverified_rank_artifact: bool
+    rank_artifact_benchmark_sealable: bool | None
     predicate_pair_digest: str
     version_space_digest: str
     support_version_space_digest: str
@@ -797,6 +974,12 @@ class PanelSoftEngineeringTaskFreezeCommit:
         _identifier(self.task_id, "commit task ID")
         _address(self.task_plan_digest, "commit task plan digest")
         _address(self.execution_precommit_digest, "commit precommit digest")
+        mode = _selection_mode(self.selection_mode)
+        _rank_override(mode, self.allow_unverified_rank_artifact)
+        if self.rank_artifact_benchmark_sealable is not None and type(
+            self.rank_artifact_benchmark_sealable
+        ) is not bool:
+            raise TypeError("rank_artifact_benchmark_sealable must be bool or None")
         for name in (
             "predicate_pair_digest", "version_space_digest",
             "support_version_space_digest", "selected_predicate_digest",
@@ -810,6 +993,18 @@ class PanelSoftEngineeringTaskFreezeCommit:
         if (
             self.version_space_digest != self.support_version_space_digest
             or self.predicate_pair_digest != self.selected_predicate_digest
+            or (
+                mode == "support_only_codex_ranker"
+                and type(self.rank_artifact_benchmark_sealable) is not bool
+            )
+            or (
+                mode == "deterministic_baseline"
+                and self.rank_artifact_benchmark_sealable is not None
+            )
+            or (
+                self.rank_artifact_benchmark_sealable is False
+                and not self.allow_unverified_rank_artifact
+            )
             or self.record_digest != _content_address(_commit_content(self))
         ):
             raise PanelSoftEngineeringTaskRunnerError("freeze commit differs")
@@ -833,6 +1028,13 @@ class PanelSoftEngineeringTaskFreezeCommit:
             "task_id": freeze.task_id,
             "task_plan_digest": freeze.task_plan_digest,
             "execution_precommit_digest": freeze.execution_precommit_digest,
+            "selection_mode": freeze.selection_mode,
+            "allow_unverified_rank_artifact": (
+                freeze.allow_unverified_rank_artifact
+            ),
+            "rank_artifact_benchmark_sealable": (
+                freeze.rank_artifact_benchmark_sealable
+            ),
             "predicate_pair_digest": freeze.predicate_pair.predicate_pair_digest,
             "version_space_digest": freeze.version_space_digest,
             "support_version_space_digest": freeze.support_version_space_digest,
@@ -872,23 +1074,31 @@ class PanelSoftEngineeringTaskFreezeCommit:
             value,
             {
                 "schema", "task_id", "task_plan_digest",
-                "execution_precommit_digest", "predicate_pair_digest",
+                "execution_precommit_digest", "selection_mode",
+                "allow_unverified_rank_artifact",
+                "rank_artifact_benchmark_sealable", "predicate_pair_digest",
                 "version_space_digest", "support_version_space_digest",
                 "selected_predicate_digest", "task_freeze_digest",
                 "exact_freeze_payload_digest", "task_freeze_store_receipt_digest",
-                "durably_persisted_before_query_source", *_authority_data(),
+                "commit_callback_completed_before_query_source",
+                "external_storage_durability_authenticated_by_runner",
+                *_authority_data(),
                 "record_digest",
             },
             "panel-soft freeze commit",
         )
         if (
             raw["schema"] != PANEL_SOFT_ENGINEERING_TASK_FREEZE_COMMIT_SCHEMA
-            or raw["durably_persisted_before_query_source"] is not True
+            or raw["commit_callback_completed_before_query_source"] is not True
+            or raw["external_storage_durability_authenticated_by_runner"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
         ):
             raise PanelSoftEngineeringTaskRunnerError("freeze commit policy differs")
         result = cls(
             raw["task_id"], raw["task_plan_digest"], raw["execution_precommit_digest"],
+            raw["selection_mode"],
+            raw["allow_unverified_rank_artifact"],
+            raw["rank_artifact_benchmark_sealable"],
             raw["predicate_pair_digest"], raw["version_space_digest"],
             raw["support_version_space_digest"], raw["selected_predicate_digest"],
             raw["task_freeze_digest"],
@@ -950,6 +1160,37 @@ def _require_proposer_observer_call_distinctness(
     ):
         raise PanelSoftEngineeringTaskRunnerError(
             "proposer model-call identity is reused by an observer repeat"
+        )
+
+
+def _require_rank_call_distinctness(
+    rank_artifact: PanelSoftRankArtifact | None,
+    proposer: PanelSoftProposerArtifact,
+    artifacts: Sequence[PanelSoftObserverArtifact],
+) -> None:
+    if rank_artifact is None:
+        return
+    if proposer.receipt is None:
+        raise PanelSoftEngineeringTaskRunnerError(
+            "rank call cannot be compared with a missing proposer receipt"
+        )
+    other_receipts = (
+        proposer.receipt,
+        *(
+            repeat.receipt
+            for artifact in artifacts
+            for repeat in artifact.repeats
+            if repeat.receipt is not None
+        ),
+    )
+    if (
+        rank_artifact.receipt.receipt_digest
+        in {item.receipt_digest for item in other_receipts}
+        or rank_artifact.receipt.thread_id
+        in {item.thread_id for item in other_receipts}
+    ):
+        raise PanelSoftEngineeringTaskRunnerError(
+            "ranker model-call identity is reused by proposer or observer"
         )
 
 
@@ -1032,6 +1273,12 @@ def _archive_content(value: "PanelSoftEngineeringTaskRunArchive") -> dict[str, o
         "support_artifacts": [item.to_data() for item in value.support_artifacts],
         "support_table": value.support_table.to_data(),
         "engineering_version_space": value.engineering_version_space.to_data(),
+        "selection_mode": value.selection_mode,
+        "allow_unverified_rank_artifact": value.allow_unverified_rank_artifact,
+        "rank_artifact_benchmark_sealable": value.rank_artifact_benchmark_sealable,
+        "rank_artifact": (
+            None if value.rank_artifact is None else value.rank_artifact.to_data()
+        ),
         "status": value.status.value,
         "support_gap": None if value.support_gap is None else value.support_gap.to_data(),
         "predicate_pair": None if value.predicate_pair is None else value.predicate_pair.to_data(),
@@ -1049,6 +1296,7 @@ def _archive_content(value: "PanelSoftEngineeringTaskRunArchive") -> dict[str, o
         "query_denominator": PANEL_SOFT_ENGINEERING_QUERY_DENOMINATOR,
         "accuracy_ppm": value.accuracy_ppm,
         "coverage_ppm": value.coverage_ppm,
+        "ranker_callback_invocations": value.ranker_callback_invocations,
         "freeze_commit_calls_made": value.freeze_commit_calls_made,
         "freeze_reload_calls_made": value.freeze_reload_calls_made,
         "query_source_calls_made": value.query_source_calls_made,
@@ -1069,6 +1317,10 @@ class PanelSoftEngineeringTaskRunArchive:
     support_artifacts: tuple[PanelSoftObserverArtifact, ...]
     support_table: PanelSoftObservationTable
     engineering_version_space: PanelSoftEngineeringVersionSpace
+    selection_mode: str
+    allow_unverified_rank_artifact: bool
+    rank_artifact_benchmark_sealable: bool | None
+    rank_artifact: PanelSoftRankArtifact | None
     status: PanelSoftEngineeringTaskRunStatus
     support_gap: PanelSoftEngineeringSupportGap | None
     predicate_pair: PanelSoftEngineeringPredicatePair | None
@@ -1083,6 +1335,7 @@ class PanelSoftEngineeringTaskRunArchive:
     error_count: int
     accuracy_ppm: int
     coverage_ppm: int
+    ranker_callback_invocations: int
     freeze_commit_calls_made: int
     freeze_reload_calls_made: int
     query_source_calls_made: int
@@ -1092,6 +1345,55 @@ class PanelSoftEngineeringTaskRunArchive:
         _raw_digest(self.runner_source_digest, "archive runner source digest")
         _address(self.execution_precommit_digest, "archive precommit digest")
         _raw_digest(self.record_digest, "task archive digest")
+        mode = _selection_mode(self.selection_mode)
+        if type(self.allow_unverified_rank_artifact) is not bool:
+            raise TypeError("allow_unverified_rank_artifact must be bool")
+        rank = (
+            None
+            if self.rank_artifact is None
+            else _canonical_rank_artifact(
+                self.rank_artifact, self.engineering_version_space
+            )
+        )
+        expected_sealable = (
+            None if rank is None else rank.transport_provenance.benchmark_sealable
+        )
+        if (
+            self.rank_artifact_benchmark_sealable != expected_sealable
+            or (
+                expected_sealable is False
+                and not self.allow_unverified_rank_artifact
+            )
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "archive rank sealability policy differs"
+            )
+        pair_rank_lineage = (
+            self.predicate_pair is not None
+            and self.predicate_pair.selection_mode == mode
+            and (
+                (mode == "deterministic_baseline" and rank is None)
+                or (
+                    mode == "support_only_codex_ranker"
+                    and rank is not None
+                    and rank.selected_formula_digests
+                    == (
+                        self.predicate_pair.side0_formula_digest,
+                        self.predicate_pair.side1_formula_digest,
+                    )
+                )
+            )
+        )
+        ranked_shape = (
+            mode == "support_only_codex_ranker"
+            and self.rank_artifact is not None
+            and self.ranker_callback_invocations == 1
+        )
+        baseline_shape = (
+            mode == "deterministic_baseline"
+            and self.rank_artifact is None
+            and self.ranker_callback_invocations == 0
+        )
         complete_shape = (
             self.support_gap is None
             and self.predicate_pair is not None
@@ -1105,6 +1407,8 @@ class PanelSoftEngineeringTaskRunArchive:
                 self.freeze_reload_calls_made,
                 self.query_source_calls_made,
             ) == (1, 1, 1)
+            and (ranked_shape or baseline_shape)
+            and pair_rank_lineage
         )
         gap_shape = (
             self.support_gap is not None
@@ -1114,6 +1418,8 @@ class PanelSoftEngineeringTaskRunArchive:
             and not self.query_png_base64_by_side
             and not self.query_artifacts
             and not self.query_decisions
+            and self.rank_artifact is None
+            and self.ranker_callback_invocations == 0
             and (
                 self.freeze_commit_calls_made,
                 self.freeze_reload_calls_made,
@@ -1127,6 +1433,7 @@ class PanelSoftEngineeringTaskRunArchive:
                 for item in (
                     self.correct_count, self.determinate_count, self.abstain_count,
                     self.error_count, self.accuracy_ppm, self.coverage_ppm,
+                    self.ranker_callback_invocations,
                     self.freeze_commit_calls_made, self.freeze_reload_calls_made,
                     self.query_source_calls_made,
                 )
@@ -1160,12 +1467,14 @@ class PanelSoftEngineeringTaskRunArchive:
                 "schema", "runner_id", "runner_source_digest", "task_plan",
                 "execution_precommit_digest", "proposer_artifact",
                 "support_png_base64_by_panel_id", "support_artifacts",
-                "support_table", "engineering_version_space", "status",
+                "support_table", "engineering_version_space", "selection_mode",
+                "allow_unverified_rank_artifact",
+                "rank_artifact_benchmark_sealable", "rank_artifact", "status",
                 "support_gap", "predicate_pair", "freeze", "freeze_commit",
                 "query_png_base64_by_side", "query_artifacts", "query_decisions",
                 "correct_count", "determinate_count", "abstain_count", "error_count",
                 "query_denominator", "accuracy_ppm", "coverage_ppm",
-                "freeze_commit_calls_made", "freeze_reload_calls_made",
+                "ranker_callback_invocations", "freeze_commit_calls_made", "freeze_reload_calls_made",
                 "query_source_calls_made",
                 "query_source_called_only_after_exact_freeze_reload",
                 "exact_released_pngs_archived_for_cold_replay",
@@ -1207,6 +1516,10 @@ class PanelSoftEngineeringTaskRunArchive:
             tuple(PanelSoftObserverArtifact.from_data(item) for item in raw["support_artifacts"]),
             PanelSoftObservationTable.from_data(raw["support_table"]),
             PanelSoftEngineeringVersionSpace.from_data(raw["engineering_version_space"]),
+            raw["selection_mode"],
+            raw["allow_unverified_rank_artifact"],
+            raw["rank_artifact_benchmark_sealable"],
+            None if raw["rank_artifact"] is None else PanelSoftRankArtifact.from_data(raw["rank_artifact"]),
             status,
             None if raw["support_gap"] is None else PanelSoftEngineeringSupportGap.from_data(raw["support_gap"]),
             None if raw["predicate_pair"] is None else PanelSoftEngineeringPredicatePair.from_data(raw["predicate_pair"]),
@@ -1217,6 +1530,7 @@ class PanelSoftEngineeringTaskRunArchive:
             tuple(PanelSoftEngineeringQueryDecision.from_data(item) for item in raw["query_decisions"]),
             raw["correct_count"], raw["determinate_count"], raw["abstain_count"],
             raw["error_count"], raw["accuracy_ppm"], raw["coverage_ppm"],
+            raw["ranker_callback_invocations"],
             raw["freeze_commit_calls_made"], raw["freeze_reload_calls_made"],
             raw["query_source_calls_made"], raw["record_digest"],
         )
@@ -1232,6 +1546,9 @@ FreezeReloader = Callable[[Mapping[str, Any]], bytes]
 QuerySource = Callable[
     [Mapping[str, Any], Mapping[str, Any]],
     Mapping[str, tuple[bytes, PanelSoftObserverArtifact]],
+]
+PanelSoftRanker = Callable[
+    [PanelSoftEngineeringVersionSpace], PanelSoftRankArtifact | Mapping[str, Any]
 ]
 
 
@@ -1276,6 +1593,8 @@ def _make_proposer_terminal(
     *,
     task: ObjectBongardTaskPlan,
     precommit: str,
+    selection_mode: str,
+    allow_unverified_rank_artifact: bool,
     proposer: PanelSoftProposerArtifact,
     support_pngs: Sequence[bytes],
 ) -> PanelSoftEngineeringProposerTerminal:
@@ -1283,6 +1602,9 @@ def _make_proposer_terminal(
         "runner_source_digest": panel_soft_engineering_task_runner_source_digest(),
         "task_plan": task,
         "execution_precommit_digest": precommit,
+        "selection_mode": _selection_mode(selection_mode),
+        "allow_unverified_rank_artifact": allow_unverified_rank_artifact,
+        "rank_artifact_benchmark_sealable": None,
         "proposer_artifact": proposer,
         "support_png_base64_by_panel_id": _encode_png_rows(
             _expected_support_ids(task), support_pngs
@@ -1355,6 +1677,9 @@ def run_panel_soft_engineering_task(
     support_artifacts: Sequence[PanelSoftObserverArtifact],
     *,
     execution_precommit_digest: str,
+    selection_mode: str,
+    ranker: PanelSoftRanker | None,
+    allow_unverified_rank_artifact: bool = False,
     freeze_committer: FreezeCommitter,
     freeze_reloader: FreezeReloader,
     query_source: QuerySource,
@@ -1363,6 +1688,8 @@ def run_panel_soft_engineering_task(
 
     task = _canonical_task(task_plan)
     precommit = _address(execution_precommit_digest, "execution precommit digest")
+    mode = _selection_mode(selection_mode)
+    _rank_override(mode, allow_unverified_rank_artifact)
     proposer = _canonical_proposer(proposer_artifact)
     expected_support_ids = _expected_support_ids(task)
     support_pngs = _canonical_png_map(
@@ -1382,6 +1709,8 @@ def run_panel_soft_engineering_task(
         terminal = _make_proposer_terminal(
             task=task,
             precommit=precommit,
+            selection_mode=mode,
+            allow_unverified_rank_artifact=allow_unverified_rank_artifact,
             proposer=proposer,
             support_pngs=support_pngs,
         )
@@ -1405,11 +1734,14 @@ def run_panel_soft_engineering_task(
         "support_artifacts": artifacts,
         "support_table": table,
         "engineering_version_space": space,
+        "selection_mode": mode,
+        "allow_unverified_rank_artifact": allow_unverified_rank_artifact,
     }
-    gap = None
-    try:
-        pair = PanelSoftEngineeringPredicatePair.create(space)
-    except PanelSoftPredicateError:
+    survivor_counts = tuple(
+        sum(item.orientation == orientation for item in space.survivor_formulas)
+        for orientation in PANEL_SOFT_ORIENTATIONS
+    )
+    if any(count == 0 for count in survivor_counts):
         gap = PanelSoftEngineeringSupportGap.create(space)
         status = (
             PanelSoftEngineeringTaskRunStatus.SUPPORT_ERROR
@@ -1417,7 +1749,9 @@ def run_panel_soft_engineering_task(
             else PanelSoftEngineeringTaskRunStatus.SUPPORT_GAP
         )
         archive = _make_archive(
-            **common, status=status, support_gap=gap, predicate_pair=None,
+            **common, rank_artifact_benchmark_sealable=None,
+            rank_artifact=None, ranker_callback_invocations=0,
+            status=status, support_gap=gap, predicate_pair=None,
             freeze=None, freeze_commit=None, query_png_base64_by_side=(),
             query_artifacts=(), query_decisions=(), correct_count=0,
             determinate_count=0, abstain_count=0 if gap.has_observer_error else 2,
@@ -1428,6 +1762,43 @@ def run_panel_soft_engineering_task(
         return cold_replay_panel_soft_engineering_task(
             archive, expected_record_digest=archive.record_digest
         )
+    rank_artifact: PanelSoftRankArtifact | None
+    if mode == "support_only_codex_ranker":
+        if not callable(ranker):
+            raise TypeError("ranked mode requires a ranker callback")
+        try:
+            raw_rank = ranker(space)
+            rank_artifact = _canonical_rank_artifact(
+                raw_rank
+                if isinstance(raw_rank, PanelSoftRankArtifact)
+                else PanelSoftRankArtifact.from_data(raw_rank),
+                space,
+            )
+        except Exception as exc:
+            raise PanelSoftEngineeringTaskRunnerError(
+                "ranked selection failed; no baseline fallback was used"
+            ) from exc
+        if (
+            not rank_artifact.transport_provenance.benchmark_sealable
+            and not allow_unverified_rank_artifact
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "rank artifact is not benchmark-sealable; explicit engineering "
+                "override required before freeze or query"
+            )
+        pair = PanelSoftEngineeringPredicatePair.create_ranked(
+            space,
+            side0_formula_digest=rank_artifact.selected_side0_formula_digest,
+            side1_formula_digest=rank_artifact.selected_side1_formula_digest,
+        )
+        _require_rank_call_distinctness(rank_artifact, proposer, artifacts)
+    else:
+        if ranker is not None:
+            raise PanelSoftEngineeringTaskRunnerError(
+                "deterministic baseline mode cannot receive a ranker callback"
+            )
+        rank_artifact = None
+        pair = PanelSoftEngineeringPredicatePair.create_deterministic_baseline(space)
     if not callable(freeze_committer) or not callable(freeze_reloader) or not callable(query_source):
         raise TypeError("complete task requires freeze and query callbacks")
     freeze = PanelSoftEngineeringTaskFreeze.seal(
@@ -1436,6 +1807,8 @@ def run_panel_soft_engineering_task(
         proposer_artifact=proposer,
         support_artifacts=artifacts,
         predicate_pair=pair,
+        rank_artifact=rank_artifact,
+        allow_unverified_rank_artifact=allow_unverified_rank_artifact,
     )
     freeze_data = PanelSoftEngineeringTaskFreeze.from_data(freeze.to_data()).to_data()
     freeze_bytes = canonical_json(freeze_data) + b"\n"
@@ -1448,7 +1821,7 @@ def run_panel_soft_engineering_task(
     commit.assert_matches(freeze, freeze_bytes)
     reloaded = freeze_reloader(commit.to_data())
     if reloaded != freeze_bytes:
-        raise PanelSoftEngineeringTaskRunnerError("durable freeze reload differs")
+        raise PanelSoftEngineeringTaskRunnerError("freeze reload bytes differ")
     try:
         restored_freeze = PanelSoftEngineeringTaskFreeze.from_data(
             json.loads(reloaded.decode("utf-8", errors="strict"))
@@ -1456,7 +1829,7 @@ def run_panel_soft_engineering_task(
     except (UnicodeError, json.JSONDecodeError) as exc:
         raise PanelSoftEngineeringTaskRunnerError("freeze reload is not exact JSON") from exc
     if restored_freeze != freeze:
-        raise PanelSoftEngineeringTaskRunnerError("durable freeze object differs")
+        raise PanelSoftEngineeringTaskRunnerError("reloaded freeze object differs")
 
     raw_queries = query_source(freeze_data, commit.to_data())
     if not isinstance(raw_queries, Mapping) or set(raw_queries) != {"side_0", "side_1"}:
@@ -1494,13 +1867,24 @@ def run_panel_soft_engineering_task(
     _require_proposer_observer_call_distinctness(
         proposer, (*artifacts, *query_artifacts)
     )
+    _require_rank_call_distinctness(
+        rank_artifact, proposer, (*artifacts, *query_artifacts)
+    )
     decisions = tuple(
         PanelSoftEngineeringQueryDecision.create(pair, artifact.observation_table, panel_id)
         for artifact, panel_id in zip(query_artifacts, query_ids, strict=True)
     )
     correct, determinate, abstain, errors = _query_metrics(decisions)
     archive = _make_archive(
-        **common, status=PanelSoftEngineeringTaskRunStatus.COMPLETE,
+        **common,
+        rank_artifact_benchmark_sealable=(
+            None
+            if rank_artifact is None
+            else rank_artifact.transport_provenance.benchmark_sealable
+        ),
+        rank_artifact=rank_artifact,
+        ranker_callback_invocations=1 if rank_artifact is not None else 0,
+        status=PanelSoftEngineeringTaskRunStatus.COMPLETE,
         support_gap=None, predicate_pair=pair, freeze=freeze, freeze_commit=commit,
         query_png_base64_by_side=_encode_png_rows(("side_0", "side_1"), query_pngs),
         query_artifacts=tuple(query_artifacts), query_decisions=decisions,
@@ -1554,9 +1938,11 @@ def cold_replay_panel_soft_engineering_task(
         or space != restored.engineering_version_space
     ):
         raise PanelSoftEngineeringTaskRunnerError("support replay differs")
-    try:
-        expected_pair = PanelSoftEngineeringPredicatePair.create(space)
-    except PanelSoftPredicateError:
+    survivor_counts = tuple(
+        sum(item.orientation == orientation for item in space.survivor_formulas)
+        for orientation in PANEL_SOFT_ORIENTATIONS
+    )
+    if any(count == 0 for count in survivor_counts):
         expected_gap = PanelSoftEngineeringSupportGap.create(space)
         expected_status = (
             PanelSoftEngineeringTaskRunStatus.SUPPORT_ERROR
@@ -1569,7 +1955,8 @@ def cold_replay_panel_soft_engineering_task(
             or any(
                 item is not None
                 for item in (
-                    restored.predicate_pair, restored.freeze, restored.freeze_commit
+                    restored.rank_artifact, restored.predicate_pair,
+                    restored.freeze, restored.freeze_commit
                 )
             )
             or restored.query_png_base64_by_side
@@ -1578,16 +1965,57 @@ def cold_replay_panel_soft_engineering_task(
             or (
                 restored.correct_count, restored.determinate_count,
                 restored.abstain_count, restored.error_count,
+                restored.ranker_callback_invocations,
                 restored.freeze_commit_calls_made, restored.freeze_reload_calls_made,
                 restored.query_source_calls_made,
             )
             != (
                 0, 0, 0 if expected_gap.has_observer_error else 2,
-                2 if expected_gap.has_observer_error else 0, 0, 0, 0,
+                2 if expected_gap.has_observer_error else 0, 0, 0, 0, 0,
             )
         ):
             raise PanelSoftEngineeringTaskRunnerError("support gap replay differs")
         return restored
+
+    rank_artifact: PanelSoftRankArtifact | None
+    if restored.selection_mode == "support_only_codex_ranker":
+        if (
+            restored.rank_artifact is None
+            or restored.ranker_callback_invocations != 1
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "ranked replay lacks its one-call rank artifact"
+            )
+        rank_artifact = _canonical_rank_artifact(restored.rank_artifact, space)
+        if (
+            restored.rank_artifact_benchmark_sealable
+            != rank_artifact.transport_provenance.benchmark_sealable
+            or (
+                not rank_artifact.transport_provenance.benchmark_sealable
+                and not restored.allow_unverified_rank_artifact
+            )
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "ranked replay sealability policy differs"
+            )
+        expected_pair = PanelSoftEngineeringPredicatePair.create_ranked(
+            space,
+            side0_formula_digest=rank_artifact.selected_side0_formula_digest,
+            side1_formula_digest=rank_artifact.selected_side1_formula_digest,
+        )
+        _require_rank_call_distinctness(rank_artifact, proposer, artifacts)
+    else:
+        if (
+            restored.rank_artifact is not None
+            or restored.ranker_callback_invocations != 0
+        ):
+            raise PanelSoftEngineeringTaskRunnerError(
+                "baseline replay contains a rank artifact"
+            )
+        rank_artifact = None
+        expected_pair = PanelSoftEngineeringPredicatePair.create_deterministic_baseline(
+            space
+        )
 
     if (
         restored.status is not PanelSoftEngineeringTaskRunStatus.COMPLETE
@@ -1607,6 +2035,10 @@ def cold_replay_panel_soft_engineering_task(
         proposer_artifact=proposer,
         support_artifacts=artifacts,
         predicate_pair=expected_pair,
+        rank_artifact=rank_artifact,
+        allow_unverified_rank_artifact=(
+            restored.allow_unverified_rank_artifact
+        ),
     )
     freeze_bytes = canonical_json(expected_freeze.to_data()) + b"\n"
     restored.freeze_commit.assert_matches(expected_freeze, freeze_bytes)
@@ -1645,6 +2077,9 @@ def cold_replay_panel_soft_engineering_task(
     _require_proposer_observer_call_distinctness(
         proposer, (*artifacts, *query_artifacts)
     )
+    _require_rank_call_distinctness(
+        rank_artifact, proposer, (*artifacts, *query_artifacts)
+    )
     decisions = tuple(
         PanelSoftEngineeringQueryDecision.create(
             expected_pair, artifact.observation_table, panel_id
@@ -1675,6 +2110,7 @@ __all__ = (
     "PanelSoftEngineeringTaskRunArchive",
     "PanelSoftEngineeringTaskRunStatus",
     "PanelSoftEngineeringTaskRunnerError",
+    "PanelSoftRanker",
     "cold_replay_panel_soft_engineering_task",
     "panel_soft_engineering_task_runner_source_digest",
     "run_panel_soft_engineering_task",

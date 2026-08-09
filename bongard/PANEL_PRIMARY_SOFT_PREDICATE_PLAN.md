@@ -52,7 +52,7 @@ panel or make a panel atom structurally impossible.
 
 ## Atom contract
 
-An atom is positive visible prose, such as `bird-like silhouette`, `several
+An atom is positive-form visible prose, such as `bird-like silhouette`, `several
 oblique corners`, or `one broad smooth sweep`.  Its identity binds:
 
 - exact prose bytes and grammatical scope;
@@ -84,6 +84,15 @@ decision.
 Neither Python nor Lean proves from pixels alone that a phrase such as
 `bird-like` is visually true.  That claim comes from the frozen vision
 measurement protocol.  Its error properties require empirical calibration.
+
+Likewise, positive formula syntax does not prove positive prose semantics.  A
+phrase such as `a visible gap separates the forms` names a present visual cue,
+but it is also the semantic complement of contact.  Free prose can also smuggle
+in a support role or comparison despite containing no lexical `not`.  The
+artifacts therefore state that semantic positivity, instruction safety, and
+identifier leakage are unproved.  Closing that boundary requires a typed,
+panel-local observable registry with calibrated measurements, or a typed
+language gap; a larger negation regex cannot prove it.
 
 The eventual scientific lane retains four dispositions:
 
@@ -139,7 +148,12 @@ than the proposed predicate without discovering a better visual rule:
 - searching both a candidate and its complement doubles a support-fitted
   hypothesis class and selects whichever orientation resubstitutes better.
 
-The replacement closes all four operational routes: exact task-plan binding,
+A fifth, still-open semantic route is a complement encoded inside one nominally
+positive prose atom, such as `open contour` or `visible separation`.  Such an
+atom is not an IR-level `Not`; deciding whether it is an admissible positive
+observable belongs to the typed ontology and calibration boundary.
+
+The replacement closes the four operational routes: exact task-plan binding,
 four-valued failures, native-orientation atoms, and no `Not`, complement, or
 polarity-repair operator.  A side prediction additionally requires a two-sided
 witness: its native formula must match and the other native formula must

@@ -525,7 +525,7 @@ def test_engineering_version_space_and_selected_pair_are_deterministic() -> None
     assert space.to_data()["scientific_evidence"] is False
     assert space.to_data()["benchmark_authoritative"] is False
 
-    pair = PanelSoftEngineeringPredicatePair.create(space)
+    pair = PanelSoftEngineeringPredicatePair.create_deterministic_baseline(space)
     assert pair.side0_formula_digest == min(
         survivors_by_orientation["side0_positive"],
         key=lambda item: (len(item.atom_digests), item.formula_digest),
@@ -547,6 +547,43 @@ def test_engineering_version_space_and_selected_pair_are_deterministic() -> None
         "side0_positive": 1,
         "side1_positive": 1,
     }
+    assert pair.selection_mode == "deterministic_baseline"
+    assert pair.to_data()["selection_mode_was_explicit"] is True
+    assert pair.to_data()["silent_ranker_fallback_allowed"] is False
+
+
+def test_ranked_pair_accepts_only_explicit_native_orientation_survivors() -> None:
+    space = _engineering_space()
+    side0 = tuple(
+        item for item in space.survivor_formulas
+        if item.orientation == "side0_positive"
+    )
+    side1 = tuple(
+        item for item in space.survivor_formulas
+        if item.orientation == "side1_positive"
+    )
+    pair = PanelSoftEngineeringPredicatePair.create_ranked(
+        space,
+        side0_formula_digest=side0[-1].formula_digest,
+        side1_formula_digest=side1[-1].formula_digest,
+    )
+    assert pair.selection_mode == "support_only_codex_ranker"
+    assert pair.selected_formulas == (side0[-1], side1[-1])
+    assert pair.to_data()["selection_rule"] == (
+        "first-ranked-survivor-per-hidden-native-orientation"
+    )
+    with pytest.raises(PanelSoftPredicateError, match="native orientation"):
+        PanelSoftEngineeringPredicatePair.create_ranked(
+            space,
+            side0_formula_digest=side1[0].formula_digest,
+            side1_formula_digest=side0[0].formula_digest,
+        )
+    with pytest.raises(PanelSoftPredicateError, match="non-survivor"):
+        PanelSoftEngineeringPredicatePair.create_ranked(
+            space,
+            side0_formula_digest=_digest("foreign-formula"),
+            side1_formula_digest=side1[0].formula_digest,
+        )
 
 
 @pytest.mark.parametrize(
@@ -603,7 +640,9 @@ def test_engineering_query_requires_a_two_sided_witness(
     side1_result: PanelSoftOperationalFormulaResult,
     outcome: PanelSoftEngineeringQueryOutcome,
 ) -> None:
-    pair = PanelSoftEngineeringPredicatePair.create(_engineering_space())
+    pair = PanelSoftEngineeringPredicatePair.create_deterministic_baseline(
+        _engineering_space()
+    )
     query = _query_table_for_selected_pair(pair, side0_votes, side1_votes)
     decision = PanelSoftEngineeringQueryDecision.create(
         pair, query, "query/panel.png"
@@ -628,7 +667,7 @@ def test_engineering_artifacts_reject_serialized_tampering() -> None:
     with pytest.raises(PanelSoftPredicateError):
         PanelSoftEngineeringVersionSpace.from_data(tampered_space)
 
-    pair = PanelSoftEngineeringPredicatePair.create(space)
+    pair = PanelSoftEngineeringPredicatePair.create_deterministic_baseline(space)
     tampered_pair = pair.to_data()
     tampered_pair["side0_formula_digest"] = pair.side1_formula_digest
     with pytest.raises(PanelSoftPredicateError):
@@ -669,7 +708,7 @@ def test_engineering_version_space_does_not_rescue_a_reversed_rule_by_negation()
         for formula in space.survivor_formulas
     )
     with pytest.raises(PanelSoftPredicateError, match="no side0_positive survivor"):
-        PanelSoftEngineeringPredicatePair.create(space)
+        PanelSoftEngineeringPredicatePair.create_deterministic_baseline(space)
     scientific = PanelSoftVersionSpace.create(
         table, table.panel_ids[:6], table.panel_ids[6:]
     )

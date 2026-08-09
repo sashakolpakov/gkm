@@ -209,7 +209,7 @@ def panel_soft_proposer_prompt() -> str:
         "missing, only, instead, less, free, non-connected, unfilled, disconnected, "
         "ignore, override, follow, "
         "return, output, answer, choose, classify, score, instruction, prompt, system, "
-        "developer, assistant, user, model, tool, Python, Lean, schema, JSON, criterion, "
+        "developer, assistant, user, model, tool, Python, schema, JSON, criterion, "
         "verdict, present, mismatch, indeterminate, and error. "
         "Fill every fixed field."
     )
