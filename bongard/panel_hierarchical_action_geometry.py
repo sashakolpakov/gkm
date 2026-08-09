@@ -1194,6 +1194,13 @@ def _macro_exact_walk(trace: MacroActionTrace) -> tuple[QuantizedPoint, ...] | N
     for span in trace.spans:
         if _derived_span_kind(span) is DerivedMacroSpanKind.INDETERMINATE:
             return None
+        # An ARC control point is not generally a point on the rendered curve,
+        # and turn signs of its control polyline do not certify convexity of the
+        # curved carrier.  Arc spans remain usable by the independent straight-
+        # span counter, but convexity fails closed until the IR carries explicit
+        # curve/sweep semantics with an interval proof.
+        if span.primitive is MacroActionPrimitive.ARC:
+            return None
         for point in span.points[:-1]:
             exact = point.exact_point()
             if exact is None:

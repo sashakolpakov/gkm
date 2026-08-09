@@ -256,6 +256,28 @@ def test_interval_safe_arc_and_ambiguous_span_produce_a_count_range() -> None:
     ) is EngineeringFeatureDisposition.INDETERMINATE
 
 
+def test_exact_arc_control_polygon_never_certifies_curve_convexity() -> None:
+    a, b, c, d = SQUARE
+    trace = MacroActionTrace.complete(
+        (
+            _arc(a, _p(8, 5), b),
+            _line(b, c),
+            _line(c, d),
+            _line(d, a),
+        )
+    )
+    evidence = _evidence(trace)
+
+    straight = derive_macro_straight_span_count(evidence)
+    convexity = derive_macro_convexity(evidence)
+    assert straight.status is GeometryDerivationStatus.RESOLVED
+    assert (straight.lower_bound, straight.upper_bound) == (3, 3)
+    assert convexity.status is GeometryDerivationStatus.INDETERMINATE
+    assert convexity.convexity_kind is None
+    assert convexity.polygon is None
+    assert convexity.issue is GeometryTraceIssue.RESOLUTION_LIMIT
+
+
 def test_line_action_count_uses_typed_base_spans_not_rendered_trace_segments() -> None:
     evidence = _evidence(
         _trace(SQUARE),
