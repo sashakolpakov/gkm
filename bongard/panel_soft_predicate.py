@@ -103,6 +103,22 @@ _PANEL_SOFT_COVERT_NEGATION = re.compile(
     r")",
     re.IGNORECASE,
 )
+_PANEL_SOFT_EXPLICIT_PROHIBITION = re.compile(
+    r"\b(?:"
+    r"less|fewer|fewest|free|"
+    r"contrast|contrasts|contrasted|contrasting|"
+    r"compare|compares|compared|comparing|comparison|comparisons|"
+    r"comparative|comparatively|"
+    r"reverse|reverses|reversed|reversing|"
+    r"crop|crops|cropped|cropping|"
+    r"segment|segments|segmented|segmenting|segmentation|segmentations|"
+    r"atlas|atlases|hidden|hide|hides|hiding|"
+    r"numeric|numerical|threshold|thresholds|"
+    r"experimental|experimentally|role|roles|"
+    r"negation|negations|absence|absences"
+    r")\b",
+    re.IGNORECASE,
+)
 
 
 class PanelSoftPredicateError(ValueError):
@@ -213,6 +229,9 @@ def panel_soft_atom_text_grammar_digest() -> str:
             "allowed_text_pattern": _PANEL_SOFT_TEXT_SHAPE.pattern,
             "prompt_control_pattern": _PANEL_SOFT_PROMPT_CONTROL.pattern,
             "covert_negation_pattern": _PANEL_SOFT_COVERT_NEGATION.pattern,
+            "explicit_prompt_prohibition_pattern": (
+                _PANEL_SOFT_EXPLICIT_PROHIBITION.pattern
+            ),
             "lexical_prompt_control_filter_applied": True,
             "forbidden_negative_construction_filter_applied": True,
             "open_prose_instruction_safety_proved": False,
@@ -233,6 +252,7 @@ def validate_panel_soft_atom_text(value: object) -> str:
         or "  " in value
         or _PANEL_SOFT_PROMPT_CONTROL.search(value) is not None
         or _PANEL_SOFT_COVERT_NEGATION.search(value) is not None
+        or _PANEL_SOFT_EXPLICIT_PROHIBITION.search(value) is not None
     ):
         raise PanelSoftAtomTextRejected(
             "panel atom text violates the panel-specific lexical filter"
