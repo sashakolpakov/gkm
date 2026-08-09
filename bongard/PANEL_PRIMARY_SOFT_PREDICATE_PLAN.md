@@ -60,10 +60,24 @@ turns per panel, exact support-parent reconstruction, typed support gaps,
 byte-exact freeze/reload before the query callback, fixed-denominator query
 scoring, an exactly-once official-release/cross-task custody wrapper, parallel
 task isolation, and externally anchored model-free replay.  It does **not** yet
-implement typed feature/owner/search-completeness semantics or a sealed
-scientific calibration receipt.  Those remain blockers to calling this lane a
-scientific benchmark.  Supplying an arbitrary digest is not a calibration
-receipt and cannot enable scientific `present` or `certified_absent` states.
+consume the new typed feature/owner/search-completeness semantics or a sealed
+scientific calibration receipt.  The additive Python-native ontology now
+defines those contracts and has passed adversarial tests, but live proposer,
+inventory, observer, and runner integration remains unfinished.  Supplying an
+arbitrary digest is not a calibration receipt and cannot enable scientific
+`present` or `certified_absent` states.
+
+The first typed core is intentionally conservative.  It admits sixteen closed
+feature families, candidate-independent owners, exact unary/ordered/unordered
+subject bindings, typed witness payloads, exact derived Grid16 search regions,
+separate presence/absence calibration grants, externally pinned custody, and
+closed language gaps.  No positive payload yet projects to scientific
+`present`: family-specific pixel-backed measurement and calibration are still
+missing.  Exhaustive absence is the only potentially certifiable state, and
+requires complete owner enumeration, exact coverage of every eligible binding,
+calibrated enumeration/search protocols, and externally pinned receipts.  This
+prevents an attractive but incomplete witness—such as two same-side boxes
+called “exterior gaps”—from becoming truth by type declaration alone.
 
 Typed geometry, object crops, and part atlases may accompany a panel as
 additional evidence.  They may refine or explain an atom, but an empty,
