@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from enum import Enum
 from itertools import combinations, permutations
 import re
-from typing import Any, Mapping
+from typing import Any, Mapping, TypeAlias
 
 from bongard.canonical import canonical_digest
 from bongard.panel_soft_ontology import (
@@ -26,11 +26,13 @@ from bongard.panel_soft_ontology import (
     ClosedCount,
     ComponentCountParameters,
     ExactSegmentCountParameters,
-    EnumerationResolution,
+    OwnerKind,
     OwnerInventory,
+    OwnerId,
     PanelFeatureSpec,
     PanelSoftOntologyError,
     QuantizedPoint,
+    QuantizedRegion,
     ReferenceFrame,
     SubjectBinding,
     SubjectBindingKind,
@@ -45,16 +47,19 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 FEATURE_AXIS_SCHEMA = "gkm.bongard-panel-feature-axis.v1"
-BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v1"
-ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v1"
-PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v3"
-PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v3"
+BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v2"
+ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v2"
+PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v4"
+PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v4"
 ENGINEERING_FEATURE_CELL_SCHEMA = "gkm.bongard-engineering-feature-cell.v1"
 FEATURE_OBSERVATION_PROTOCOL_ID = (
-    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v3"
+    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v4"
 )
 PANEL_ONLY_CONTEXT_PROTOCOL_ID = (
     "bongard.panel-feature-observation/exact-panel-binding-context-v1"
+)
+PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA = (
+    "gkm.bongard-panel-only-observation-context.v2"
 )
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
@@ -227,7 +232,7 @@ class EligibleDomainGap:
     """
 
     issue: ObservationIssue
-    inventory_digest: str
+    context_digest: str
     axis_digest: str
     eligible_binding_count: int
 
@@ -236,7 +241,7 @@ class EligibleDomainGap:
             raise PanelFeatureObservationError(
                 "eligible-domain gap has the wrong issue"
             )
-        _digest(self.inventory_digest, "eligible-domain inventory digest")
+        _digest(self.context_digest, "eligible-domain context digest")
         _digest(self.axis_digest, "eligible-domain axis digest")
         if (
             type(self.eligible_binding_count) is not int
@@ -248,17 +253,20 @@ class EligibleDomainGap:
 
     @classmethod
     def unverified_empty(
-        cls, inventory: OwnerInventory, axis: FeatureAxis
+        cls, inventory: object, axis: FeatureAxis
     ) -> "EligibleDomainGap":
-        if type(inventory) is not OwnerInventory or type(axis) is not FeatureAxis:
-            raise TypeError("eligible-domain gap needs typed inventory and axis")
+        if type(inventory) not in {
+            OwnerInventory,
+            PanelOnlyObservationContext,
+        } or type(axis) is not FeatureAxis:
+            raise TypeError("eligible-domain gap needs typed context and axis")
         if eligible_axis_bindings(axis, inventory):
             raise PanelFeatureObservationError(
                 "eligible-domain gap cannot cover a nonempty projection"
             )
         return cls(
             ObservationIssue.UNVERIFIED_EMPTY_DOMAIN,
-            inventory.inventory_digest,
+            _context_digest(inventory),
             axis.axis_digest,
             0,
         )
@@ -267,7 +275,7 @@ class EligibleDomainGap:
         return {
             "schema": ELIGIBLE_DOMAIN_GAP_SCHEMA,
             "issue": self.issue.value,
-            "inventory_digest": self.inventory_digest,
+            "context_digest": self.context_digest,
             "axis_digest": self.axis_digest,
             "eligible_binding_count": self.eligible_binding_count,
             "independent_empty_domain_certificate_supplied": False,
@@ -280,7 +288,7 @@ class EligibleDomainGap:
             {
                 "schema",
                 "issue",
-                "inventory_digest",
+                "context_digest",
                 "axis_digest",
                 "eligible_binding_count",
                 "independent_empty_domain_certificate_supplied",
@@ -295,7 +303,7 @@ class EligibleDomainGap:
         try:
             result = cls(
                 ObservationIssue(raw["issue"]),
-                raw["inventory_digest"],
+                raw["context_digest"],
                 raw["axis_digest"],
                 raw["eligible_binding_count"],
             )
@@ -309,13 +317,176 @@ class EligibleDomainGap:
         return result
 
 
+@dataclass(frozen=True, slots=True)
+class PanelOnlyObservationContext:
+    """Exact raw-panel custody without an object-enumeration claim.
+
+    This is deliberately not an :class:`OwnerInventory`.  It can authorize a
+    whole-panel axis call, but it can neither populate owner-local bindings nor
+    certify an exact count by exclusion.
+    """
+
+    panel_digest: str
+    observer_contract_digest: str
+    panel_context_receipt_digest: str
+    context_protocol_digest: str
+
+    def __post_init__(self) -> None:
+        _digest(self.panel_digest, "panel-only context panel digest")
+        _digest(
+            self.observer_contract_digest,
+            "panel-only observer contract digest",
+        )
+        _digest(
+            self.panel_context_receipt_digest,
+            "panel-only context receipt digest",
+        )
+        _digest(self.context_protocol_digest, "panel-only protocol digest")
+        expected = canonical_digest(
+            {
+                "schema": PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA,
+                "protocol_id": PANEL_ONLY_CONTEXT_PROTOCOL_ID,
+                "feature_catalog_digest": feature_catalog_digest(),
+                "observer_contract_digest": self.observer_contract_digest,
+                "owner_enumeration_performed": False,
+                "valid_subject_scope": SubjectScope.WHOLE_PANEL.value,
+            }
+        )
+        if self.context_protocol_digest != expected:
+            raise PanelFeatureObservationError(
+                "panel-only observation-context protocol differs"
+            )
+
+    @classmethod
+    def create(
+        cls,
+        *,
+        panel_digest: str,
+        observer_contract_digest: str,
+        panel_context_receipt_digest: str,
+    ) -> "PanelOnlyObservationContext":
+        protocol_digest = canonical_digest(
+            {
+                "schema": PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA,
+                "protocol_id": PANEL_ONLY_CONTEXT_PROTOCOL_ID,
+                "feature_catalog_digest": feature_catalog_digest(),
+                "observer_contract_digest": observer_contract_digest,
+                "owner_enumeration_performed": False,
+                "valid_subject_scope": SubjectScope.WHOLE_PANEL.value,
+            }
+        )
+        return cls(
+            panel_digest,
+            observer_contract_digest,
+            panel_context_receipt_digest,
+            protocol_digest,
+        )
+
+    @property
+    def context_digest(self) -> str:
+        return canonical_digest(self.to_data())
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA,
+            "protocol_id": PANEL_ONLY_CONTEXT_PROTOCOL_ID,
+            "panel_digest": self.panel_digest,
+            "feature_catalog_digest": feature_catalog_digest(),
+            "observer_contract_digest": self.observer_contract_digest,
+            "panel_context_receipt_digest": self.panel_context_receipt_digest,
+            "context_protocol_digest": self.context_protocol_digest,
+            "owner_enumeration_performed": False,
+            "valid_subject_scope": SubjectScope.WHOLE_PANEL.value,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "PanelOnlyObservationContext":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "protocol_id",
+                "panel_digest",
+                "feature_catalog_digest",
+                "observer_contract_digest",
+                "panel_context_receipt_digest",
+                "context_protocol_digest",
+                "owner_enumeration_performed",
+                "valid_subject_scope",
+            },
+            "panel-only observation context",
+        )
+        if (
+            raw["schema"] != PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA
+            or raw["protocol_id"] != PANEL_ONLY_CONTEXT_PROTOCOL_ID
+            or raw["feature_catalog_digest"] != feature_catalog_digest()
+            or raw["owner_enumeration_performed"] is not False
+            or raw["valid_subject_scope"] != SubjectScope.WHOLE_PANEL.value
+        ):
+            raise PanelFeatureObservationError(
+                "panel-only observation-context policy differs"
+            )
+        result = cls(
+            raw["panel_digest"],
+            raw["observer_contract_digest"],
+            raw["panel_context_receipt_digest"],
+            raw["context_protocol_digest"],
+        )
+        _canonical_roundtrip(result, raw, "panel-only observation context")
+        return result
+
+
+ObservationContext: TypeAlias = OwnerInventory | PanelOnlyObservationContext
+
+
+def _context_digest(context: ObservationContext) -> str:
+    if type(context) is OwnerInventory:
+        return context.inventory_digest
+    if type(context) is PanelOnlyObservationContext:
+        return context.context_digest
+    raise TypeError("observation context has the wrong type")
+
+
+def observation_context_region(
+    binding: SubjectBinding, context: ObservationContext
+) -> QuantizedRegion:
+    if type(context) is OwnerInventory:
+        return subject_search_region(binding, context)
+    if type(context) is PanelOnlyObservationContext:
+        if binding.kind is not SubjectBindingKind.PANEL or binding.owner_ids:
+            raise PanelFeatureObservationError(
+                "panel-only context received a local subject binding"
+            )
+        return QuantizedRegion(
+            QuantizedPoint(0, 0),
+            QuantizedPoint(15, 15),
+        )
+    raise TypeError("observation context has the wrong type")
+
+
+def observation_context_from_data(value: object) -> ObservationContext:
+    if not isinstance(value, Mapping):
+        raise PanelFeatureObservationError("observation context is malformed")
+    schema = value.get("schema")
+    if schema == PANEL_ONLY_OBSERVATION_CONTEXT_SCHEMA:
+        return PanelOnlyObservationContext.from_data(value)
+    return OwnerInventory.from_data(value)
+
+
 def eligible_axis_bindings(
-    axis: FeatureAxis, inventory: OwnerInventory
+    axis: FeatureAxis, inventory: ObservationContext
 ) -> tuple[SubjectBinding, ...]:
     """Project bindings without choosing a candidate parameter value."""
 
-    if type(axis) is not FeatureAxis or type(inventory) is not OwnerInventory:
+    if type(axis) is not FeatureAxis or type(inventory) not in {
+        OwnerInventory,
+        PanelOnlyObservationContext,
+    }:
         raise TypeError("axis binding projection requires typed axis and inventory")
+    if type(inventory) is PanelOnlyObservationContext:
+        if axis.subject_scope is SubjectScope.WHOLE_PANEL:
+            return (SubjectBinding(SubjectBindingKind.PANEL, ()),)
+        return ()
     contract = FAMILY_CONTRACTS[axis.family]
     binding_kind = contract.binding_by_scope[axis.subject_scope]
     eligible_kinds = set(contract.owner_kinds_by_scope[axis.subject_scope])
@@ -346,36 +517,13 @@ def panel_only_observation_inventory(
     panel_digest: str,
     observer_contract_digest: str,
     panel_context_receipt_digest: str,
-) -> OwnerInventory:
-    """Build an owner-free context for an exact whole-panel measurement.
+) -> PanelOnlyObservationContext:
+    """Build a typed owner-free context for an exact panel measurement."""
 
-    This does not claim that the panel has no objects and deliberately leaves
-    ``enumeration_complete`` false.  It exists only so panel-scoped feature
-    axes can be observed directly from raw pixels without making object
-    segmentation a prerequisite.  Owner-local axes cannot obtain a negative
-    disposition from this context because their eligible domains are empty.
-    """
-
-    _digest(panel_digest, "panel-only context panel digest")
-    _digest(observer_contract_digest, "panel-only observer contract digest")
-    _digest(panel_context_receipt_digest, "panel-only context receipt digest")
-    protocol_digest = canonical_digest(
-        {
-            "schema": "gkm.bongard-panel-only-observation-context.v1",
-            "protocol_id": PANEL_ONLY_CONTEXT_PROTOCOL_ID,
-            "feature_catalog_digest": feature_catalog_digest(),
-            "observer_contract_digest": observer_contract_digest,
-            "owner_enumeration_performed": False,
-            "valid_subject_scope": SubjectScope.WHOLE_PANEL.value,
-        }
-    )
-    return OwnerInventory(
-        panel_digest,
-        protocol_digest,
-        EnumerationResolution.GRID16_FULL_PANEL,
-        panel_context_receipt_digest,
-        False,
-        (),
+    return PanelOnlyObservationContext.create(
+        panel_digest=panel_digest,
+        observer_contract_digest=observer_contract_digest,
+        panel_context_receipt_digest=panel_context_receipt_digest,
     )
 
 
@@ -427,12 +575,6 @@ class BindingFeatureObservation:
             type(item) is not QuantizedPoint for item in self.evidence_points
         ):
             raise TypeError("binding evidence points must be a Grid16 tuple")
-        if self.evidence_points != tuple(sorted(self.evidence_points)) or len(
-            self.evidence_points
-        ) != len(set(self.evidence_points)):
-            raise PanelFeatureObservationError(
-                "binding evidence points must be unique and sorted"
-            )
         if len(self.evidence_points) > 16:
             raise PanelFeatureObservationError("too many binding evidence points")
         if self.resolution is BindingResolution.COMPLETE:
@@ -440,13 +582,9 @@ class BindingFeatureObservation:
                 raise PanelFeatureObservationError(
                     "complete binding observation carries an issue"
                 )
-            if self.observed_specs and not self.evidence_points:
+            if len(self.observed_specs) != len(self.evidence_points):
                 raise PanelFeatureObservationError(
-                    "an observed variant needs panel-local evidence points"
-                )
-            if not self.observed_specs and self.evidence_points:
-                raise PanelFeatureObservationError(
-                    "empty resolved variant set cannot carry witness points"
+                    "each observed variant needs its own aligned evidence point"
                 )
         elif self.resolution is BindingResolution.UNCLEAR:
             if self.issue not in _UNCLEAR_ISSUES:
@@ -534,11 +672,51 @@ class BindingFeatureObservation:
         return result
 
 
+def _inventory_counted_owner_ids(
+    inventory: OwnerInventory,
+    axis: FeatureAxis,
+    binding: SubjectBinding,
+) -> tuple[OwnerId, ...]:
+    if axis.family is FeatureFamily.COMPONENT_COUNT:
+        return coherent_top_level_component_owner_ids(inventory)
+    if axis.family is not FeatureFamily.EXACT_SEGMENT_COUNT:
+        raise PanelFeatureObservationError("feature axis is not an exact-count axis")
+    if binding.kind is SubjectBindingKind.PANEL:
+        return tuple(
+            item.owner_id
+            for item in inventory.owners
+            if item.kind is OwnerKind.SEGMENT
+        )
+    return descendant_segment_owner_ids(binding.owner_ids[0], inventory)
+
+
+def _registered_inventory_count_spec(
+    inventory: OwnerInventory,
+    axis: FeatureAxis,
+    binding: SubjectBinding,
+) -> PanelFeatureSpec | None:
+    count = len(_inventory_counted_owner_ids(inventory, axis, binding))
+    closed_count = _COUNT_BY_INT.get(count)
+    if closed_count is None:
+        return None
+    parameters = (
+        ComponentCountParameters(closed_count)
+        if axis.family is FeatureFamily.COMPONENT_COUNT
+        else ExactSegmentCountParameters(closed_count)
+    )
+    return PanelFeatureSpec(
+        axis.family,
+        axis.subject_scope,
+        axis.reference_frame,
+        parameters,
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class PanelAxisObservation:
     """Exact observation coverage for one feature axis on one panel."""
 
-    inventory: OwnerInventory
+    inventory: ObservationContext
     axis: FeatureAxis
     observer_contract_digest: str
     measurement_protocol_digest: str
@@ -546,10 +724,21 @@ class PanelAxisObservation:
     domain_gap: EligibleDomainGap | None = None
 
     def __post_init__(self) -> None:
-        if type(self.inventory) is not OwnerInventory or type(self.axis) is not FeatureAxis:
-            raise TypeError("panel-axis observation needs typed inventory and axis")
+        if type(self.inventory) not in {
+            OwnerInventory,
+            PanelOnlyObservationContext,
+        } or type(self.axis) is not FeatureAxis:
+            raise TypeError("panel-axis observation needs typed context and axis")
         _digest(self.observer_contract_digest, "observer contract digest")
         _digest(self.measurement_protocol_digest, "measurement protocol digest")
+        if type(self.inventory) is PanelOnlyObservationContext and (
+            self.axis.subject_scope is not SubjectScope.WHOLE_PANEL
+            or self.inventory.observer_contract_digest
+            != self.observer_contract_digest
+        ):
+            raise PanelFeatureObservationError(
+                "panel-only context scope or observer contract differs"
+            )
         if type(self.binding_observations) is not tuple or any(
             type(item) is not BindingFeatureObservation
             for item in self.binding_observations
@@ -561,6 +750,28 @@ class PanelAxisObservation:
             raise PanelFeatureObservationError(
                 "panel-axis observation does not cover each eligible binding exactly once"
             )
+        if (
+            type(self.inventory) is OwnerInventory
+            and self.axis.family
+            in {
+                FeatureFamily.COMPONENT_COUNT,
+                FeatureFamily.EXACT_SEGMENT_COUNT,
+            }
+        ):
+            for row in self.binding_observations:
+                if row.resolution is not BindingResolution.COMPLETE:
+                    continue
+                expected_spec = (
+                    _registered_inventory_count_spec(
+                        self.inventory, self.axis, row.binding
+                    )
+                    if self.inventory.enumeration_complete
+                    else None
+                )
+                if expected_spec is None or row.observed_specs != (expected_spec,):
+                    raise PanelFeatureObservationError(
+                        "complete count row contradicts its authoritative owner graph"
+                    )
         if expected:
             if self.domain_gap is not None:
                 raise PanelFeatureObservationError(
@@ -578,7 +789,7 @@ class PanelAxisObservation:
         ):
             raise PanelFeatureObservationError("binding observation has another axis")
         for item in self.binding_observations:
-            region = subject_search_region(item.binding, self.inventory)
+            region = observation_context_region(item.binding, self.inventory)
             if any(
                 not _point_in_region(point, region.minimum, region.maximum)
                 for point in item.evidence_points
@@ -615,12 +826,20 @@ class PanelAxisObservation:
             for row in self.binding_observations
         ):
             return EngineeringFeatureDisposition.ERROR
+        negative_context_authorized = (
+            type(self.inventory) is OwnerInventory
+            and self.inventory.enumeration_complete
+        ) or (
+            type(self.inventory) is PanelOnlyObservationContext
+            and self.axis.family
+            not in {
+                FeatureFamily.COMPONENT_COUNT,
+                FeatureFamily.EXACT_SEGMENT_COUNT,
+            }
+        )
         if (
             self.binding_observations
-            and (
-                self.axis.subject_scope is SubjectScope.WHOLE_PANEL
-                or self.inventory.enumeration_complete
-            )
+            and negative_context_authorized
             and all(
                 row.resolution is BindingResolution.COMPLETE
                 and bool(row.observed_specs)
@@ -635,7 +854,7 @@ class PanelAxisObservation:
             "schema": PANEL_AXIS_OBSERVATION_SCHEMA,
             "protocol_id": FEATURE_OBSERVATION_PROTOCOL_ID,
             "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
-            "inventory": self.inventory.to_data(),
+            "context": self.inventory.to_data(),
             "axis": self.axis.to_data(),
             "observer_contract_digest": self.observer_contract_digest,
             "measurement_protocol_digest": self.measurement_protocol_digest,
@@ -658,7 +877,7 @@ class PanelAxisObservation:
                 "schema",
                 "protocol_id",
                 "predicate_authority_id",
-                "inventory",
+                "context",
                 "axis",
                 "observer_contract_digest",
                 "measurement_protocol_digest",
@@ -681,7 +900,7 @@ class PanelAxisObservation:
         ):
             raise PanelFeatureObservationError("panel-axis observation policy differs")
         result = cls(
-            OwnerInventory.from_data(raw["inventory"]),
+            observation_context_from_data(raw["context"]),
             FeatureAxis.from_data(raw["axis"]),
             raw["observer_contract_digest"],
             raw["measurement_protocol_digest"],
@@ -703,14 +922,13 @@ class PanelAxisObservation:
 class PanelFeatureObservationSet:
     """All measured axes for one panel under one exact observer contract."""
 
-    inventory: OwnerInventory
+    panel_digest: str
     observer_contract_digest: str
     measurement_protocol_digest: str
     axis_observations: tuple[PanelAxisObservation, ...]
 
     def __post_init__(self) -> None:
-        if type(self.inventory) is not OwnerInventory:
-            raise TypeError("panel feature observation set needs OwnerInventory")
+        _digest(self.panel_digest, "observation-set panel digest")
         _digest(self.observer_contract_digest, "observation-set contract digest")
         _digest(self.measurement_protocol_digest, "observation-set protocol digest")
         if type(self.axis_observations) is not tuple or any(
@@ -723,18 +941,28 @@ class PanelFeatureObservationSet:
                 "axis observations must be unique and sorted by digest"
             )
         if any(
-            item.inventory != self.inventory
+            item.panel_digest != self.panel_digest
             or item.observer_contract_digest != self.observer_contract_digest
             or item.measurement_protocol_digest != self.measurement_protocol_digest
             for item in self.axis_observations
         ):
             raise PanelFeatureObservationError(
-                "axis observation has different inventory or observer custody"
+                "axis observation has different panel or observer custody"
             )
-
-    @property
-    def panel_digest(self) -> str:
-        return self.inventory.panel_digest
+        owner_context_digests = {
+            item.inventory.inventory_digest
+            for item in self.axis_observations
+            if type(item.inventory) is OwnerInventory
+        }
+        panel_context_digests = {
+            item.inventory.context_digest
+            for item in self.axis_observations
+            if type(item.inventory) is PanelOnlyObservationContext
+        }
+        if len(owner_context_digests) > 1 or len(panel_context_digests) > 1:
+            raise PanelFeatureObservationError(
+                "axis observations disagree on a scope-specific context"
+            )
 
     @property
     def observation_set_digest(self) -> str:
@@ -756,7 +984,7 @@ class PanelFeatureObservationSet:
             "schema": PANEL_FEATURE_OBSERVATION_SET_SCHEMA,
             "protocol_id": FEATURE_OBSERVATION_PROTOCOL_ID,
             "predicate_authority_id": PYTHON_PREDICATE_AUTHORITY_ID,
-            "inventory": self.inventory.to_data(),
+            "panel_digest": self.panel_digest,
             "observer_contract_digest": self.observer_contract_digest,
             "measurement_protocol_digest": self.measurement_protocol_digest,
             "axis_observations": [item.to_data() for item in self.axis_observations],
@@ -772,7 +1000,7 @@ class PanelFeatureObservationSet:
                 "schema",
                 "protocol_id",
                 "predicate_authority_id",
-                "inventory",
+                "panel_digest",
                 "observer_contract_digest",
                 "measurement_protocol_digest",
                 "axis_observations",
@@ -793,7 +1021,7 @@ class PanelFeatureObservationSet:
                 "panel feature observation-set policy differs"
             )
         result = cls(
-            OwnerInventory.from_data(raw["inventory"]),
+            raw["panel_digest"],
             raw["observer_contract_digest"],
             raw["measurement_protocol_digest"],
             tuple(
@@ -926,43 +1154,20 @@ def derive_inventory_count_observation(
             resolution = BindingResolution.UNCLEAR
             issue: ObservationIssue | None = ObservationIssue.RESOLUTION_LIMIT
         else:
-            if axis.family is FeatureFamily.COMPONENT_COUNT:
-                counted_ids = coherent_top_level_component_owner_ids(inventory)
-            else:
-                parent = binding.owner_ids[0]
-                counted_ids = descendant_segment_owner_ids(
-                    parent,
-                    inventory,
-                )
-            owner_by_id = {item.owner_id: item for item in inventory.owners}
-            counted = tuple(owner_by_id[item] for item in counted_ids)
-            count = len(counted)
-            closed_count = _COUNT_BY_INT.get(count)
-            if closed_count is None:
+            observed_spec = _registered_inventory_count_spec(
+                inventory, axis, binding
+            )
+            if observed_spec is None:
                 observed_specs = ()
                 points = ()
-                # The measurement is complete, but no positive registered
-                # alternative grounds a closed-catalog exclusion.  Evaluation
-                # therefore keeps every registered count indeterminate.
-                resolution = BindingResolution.COMPLETE
-                issue = None
+                resolution = BindingResolution.UNCLEAR
+                issue = ObservationIssue.OUTSIDE_CLOSED_CATALOG
             else:
-                parameters = (
-                    ComponentCountParameters(closed_count)
-                    if axis.family is FeatureFamily.COMPONENT_COUNT
-                    else ExactSegmentCountParameters(closed_count)
-                )
-                observed_specs = (
-                    PanelFeatureSpec(
-                        axis.family,
-                        axis.subject_scope,
-                        axis.reference_frame,
-                        parameters,
-                    ),
-                )
-                points = tuple(
-                    sorted({item.region.minimum for item in counted})
-                )
+                observed_specs = (observed_spec,)
+                # Count truth comes from the frozen graph.  The visual anchor
+                # must nevertheless be guaranteed to lie in the binding's
+                # search region even if a schema-valid child box is noisy.
+                points = (observation_context_region(binding, inventory).minimum,)
                 resolution = BindingResolution.COMPLETE
                 issue = None
         receipt = canonical_digest(

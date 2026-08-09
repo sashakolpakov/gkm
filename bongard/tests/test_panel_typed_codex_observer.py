@@ -111,9 +111,11 @@ def _axis_payload(
     return {
         binding.alias: {
             "resolution": "complete",
-            "variant_aliases": [variant],
-            "evidence_x": binding.search_region.minimum.x,
-            "evidence_y": binding.search_region.minimum.y,
+            "variant_evidence": [{
+                "variant_alias": variant,
+                "evidence_x": binding.search_region.minimum.x,
+                "evidence_y": binding.search_region.minimum.y,
+            }],
             "issue": "none",
         }
         for binding in view.bindings
@@ -201,7 +203,7 @@ def test_whole_panel_axis_uses_no_owner_enumeration_call() -> None:
         ComponentCountParameters(ClosedCount.ONE),
     )
     axis = FeatureAxis.for_spec(spec)
-    view = FeatureAxisObservationView.build(context.to_owner_inventory(), axis)
+    view = FeatureAxisObservationView.build(context.to_observation_context(), axis)
     payload = _axis_payload(view)
     calls = 0
 
@@ -225,7 +227,7 @@ def test_whole_panel_axis_uses_no_owner_enumeration_call() -> None:
     assert calls == 1
     assert artifact.source_kind == "panel_only"
     assert artifact.panel_only_context == context
-    assert artifact.view.inventory.enumeration_complete is False
+    assert artifact.view.inventory == context.to_observation_context()
     assert verify_typed_axis_codex_artifact(
         artifact,
         panel,

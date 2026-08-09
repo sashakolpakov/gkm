@@ -40,6 +40,7 @@ from bongard.panel_feature_observation import (
     FEATURE_OBSERVATION_PROTOCOL_ID,
     FeatureAxis,
     PanelAxisObservation,
+    PanelOnlyObservationContext as FeaturePanelOnlyObservationContext,
 )
 from bongard.panel_feature_observer_protocol import (
     FEATURE_AXIS_VIEW_PROTOCOL_ID,
@@ -71,7 +72,6 @@ from bongard.panel_owner_inventory import (
     panel_owner_inventory_prompt,
 )
 from bongard.panel_soft_ontology import (
-    EnumerationResolution,
     NativeOrientation,
     OwnerInventory,
     SubjectScope,
@@ -530,25 +530,13 @@ class PanelOnlyObservationContext:
             raise PanelTypedCodexObserverError("panel-only context is not canonical")
         return result
 
-    def to_owner_inventory(self) -> OwnerInventory:
-        """Supply only the panel binding; never certify an owner enumeration."""
+    def to_observation_context(self) -> FeaturePanelOnlyObservationContext:
+        """Project exact custody into the typed whole-panel context API."""
 
-        protocol_digest = canonical_digest(
-            {
-                "schema": "gkm.bongard-panel-only-enumeration-placeholder.v1",
-                "protocol_id": TYPED_PANEL_ONLY_PROTOCOL_ID,
-                "observer_contract_digest": self.observer_contract_digest,
-                "measurement_protocol_digest": self.measurement_protocol_digest,
-                "owner_enumeration_call_made": False,
-            }
-        )
-        return OwnerInventory(
-            self.panel_png_digest,
-            protocol_digest,
-            EnumerationResolution.GRID16_FULL_PANEL,
-            self.context_digest,
-            False,
-            (),
+        return FeaturePanelOnlyObservationContext.create(
+            panel_digest=self.panel_png_digest,
+            observer_contract_digest=self.observer_contract_digest,
+            panel_context_receipt_digest=self.context_digest,
         )
 
 
@@ -946,7 +934,7 @@ class TypedAxisCodexArtifact:
             if (
                 self.source_artifact_digest != context.context_digest
                 or self.view.axis.subject_scope is not SubjectScope.WHOLE_PANEL
-                or self.view.inventory != context.to_owner_inventory()
+                or self.view.inventory != context.to_observation_context()
                 or context.runtime != self.runtime
             ):
                 raise PanelTypedCodexObserverError("panel-only axis source differs")
@@ -957,6 +945,7 @@ class TypedAxisCodexArtifact:
                 )
             if (
                 self.view.axis.subject_scope is SubjectScope.WHOLE_PANEL
+                or type(self.view.inventory) is not OwnerInventory
                 or not self.view.inventory.enumeration_complete
             ):
                 raise PanelTypedCodexObserverError(
@@ -1198,7 +1187,7 @@ def observe_typed_panel_axis(
             )
         source_kind = "panel_only"
         source_digest = panel_only_context.context_digest
-        inventory = panel_only_context.to_owner_inventory()
+        inventory = panel_only_context.to_observation_context()
         if panel_only_context.runtime != runtime:
             raise PanelTypedCodexObserverError("panel-only context runtime differs")
     else:
@@ -1322,7 +1311,7 @@ def verify_typed_axis_codex_artifact(
     else:
         if owner_artifact is not None or restored.panel_only_context is None:
             raise PanelTypedCodexObserverError("panel-only axis replay source differs")
-        inventory = restored.panel_only_context.to_owner_inventory()
+        inventory = restored.panel_only_context.to_observation_context()
     rebuilt_view = FeatureAxisObservationView.build(inventory, restored.view.axis)
     if rebuilt_view != restored.view:
         raise PanelTypedCodexObserverError("axis cold-replay view differs")

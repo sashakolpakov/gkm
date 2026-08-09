@@ -64,9 +64,7 @@ def _empty_payload(view: p.FeatureAxisObservationView) -> dict[str, object]:
     return {
         item.alias: {
             "resolution": "complete",
-            "variant_aliases": [],
-            "evidence_x": -1,
-            "evidence_y": -1,
+            "variant_evidence": [],
             "issue": "none",
         }
         for item in view.bindings
@@ -119,9 +117,11 @@ def test_strict_payload_resolves_variants_then_python_compares_specs() -> None:
     for binding in view.bindings:
         payload[binding.alias] = {
             "resolution": "complete",
-            "variant_aliases": [bird_alias],
-            "evidence_x": binding.search_region.minimum.x,
-            "evidence_y": binding.search_region.minimum.y,
+            "variant_evidence": [{
+                "variant_alias": bird_alias,
+                "evidence_x": binding.search_region.minimum.x,
+                "evidence_y": binding.search_region.minimum.y,
+            }],
             "issue": "none",
         }
     observation = p.parse_feature_axis_observer_payload(
@@ -188,9 +188,7 @@ def test_unclear_row_stays_indeterminate_and_cannot_claim_variants() -> None:
     payload = _empty_payload(view)
     payload[view.bindings[0].alias] = {
         "resolution": "unclear",
-        "variant_aliases": [],
-        "evidence_x": -1,
-        "evidence_y": -1,
+        "variant_evidence": [],
         "issue": "ambiguous_geometry",
     }
     observation = p.parse_feature_axis_observer_payload(
@@ -204,7 +202,11 @@ def test_unclear_row_stays_indeterminate_and_cannot_claim_variants() -> None:
     assert observation.evaluate(tool) is f.EngineeringFeatureDisposition.INDETERMINATE
 
     bird_alias = next(item.alias for item in view.variants if item.spec == bird)
-    payload[view.bindings[0].alias]["variant_aliases"] = [bird_alias]
+    payload[view.bindings[0].alias]["variant_evidence"] = [{
+        "variant_alias": bird_alias,
+        "evidence_x": 1,
+        "evidence_y": 1,
+    }]
     with pytest.raises(p.PanelFeatureObserverProtocolError, match="resolved evidence"):
         p.parse_feature_axis_observer_payload(
             view,
@@ -228,9 +230,11 @@ def test_out_of_binding_evidence_is_rejected_by_typed_observation() -> None:
     )
     payload[first.alias] = {
         "resolution": "complete",
-        "variant_aliases": [bird_alias],
-        "evidence_x": outside.x,
-        "evidence_y": outside.y,
+        "variant_evidence": [{
+            "variant_alias": bird_alias,
+            "evidence_x": outside.x,
+            "evidence_y": outside.y,
+        }],
         "issue": "none",
     }
     with pytest.raises(p.PanelFeatureObserverProtocolError, match="typed observation"):

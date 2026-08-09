@@ -26,9 +26,13 @@ from bongard.panel_feature_observation import (
     EligibleDomainGap,
     FeatureAxis,
     ObservationIssue,
+    ObservationContext,
     PanelAxisObservation,
     PanelFeatureObservationError,
+    PanelOnlyObservationContext,
     eligible_axis_bindings,
+    observation_context_from_data,
+    observation_context_region,
 )
 from bongard.panel_soft_ontology import (
     FAMILY_CONTRACTS,
@@ -39,13 +43,12 @@ from bongard.panel_soft_ontology import (
     QuantizedRegion,
     SubjectBinding,
     feature_catalog_data,
-    subject_search_region,
 )
 
 
-FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v1"
+FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v2"
 FEATURE_AXIS_VIEW_PROTOCOL_ID = (
-    "bongard.panel-feature-observer/one-panel-one-complete-axis-v2"
+    "bongard.panel-feature-observer/one-panel-one-complete-axis-v3"
 )
 MAX_BINDINGS_PER_AXIS_CALL = 36
 
@@ -216,14 +219,17 @@ class AxisBindingAlias:
 class FeatureAxisObservationView:
     """Internal alias map whose model projection hides candidate and role data."""
 
-    inventory: OwnerInventory
+    inventory: ObservationContext
     axis: FeatureAxis
     variants: tuple[AxisVariantAlias, ...]
     bindings: tuple[AxisBindingAlias, ...]
 
     def __post_init__(self) -> None:
-        if type(self.inventory) is not OwnerInventory or type(self.axis) is not FeatureAxis:
-            raise TypeError("axis observer view needs typed inventory and axis")
+        if type(self.inventory) not in {
+            OwnerInventory,
+            PanelOnlyObservationContext,
+        } or type(self.axis) is not FeatureAxis:
+            raise TypeError("axis observer view needs typed context and axis")
         expected_variants = all_axis_variants(self.axis)
         if self.variants != tuple(
             AxisVariantAlias(f"variant_{index:04d}", spec)
@@ -237,7 +243,7 @@ class FeatureAxisObservationView:
             AxisBindingAlias(
                 f"binding_{index:04d}",
                 binding,
-                subject_search_region(binding, self.inventory),
+                observation_context_region(binding, self.inventory),
             )
             for index, binding in enumerate(expected_bindings)
         ):
@@ -251,10 +257,13 @@ class FeatureAxisObservationView:
 
     @classmethod
     def build(
-        cls, inventory: OwnerInventory, axis: FeatureAxis
+        cls, inventory: ObservationContext, axis: FeatureAxis
     ) -> "FeatureAxisObservationView":
-        if type(inventory) is not OwnerInventory or type(axis) is not FeatureAxis:
-            raise TypeError("axis observer view needs typed inventory and axis")
+        if type(inventory) not in {
+            OwnerInventory,
+            PanelOnlyObservationContext,
+        } or type(axis) is not FeatureAxis:
+            raise TypeError("axis observer view needs typed context and axis")
         variants = tuple(
             AxisVariantAlias(f"variant_{index:04d}", spec)
             for index, spec in enumerate(all_axis_variants(axis))
@@ -263,7 +272,7 @@ class FeatureAxisObservationView:
             AxisBindingAlias(
                 f"binding_{index:04d}",
                 binding,
-                subject_search_region(binding, inventory),
+                observation_context_region(binding, inventory),
             )
             for index, binding in enumerate(eligible_axis_bindings(axis, inventory))
         )
@@ -277,7 +286,7 @@ class FeatureAxisObservationView:
         return {
             "schema": FEATURE_AXIS_VIEW_SCHEMA,
             "protocol_id": FEATURE_AXIS_VIEW_PROTOCOL_ID,
-            "inventory": self.inventory.to_data(),
+            "context": self.inventory.to_data(),
             "axis": self.axis.to_data(),
             "variants": [item.to_data() for item in self.variants],
             "bindings": [item.to_data() for item in self.bindings],
@@ -294,7 +303,7 @@ class FeatureAxisObservationView:
             {
                 "schema",
                 "protocol_id",
-                "inventory",
+                "context",
                 "axis",
                 "variants",
                 "bindings",
@@ -317,7 +326,7 @@ class FeatureAxisObservationView:
         ):
             raise PanelFeatureObserverProtocolError("axis observer view policy differs")
         result = cls(
-            OwnerInventory.from_data(raw["inventory"]),
+            observation_context_from_data(raw["context"]),
             FeatureAxis.from_data(raw["axis"]),
             tuple(AxisVariantAlias.from_data(item) for item in raw["variants"]),
             tuple(AxisBindingAlias.from_data(item) for item in raw["bindings"]),
@@ -328,10 +337,15 @@ class FeatureAxisObservationView:
     def model_data(self) -> dict[str, object]:
         """Return exactly the inert data rendered into the vision prompt."""
 
-        owner_by_id = {item.owner_id: item for item in self.inventory.owners}
+        owners = (
+            self.inventory.owners
+            if type(self.inventory) is OwnerInventory
+            else ()
+        )
+        owner_by_id = {item.owner_id: item for item in owners}
         owner_alias = {
             item.owner_id: f"object_{index:04d}"
-            for index, item in enumerate(self.inventory.owners)
+            for index, item in enumerate(owners)
         }
         return {
             "schema": "gkm.bongard-feature-axis-model-view.v1",
@@ -389,22 +403,26 @@ def feature_axis_observer_output_schema(
                 "type": "string",
                 "enum": [BindingResolution.COMPLETE.value, BindingResolution.UNCLEAR.value],
             },
-            "variant_aliases": {
+            "variant_evidence": {
                 "type": "array",
-                # Python checks aliases, uniqueness, and cardinality.  Repeating
-                # a large enum under every binding would exceed the provider's
-                # aggregate strict-schema enum budget for marker catalogs.
-                "items": {"type": "string"},
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        # Python checks membership and uniqueness. Repeating a
+                        # large enum here would exceed strict-schema budgets.
+                        "variant_alias": {"type": "string"},
+                        "evidence_x": {"type": "integer"},
+                        "evidence_y": {"type": "integer"},
+                    },
+                    "required": ["variant_alias", "evidence_x", "evidence_y"],
+                    "additionalProperties": False,
+                },
             },
-            "evidence_x": {"type": "integer"},
-            "evidence_y": {"type": "integer"},
             "issue": {"type": "string", "enum": ["none", *unclear_issues]},
         },
         "required": [
             "resolution",
-            "variant_aliases",
-            "evidence_x",
-            "evidence_y",
+            "variant_evidence",
             "issue",
         ],
         "additionalProperties": False,
@@ -434,9 +452,10 @@ def feature_axis_observer_prompt(view: FeatureAxisObservationView) -> str:
         "resolved that none of the registered variants applies, but downstream "
         "Python will keep that row indeterminate rather than treat silence as "
         "absence. Mere failure to notice one is not enough. Otherwise use unclear, "
-        "an empty variant list, coordinates minus one, and the applicable issue. "
-        "For a nonempty complete list, give one supporting Grid16 bin inside the "
-        "binding search region and use issue none. Variant order is irrelevant.\n\n"
+        "an empty variant_evidence list, and the applicable issue. For every variant "
+        "in a nonempty complete result, emit its own variant_evidence record with one "
+        "supporting Grid16 bin inside the binding search region and use issue none. "
+        "Variant order is irrelevant.\n\n"
         f"BEGIN_INERT_AXIS_DATA\n{rendered}\nEND_INERT_AXIS_DATA"
     )
 
@@ -464,26 +483,41 @@ def parse_feature_axis_observer_payload(
     rows: list[BindingFeatureObservation] = []
     row_fields = {
         "resolution",
-        "variant_aliases",
-        "evidence_x",
-        "evidence_y",
+        "variant_evidence",
         "issue",
     }
     for item in view.bindings:
         row = _fields(raw[item.alias], row_fields, f"axis payload {item.alias}")
-        aliases = row["variant_aliases"]
+        evidence = row["variant_evidence"]
         if (
-            type(aliases) is not list
-            or any(type(alias) is not str or alias not in variant_by_alias for alias in aliases)
-            or len(aliases) != len(set(aliases))
+            type(evidence) is not list
+            or any(
+                not isinstance(item, Mapping)
+                or set(item) != {"variant_alias", "evidence_x", "evidence_y"}
+                for item in evidence
+            )
         ):
-            raise PanelFeatureObserverProtocolError("axis payload variant aliases differ")
-        if type(row["evidence_x"]) is not int or type(row["evidence_y"]) is not int:
-            raise PanelFeatureObserverProtocolError("axis payload evidence bin differs")
-        x = row["evidence_x"]
-        y = row["evidence_y"]
-        if not -1 <= x <= 15 or not -1 <= y <= 15 or (x == -1) != (y == -1):
-            raise PanelFeatureObserverProtocolError("axis payload evidence bin differs")
+            raise PanelFeatureObserverProtocolError(
+                "axis payload variant evidence differs"
+            )
+        aliases = [item["variant_alias"] for item in evidence]
+        if (
+            any(
+                type(alias) is not str or alias not in variant_by_alias
+                for alias in aliases
+            )
+            or len(aliases) != len(set(aliases))
+            or any(
+                type(item["evidence_x"]) is not int
+                or type(item["evidence_y"]) is not int
+                or not 0 <= item["evidence_x"] <= 15
+                or not 0 <= item["evidence_y"] <= 15
+                for item in evidence
+            )
+        ):
+            raise PanelFeatureObserverProtocolError(
+                "axis payload variant evidence differs"
+            )
         try:
             resolution = BindingResolution(row["resolution"])
         except (TypeError, ValueError) as exc:
@@ -491,20 +525,29 @@ def parse_feature_axis_observer_payload(
         if resolution is BindingResolution.ERROR:
             raise PanelFeatureObserverProtocolError("model payload cannot self-assert error")
         if resolution is BindingResolution.COMPLETE:
-            if row["issue"] != "none" or bool(aliases) != (x != -1):
+            if row["issue"] != "none":
                 raise PanelFeatureObserverProtocolError(
                     "complete axis payload row has inconsistent evidence"
                 )
-            observed_specs = tuple(
+            resolved = tuple(
                 sorted(
-                    (variant_by_alias[alias] for alias in aliases),
-                    key=lambda spec: spec.spec_digest,
+                    (
+                        (
+                            variant_by_alias[item["variant_alias"]],
+                            QuantizedPoint(
+                                item["evidence_x"], item["evidence_y"]
+                            ),
+                        )
+                        for item in evidence
+                    ),
+                    key=lambda item: item[0].spec_digest,
                 )
             )
-            points = () if x == -1 else (QuantizedPoint(x, y),)
+            observed_specs = tuple(item[0] for item in resolved)
+            points = tuple(item[1] for item in resolved)
             issue = None
         else:
-            if aliases or x != -1 or row["issue"] == "none":
+            if evidence or row["issue"] == "none":
                 raise PanelFeatureObserverProtocolError(
                     "unclear axis payload row claims resolved evidence"
                 )
@@ -547,7 +590,7 @@ def parse_feature_axis_observer_payload(
 
 
 def unresolved_axis_observation(
-    inventory: OwnerInventory,
+    inventory: ObservationContext,
     axis: FeatureAxis,
     *,
     observer_contract_digest: str,
@@ -557,8 +600,11 @@ def unresolved_axis_observation(
 ) -> PanelAxisObservation:
     """Create a total fail-closed row vector for capacity or call failure."""
 
-    if type(inventory) is not OwnerInventory or type(axis) is not FeatureAxis:
-        raise TypeError("unresolved axis observation needs typed inventory and axis")
+    if type(inventory) not in {
+        OwnerInventory,
+        PanelOnlyObservationContext,
+    } or type(axis) is not FeatureAxis:
+        raise TypeError("unresolved axis observation needs typed context and axis")
     for label, item in (
         ("observer contract digest", observer_contract_digest),
         ("measurement protocol digest", measurement_protocol_digest),

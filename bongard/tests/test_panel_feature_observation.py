@@ -181,13 +181,13 @@ def test_incomplete_owner_inventory_prevents_operational_nonmatch() -> None:
 
 
 def test_whole_panel_soft_axis_does_not_require_owner_enumeration() -> None:
-    inventory = f.panel_only_observation_inventory(
+    context = f.panel_only_observation_inventory(
         panel_digest=_d("a"),
         observer_contract_digest=_d("b"),
         panel_context_receipt_digest=_d("c"),
     )
-    assert inventory.enumeration_complete is False
-    assert inventory.owners == ()
+    assert type(context) is f.PanelOnlyObservationContext
+    assert context.observer_contract_digest == _d("b")
     bird = o.PanelFeatureSpec(
         o.FeatureFamily.GESTALT_RESEMBLANCE,
         o.SubjectScope.WHOLE_PANEL,
@@ -201,10 +201,10 @@ def test_whole_panel_soft_axis_does_not_require_owner_enumeration() -> None:
         o.GestaltResemblanceParameters(o.GestaltKind.TOOL_LIKE),
     )
     axis = f.FeatureAxis.for_spec(bird)
-    bindings = f.eligible_axis_bindings(axis, inventory)
+    bindings = f.eligible_axis_bindings(axis, context)
     assert bindings == (o.SubjectBinding(o.SubjectBindingKind.PANEL, ()),)
     observation = f.PanelAxisObservation(
-        inventory,
+        context,
         axis,
         _d("b"),
         _d("d"),
@@ -221,19 +221,66 @@ def test_whole_panel_soft_axis_does_not_require_owner_enumeration() -> None:
     assert observation.evaluate(tool) is f.EngineeringFeatureDisposition.MATCH
     assert observation.evaluate(bird) is f.EngineeringFeatureDisposition.NONMATCH
 
-    # The same owner-free context cannot manufacture a local-object negative.
+    # The typed whole-panel context cannot masquerade as a local inventory.
     local_bird = _gestalt(o.GestaltKind.BIRD_LIKE)
     local_axis = f.FeatureAxis.for_spec(local_bird)
-    local = f.PanelAxisObservation(
-        inventory,
-        local_axis,
+    with pytest.raises(f.PanelFeatureObservationError, match="scope"):
+        f.PanelAxisObservation(
+            context,
+            local_axis,
+            _d("b"),
+            _d("d"),
+            (),
+            f.EligibleDomainGap.unverified_empty(context, local_axis),
+        )
+
+    with pytest.raises(f.PanelFeatureObservationError, match="observer contract"):
+        f.PanelAxisObservation(
+            context,
+            axis,
+            _d("f"),
+            _d("d"),
+            observation.binding_observations,
+        )
+
+
+def test_owner_free_exact_count_can_match_but_cannot_exclude_a_sibling() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("b"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    two = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    three = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.THREE),
+    )
+    axis = f.FeatureAxis.for_spec(two)
+    binding = f.eligible_axis_bindings(axis, context)[0]
+    observation = f.PanelAxisObservation(
+        context,
+        axis,
         _d("b"),
         _d("d"),
-        (),
-        f.EligibleDomainGap.unverified_empty(inventory, local_axis),
+        (
+            _row(
+                axis,
+                binding,
+                observed=(two,),
+                point=o.QuantizedPoint(8, 8),
+            ),
+        ),
     )
+    assert observation.evaluate(two) is f.EngineeringFeatureDisposition.MATCH
     assert (
-        local.evaluate(local_bird)
+        observation.evaluate(three)
         is f.EngineeringFeatureDisposition.INDETERMINATE
     )
 
@@ -313,10 +360,28 @@ def test_evidence_must_be_inside_derived_binding_region() -> None:
         f.PanelAxisObservation(inventory, axis, _d("a"), _d("b"), tuple(rows))
 
 
+def test_each_asserted_variant_requires_its_own_aligned_evidence_point() -> None:
+    inventory = _inventory()
+    bird = _gestalt(o.GestaltKind.BIRD_LIKE)
+    tool = _gestalt(o.GestaltKind.TOOL_LIKE)
+    axis = f.FeatureAxis.for_spec(bird)
+    binding = f.eligible_axis_bindings(axis, inventory)[0]
+    with pytest.raises(f.PanelFeatureObservationError, match="each observed variant"):
+        f.BindingFeatureObservation(
+            axis.axis_digest,
+            binding,
+            f.BindingResolution.COMPLETE,
+            tuple(sorted((bird, tool), key=lambda item: item.spec_digest)),
+            (o.QuantizedPoint(1, 1),),
+            None,
+            _d("d"),
+        )
+
+
 def test_observation_set_missing_axis_is_indeterminate() -> None:
     observation, bird, _ = _gestalt_axis_observation()
     observation_set = f.PanelFeatureObservationSet(
-        observation.inventory,
+        observation.panel_digest,
         observation.observer_contract_digest,
         observation.measurement_protocol_digest,
         (observation,),
@@ -329,10 +394,80 @@ def test_observation_set_missing_axis_is_indeterminate() -> None:
     )
 
 
+def test_observation_set_can_mix_panel_context_and_owner_inventory() -> None:
+    local, local_bird, _ = _gestalt_axis_observation()
+    context = f.panel_only_observation_inventory(
+        panel_digest=local.panel_digest,
+        observer_contract_digest=local.observer_contract_digest,
+        panel_context_receipt_digest=_d("c"),
+    )
+    panel_bird = o.PanelFeatureSpec(
+        o.FeatureFamily.GESTALT_RESEMBLANCE,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.GestaltResemblanceParameters(o.GestaltKind.BIRD_LIKE),
+    )
+    axis = f.FeatureAxis.for_spec(panel_bird)
+    binding = f.eligible_axis_bindings(axis, context)[0]
+    panel = f.PanelAxisObservation(
+        context,
+        axis,
+        local.observer_contract_digest,
+        local.measurement_protocol_digest,
+        (
+            _row(
+                axis,
+                binding,
+                observed=(panel_bird,),
+                point=o.QuantizedPoint(8, 8),
+            ),
+        ),
+    )
+    observations = f.PanelFeatureObservationSet(
+        local.panel_digest,
+        local.observer_contract_digest,
+        local.measurement_protocol_digest,
+        tuple(sorted((local, panel), key=lambda item: item.axis.axis_digest)),
+    )
+    assert observations.evaluate(local_bird) is f.EngineeringFeatureDisposition.MATCH
+    assert observations.evaluate(panel_bird) is f.EngineeringFeatureDisposition.MATCH
+
+
+def test_observation_set_rejects_conflicting_owner_graphs_for_one_panel() -> None:
+    local, _, _ = _gestalt_axis_observation()
+    three = _inventory(three_figures=True)
+    count_three = o.PanelFeatureSpec(
+        o.FeatureFamily.COMPONENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ComponentCountParameters(o.ClosedCount.THREE),
+    )
+    count_observation = f.derive_inventory_count_observation(
+        three,
+        f.FeatureAxis.for_spec(count_three),
+        observer_contract_digest=local.observer_contract_digest,
+        measurement_protocol_digest=local.measurement_protocol_digest,
+    )
+    assert local.panel_digest == count_observation.panel_digest
+    assert local.inventory.inventory_digest != three.inventory_digest
+    with pytest.raises(f.PanelFeatureObservationError, match="scope-specific context"):
+        f.PanelFeatureObservationSet(
+            local.panel_digest,
+            local.observer_contract_digest,
+            local.measurement_protocol_digest,
+            tuple(
+                sorted(
+                    (local, count_observation),
+                    key=lambda item: item.axis.axis_digest,
+                )
+            ),
+        )
+
+
 def test_roundtrip_is_canonical_and_engineering_boundary_is_explicit() -> None:
     observation, bird, _ = _gestalt_axis_observation()
     observation_set = f.PanelFeatureObservationSet(
-        observation.inventory,
+        observation.panel_digest,
         observation.observer_contract_digest,
         observation.measurement_protocol_digest,
         (observation,),
@@ -479,3 +614,145 @@ def test_count_derivation_uses_coherent_roots_and_descendant_segments() -> None:
         segment_observation.evaluate(one_segment)
         is f.EngineeringFeatureDisposition.MATCH
     )
+
+    whole_panel_segment = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.ONE),
+    )
+    whole_panel_observation = f.derive_inventory_count_observation(
+        nested,
+        f.FeatureAxis.for_spec(whole_panel_segment),
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+    )
+    assert (
+        whole_panel_observation.evaluate(whole_panel_segment)
+        is f.EngineeringFeatureDisposition.MATCH
+    )
+
+
+def test_zero_count_is_an_explicit_outside_catalog_gap() -> None:
+    inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (),
+    )
+    one = o.PanelFeatureSpec(
+        o.FeatureFamily.COMPONENT_COUNT,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ComponentCountParameters(o.ClosedCount.ONE),
+    )
+    observation = f.derive_inventory_count_observation(
+        inventory,
+        f.FeatureAxis.for_spec(one),
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+    )
+    assert observation.binding_observations[0].issue is f.ObservationIssue.OUTSIDE_CLOSED_CATALOG
+    assert (
+        observation.evaluate(one)
+        is f.EngineeringFeatureDisposition.INDETERMINATE
+    )
+
+
+def test_count_derivation_anchor_stays_inside_binding_when_child_box_is_noisy() -> None:
+    figure = o.PanelLocalOwner(
+        o.OwnerId("owner_0001"), o.OwnerKind.FIGURE, _region(0, 0, 4, 4)
+    )
+    segment = o.PanelLocalOwner(
+        o.OwnerId("owner_0002"),
+        o.OwnerKind.SEGMENT,
+        _region(10, 10, 12, 12),
+        (figure.owner_id,),
+    )
+    inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (figure, segment),
+    )
+    one = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.ONE),
+    )
+    observation = f.derive_inventory_count_observation(
+        inventory,
+        f.FeatureAxis.for_spec(one),
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+    )
+    assert observation.evaluate(one) is f.EngineeringFeatureDisposition.MATCH
+    assert observation.binding_observations[0].evidence_points == (
+        figure.region.minimum,
+    )
+
+
+def test_complete_model_count_cannot_contradict_authoritative_owner_graph() -> None:
+    figure = o.PanelLocalOwner(
+        o.OwnerId("owner_0001"), o.OwnerKind.FIGURE, _region(0, 0, 15, 15)
+    )
+    segments = tuple(
+        o.PanelLocalOwner(
+            o.OwnerId(f"owner_{index + 2:04d}"),
+            o.OwnerKind.SEGMENT,
+            _region(index, index, index + 1, index + 1),
+            (figure.owner_id,),
+        )
+        for index in range(3)
+    )
+    inventory = o.OwnerInventory(
+        _d("a"),
+        _d("b"),
+        o.EnumerationResolution.GRID16_FULL_PANEL,
+        _d("c"),
+        True,
+        (figure, *segments),
+    )
+    two = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.TWO),
+    )
+    axis = f.FeatureAxis.for_spec(two)
+    binding = f.eligible_axis_bindings(axis, inventory)[0]
+    with pytest.raises(f.PanelFeatureObservationError, match="authoritative owner graph"):
+        f.PanelAxisObservation(
+            inventory,
+            axis,
+            _d("d"),
+            _d("e"),
+            (
+                _row(
+                    axis,
+                    binding,
+                    observed=(two,),
+                    point=figure.region.minimum,
+                ),
+            ),
+        )
+
+    three = o.PanelFeatureSpec(
+        o.FeatureFamily.EXACT_SEGMENT_COUNT,
+        o.SubjectScope.ONE_COHERENT_FIGURE,
+        o.ReferenceFrame.NONE,
+        o.ExactSegmentCountParameters(o.ClosedCount.THREE),
+    )
+    derived = f.derive_inventory_count_observation(
+        inventory,
+        axis,
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+    )
+    assert derived.evaluate(three) is f.EngineeringFeatureDisposition.MATCH
+    assert derived.evaluate(two) is f.EngineeringFeatureDisposition.NONMATCH
