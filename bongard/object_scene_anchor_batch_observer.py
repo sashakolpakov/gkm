@@ -4,8 +4,10 @@ The committed single-catalog observer defines the semantic cell: one exact
 resolved binding crossed with one affirmative global witness, with P/A/I model
 states, E for observer failures, and a same-key two-pass merge.  This module
 changes only the transport packing.  Preparations sharing an exact object crop
-and anchor atlas reuse those two images, and at most sixteen such neutral views
-are sent in one no-tools call.
+and anchor atlas reuse those two images.  A deterministic greedy partition
+respects the sixteen-view, thirty-two-image, and fixed-cell caps; if one view's
+catalogs cross a cell boundary, its exact two images are presented again in the
+following batch while every indivisible preparation remains intact.
 
 No comparison role, predicate, polarity, or downstream Boolean expression is
 visible at the model boundary.  Every batch is one exhaustive
@@ -30,6 +32,7 @@ from bongard.canonical import canonical_digest, canonical_json
 from bongard.evidence import Disposition
 from bongard.object_scene_anchor_observer import (
     ObjectSceneAnchorObserverCell,
+    OBJECT_SCENE_ANCHOR_OBSERVER_MAX_CELLS,
     ObjectSceneAnchorObserverPreparation,
     ObjectSceneAnchorObserverVocabulary,
     ObjectSceneAnchorObserverVocabularyEntry,
@@ -67,10 +70,10 @@ OBJECT_SCENE_ANCHOR_BATCH_SUBJECT_SCHEMA = (
     "gkm.object-scene-anchor-batch-observer-subject.v1"
 )
 OBJECT_SCENE_ANCHOR_BATCH_PLAN_ITEM_SCHEMA = (
-    "gkm.object-scene-anchor-batch-observer-plan-item.v1"
+    "gkm.object-scene-anchor-batch-observer-plan-item.v2"
 )
 OBJECT_SCENE_ANCHOR_BATCH_PLAN_SCHEMA = (
-    "gkm.object-scene-anchor-batch-observer-plan.v1"
+    "gkm.object-scene-anchor-batch-observer-plan.v2"
 )
 OBJECT_SCENE_ANCHOR_BATCH_PASS_SCHEMA = (
     "gkm.object-scene-anchor-batch-observer-pass.v1"
@@ -82,10 +85,12 @@ OBJECT_SCENE_ANCHOR_BATCH_ARTIFACT_SCHEMA = (
     "gkm.object-scene-anchor-batch-observer-artifact.v1"
 )
 OBJECT_SCENE_ANCHOR_BATCH_PROTOCOL_ID = (
-    "bongard.object-scene-anchor-batch-observer/role-blind-two-pass-v1"
+    "bongard.object-scene-anchor-batch-observer/role-blind-cell-aware-two-pass-v2"
 )
 OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS = 16
 OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES = 32
+# One maximum legal preparation is 17 bindings x 32 global witnesses.
+OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS = OBJECT_SCENE_ANCHOR_OBSERVER_MAX_CELLS
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _ADDRESS = re.compile(r"sha256:[0-9a-f]{64}\Z")
@@ -112,6 +117,7 @@ _REASONS = {
         )
     ),
 }
+_PARTITION_POLICY = "view-catalog-digest-ascending-greedy-cell-aware-v2"
 
 
 class ObjectSceneAnchorBatchObserverError(ValueError):
@@ -122,6 +128,24 @@ class ObjectSceneAnchorBatchObserverPayloadError(
     ObjectSceneAnchorBatchObserverError
 ):
     """A receipted batch payload violates the exhaustive finite grammar."""
+
+
+class ObjectSceneAnchorBatchCapacityGap(ObjectSceneAnchorBatchObserverError):
+    """One indivisible observer preparation cannot fit the fixed cell cap."""
+
+    def __init__(
+        self,
+        preparation_digest: str,
+        cell_count: int,
+        maximum_cell_count: int,
+    ) -> None:
+        self.preparation_digest = preparation_digest
+        self.cell_count = cell_count
+        self.maximum_cell_count = maximum_cell_count
+        super().__init__(
+            "one observer preparation exceeds the batch cell capacity; "
+            "nothing was split, dropped, or pruned"
+        )
 
 
 def _authority_data() -> dict[str, object]:
@@ -463,7 +487,10 @@ def _batch_plan_content(value: "ObjectSceneAnchorBatchPlanItem") -> dict[str, ob
         "image_count": value.image_count,
         "catalog_count": value.catalog_count,
         "cell_count": value.cell_count,
-        "partition_policy": "view-digest-ascending-contiguous-chunks-of-16",
+        "maximum_cell_count": OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS,
+        "partition_policy": _PARTITION_POLICY,
+        "preparation_split_allowed": False,
+        "silent_pruning_allowed": False,
         **_authority_data(),
     }
 
@@ -510,6 +537,7 @@ class ObjectSceneAnchorBatchPlanItem:
             or self.image_count > OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES
             or self.catalog_count != expected_catalogs
             or self.cell_count != expected_cells
+            or not 1 <= self.cell_count <= OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS
         ):
             raise ObjectSceneAnchorBatchObserverError("batch counts differ")
         _digest(self.batch_digest, "batch digest")
@@ -560,7 +588,10 @@ class ObjectSceneAnchorBatchPlanItem:
                 "image_count",
                 "catalog_count",
                 "cell_count",
+                "maximum_cell_count",
                 "partition_policy",
+                "preparation_split_allowed",
+                "silent_pruning_allowed",
                 *_authority_data(),
                 "batch_digest",
             },
@@ -568,7 +599,10 @@ class ObjectSceneAnchorBatchPlanItem:
         )
         if (
             raw["schema"] != OBJECT_SCENE_ANCHOR_BATCH_PLAN_ITEM_SCHEMA
-            or raw["partition_policy"] != "view-digest-ascending-contiguous-chunks-of-16"
+            or raw["maximum_cell_count"] != OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS
+            or raw["partition_policy"] != _PARTITION_POLICY
+            or raw["preparation_split_allowed"] is not False
+            or raw["silent_pruning_allowed"] is not False
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["subjects"], list)
         ):
@@ -595,10 +629,20 @@ def _plan_content(value: "ObjectSceneAnchorBatchObserverPlan") -> dict[str, obje
         "vocabulary_digest": value.vocabulary_digest,
         "batches": [item.to_data() for item in value.batches],
         "view_count": value.view_count,
+        "view_presentation_count": value.view_presentation_count,
+        "repeated_view_presentation_count": (
+            value.view_presentation_count - value.view_count
+        ),
         "catalog_count": value.catalog_count,
+        "cell_count": value.cell_count,
         "physical_call_count": value.physical_call_count,
         "maximum_views_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS,
         "maximum_named_images_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES,
+        "maximum_cells_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS,
+        "partition_policy": _PARTITION_POLICY,
+        "repeated_view_presentations_allowed": True,
+        "preparation_split_allowed": False,
+        "silent_pruning_allowed": False,
         **_authority_data(),
     }
 
@@ -609,7 +653,9 @@ class ObjectSceneAnchorBatchObserverPlan:
     vocabulary_digest: str
     batches: tuple[ObjectSceneAnchorBatchPlanItem, ...]
     view_count: int
+    view_presentation_count: int
     catalog_count: int
+    cell_count: int
     physical_call_count: int
     plan_digest: str
 
@@ -619,6 +665,14 @@ class ObjectSceneAnchorBatchObserverPlan:
         _digest(self.vocabulary_digest, "batch vocabulary digest")
         if self.vocabulary.vocabulary_digest != self.vocabulary_digest:
             raise ObjectSceneAnchorBatchObserverError("batch vocabulary differs")
+        for label, item in (
+            ("plan view count", self.view_count),
+            ("plan view presentation count", self.view_presentation_count),
+            ("plan catalog count", self.catalog_count),
+            ("plan cell count", self.cell_count),
+            ("plan physical call count", self.physical_call_count),
+        ):
+            _integer(item, label, minimum=1)
         if (
             type(self.batches) is not tuple
             or not self.batches
@@ -631,26 +685,51 @@ class ObjectSceneAnchorBatchObserverPlan:
         all_catalogs = tuple(
             catalog for subject in all_subjects for catalog in subject.catalogs
         )
+        view_digests = tuple(item.view_digest for item in all_subjects)
+        catalog_keys = tuple(
+            (subject.view_digest, catalog.catalog_digest)
+            for batch in self.batches
+            for subject in batch.subjects
+            for catalog in subject.catalogs
+        )
         if (
-            tuple(item.view_digest for item in all_subjects)
-            != tuple(sorted(item.view_digest for item in all_subjects))
+            view_digests != tuple(sorted(view_digests))
+            or catalog_keys != tuple(sorted(catalog_keys))
             or any(
                 catalog.preparation.vocabulary != self.vocabulary
                 for catalog in all_catalogs
             )
             or len({item.preparation_digest for item in all_catalogs})
             != len(all_catalogs)
-            or self.view_count != len(all_subjects)
+            or self.view_count != len(set(view_digests))
+            or self.view_presentation_count != len(all_subjects)
+            or self.view_presentation_count < self.view_count
             or self.catalog_count != len(all_catalogs)
+            or self.cell_count != sum(item.cell_count for item in self.batches)
+            or self.cell_count
+            != sum(item.preparation.cell_count for item in all_catalogs)
             or self.physical_call_count != 2 * len(self.batches)
         ):
             raise ObjectSceneAnchorBatchObserverError(
                 "batch plan is not a complete deterministic partition"
             )
-        for batch_index, batch in enumerate(self.batches[:-1]):
-            if batch.view_count != OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS:
+        for batch_index, (batch, following) in enumerate(
+            zip(self.batches, self.batches[1:], strict=False)
+        ):
+            next_subject = following.subjects[0]
+            next_preparation = next_subject.catalogs[0].preparation
+            adds_view = next_subject.view_digest != batch.subjects[-1].view_digest
+            view_limit_blocks = (
+                adds_view
+                and batch.view_count == OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS
+            )
+            cell_limit_blocks = (
+                batch.cell_count + next_preparation.cell_count
+                > OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS
+            )
+            if not (view_limit_blocks or cell_limit_blocks):
                 raise ObjectSceneAnchorBatchObserverError(
-                    f"nonterminal batch {batch_index} is not full"
+                    f"nonterminal batch {batch_index} is not a maximal greedy prefix"
                 )
         _digest(self.plan_digest, "batch plan digest")
         if self.plan_digest != canonical_digest(_plan_content(self)):
@@ -678,10 +757,18 @@ class ObjectSceneAnchorBatchObserverPlan:
                 "vocabulary_digest",
                 "batches",
                 "view_count",
+                "view_presentation_count",
+                "repeated_view_presentation_count",
                 "catalog_count",
+                "cell_count",
                 "physical_call_count",
                 "maximum_views_per_batch",
                 "maximum_named_images_per_batch",
+                "maximum_cells_per_batch",
+                "partition_policy",
+                "repeated_view_presentations_allowed",
+                "preparation_split_allowed",
+                "silent_pruning_allowed",
                 *_authority_data(),
                 "plan_digest",
             },
@@ -691,6 +778,17 @@ class ObjectSceneAnchorBatchObserverPlan:
             raw["schema"] != OBJECT_SCENE_ANCHOR_BATCH_PLAN_SCHEMA
             or raw["maximum_views_per_batch"] != OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS
             or raw["maximum_named_images_per_batch"] != OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES
+            or raw["maximum_cells_per_batch"] != OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS
+            or raw["partition_policy"] != _PARTITION_POLICY
+            or raw["repeated_view_presentations_allowed"] is not True
+            or raw["preparation_split_allowed"] is not False
+            or raw["silent_pruning_allowed"] is not False
+            or type(raw["view_count"]) is not int
+            or type(raw["view_presentation_count"]) is not int
+            or raw["repeated_view_presentation_count"]
+            != raw["view_presentation_count"] - raw["view_count"]
+            or type(raw["catalog_count"]) is not int
+            or type(raw["cell_count"]) is not int
             or any(raw[key] != item for key, item in _authority_data().items())
             or not isinstance(raw["vocabulary"], Mapping)
             or not isinstance(raw["batches"], list)
@@ -701,7 +799,9 @@ class ObjectSceneAnchorBatchObserverPlan:
             raw["vocabulary_digest"],
             tuple(ObjectSceneAnchorBatchPlanItem.from_data(item) for item in raw["batches"]),
             raw["view_count"],
+            raw["view_presentation_count"],
             raw["catalog_count"],
+            raw["cell_count"],
             raw["physical_call_count"],
             raw["plan_digest"],
         )
@@ -739,29 +839,68 @@ def freeze_object_scene_anchor_batch_observer_plan(
             )
         bytes_by_view[view] = current
         by_view.setdefault(view, []).append(item.preparation)
-    ordered_groups = tuple(
-        tuple(sorted(by_view[key], key=lambda item: item.catalog_digest))
-        for key in sorted(by_view)
+    ordered_preparations = tuple(
+        preparation
+        for view_digest in sorted(by_view)
+        for preparation in sorted(
+            by_view[view_digest], key=lambda item: item.catalog_digest
+        )
     )
+    for preparation in ordered_preparations:
+        if preparation.cell_count > OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS:
+            raise ObjectSceneAnchorBatchCapacityGap(
+                preparation.preparation_digest,
+                preparation.cell_count,
+                OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS,
+            )
+    packed: list[tuple[tuple[ObjectSceneAnchorObserverPreparation, ...], ...]] = []
+    current: list[list[ObjectSceneAnchorObserverPreparation]] = []
+    current_cells = 0
+    for preparation in ordered_preparations:
+        view_digest = _view_digest(preparation)
+        same_view = bool(current) and _view_digest(current[-1][0]) == view_digest
+        cell_limit_reached = (
+            bool(current)
+            and current_cells + preparation.cell_count
+            > OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS
+        )
+        view_limit_reached = (
+            bool(current)
+            and not same_view
+            and len(current) == OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS
+        )
+        if cell_limit_reached or view_limit_reached:
+            packed.append(tuple(tuple(group) for group in current))
+            current = []
+            current_cells = 0
+            same_view = False
+        if same_view:
+            current[-1].append(preparation)
+        else:
+            current.append([preparation])
+        current_cells += preparation.cell_count
+    if current:
+        packed.append(tuple(tuple(group) for group in current))
     batches = tuple(
         ObjectSceneAnchorBatchPlanItem.create(
-            index,
-            ordered_groups[
-                index * OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS :
-                (index + 1) * OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS
-            ],
+            index, grouped_preparations,
         )
-        for index in range(
-            (len(ordered_groups) + OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS - 1)
-            // OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS
-        )
+        for index, grouped_preparations in enumerate(packed)
+    )
+    view_presentation_count = sum(
+        item.view_count for item in batches
+    )
+    cell_count = sum(
+        preparation.cell_count for preparation in ordered_preparations
     )
     values = {
         "vocabulary": vocabulary,
         "vocabulary_digest": vocabulary.vocabulary_digest,
         "batches": batches,
-        "view_count": len(ordered_groups),
+        "view_count": len(by_view),
+        "view_presentation_count": view_presentation_count,
         "catalog_count": len(frozen),
+        "cell_count": cell_count,
         "physical_call_count": 2 * len(batches),
     }
     provisional = object.__new__(ObjectSceneAnchorBatchObserverPlan)
@@ -881,6 +1020,8 @@ def object_scene_anchor_batch_observer_prompt(
         "must never become A. Use exactly one finite reason code allowed for "
         "the state. Return every cell exactly once with no omissions, additions, "
         "or reordering. All identifiers are neutral.\n\nSubjects and images:\n"
+        f"This batch contains exactly {batch.cell_count} cells; the fixed "
+        f"batch limit is {OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS}.\n\n"
         f"{image_rows}\n\nDeclared catalogs and bindings:\n"
         f"{'\n'.join(catalog_rows)}\n\nAffirmative visible statements:\n"
         f"{witness_rows}"
@@ -963,6 +1104,11 @@ def object_scene_anchor_batch_observer_output_schema(
         "properties": {
             "cells": {
                 "type": "array",
+                "description": (
+                    f"Exactly {batch.cell_count} cells in the listed order; "
+                    f"the fixed batch limit is "
+                    f"{OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS}."
+                ),
                 "items": {
                     "type": "object",
                     "properties": cell_properties,
@@ -983,7 +1129,7 @@ def object_scene_anchor_batch_observer_output_schema(
 def object_scene_anchor_batch_observer_protocol_digest() -> str:
     return canonical_digest(
         {
-            "schema": "gkm.object-scene-anchor-batch-observer-protocol.v1",
+            "schema": "gkm.object-scene-anchor-batch-observer-protocol.v2",
             "protocol_id": OBJECT_SCENE_ANCHOR_BATCH_PROTOCOL_ID,
             "source_digest": object_scene_anchor_batch_observer_source_digest(),
             "transport_source_digest": _scene_runtime.prototype_scene_transport_source_digest(),
@@ -991,6 +1137,11 @@ def object_scene_anchor_batch_observer_protocol_digest() -> str:
             "input_digest_schema": NAMED_IMAGE_INPUT_DIGEST_SCHEMA,
             "maximum_views_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS,
             "maximum_images_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES,
+            "maximum_cells_per_batch": OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS,
+            "partition_policy": _PARTITION_POLICY,
+            "repeated_view_presentations_allowed": True,
+            "preparation_split_allowed": False,
+            "silent_pruning_allowed": False,
             "pass_count_per_batch": 2,
             "pass_merge": "P+P=P;A+A=A;any-E=E;all-other-pairs=I",
             "failure_semantics": "failed-or-uncertain-vision-never-A",
@@ -2070,6 +2221,7 @@ def object_scene_anchor_object_matrices_from_batch_artifact(
 
 __all__ = (
     "OBJECT_SCENE_ANCHOR_BATCH_ARTIFACT_SCHEMA",
+    "OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS",
     "OBJECT_SCENE_ANCHOR_BATCH_MAX_IMAGES",
     "OBJECT_SCENE_ANCHOR_BATCH_MAX_VIEWS",
     "OBJECT_SCENE_ANCHOR_BATCH_PASS_SCHEMA",
@@ -2077,6 +2229,7 @@ __all__ = (
     "OBJECT_SCENE_ANCHOR_BATCH_PROTOCOL_ID",
     "OBJECT_SCENE_ANCHOR_BATCH_RESULT_SCHEMA",
     "ObjectSceneAnchorBatchCatalogPlan",
+    "ObjectSceneAnchorBatchCapacityGap",
     "ObjectSceneAnchorBatchObserverArtifact",
     "ObjectSceneAnchorBatchObserverError",
     "ObjectSceneAnchorBatchObserverInput",

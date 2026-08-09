@@ -11,11 +11,14 @@ import numpy as np
 from PIL import Image
 import pytest
 
+from bongard import object_scene_anchor_batch_observer as batch_runtime
 from bongard import transport as transport_runtime
 from bongard.canonical import canonical_digest
 from bongard.evidence import Disposition
 from bongard.object_scene_anchor_atlas import render_object_scene_anchor_atlas
 from bongard.object_scene_anchor_batch_observer import (
+    OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS,
+    ObjectSceneAnchorBatchCapacityGap,
     ObjectSceneAnchorBatchObserverArtifact,
     ObjectSceneAnchorBatchObserverError,
     ObjectSceneAnchorBatchObserverInput,
@@ -23,6 +26,7 @@ from bongard.object_scene_anchor_batch_observer import (
     _expected_records,
     _payload_cells,
     freeze_object_scene_anchor_batch_observer_plan,
+    object_scene_anchor_batch_observer_output_schema,
     object_scene_anchor_batch_observer_prompt,
     observe_object_scene_anchor_batches_twice,
     verify_object_scene_anchor_batch_observer_artifact,
@@ -33,6 +37,7 @@ from bongard.object_scene_anchor_bindings import (
 )
 from bongard.object_scene_anchor_catalog import _make_entry
 from bongard.object_scene_anchor_observer import (
+    OBJECT_SCENE_ANCHOR_OBSERVER_MAX_CELLS,
     ObjectSceneAnchorObserverVocabulary,
     ObjectSceneAnchorObserverVocabularyEntry,
     _vocabulary_content,
@@ -243,7 +248,9 @@ def campaign():
 def test_24_views_partition_into_two_batches_and_four_calls(campaign) -> None:
     _inputs, plan, artifact, calls, _observation_plan = campaign
     assert plan.view_count == 24
+    assert plan.view_presentation_count == 24
     assert plan.catalog_count == 25
+    assert plan.cell_count == sum(item.cell_count for item in plan.batches) == 56
     assert [item.view_count for item in plan.batches] == [16, 8]
     assert [item.image_count for item in plan.batches] == [32, 16]
     assert sorted(
@@ -257,6 +264,16 @@ def test_24_views_partition_into_two_batches_and_four_calls(campaign) -> None:
 def test_prompt_is_role_blind_and_rectangle_is_exact(campaign) -> None:
     _inputs, plan, _artifact, _calls, _observation_plan = campaign
     prompt = object_scene_anchor_batch_observer_prompt(plan.batches[0], plan.vocabulary)
+    schema = object_scene_anchor_batch_observer_output_schema(
+        plan.batches[0], plan.vocabulary
+    )
+    assert f"exactly {plan.batches[0].cell_count} cells" in prompt.lower()
+    assert str(OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS) in prompt
+    assert (
+        schema["properties"]["cells"]["description"]
+        == f"Exactly {plan.batches[0].cell_count} cells in the listed order; "
+        f"the fixed batch limit is {OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS}."
+    )
     for forbidden in (
         "target", "foil", "support", "contrast", "candidate", "formula", "query", "label"
     ):
@@ -325,3 +342,101 @@ def test_strict_roundtrip_cold_replay_and_resealed_tamper_rejection(campaign) ->
     )
     with pytest.raises(ObjectSceneAnchorBatchObserverError, match="subjects"):
         ObjectSceneAnchorBatchObserverPlan.from_data(reordered)
+
+
+def test_cell_cap_covers_one_maximal_indivisible_preparation() -> None:
+    assert OBJECT_SCENE_ANCHOR_OBSERVER_MAX_CELLS == 17 * 32 == 544
+    assert OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS >= OBJECT_SCENE_ANCHOR_OBSERVER_MAX_CELLS
+
+
+def test_exact_cell_boundary_is_order_independent(monkeypatch) -> None:
+    monkeypatch.setattr(batch_runtime, "OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS", 10)
+    vocabulary = _vocabulary()
+    inputs = (
+        _input(101, vocabulary),
+        _input(101, vocabulary, part=True),
+    )
+    forward = freeze_object_scene_anchor_batch_observer_plan(inputs)
+    reverse = freeze_object_scene_anchor_batch_observer_plan(tuple(reversed(inputs)))
+
+    assert forward == reverse
+    assert len(forward.batches) == 1
+    assert forward.view_count == forward.view_presentation_count == 1
+    assert forward.catalog_count == 2
+    assert forward.cell_count == forward.batches[0].cell_count == 10
+    assert len(forward.preparations) == 2
+
+
+def test_same_view_splits_without_pruning_and_replays_exact_images(monkeypatch) -> None:
+    monkeypatch.setattr(batch_runtime, "OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS", 9)
+    vocabulary = _vocabulary()
+    inputs = (
+        _input(102, vocabulary),
+        _input(102, vocabulary, part=True),
+    )
+    plan = freeze_object_scene_anchor_batch_observer_plan(inputs)
+
+    assert plan == freeze_object_scene_anchor_batch_observer_plan(
+        tuple(reversed(inputs))
+    )
+    assert len(plan.batches) == 2
+    assert plan.view_count == 1
+    assert plan.view_presentation_count == 2
+    assert plan.to_data()["repeated_view_presentation_count"] == 1
+    assert [item.view_count for item in plan.batches] == [1, 1]
+    assert [item.image_count for item in plan.batches] == [2, 2]
+    assert sorted(item.cell_count for item in plan.batches) == [2, 8]
+    assert len(plan.preparations) == plan.catalog_count == 2
+    assert {item.preparation_digest for item in plan.preparations} == {
+        item.preparation.preparation_digest for item in inputs
+    }
+    assert (
+        plan.batches[0].subjects[0].view_digest
+        == plan.batches[1].subjects[0].view_digest
+    )
+
+    fake, calls = _transport(plan, ["P", "P", "A", "A"])
+    model_catalog, attestation = canonical_no_tools_runtime(LAUNCHER_DIGEST)
+    observation_plan = "sha256:" + canonical_digest({"split_same_view": 1})
+    artifact = observe_object_scene_anchor_batches_twice(
+        inputs,
+        plan=plan,
+        expected_plan_digest=plan.plan_digest,
+        observation_plan_digest=observation_plan,
+        model=MODEL,
+        reasoning_effort=EFFORT,
+        expected_launcher_digest=LAUNCHER_DIGEST,
+        model_catalog_snapshot=model_catalog,
+        no_tools_attestation=attestation,
+        transport=fake,
+    )
+    assert len(calls) == 4
+    assert [names for _paths, names in calls] == [
+        ("subject_00_object.png", "subject_00_anchors.png")
+    ] * 4
+    assert (
+        artifact.results[0].passes[0].presentation
+        == artifact.results[1].passes[0].presentation
+    )
+    assert verify_object_scene_anchor_batch_observer_artifact(
+        artifact,
+        inputs,
+        expected_artifact_digest=artifact.artifact_digest,
+        expected_plan_digest=plan.plan_digest,
+        expected_observation_plan_digest=observation_plan,
+    ) == artifact
+
+
+def test_oversized_indivisible_preparation_is_a_typed_gap_before_calls(
+    monkeypatch,
+) -> None:
+    monkeypatch.setattr(batch_runtime, "OBJECT_SCENE_ANCHOR_BATCH_MAX_CELLS", 7)
+    vocabulary = _vocabulary()
+    oversized = _input(103, vocabulary, part=True)
+
+    with pytest.raises(ObjectSceneAnchorBatchCapacityGap) as captured:
+        freeze_object_scene_anchor_batch_observer_plan((oversized,))
+
+    assert captured.value.preparation_digest == oversized.preparation.preparation_digest
+    assert captured.value.cell_count == oversized.preparation.cell_count == 8
+    assert captured.value.maximum_cell_count == 7
