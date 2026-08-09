@@ -32,16 +32,20 @@ from bongard.object_bongard_turn_journal import (
     ObjectBongardTurnCallFailed,
     ObjectBongardTurnRuntime,
 )
-from bongard.panel_feature_exposed_support_smoke_command import (
-    DEFAULT_LAUNCHER_SHA256,
-    DEFAULT_MODEL,
-    DEFAULT_REASONING_EFFORT,
-    _read_record,
-    _record,
-    _runtime,
-    _write_once_or_verify,
+from bongard.panel_probe_custody import (
+    DEFAULT_PROBE_LAUNCHER_SHA256 as DEFAULT_LAUNCHER_SHA256,
+    DEFAULT_PROBE_MODEL as DEFAULT_MODEL,
+    DEFAULT_PROBE_REASONING_EFFORT as DEFAULT_REASONING_EFFORT,
+    load_or_create_probe_runtime as _runtime,
+    make_probe_record as _record,
+    panel_probe_custody_source_digest,
+    read_probe_record as _read_record,
+    write_once_or_verify_probe_record as _write_once_or_verify,
 )
-from bongard.panel_positive_prose_exposed_probe_command import _call
+from bongard.panel_probe_transport import (
+    call_panel_probe as _call,
+    panel_probe_transport_source_digest,
+)
 from bongard.transport import CodexStructuredResult, run_codex_named_images_structured
 
 
@@ -245,6 +249,8 @@ def _authorization_precommit(
         {
             "schema": AUTHORIZATION_SCHEMA,
             "command_source_digest": panel_action_count_phase_source_digest(),
+            "probe_custody_source_digest": panel_probe_custody_source_digest(),
+            "probe_transport_source_digest": panel_probe_transport_source_digest(),
             "plan_record_digest": plan["record_digest"],
             "phase": phase,
             "task_inputs": list(task_inputs),
