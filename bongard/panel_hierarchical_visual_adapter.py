@@ -109,25 +109,25 @@ from bongard.transport import (
 
 
 HIERARCHICAL_PANEL_REQUEST_SCHEMA = (
-    "gkm.bongard-hierarchical-panel-observation-request.v1"
+    "gkm.bongard-hierarchical-panel-observation-request.v2"
 )
 HIERARCHICAL_PANEL_AXIS_ALIAS_SCHEMA = (
     "gkm.bongard-hierarchical-panel-axis-alias.v1"
 )
 HIERARCHICAL_PANEL_MODEL_VIEW_SCHEMA = (
-    "gkm.bongard-hierarchical-panel-model-view.v1"
+    "gkm.bongard-hierarchical-panel-model-view.v2"
 )
 HIERARCHICAL_PANEL_CONTRACT_SCHEMA = (
-    "gkm.bongard-hierarchical-panel-visual-contract.v1"
+    "gkm.bongard-hierarchical-panel-visual-contract.v2"
 )
 HIERARCHICAL_PANEL_ARTIFACT_SCHEMA = (
-    "gkm.bongard-hierarchical-panel-codex-artifact.v1"
+    "gkm.bongard-hierarchical-panel-codex-artifact.v2"
 )
 HIERARCHICAL_PANEL_TRANSPORT_PROVENANCE_SCHEMA = (
     "gkm.bongard-hierarchical-panel-transport-provenance.v1"
 )
 HIERARCHICAL_PANEL_PROTOCOL_ID = (
-    "bongard.panel-hierarchical-visual-adapter/one-panel-nine-axes-v1"
+    "bongard.panel-hierarchical-visual-adapter/one-panel-nine-axes-v2"
 )
 
 EXPECTED_WHOLE_PANEL_AXIS_COUNT = 9
@@ -863,6 +863,46 @@ def _parse_macro_action_trace(value: object) -> MacroActionTrace:
         raise HierarchicalPanelVisualAdapterError(
             "complete macro trace must use issue none"
         )
+    # The strict transport schema cannot express array length bounds.  Project
+    # schema-valid but unrepresentable topology to a whole-trace typed gap;
+    # never let a hidden constructor capacity turn a valid model response into
+    # an unarchived parser exception, and never retain a partial trace.
+    point_counts: list[tuple[MacroActionPrimitive, int]] = []
+    for index, value in enumerate(raw["ordered_spans"]):
+        item = _fields(
+            value,
+            {"primitive", "ordered_points"},
+            f"macro span {index}",
+        )
+        if type(item["ordered_points"]) is not list:
+            raise HierarchicalPanelVisualAdapterError(
+                f"macro span {index} ordered points differ"
+            )
+        try:
+            primitive = MacroActionPrimitive(item["primitive"])
+        except (TypeError, ValueError) as exc:
+            raise HierarchicalPanelVisualAdapterError(
+                f"macro span {index} primitive differs"
+            ) from exc
+        point_counts.append((primitive, len(item["ordered_points"])))
+    if len(point_counts) > 12 or sum(count for _, count in point_counts) > 64:
+        return MacroActionTrace.gap(
+            TraceResolution.INDETERMINATE, GeometryTraceIssue.CAPACITY_LIMIT
+        )
+    if len(point_counts) < 2 or any(
+        (primitive is MacroActionPrimitive.LINE and count != 2)
+        or (primitive is MacroActionPrimitive.ARC and not 2 <= count <= 8)
+        for primitive, count in point_counts
+    ):
+        issue = (
+            GeometryTraceIssue.CAPACITY_LIMIT
+            if any(
+                primitive is MacroActionPrimitive.ARC and count > 8
+                for primitive, count in point_counts
+            )
+            else GeometryTraceIssue.AMBIGUOUS_PRIMITIVE
+        )
+        return MacroActionTrace.gap(TraceResolution.INDETERMINATE, issue)
     spans: list[MacroActionSpan] = []
     for index, value in enumerate(raw["ordered_spans"]):
         item = _fields(

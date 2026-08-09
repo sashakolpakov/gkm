@@ -10,7 +10,11 @@ from pathlib import Path
 import pytest
 
 from bongard.panel_feature_observation import BindingResolution
-from bongard.panel_hierarchical_action_geometry import GeometryDerivationStatus
+from bongard.panel_hierarchical_action_geometry import (
+    GeometryDerivationStatus,
+    GeometryTraceIssue,
+    TraceResolution,
+)
 from bongard.panel_hierarchical_visual_adapter import (
     EXPECTED_TYPED_AXIS_PAYLOAD_COUNT,
     EXPECTED_WHOLE_PANEL_AXIS_COUNT,
@@ -326,6 +330,41 @@ def test_any_arc_makes_convexity_indeterminate_but_line_count_is_derived() -> No
     straight = _axis(artifact, FeatureFamily.STRAIGHT_SEGMENT_COUNT)
     assert straight.binding_observations[0].resolution is BindingResolution.COMPLETE
     assert len(straight.binding_observations[0].straight_segment_evidence) == 3
+
+
+def test_schema_valid_oversized_closed_arc_becomes_whole_trace_capacity_gap() -> None:
+    panel = _png(90)
+    request = _request(panel)
+    closed_arc = {
+        "primitive": "arc",
+        "ordered_points": [
+            {"x": 4, "y": 4},
+            {"x": 6, "y": 4},
+            {"x": 7, "y": 6},
+            {"x": 6, "y": 8},
+            {"x": 4, "y": 9},
+            {"x": 2, "y": 8},
+            {"x": 1, "y": 6},
+            {"x": 2, "y": 5},
+            {"x": 4, "y": 4},
+        ],
+    }
+    calls: list[dict[str, object]] = []
+
+    artifact = _observe(panel, request, _payload(request, [closed_arc]), calls)
+
+    trace = artifact.geometry_replay.evidence.macro_action_trace
+    assert trace.resolution is TraceResolution.INDETERMINATE
+    assert trace.issue is GeometryTraceIssue.CAPACITY_LIMIT
+    assert trace.spans == ()
+    assert artifact.geometry_replay.convexity.status is (
+        GeometryDerivationStatus.INDETERMINATE
+    )
+    assert artifact.geometry_replay.straight_span_count.status is (
+        GeometryDerivationStatus.INDETERMINATE
+    )
+    assert len(artifact.observation_set.axis_observations) == 9
+    assert len(calls) == 1
 
 
 def test_ambiguous_trace_is_wholly_indeterminate_and_texture_split_is_rejected() -> None:
