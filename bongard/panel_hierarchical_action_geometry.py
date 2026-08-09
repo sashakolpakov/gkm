@@ -16,6 +16,11 @@ pixels, prose, arbitrary code, or Lean term is interpreted by this module.
 
 from __future__ import annotations
 
+from bongard.runtime_source_snapshot import capture_loaded_source, verify_loaded_source
+
+
+_LOADED_SOURCE_SHA256 = capture_loaded_source(__name__, __file__)
+
 from dataclasses import dataclass
 from enum import Enum
 import re
@@ -35,6 +40,12 @@ from bongard.panel_soft_ontology import (
 
 HIERARCHICAL_ACTION_GEOMETRY_PROTOCOL_ID = (
     "bongard.panel-hierarchical-action-geometry/ordered-macro-trace-python-v1"
+)
+HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_ID = (
+    "bongard.panel-hierarchical-action-geometry/closed-python-derivation-v1"
+)
+HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_SCHEMA = (
+    "gkm.bongard-hierarchical-action-geometry-algorithm.v1"
 )
 HIERARCHICAL_ACTION_GEOMETRY_EVIDENCE_SCHEMA = (
     "gkm.bongard-hierarchical-action-geometry-evidence.v1"
@@ -124,6 +135,57 @@ _ERROR_TRACE_ISSUES = frozenset(
         GeometryTraceIssue.INTEGRITY_FAILURE,
     }
 )
+
+
+def panel_hierarchical_action_geometry_source_digest() -> str:
+    """Return the exact authenticated source bytes loaded for this authority."""
+
+    return verify_loaded_source(__name__, expected_source_sha256=_LOADED_SOURCE_SHA256)
+
+
+def _algorithm_policy_data() -> dict[str, object]:
+    return {
+        "coordinate_lattice": "grid16-closed-integer-intervals",
+        "maximum_macro_spans": MAX_MACRO_SPANS,
+        "maximum_macro_control_points": MAX_MACRO_CONTROL_POINTS,
+        "maximum_micro_primitives": MAX_MICRO_PRIMITIVES,
+        "maximum_micro_points": MAX_MICRO_POINTS,
+        "macro_trace": (
+            "ordered-continuous-explicitly-closed-lexicographically-canonical-cycle"
+        ),
+        "straight_span_classification": (
+            "typed-line-or-cross-interval-certified-arc-with-indeterminate-remainder"
+        ),
+        "straight_span_count": "closed-lower-upper-bound-over-base-action-spans",
+        "convexity_carrier": "exact-line-only-simplified-macro-centerline-polygon",
+        "arc_convexity": "indeterminate-until-curve-sweep-interval-proof-exists",
+        "convexity_derivation": "canonical-simple-polygon-turn-signs-never-hull",
+        "micro_texture_affects_macro_geometry": False,
+        "failed_or_ambiguous_fit_is_negative": False,
+        "engineering_dispositions": [
+            item.value for item in EngineeringFeatureDisposition
+        ],
+        "python_is_canonical_authority": True,
+        "prose_executable": False,
+        "lean_present": False,
+        "lean_required": False,
+    }
+
+
+def panel_hierarchical_action_geometry_algorithm_digest() -> str:
+    """Bind the macro derivations to exact source and closed policy constants."""
+
+    return canonical_digest(
+        {
+            "schema": HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_SCHEMA,
+            "algorithm_id": HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_ID,
+            "protocol_id": HIERARCHICAL_ACTION_GEOMETRY_PROTOCOL_ID,
+            "implementation_source_digest": (
+                panel_hierarchical_action_geometry_source_digest()
+            ),
+            **_algorithm_policy_data(),
+        }
+    )
 
 
 def _fields(value: object, expected: set[str], label: str) -> Mapping[str, Any]:
@@ -773,6 +835,12 @@ def _evidence_content(value: "HierarchicalActionGeometryEvidence") -> dict[str, 
     return {
         "schema": HIERARCHICAL_ACTION_GEOMETRY_EVIDENCE_SCHEMA,
         "protocol_id": HIERARCHICAL_ACTION_GEOMETRY_PROTOCOL_ID,
+        "implementation_source_digest": (
+            panel_hierarchical_action_geometry_source_digest()
+        ),
+        "geometry_algorithm_digest": (
+            panel_hierarchical_action_geometry_algorithm_digest()
+        ),
         "provenance": value.provenance.to_data(),
         "macro_action_trace": value.macro_action_trace.to_data(),
         "micro_texture_evidence": value.micro_texture_evidence.to_data(),
@@ -836,6 +904,8 @@ class HierarchicalActionGeometryEvidence:
             {
                 "schema",
                 "protocol_id",
+                "implementation_source_digest",
+                "geometry_algorithm_digest",
                 "provenance",
                 "macro_action_trace",
                 "micro_texture_evidence",
@@ -854,6 +924,10 @@ class HierarchicalActionGeometryEvidence:
         if (
             raw["schema"] != HIERARCHICAL_ACTION_GEOMETRY_EVIDENCE_SCHEMA
             or raw["protocol_id"] != HIERARCHICAL_ACTION_GEOMETRY_PROTOCOL_ID
+            or raw["implementation_source_digest"]
+            != panel_hierarchical_action_geometry_source_digest()
+            or raw["geometry_algorithm_digest"]
+            != panel_hierarchical_action_geometry_algorithm_digest()
             or raw["macro_and_micro_layers_disjoint"] is not True
             or raw["raw_black_ink_convex_hull_used"] is not False
             or raw["prose_executable"] is not False
@@ -936,6 +1010,12 @@ class MacroStraightSpanCountDerivation:
     def content_data(self) -> dict[str, object]:
         return {
             "schema": "gkm.bongard-macro-straight-span-count.v1",
+            "implementation_source_digest": (
+                panel_hierarchical_action_geometry_source_digest()
+            ),
+            "geometry_algorithm_digest": (
+                panel_hierarchical_action_geometry_algorithm_digest()
+            ),
             "macro_evidence_digest": self.macro_evidence_digest,
             "status": self.status.value,
             "lower_bound": self.lower_bound,
@@ -955,6 +1035,8 @@ class MacroStraightSpanCountDerivation:
             value,
             {
                 "schema",
+                "implementation_source_digest",
+                "geometry_algorithm_digest",
                 "macro_evidence_digest",
                 "status",
                 "lower_bound",
@@ -969,6 +1051,10 @@ class MacroStraightSpanCountDerivation:
         )
         if (
             raw["schema"] != "gkm.bongard-macro-straight-span-count.v1"
+            or raw["implementation_source_digest"]
+            != panel_hierarchical_action_geometry_source_digest()
+            or raw["geometry_algorithm_digest"]
+            != panel_hierarchical_action_geometry_algorithm_digest()
             or raw["micro_texture_consulted"] is not False
             or raw["derivation"]
             != "count-certified-line-action-spans-with-uncertainty-range"
@@ -1040,6 +1126,12 @@ class MacroConvexityDerivation:
     def content_data(self) -> dict[str, object]:
         return {
             "schema": "gkm.bongard-macro-trace-convexity.v1",
+            "implementation_source_digest": (
+                panel_hierarchical_action_geometry_source_digest()
+            ),
+            "geometry_algorithm_digest": (
+                panel_hierarchical_action_geometry_algorithm_digest()
+            ),
             "macro_evidence_digest": self.macro_evidence_digest,
             "status": self.status.value,
             "convexity_kind": (
@@ -1063,6 +1155,8 @@ class MacroConvexityDerivation:
             value,
             {
                 "schema",
+                "implementation_source_digest",
+                "geometry_algorithm_digest",
                 "macro_evidence_digest",
                 "status",
                 "convexity_kind",
@@ -1077,6 +1171,10 @@ class MacroConvexityDerivation:
         )
         if (
             raw["schema"] != "gkm.bongard-macro-trace-convexity.v1"
+            or raw["implementation_source_digest"]
+            != panel_hierarchical_action_geometry_source_digest()
+            or raw["geometry_algorithm_digest"]
+            != panel_hierarchical_action_geometry_algorithm_digest()
             or raw["raw_black_ink_envelope_or_hull_consulted"] is not False
             or raw["micro_texture_consulted"] is not False
             or raw["derivation"]
@@ -1346,6 +1444,12 @@ def evaluate_positive_macro_conjunction(
 def _replay_content(value: "HierarchicalActionGeometryReplay") -> dict[str, object]:
     return {
         "schema": GEOMETRY_REPLAY_SCHEMA,
+        "implementation_source_digest": (
+            panel_hierarchical_action_geometry_source_digest()
+        ),
+        "geometry_algorithm_digest": (
+            panel_hierarchical_action_geometry_algorithm_digest()
+        ),
         "evidence": value.evidence.to_data(),
         "convexity": value.convexity.to_data(),
         "straight_span_count": value.straight_span_count.to_data(),
@@ -1400,6 +1504,8 @@ class HierarchicalActionGeometryReplay:
             value,
             {
                 "schema",
+                "implementation_source_digest",
+                "geometry_algorithm_digest",
                 "evidence",
                 "convexity",
                 "straight_span_count",
@@ -1412,6 +1518,10 @@ class HierarchicalActionGeometryReplay:
         )
         if (
             raw["schema"] != GEOMETRY_REPLAY_SCHEMA
+            or raw["implementation_source_digest"]
+            != panel_hierarchical_action_geometry_source_digest()
+            or raw["geometry_algorithm_digest"]
+            != panel_hierarchical_action_geometry_algorithm_digest()
             or raw["model_call_count"] != 0
             or raw["python_is_canonical_authority"] is not True
             or raw["lean_present"] is not False
@@ -1435,6 +1545,8 @@ def cold_replay_hierarchical_action_geometry(
 
     if type(replay) is not HierarchicalActionGeometryReplay:
         raise TypeError("cold replay needs exact HierarchicalActionGeometryReplay")
+    panel_hierarchical_action_geometry_source_digest()
+    panel_hierarchical_action_geometry_algorithm_digest()
     if expected_replay_address != replay.replay_address:
         raise HierarchicalActionGeometryError("geometry replay address differs")
     restored = HierarchicalActionGeometryReplay.from_data(replay.to_data())
@@ -1449,6 +1561,8 @@ __all__ = (
     "GeometryEvidenceProvenance",
     "GeometryTraceIssue",
     "Grid16Interval",
+    "HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_ID",
+    "HIERARCHICAL_ACTION_GEOMETRY_ALGORITHM_SCHEMA",
     "HIERARCHICAL_ACTION_GEOMETRY_PROTOCOL_ID",
     "HierarchicalActionGeometryError",
     "HierarchicalActionGeometryEvidence",
@@ -1469,4 +1583,6 @@ __all__ = (
     "evaluate_macro_convexity",
     "evaluate_macro_straight_span_count",
     "evaluate_positive_macro_conjunction",
+    "panel_hierarchical_action_geometry_algorithm_digest",
+    "panel_hierarchical_action_geometry_source_digest",
 )

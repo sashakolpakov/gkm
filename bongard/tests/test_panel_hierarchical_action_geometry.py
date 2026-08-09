@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
+import hashlib
+from pathlib import Path
 
 import pytest
 
+import bongard.panel_hierarchical_action_geometry as geometry_runtime
 from bongard.panel_feature_observation import EngineeringFeatureDisposition
 from bongard.panel_hierarchical_action_geometry import (
     DerivedMacroSpanKind,
@@ -19,6 +22,8 @@ from bongard.panel_hierarchical_action_geometry import (
     MacroActionPrimitive,
     MacroActionSpan,
     MacroActionTrace,
+    MacroConvexityDerivation,
+    MacroStraightSpanCountDerivation,
     MicroTextureEvidence,
     MicroTexturePrimitive,
     MicroTexturePrimitiveKind,
@@ -30,6 +35,8 @@ from bongard.panel_hierarchical_action_geometry import (
     evaluate_macro_convexity,
     evaluate_macro_straight_span_count,
     evaluate_positive_macro_conjunction,
+    panel_hierarchical_action_geometry_algorithm_digest,
+    panel_hierarchical_action_geometry_source_digest,
 )
 from bongard.panel_soft_ontology import ClosedCount, ConvexityKind
 
@@ -326,6 +333,60 @@ def test_evidence_round_trip_tamper_rejection_and_model_free_cold_replay() -> No
         cold_replay_hierarchical_action_geometry(
             replay, expected_replay_address="sha256:" + "f" * 64
         )
+
+
+def test_every_geometry_artifact_binds_exact_source_and_algorithm_policy() -> None:
+    evidence = _evidence(_trace(SQUARE))
+    straight = derive_macro_straight_span_count(evidence)
+    convexity = derive_macro_convexity(evidence)
+    replay = HierarchicalActionGeometryReplay.create(evidence)
+
+    source = panel_hierarchical_action_geometry_source_digest()
+    algorithm = panel_hierarchical_action_geometry_algorithm_digest()
+    assert source == hashlib.sha256(
+        Path(geometry_runtime.__file__).read_bytes()
+    ).hexdigest()
+    assert len(algorithm) == 64
+    for artifact in (evidence, straight, convexity, replay):
+        data = artifact.to_data()
+        assert data["implementation_source_digest"] == source
+        assert data["geometry_algorithm_digest"] == algorithm
+
+
+@pytest.mark.parametrize(
+    "artifact,loader",
+    (
+        (
+            lambda: _evidence(_trace(SQUARE)),
+            HierarchicalActionGeometryEvidence.from_data,
+        ),
+        (
+            lambda: derive_macro_straight_span_count(_evidence(_trace(SQUARE))),
+            MacroStraightSpanCountDerivation.from_data,
+        ),
+        (
+            lambda: derive_macro_convexity(_evidence(_trace(SQUARE))),
+            MacroConvexityDerivation.from_data,
+        ),
+        (
+            lambda: HierarchicalActionGeometryReplay.create(
+                _evidence(_trace(SQUARE))
+            ),
+            HierarchicalActionGeometryReplay.from_data,
+        ),
+    ),
+)
+@pytest.mark.parametrize(
+    "field", ("implementation_source_digest", "geometry_algorithm_digest")
+)
+def test_geometry_artifact_rejects_source_or_algorithm_pin_tamper(
+    artifact: object, loader: object, field: str
+) -> None:
+    value = artifact()
+    tampered = deepcopy(value.to_data())
+    tampered[field] = "f" * 64
+    with pytest.raises(HierarchicalActionGeometryError):
+        loader(tampered)
 
 
 def test_provenance_has_no_candidate_phase_class_formula_or_lean_channel() -> None:
