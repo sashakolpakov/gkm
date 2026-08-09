@@ -20,6 +20,9 @@ def _parameters() -> dict[o.FeatureFamily, o.FeatureParameters]:
         o.FeatureFamily.STRAIGHT_SEGMENT_COUNT: o.StraightSegmentCountParameters(
             o.ClosedCount.TWO
         ),
+        o.FeatureFamily.CONVEXITY: o.ConvexityParameters(
+            o.ConvexityKind.CONVEX_CLOSED_BOUNDARY
+        ),
         o.FeatureFamily.MARKER_PATTERN: o.MarkerPatternParameters(
             o.MarkerPrimitive.DOT, o.ClosedCount.TWO, o.MarkerArrangement.LINEAR
         ),
@@ -210,7 +213,7 @@ def _assessment(risk: o.CalibrationRisk, char: str) -> o.CalibrationAssessment:
 def test_total_family_scope_frame_and_parameter_matrix() -> None:
     params = _parameters()
     assert set(o.FAMILY_CONTRACTS) == set(o.FeatureFamily)
-    assert len(o.FeatureFamily) == 17
+    assert len(o.FeatureFamily) == 18
     for family in o.FeatureFamily:
         contract = o.FAMILY_CONTRACTS[family]
         for scope in o.SubjectScope:
@@ -458,6 +461,121 @@ def test_straight_segment_count_requires_explicit_exhaustive_classification() ->
     assert (
         rules[o.FeatureFamily.STRAIGHT_SEGMENT_COUNT.value]
         == o.STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID
+    )
+
+
+def test_convexity_is_derived_from_one_canonical_simple_closed_polygon() -> None:
+    point = o.QuantizedPoint
+    clockwise_with_redundancy = (
+        point(1, 1),
+        point(1, 5),
+        point(5, 5),
+        point(5, 3),
+        point(5, 1),
+        point(1, 1),
+    )
+    rotated_counterclockwise = (
+        point(5, 5),
+        point(1, 5),
+        point(1, 1),
+        point(5, 1),
+        point(5, 5),
+    )
+    first = o.CanonicalBoundaryPolygon.from_closed_vertex_walk(
+        clockwise_with_redundancy
+    )
+    second = o.CanonicalBoundaryPolygon.from_closed_vertex_walk(
+        rotated_counterclockwise
+    )
+    assert first == second
+    assert first.convexity_kind is o.ConvexityKind.CONVEX_CLOSED_BOUNDARY
+    assert o.CanonicalBoundaryPolygon.from_data(first.to_data()) == first
+
+    concave = o.CanonicalBoundaryPolygon.from_closed_vertex_walk(
+        (
+            point(1, 1),
+            point(5, 1),
+            point(3, 3),
+            point(5, 5),
+            point(1, 5),
+            point(1, 1),
+        )
+    )
+    assert concave.convexity_kind is o.ConvexityKind.CONCAVE_CLOSED_BOUNDARY
+
+    invalid_walks = (
+        (
+            (point(1, 1), point(5, 1), point(5, 5)),
+            o.BoundaryPolygonIssue.OPEN_BOUNDARY,
+        ),
+        (
+            (
+                point(1, 1),
+                point(5, 5),
+                point(1, 5),
+                point(5, 1),
+                point(1, 1),
+            ),
+            o.BoundaryPolygonIssue.SELF_INTERSECTING_BOUNDARY,
+        ),
+        (
+            (point(1, 1), point(3, 1), point(5, 1), point(1, 1)),
+            o.BoundaryPolygonIssue.DEGENERATE_BOUNDARY,
+        ),
+    )
+    for walk, issue in invalid_walks:
+        with pytest.raises(o.BoundaryPolygonError) as raised:
+            o.CanonicalBoundaryPolygon.from_closed_vertex_walk(walk)
+        assert raised.value.issue is issue
+
+    inventory = _inventory()
+    convex = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY),
+    )
+    concave_spec = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONCAVE_CLOSED_BOUNDARY),
+    )
+    subject = o.SubjectBinding(o.SubjectBindingKind.PANEL, ())
+    payload = o.ConvexityWitnessPayload(first, True, _d("5"))
+    witness = o.PanelFeatureWitness(
+        convex, inventory, _d("d"), subject, payload, _d("e")
+    )
+    assert o.PanelFeatureWitness.from_data(witness.to_data()) == witness
+    raw = o.RawFeatureMeasurement(
+        convex,
+        inventory,
+        _d("d"),
+        _d("7"),
+        o.RawMeasurementState.WITNESS_ASSERTED,
+        witness=witness,
+    )
+    custody = o.verify_raw_measurement_custody(
+        raw,
+        expected_measurement_digest=raw.measurement_digest,
+        expected_inventory_digest=inventory.inventory_digest,
+        expected_enumeration_receipt_digest=inventory.enumeration_receipt_digest,
+        expected_evidence_receipt_digest=witness.witness_receipt_digest,
+        verifier_receipt_digest=_d("6"),
+    )
+    assert custody.measurement_digest == raw.measurement_digest
+    with pytest.raises(o.PanelSoftOntologyError, match="Python-derived"):
+        o.PanelFeatureWitness(
+            concave_spec, inventory, _d("d"), subject, payload, _d("e")
+        )
+    relation = o.registered_sibling_relation(convex, concave_spec)
+    assert relation is not None
+    assert relation.mutually_exclusive is True and relation.exhaustive is True
+    assert (
+        o.feature_catalog_data()["geometry_derivation_rules"][
+            o.FeatureFamily.CONVEXITY.value
+        ]
+        == o.BOUNDARY_CONVEXITY_DERIVATION_RULE_ID
     )
 
 

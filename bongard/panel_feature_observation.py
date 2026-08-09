@@ -23,9 +23,11 @@ from typing import Any, Mapping, TypeAlias
 from bongard.canonical import canonical_digest
 from bongard.panel_soft_ontology import (
     FAMILY_CONTRACTS,
+    CanonicalBoundaryPolygon,
     ClosedCount,
     ComponentCountParameters,
     ExactSegmentCountParameters,
+    ConvexityParameters,
     OwnerKind,
     OwnerInventory,
     OwnerId,
@@ -49,13 +51,13 @@ from bongard.python_predicate_authority import PYTHON_PREDICATE_AUTHORITY_ID
 
 
 FEATURE_AXIS_SCHEMA = "gkm.bongard-panel-feature-axis.v1"
-BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v3"
+BINDING_OBSERVATION_SCHEMA = "gkm.bongard-panel-binding-feature-observation.v4"
 ELIGIBLE_DOMAIN_GAP_SCHEMA = "gkm.bongard-panel-eligible-domain-gap.v2"
-PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v5"
-PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v5"
+PANEL_AXIS_OBSERVATION_SCHEMA = "gkm.bongard-panel-axis-observation.v6"
+PANEL_FEATURE_OBSERVATION_SET_SCHEMA = "gkm.bongard-panel-feature-observation-set.v6"
 ENGINEERING_FEATURE_CELL_SCHEMA = "gkm.bongard-engineering-feature-cell.v1"
 FEATURE_OBSERVATION_PROTOCOL_ID = (
-    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v5"
+    "bongard.panel-feature-observation/complete-closed-variants-per-binding-v6"
 )
 PANEL_ONLY_CONTEXT_PROTOCOL_ID = (
     "bongard.panel-feature-observation/exact-panel-binding-context-v1"
@@ -82,6 +84,10 @@ class ObservationIssue(str, Enum):
     AMBIGUOUS_GEOMETRY = "ambiguous_geometry"
     AMBIGUOUS_OWNERSHIP = "ambiguous_ownership"
     MISSING_STRAIGHTNESS_EVIDENCE = "missing_straightness_evidence"
+    MISSING_BOUNDARY_EVIDENCE = "missing_boundary_evidence"
+    OPEN_BOUNDARY = "open_boundary"
+    SELF_INTERSECTING_BOUNDARY = "self_intersecting_boundary"
+    DEGENERATE_BOUNDARY = "degenerate_boundary"
     OUTSIDE_CLOSED_CATALOG = "outside_closed_catalog"
     RESOLUTION_LIMIT = "resolution_limit"
     CAPACITY_LIMIT = "capacity_limit"
@@ -95,6 +101,10 @@ _UNCLEAR_ISSUES = frozenset(
         ObservationIssue.AMBIGUOUS_GEOMETRY,
         ObservationIssue.AMBIGUOUS_OWNERSHIP,
         ObservationIssue.MISSING_STRAIGHTNESS_EVIDENCE,
+        ObservationIssue.MISSING_BOUNDARY_EVIDENCE,
+        ObservationIssue.OPEN_BOUNDARY,
+        ObservationIssue.SELF_INTERSECTING_BOUNDARY,
+        ObservationIssue.DEGENERATE_BOUNDARY,
         ObservationIssue.OUTSIDE_CLOSED_CATALOG,
         ObservationIssue.RESOLUTION_LIMIT,
         ObservationIssue.CAPACITY_LIMIT,
@@ -113,6 +123,7 @@ _SINGLE_VALUED_FAMILIES = frozenset(
         FeatureFamily.COMPONENT_COUNT,
         FeatureFamily.EXACT_SEGMENT_COUNT,
         FeatureFamily.STRAIGHT_SEGMENT_COUNT,
+        FeatureFamily.CONVEXITY,
         FeatureFamily.TURN_PROFILE,
         FeatureFamily.OPEN_TRACE,
         FeatureFamily.CLOSED_LOOP,
@@ -545,6 +556,7 @@ class BindingFeatureObservation:
     issue: ObservationIssue | None
     observation_receipt_digest: str
     straight_segment_evidence: tuple[QuantizedSegment, ...] = ()
+    outer_boundary_evidence: CanonicalBoundaryPolygon | None = None
 
     def __post_init__(self) -> None:
         _digest(self.axis_digest, "binding observation axis digest")
@@ -610,9 +622,18 @@ class BindingFeatureObservation:
             raise PanelFeatureObservationError(
                 "straight-segment evidence must be unique and sorted"
             )
+        if self.outer_boundary_evidence is not None and type(
+            self.outer_boundary_evidence
+        ) is not CanonicalBoundaryPolygon:
+            raise TypeError(
+                "outer-boundary evidence must be CanonicalBoundaryPolygon or None"
+            )
         is_straight_count = bool(self.observed_specs) and (
             self.observed_specs[0].family
             is FeatureFamily.STRAIGHT_SEGMENT_COUNT
+        )
+        is_convexity = bool(self.observed_specs) and (
+            self.observed_specs[0].family is FeatureFamily.CONVEXITY
         )
         if self.resolution is BindingResolution.COMPLETE:
             if self.issue is not None:
@@ -629,9 +650,34 @@ class BindingFeatureObservation:
                     raise PanelFeatureObservationError(
                         "straight-segment count needs one explicit line per count"
                     )
+                if self.outer_boundary_evidence is not None:
+                    raise PanelFeatureObservationError(
+                        "straight-segment count cannot carry outer-boundary evidence"
+                    )
+            elif is_convexity:
+                if (
+                    self.evidence_points
+                    or self.straight_segment_evidence
+                    or len(self.observed_specs) != 1
+                    or self.outer_boundary_evidence is None
+                ):
+                    raise PanelFeatureObservationError(
+                        "convexity needs one explicit canonical outer boundary"
+                    )
+                if (
+                    self.outer_boundary_evidence.convexity_kind
+                    is not self.observed_specs[0].parameters.kind  # type: ignore[union-attr]
+                ):
+                    raise PanelFeatureObservationError(
+                        "Python-derived boundary convexity differs from observed spec"
+                    )
             elif self.straight_segment_evidence:
                 raise PanelFeatureObservationError(
                     "non-straight feature cannot carry straight-segment evidence"
+                )
+            elif self.outer_boundary_evidence is not None:
+                raise PanelFeatureObservationError(
+                    "non-convexity feature cannot carry outer-boundary evidence"
                 )
             elif len(self.observed_specs) != len(self.evidence_points):
                 raise PanelFeatureObservationError(
@@ -646,6 +692,7 @@ class BindingFeatureObservation:
                 self.observed_specs
                 or self.evidence_points
                 or self.straight_segment_evidence
+                or self.outer_boundary_evidence is not None
             ):
                 raise PanelFeatureObservationError(
                     "unclear binding observation cannot claim resolved evidence"
@@ -659,6 +706,7 @@ class BindingFeatureObservation:
                 self.observed_specs
                 or self.evidence_points
                 or self.straight_segment_evidence
+                or self.outer_boundary_evidence is not None
             ):
                 raise PanelFeatureObservationError(
                     "errored binding observation cannot claim resolved evidence"
@@ -680,6 +728,11 @@ class BindingFeatureObservation:
             "straight_segment_evidence": [
                 item.to_data() for item in self.straight_segment_evidence
             ],
+            "outer_boundary_evidence": (
+                None
+                if self.outer_boundary_evidence is None
+                else self.outer_boundary_evidence.to_data()
+            ),
             "issue": None if self.issue is None else self.issue.value,
             "observation_receipt_digest": self.observation_receipt_digest,
             "engineering_only": True,
@@ -698,6 +751,7 @@ class BindingFeatureObservation:
                 "observed_specs",
                 "evidence_points",
                 "straight_segment_evidence",
+                "outer_boundary_evidence",
                 "issue",
                 "observation_receipt_digest",
                 "engineering_only",
@@ -728,6 +782,13 @@ class BindingFeatureObservation:
                 tuple(
                     QuantizedSegment.from_data(item)
                     for item in raw["straight_segment_evidence"]
+                ),
+                (
+                    None
+                    if raw["outer_boundary_evidence"] is None
+                    else CanonicalBoundaryPolygon.from_data(
+                        raw["outer_boundary_evidence"]
+                    )
                 ),
             )
         except (TypeError, ValueError, PanelSoftOntologyError) as exc:
@@ -849,6 +910,15 @@ class PanelAxisObservation:
                     raise PanelFeatureObservationError(
                         "complete straight-segment count needs explicit line evidence"
                     )
+        if self.axis.family is FeatureFamily.CONVEXITY:
+            for row in self.binding_observations:
+                if row.resolution is BindingResolution.COMPLETE and (
+                    len(row.observed_specs) != 1
+                    or row.outer_boundary_evidence is None
+                ):
+                    raise PanelFeatureObservationError(
+                        "complete convexity row needs an explicit outer boundary"
+                    )
         if expected:
             if self.domain_gap is not None:
                 raise PanelFeatureObservationError(
@@ -881,6 +951,16 @@ class PanelAxisObservation:
             ):
                 raise PanelFeatureObservationError(
                     "straight-segment evidence lies outside its derived search region"
+                )
+            if (
+                item.outer_boundary_evidence is not None
+                and any(
+                    not _point_in_region(point, region.minimum, region.maximum)
+                    for point in item.outer_boundary_evidence.vertices
+                )
+            ):
+                raise PanelFeatureObservationError(
+                    "outer-boundary evidence lies outside its derived search region"
                 )
 
     @property

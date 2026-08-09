@@ -36,7 +36,11 @@ from bongard.panel_feature_observation import (
 )
 from bongard.panel_soft_ontology import (
     FAMILY_CONTRACTS,
+    BoundaryPolygonError,
+    BoundaryPolygonIssue,
+    CanonicalBoundaryPolygon,
     ClosedCount,
+    ConvexityParameters,
     FeatureFamily,
     OwnerInventory,
     PanelFeatureSpec,
@@ -50,15 +54,23 @@ from bongard.panel_soft_ontology import (
 )
 
 
-FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v3"
+FEATURE_AXIS_VIEW_SCHEMA = "gkm.bongard-feature-axis-observer-view.v4"
 FEATURE_AXIS_VIEW_PROTOCOL_ID = (
-    "bongard.panel-feature-observer/one-panel-one-complete-axis-v4"
+    "bongard.panel-feature-observer/one-panel-one-complete-axis-v5"
 )
 MAX_BINDINGS_PER_AXIS_CALL = 36
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _VARIANT_ALIAS = re.compile(r"variant_[0-9]{4}\Z")
 _BINDING_ALIAS = re.compile(r"binding_[0-9]{4}\Z")
+_BOUNDARY_ISSUE_TO_OBSERVATION = {
+    BoundaryPolygonIssue.OPEN_BOUNDARY: ObservationIssue.OPEN_BOUNDARY,
+    BoundaryPolygonIssue.DEGENERATE_BOUNDARY: ObservationIssue.DEGENERATE_BOUNDARY,
+    BoundaryPolygonIssue.SELF_INTERSECTING_BOUNDARY: (
+        ObservationIssue.SELF_INTERSECTING_BOUNDARY
+    ),
+    BoundaryPolygonIssue.CAPACITY_LIMIT: ObservationIssue.CAPACITY_LIMIT,
+}
 
 
 class PanelFeatureObserverProtocolError(ValueError):
@@ -427,6 +439,24 @@ def feature_axis_observer_output_schema(
             },
         }
         required = ["resolution", "straight_segment_evidence", "issue"]
+    elif view.axis.family is FeatureFamily.CONVEXITY:
+        vertex_schema = {
+            "type": "object",
+            "properties": {
+                "x": {"type": "integer"},
+                "y": {"type": "integer"},
+            },
+            "required": ["x", "y"],
+            "additionalProperties": False,
+        }
+        properties = {
+            **common_properties,
+            "outer_boundary_vertices": {
+                "type": "array",
+                "items": vertex_schema,
+            },
+        }
+        required = ["resolution", "outer_boundary_vertices", "issue"]
     else:
         properties = {
             **common_properties,
@@ -482,6 +512,21 @@ def feature_axis_observer_prompt(view: FeatureAxisObservationView) -> str:
             "An empty or over-catalog complete list becomes typed indeterminate. "
             "Segment order and endpoint direction are irrelevant."
         )
+    elif view.axis.family is FeatureFamily.CONVEXITY:
+        evidence_instructions = (
+            "This axis classifies the panel's single outer structural boundary as "
+            "convex or concave. Do not select a variant alias and do not report a bare "
+            "convex=true/false judgment. Trace the complete outer boundary in order as "
+            "Grid16 vertices in outer_boundary_vertices, and explicitly close the walk "
+            "by repeating the first vertex once as the final vertex. Exclude internal "
+            "marks, holes, hatching, and texture. Use resolution complete only when the "
+            "ordered walk covers the entire outer boundary. Python removes redundant "
+            "collinear vertices, canonicalizes start and direction, rejects open, "
+            "self-intersecting, and degenerate walks, and derives convex versus concave "
+            "from exact integer cross products. If the outer boundary or its ordering is "
+            "uncertain, use unclear, an empty outer_boundary_vertices list, and "
+            "missing_boundary_evidence (or a more specific applicable issue)."
+        )
     else:
         evidence_instructions = (
             "Use resolution complete only when you can resolve the full registered "
@@ -531,19 +576,27 @@ def parse_feature_axis_observer_payload(
         for item in view.variants
         if type(item.spec.parameters) is StraightSegmentCountParameters
     }
+    convexity_spec_by_kind = {
+        item.spec.parameters.kind: item.spec
+        for item in view.variants
+        if type(item.spec.parameters) is ConvexityParameters
+    }
     count_by_size = {
         size: count for size, count in enumerate(ClosedCount, start=1)
     }
     rows: list[BindingFeatureObservation] = []
     for item in view.bindings:
         straight_axis = view.axis.family is FeatureFamily.STRAIGHT_SEGMENT_COUNT
+        convexity_axis = view.axis.family is FeatureFamily.CONVEXITY
+        if straight_axis:
+            evidence_field = "straight_segment_evidence"
+        elif convexity_axis:
+            evidence_field = "outer_boundary_vertices"
+        else:
+            evidence_field = "variant_evidence"
         row_fields = {
             "resolution",
-            (
-                "straight_segment_evidence"
-                if straight_axis
-                else "variant_evidence"
-            ),
+            evidence_field,
             "issue",
         }
         row = _fields(raw[item.alias], row_fields, f"axis payload {item.alias}")
@@ -622,6 +675,71 @@ def parse_feature_axis_observer_payload(
                 observed_specs = ()
                 straight_segments = ()
             points = ()
+            outer_boundary = None
+        elif convexity_axis:
+            evidence = row["outer_boundary_vertices"]
+            if (
+                type(evidence) is not list
+                or any(
+                    not isinstance(record, Mapping)
+                    or set(record) != {"x", "y"}
+                    or type(record["x"]) is not int
+                    or type(record["y"]) is not int
+                    or not 0 <= record["x"] <= 15
+                    or not 0 <= record["y"] <= 15
+                    for record in evidence
+                )
+            ):
+                raise PanelFeatureObserverProtocolError(
+                    "axis payload outer-boundary evidence differs"
+                )
+            vertices = tuple(
+                QuantizedPoint(record["x"], record["y"])
+                for record in evidence
+            )
+            if resolution is BindingResolution.COMPLETE:
+                if row["issue"] != "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "complete axis payload row has inconsistent evidence"
+                    )
+                try:
+                    outer_boundary = (
+                        CanonicalBoundaryPolygon.from_closed_vertex_walk(vertices)
+                    )
+                except BoundaryPolygonError as exc:
+                    resolution = BindingResolution.UNCLEAR
+                    observed_specs = ()
+                    issue = _BOUNDARY_ISSUE_TO_OBSERVATION[exc.issue]
+                    outer_boundary = None
+                except (TypeError, ValueError, PanelSoftOntologyError) as exc:
+                    raise PanelFeatureObserverProtocolError(
+                        "axis payload outer-boundary evidence differs"
+                    ) from exc
+                else:
+                    try:
+                        observed_specs = (
+                            convexity_spec_by_kind[outer_boundary.convexity_kind],
+                        )
+                    except KeyError as exc:  # pragma: no cover - catalog guard
+                        raise PanelFeatureObserverProtocolError(
+                            "convexity variant catalog differs"
+                        ) from exc
+                    issue = None
+            else:
+                if evidence or row["issue"] == "none":
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload row claims resolved evidence"
+                    )
+                try:
+                    issue = ObservationIssue(row["issue"])
+                except (TypeError, ValueError) as exc:
+                    raise PanelFeatureObserverProtocolError(
+                        "unclear axis payload issue differs"
+                    ) from exc
+                observed_specs = ()
+                outer_boundary = None
+            points = ()
+            straight_segments = ()
         else:
             evidence = row["variant_evidence"]
             if (
@@ -690,6 +808,7 @@ def parse_feature_axis_observer_payload(
                 observed_specs = ()
                 points = ()
             straight_segments = ()
+            outer_boundary = None
         rows.append(
             BindingFeatureObservation(
                 view.axis.axis_digest,
@@ -700,6 +819,7 @@ def parse_feature_axis_observer_payload(
                 issue,
                 observation_receipt_digest,
                 straight_segments,
+                outer_boundary,
             )
         )
     try:

@@ -490,6 +490,46 @@ def test_python_predicate_treats_straight_count_as_a_distinct_positive_atom() ->
     assert "lean" not in json.dumps(formula.to_data(), sort_keys=True).lower()
 
 
+def test_python_predicate_uses_positive_convexity_variants_without_negation() -> None:
+    convex = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY),
+    )
+    concave = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONCAVE_CLOSED_BOUNDARY),
+    )
+    vocabulary = FeatureVocabulary.create(
+        side0_specs=(convex,), side1_specs=(concave,)
+    )
+    panel = _d("0")
+    table = EngineeringSupportTable.create(
+        vocabulary,
+        (panel,),
+        {
+            (panel, convex.spec_digest): EngineeringDisposition.MATCH,
+            (panel, concave.spec_digest): EngineeringDisposition.NONMATCH,
+        },
+    )
+    formula = AllOf.create(
+        vocabulary,
+        o.NativeOrientation.SIDE0_POSITIVE,
+        (convex.spec_digest,),
+    )
+    assert (
+        evaluate_engineering_all_of(formula, table, panel)
+        is EngineeringDisposition.MATCH
+    )
+    rendered = json.dumps(formula.to_data(), sort_keys=True).lower()
+    assert '"operator": "all_of"' in rendered
+    assert '"negation_allowed": false' in rendered
+    assert "lean" not in rendered
+
+
 @pytest.mark.parametrize(
     ("state", "expected_kind"),
     [

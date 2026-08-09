@@ -68,6 +68,7 @@ def _row(
     observed: tuple[o.PanelFeatureSpec, ...] = (),
     point: o.QuantizedPoint | None = None,
     straight_segments: tuple[o.QuantizedSegment, ...] = (),
+    outer_boundary: o.CanonicalBoundaryPolygon | None = None,
     issue: f.ObservationIssue | None = None,
     receipt: str = _d("d"),
 ) -> f.BindingFeatureObservation:
@@ -81,6 +82,7 @@ def _row(
         issue,
         receipt,
         straight_segments,
+        outer_boundary,
     )
 
 
@@ -244,6 +246,83 @@ def test_whole_panel_soft_axis_does_not_require_owner_enumeration() -> None:
             _d("d"),
             observation.binding_observations,
         )
+
+
+def test_whole_panel_convexity_is_derived_from_explicit_boundary_evidence() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("b"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    convex = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY),
+    )
+    concave = o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(o.ConvexityKind.CONCAVE_CLOSED_BOUNDARY),
+    )
+    boundary = o.CanonicalBoundaryPolygon.from_closed_vertex_walk(
+        (
+            o.QuantizedPoint(1, 1),
+            o.QuantizedPoint(12, 1),
+            o.QuantizedPoint(12, 12),
+            o.QuantizedPoint(1, 12),
+            o.QuantizedPoint(1, 1),
+        )
+    )
+    axis = f.FeatureAxis.for_spec(convex)
+    binding = f.eligible_axis_bindings(axis, context)[0]
+    observation = f.PanelAxisObservation(
+        context,
+        axis,
+        _d("b"),
+        _d("d"),
+        (
+            _row(
+                axis,
+                binding,
+                observed=(convex,),
+                outer_boundary=boundary,
+            ),
+        ),
+    )
+    assert observation.evaluate(convex) is f.EngineeringFeatureDisposition.MATCH
+    assert observation.evaluate(concave) is f.EngineeringFeatureDisposition.NONMATCH
+    assert f.PanelAxisObservation.from_data(observation.to_data()) == observation
+
+    with pytest.raises(f.PanelFeatureObservationError, match="Python-derived"):
+        _row(
+            axis,
+            binding,
+            observed=(concave,),
+            outer_boundary=boundary,
+        )
+    with pytest.raises(f.PanelFeatureObservationError, match="canonical outer boundary"):
+        _row(axis, binding, observed=(convex,))
+
+    unresolved = f.PanelAxisObservation(
+        context,
+        axis,
+        _d("b"),
+        _d("d"),
+        (
+            _row(
+                axis,
+                binding,
+                resolution=f.BindingResolution.UNCLEAR,
+                issue=f.ObservationIssue.MISSING_BOUNDARY_EVIDENCE,
+            ),
+        ),
+    )
+    assert (
+        unresolved.evaluate(convex)
+        is f.EngineeringFeatureDisposition.INDETERMINATE
+    )
 
 
 def test_owner_free_exact_count_can_match_but_cannot_exclude_a_sibling() -> None:

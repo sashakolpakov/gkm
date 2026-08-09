@@ -69,6 +69,15 @@ def _straight_count(count: o.ClosedCount) -> o.PanelFeatureSpec:
     )
 
 
+def _convexity(kind: o.ConvexityKind) -> o.PanelFeatureSpec:
+    return o.PanelFeatureSpec(
+        o.FeatureFamily.CONVEXITY,
+        o.SubjectScope.WHOLE_PANEL,
+        o.ReferenceFrame.NONE,
+        o.ConvexityParameters(kind),
+    )
+
+
 def _empty_payload(view: p.FeatureAxisObservationView) -> dict[str, object]:
     return {
         item.alias: {
@@ -243,6 +252,188 @@ def test_missing_or_out_of_catalog_straightness_stays_indeterminate() -> None:
         is f.ObservationIssue.OUTSIDE_CLOSED_CATALOG
     )
     assert zero.evaluate(one) is f.EngineeringFeatureDisposition.INDETERMINATE
+
+
+def test_convexity_parser_derives_variant_and_canonicalizes_boundary_walk() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("d"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    convex = _convexity(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY)
+    concave = _convexity(o.ConvexityKind.CONCAVE_CLOSED_BOUNDARY)
+    view = p.FeatureAxisObservationView.build(
+        context, f.FeatureAxis.for_spec(convex)
+    )
+    schema = p.feature_axis_observer_output_schema(view)
+    validate_codex_strict_output_schema(schema)
+    row_schema = schema["properties"][view.bindings[0].alias]
+    assert "outer_boundary_vertices" in row_schema["properties"]
+    assert "variant_evidence" not in row_schema["properties"]
+    prompt = p.feature_axis_observer_prompt(view)
+    assert "Do not select a variant alias" in prompt
+    assert "bare convex=true/false" in prompt
+    assert "exact integer cross products" in prompt
+
+    walks = (
+        ((1, 1), (1, 12), (12, 12), (12, 1), (1, 1)),
+        ((12, 12), (1, 12), (1, 1), (12, 1), (12, 12)),
+    )
+    observations = []
+    for walk in walks:
+        observations.append(
+            p.parse_feature_axis_observer_payload(
+                view,
+                {
+                    view.bindings[0].alias: {
+                        "resolution": "complete",
+                        "outer_boundary_vertices": [
+                            {"x": x, "y": y} for x, y in walk
+                        ],
+                        "issue": "none",
+                    }
+                },
+                observer_contract_digest=_d("d"),
+                measurement_protocol_digest=_d("e"),
+                observation_receipt_digest=_d("f"),
+            )
+        )
+    assert all(
+        item.evaluate(convex) is f.EngineeringFeatureDisposition.MATCH
+        for item in observations
+    )
+    assert all(
+        item.evaluate(concave) is f.EngineeringFeatureDisposition.NONMATCH
+        for item in observations
+    )
+    assert (
+        observations[0].binding_observations[0].outer_boundary_evidence
+        == observations[1].binding_observations[0].outer_boundary_evidence
+    )
+
+    concave_observation = p.parse_feature_axis_observer_payload(
+        view,
+        {
+            view.bindings[0].alias: {
+                "resolution": "complete",
+                "outer_boundary_vertices": [
+                    {"x": x, "y": y}
+                    for x, y in (
+                        (1, 1),
+                        (12, 1),
+                        (6, 6),
+                        (12, 12),
+                        (1, 12),
+                        (1, 1),
+                    )
+                ],
+                "issue": "none",
+            }
+        },
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert (
+        concave_observation.evaluate(concave)
+        is f.EngineeringFeatureDisposition.MATCH
+    )
+
+
+@pytest.mark.parametrize(
+    ("walk", "expected_issue"),
+    [
+        (
+            ((1, 1), (12, 1), (12, 12), (1, 12)),
+            f.ObservationIssue.OPEN_BOUNDARY,
+        ),
+        (
+            ((1, 1), (12, 12), (1, 12), (12, 1), (1, 1)),
+            f.ObservationIssue.SELF_INTERSECTING_BOUNDARY,
+        ),
+        (
+            ((1, 1), (6, 1), (12, 1), (1, 1)),
+            f.ObservationIssue.DEGENERATE_BOUNDARY,
+        ),
+    ],
+)
+def test_invalid_complete_boundary_walks_become_typed_indeterminate(
+    walk: tuple[tuple[int, int], ...],
+    expected_issue: f.ObservationIssue,
+) -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("d"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    convex = _convexity(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY)
+    view = p.FeatureAxisObservationView.build(
+        context, f.FeatureAxis.for_spec(convex)
+    )
+    observation = p.parse_feature_axis_observer_payload(
+        view,
+        {
+            view.bindings[0].alias: {
+                "resolution": "complete",
+                "outer_boundary_vertices": [
+                    {"x": x, "y": y} for x, y in walk
+                ],
+                "issue": "none",
+            }
+        },
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    row = observation.binding_observations[0]
+    assert row.resolution is f.BindingResolution.UNCLEAR
+    assert row.issue is expected_issue
+    assert row.outer_boundary_evidence is None
+    assert (
+        observation.evaluate(convex)
+        is f.EngineeringFeatureDisposition.INDETERMINATE
+    )
+
+
+def test_uncertain_convexity_cannot_claim_partial_boundary_evidence() -> None:
+    context = f.panel_only_observation_inventory(
+        panel_digest=_d("a"),
+        observer_contract_digest=_d("d"),
+        panel_context_receipt_digest=_d("c"),
+    )
+    convex = _convexity(o.ConvexityKind.CONVEX_CLOSED_BOUNDARY)
+    view = p.FeatureAxisObservationView.build(
+        context, f.FeatureAxis.for_spec(convex)
+    )
+    payload = {
+        view.bindings[0].alias: {
+            "resolution": "unclear",
+            "outer_boundary_vertices": [],
+            "issue": "missing_boundary_evidence",
+        }
+    }
+    observation = p.parse_feature_axis_observer_payload(
+        view,
+        payload,
+        observer_contract_digest=_d("d"),
+        measurement_protocol_digest=_d("e"),
+        observation_receipt_digest=_d("f"),
+    )
+    assert (
+        observation.evaluate(convex)
+        is f.EngineeringFeatureDisposition.INDETERMINATE
+    )
+    payload[view.bindings[0].alias]["outer_boundary_vertices"] = [
+        {"x": 1, "y": 1}
+    ]
+    with pytest.raises(p.PanelFeatureObserverProtocolError, match="resolved evidence"):
+        p.parse_feature_axis_observer_payload(
+            view,
+            payload,
+            observer_contract_digest=_d("d"),
+            measurement_protocol_digest=_d("e"),
+            observation_receipt_digest=_d("f"),
+        )
 
 
 def test_complete_empty_payload_stays_indeterminate() -> None:

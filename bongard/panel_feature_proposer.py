@@ -99,6 +99,7 @@ _PARAMETER_FIELDS: Mapping[FeatureFamily, tuple[str, ...]] = {
     FeatureFamily.COMPONENT_COUNT: ("count",),
     FeatureFamily.EXACT_SEGMENT_COUNT: ("count",),
     FeatureFamily.STRAIGHT_SEGMENT_COUNT: ("count",),
+    FeatureFamily.CONVEXITY: ("kind",),
     FeatureFamily.MARKER_PATTERN: ("primitive", "repetition", "arrangement"),
     FeatureFamily.GESTALT_RESEMBLANCE: ("kind",),
     FeatureFamily.SEGMENT_ORIENTATION: ("orientation", "aggregation"),
@@ -246,6 +247,7 @@ def _wire_catalog() -> dict[str, object]:
         row["family"]: row for row in feature_catalog["families"]  # type: ignore[index]
     }
     count_membership_rules = feature_catalog["count_membership_rules"]
+    geometry_derivation_rules = feature_catalog["geometry_derivation_rules"]
     return {
         "catalog_digest": feature_catalog_digest(),
         "unused_parameter_token": PANEL_FEATURE_NONE,
@@ -258,6 +260,9 @@ def _wire_catalog() -> dict[str, object]:
                     "allowed_scope_frames"
                 ],
                 "count_membership_rule_id": count_membership_rules.get(  # type: ignore[union-attr]
+                    family.value, PANEL_FEATURE_NONE
+                ),
+                "geometry_derivation_rule_id": geometry_derivation_rules.get(  # type: ignore[union-attr]
                     family.value, PANEL_FEATURE_NONE
                 ),
             }
@@ -285,7 +290,10 @@ def panel_feature_proposer_prompt() -> str:
         "whether straight or curved; straight_segment_count counts only visibly straight "
         "structural contour or boundary segments backed by explicit line evidence; it "
         "excludes marker strokes, hatching, and texture lines and must never be inferred "
-        "from the segment-owner count. If the needed visual concept is outside the catalog, emit a "
+        "from the segment-owner count. convexity is a positive whole-panel class derived "
+        "by Python from one explicit complete ordered outer-boundary polygon; never emit "
+        "it from a bare convex/concave claim, an open or self-intersecting trace, or the "
+        "negation of another feature. If the needed visual concept is outside the catalog, emit a "
         "language_gap slot with all feature and parameter fields set to unset. Archival "
         "summary and indicator fields are non-executable narration; phrase them as "
         "affirmative visible descriptions. Fill exactly four slots per block and all "

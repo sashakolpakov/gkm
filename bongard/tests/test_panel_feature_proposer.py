@@ -22,8 +22,11 @@ from bongard.panel_feature_proposer import (
     parse_panel_feature_proposer_payload,
 )
 from bongard.panel_soft_ontology import (
+    BOUNDARY_CONVEXITY_DERIVATION_RULE_ID,
     ClosedCount,
     ComponentCountParameters,
+    ConvexityKind,
+    ConvexityParameters,
     FeatureFamily,
     LanguageGapKind,
     NativeOrientation,
@@ -57,6 +60,15 @@ def _straight_count_spec(count: ClosedCount) -> PanelFeatureSpec:
         SubjectScope.WHOLE_PANEL,
         ReferenceFrame.NONE,
         StraightSegmentCountParameters(count),
+    )
+
+
+def _convexity_spec(kind: ConvexityKind) -> PanelFeatureSpec:
+    return PanelFeatureSpec(
+        FeatureFamily.CONVEXITY,
+        SubjectScope.WHOLE_PANEL,
+        ReferenceFrame.NONE,
+        ConvexityParameters(kind),
     )
 
 
@@ -181,6 +193,18 @@ def test_straight_and_generic_segment_counts_have_distinct_wire_semantics() -> N
     assert "straight_segment_count counts only visibly straight" in prompt
     assert SEGMENT_MEMBERSHIP_RULE_ID in prompt
     assert STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID in prompt
+
+
+def test_convexity_wire_is_positive_and_binds_python_geometry_rule() -> None:
+    convex = _convexity_spec(ConvexityKind.CONVEX_CLOSED_BOUNDARY)
+    concave = _convexity_spec(ConvexityKind.CONCAVE_CLOSED_BOUNDARY)
+    assert panel_feature_spec_from_wire(panel_feature_spec_to_wire(convex)) == convex
+    assert panel_feature_spec_from_wire(panel_feature_spec_to_wire(concave)) == concave
+    prompt = panel_feature_proposer_prompt()
+    assert "one explicit complete ordered outer-boundary polygon" in prompt
+    assert "never emit it from a bare convex/concave claim" in prompt
+    assert "negation of another feature" in prompt
+    assert BOUNDARY_CONVEXITY_DERIVATION_RULE_ID in prompt
 
 
 def test_exact_admission_boundary_and_global_observer_vocabulary() -> None:

@@ -56,8 +56,8 @@ ABSENCE_GRANT_SCHEMA = "gkm.bongard-feature-absence-calibration-grant.v1"
 CALIBRATION_AUTHORITY_SCHEMA = "gkm.bongard-feature-calibration-authority.v1"
 CALIBRATION_ASSESSMENT_SCHEMA = "gkm.bongard-feature-calibration-assessment.v1"
 
-FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v4"
-FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v4"
+FEATURE_CATALOG_SCHEMA = "gkm.bongard-panel-feature-catalog.v5"
+FEATURE_CATALOG_ID = "bongard.panel-feature-catalog/typed-visual-v5"
 OWNER_ENUMERATION_PROTOCOL_ID = (
     "bongard.panel-owner-enumeration/candidate-independent-grid16-v1"
 )
@@ -74,7 +74,12 @@ STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID = (
     "bongard.panel-straight-segment-membership/"
     "explicit-exhaustive-grid16-line-evidence-v1"
 )
+BOUNDARY_CONVEXITY_DERIVATION_RULE_ID = (
+    "bongard.panel-boundary-convexity/"
+    "canonical-simple-grid16-polygon-cross-products-v1"
+)
 GRID16_BIN_COUNT = 16
+MAX_BOUNDARY_VERTEX_COUNT = 64
 
 _DIGEST = re.compile(r"[0-9a-f]{64}\Z")
 _OWNER_ID = re.compile(r"owner_[0-9]{4}\Z")
@@ -90,6 +95,7 @@ class FeatureFamily(str, Enum):
     COMPONENT_COUNT = "component_count"
     EXACT_SEGMENT_COUNT = "exact_segment_count"
     STRAIGHT_SEGMENT_COUNT = "straight_segment_count"
+    CONVEXITY = "convexity"
     MARKER_PATTERN = "marker_pattern"
     GESTALT_RESEMBLANCE = "gestalt_resemblance"
     SEGMENT_ORIENTATION = "segment_orientation"
@@ -182,6 +188,11 @@ class GestaltKind(str, Enum):
     ARROW_LIKE = "arrow_like"
     LETTER_LIKE = "letter_like"
     TOOL_LIKE = "tool_like"
+
+
+class ConvexityKind(str, Enum):
+    CONVEX_CLOSED_BOUNDARY = "convex_closed_boundary"
+    CONCAVE_CLOSED_BOUNDARY = "concave_closed_boundary"
 
 
 class OrientationClass(str, Enum):
@@ -338,6 +349,21 @@ class StraightSegmentCountParameters(_OneEnumParameter):
 
     def __post_init__(self) -> None:
         _enum_instance(self.count, ClosedCount, "straight-segment count")
+
+    to_data = _OneEnumParameter._one_enum_to_data
+    from_data = classmethod(_OneEnumParameter._one_enum_from_data.__func__)
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class ConvexityParameters(_OneEnumParameter):
+    """Python-derived class of one complete simple outer-boundary polygon."""
+
+    kind: ConvexityKind
+    _field_name = "kind"
+    _enum_type = ConvexityKind
+
+    def __post_init__(self) -> None:
+        _enum_instance(self.kind, ConvexityKind, "convexity kind")
 
     to_data = _OneEnumParameter._one_enum_to_data
     from_data = classmethod(_OneEnumParameter._one_enum_from_data.__func__)
@@ -583,6 +609,7 @@ FeatureParameters: TypeAlias = (
     ComponentCountParameters
     | ExactSegmentCountParameters
     | StraightSegmentCountParameters
+    | ConvexityParameters
     | MarkerPatternParameters
     | GestaltResemblanceParameters
     | SegmentOrientationParameters
@@ -690,6 +717,12 @@ FAMILY_CONTRACTS: Mapping[FeatureFamily, FamilyContract] = MappingProxyType(
                 SubjectScope.ONE_COHERENT_FIGURE: _FIGURE,
                 SubjectScope.ONE_TRACE: _TRACE,
             },
+        ),
+        FeatureFamily.CONVEXITY: _contract(
+            ConvexityParameters,
+            [(SubjectScope.WHOLE_PANEL, ReferenceFrame.NONE)],
+            {SubjectScope.WHOLE_PANEL: _PANEL},
+            {SubjectScope.WHOLE_PANEL: ()},
         ),
         FeatureFamily.MARKER_PATTERN: _contract(
             MarkerPatternParameters,
@@ -856,6 +889,7 @@ def _parameter_semantic_schema(family: FeatureFamily) -> dict[str, object]:
         FeatureFamily.COMPONENT_COUNT: ("count", ClosedCount),
         FeatureFamily.EXACT_SEGMENT_COUNT: ("count", ClosedCount),
         FeatureFamily.STRAIGHT_SEGMENT_COUNT: ("count", ClosedCount),
+        FeatureFamily.CONVEXITY: ("kind", ConvexityKind),
         FeatureFamily.GESTALT_RESEMBLANCE: ("kind", GestaltKind),
         FeatureFamily.TURN_PROFILE: ("profile", TurnProfileClass),
         FeatureFamily.OPEN_TRACE: ("kind", OpenTraceKind),
@@ -942,6 +976,9 @@ def feature_catalog_data() -> dict[str, object]:
                 STRAIGHT_SEGMENT_CLASSIFICATION_RULE_ID
             ),
         },
+        "geometry_derivation_rules": {
+            FeatureFamily.CONVEXITY.value: BOUNDARY_CONVEXITY_DERIVATION_RULE_ID,
+        },
         "families": rows,
         "sibling_registry": sorted(
             [
@@ -964,6 +1001,16 @@ def feature_catalog_data() -> dict[str, object]:
                 "exhaustive": False,
                 "same_subject_only": True,
                 "direct_conflict_enabled": False,
+            },
+            {
+                "relation_id": "convex-vs-concave-closed-boundary-v1",
+                "left_family": FeatureFamily.CONVEXITY.value,
+                "right_family": "same_as_left",
+                "parameter_rule_id": "distinct_convexity_kind_v1",
+                "mutually_exclusive": True,
+                "exhaustive": True,
+                "same_subject_only": True,
+                "direct_conflict_enabled": True,
             },
             {
                 "relation_id": "distinct-exact-counts-v1",
@@ -1874,6 +1921,265 @@ class QuantizedSegment:
         return result
 
 
+class BoundaryPolygonIssue(str, Enum):
+    OPEN_BOUNDARY = "open_boundary"
+    DEGENERATE_BOUNDARY = "degenerate_boundary"
+    SELF_INTERSECTING_BOUNDARY = "self_intersecting_boundary"
+    CAPACITY_LIMIT = "capacity_limit"
+
+
+class BoundaryPolygonError(PanelSoftOntologyError):
+    """A typed geometric reason an ordered boundary is not a simple polygon."""
+
+    def __init__(self, issue: BoundaryPolygonIssue, message: str) -> None:
+        if type(issue) is not BoundaryPolygonIssue:
+            raise TypeError("boundary polygon error needs BoundaryPolygonIssue")
+        self.issue = issue
+        super().__init__(message)
+
+
+def _turn_cross(
+    first: QuantizedPoint,
+    middle: QuantizedPoint,
+    last: QuantizedPoint,
+) -> int:
+    return (middle.x - first.x) * (last.y - middle.y) - (
+        middle.y - first.y
+    ) * (last.x - middle.x)
+
+
+def _signed_double_area(vertices: tuple[QuantizedPoint, ...]) -> int:
+    return sum(
+        point.x * vertices[(index + 1) % len(vertices)].y
+        - vertices[(index + 1) % len(vertices)].x * point.y
+        for index, point in enumerate(vertices)
+    )
+
+
+def _point_on_segment(
+    point: QuantizedPoint,
+    start: QuantizedPoint,
+    end: QuantizedPoint,
+) -> bool:
+    return (
+        _turn_cross(start, point, end) == 0
+        and min(start.x, end.x) <= point.x <= max(start.x, end.x)
+        and min(start.y, end.y) <= point.y <= max(start.y, end.y)
+    )
+
+
+def _segments_intersect(
+    first_start: QuantizedPoint,
+    first_end: QuantizedPoint,
+    second_start: QuantizedPoint,
+    second_end: QuantizedPoint,
+) -> bool:
+    first_side_start = _turn_cross(first_start, first_end, second_start)
+    first_side_end = _turn_cross(first_start, first_end, second_end)
+    second_side_start = _turn_cross(second_start, second_end, first_start)
+    second_side_end = _turn_cross(second_start, second_end, first_end)
+    if (
+        (first_side_start > 0) != (first_side_end > 0)
+        and (second_side_start > 0) != (second_side_end > 0)
+        and 0 not in {
+            first_side_start,
+            first_side_end,
+            second_side_start,
+            second_side_end,
+        }
+    ):
+        return True
+    return any(
+        cross == 0 and _point_on_segment(point, start, end)
+        for cross, point, start, end in (
+            (first_side_start, second_start, first_start, first_end),
+            (first_side_end, second_end, first_start, first_end),
+            (second_side_start, first_start, second_start, second_end),
+            (second_side_end, first_end, second_start, second_end),
+        )
+    )
+
+
+def _canonical_boundary_vertices(
+    vertices: tuple[QuantizedPoint, ...],
+) -> tuple[QuantizedPoint, ...]:
+    if type(vertices) is not tuple or any(
+        type(item) is not QuantizedPoint for item in vertices
+    ):
+        raise TypeError("boundary vertices must be a QuantizedPoint tuple")
+    if len(vertices) > MAX_BOUNDARY_VERTEX_COUNT:
+        raise BoundaryPolygonError(
+            BoundaryPolygonIssue.CAPACITY_LIMIT,
+            "boundary exceeds the fixed vertex capacity",
+        )
+    if len(vertices) < 3:
+        raise BoundaryPolygonError(
+            BoundaryPolygonIssue.DEGENERATE_BOUNDARY,
+            "closed boundary needs at least three distinct vertices",
+        )
+    if len(set(vertices)) != len(vertices):
+        raise BoundaryPolygonError(
+            BoundaryPolygonIssue.SELF_INTERSECTING_BOUNDARY,
+            "closed boundary repeats a non-closure vertex",
+        )
+
+    simplified = list(vertices)
+    while len(simplified) >= 3:
+        redundant_index: int | None = None
+        for index, middle in enumerate(simplified):
+            first = simplified[index - 1]
+            last = simplified[(index + 1) % len(simplified)]
+            if _turn_cross(first, middle, last) != 0:
+                continue
+            incoming_x = middle.x - first.x
+            incoming_y = middle.y - first.y
+            outgoing_x = last.x - middle.x
+            outgoing_y = last.y - middle.y
+            if incoming_x * outgoing_x + incoming_y * outgoing_y <= 0:
+                raise BoundaryPolygonError(
+                    BoundaryPolygonIssue.DEGENERATE_BOUNDARY,
+                    "closed boundary doubles back along an edge",
+                )
+            redundant_index = index
+            break
+        if redundant_index is None:
+            break
+        del simplified[redundant_index]
+    if len(simplified) < 3:
+        raise BoundaryPolygonError(
+            BoundaryPolygonIssue.DEGENERATE_BOUNDARY,
+            "closed boundary collapses after collinear normalization",
+        )
+
+    normalized = tuple(simplified)
+    edge_count = len(normalized)
+    for first_index in range(edge_count):
+        first_end_index = (first_index + 1) % edge_count
+        for second_index in range(first_index + 1, edge_count):
+            second_end_index = (second_index + 1) % edge_count
+            if (
+                second_index == first_end_index
+                or first_index == second_end_index
+            ):
+                continue
+            if _segments_intersect(
+                normalized[first_index],
+                normalized[first_end_index],
+                normalized[second_index],
+                normalized[second_end_index],
+            ):
+                raise BoundaryPolygonError(
+                    BoundaryPolygonIssue.SELF_INTERSECTING_BOUNDARY,
+                    "closed boundary has intersecting nonadjacent edges",
+                )
+
+    area = _signed_double_area(normalized)
+    if area == 0:
+        raise BoundaryPolygonError(
+            BoundaryPolygonIssue.DEGENERATE_BOUNDARY,
+            "closed boundary has zero signed area",
+        )
+    oriented = normalized if area > 0 else tuple(reversed(normalized))
+    start = min(range(len(oriented)), key=lambda index: oriented[index])
+    return oriented[start:] + oriented[:start]
+
+
+@dataclass(frozen=True, order=True, slots=True)
+class CanonicalBoundaryPolygon:
+    """Canonical simple nondegenerate Grid16 polygon without repeated closure."""
+
+    vertices: tuple[QuantizedPoint, ...]
+
+    def __post_init__(self) -> None:
+        if _canonical_boundary_vertices(self.vertices) != self.vertices:
+            raise PanelSoftOntologyError(
+                "boundary polygon orientation, start, or collinearity is not canonical"
+            )
+
+    @classmethod
+    def from_closed_vertex_walk(
+        cls, vertices: tuple[QuantizedPoint, ...]
+    ) -> "CanonicalBoundaryPolygon":
+        if type(vertices) is not tuple or any(
+            type(item) is not QuantizedPoint for item in vertices
+        ):
+            raise TypeError("closed boundary walk must be a QuantizedPoint tuple")
+        if len(vertices) > MAX_BOUNDARY_VERTEX_COUNT + 1:
+            raise BoundaryPolygonError(
+                BoundaryPolygonIssue.CAPACITY_LIMIT,
+                "closed boundary walk exceeds the fixed vertex capacity",
+            )
+        if len(vertices) < 2 or vertices[0] != vertices[-1]:
+            raise BoundaryPolygonError(
+                BoundaryPolygonIssue.OPEN_BOUNDARY,
+                "ordered boundary walk does not explicitly return to its first vertex",
+            )
+        return cls(_canonical_boundary_vertices(vertices[:-1]))
+
+    @property
+    def closed_vertex_walk(self) -> tuple[QuantizedPoint, ...]:
+        return self.vertices + (self.vertices[0],)
+
+    @property
+    def convexity_kind(self) -> ConvexityKind:
+        turns = tuple(
+            _turn_cross(
+                self.vertices[index - 1],
+                point,
+                self.vertices[(index + 1) % len(self.vertices)],
+            )
+            for index, point in enumerate(self.vertices)
+        )
+        return (
+            ConvexityKind.CONVEX_CLOSED_BOUNDARY
+            if all(item > 0 for item in turns)
+            else ConvexityKind.CONCAVE_CLOSED_BOUNDARY
+        )
+
+    @property
+    def polygon_digest(self) -> str:
+        return canonical_digest(self.to_data())
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "schema": "gkm.bongard-canonical-boundary-polygon.v1",
+            "vertices": [item.to_data() for item in self.vertices],
+            "closure": "implicit_last_to_first",
+            "orientation": "positive_signed_area",
+            "start": "lexicographically_minimum_vertex",
+            "collinear_redundancy": "removed",
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "CanonicalBoundaryPolygon":
+        raw = _fields(
+            value,
+            {
+                "schema",
+                "vertices",
+                "closure",
+                "orientation",
+                "start",
+                "collinear_redundancy",
+            },
+            "canonical boundary polygon",
+        )
+        if (
+            raw["schema"] != "gkm.bongard-canonical-boundary-polygon.v1"
+            or raw["closure"] != "implicit_last_to_first"
+            or raw["orientation"] != "positive_signed_area"
+            or raw["start"] != "lexicographically_minimum_vertex"
+            or raw["collinear_redundancy"] != "removed"
+            or type(raw["vertices"]) is not list
+        ):
+            raise PanelSoftOntologyError("canonical boundary polygon policy differs")
+        result = cls(
+            tuple(QuantizedPoint.from_data(item) for item in raw["vertices"])
+        )
+        _require_canonical(result, raw, "canonical boundary polygon")
+        return result
+
+
 @dataclass(frozen=True, slots=True)
 class CountWitnessPayload:
     counted_owner_ids: tuple[OwnerId, ...]
@@ -2029,6 +2335,54 @@ class StraightSegmentCountWitnessPayload:
             raw["classification_receipt_digest"],
         )
         _require_canonical(result, raw, "straight-segment count witness payload")
+        return result
+
+
+@dataclass(frozen=True, slots=True)
+class ConvexityWitnessPayload:
+    """Complete outer boundary whose convexity class is derived by Python."""
+
+    outer_boundary: CanonicalBoundaryPolygon
+    boundary_complete: bool
+    boundary_receipt_digest: str
+
+    def __post_init__(self) -> None:
+        if type(self.outer_boundary) is not CanonicalBoundaryPolygon:
+            raise TypeError("convexity witness needs CanonicalBoundaryPolygon")
+        if type(self.boundary_complete) is not bool or self.boundary_complete is not True:
+            raise PanelSoftOntologyError(
+                "convexity witness requires a complete outer boundary"
+            )
+        _digest(self.boundary_receipt_digest, "convexity boundary receipt digest")
+
+    def to_data(self) -> dict[str, object]:
+        return {
+            "kind": "convexity",
+            "outer_boundary": self.outer_boundary.to_data(),
+            "boundary_complete": self.boundary_complete,
+            "boundary_receipt_digest": self.boundary_receipt_digest,
+        }
+
+    @classmethod
+    def from_data(cls, value: object) -> "ConvexityWitnessPayload":
+        raw = _fields(
+            value,
+            {
+                "kind",
+                "outer_boundary",
+                "boundary_complete",
+                "boundary_receipt_digest",
+            },
+            "convexity witness payload",
+        )
+        if raw["kind"] != "convexity":
+            raise PanelSoftOntologyError("convexity witness payload differs")
+        result = cls(
+            CanonicalBoundaryPolygon.from_data(raw["outer_boundary"]),
+            raw["boundary_complete"],
+            raw["boundary_receipt_digest"],
+        )
+        _require_canonical(result, raw, "convexity witness payload")
         return result
 
 
@@ -2355,6 +2709,7 @@ class EnclosureWitnessPayload:
 FeatureWitnessPayload: TypeAlias = (
     CountWitnessPayload
     | StraightSegmentCountWitnessPayload
+    | ConvexityWitnessPayload
     | MarkerWitnessPayload
     | UnaryGeometryWitnessPayload
     | PointContactWitnessPayload
@@ -2370,6 +2725,7 @@ def _payload_from_data(value: object) -> FeatureWitnessPayload:
     parser = {
         "count": CountWitnessPayload,
         "straight_segment_count": StraightSegmentCountWitnessPayload,
+        "convexity": ConvexityWitnessPayload,
         "marker_pattern": MarkerWitnessPayload,
         "unary_geometry": UnaryGeometryWitnessPayload,
         "point_contact": PointContactWitnessPayload,
@@ -2386,6 +2742,8 @@ def _payload_type_for_family(family: FeatureFamily) -> type:
         return CountWitnessPayload
     if family is FeatureFamily.STRAIGHT_SEGMENT_COUNT:
         return StraightSegmentCountWitnessPayload
+    if family is FeatureFamily.CONVEXITY:
+        return ConvexityWitnessPayload
     if family is FeatureFamily.MARKER_PATTERN:
         return MarkerWitnessPayload
     if family in _UNARY_WITNESS_FAMILIES:
@@ -2476,6 +2834,20 @@ class PanelFeatureWitness:
                     raise PanelSoftOntologyError(
                         "straight-segment evidence lies outside its owner or subject"
                     )
+        if isinstance(self.payload, ConvexityWitnessPayload):
+            expected_kind = self.spec.parameters.kind  # type: ignore[union-attr]
+            if self.payload.outer_boundary.convexity_kind is not expected_kind:
+                raise PanelSoftOntologyError(
+                    "Python-derived boundary convexity differs from the feature spec"
+                )
+            subject_region = subject_search_region(self.subject, self.inventory)
+            if any(
+                not _point_within_region(point, subject_region)
+                for point in self.payload.outer_boundary.vertices
+            ):
+                raise PanelSoftOntologyError(
+                    "convexity boundary lies outside its subject search region"
+                )
         if isinstance(self.payload, MarkerWitnessPayload):
             expected_count = _closed_count_value(self.spec.parameters.repetition)  # type: ignore[union-attr]
             if len(self.payload.marker_centers) != expected_count:
@@ -2685,6 +3057,13 @@ def registered_sibling_relation(
             )
         if left_count is not right_count and marker_context_matches:
             return SiblingRelationMetadata("distinct-exact-counts-v1", True, False, True)
+    if (
+        left.family is right.family is FeatureFamily.CONVEXITY
+        and left.parameters.kind is not right.parameters.kind  # type: ignore[union-attr]
+    ):
+        return SiblingRelationMetadata(
+            "convex-vs-concave-closed-boundary-v1", True, True, True
+        )
     return None
 
 
@@ -3074,6 +3453,8 @@ class MeasurementIssueCode(str, Enum):
     AMBIGUOUS_OWNER = "ambiguous_owner"
     INSUFFICIENT_RESOLUTION = "insufficient_resolution"
     MISSING_STRAIGHTNESS_EVIDENCE = "missing_straightness_evidence"
+    MISSING_BOUNDARY_EVIDENCE = "missing_boundary_evidence"
+    INVALID_BOUNDARY_GEOMETRY = "invalid_boundary_geometry"
     SEARCH_INCOMPLETE = "search_incomplete"
     OBSERVER_FAILURE = "observer_failure"
     PARSER_FAILURE = "parser_failure"
@@ -3128,6 +3509,8 @@ class RawFeatureMeasurement:
             MeasurementIssueCode.AMBIGUOUS_OWNER,
             MeasurementIssueCode.INSUFFICIENT_RESOLUTION,
             MeasurementIssueCode.MISSING_STRAIGHTNESS_EVIDENCE,
+            MeasurementIssueCode.MISSING_BOUNDARY_EVIDENCE,
+            MeasurementIssueCode.INVALID_BOUNDARY_GEOMETRY,
             MeasurementIssueCode.SEARCH_INCOMPLETE,
         }:
             raise PanelSoftOntologyError("unresolved measurement has an error-only issue code")
